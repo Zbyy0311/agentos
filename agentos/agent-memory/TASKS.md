@@ -19,3 +19,5 @@
 | 62885156 | full mock pipeline test | pending | - | 2026-07-05T13:58:42.147Z | 2026-07-05T13:58:42.148Z |
 | c760da4a | config test pipeline | pending | - | 2026-07-05T14:03:36.858Z | 2026-07-05T14:03:36.859Z |
 | 5bbab03c | output persist test | pending | - | 2026-07-05T14:09:36.245Z | 2026-07-05T14:09:36.246Z |
+| 5cda4709 | sse+abort+cleanup test | pending | - | 2026-07-05T14:15:07.943Z | 2026-07-05T14:15:07.944Z |
+| 62c07a52 | 检查一下项目的完成度 | pending | - | 2026-07-05T14:20:01.581Z | 2026-07-05T14:20:01.581Z |
