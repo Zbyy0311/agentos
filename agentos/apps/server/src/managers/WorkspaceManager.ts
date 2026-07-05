@@ -5,9 +5,9 @@ import type { Workspace, WorkspaceAgent } from '@agentos/shared';
 import type { Store } from '../store/Store.js';
 
 const DEFAULT_AGENTS: WorkspaceAgent[] = [
-  { id: 'codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: 'codex.cmd', cliArgs: ['exec', '--ephemeral'] },
-  { id: 'kimi', name: 'KimiCode', role: 'kimi', enabled: true, cliCommand: 'opencode.exe', cliArgs: ['--pure', 'run', '--model', 'kimi-for-coding/k2p7'], model: 'kimi-for-coding/k2p7' },
-  { id: 'opencode', name: 'OpenCode', role: 'opencode', enabled: true, cliCommand: 'opencode.exe', cliArgs: ['--pure', 'run', '--model', 'deepseek/deepseek-v4-flash'], model: 'deepseek/deepseek-v4-flash' },
+  { id: 'codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: ['exec', '--ephemeral'] },
+  { id: 'kimi', name: 'KimiCode', role: 'kimi', enabled: true, cliCommand: 'opencode', cliArgs: ['--pure', 'run', '--model', 'kimi-for-coding/k2p7'], model: 'kimi-for-coding/k2p7' },
+  { id: 'opencode', name: 'OpenCode', role: 'opencode', enabled: true, cliCommand: 'opencode', cliArgs: ['--pure', 'run', '--model', 'deepseek/deepseek-v4-flash'], model: 'deepseek/deepseek-v4-flash' },
 ];
 
 export class WorkspaceManager {

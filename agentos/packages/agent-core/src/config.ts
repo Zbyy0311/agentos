@@ -1,7 +1,8 @@
 import type { AgentConfig } from './types.js';
 
-const CODEX_CLI = process.env.AGENTOS_CODEX_CLI ?? `C:\\Users\\Administrator\\AppData\\Roaming\\QClaw\\npm-global\\codex.cmd`;
-const OPENCODE_CLI = process.env.AGENTOS_OPENCODE_CLI ?? `E:\\software\\opencode\\node_modules\\opencode-ai\\bin\\opencode.exe`;
+// CLI commands — assume they are in PATH, or override via env var
+const CODEX_CLI = process.env.AGENTOS_CODEX_CLI ?? 'codex';
+const OPENCODE_CLI = process.env.AGENTOS_OPENCODE_CLI ?? 'opencode';
 const KIMI_MODEL = process.env.AGENTOS_KIMI_MODEL ?? 'kimi-for-coding/k2p7';
 const OPENCODE_MODEL = process.env.AGENTOS_OPENCODE_MODEL ?? 'deepseek/deepseek-v4-flash';
 
