@@ -39,3 +39,11 @@
 | 2026-07-05T16:01:52.360Z | KimiCode | kimi_worker | 8749142e | mock | OK |
 | 2026-07-05T16:01:52.363Z | OpenCode | opencode_reviewer | 8749142e | mock | OK |
 | 2026-07-05T16:01:52.366Z | Codex | codex_final_review | 8749142e | mock | OK |
+| 2026-07-05T16:10:55.072Z | Codex | codex_manager | c7abd1ff | mock | OK |
+| 2026-07-05T16:10:55.081Z | KimiCode | kimi_worker | c7abd1ff | mock | OK |
+| 2026-07-05T16:10:55.085Z | OpenCode | opencode_reviewer | c7abd1ff | mock | OK |
+| 2026-07-05T16:10:55.089Z | Codex | codex_final_review | c7abd1ff | mock | OK |
+| 2026-07-05T16:11:02.246Z | Codex | codex_manager | 8813c4ee | mock | OK |
+| 2026-07-05T16:11:02.249Z | KimiCode | kimi_worker | 8813c4ee | mock | OK |
+| 2026-07-05T16:11:02.253Z | OpenCode | opencode_reviewer | 8813c4ee | mock | OK |
+| 2026-07-05T16:11:02.256Z | Codex | codex_final_review | 8813c4ee | mock | OK |
