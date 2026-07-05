@@ -1,7 +1,7 @@
 'use client';
 
 import { useParams } from 'next/navigation';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useApi } from '@/lib/useApi';
 import { useTask } from '@/lib/useTask';
 import type { Workspace, TaskItem, TaskLog } from '@agentos/shared';
@@ -74,14 +74,22 @@ export default function WorkspacePage() {
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
   const [status, setStatus] = useState<TaskItem['status']>('idle' as any);
   const [outputs, setOutputs] = useState<TaskLog[]>([]);
-  const [streamLines, setStreamLines] = useState<string[]>([]);
-  const [currentStage, setCurrentStage] = useState<string | null>(null);
+
+  // SSE streaming — use a ref so we never lose partial lines across chunks
+  const streamTextRef = useRef('');
+  const [, forceRender] = useState(0);
+
+  // Abort controller ref — allows user to cancel a running pipeline
+  const abortRef = useRef<AbortController | null>(null);
 
   const streamEndRef = useRef<HTMLDivElement>(null);
   const outputEndRef = useRef<HTMLDivElement>(null);
 
-  // Live SSE stream — auto-scroll
-  useEffect(() => { streamEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [streamLines]);
+  // Re-read latest streamText for the UI
+  const streamText = streamTextRef.current;
+
+  // Auto-scroll
+  useEffect(() => { streamEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [streamText]);
   useEffect(() => { outputEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [outputs]);
 
   // Load git diff
@@ -109,22 +117,35 @@ export default function WorkspacePage() {
     try {
       await createTask(taskTitle);
       setTaskTitle('');
-    } catch (e) {
-      setStreamLines(prev => [...prev, `✗ Create task failed: ${e instanceof Error ? e.message : String(e)}`]);
-    }
+    } catch { /* ignore */ }
   };
 
-  const runTask = async (taskId: string) => {
+  // Cancel pipeline
+  const cancelRun = useCallback(() => {
+    if (abortRef.current) {
+      abortRef.current.abort();
+      abortRef.current = null;
+    }
+  }, []);
+
+  const runTask = useCallback(async (taskId: string) => {
     setRunningTaskId(taskId);
     setStatus('running');
     setOutputs([]);
-    setStreamLines([]);
-    setCurrentStage(null);
+    streamTextRef.current = '';
+    forceRender(n => n + 1);
+
+    const controller = new AbortController();
+    abortRef.current = controller;
 
     try {
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/workspaces/${workspaceId}/tasks/${taskId}/run`,
-        { method: 'POST', headers: { Accept: 'text/event-stream' } },
+        {
+          method: 'POST',
+          headers: { Accept: 'text/event-stream' },
+          signal: controller.signal,
+        },
       );
       if (!response.ok || !response.body) throw new Error(`Run failed: ${response.status}`);
 
@@ -146,30 +167,28 @@ export default function WorkspacePage() {
             try {
               const data = JSON.parse(line.slice(6));
               if (currentEvent === 'thinking') {
-                if (data.done) {
-                  setStreamLines(prev => [...prev, '']);
-                } else {
-                  setStreamLines(prev => {
-                    const msgLines = data.text.split('\n');
-                    if (prev.length === 0) return msgLines;
-                    const last = prev[prev.length - 1];
-                    msgLines[0] = last + msgLines[0];
-                    return [...prev.slice(0, -1), ...msgLines];
-                  });
+                // Append text directly to the ref — no line-joining logic needed
+                if (data.text) {
+                  streamTextRef.current += data.text;
+                  forceRender(n => n + 1);
                 }
               } else if (currentEvent === 'stage') {
                 if (data.status === 'running') {
-                  setCurrentStage(data.stage);
-                  setStreamLines(prev => [...prev, `━━━ ${data.agent || data.stage} ${data.status} ━━━`]);
+                  streamTextRef.current += `\n━━━ ${data.agent || data.stage} ${data.status} ━━━\n`;
+                  forceRender(n => n + 1);
                 } else if (data.status === 'completed' && data.log) {
                   setOutputs(prev => [...prev, data.log]);
-                  setStreamLines(prev => [...prev, `━━━ ${data.stage} completed ─── ${data.log.duration}ms`]);
+                  streamTextRef.current += `\n━━━ ${data.stage} completed ─── ${data.log.duration}ms\n`;
+                  forceRender(n => n + 1);
                 }
               } else if (currentEvent === 'status' && data.status !== 'running') {
                 setStatus(data.status);
               } else if (currentEvent === 'done') {
                 setStatus(data.status);
-                if (data.error) setStreamLines(prev => [...prev, `✗ Pipeline failed: ${data.error}`]);
+                if (data.error) {
+                  streamTextRef.current += `\n✗ Pipeline failed: ${data.error}\n`;
+                  forceRender(n => n + 1);
+                }
               }
               if (currentEvent !== 'thinking') currentEvent = '';
             } catch {
@@ -179,26 +198,36 @@ export default function WorkspacePage() {
         }
       }
       // Refresh to get persisted outputs
-      const statusRes = await request<{ task: TaskItem }>(`/api/workspaces/${workspaceId}/tasks/${taskId}/status`);
-      if (statusRes.task.outputs?.length) setOutputs(statusRes.task.outputs);
+      try {
+        const statusRes = await request<{ task: TaskItem }>(`/api/workspaces/${workspaceId}/tasks/${taskId}/status`);
+        if (statusRes.task.outputs?.length) setOutputs(statusRes.task.outputs);
+      } catch { /* ignore */ }
       await fetchTasks();
     } catch (err) {
-      setStatus('failed');
-      setStreamLines(prev => [...prev, `✗ Pipeline error: ${err instanceof Error ? err.message : String(err)}`]);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setStatus('failed' as any);
+        streamTextRef.current += '\n⛔ Pipeline cancelled\n';
+        forceRender(n => n + 1);
+      } else {
+        setStatus('failed');
+        streamTextRef.current += `\n✗ Pipeline error: ${err instanceof Error ? err.message : String(err)}\n`;
+        forceRender(n => n + 1);
+      }
     } finally {
       setRunningTaskId(null);
+      abortRef.current = null;
     }
-  };
+  }, [workspaceId, request, fetchTasks]);
 
   // Load persisted outputs when selecting completed/failed task
-  const selectTask = async (task: TaskItem) => {
+  const selectTask = useCallback(async (task: TaskItem) => {
     if (task.status === 'running' || task.status === 'pending') return;
     setRunningTaskId(task.id);
     setStatus(task.status as any);
-    setStreamLines([]);
+    streamTextRef.current = '';
+    forceRender(n => n + 1);
     setOutputs(task.outputs || []);
-    setCurrentStage(null);
-  };
+  }, []);
 
   if (loadingWorkspace) return <div className="p-8 text-slate-500">Loading workspace...</div>;
   if (workspaceError) return <div className="p-8 text-red-400">Error: {workspaceError}</div>;
@@ -220,6 +249,14 @@ export default function WorkspacePage() {
           }`}>
             {status}
           </span>
+          {status === 'running' && runningTaskId && (
+            <button
+              onClick={cancelRun}
+              className="px-2 py-0.5 bg-red-700 hover:bg-red-600 rounded text-[10px]"
+            >
+              Cancel
+            </button>
+          )}
         </div>
       </header>
 
@@ -287,20 +324,18 @@ export default function WorkspacePage() {
           )}
 
           {/* Live stream (during run) */}
-          {streamLines.length > 0 && (
+          {streamText && (
             <div className={`${outputs.length > 0 ? 'border-t border-surface-700 max-h-64' : 'flex-1'} overflow-y-auto p-4 font-mono text-xs`}>
               {outputs.length > 0 && (
                 <div className="text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">Live Stream</div>
               )}
-              {streamLines.map((line, i) => (
-                <div key={i} className="whitespace-pre-wrap">{line}</div>
-              ))}
+              <pre className="whitespace-pre-wrap">{streamText}</pre>
               <div ref={streamEndRef} />
             </div>
           )}
 
           {/* Empty state */}
-          {outputs.length === 0 && streamLines.length === 0 && (
+          {outputs.length === 0 && !streamText && (
             <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
               Select a task and click Run to start the pipeline.
             </div>
