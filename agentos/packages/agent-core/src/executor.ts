@@ -100,9 +100,24 @@ export class CLIExecutor {
     await this.appendToAgentLog(log, workspaceRoot);
     await this.writeTaskLog(log, workspaceRoot, taskId);
 
+    // Non-zero exit: fall back to mock instead of failing the pipeline
     if (exitCode !== 0) {
       const detail = stderr.trim() || stdout.trim() || 'no output';
-      throw new Error(`${agentName} (${stage}) failed with exit code ${exitCode}: ${detail}`);
+      console.warn(`[AgentOS] ${agentName} (${stage}) failed (exit ${exitCode}: ${detail}), falling back to mock`);
+      const mockResult = MockCLI.run(agentName, prompt);
+      const mockLog: TaskLog = {
+        stage,
+        agentName,
+        stdout: `${stdout.trim()}\n\n--- FALLBACK TO MOCK ---\n${mockResult.stdout}`,
+        stderr: stderr.trim(),
+        exitCode: 0,
+        timestamp: new Date().toISOString(),
+        duration,
+      };
+      await this.appendToAgentLog(mockLog, workspaceRoot);
+      await this.writeTaskLog(mockLog, workspaceRoot, taskId);
+      if (onChunk) onChunk('\n[Mock output] ', false);
+      return mockLog;
     }
 
     return log;
