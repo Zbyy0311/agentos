@@ -92,7 +92,43 @@ export class WorkspaceManager {
     if (options.docs ?? true) {
       const docsDir = join(workspace.rootPath, 'docs');
       mkdirSync(docsDir, { recursive: true });
-      this.ensureFile(join(docsDir, 'AGENT_RULE.md'), `# Agent Rules\n\n## General Rules\n\n1. **No memory deletion** — Agents must never delete or overwrite memory files\n2. **No overlapping work** — Agents must not overwrite another agent's output\n3. **Every modification must be logged** — All changes go to \`agent-memory/LOG.md\`\n4. **Risk must be documented** — Every agent must output risk assessment\n5. **Next steps must be provided** — Every agent output must include next steps\n\n## Codex (Manager) Rules\n- Must break tasks into clear subtasks\n- Must assess risks before proceeding\n- Must make final decision on all work\n- Must document architecture decisions in DECISIONS.md\n\n## KimiCode (Worker) Rules\n- Must follow Codex's task breakdown\n- Must output code changes clearly\n- Must document implementation decisions\n- Must flag uncertainties to Codex\n\n## OpenCode (Reviewer) Rules\n- Must review all code changes\n- Must check for: correctness, security, performance, style\n- Must provide a score (1-10)\n- Must document all findings\n\n## Enforcement\n- Violations are logged in \`agent-memory/LOG.md\`\n- Repeated violations cause pipeline failure\n- Pipeline must not proceed past a failed review\n`);
+      this.ensureFile(join(docsDir, 'AGENT_RULE.md'), `# Agent Rules
+
+## General Rules
+
+1. **No memory deletion** — Agents must never delete or overwrite memory files
+2. **No overlapping work** — Agents must not overwrite another agent's output
+3. **Every modification must be logged** — All changes go to \`agent-memory/LOG.md\`
+4. **Risk must be documented** — Every agent must output risk assessment
+5. **Next steps must be provided** — Every agent output must include next steps
+
+## Codex (Manager) Rules
+
+- Must break tasks into clear subtasks
+- Must assess risks before proceeding
+- Must make final decision on all work
+- Must document architecture decisions in DECISIONS.md
+
+## KimiCode (Worker) Rules
+
+- Must follow Codex's task breakdown
+- Must output code changes clearly
+- Must document implementation decisions
+- Must flag uncertainties to Codex
+
+## OpenCode (Reviewer) Rules
+
+- Must review all code changes
+- Must check for: correctness, security, performance, style
+- Must provide a score (1-10)
+- Must document all findings
+
+## Enforcement
+
+- Violations are logged in \`agent-memory/LOG.md\`
+- Repeated violations cause pipeline failure
+- Pipeline must not proceed past a failed review
+`);
     }
 
     if (options.git ?? true) {
