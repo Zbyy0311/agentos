@@ -1,0 +1,3 @@
+# agentos
+
+Project memory initialized.

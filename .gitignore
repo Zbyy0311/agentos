@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.next/
+*.tsbuildinfo
+.env
+.env.local
+*.log
+.agentos/
+workspace/
+.kimicode/
+__pycache__/
+*.pyc
+*.db
+next-env.d.ts
+*.sqlite

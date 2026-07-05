@@ -1,0 +1,13 @@
+{
+  "name": "agentos",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --parallel -r run dev",
+    "build": "pnpm -r run build",
+    "clean": "pnpm -r run clean"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
