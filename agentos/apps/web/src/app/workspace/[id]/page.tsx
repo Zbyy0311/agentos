@@ -74,6 +74,7 @@ export default function WorkspacePage() {
   const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
   const [status, setStatus] = useState<TaskItem['status']>('idle' as any);
   const [outputs, setOutputs] = useState<TaskLog[]>([]);
+  const [executionMode, setExecutionMode] = useState<'real' | 'mock' | ''>('');
 
   // SSE streaming — use a ref so we never lose partial lines across chunks
   const streamTextRef = useRef('');
@@ -132,6 +133,7 @@ export default function WorkspacePage() {
     setRunningTaskId(taskId);
     setStatus('running');
     setOutputs([]);
+    setExecutionMode('');
     streamTextRef.current = '';
     forceRender(n => n + 1);
 
@@ -178,6 +180,7 @@ export default function WorkspacePage() {
                   forceRender(n => n + 1);
                 } else if (data.status === 'completed' && data.log) {
                   setOutputs(prev => [...prev, data.log]);
+                  if (data.log.mode) setExecutionMode(data.log.mode);
                   streamTextRef.current += `\n━━━ ${data.stage} completed ─── ${data.log.duration}ms\n`;
                   forceRender(n => n + 1);
                 }
@@ -200,7 +203,11 @@ export default function WorkspacePage() {
       // Refresh to get persisted outputs
       try {
         const statusRes = await request<{ task: TaskItem }>(`/api/workspaces/${workspaceId}/tasks/${taskId}/status`);
-        if (statusRes.task.outputs?.length) setOutputs(statusRes.task.outputs);
+        if (statusRes.task.outputs?.length) {
+          setOutputs(statusRes.task.outputs);
+          const mode = statusRes.task.outputs.find(o => o.mode)?.mode;
+          if (mode) setExecutionMode(mode as 'real' | 'mock');
+        }
       } catch { /* ignore */ }
       await fetchTasks();
     } catch (err) {
@@ -227,6 +234,8 @@ export default function WorkspacePage() {
     streamTextRef.current = '';
     forceRender(n => n + 1);
     setOutputs(task.outputs || []);
+    const mode = task.outputs?.find(o => o.mode)?.mode;
+    setExecutionMode(mode as 'real' | 'mock' | '');
   }, []);
 
   if (loadingWorkspace) return <div className="p-8 text-slate-500">Loading workspace...</div>;
@@ -249,6 +258,15 @@ export default function WorkspacePage() {
           }`}>
             {status}
           </span>
+          {executionMode && (
+            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
+              executionMode === 'mock'
+                ? 'bg-yellow-900 text-yellow-300'
+                : 'bg-emerald-900 text-emerald-300'
+            }`}>
+              {executionMode === 'mock' ? '🔄 Mock' : '⚡ Real'}
+            </span>
+          )}
           {status === 'running' && runningTaskId && (
             <button
               onClick={cancelRun}
