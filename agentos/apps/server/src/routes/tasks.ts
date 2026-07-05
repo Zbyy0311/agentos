@@ -30,6 +30,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       title,
       status: 'pending',
       currentAgent: null,
+      outputs: [],
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -66,6 +67,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
 
     sendEvent('status', { taskId, status: 'running', currentAgent: null });
     task.status = 'running';
+    task.outputs = [];
     task.updatedAt = new Date().toISOString();
     store.saveTasks(workspaceId, tasks);
 
@@ -88,25 +90,21 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           store.saveTasks(workspaceId, tasks);
         };
 
-        setCurrentAgent('codex_manager');
-        sendEvent('stage', { stage: 'codex_manager', agent: 'Codex', status: 'running' });
-        const codexLog = await runner.runCodexManager();
-        sendEvent('stage', { stage: 'codex_manager', status: 'completed', log: codexLog });
+        const runStage = async (stage: AgentStage, label: string, fn: () => Promise<TaskLog>) => {
+          setCurrentAgent(stage);
+          sendEvent('stage', { stage, agent: label, status: 'running' });
+          const log = await fn();
+          task.outputs.push(log);
+          task.updatedAt = new Date().toISOString();
+          store.saveTasks(workspaceId, tasks);
+          sendEvent('stage', { stage, status: 'completed', log });
+          return log;
+        };
 
-        setCurrentAgent('kimi_worker');
-        sendEvent('stage', { stage: 'kimi_worker', agent: 'KimiCode', status: 'running' });
-        const kimiLog = await runner.runKimiWorker();
-        sendEvent('stage', { stage: 'kimi_worker', status: 'completed', log: kimiLog });
-
-        setCurrentAgent('opencode_reviewer');
-        sendEvent('stage', { stage: 'opencode_reviewer', agent: 'OpenCode', status: 'running' });
-        const opencodeLog = await runner.runOpenCodeReviewer();
-        sendEvent('stage', { stage: 'opencode_reviewer', status: 'completed', log: opencodeLog });
-
-        setCurrentAgent('codex_final_review');
-        sendEvent('stage', { stage: 'codex_final_review', agent: 'Codex', status: 'running' });
-        const finalLog = await runner.runCodexFinalReview();
-        sendEvent('stage', { stage: 'codex_final_review', status: 'completed', log: finalLog });
+        await runStage('codex_manager', 'Codex', () => runner.runCodexManager());
+        await runStage('kimi_worker', 'KimiCode', () => runner.runKimiWorker());
+        await runStage('opencode_reviewer', 'OpenCode', () => runner.runOpenCodeReviewer());
+        await runStage('codex_final_review', 'Codex', () => runner.runCodexFinalReview());
 
         task.status = 'completed';
         task.currentAgent = null;
@@ -160,26 +158,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     const task = tasks.find(t => t.id === taskId);
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
-    const logs: TaskLog[] = [];
-    const logDir = join(workspace.rootPath, '.agentos', 'logs', taskId);
-    if (existsSync(logDir)) {
-      for (const file of readdirSync(logDir)) {
-        if (file.endsWith('.log')) {
-          const content = readFileSync(join(logDir, file), 'utf-8');
-          const stage = file.replace('.log', '') as TaskLog['stage'];
-          logs.push({
-            stage,
-            agentName: stage.replace('_', ' '),
-            stdout: content,
-            stderr: '',
-            exitCode: 0,
-            timestamp: '',
-            duration: 0,
-          });
-        }
-      }
-    }
-    res.json({ task, logs });
+    res.json({ task });
   });
 
   return router;

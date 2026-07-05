@@ -6,3 +6,4 @@ logs/
 .DS_Store
 *.local
 .env
+workspace/demo-project/

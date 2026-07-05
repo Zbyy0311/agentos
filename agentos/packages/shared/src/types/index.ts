@@ -36,6 +36,7 @@ export interface TaskItem {
   title: string;
   status: TaskStatus;
   currentAgent: AgentStage | null;
+  outputs: TaskLog[];
   createdAt: string;
   updatedAt: string;
 }

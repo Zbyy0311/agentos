@@ -36,7 +36,10 @@ export class JsonFileStore implements Store {
       if (existsSync(file)) {
         const raw = readFileSync(file, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.tasks)) return parsed.tasks;
+        if (Array.isArray(parsed.tasks)) {
+          // Ensure backward compatibility for tasks saved without outputs
+          return parsed.tasks.map((t: TaskItem) => ({ ...t, outputs: t.outputs ?? [] }));
+        }
       }
     } catch { /* ignore */ }
     return [];

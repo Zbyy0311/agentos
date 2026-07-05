@@ -6,7 +6,7 @@ dist/
 .env.local
 *.log
 .agentos/
-workspace/
+/workspace/
 .kimicode/
 __pycache__/
 *.pyc

@@ -1,0 +1,55 @@
+{
+  "workspaces": [
+    {
+      "id": "d7994c0c",
+      "name": "agentos",
+      "rootPath": "E:\\workspace\\Multi-Agent\\agentos",
+      "gitEnabled": true,
+      "memoryEnabled": true,
+      "agents": [
+        {
+          "id": "codex",
+          "name": "Codex",
+          "role": "codex",
+          "enabled": true,
+          "cliCommand": "codex.cmd",
+          "cliArgs": [
+            "exec",
+            "--ephemeral"
+          ]
+        },
+        {
+          "id": "kimi",
+          "name": "KimiCode",
+          "role": "kimi",
+          "enabled": true,
+          "cliCommand": "opencode.exe",
+          "cliArgs": [
+            "--pure",
+            "run",
+            "--model",
+            "kimi-for-coding/k2p7"
+          ],
+          "model": "kimi-for-coding/k2p7"
+        },
+        {
+          "id": "opencode",
+          "name": "OpenCode",
+          "role": "opencode",
+          "enabled": true,
+          "cliCommand": "opencode.exe",
+          "cliArgs": [
+            "--pure",
+            "run",
+            "--model",
+            "deepseek/deepseek-v4-flash"
+          ],
+          "model": "deepseek/deepseek-v4-flash"
+        }
+      ],
+      "lastOpenedAt": "2026-06-27T14:53:43.213Z",
+      "createdAt": "2026-06-27T14:53:43.213Z",
+      "updatedAt": "2026-06-27T14:53:43.213Z"
+    }
+  ]
+}
