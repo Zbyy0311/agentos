@@ -56,7 +56,7 @@ Each agent function must:
 2. Build a structured prompt
 3. Call the agent's CLI via child_process.spawn
 4. Capture stdout and stderr
-5. Log results to AGENT_LOG.md
+5. Log results to `agent-memory/LOG.md`
 6. Write per-task log file
 7. Return structured TaskLog
 

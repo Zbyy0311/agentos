@@ -4,7 +4,7 @@
 
 1. **No memory deletion** — Agents must never delete or overwrite memory files
 2. **No overlapping work** — Agents must not overwrite another agent's output
-3. **Every modification must be logged** — All changes go to AGENT_LOG.md
+3. **Every modification must be logged** — All changes go to `agent-memory/LOG.md`
 4. **Risk must be documented** — Every agent must output risk assessment
 5. **Next steps must be provided** — Every agent output must include next steps
 
@@ -31,6 +31,6 @@
 
 ## Enforcement
 
-- Violations are logged in AGENT_LOG.md
+- Violations are logged in `agent-memory/LOG.md`
 - Repeated violations cause pipeline failure
 - Pipeline must not proceed past a failed review

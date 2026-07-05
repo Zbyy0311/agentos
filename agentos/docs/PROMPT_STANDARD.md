@@ -41,4 +41,4 @@ You are [ROLE], the [AGENT_NAME] Agent.
 - Each stage prepends the role-specific prefix
 - The prompt includes memory context from agent-memory/
 - Output is unstructured text (no strict JSON required for MVP)
-- Each agent appends its output to AGENT_LOG.md automatically
+- Each agent appends its output to `agent-memory/LOG.md` automatically

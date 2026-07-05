@@ -28,7 +28,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
-app.use('/api/agents', createAgentRoutes());
+app.use('/api/agents', createAgentRoutes(workspaceManager));
 
 app.listen(PORT, () => {
   console.log(`[AgentOS Server] running on http://localhost:${PORT}`);

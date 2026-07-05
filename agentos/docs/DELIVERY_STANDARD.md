@@ -11,12 +11,12 @@ Every completed feature must include:
 - [ ] Risk — Risk assessment documented
 - [ ] Todo — Next steps documented
 - [ ] Test — Test results documented
-- [ ] Memory — AGENT_LOG.md and memory files updated
+- [ ] Memory — `agent-memory/` files updated (LOG.md, TASKS.md, etc.)
 
 ## Process
 
 1. **Code** — Write implementation code
-2. **Log** — Append to AGENT_LOG.md with timestamp
+2. **Log** — Append to `agent-memory/LOG.md` with timestamp
 3. **Diff** — Capture git diff before/after
 4. **Review** — Run OpenCode review stage
 5. **Risk** — Document any risks found
