@@ -49,6 +49,7 @@ export interface TaskLog {
   exitCode: number | null;
   timestamp: string;
   duration: number;
+  mode?: 'real' | 'mock';
 }
 
 export interface AgentResult {

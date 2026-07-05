@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { writeFile, appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { MockCLI } from './mock.js';
+import { resolveCommand } from './resolveCommand.js';
 import type { AgentConfig, ChunkCallback } from './types.js';
 import type { TaskLog, AgentStage } from '@agentos/shared';
 
@@ -11,6 +12,18 @@ export interface ExecuteContext {
   workspaceRoot: string;
   taskId: string;
   onChunk?: ChunkCallback;
+}
+
+export class CLIError extends Error {
+  constructor(
+    message: string,
+    public stage: AgentStage,
+    public exitCode: number | null,
+    public stderr: string,
+  ) {
+    super(message);
+    this.name = 'CLIError';
+  }
 }
 
 export class CLIExecutor {
@@ -24,103 +37,123 @@ export class CLIExecutor {
     const stage = config.role;
     const agentName = config.name;
 
+    // Explicit mock mode — read env at call time so tests can toggle it
+    if (process.env.AGENTOS_FORCE_MOCK === 'true') {
+      const result = MockCLI.run(agentName, prompt);
+      const log = this.buildLog(stage, agentName, result.stdout, result.stderr, 0, startTime, 'mock');
+      await this.persistLog(log, workspaceRoot, taskId);
+      if (onChunk) {
+        onChunk(result.stdout, false);
+        onChunk('', true);
+      }
+      return log;
+    }
+
+    const resolved = await resolveCommand(config.cliCommand);
+    if (!resolved) {
+      throw new CLIError(
+        `${agentName} (${stage}): command not found: ${config.cliCommand}`,
+        stage,
+        null,
+        '',
+      );
+    }
+
     let stdout = '';
     let stderr = '';
-    let exitCode: number | null = null;
 
-    const { access } = await import('node:fs/promises');
-    let cliExists = false;
-    try {
-      await access(config.cliCommand);
-      cliExists = true;
-    } catch {
-      cliExists = false;
-    }
+    // Windows .cmd/.bat files cannot be spawned directly in Node 22+; wrap with cmd.exe
+    const isWindowsBatch = process.platform === 'win32' && /\.(cmd|bat)$/i.test(resolved);
+    const command = isWindowsBatch ? 'cmd.exe' : resolved;
+    const args = isWindowsBatch
+      ? ['/c', resolved, ...config.cliArgs, prompt]
+      : [...config.cliArgs, prompt];
 
-    if (cliExists && config.cliCommand !== 'echo') {
-      // Flatten newlines to prevent Windows cmd.exe from splitting
-      // the prompt argument at embedded newlines
-      const flatPrompt = prompt.replace(/\r?\n/g, ' ');
-      const args = [...config.cliArgs, flatPrompt];
-      const child = spawn(config.cliCommand, args, {
-        shell: true,
-        cwd: workspaceRoot,
-        env: { ...process.env, AGENTOS_TASK_ID: taskId },
-      });
+    const child = spawn(command, args, {
+      shell: false,
+      cwd: workspaceRoot,
+      env: { ...process.env, AGENTOS_TASK_ID: taskId },
+      windowsHide: true,
+    });
 
-      child.stdout!.on('data', (chunk: Buffer) => {
-        const text = chunk.toString();
-        stdout += text;
-        if (onChunk) onChunk(text, false);
-      });
+    child.stdout!.on('data', (chunk: Buffer) => {
+      const text = chunk.toString();
+      stdout += text;
+      if (onChunk) onChunk(text, false);
+    });
 
-      child.stderr!.on('data', (chunk: Buffer) => {
-        stderr += chunk.toString();
-      });
+    child.stderr!.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
 
-      exitCode = await new Promise<number | null>((resolve) => {
-        const timer = setTimeout(() => {
-          stderr += `\n[AgentOS] Agent timed out after ${AGENT_TIMEOUT_MS / 1000}s, killing process.`;
+    const exitCode = await new Promise<number | null>((resolve) => {
+      const timer = setTimeout(() => {
+        stderr += `\n[AgentOS] Agent timed out after ${AGENT_TIMEOUT_MS / 1000}s, killing process.`;
+        // On Windows, child.kill() (without signal) sends a proper
+        // process termination that triggers the 'close' event.
+        // On POSIX, use SIGTERM then SIGKILL as backup.
+        if (process.platform === 'win32') {
+          child.kill();
+        } else {
           child.kill('SIGTERM');
           setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 5000);
-        }, AGENT_TIMEOUT_MS);
+        }
+      }, AGENT_TIMEOUT_MS);
 
-        child.on('close', (code) => {
-          clearTimeout(timer);
-          resolve(code);
-        });
-
-        child.on('error', (err) => {
-          clearTimeout(timer);
-          stderr += `\n[AgentOS] Spawn error: ${err.message}`;
-          resolve(null);
-        });
+      child.on('close', (code) => {
+        clearTimeout(timer);
+        resolve(code);
       });
-    } else {
-      const mockResult = MockCLI.run(agentName, prompt);
-      stdout = mockResult.stdout;
-      stderr = mockResult.stderr;
-      exitCode = 0;
-      if (onChunk) onChunk(stdout, false);
-    }
 
-    const duration = Date.now() - startTime;
+      child.on('error', (err) => {
+        clearTimeout(timer);
+        stderr += `\n[AgentOS] Spawn error: ${err.message}`;
+        resolve(null);
+      });
+    });
+
+    const log = this.buildLog(stage, agentName, stdout, stderr, exitCode, startTime, 'real');
+    await this.persistLog(log, workspaceRoot, taskId);
+
     if (onChunk) onChunk('', true);
 
-    const log: TaskLog = {
+    if (exitCode !== 0) {
+      const detail = stderr.trim() || stdout.trim() || 'no output';
+      throw new CLIError(
+        `${agentName} (${stage}) failed with exit code ${exitCode}: ${detail}`,
+        stage,
+        exitCode,
+        stderr.trim(),
+      );
+    }
+
+    return log;
+  }
+
+  private static buildLog(
+    stage: AgentStage,
+    agentName: string,
+    stdout: string,
+    stderr: string,
+    exitCode: number | null,
+    startTime: number,
+    mode: 'real' | 'mock',
+  ): TaskLog {
+    return {
       stage,
       agentName,
       stdout: stdout.trim(),
       stderr: stderr.trim(),
       exitCode,
       timestamp: new Date().toISOString(),
-      duration,
+      duration: Date.now() - startTime,
+      mode,
     };
+  }
 
-    await this.appendToAgentLog(log, workspaceRoot);
+  private static async persistLog(log: TaskLog, workspaceRoot: string, taskId: string): Promise<void> {
+    await this.appendToAgentLog(log, workspaceRoot, taskId);
     await this.writeTaskLog(log, workspaceRoot, taskId);
-
-    // Non-zero exit: fall back to mock instead of failing the pipeline
-    if (exitCode !== 0) {
-      const detail = stderr.trim() || stdout.trim() || 'no output';
-      console.warn(`[AgentOS] ${agentName} (${stage}) failed (exit ${exitCode}: ${detail}), falling back to mock`);
-      const mockResult = MockCLI.run(agentName, prompt);
-      const mockLog: TaskLog = {
-        stage,
-        agentName,
-        stdout: `${stdout.trim()}\n\n--- FALLBACK TO MOCK ---\n${mockResult.stdout}`,
-        stderr: stderr.trim(),
-        exitCode: 0,
-        timestamp: new Date().toISOString(),
-        duration,
-      };
-      await this.appendToAgentLog(mockLog, workspaceRoot);
-      await this.writeTaskLog(mockLog, workspaceRoot, taskId);
-      if (onChunk) onChunk('\n[Mock output] ', false);
-      return mockLog;
-    }
-
-    return log;
   }
 
   private static agentMemoryDir(workspaceRoot: string): string {
@@ -131,13 +164,15 @@ export class CLIExecutor {
     return join(workspaceRoot, '.agentos', 'logs');
   }
 
-  private static async appendToAgentLog(log: TaskLog, workspaceRoot: string): Promise<void> {
-    const line = `| ${new Date().toISOString()} | ${log.agentName} | ${log.stage} | task | ${log.exitCode === 0 ? 'OK' : 'FAIL'} |\n`;
-    const filePath = join(this.agentMemoryDir(workspaceRoot), 'LOG.md');
+  private static async appendToAgentLog(log: TaskLog, workspaceRoot: string, taskId: string): Promise<void> {
+    const dir = this.agentMemoryDir(workspaceRoot);
+    await mkdir(dir, { recursive: true });
+    const line = `| ${new Date().toISOString()} | ${log.agentName} | ${log.stage} | ${taskId} | ${log.mode ?? 'real'} | ${log.exitCode === 0 ? 'OK' : 'FAIL'} |\n`;
+    const filePath = join(dir, 'LOG.md');
     try {
       await appendFile(filePath, line, 'utf-8');
     } catch {
-      await writeFile(filePath, '# Agent Execution Log\n\n| Time | Agent | Action | Task ID | Result |\n|------|-------|--------|---------|--------|\n' + line, 'utf-8');
+      await writeFile(filePath, '# Agent Execution Log\n\n| Time | Agent | Action | Task ID | Mode | Result |\n|------|-------|--------|---------|------|--------|\n' + line, 'utf-8');
     }
   }
 
@@ -150,6 +185,7 @@ export class CLIExecutor {
       `Timestamp: ${log.timestamp}`,
       `Duration: ${log.duration}ms`,
       `Exit Code: ${log.exitCode}`,
+      `Mode: ${log.mode ?? 'real'}`,
       '',
       '--- STDOUT ---',
       log.stdout,

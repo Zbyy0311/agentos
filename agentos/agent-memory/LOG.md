@@ -27,3 +27,11 @@
 | 2026-07-05T14:20:12.029Z | KimiCode | kimi_worker | task | OK |
 | 2026-07-05T14:20:12.032Z | OpenCode | opencode_reviewer | task | OK |
 | 2026-07-05T14:20:12.036Z | Codex | codex_final_review | task | OK |
+| 2026-07-05T15:15:36.888Z | Codex | codex_manager | 963ede13 | mock | OK |
+| 2026-07-05T15:15:36.894Z | KimiCode | kimi_worker | 963ede13 | mock | OK |
+| 2026-07-05T15:15:36.897Z | OpenCode | opencode_reviewer | 963ede13 | mock | OK |
+| 2026-07-05T15:15:36.900Z | Codex | codex_final_review | 963ede13 | mock | OK |
+| 2026-07-05T15:33:11.514Z | Codex | codex_manager | 13a012f2 | mock | OK |
+| 2026-07-05T15:33:11.522Z | KimiCode | kimi_worker | 13a012f2 | mock | OK |
+| 2026-07-05T15:33:11.526Z | OpenCode | opencode_reviewer | 13a012f2 | mock | OK |
+| 2026-07-05T15:33:11.530Z | Codex | codex_final_review | 13a012f2 | mock | OK |

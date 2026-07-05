@@ -1,6 +1,5 @@
 import { Router } from 'express';
-import { access } from 'node:fs/promises';
-import { AGENT_CONFIGS } from '@agentos/agent-core';
+import { AGENT_CONFIGS, resolveCommand, FORCE_MOCK } from '@agentos/agent-core';
 
 export function createAgentRoutes(): Router {
   const router = Router();
@@ -15,14 +14,14 @@ export function createAgentRoutes(): Router {
 
     const agents = await Promise.all(
       configs.map(async (c) => {
-        let connected = false;
-        try {
-          await access(c.cli);
-          connected = true;
-        } catch {
-          connected = false;
-        }
-        return { ...c, connected, mode: connected ? 'real' : 'mock' };
+        const resolved = FORCE_MOCK ? null : await resolveCommand(c.cli);
+        const connected = resolved !== null;
+        return {
+          ...c,
+          connected,
+          mode: FORCE_MOCK ? 'mock' : (connected ? 'real' : 'mock'),
+          path: resolved ?? '',
+        };
       })
     );
 

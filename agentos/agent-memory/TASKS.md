@@ -21,3 +21,8 @@
 | 5bbab03c | output persist test | pending | - | 2026-07-05T14:09:36.245Z | 2026-07-05T14:09:36.246Z |
 | 5cda4709 | sse+abort+cleanup test | pending | - | 2026-07-05T14:15:07.943Z | 2026-07-05T14:15:07.944Z |
 | 62c07a52 | 检查一下项目的完成度 | pending | - | 2026-07-05T14:20:01.581Z | 2026-07-05T14:20:01.581Z |
+| 963ede13 | mock mode verify | pending | - | 2026-07-05T15:15:36.770Z | 2026-07-05T15:15:36.770Z |
+| 8d684741 | real mode verify | pending | - | 2026-07-05T15:16:20.736Z | 2026-07-05T15:16:20.736Z |
+| 020394d6 | real cli test | pending | - | 2026-07-05T15:19:50.341Z | 2026-07-05T15:19:50.341Z |
+| 13a012f2 | mock final verify | pending | - | 2026-07-05T15:33:11.360Z | 2026-07-05T15:33:11.361Z |
+| 45b28f64 | real timeout test | pending | - | 2026-07-05T15:33:24.812Z | 2026-07-05T15:33:24.812Z |

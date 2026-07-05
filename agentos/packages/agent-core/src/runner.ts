@@ -2,18 +2,25 @@ import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CLIExecutor } from './executor.js';
 import { AGENT_CONFIGS } from './config.js';
-import type { PipelineResult, ChunkCallback } from './types.js';
+import type { Workspace, AgentConfig, PipelineResult, ChunkCallback } from './types.js';
 import type { TaskLog, AgentStage } from '@agentos/shared';
 
+const STAGE_ROLE_MAP: Record<AgentStage, import('@agentos/shared').AgentRole> = {
+  codex_manager: 'codex',
+  kimi_worker: 'kimi',
+  opencode_reviewer: 'opencode',
+  codex_final_review: 'codex',
+};
+
 export class AgentRunner {
-  private workspaceRoot: string;
+  private workspace: Workspace;
   private taskId: string;
   private taskTitle: string;
   private logs: TaskLog[] = [];
   private onChunk?: ChunkCallback;
 
-  constructor(workspaceRoot: string, taskId: string, taskTitle: string, onChunk?: ChunkCallback) {
-    this.workspaceRoot = workspaceRoot;
+  constructor(workspace: Workspace, taskId: string, taskTitle: string, onChunk?: ChunkCallback) {
+    this.workspace = workspace;
     this.taskId = taskId;
     this.taskTitle = taskTitle;
     this.onChunk = onChunk;
@@ -31,6 +38,25 @@ export class AgentRunner {
       const errorMessage = err instanceof Error ? err.message : String(err);
       return { success: false, logs: this.logs, error: errorMessage };
     }
+  }
+
+  private get workspaceRoot(): string {
+    return this.workspace.rootPath;
+  }
+
+  private getAgentConfig(stage: AgentStage): AgentConfig {
+    const role = STAGE_ROLE_MAP[stage];
+    const workspaceAgent = this.workspace.agents.find(a => a.role === role && a.enabled);
+    if (workspaceAgent) {
+      return {
+        name: workspaceAgent.name,
+        role: stage,
+        cliCommand: workspaceAgent.cliCommand,
+        cliArgs: workspaceAgent.cliArgs,
+        model: workspaceAgent.model,
+      };
+    }
+    return AGENT_CONFIGS[stage];
   }
 
   private async readMemory(): Promise<string> {
@@ -55,8 +81,17 @@ export class AgentRunner {
     return parts.join('\n\n');
   }
 
+  private async readAgentRules(): Promise<string> {
+    try {
+      return await readFile(join(this.workspaceRoot, 'docs', 'AGENT_RULE.md'), 'utf-8');
+    } catch {
+      return '(AGENT_RULE.md not found)';
+    }
+  }
+
   private async buildContextForStage(stage: AgentStage, previousLogs: TaskLog[]): Promise<string> {
     const memory = await this.readMemory();
+    const rules = await this.readAgentRules();
     const previousOutput = previousLogs
       .map(l => `[${l.stage}] ${l.agentName}:\n${l.stdout}`)
       .join('\n\n');
@@ -70,10 +105,13 @@ export class AgentRunner {
       `## Project Memory`,
       memory,
       ``,
+      `## Agent Rules`,
+      rules,
+      ``,
       previousOutput ? `## Previous Agent Output\n${previousOutput}` : '',
       ``,
       `## Instructions`,
-      `Execute your role as defined in AGENT_MANAGER.md.`,
+      `Execute your role as defined in AGENT_RULE.md.`,
       `Output your analysis, decisions, and any code changes.`,
     ].join('\n');
   }
@@ -153,7 +191,7 @@ export class AgentRunner {
 
   private async executeAndRecord(stage: AgentStage, prompt: string): Promise<TaskLog> {
     const log = await CLIExecutor.execute(
-      AGENT_CONFIGS[stage],
+      this.getAgentConfig(stage),
       prompt,
       { workspaceRoot: this.workspaceRoot, taskId: this.taskId, onChunk: this.onChunk },
     );

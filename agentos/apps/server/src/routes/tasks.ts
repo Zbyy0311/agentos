@@ -72,7 +72,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     store.saveTasks(workspaceId, tasks);
 
     (async () => {
-      const runner = new AgentRunner(workspace.rootPath, taskId, task.title, (text, done) => {
+      const runner = new AgentRunner(workspace, taskId, task.title, (text, done) => {
         const stage = task.currentAgent || 'unknown';
         const agentMap: Record<string, string> = {
           codex_manager: 'Codex',

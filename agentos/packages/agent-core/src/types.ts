@@ -1,4 +1,4 @@
-import type { TaskLog, AgentStage } from '@agentos/shared';
+import type { TaskLog, AgentStage, Workspace } from '@agentos/shared';
 
 export interface AgentConfig {
   name: string;
@@ -15,3 +15,5 @@ export interface PipelineResult {
 }
 
 export type ChunkCallback = (text: string, done: boolean) => void;
+
+export type { Workspace };
