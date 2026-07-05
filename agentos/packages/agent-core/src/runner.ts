@@ -18,12 +18,14 @@ export class AgentRunner {
   private taskTitle: string;
   private logs: TaskLog[] = [];
   private onChunk?: ChunkCallback;
+  private signal?: AbortSignal;
 
-  constructor(workspace: Workspace, taskId: string, taskTitle: string, onChunk?: ChunkCallback) {
+  constructor(workspace: Workspace, taskId: string, taskTitle: string, onChunk?: ChunkCallback, opts?: { signal?: AbortSignal }) {
     this.workspace = workspace;
     this.taskId = taskId;
     this.taskTitle = taskTitle;
     this.onChunk = onChunk;
+    this.signal = opts?.signal;
   }
 
   async runFullPipeline(): Promise<PipelineResult> {
@@ -193,7 +195,7 @@ export class AgentRunner {
     const log = await CLIExecutor.execute(
       this.getAgentConfig(stage),
       prompt,
-      { workspaceRoot: this.workspaceRoot, taskId: this.taskId, onChunk: this.onChunk },
+      { workspaceRoot: this.workspaceRoot, taskId: this.taskId, onChunk: this.onChunk, signal: this.signal },
     );
     this.logs.push(log);
     return log;

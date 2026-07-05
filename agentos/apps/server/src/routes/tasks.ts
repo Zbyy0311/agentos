@@ -62,7 +62,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     });
 
     const sendEvent = (event: string, data: unknown) => {
-      res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+      try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
     };
 
     sendEvent('status', { taskId, status: 'running', currentAgent: null });
@@ -70,6 +70,24 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     task.outputs = [];
     task.updatedAt = new Date().toISOString();
     store.saveTasks(workspaceId, tasks);
+
+    // AbortSignal so client disconnect cancels the running pipeline
+    const abortController = new AbortController();
+    const signal = abortController.signal;
+
+    const runStage = async (stage: AgentStage, label: string, fn: () => Promise<TaskLog>) => {
+      if (signal.aborted) return;
+      task.currentAgent = stage;
+      task.updatedAt = new Date().toISOString();
+      store.saveTasks(workspaceId, tasks);
+      sendEvent('stage', { stage, agent: label, status: 'running' });
+      const log = await fn();
+      if (signal.aborted) return;
+      task.outputs.push(log);
+      task.updatedAt = new Date().toISOString();
+      store.saveTasks(workspaceId, tasks);
+      sendEvent('stage', { stage, status: 'completed', log });
+    };
 
     (async () => {
       const runner = new AgentRunner(workspace, taskId, task.title, (text, done) => {
@@ -81,30 +99,17 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           codex_final_review: 'Codex',
         };
         sendEvent('thinking', { stage, agentName: agentMap[stage] || stage, text, done });
-      });
+      }, { signal });
 
       try {
-        const setCurrentAgent = (stage: AgentStage) => {
-          task.currentAgent = stage;
-          task.updatedAt = new Date().toISOString();
-          store.saveTasks(workspaceId, tasks);
-        };
-
-        const runStage = async (stage: AgentStage, label: string, fn: () => Promise<TaskLog>) => {
-          setCurrentAgent(stage);
-          sendEvent('stage', { stage, agent: label, status: 'running' });
-          const log = await fn();
-          task.outputs.push(log);
-          task.updatedAt = new Date().toISOString();
-          store.saveTasks(workspaceId, tasks);
-          sendEvent('stage', { stage, status: 'completed', log });
-          return log;
-        };
-
         await runStage('codex_manager', 'Codex', () => runner.runCodexManager());
+        if (signal.aborted) throw new Error('Pipeline cancelled');
         await runStage('kimi_worker', 'KimiCode', () => runner.runKimiWorker());
+        if (signal.aborted) throw new Error('Pipeline cancelled');
         await runStage('opencode_reviewer', 'OpenCode', () => runner.runOpenCodeReviewer());
+        if (signal.aborted) throw new Error('Pipeline cancelled');
         await runStage('codex_final_review', 'Codex', () => runner.runCodexFinalReview());
+        if (signal.aborted) throw new Error('Pipeline cancelled');
 
         task.status = 'completed';
         task.currentAgent = null;
@@ -114,21 +119,30 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
         sendEvent('status', { taskId, status: 'completed' });
         sendEvent('done', { taskId, status: 'completed' });
       } catch (err) {
-        task.status = 'failed';
-        task.currentAgent = null;
-        task.updatedAt = new Date().toISOString();
-        store.saveTasks(workspaceId, tasks);
-
-        const message = err instanceof Error ? err.message : String(err);
-        sendEvent('status', { taskId, status: 'failed', error: message });
-        sendEvent('done', { taskId, status: 'failed', error: message });
+        if (signal.aborted) {
+          // Client disconnected — don't write failed status, just end
+          task.status = 'failed';
+          task.currentAgent = null;
+          task.updatedAt = new Date().toISOString();
+          store.saveTasks(workspaceId, tasks);
+          sendEvent('status', { taskId, status: 'failed', error: 'Cancelled' });
+          sendEvent('done', { taskId, status: 'failed', error: 'Cancelled' });
+        } else {
+          task.status = 'failed';
+          task.currentAgent = null;
+          task.updatedAt = new Date().toISOString();
+          store.saveTasks(workspaceId, tasks);
+          const message = err instanceof Error ? err.message : String(err);
+          sendEvent('status', { taskId, status: 'failed', error: message });
+          sendEvent('done', { taskId, status: 'failed', error: message });
+        }
       } finally {
-        res.end();
+        try { res.end(); } catch {}
       }
     })();
 
     req.on('close', () => {
-      // Allow current stage to finish but don't send more events
+      abortController.abort();
     });
   });
 

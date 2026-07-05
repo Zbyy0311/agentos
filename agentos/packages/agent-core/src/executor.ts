@@ -12,6 +12,7 @@ export interface ExecuteContext {
   workspaceRoot: string;
   taskId: string;
   onChunk?: ChunkCallback;
+  signal?: AbortSignal;
 }
 
 export class CLIError extends Error {
@@ -32,7 +33,7 @@ export class CLIExecutor {
     prompt: string,
     ctx: ExecuteContext,
   ): Promise<TaskLog> {
-    const { workspaceRoot, taskId, onChunk } = ctx;
+    const { workspaceRoot, taskId, onChunk, signal } = ctx;
     const startTime = Date.now();
     const stage = config.role;
     const agentName = config.name;
@@ -87,6 +88,23 @@ export class CLIExecutor {
     });
 
     const exitCode = await new Promise<number | null>((resolve) => {
+      // Listen for abort signal (client disconnect)
+      const onAbort = () => {
+        clearTimeout(timer);
+        stderr += `\n[AgentOS] Pipeline cancelled, killing process.`;
+        if (process.platform === 'win32') {
+          child.kill();
+        } else {
+          child.kill('SIGTERM');
+          setTimeout(() => { try { child.kill('SIGKILL'); } catch {} }, 1000);
+        }
+        resolve(null);
+      };
+      if (signal) {
+        if (signal.aborted) { onAbort(); return; }
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
       const timer = setTimeout(() => {
         stderr += `\n[AgentOS] Agent timed out after ${AGENT_TIMEOUT_MS / 1000}s, killing process.`;
         // On Windows, child.kill() (without signal) sends a proper
@@ -102,11 +120,13 @@ export class CLIExecutor {
 
       child.on('close', (code) => {
         clearTimeout(timer);
+        if (signal) signal.removeEventListener('abort', onAbort);
         resolve(code);
       });
 
       child.on('error', (err) => {
         clearTimeout(timer);
+        if (signal) signal.removeEventListener('abort', onAbort);
         stderr += `\n[AgentOS] Spawn error: ${err.message}`;
         resolve(null);
       });

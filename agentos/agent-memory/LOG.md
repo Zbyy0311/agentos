@@ -35,3 +35,7 @@
 | 2026-07-05T15:33:11.522Z | KimiCode | kimi_worker | 13a012f2 | mock | OK |
 | 2026-07-05T15:33:11.526Z | OpenCode | opencode_reviewer | 13a012f2 | mock | OK |
 | 2026-07-05T15:33:11.530Z | Codex | codex_final_review | 13a012f2 | mock | OK |
+| 2026-07-05T16:01:52.353Z | Codex | codex_manager | 8749142e | mock | OK |
+| 2026-07-05T16:01:52.360Z | KimiCode | kimi_worker | 8749142e | mock | OK |
+| 2026-07-05T16:01:52.363Z | OpenCode | opencode_reviewer | 8749142e | mock | OK |
+| 2026-07-05T16:01:52.366Z | Codex | codex_final_review | 8749142e | mock | OK |

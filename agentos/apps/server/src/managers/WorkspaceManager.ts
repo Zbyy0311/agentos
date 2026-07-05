@@ -5,7 +5,7 @@ import type { Workspace, WorkspaceAgent } from '@agentos/shared';
 import type { Store } from '../store/Store.js';
 
 const DEFAULT_AGENTS: WorkspaceAgent[] = [
-  { id: 'codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: ['exec', '--ephemeral'] },
+  { id: 'codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: ['exec', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', '--ephemeral'] },
   { id: 'kimi', name: 'KimiCode', role: 'kimi', enabled: true, cliCommand: 'opencode', cliArgs: ['--pure', 'run', '--model', 'kimi-for-coding/k2p7'], model: 'kimi-for-coding/k2p7' },
   { id: 'opencode', name: 'OpenCode', role: 'opencode', enabled: true, cliCommand: 'opencode', cliArgs: ['--pure', 'run', '--model', 'deepseek/deepseek-v4-flash'], model: 'deepseek/deepseek-v4-flash' },
 ];
@@ -74,7 +74,7 @@ export class WorkspaceManager {
     return this.list().slice(0, limit);
   }
 
-  private initializeWorkspaceDirectory(workspace: Workspace, options: { readme?: boolean; docs?: boolean; memory?: boolean }): void {
+  private initializeWorkspaceDirectory(workspace: Workspace, options: { readme?: boolean; docs?: boolean; memory?: boolean; git?: boolean }): void {
     mkdirSync(workspace.rootPath, { recursive: true });
 
     if (options.memory ?? true) {
@@ -86,12 +86,22 @@ export class WorkspaceManager {
       this.ensureFile(join(memoryDir, 'KNOWLEDGE.md'), `# Knowledge\n\n`);
       this.ensureFile(join(memoryDir, 'REVIEW.md'), `# Review\n\n`);
       this.ensureFile(join(memoryDir, 'TEST.md'), `# Test\n\n`);
-      this.ensureFile(join(memoryDir, 'LOG.md'), `# Log\n\n| Time | Agent | Action | Task ID | Result |\n|------|-------|--------|---------|--------|\n`);
+      this.ensureFile(join(memoryDir, 'LOG.md'), `# Log\n\n| Time | Agent | Action | Task ID | Mode | Result |\n|------|-------|--------|---------|------|--------|\n`);
     }
 
     if (options.docs ?? true) {
       const docsDir = join(workspace.rootPath, 'docs');
       mkdirSync(docsDir, { recursive: true });
+      this.ensureFile(join(docsDir, 'AGENT_RULE.md'), `# Agent Rules\n\n## General Rules\n\n1. **No memory deletion** — Agents must never delete or overwrite memory files\n2. **No overlapping work** — Agents must not overwrite another agent's output\n3. **Every modification must be logged** — All changes go to \`agent-memory/LOG.md\`\n4. **Risk must be documented** — Every agent must output risk assessment\n5. **Next steps must be provided** — Every agent output must include next steps\n\n## Codex (Manager) Rules\n- Must break tasks into clear subtasks\n- Must assess risks before proceeding\n- Must make final decision on all work\n- Must document architecture decisions in DECISIONS.md\n\n## KimiCode (Worker) Rules\n- Must follow Codex's task breakdown\n- Must output code changes clearly\n- Must document implementation decisions\n- Must flag uncertainties to Codex\n\n## OpenCode (Reviewer) Rules\n- Must review all code changes\n- Must check for: correctness, security, performance, style\n- Must provide a score (1-10)\n- Must document all findings\n\n## Enforcement\n- Violations are logged in \`agent-memory/LOG.md\`\n- Repeated violations cause pipeline failure\n- Pipeline must not proceed past a failed review\n`);
+    }
+
+    if (options.git ?? true) {
+      if (!existsSync(join(workspace.rootPath, '.git'))) {
+        try {
+          const { execSync } = require('node:child_process');
+          execSync('git init', { cwd: workspace.rootPath, stdio: 'pipe' });
+        } catch { /* git init best-effort */ }
+      }
     }
 
     if (options.readme ?? true) {
