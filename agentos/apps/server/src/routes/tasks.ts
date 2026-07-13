@@ -2,11 +2,41 @@ import { Router, type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, mkdirSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { execSync } from 'node:child_process';
 import type { Store } from '../store/Store.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import { AgentRunner } from '@agentos/agent-core';
-import type { AgentStage, TaskItem, TaskLog } from '@agentos/shared';
+import { AgentRunner, AGENT_CONFIGS, STAGE_ROLE_MAP } from '@agentos/agent-core';
+import type { AgentStage, TaskItem, TaskLog, Workspace } from '@agentos/shared';
+import { createSseWriter, startSseHeartbeat } from './sse.js';
+import { applyFinalReviewDecision, getWorkerEvidenceFailure } from './taskPipeline.js';
+
+export function applyStageFailure(task: TaskItem, err: unknown): TaskLog | null {
+  const failedLog = err instanceof Error && 'log' in err ? (err.log as TaskLog | undefined) : undefined;
+  if (failedLog) {
+    task.outputs.push(failedLog);
+  }
+  task.status = 'failed';
+  task.currentAgent = null;
+  task.error = err instanceof Error ? err.message : String(err);
+  task.updatedAt = new Date().toISOString();
+  return failedLog ?? null;
+}
+
+export function touchTaskActivity(task: TaskItem, timestamp = new Date().toISOString()): void {
+  task.lastActivityAt = timestamp;
+  task.updatedAt = timestamp;
+}
+
+export function claimTaskRun(task: TaskItem): boolean {
+  if (task.status === 'running') return false;
+  task.status = 'running';
+  return true;
+}
+
+export function getStageAgentName(workspace: Pick<Workspace, 'agents'>, stage: AgentStage): string {
+  return workspace.agents.find(agent => agent.role === STAGE_ROLE_MAP[stage] && agent.enabled)?.name
+    ?? AGENT_CONFIGS[stage].name
+    ?? stage;
+}
 
 export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManager): Router {
   const router = Router({ mergeParams: true });
@@ -31,6 +61,8 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       status: 'pending',
       currentAgent: null,
       outputs: [],
+      reviewDecision: 'unknown',
+      reviewBlocked: false,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
@@ -55,93 +87,157 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     const task = tasks.find(t => t.id === taskId);
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
-    res.writeHead(200, {
-      'Content-Type': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Connection': 'keep-alive',
-    });
+    if (!claimTaskRun(task)) {
+      return res.status(409).json({ error: 'Task is already running' });
+    }
 
-    const sendEvent = (event: string, data: unknown) => {
-      try { res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`); } catch {}
-    };
-
-    sendEvent('status', { taskId, status: 'running', currentAgent: null });
-    task.status = 'running';
     task.outputs = [];
-    task.updatedAt = new Date().toISOString();
+    task.error = undefined;
+    task.reviewDecision = 'unknown';
+    task.reviewBlocked = false;
+    touchTaskActivity(task);
     store.saveTasks(workspaceId, tasks);
 
-    // AbortSignal so client disconnect cancels the running pipeline
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+
+    const sendEvent = createSseWriter(res);
+    const stopHeartbeat = startSseHeartbeat(res);
+
+    sendEvent('status', { taskId, status: 'running', currentAgent: null, reviewDecision: 'unknown', reviewBlocked: false });
+
     const abortController = new AbortController();
     const signal = abortController.signal;
+    let responseClosed = false;
 
-    const runStage = async (stage: AgentStage, label: string, fn: () => Promise<TaskLog>) => {
+    let runner: AgentRunner;
+    const runStage = async (stage: AgentStage, fn: () => Promise<TaskLog>) => {
       if (signal.aborted) return;
       task.currentAgent = stage;
-      task.updatedAt = new Date().toISOString();
+      touchTaskActivity(task);
       store.saveTasks(workspaceId, tasks);
-      sendEvent('stage', { stage, agent: label, status: 'running' });
+      const agentName = getStageAgentName(workspace, stage);
+      sendEvent('stage', { stage, agent: agentName, status: 'running' });
       const log = await fn();
       if (signal.aborted) return;
       task.outputs.push(log);
-      task.updatedAt = new Date().toISOString();
+      touchTaskActivity(task);
       store.saveTasks(workspaceId, tasks);
       sendEvent('stage', { stage, status: 'completed', log });
     };
 
     (async () => {
-      const runner = new AgentRunner(workspace, taskId, task.title, (text, done) => {
-        const stage = task.currentAgent || 'unknown';
-        const agentMap: Record<string, string> = {
-          codex_manager: 'Codex',
-          kimi_worker: 'KimiCode',
-          opencode_reviewer: 'OpenCode',
-          codex_final_review: 'Codex',
-        };
-        sendEvent('thinking', { stage, agentName: agentMap[stage] || stage, text, done });
-      }, { signal });
+      runner = new AgentRunner(workspace, taskId, task.title, (text, done) => {
+        const stage = task.currentAgent;
+        sendEvent('thinking', {
+          stage: stage ?? 'unknown',
+          agentName: stage ? getStageAgentName(workspace, stage) : 'unknown',
+          text,
+          done,
+        });
+      }, {
+        signal,
+        onActivity: () => {
+          touchTaskActivity(task);
+          store.saveTasks(workspaceId, tasks);
+        },
+      });
 
       try {
-        await runStage('codex_manager', 'Codex', () => runner.runCodexManager());
-        if (signal.aborted) throw new Error('Pipeline cancelled');
-        await runStage('kimi_worker', 'KimiCode', () => runner.runKimiWorker());
-        if (signal.aborted) throw new Error('Pipeline cancelled');
-        await runStage('opencode_reviewer', 'OpenCode', () => runner.runOpenCodeReviewer());
-        if (signal.aborted) throw new Error('Pipeline cancelled');
-        await runStage('codex_final_review', 'Codex', () => runner.runCodexFinalReview());
+        await runStage('codex_manager', () => runner.runCodexManager());
         if (signal.aborted) throw new Error('Pipeline cancelled');
 
-        task.status = 'completed';
-        task.currentAgent = null;
-        task.updatedAt = new Date().toISOString();
+        await runStage('kimi_worker', () => runner.runKimiWorker());
+        if (signal.aborted) throw new Error('Pipeline cancelled');
+
+        await runStage('opencode_reviewer', () => runner.runOpenCodeReviewer());
+        if (signal.aborted) throw new Error('Pipeline cancelled');
+
+        const workerLog = task.outputs.find(log => log.stage === 'kimi_worker');
+        if (workerLog && getWorkerEvidenceFailure(workerLog)) {
+          task.reviewBlocked = true;
+          touchTaskActivity(task);
+          store.saveTasks(workspaceId, tasks);
+          sendEvent('status', {
+            taskId,
+            status: 'reviewing',
+            reviewDecision: task.reviewDecision,
+            reviewBlocked: true,
+          });
+        }
+
+        await runStage('codex_final_review', () => runner.runCodexFinalReview());
+        if (signal.aborted) throw new Error('Pipeline cancelled');
+
+        applyFinalReviewDecision(task, task.outputs[task.outputs.length - 1]!);
         store.saveTasks(workspaceId, tasks);
 
-        sendEvent('status', { taskId, status: 'completed' });
-        sendEvent('done', { taskId, status: 'completed' });
+        sendEvent('status', {
+          taskId,
+          status: task.status,
+          reviewDecision: task.reviewDecision,
+          reviewBlocked: task.reviewBlocked,
+        });
+        sendEvent('done', {
+          taskId,
+          status: task.status,
+          reviewDecision: task.reviewDecision,
+          reviewBlocked: task.reviewBlocked,
+        });
       } catch (err) {
         if (signal.aborted) {
-          // Client disconnected — don't write failed status, just end
-          task.status = 'failed';
+          task.status = 'cancelled';
           task.currentAgent = null;
+          task.error = '任务的实时连接已关闭，执行已取消。';
           task.updatedAt = new Date().toISOString();
           store.saveTasks(workspaceId, tasks);
-          sendEvent('status', { taskId, status: 'failed', error: 'Cancelled' });
-          sendEvent('done', { taskId, status: 'failed', error: 'Cancelled' });
+          sendEvent('status', {
+            taskId,
+            status: 'cancelled',
+            error: 'Cancelled',
+            reviewDecision: task.reviewDecision,
+            reviewBlocked: task.reviewBlocked,
+          });
+          sendEvent('done', {
+            taskId,
+            status: 'cancelled',
+            error: 'Cancelled',
+            reviewDecision: task.reviewDecision,
+            reviewBlocked: task.reviewBlocked,
+          });
         } else {
-          task.status = 'failed';
-          task.currentAgent = null;
-          task.updatedAt = new Date().toISOString();
+          applyStageFailure(task, err);
           store.saveTasks(workspaceId, tasks);
           const message = err instanceof Error ? err.message : String(err);
-          sendEvent('status', { taskId, status: 'failed', error: message });
-          sendEvent('done', { taskId, status: 'failed', error: message });
+          sendEvent('status', {
+            taskId,
+            status: 'failed',
+            error: message,
+            reviewDecision: task.reviewDecision,
+            reviewBlocked: task.reviewBlocked,
+          });
+          sendEvent('done', {
+            taskId,
+            status: 'failed',
+            error: message,
+            reviewDecision: task.reviewDecision,
+            reviewBlocked: task.reviewBlocked,
+          });
         }
       } finally {
+        stopHeartbeat();
+        responseClosed = true;
         try { res.end(); } catch {}
       }
     })();
 
-    req.on('close', () => {
+    res.on('close', () => {
+      if (responseClosed) return;
+      stopHeartbeat();
       abortController.abort();
     });
   });
@@ -189,5 +285,7 @@ function appendTaskLine(memoryDir: string, line: string): void {
   try {
     mkdirSync(memoryDir, { recursive: true });
     appendFileSync(file, line, 'utf-8');
-  } catch { /* ignore */ }
+  } catch {
+    // Ignore best-effort memory append failures.
+  }
 }

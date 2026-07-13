@@ -1,6 +1,12 @@
 export { AgentRunner } from './runner.js';
+export { ConversationAgentRunner, type ConversationExecutionEvent } from './conversationRunner.js';
 export { MockCLI } from './mock.js';
-export { CLIExecutor, CLIError } from './executor.js';
-export { AGENT_CONFIGS, FORCE_MOCK } from './config.js';
+export { CLIExecutor, CLIError, resolveAgentRuntimeConfig } from './executor.js';
+export { AGENT_CONFIGS, DEFAULT_WORKSPACE_AGENTS, FORCE_MOCK, isCodexCli, STAGE_ROLE_MAP } from './config.js';
+export { getAgentCapability, getCliCapability } from './capabilities.js';
+export { buildStageInstructions, buildStageOutputRequirements, buildStagePrompt } from './prompts.js';
+export { parseWorkerEvidence, parseReviewerDecision, parseFinalDecision } from './parsers.js';
 export { resolveCommand } from './resolveCommand.js';
+export { resolveImageInput } from './imageInput.js';
+export type { AgentImageAttachment, ImageInputPlan, ImageInputTransport } from './imageInput.js';
 export type { AgentConfig, PipelineResult, Workspace } from './types.js';

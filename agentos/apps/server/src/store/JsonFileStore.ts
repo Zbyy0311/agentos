@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
 import type { Workspace, TaskItem } from '@agentos/shared';
 import type { Store } from './Store.js';
@@ -22,8 +23,7 @@ export class JsonFileStore implements Store {
   }
 
   saveWorkspaces(workspaces: Workspace[]): void {
-    mkdirSync(dirname(this.workspacesFile), { recursive: true });
-    writeFileSync(this.workspacesFile, JSON.stringify({ workspaces }, null, 2), 'utf-8');
+    this.writeJsonAtomically(this.workspacesFile, { workspaces });
   }
 
   private tasksFile(workspaceId: string): string {
@@ -47,7 +47,18 @@ export class JsonFileStore implements Store {
 
   saveTasks(workspaceId: string, tasks: TaskItem[]): void {
     const file = this.tasksFile(workspaceId);
+    this.writeJsonAtomically(file, { tasks });
+  }
+
+  private writeJsonAtomically(file: string, value: unknown): void {
     mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify({ tasks }, null, 2), 'utf-8');
+    const tempFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(tempFile, JSON.stringify(value, null, 2), 'utf-8');
+      renameSync(tempFile, file);
+    } catch (err) {
+      if (existsSync(tempFile)) unlinkSync(tempFile);
+      throw err;
+    }
   }
 }

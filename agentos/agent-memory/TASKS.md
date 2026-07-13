@@ -29,3 +29,29 @@
 | 8749142e | cancel test | pending | - | 2026-07-05T16:01:52.241Z | 2026-07-05T16:01:52.242Z |
 | c7abd1ff | ǰ��չʾ���� | pending | - | 2026-07-05T16:10:54.947Z | 2026-07-05T16:10:54.947Z |
 | b755ca0e | mode display test | pending | - | 2026-07-05T16:14:41.259Z | 2026-07-05T16:14:41.260Z |
+| f271a742 | ��֤CLI��� | pending | - | 2026-07-05T16:27:16.690Z | 2026-07-05T16:27:16.690Z |
+| d74deb91 | ��֤CLI��� | pending | - | 2026-07-05T16:27:20.123Z | 2026-07-05T16:27:20.123Z |
+| f4273daa | Mockģʽ��ʾ | pending | - | 2026-07-05T16:27:44.640Z | 2026-07-05T16:27:44.640Z |
+| 53d23838 | ���� - bun ���� | pending | - | 2026-07-05T16:50:20.019Z | 2026-07-05T16:50:20.019Z |
+| c410ea67 | bun mock test | pending | - | 2026-07-05T16:50:29.808Z | 2026-07-05T16:50:29.808Z |
+| d2da0c17 | ����������֤ | pending | - | 2026-07-05T16:55:57.684Z | 2026-07-05T16:55:57.684Z |
+| e79af933 | ��ʽcodex���� | pending | - | 2026-07-05T17:05:51.165Z | 2026-07-05T17:05:51.165Z |
+| 0a397507 | codex��ʵִ�� | pending | - | 2026-07-05T17:08:31.148Z | 2026-07-05T17:08:31.148Z |
+| a1b7373e | �޸�stdin����� | pending | - | 2026-07-05T17:11:59.460Z | 2026-07-05T17:11:59.460Z |
+| 70b5ab50 | smoke test from codex | pending | - | 2026-07-06T04:09:19.966Z | 2026-07-06T04:09:19.966Z |
+| e73b2725 | smoke test from codex 2 | pending | - | 2026-07-06T04:09:26.419Z | 2026-07-06T04:09:26.419Z |
+| d323f13e | smoke test after kimi abs path | pending | - | 2026-07-06T04:11:21.587Z | 2026-07-06T04:11:21.587Z |
+| 8028c953 | real pipeline verify after kimi fix | pending | - | 2026-07-06T04:25:31.242Z | 2026-07-06T04:25:31.243Z |
+| 5af1e277 | ui real chain verify | pending | - | 2026-07-06T04:31:22.437Z | 2026-07-06T04:31:22.437Z |
+| 4462ea97 | sse heartbeat verify | pending | - | 2026-07-06T04:39:45.804Z | 2026-07-06T04:39:45.804Z |
+| 045abf0f | real pipeline all-kimi verify | pending | - | 2026-07-06T12:30:17.125Z | 2026-07-06T12:30:17.125Z |
+| 7f84d108 | real pipeline verify current env | pending | - | 2026-07-06T12:40:04.580Z | 2026-07-06T12:40:04.580Z |
+| cd6e109a | full real pipeline final verify | pending | - | 2026-07-06T15:13:21.940Z | 2026-07-06T15:13:21.940Z |
+| ce2d190a | real pipeline verify after reconnect | pending | - | 2026-07-06T15:20:33.751Z | 2026-07-06T15:20:33.751Z |
+| 8c873918 | 检查项目现在有没有问题 | pending | - | 2026-07-06T15:25:20.857Z | 2026-07-06T15:25:20.857Z |
+| 2f02f8de | 检查项目有没有问题 | pending | - | 2026-07-06T15:25:32.323Z | 2026-07-06T15:25:32.323Z |
+| e7c700b9 | ??????????? | pending | - | 2026-07-06T15:57:35.224Z | 2026-07-06T15:57:35.224Z |
+| a75693b1 | debug network error direct stream | pending | - | 2026-07-07T03:28:22.560Z | 2026-07-07T03:28:22.560Z |
+| 7565334f | 检查项目有没有问题 | pending | - | 2026-07-10T15:57:54.731Z | 2026-07-10T15:57:54.731Z |
+| 0033d1fd | 检查项目有没有问题 | pending | - | 2026-07-10T16:30:34.214Z | 2026-07-10T16:30:34.214Z |
+| b421ca28 | Stable pipeline acceptance run 1: execute pnpm install, pnpm run build, and pnpm --filter @agentos/server run test in the current AgentOS repository. Do not change source files. Report each command and exit code; this is an execution task, not a plan. | pending | - | 2026-07-11T04:56:14.926Z | 2026-07-11T04:56:14.926Z |

@@ -1,16 +1,10 @@
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { CLIExecutor } from './executor.js';
-import { AGENT_CONFIGS } from './config.js';
-import type { Workspace, AgentConfig, PipelineResult, ChunkCallback } from './types.js';
+import { AGENT_CONFIGS, STAGE_ROLE_MAP } from './config.js';
+import { buildPreviousOutput, buildStageInstructions, buildStagePrompt } from './prompts.js';
+import type { Workspace, AgentConfig, PipelineResult, ChunkCallback, ActivityCallback } from './types.js';
 import type { TaskLog, AgentStage } from '@agentos/shared';
-
-const STAGE_ROLE_MAP: Record<AgentStage, import('@agentos/shared').AgentRole> = {
-  codex_manager: 'codex',
-  kimi_worker: 'kimi',
-  opencode_reviewer: 'opencode',
-  codex_final_review: 'codex',
-};
 
 export class AgentRunner {
   private workspace: Workspace;
@@ -18,14 +12,16 @@ export class AgentRunner {
   private taskTitle: string;
   private logs: TaskLog[] = [];
   private onChunk?: ChunkCallback;
+  private onActivity?: ActivityCallback;
   private signal?: AbortSignal;
 
-  constructor(workspace: Workspace, taskId: string, taskTitle: string, onChunk?: ChunkCallback, opts?: { signal?: AbortSignal }) {
+  constructor(workspace: Workspace, taskId: string, taskTitle: string, onChunk?: ChunkCallback, opts?: { signal?: AbortSignal; onActivity?: ActivityCallback }) {
     this.workspace = workspace;
     this.taskId = taskId;
     this.taskTitle = taskTitle;
     this.onChunk = onChunk;
     this.signal = opts?.signal;
+    this.onActivity = opts?.onActivity;
   }
 
   async runFullPipeline(): Promise<PipelineResult> {
@@ -54,28 +50,49 @@ export class AgentRunner {
         name: workspaceAgent.name,
         role: stage,
         cliCommand: workspaceAgent.cliCommand,
-        cliArgs: workspaceAgent.cliArgs,
+        cliArgs: [...workspaceAgent.cliArgs],
         model: workspaceAgent.model,
+        thinkingEffort: workspaceAgent.thinkingEffort ?? 'auto',
       };
     }
-    return AGENT_CONFIGS[stage];
+    const defaults = AGENT_CONFIGS[stage];
+    return {
+      ...defaults,
+      cliArgs: [...defaults.cliArgs],
+      thinkingEffort: defaults.thinkingEffort ?? 'auto',
+    };
   }
 
-  private async readMemory(): Promise<string> {
-    const memoryFiles = [
-      'PROJECT.md',
-      'TASKS.md',
-      'DECISIONS.md',
-      'LOG.md',
-      'KNOWLEDGE.md',
-      'REVIEW.md',
-      'TEST.md',
-    ];
+  getStageAgentName(stage: AgentStage): string {
+    return this.getAgentConfig(stage).name;
+  }
+
+  private memoryFilesForStage(stage: AgentStage): string[] {
+    switch (stage) {
+      case 'codex_manager':
+        return ['PROJECT.md', 'TASKS.md', 'DECISIONS.md', 'KNOWLEDGE.md', 'TEST.md'];
+      case 'kimi_worker':
+        return ['PROJECT.md', 'DECISIONS.md', 'KNOWLEDGE.md', 'TEST.md'];
+      case 'opencode_reviewer':
+        return ['PROJECT.md', 'DECISIONS.md', 'REVIEW.md', 'TEST.md'];
+      case 'codex_final_review':
+        return ['PROJECT.md', 'DECISIONS.md', 'REVIEW.md', 'TEST.md'];
+    }
+  }
+
+  private trimSection(content: string, maxChars: number): string {
+    if (content.length <= maxChars) return content;
+    return `${content.slice(0, maxChars)}\n...(truncated)`;
+  }
+
+  private async readMemory(stage: AgentStage): Promise<string> {
+    const memoryFiles = this.memoryFilesForStage(stage);
     const parts: string[] = [];
     for (const file of memoryFiles) {
       try {
         const content = await readFile(join(this.workspaceRoot, 'agent-memory', file), 'utf-8');
-        parts.push(`--- ${file} ---\n${content}`);
+        const maxChars = file === 'TASKS.md' ? 3000 : 2000;
+        parts.push(`--- ${file} ---\n${this.trimSection(content, maxChars)}`);
       } catch {
         parts.push(`--- ${file} ---\n(file not found)`);
       }
@@ -92,110 +109,56 @@ export class AgentRunner {
   }
 
   private async buildContextForStage(stage: AgentStage, previousLogs: TaskLog[]): Promise<string> {
-    const memory = await this.readMemory();
+    const memory = await this.readMemory(stage);
     const rules = await this.readAgentRules();
-    const previousOutput = previousLogs
-      .map(l => `[${l.stage}] ${l.agentName}:\n${l.stdout}`)
-      .join('\n\n');
+    const previousOutput = buildPreviousOutput(stage, previousLogs, this.trimSection.bind(this));
 
     return [
       `## Task ID: ${this.taskId}`,
       `## Task Title: ${this.taskTitle}`,
-      ``,
+      '',
       `## Current Stage: ${stage}`,
-      ``,
+      '',
       `## Project Memory`,
       memory,
-      ``,
+      '',
       `## Agent Rules`,
       rules,
-      ``,
+      '',
       previousOutput ? `## Previous Agent Output\n${previousOutput}` : '',
-      ``,
+      '',
       `## Instructions`,
       `Execute your role as defined in AGENT_RULE.md.`,
       `Output your analysis, decisions, and any code changes.`,
+      ...buildStageInstructions(stage),
     ].join('\n');
   }
 
   async runCodexManager(): Promise<TaskLog> {
     const context = await this.buildContextForStage('codex_manager', []);
-    const prompt = [
-      `You are Codex, the Manager Agent.`,
-      `Your role is to analyze the task, break it into subtasks, assess risks, and decide the approach.`,
-      ``,
-      context,
-      ``,
-      `## Output Requirements`,
-      `1. Task Understanding`,
-      `2. Subtask Breakdown`,
-      `3. Risk Assessment`,
-      `4. Next Steps`,
-      `5. Decision`,
-    ].join('\n');
-
-    return this.executeAndRecord('codex_manager', prompt);
+    return this.executeAndRecord('codex_manager', buildStagePrompt('codex_manager', context));
   }
 
   async runKimiWorker(): Promise<TaskLog> {
     const context = await this.buildContextForStage('kimi_worker', this.logs);
-    const prompt = [
-      `You are KimiCode, the Worker Agent.`,
-      `Your role is to implement the code based on Codex's plan.`,
-      ``,
-      context,
-      ``,
-      `## Output Requirements`,
-      `1. Implementation Plan`,
-      `2. Code Changes`,
-      `3. Files Modified`,
-      `4. Notes for Reviewer`,
-    ].join('\n');
-
-    return this.executeAndRecord('kimi_worker', prompt);
+    return this.executeAndRecord('kimi_worker', buildStagePrompt('kimi_worker', context));
   }
 
   async runOpenCodeReviewer(): Promise<TaskLog> {
     const context = await this.buildContextForStage('opencode_reviewer', this.logs);
-    const prompt = [
-      `You are OpenCode, the Reviewer Agent.`,
-      `Your role is to review the implementation for quality, security, and correctness.`,
-      ``,
-      context,
-      ``,
-      `## Output Requirements`,
-      `1. Quality Check (checklist)`,
-      `2. Risks Found`,
-      `3. Score (1-10)`,
-      `4. Recommendations`,
-    ].join('\n');
-
-    return this.executeAndRecord('opencode_reviewer', prompt);
+    return this.executeAndRecord('opencode_reviewer', buildStagePrompt('opencode_reviewer', context));
   }
 
   async runCodexFinalReview(): Promise<TaskLog> {
     const context = await this.buildContextForStage('codex_final_review', this.logs);
-    const prompt = [
-      `You are Codex, the Manager Agent — Final Review.`,
-      `Your role is to make the final decision on whether to accept the work.`,
-      ``,
-      context,
-      ``,
-      `## Output Requirements`,
-      `1. Summary of Work Done`,
-      `2. Review of OpenCode's Findings`,
-      `3. Final Decision (Approve / Reject / Modify)`,
-      `4. Next Steps`,
-    ].join('\n');
-
-    return this.executeAndRecord('codex_final_review', prompt);
+    return this.executeAndRecord('codex_final_review', buildStagePrompt('codex_final_review', context));
   }
 
   private async executeAndRecord(stage: AgentStage, prompt: string): Promise<TaskLog> {
     const log = await CLIExecutor.execute(
       this.getAgentConfig(stage),
       prompt,
-      { workspaceRoot: this.workspaceRoot, taskId: this.taskId, onChunk: this.onChunk, signal: this.signal },
+      { workspaceRoot: this.workspaceRoot, taskId: this.taskId, onChunk: this.onChunk, onActivity: this.onActivity, signal: this.signal },
     );
     this.logs.push(log);
     return log;

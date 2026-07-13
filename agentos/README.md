@@ -42,18 +42,29 @@ pnpm --filter @agentos/web run dev
 
 ```powershell
 # Windows PowerShell
-./start-dev.ps1
+./start-dev.ps1 -Stable
 ```
 
 或通过环境变量指定路径：
 
 ```powershell
 $env:AGENTOS_CODEX_CLI = "C:\path\to\codex.cmd"
+$env:AGENTOS_KIMI_CLI = "C:\path\to\kimi.exe"
 $env:AGENTOS_OPENCODE_CLI = "C:\path\to\opencode.exe"
-./start-dev.ps1
+./start-dev.ps1 -Stable
 ```
 
 > 注意：真实 Agent 模式下如果找不到 CLI 或 Agent 执行失败，任务会标记为 **failed**，不会静默降级到 Mock。Mock 输出只在 `AGENTOS_FORCE_MOCK=true` 时出现。
+
+### 启动模式
+
+| 命令 | 用途 |
+|------|------|
+| `pnpm --filter @agentos/server run dev` | 人工开发或 Mock Pipeline。该命令使用 `tsx watch`，源码修改时会自动重启 Server。不要用它运行会修改仓库、安装依赖或执行全量构建的真实 Agent。 |
+| `pnpm --filter @agentos/server run dev:stable`（或根目录的 `pnpm dev:stable`） | 真实 Codex、KimiCode 等 Agent Pipeline。该命令保留 Server 启动前的 `@agentos/agent-core` 构建步骤，但使用普通 `tsx src/index.ts`，不会因 Agent 修改仓库文件而重启 Server。 |
+| `./start-dev.ps1 -Stable` | 同时启动稳定 Server 和 Web 开发服务，适用于从浏览器运行真实 Pipeline。 |
+
+`dev:stable` 的稳定性承诺针对管理任务的 Express Server；Web 前端仍可单独使用 `pnpm --filter @agentos/web run dev` 进行界面开发。
 
 ## 运行流程
 
@@ -91,9 +102,10 @@ agentos/
 |------|--------|------|
 | `AGENTOS_FORCE_MOCK` | `false` | `true` 时使用 Mock 输出，不需要安装 Agent CLI |
 | `AGENTOS_CODEX_CLI` | `codex` | Codex 命令路径或名称 |
-| `AGENTOS_OPENCODE_CLI` | `opencode` | OpenCode 命令路径或名称 |
-| `AGENTOS_KIMI_MODEL` | `kimi-for-coding/k2p7` | KimiCode 模型 |
+| `AGENTOS_KIMI_CLI` | `kimi` | KimiCode 命令路径或名称 |
+| `AGENTOS_OPENCODE_CLI` | `codex` | OpenCode Reviewer 命令路径或名称；未配置时默认回退到 Codex |
+| `AGENTOS_KIMI_MODEL` | `kimi-code/kimi-for-coding` | KimiCode 模型 |
 | `AGENTOS_OPENCODE_MODEL` | `deepseek/deepseek-v4-flash` | OpenCode 模型 |
-| `AGENTOS_AGENT_TIMEOUT` | `300000` (5 分钟) | 每个 Agent 超时时间（毫秒） |
+| `AGENTOS_AGENT_TIMEOUT` | `0`（禁用） | 可选无活动超时（毫秒）；`0`、空值或 `null` 表示无限等待，正数仅在 Agent 持续无 stdout/stderr 输出时终止任务。 |
 | `PORT` | `3000` | 后端端口 |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3000` | 前端 API 地址 |

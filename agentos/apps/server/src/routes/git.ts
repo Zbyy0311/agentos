@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 import { existsSync } from 'node:fs';
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 
 export function createGitRoutes(workspaceManager: WorkspaceManager): Router {
@@ -10,7 +10,7 @@ export function createGitRoutes(workspaceManager: WorkspaceManager): Router {
     const workspace = workspaceManager.get(workspaceId);
     if (!workspace) throw new Error('Workspace not found');
     if (!existsSync(workspace.rootPath)) throw new Error('Workspace path does not exist');
-    return execSync(`git ${args.join(' ')}`, {
+    return execFileSync('git', args, {
       cwd: workspace.rootPath,
       encoding: 'utf-8',
       timeout: 10000,

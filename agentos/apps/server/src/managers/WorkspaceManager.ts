@@ -1,21 +1,16 @@
-import { existsSync, mkdirSync, writeFileSync, appendFileSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import type { Workspace, WorkspaceAgent } from '@agentos/shared';
+import type { Workspace } from '@agentos/shared';
+import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import type { Store } from '../store/Store.js';
-
-const DEFAULT_AGENTS: WorkspaceAgent[] = [
-  { id: 'codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: ['exec', '--dangerously-bypass-approvals-and-sandbox', '--skip-git-repo-check', '--ephemeral'] },
-  { id: 'kimi', name: 'KimiCode', role: 'kimi', enabled: true, cliCommand: 'opencode', cliArgs: ['--pure', 'run', '--model', 'kimi-for-coding/k2p7'], model: 'kimi-for-coding/k2p7' },
-  { id: 'opencode', name: 'OpenCode', role: 'opencode', enabled: true, cliCommand: 'opencode', cliArgs: ['--pure', 'run', '--model', 'deepseek/deepseek-v4-flash'], model: 'deepseek/deepseek-v4-flash' },
-];
 
 export class WorkspaceManager {
   constructor(private store: Store) {}
 
   list(): Workspace[] {
     return this.store.loadWorkspaces().sort((a, b) =>
-      new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime()
+      new Date(b.lastOpenedAt).getTime() - new Date(a.lastOpenedAt).getTime(),
     );
   }
 
@@ -35,7 +30,7 @@ export class WorkspaceManager {
       rootPath,
       gitEnabled: options.git ?? true,
       memoryEnabled: options.memory ?? true,
-      agents: structuredClone(DEFAULT_AGENTS),
+      agents: structuredClone(DEFAULT_WORKSPACE_AGENTS),
       lastOpenedAt: now,
       createdAt: now,
       updatedAt: now,
@@ -52,12 +47,24 @@ export class WorkspaceManager {
     if (existing) return this.touch(existing.id);
 
     const name = rootPath.split(/[\\/]/).pop() || 'imported';
-    return this.create(name, rootPath, { git: existsSync(join(rootPath, '.git')), memory: false, readme: false, docs: false });
+    return this.create(name, rootPath, {
+      git: existsSync(join(rootPath, '.git')),
+      memory: false,
+      readme: false,
+      docs: false,
+    });
   }
 
   remove(id: string): void {
-    const workspaces = this.store.loadWorkspaces().filter(w => w.id !== id);
+    const currentWorkspaces = this.store.loadWorkspaces();
+    const workspaces = currentWorkspaces.filter(w => w.id !== id);
     this.store.saveWorkspaces(workspaces);
+    try {
+      this.store.deleteWorkspace?.(id);
+    } catch (error) {
+      try { this.store.saveWorkspaces(currentWorkspaces); } catch {}
+      throw error;
+    }
   }
 
   touch(id: string): Workspace {
@@ -96,11 +103,11 @@ export class WorkspaceManager {
 
 ## General Rules
 
-1. **No memory deletion** — Agents must never delete or overwrite memory files
-2. **No overlapping work** — Agents must not overwrite another agent's output
-3. **Every modification must be logged** — All changes go to \`agent-memory/LOG.md\`
-4. **Risk must be documented** — Every agent must output risk assessment
-5. **Next steps must be provided** — Every agent output must include next steps
+1. **No memory deletion** - Agents must never delete or overwrite memory files
+2. **No overlapping work** - Agents must not overwrite another agent's output
+3. **Every modification must be logged** - All changes go to \`agent-memory/LOG.md\`
+4. **Risk must be documented** - Every agent must output risk assessment
+5. **Next steps must be provided** - Every agent output must include next steps
 
 ## Codex (Manager) Rules
 
@@ -136,7 +143,9 @@ export class WorkspaceManager {
         try {
           const { execSync } = require('node:child_process');
           execSync('git init', { cwd: workspace.rootPath, stdio: 'pipe' });
-        } catch { /* git init best-effort */ }
+        } catch {
+          // git init is best-effort only
+        }
       }
     }
 

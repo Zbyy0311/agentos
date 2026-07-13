@@ -12,34 +12,34 @@
           "name": "Codex",
           "role": "codex",
           "enabled": true,
-          "cliCommand": "codex.cmd",
+          "cliCommand": "C:\\Users\\Administrator\\.codex\\.sandbox-bin\\codex.exe",
           "cliArgs": [
             "exec",
             "--dangerously-bypass-approvals-and-sandbox",
             "--skip-git-repo-check",
             "--ephemeral"
-          ]
+          ],
+          "thinkingEffort": "auto"
         },
         {
           "id": "kimi",
           "name": "KimiCode",
           "role": "kimi",
           "enabled": true,
-          "cliCommand": "opencode.exe",
+          "cliCommand": "C:\\Users\\Administrator\\.kimi-code\\bin\\kimi.exe",
           "cliArgs": [
-            "--pure",
-            "run",
-            "--model",
-            "kimi-for-coding/k2p7"
+            "-m",
+            "kimi-code/kimi-for-coding",
+            "-p"
           ],
-          "model": "kimi-for-coding/k2p7"
+          "model": "kimi-code/kimi-for-coding"
         },
         {
           "id": "opencode",
           "name": "OpenCode",
           "role": "opencode",
           "enabled": true,
-          "cliCommand": "opencode.exe",
+          "cliCommand": "E:\\software\\opencode\\node_modules\\opencode-ai\\bin\\opencode.exe",
           "cliArgs": [
             "--pure",
             "run",
@@ -52,6 +52,58 @@
       "lastOpenedAt": "2026-06-27T14:53:43.213Z",
       "createdAt": "2026-06-27T14:53:43.213Z",
       "updatedAt": "2026-06-27T14:53:43.213Z"
+    },
+    {
+      "id": "e525c034",
+      "name": "AI Content Factory",
+      "rootPath": "E:\\workspace\\AI Content Factory",
+      "gitEnabled": true,
+      "memoryEnabled": true,
+      "agents": [
+        {
+          "id": "codex",
+          "name": "Codex",
+          "role": "codex",
+          "enabled": true,
+          "cliCommand": "codex",
+          "cliArgs": [
+            "exec",
+            "--dangerously-bypass-approvals-and-sandbox",
+            "--skip-git-repo-check",
+            "--ephemeral"
+          ]
+        },
+        {
+          "id": "kimi",
+          "name": "KimiCode",
+          "role": "kimi",
+          "enabled": true,
+          "cliCommand": "kimi",
+          "cliArgs": [
+            "-m",
+            "kimi-code/kimi-for-coding",
+            "-p"
+          ],
+          "model": "kimi-code/kimi-for-coding"
+        },
+        {
+          "id": "opencode",
+          "name": "OpenCode",
+          "role": "opencode",
+          "enabled": true,
+          "cliCommand": "E:\\software\\opencode\\node_modules\\opencode-ai\\bin\\opencode.exe",
+          "cliArgs": [
+            "--pure",
+            "run",
+            "--model",
+            "deepseek/deepseek-v4-flash"
+          ],
+          "model": "deepseek/deepseek-v4-flash"
+        }
+      ],
+      "lastOpenedAt": "2026-07-11T09:06:52.861Z",
+      "createdAt": "2026-07-11T09:06:52.861Z",
+      "updatedAt": "2026-07-11T09:06:52.861Z"
     }
   ]
 }

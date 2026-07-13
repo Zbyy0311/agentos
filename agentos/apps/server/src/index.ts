@@ -2,35 +2,89 @@ import express from 'express';
 import cors from 'cors';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { JsonFileStore } from './store/JsonFileStore.js';
+import { randomUUID } from 'node:crypto';
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { SqliteStore } from './store/SqliteStore.js';
 import { WorkspaceManager } from './managers/WorkspaceManager.js';
 import { createWorkspaceRoutes } from './routes/workspaces.js';
 import { createTaskRoutes } from './routes/tasks.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
+import { createConversationRoutes } from './routes/conversations.js';
+import { recoverInterruptedRunningTasks } from './taskRecovery.js';
+import { createJsonErrorHandler } from './errorHandler.js';
+import { getSignalExitCode } from './signals.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(__dirname, '..', '..', '..');
 
-const store = new JsonFileStore(PROJECT_ROOT);
+const serverInstanceId = randomUUID();
+process.env.AGENTOS_SERVER_INSTANCE_ID = serverInstanceId;
+
+const DIAG_LOG_DIR = join(PROJECT_ROOT, '.agentos', 'logs', 'diagnostics');
+process.env.AGENTOS_DIAG_LOG_DIR = DIAG_LOG_DIR;
+function diagLog(entry: string): void {
+  const timestamp = new Date().toISOString();
+  const line = `${timestamp} [server] ${entry}\n`;
+  try {
+    mkdirSync(DIAG_LOG_DIR, { recursive: true });
+    appendFileSync(join(DIAG_LOG_DIR, `server-${serverInstanceId}.log`), line, 'utf-8');
+  } catch {
+    // Best-effort diagnostics; fail silently.
+  }
+}
+
+diagLog(`INSTANCE_START pid=${process.pid} ppid=${process.ppid} instanceId=${serverInstanceId}`);
+
+const store = new SqliteStore(PROJECT_ROOT);
 const workspaceManager = new WorkspaceManager(store);
+const recoveredTasks = recoverInterruptedRunningTasks(store);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/health', (_req, res) => {
   res.json({ ok: true, service: 'agentos-server', time: new Date().toISOString() });
 });
 
 app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
+app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
 app.use('/api/agents', createAgentRoutes(workspaceManager));
+app.use(createJsonErrorHandler());
 
 app.listen(PORT, () => {
+  const msg = `SERVER_LISTEN pid=${process.pid} instanceId=${serverInstanceId} port=${PORT}`;
   console.log(`[AgentOS Server] running on http://localhost:${PORT}`);
   console.log(`[AgentOS Server] API base: http://localhost:${PORT}/api`);
+  diagLog(msg);
+  if (recoveredTasks.length > 0) {
+    console.warn(`[AgentOS Server] recovered ${recoveredTasks.length} interrupted running task(s) as failed`);
+    diagLog(`RECOVERED_TASKS count=${recoveredTasks.length} tasks=${JSON.stringify(recoveredTasks)}`);
+  }
+});
+
+function handleSignal(signal: string, exitCode: number): void {
+  diagLog(`SIGNAL=${signal} pid=${process.pid} instanceId=${serverInstanceId}`);
+  process.exit(exitCode);
+}
+
+process.on('SIGINT',  () => handleSignal('SIGINT', getSignalExitCode('SIGINT')));
+process.on('SIGTERM', () => handleSignal('SIGTERM', getSignalExitCode('SIGTERM')));
+process.on('SIGHUP',  () => handleSignal('SIGHUP', getSignalExitCode('SIGHUP')));
+
+process.on('exit', (code) => {
+  diagLog(`PROCESS_EXIT code=${code} pid=${process.pid} instanceId=${serverInstanceId}`);
+});
+
+process.on('uncaughtException', (err) => {
+  diagLog(`UNCAUGHT_EXCEPTION pid=${process.pid} instanceId=${serverInstanceId} error=${err.message} stack=${err.stack?.split('\n').slice(0, 6).join('|')}`);
+});
+
+process.on('unhandledRejection', (reason) => {
+  diagLog(`UNHANDLED_REJECTION pid=${process.pid} instanceId=${serverInstanceId} reason=${reason}`);
 });

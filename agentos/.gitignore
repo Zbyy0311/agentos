@@ -6,4 +6,5 @@ logs/
 .DS_Store
 *.local
 .env
+/.agentos/agentos.sqlite*
 workspace/demo-project/

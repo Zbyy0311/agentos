@@ -3,8 +3,9 @@
 @tailwind utilities;
 
 body {
-  background: #0f1117;
+  background: #0b1118;
   color: #e2e8f0;
+  font-feature-settings: "cv11", "ss01";
 }
 
 ::-webkit-scrollbar {
@@ -15,6 +16,17 @@ body {
   background: #1a1b23;
 }
 ::-webkit-scrollbar-thumb {
-  background: #3b3d4a;
-  border-radius: 3px;
+  background: #303b4a;
+  border-radius: 999px;
+}
+
+::selection {
+  background: rgba(37, 99, 235, 0.35);
+}
+
+button,
+select,
+textarea,
+input {
+  -webkit-tap-highlight-color: transparent;
 }
