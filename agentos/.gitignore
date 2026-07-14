@@ -1,6 +1,7 @@
 node_modules/
 dist/
 .next/
+.next-acceptance-*/
 logs/
 *.log
 .DS_Store
