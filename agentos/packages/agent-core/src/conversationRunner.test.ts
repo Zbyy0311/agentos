@@ -204,4 +204,35 @@ describe('ConversationAgentRunner', () => {
     expect(result.status).toBe('failed');
     expect(result.error).toContain('exit code 1');
   });
+
+  it('pauses on a waiting-user marker without exposing the marker text', async () => {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    vi.spyOn(CLIExecutor, 'execute').mockResolvedValue({
+      stage: 'codex_manager',
+      agentName: 'Codex',
+      stdout: '<!-- agentos-waiting-user: {"question":"请提供部署环境"} -->',
+      stderr: '',
+      exitCode: 0,
+      timestamp: '2026-07-12T00:00:00.000Z',
+      duration: 1,
+      mode: 'real',
+    });
+    const states: Array<{ status: ExecutionStatus; content?: string }> = [];
+    const agent: AgentProfile = {
+      id: 'codex', workspaceId: 'workspace-1', name: 'Codex', role: 'codex', roleTitle: '架构师',
+      systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true, cliCommand: 'codex', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+
+    const result = await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-waiting', message: '部署项目', history: [],
+      onEvent: event => states.push(event),
+    }).run();
+
+    expect(result.status).toBe('waiting_user');
+    expect(result.waitingQuestion).toBe('请提供部署环境');
+    expect(result.content).toBe('');
+    expect(states.map(event => event.status)).toEqual(['preparing_context', 'running_cli', 'waiting_user']);
+    expect(states.some(event => event.content?.includes('agentos-waiting-user'))).toBe(false);
+  });
 });

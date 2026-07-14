@@ -12,7 +12,8 @@ import { isCodexCli } from './config.js';
 import { getCliCapability } from './capabilities.js';
 import { resolveImageInput } from './imageInput.js';
 import type { AgentConfig, ChunkCallback, ActivityCallback } from './types.js';
-import type { TaskLog, AgentStage, ThinkingEffort } from '@agentos/shared';
+import type { CliInvocationObservation, TaskLog, AgentStage, ThinkingEffort, RunFileChange } from '@agentos/shared';
+import { captureWorkspaceSnapshot, diffWorkspaceSnapshots } from './workspaceChanges.js';
 
 const DIAG_LOG_DIR = process.env.AGENTOS_DIAG_LOG_DIR
   ?? join(process.env.AGENTOS_WORKSPACE_ROOT ?? process.cwd(), '.agentos', 'logs', 'diagnostics');
@@ -195,6 +196,9 @@ export interface ExecuteContext {
   onChunk?: ChunkCallback;
   onActivity?: ActivityCallback;
   signal?: AbortSignal;
+  onInvocationStarted?: (observation: CliInvocationObservation) => void;
+  onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'model' | 'thinkingEffort'>) => void;
+  onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
 }
 
 export interface CommandInvocation {
@@ -330,6 +334,11 @@ export class CLIExecutor {
       throw new CLIError(`${agentName} (${stage}): ${message}`, stage, null, message, log);
     }
     const preparedPrompt = imagePlan.promptSuffix ? `${prompt}\n\n${imagePlan.promptSuffix}` : prompt;
+    const cliKind = getCliCapability(config.cliCommand).cliKind;
+    const commandLabel = toCommandLabel(cliKind);
+    const invocationId = randomUUID();
+    const invocationStartedAt = new Date().toISOString();
+    const workspaceBefore = await captureWorkspaceSnapshot(workspaceRoot);
     let lastActivityAt = Date.now();
     const recordActivity = (source: 'stdout' | 'stderr') => {
       lastActivityAt = Date.now();
@@ -340,6 +349,12 @@ export class CLIExecutor {
     diagLog(`TIMEOUT_CONFIG executionId=${executionId} taskId=${taskId} inactivityTimeoutMs=${inactivityTimeoutMs ?? 'disabled'} maxExecutionTimeoutMs=${maxExecutionTimeoutMs} lastActivityAt=${new Date(lastActivityAt).toISOString()}`);
 
     if (process.env.AGENTOS_FORCE_MOCK === 'true') {
+      ctx.onInvocationStarted?.({
+        invocationId, cliKind, commandLabel,
+        ...(config.model ? { model: config.model } : {}),
+        thinkingEffort: config.thinkingEffort ?? 'auto',
+        startedAt: invocationStartedAt,
+      });
       const result = MockCLI.run(agentName, preparedPrompt);
       const log = this.buildLog(stage, agentName, result.stdout, result.stderr, 0, startTime, 'mock');
       recordActivity('stdout');
@@ -348,6 +363,15 @@ export class CLIExecutor {
         onChunk(result.stdout, false);
         onChunk('', true);
       }
+      const completedAt = new Date().toISOString();
+      ctx.onInvocationCompleted?.({
+        invocationId, cliKind, commandLabel, exitCode: 0, durationMs: Date.now() - startTime,
+        startedAt: invocationStartedAt, completedAt,
+        model: config.model,
+        thinkingEffort: config.thinkingEffort ?? 'auto',
+      });
+      const workspaceAfter = await captureWorkspaceSnapshot(workspaceRoot);
+      ctx.onFileChanges?.(diffWorkspaceSnapshots(workspaceBefore, workspaceAfter));
       diagLog(`EXECUTION_END executionId=${executionId} taskId=${taskId} mode=mock exitCode=0`);
       return log;
     }
@@ -386,7 +410,7 @@ export class CLIExecutor {
       invocation = await createCommandInvocation(resolved, cliArgs, preparedPrompt, process.platform, {
         promptViaStdin: imagePlan.transport === 'cli-flag',
       });
-      diagLog(`CLI_RUNTIME_RESOLUTION executionId=${executionId} taskId=${taskId} stage=${stage} cliKind=${resolvedRuntime.cliKind} model=${config.model?.trim() || 'default'} thinkingEffort=${config.thinkingEffort ?? 'auto'} args=${JSON.stringify(cliArgs)}`);
+      diagLog(`CLI_RUNTIME_RESOLUTION executionId=${executionId} taskId=${taskId} stage=${stage} cliKind=${resolvedRuntime.cliKind} commandLabel=${commandLabel} model=${config.model?.trim() || 'default'} thinkingEffort=${config.thinkingEffort ?? 'auto'} argCount=${cliArgs.length} promptTransport=${imagePlan.transport}`);
     } catch (err) {
       const message = `${kimiCodeHome ? 'Kimi runtime setup failed' : 'Agent startup preparation failed'}: ${err instanceof Error ? err.message : String(err)}`;
       diagLog(`EXECUTION_FAIL executionId=${executionId} taskId=${taskId} reason=setup_error message=${message}`);
@@ -395,6 +419,12 @@ export class CLIExecutor {
 
     let child: ChildProcess;
     try {
+      ctx.onInvocationStarted?.({
+        invocationId, cliKind: resolvedRuntime.cliKind, commandLabel: toCommandLabel(resolvedRuntime.cliKind),
+        ...(config.model ? { model: config.model } : {}),
+        thinkingEffort: config.thinkingEffort ?? 'auto',
+        startedAt: invocationStartedAt,
+      });
       childEnv.AGENTOS_TASK_ID = taskId;
       childEnv.AGENTOS_DIAG_LOG_DIR = DIAG_LOG_DIR;
       childEnv.AGENTOS_SERVER_INSTANCE_ID = process.env.AGENTOS_SERVER_INSTANCE_ID ?? 'unknown';
@@ -518,6 +548,15 @@ export class CLIExecutor {
 
     stdout += stdoutDecoder.decode();
     stderr += stderrDecoder.decode();
+    const invocationCompletedAt = new Date().toISOString();
+    ctx.onInvocationCompleted?.({
+      invocationId, cliKind: resolvedRuntime.cliKind, commandLabel: toCommandLabel(resolvedRuntime.cliKind),
+      exitCode, durationMs: Date.now() - startTime, startedAt: invocationStartedAt, completedAt: invocationCompletedAt,
+      model: config.model,
+      thinkingEffort: config.thinkingEffort ?? 'auto',
+    });
+    const workspaceAfter = await captureWorkspaceSnapshot(workspaceRoot);
+    ctx.onFileChanges?.(diffWorkspaceSnapshots(workspaceBefore, workspaceAfter));
     await safeCleanup(invocation.cleanup);
 
     const log = this.buildLog(stage, agentName, stdout, stderr, exitCode, startTime, 'real');
@@ -526,13 +565,13 @@ export class CLIExecutor {
     if (onChunk) onChunk('', true);
 
     if (exitCode !== 0) {
-      const detail = stderr.trim() || stdout.trim() || 'no output';
-      diagLog(`EXECUTION_FAIL executionId=${executionId} taskId=${taskId} exitCode=${exitCode} detail=${detail.slice(0, 200)}`);
+      const safeDetail = publicFailureDetail(stderr, stdout);
+      diagLog(`EXECUTION_FAIL executionId=${executionId} taskId=${taskId} exitCode=${exitCode} stdoutLength=${stdout.length} stderrLength=${stderr.length}`);
       throw new CLIError(
-        `${agentName} (${stage}) failed with exit code ${exitCode}: ${detail}`,
+        `${agentName} (${stage}) failed with exit code ${exitCode}${safeDetail ? `: ${safeDetail}` : ''}`,
         stage,
         exitCode,
-        stderr.trim(),
+        '',
         log,
       );
     }
@@ -618,14 +657,25 @@ export class CLIExecutor {
       `Duration: ${log.duration}ms`,
       `Exit Code: ${log.exitCode}`,
       `Mode: ${log.mode ?? 'real'}`,
+      `Stdout: ${log.stdout.length} chars (content omitted)`,
+      `Stderr: ${log.stderr.length} chars (content omitted)`,
       '',
-      '--- STDOUT ---',
-      log.stdout,
-      '',
-      '--- STDERR ---',
-      log.stderr,
+      'CLI output is intentionally omitted from persisted logs.',
       '',
     ].join('\n');
     await writeFile(filePath, content, 'utf-8');
   }
+}
+
+function toCommandLabel(cliKind: string): string {
+  if (cliKind === 'codex') return 'codex exec';
+  if (cliKind === 'kimi') return 'kimi -p';
+  if (cliKind === 'opencode') return 'opencode run';
+  return 'agent cli';
+}
+
+function publicFailureDetail(stderr: string, stdout: string): string {
+  const agentOsLines = stderr.split(/\r?\n/).map(line => line.trim()).filter(line => line.startsWith('[AgentOS]'));
+  if (agentOsLines.length > 0) return agentOsLines.join(' ');
+  return stdout.length > 0 || stderr.length > 0 ? 'CLI 输出已省略' : '';
 }

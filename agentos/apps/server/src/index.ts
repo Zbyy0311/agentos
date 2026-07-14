@@ -12,11 +12,17 @@ import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
 import { createConversationRoutes } from './routes/conversations.js';
 import { recoverInterruptedRunningTasks } from './taskRecovery.js';
+import { recoverInterruptedRuns } from './runRecovery.js';
+import { EventBus } from './events/EventBus.js';
+import { createRunRoutes } from './routes/runs.js';
+import { createMemoryRoutes } from './routes/memories.js';
+import { createMemoryCandidateRoutes } from './routes/memoryCandidates.js';
 import { createJsonErrorHandler } from './errorHandler.js';
 import { getSignalExitCode } from './signals.js';
+import { resolveProjectRoot } from './projectRoot.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..', '..');
+const PROJECT_ROOT = resolveProjectRoot(__dirname);
 
 const serverInstanceId = randomUUID();
 process.env.AGENTOS_SERVER_INSTANCE_ID = serverInstanceId;
@@ -39,6 +45,9 @@ diagLog(`INSTANCE_START pid=${process.pid} ppid=${process.ppid} instanceId=${ser
 const store = new SqliteStore(PROJECT_ROOT);
 const workspaceManager = new WorkspaceManager(store);
 const recoveredTasks = recoverInterruptedRunningTasks(store);
+const recoveredRuns = recoverInterruptedRuns(store);
+const eventBus = new EventBus();
+eventBus.subscribe(event => store.appendAgentEvent(event));
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -51,7 +60,10 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
-app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus));
+app.use('/api/workspaces/:workspaceId', createRunRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
 app.use('/api/agents', createAgentRoutes(workspaceManager));
@@ -65,6 +77,10 @@ app.listen(PORT, () => {
   if (recoveredTasks.length > 0) {
     console.warn(`[AgentOS Server] recovered ${recoveredTasks.length} interrupted running task(s) as failed`);
     diagLog(`RECOVERED_TASKS count=${recoveredTasks.length} tasks=${JSON.stringify(recoveredTasks)}`);
+  }
+  if (recoveredRuns > 0) {
+    console.warn(`[AgentOS Server] recovered ${recoveredRuns} interrupted run(s) as failed`);
+    diagLog(`RECOVERED_RUNS count=${recoveredRuns}`);
   }
 });
 

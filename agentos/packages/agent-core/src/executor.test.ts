@@ -1,6 +1,8 @@
 import { afterEach, describe, it, expect, beforeEach } from 'vitest';
+import { execFileSync } from 'node:child_process';
 import { CLIExecutor, CLIError, createCommandInvocation, getInactivityTimeoutMs, getMaxExecutionTimeoutMs, prepareKimiCodeHome, resolveAgentEnvironment, resolveAgentRuntimeConfig, resolveKimiCliArgs, safeCleanup } from './executor.js';
 import type { AgentConfig } from './types.js';
+import type { RunFileChange } from '@agentos/shared';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -79,7 +81,7 @@ describe('CLIExecutor', () => {
     else process.env.AGENTOS_AGENT_TIMEOUT = originalAgentTimeout;
     if (originalMaxExecutionTimeout === undefined) delete process.env.AGENTOS_MAX_EXECUTION_MS;
     else process.env.AGENTOS_MAX_EXECUTION_MS = originalMaxExecutionTimeout;
-    rmSync(workspaceRoot, { recursive: true, force: true });
+    try { rmSync(workspaceRoot, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* Windows Git reparse-point cleanup is best effort. */ }
   });
 
   const ctx = (taskId = 'test-task') => ({
@@ -113,6 +115,33 @@ describe('CLIExecutor', () => {
     expect(log.exitCode).toBe(0);
     expect(log.mode).toBe('real');
     expect(log.stdout).toContain('ok');
+  });
+
+  it('reports a redacted CLI lifecycle and Git file changes', async () => {
+    execFileSync('git', ['init', workspaceRoot], { stdio: 'ignore' });
+    writeFileSync(join(workspaceRoot, 'tracked.txt'), 'before', 'utf8');
+    execFileSync('git', ['-C', workspaceRoot, 'add', 'tracked.txt'], { stdio: 'ignore' });
+    execFileSync('git', ['-C', workspaceRoot, '-c', 'user.email=test@example.com', '-c', 'user.name=Test', 'commit', '-m', 'initial'], { stdio: 'ignore' });
+    const started: string[] = [];
+    const completed: Array<{ label: string; exitCode: number | null }> = [];
+    const changes: Array<Omit<RunFileChange, 'runId'>> = [];
+    const log = await CLIExecutor.execute({
+      ...okConfig,
+      cliArgs: ['-e', "require('node:fs').writeFileSync('created.txt','new');require('node:fs').writeFileSync('tracked.txt','after');console.log('evidence')"],
+    }, 'ignored', {
+      ...ctx('evidence-task'),
+      onInvocationStarted: observation => started.push(`${observation.cliKind}:${observation.commandLabel}`),
+      onInvocationCompleted: observation => completed.push({ label: observation.commandLabel, exitCode: observation.exitCode }),
+      onFileChanges: observed => changes.push(...observed),
+    });
+
+    expect(log.exitCode).toBe(0);
+    expect(started).toEqual(['unknown:agent cli']);
+    expect(completed).toEqual([{ label: 'agent cli', exitCode: 0 }]);
+    expect(changes.sort((a, b) => a.path.localeCompare(b.path))).toEqual([
+      { path: 'created.txt', changeType: 'created' },
+      { path: 'tracked.txt', changeType: 'modified' },
+    ]);
   });
 
   it('passes resolved model and thinking effort to a Codex-shaped fake CLI', async () => {
@@ -205,6 +234,19 @@ describe('CLIExecutor', () => {
       return true;
     });
     expect(captured).toBeDefined();
+  });
+
+  it('omits prompt and CLI output from persisted task logs', async () => {
+    const prompt = 'PROMPT_SECRET_SHOULD_NOT_BE_PERSISTED';
+    await expect(CLIExecutor.execute({
+      ...okConfig,
+      cliArgs: ['-e', "console.log('OUTPUT_SECRET'); console.error('ERROR_SECRET'); process.exit(1)"],
+    }, prompt, ctx('privacy-task'))).rejects.toBeInstanceOf(CLIError);
+    const taskLog = readFileSync(join(workspaceRoot, '.agentos', 'logs', 'privacy-task', 'codex_manager.log'), 'utf8');
+    expect(taskLog).not.toContain(prompt);
+    expect(taskLog).not.toContain('OUTPUT_SECRET');
+    expect(taskLog).not.toContain('ERROR_SECRET');
+    expect(taskLog).toContain('content omitted');
   });
 
   it('throws CLIError when command is not found', async () => {
@@ -473,7 +515,7 @@ describe('CLIExecutor', () => {
       });
 
       const log = readFileSync(join(workspaceRoot, '.agentos', 'logs', 'kimi-startup-failure', 'kimi_worker.log'), 'utf-8');
-      expect(log).toContain('Kimi runtime setup failed');
+      expect(log).toContain('content omitted');
     } finally {
       rmSync(sourceHome, { recursive: true, force: true });
     }

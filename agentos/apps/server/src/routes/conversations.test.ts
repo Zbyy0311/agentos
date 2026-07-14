@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
-import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
@@ -300,6 +300,63 @@ test('accepts an image-only direct message, persists its attachment, and serves 
     assert.equal(deleted.status, 200);
     const removedAttachmentResponse = await fetch(`http://127.0.0.1:${address.port}${attachmentUrl}`);
     assert.equal(removedAttachmentResponse.status, 404);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('pauses a direct run for user input and resumes it under the same Run', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  const config = JSON.parse(readFileSync(join(root, 'workspace', 'workspaces.json'), 'utf8')) as { workspaces: Array<{ id: string; agents: Array<{ id: string; cliCommand: string; cliArgs: string[] }> }> };
+  const codex = config.workspaces.find(workspace => workspace.id === 'workspace-a')!.agents.find(agent => agent.id === 'codex')!;
+  const script = "const p=process.argv.at(-1)||''; console.log(p.includes('用户补充信息') ? '恢复完成' : '<!-- agentos-waiting-user: {\"question\":\"请提供部署环境\"} -->')";
+  codex.cliCommand = process.execPath;
+  codex.cliArgs = ['-e', script];
+  writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify(config), 'utf8');
+  const store = new SqliteStore(root);
+  const app = express();
+  const server = app.listen(0);
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    store.updateAgentProfile('workspace-a', 'codex', { roleTitle: '架构师', systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true });
+    store.createConversation({ id: 'waiting-route-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Waiting', agentId: 'codex', createdAt: '2026-07-14T01:00:00.000Z', updatedAt: '2026-07-14T01:00:00.000Z' });
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store)));
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Test server did not bind a port');
+    const base = `http://127.0.0.1:${address.port}/api/workspaces/workspace-a/conversations/waiting-route-conversation`;
+
+    const waitingResponse = await fetch(`${base}/messages/stream`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ content: '部署项目' }),
+    });
+    const waitingStream = await waitingResponse.text();
+    assert.equal(waitingResponse.status, 200);
+    assert.match(waitingStream, /waiting_user/);
+    assert.match(waitingStream, /请提供部署环境/);
+    assert.doesNotMatch(waitingStream, /run\.completed/);
+    const waitingRun = store.listRuns('workspace-a', 'waiting-route-conversation')[0];
+    assert.equal(waitingRun?.status, 'waiting_user');
+    assert.equal(waitingRun?.waitingQuestion, '请提供部署环境');
+
+    const resumeResponse = await fetch(`${base}/runs/${waitingRun!.id}/resume/stream`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ content: '生产环境' }),
+    });
+    const resumeStream = await resumeResponse.text();
+    assert.equal(resumeResponse.status, 200);
+    assert.match(resumeStream, /恢复完成/);
+    assert.match(resumeStream, /event: done/);
+    const completedRun = store.getRun('workspace-a', waitingRun!.id);
+    assert.equal(completedRun?.status, 'completed');
+    assert.equal(store.listExecutions('workspace-a', 'waiting-route-conversation').length, 2);
+    assert.equal(new Set(store.listExecutions('workspace-a', 'waiting-route-conversation').map(execution => execution.runId)).size, 1);
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;

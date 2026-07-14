@@ -5,6 +5,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { ConversationService } from './ConversationService.js';
+import { EventBus } from '../events/EventBus.js';
+import { MemoryService } from './MemoryService.js';
 
 function createProjectRoot(options: {
   codex?: { cliCommand: string; cliArgs: string[] };
@@ -23,6 +25,12 @@ function createProjectRoot(options: {
     }],
   }), 'utf-8');
   return root;
+}
+
+function createFailingEventBus(): EventBus {
+  const bus = new EventBus();
+  bus.subscribe(() => { throw new Error('event persistence unavailable'); });
+  return bus;
 }
 
 test('persists public status events and the final direct-agent reply', async () => {
@@ -44,11 +52,172 @@ test('persists public status events and the final direct-agent reply', async () 
     });
 
     assert.equal(result.execution.status, 'completed');
+    assert.ok(result.execution.runId);
+    assert.equal(store.listRuns('workspace-a', 'conversation-a').length, 1);
+    assert.equal(store.listRuns('workspace-a', 'conversation-a')[0]?.id, result.execution.runId);
     assert.equal(store.listMessages('workspace-a', 'conversation-a').length, 2);
     assert.deepEqual(
       store.listExecutionEvents('workspace-a', result.execution.id).map(event => event.status),
       ['queued', 'preparing_context', 'running_cli', 'streaming_response', 'completed'],
     );
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('runs a direct real child process and persists observable invocation evidence', async () => {
+  const root = createProjectRoot({ codex: { cliCommand: process.execPath, cliArgs: ['-e', "console.log('direct real reply')"] } });
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    store = new SqliteStore(root);
+    store.updateAgentProfile('workspace-a', 'codex', { roleTitle: '架构师', systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true });
+    store.createConversation({ id: 'real-direct', workspaceId: 'workspace-a', type: 'direct', title: 'Real direct', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+    const result = await new ConversationService(store).sendDirectMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'real-direct', agentId: 'codex', content: '真实子进程路径' });
+    assert.equal(result.execution.status, 'completed');
+    assert.match(result.responseMessage.content, /direct real reply/);
+    assert.equal(store.listRunCliInvocations('workspace-a', result.execution.runId).length, 1);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('publishes and persists unified events for a direct run', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'event-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Events', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+    const bus = new EventBus();
+    bus.subscribe(event => store!.appendAgentEvent(event));
+    const result = await new ConversationService(store, bus).sendDirectMessage({
+      workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'event-conversation', agentId: 'codex', content: '统一事件',
+    });
+    const events = store.listAgentEvents('workspace-a', result.execution.runId);
+    assert.ok(events.length >= 8);
+    assert.equal(new Set(events.map(event => event.runId)).size, 1);
+    assert.equal(events[0]?.schemaVersion, 1);
+    assert.equal(events.some(event => event.type === 'run.created'), true);
+    assert.equal(events.some(event => event.type === 'run.completed'), true);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('does not return success when critical direct-run event persistence fails', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'event-failure-direct', workspaceId: 'workspace-a', type: 'direct', title: 'Event failure', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+
+    await assert.rejects(
+      new ConversationService(store, createFailingEventBus()).sendDirectMessage({
+        workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'event-failure-direct', agentId: 'codex', content: 'event failure',
+      }),
+      error => error instanceof Error && error.message === '关键事件持久化失败',
+    );
+
+    const run = store.listRuns('workspace-a', 'event-failure-direct')[0];
+    assert.equal(run?.status, 'failed');
+    assert.match(run?.failureReason ?? '', /关键事件持久化失败/);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('does not return success when critical group-run event persistence fails', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createGroupConversation({ id: 'event-failure-group', workspaceId: 'workspace-a', type: 'group', title: 'Event failure', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' }, [
+      { conversationId: 'event-failure-group', agentId: 'codex', roleTitle: 'leader', isLeader: true, createdAt: '2026-07-12T01:00:00.000Z' },
+      { conversationId: 'event-failure-group', agentId: 'kimi', roleTitle: 'worker', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
+    ]);
+
+    await assert.rejects(
+      new ConversationService(store, createFailingEventBus()).sendGroupMessage({
+        workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'event-failure-group', content: 'event failure',
+      }),
+      error => error instanceof Error && error.message === '关键事件持久化失败',
+    );
+
+    const run = store.listRuns('workspace-a', 'event-failure-group')[0];
+    assert.equal(run?.status, 'failed');
+    assert.match(run?.failureReason ?? '', /关键事件持久化失败/);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('injects only active memories and persists per-run memory usage', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'memory-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Memory', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+    await new MemoryService(store).create({ workspaceId: 'workspace-a', workspaceRoot: root, memoryEnabled: true, type: 'decision', title: '认证决策', summary: '令牌决策', content: '令牌必须短期有效。', importance: 90 });
+    const result = await new ConversationService(store).sendDirectMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'memory-conversation', agentId: 'codex', content: '请检查令牌决策', memoryEnabled: true });
+    const usage = store.listMemoryUsage('workspace-a', result.execution.runId);
+    assert.equal(usage.length, 1);
+    assert.equal(usage[0]?.injectedCharacters > 0, true);
+    const disabled = await new ConversationService(store).sendDirectMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'memory-conversation', agentId: 'codex', content: '不要注入记忆', memoryEnabled: false });
+    assert.deepEqual(store.listMemoryUsage('workspace-a', disabled.execution.runId), []);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('records terminal failed and cancelled Run states without persisting CLI output', async () => {
+  const root = createProjectRoot({
+    codex: { cliCommand: process.execPath, cliArgs: ['-e', "const prompt=process.argv.at(-1)||''; if(prompt.includes('取消路径')) setInterval(() => {}, 1000); else { console.error('PRIVATE_CLI_OUTPUT'); process.exit(1); }"] },
+  });
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    store = new SqliteStore(root);
+    store.updateAgentProfile('workspace-a', 'codex', { roleTitle: '架构师', systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true });
+    store.createConversation({ id: 'failure-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Failure', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+    const failed = await new ConversationService(store).sendDirectMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'failure-conversation', agentId: 'codex', content: '失败路径' });
+    assert.equal(failed.execution.status, 'failed');
+    assert.equal(store.listRuns('workspace-a', 'failure-conversation')[0]?.status, 'failed');
+    assert.doesNotMatch(store.listRuns('workspace-a', 'failure-conversation')[0]?.failureReason ?? '', /PRIVATE_CLI_OUTPUT/);
+
+    store.createConversation({ id: 'cancel-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Cancel', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 40);
+    const cancelled = await new ConversationService(store).sendDirectMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'cancel-conversation', agentId: 'codex', content: '取消路径', signal: controller.signal });
+    assert.equal(cancelled.execution.status, 'cancelled');
+    assert.equal(store.listRuns('workspace-a', 'cancel-conversation')[0]?.status, 'cancelled');
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
@@ -104,6 +273,8 @@ test('runs group work through leader, member, and leader summary in order', asyn
     });
 
     assert.deepEqual(result.executions.map(execution => execution.agentId), ['codex', 'kimi', 'codex']);
+    assert.equal(new Set(result.executions.map(execution => execution.runId)).size, 1);
+    assert.equal(store.listRuns('workspace-a', 'group-a').length, 1);
     assert.deepEqual(deliveredAgentIds, ['codex', 'kimi', 'codex']);
     assert.deepEqual(
       store.listMessages('workspace-a', 'group-a').map(message => message.senderAgentId ?? message.senderType),
@@ -185,13 +356,44 @@ test('runs independent group workers concurrently after the leader plan', async 
       { conversationId: 'group-parallel', agentId: 'opencode', roleTitle: '审查工程师', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
     ]);
 
-    const startedAt = Date.now();
+    const workerStarts: number[] = [];
     const result = await new ConversationService(store).sendGroupMessage({
       workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'group-parallel', content: '并行执行测试',
+      onExecutionEvent: event => {
+        if (event.status === 'running_cli' && event.agentId !== 'codex') workerStarts.push(Date.now());
+      },
     });
 
-    assert.ok(Date.now() - startedAt < 850, `workers took ${Date.now() - startedAt}ms`);
+    assert.equal(workerStarts.length, 2);
+    assert.ok(Math.abs(workerStarts[0]! - workerStarts[1]!) < 250, `workers started ${Math.abs(workerStarts[0]! - workerStarts[1]!)}ms apart`);
     assert.deepEqual(result.executions.map(execution => execution.agentId), ['codex', 'kimi', 'opencode', 'codex']);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('fails a group explicitly when an agent requests user input', async () => {
+  const root = createProjectRoot({
+    codex: { cliCommand: process.execPath, cliArgs: ['-e', "console.log('<!-- agentos-waiting-user: {\\\"question\\\":\\\"请提供群聊信息\\\"} -->')"] },
+    kimi: { cliCommand: process.execPath, cliArgs: ['-e', "console.log('worker')"] },
+  });
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    store = new SqliteStore(root);
+    store.updateAgentProfile('workspace-a', 'codex', { roleTitle: '群主', systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true });
+    store.createGroupConversation({ id: 'group-waiting', workspaceId: 'workspace-a', type: 'group', title: '等待测试', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' }, [
+      { conversationId: 'group-waiting', agentId: 'codex', roleTitle: '群主', isLeader: true, createdAt: '2026-07-12T01:00:00.000Z' },
+      { conversationId: 'group-waiting', agentId: 'kimi', roleTitle: '执行工程师', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
+    ]);
+    await assert.rejects(new ConversationService(store).sendGroupMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'group-waiting', content: '需要补充信息' }), /群聊暂不支持等待用户恢复/);
+    const run = store.listRuns('workspace-a', 'group-waiting')[0];
+    assert.equal(run?.status, 'failed');
+    assert.equal(run?.failureReason, '群聊暂不支持等待用户恢复');
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;

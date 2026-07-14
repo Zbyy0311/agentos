@@ -3,8 +3,18 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentPermission,
+  AgentEvent,
   AgentProfile,
+  AgentRun,
   AgentExecution,
+  RunCliInvocation,
+  RunFileChange,
+  MemoryRecord,
+  MemoryStatus,
+  MemoryType,
+  MemoryUsage,
+  MemoryCandidate,
+  MemoryCandidateStatus,
   Conversation,
   ConversationMember,
   ConversationMessage,
@@ -94,6 +104,7 @@ interface MessageAttachmentRow {
 
 interface ExecutionRow {
   id: string;
+  run_id: string;
   conversation_id: string;
   workspace_id: string;
   source_message_id: string;
@@ -107,6 +118,24 @@ interface ExecutionRow {
   updated_at: string;
 }
 
+interface AgentRunRow {
+  id: string;
+  workspace_id: string;
+  conversation_id: string;
+  source_message_id: string;
+  objective: string;
+  status: AgentRun['status'];
+  result_summary: string | null;
+  failure_reason: string | null;
+  started_at: string | null;
+  completed_at: string | null;
+  waiting_question: string | null;
+  waiting_execution_id: string | null;
+  waiting_agent_id: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
 interface ExecutionEventRow {
   id: string;
   execution_id: string;
@@ -114,6 +143,78 @@ interface ExecutionEventRow {
   activity: string;
   content: string | null;
   created_at: string;
+}
+
+interface AgentEventRow {
+  event_id: string;
+  schema_version: 1;
+  event_type: AgentEvent['type'];
+  workspace_id: string;
+  conversation_id: string;
+  run_id: string;
+  execution_id: string | null;
+  agent_id: string | null;
+  timestamp: string;
+  payload_json: string;
+}
+
+interface RunCliInvocationRow {
+  id: string;
+  run_id: string;
+  execution_id: string;
+  agent_id: string;
+  cli_kind: string;
+  command_label: string;
+  model: string | null;
+  thinking_effort: string | null;
+  exit_code: number | null;
+  duration_ms: number;
+  started_at: string;
+  completed_at: string;
+}
+
+interface RunFileChangeRow {
+  run_id: string;
+  path: string;
+  change_type: RunFileChange['changeType'];
+}
+
+interface MemoryRow {
+  id: string;
+  workspace_id: string;
+  memory_type: MemoryType;
+  status: MemoryStatus;
+  title: string;
+  summary: string;
+  content_path: string;
+  tags_json: string;
+  related_files_json: string;
+  importance: number;
+  confidence: number;
+  created_at: string;
+  updated_at: string;
+  last_accessed_at: string | null;
+}
+
+export interface MemorySearchResult {
+  memory: MemoryRecord;
+  ftsRank: number | null;
+}
+
+interface MemoryCandidateRow {
+  id: string;
+  workspace_id: string;
+  run_id: string;
+  memory_type: MemoryCandidate['type'];
+  title: string;
+  summary: string;
+  content: string;
+  confidence: number;
+  operation: MemoryCandidate['operation'];
+  conflicting_memory_ids_json: string;
+  status: MemoryCandidateStatus;
+  created_at: string;
+  reviewed_at: string | null;
 }
 
 export class SqliteStore implements Store {
@@ -153,11 +254,15 @@ export class SqliteStore implements Store {
   deleteWorkspace(workspaceId: string): void {
     this.database.exec('BEGIN');
     try {
+      this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare('DELETE FROM memory_fts WHERE memory_id IN (SELECT id FROM memories WHERE workspace_id = ?)').run(workspaceId);
+      this.database.prepare('DELETE FROM memories WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare(`
         DELETE FROM execution_events
         WHERE execution_id IN (SELECT id FROM executions WHERE workspace_id = ?)
       `).run(workspaceId);
       this.database.prepare('DELETE FROM executions WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare('DELETE FROM agent_runs WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM messages WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare(`
         DELETE FROM conversation_members
@@ -313,6 +418,7 @@ export class SqliteStore implements Store {
     this.assertConversationWorkspace(conversationId, workspaceId);
     this.database.exec('BEGIN');
     try {
+      this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ? AND conversation_id = ?').run(workspaceId, conversationId);
       this.database.prepare(`
         DELETE FROM execution_events
         WHERE execution_id IN (
@@ -320,6 +426,8 @@ export class SqliteStore implements Store {
         )
       `).run(conversationId, workspaceId);
       this.database.prepare('DELETE FROM executions WHERE conversation_id = ? AND workspace_id = ?')
+        .run(conversationId, workspaceId);
+      this.database.prepare('DELETE FROM agent_runs WHERE conversation_id = ? AND workspace_id = ?')
         .run(conversationId, workspaceId);
       this.database.prepare('DELETE FROM messages WHERE conversation_id = ? AND workspace_id = ?')
         .run(conversationId, workspaceId);
@@ -458,6 +566,13 @@ export class SqliteStore implements Store {
     }));
   }
 
+  getMessage(workspaceId: string, messageId: string): ConversationMessage | undefined {
+    const row = this.database.prepare(`
+      SELECT conversation_id FROM messages WHERE workspace_id = ? AND id = ?
+    `).get(workspaceId, messageId) as { conversation_id: string } | undefined;
+    return row ? this.listMessages(workspaceId, row.conversation_id, 1000).find(message => message.id === messageId) : undefined;
+  }
+
   getAttachment(workspaceId: string, attachmentId: string): StoredConversationAttachment | undefined {
     const row = this.database.prepare(`
       SELECT id, message_id, conversation_id, workspace_id, name, mime_type, size, relative_path
@@ -477,16 +592,119 @@ export class SqliteStore implements Store {
     return rows.map(row => this.toStoredAttachment(row));
   }
 
+  createRun(run: AgentRun): AgentRun {
+    this.assertConversationWorkspace(run.conversationId, run.workspaceId);
+    this.assertMessageWorkspace(run.sourceMessageId, run.conversationId, run.workspaceId);
+    this.database.prepare(`
+      INSERT INTO agent_runs (
+        id, workspace_id, conversation_id, source_message_id, objective, status,
+        result_summary, failure_reason, started_at, completed_at, waiting_question,
+        waiting_execution_id, waiting_agent_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      run.id,
+      run.workspaceId,
+      run.conversationId,
+      run.sourceMessageId,
+      run.objective,
+      run.status,
+      run.resultSummary ?? null,
+      run.failureReason ?? null,
+      run.startedAt ?? null,
+      run.completedAt ?? null,
+      run.waitingQuestion ?? null,
+      run.waitingExecutionId ?? null,
+      run.waitingAgentId ?? null,
+      run.createdAt,
+      run.updatedAt,
+    );
+    return run;
+  }
+
+  updateRun(
+    workspaceId: string,
+    runId: string,
+    update: Partial<Pick<AgentRun, 'status' | 'resultSummary' | 'failureReason' | 'startedAt' | 'completedAt' | 'waitingQuestion' | 'waitingExecutionId' | 'waitingAgentId'>>,
+  ): AgentRun {
+    const current = this.getRun(workspaceId, runId);
+    if (!current) throw new Error('Run not found');
+    const next = {
+      ...current,
+      ...update,
+      updatedAt: new Date().toISOString(),
+    };
+    this.database.prepare(`
+      UPDATE agent_runs
+      SET status = ?, result_summary = ?, failure_reason = ?, started_at = ?, completed_at = ?, updated_at = ?
+        , waiting_question = ?, waiting_execution_id = ?, waiting_agent_id = ?
+      WHERE workspace_id = ? AND id = ?
+    `).run(
+      next.status,
+      next.resultSummary ?? null,
+      next.failureReason ?? null,
+      next.startedAt ?? null,
+      next.completedAt ?? null,
+      next.updatedAt,
+      next.waitingQuestion ?? null,
+      next.waitingExecutionId ?? null,
+      next.waitingAgentId ?? null,
+      workspaceId,
+      runId,
+    );
+    return this.getRun(workspaceId, runId) ?? next;
+  }
+
+  getRun(workspaceId: string, runId: string): AgentRun | undefined {
+    const row = this.database.prepare(`
+      SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
+        result_summary, failure_reason, started_at, completed_at, waiting_question,
+        waiting_execution_id, waiting_agent_id, created_at, updated_at
+      FROM agent_runs
+      WHERE workspace_id = ? AND id = ?
+    `).get(workspaceId, runId) as AgentRunRow | undefined;
+    return row ? this.toRun(row) : undefined;
+  }
+
+  listRuns(workspaceId: string, conversationId: string, limit = 50): AgentRun[] {
+    const rows = this.database.prepare(`
+      SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
+        result_summary, failure_reason, started_at, completed_at, waiting_question,
+        waiting_execution_id, waiting_agent_id, created_at, updated_at
+      FROM agent_runs
+      WHERE workspace_id = ? AND conversation_id = ?
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT ?
+    `).all(workspaceId, conversationId, limit) as AgentRunRow[];
+    return rows.map(row => this.toRun(row));
+  }
+
+  listRunsForRecovery(): AgentRun[] {
+    const rows = this.database.prepare(`
+      SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
+        result_summary, failure_reason, started_at, completed_at, waiting_question,
+        waiting_execution_id, waiting_agent_id, created_at, updated_at
+      FROM agent_runs
+      WHERE status IN ('queued', 'running')
+      ORDER BY updated_at ASC
+    `).all() as AgentRunRow[];
+    return rows.map(row => this.toRun(row));
+  }
+
   createExecution(execution: AgentExecution): AgentExecution {
     this.assertConversationWorkspace(execution.conversationId, execution.workspaceId);
     this.assertMessageWorkspace(execution.sourceMessageId, execution.conversationId, execution.workspaceId);
+    const run = this.getRun(execution.workspaceId, execution.runId);
+    if (!run || run.conversationId !== execution.conversationId) {
+      throw new Error('Execution run does not belong to conversation');
+    }
     this.database.prepare(`
       INSERT INTO executions (
-        id, conversation_id, workspace_id, source_message_id, agent_id, status, mode, error,
+        id, run_id, conversation_id, workspace_id, source_message_id, agent_id, status, mode, error,
         started_at, completed_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       execution.id,
+      execution.runId,
       execution.conversationId,
       execution.workspaceId,
       execution.sourceMessageId,
@@ -525,7 +743,7 @@ export class SqliteStore implements Store {
 
   listExecutions(workspaceId: string, conversationId: string): AgentExecution[] {
     const rows = this.database.prepare(`
-      SELECT id, conversation_id, workspace_id, source_message_id, agent_id, status, mode, error,
+      SELECT id, run_id, conversation_id, workspace_id, source_message_id, agent_id, status, mode, error,
         started_at, completed_at, created_at, updated_at
       FROM executions
       WHERE workspace_id = ? AND conversation_id = ?
@@ -565,6 +783,300 @@ export class SqliteStore implements Store {
       ...(row.content ? { content: row.content } : {}),
       createdAt: row.created_at,
     }));
+  }
+
+  appendAgentEvent(event: AgentEvent): void {
+    this.database.prepare(`
+      INSERT OR IGNORE INTO agent_events (
+        event_id, schema_version, event_type, workspace_id, conversation_id, run_id,
+        execution_id, agent_id, timestamp, payload_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      event.eventId,
+      event.schemaVersion,
+      event.type,
+      event.workspaceId,
+      event.conversationId,
+      event.runId,
+      event.executionId ?? null,
+      event.agentId ?? null,
+      event.timestamp,
+      JSON.stringify(event.payload),
+    );
+  }
+
+  listAgentEvents(workspaceId: string, runId: string): AgentEvent[] {
+    const rows = this.database.prepare(`
+      SELECT event_id, schema_version, event_type, workspace_id, conversation_id, run_id,
+        execution_id, agent_id, timestamp, payload_json
+      FROM agent_events
+      WHERE workspace_id = ? AND run_id = ?
+      ORDER BY timestamp ASC, rowid ASC
+    `).all(workspaceId, runId) as AgentEventRow[];
+    return rows.map(row => ({
+      eventId: row.event_id,
+      schemaVersion: row.schema_version,
+      type: row.event_type,
+      workspaceId: row.workspace_id,
+      conversationId: row.conversation_id,
+      runId: row.run_id,
+      ...(row.execution_id ? { executionId: row.execution_id } : {}),
+      ...(row.agent_id ? { agentId: row.agent_id } : {}),
+      timestamp: row.timestamp,
+      payload: parseJson<Record<string, unknown>>(row.payload_json, {}),
+    }));
+  }
+
+  saveRunCliInvocation(invocation: RunCliInvocation): void {
+    const run = this.database.prepare('SELECT id FROM agent_runs WHERE id = ?').get(invocation.runId) as { id: string } | undefined;
+    const execution = this.database.prepare('SELECT id FROM executions WHERE id = ? AND run_id = ? AND agent_id = ?')
+      .get(invocation.executionId, invocation.runId, invocation.agentId) as { id: string } | undefined;
+    if (!run || !execution) throw new Error('Run not found for CLI invocation');
+    this.database.prepare(`
+      INSERT INTO run_cli_invocations (
+        id, run_id, execution_id, agent_id, cli_kind, command_label, model, thinking_effort,
+        exit_code, duration_ms, started_at, completed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ON CONFLICT(id) DO UPDATE SET
+        exit_code = excluded.exit_code,
+        duration_ms = excluded.duration_ms,
+        completed_at = excluded.completed_at,
+        model = excluded.model,
+        thinking_effort = excluded.thinking_effort
+    `).run(
+      invocation.id, invocation.runId, invocation.executionId, invocation.agentId, invocation.cliKind, invocation.commandLabel,
+      invocation.model ?? null, invocation.thinkingEffort ?? null, invocation.exitCode, invocation.durationMs,
+      invocation.startedAt, invocation.completedAt,
+    );
+  }
+
+  listRunCliInvocations(workspaceId: string, runId: string): RunCliInvocation[] {
+    const rows = this.database.prepare(`
+      SELECT invocations.id, invocations.run_id, invocations.execution_id, invocations.agent_id,
+        invocations.cli_kind, invocations.command_label, invocations.model, invocations.thinking_effort,
+        invocations.exit_code, invocations.duration_ms, invocations.started_at, invocations.completed_at
+      FROM run_cli_invocations AS invocations
+      INNER JOIN agent_runs ON agent_runs.id = invocations.run_id
+      WHERE agent_runs.workspace_id = ? AND invocations.run_id = ?
+      ORDER BY invocations.started_at ASC
+    `).all(workspaceId, runId) as RunCliInvocationRow[];
+    return rows.map(row => ({
+      id: row.id, runId: row.run_id, executionId: row.execution_id, agentId: row.agent_id,
+      cliKind: row.cli_kind, commandLabel: row.command_label,
+      ...(row.model ? { model: row.model } : {}),
+      ...(row.thinking_effort ? { thinkingEffort: normalizeThinkingEffort(row.thinking_effort) } : {}),
+      exitCode: row.exit_code, durationMs: row.duration_ms, startedAt: row.started_at, completedAt: row.completed_at,
+    }));
+  }
+
+  createRunFileChange(change: RunFileChange): void {
+    const run = this.database.prepare('SELECT id FROM agent_runs WHERE id = ?').get(change.runId) as { id: string } | undefined;
+    if (!run) throw new Error('Run not found for file change');
+    this.database.prepare(`
+      INSERT OR IGNORE INTO run_file_changes (run_id, path, change_type)
+      VALUES (?, ?, ?)
+    `).run(change.runId, change.path, change.changeType);
+  }
+
+  listRunFileChanges(workspaceId: string, runId: string): RunFileChange[] {
+    const rows = this.database.prepare(`
+      SELECT changes.run_id, changes.path, changes.change_type
+      FROM run_file_changes AS changes
+      INNER JOIN agent_runs ON agent_runs.id = changes.run_id
+      WHERE agent_runs.workspace_id = ? AND changes.run_id = ?
+      ORDER BY changes.path ASC
+    `).all(workspaceId, runId) as RunFileChangeRow[];
+    return rows.map(row => ({ runId: row.run_id, path: row.path, changeType: row.change_type }));
+  }
+
+  createMemory(memory: MemoryRecord, content: string): MemoryRecord {
+    this.assertWorkspaceExists(memory.workspaceId);
+    this.database.prepare(`
+      INSERT INTO memories (
+        id, workspace_id, memory_type, status, title, summary, content_path, tags_json,
+        related_files_json, importance, confidence, created_at, updated_at, last_accessed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      memory.id, memory.workspaceId, memory.type, memory.status, memory.title, memory.summary, memory.contentPath,
+      JSON.stringify(memory.tags), JSON.stringify(memory.relatedFiles), memory.importance, memory.confidence,
+      memory.createdAt, memory.updatedAt, memory.lastAccessedAt ?? null,
+    );
+    this.replaceMemorySources(memory);
+    this.replaceMemoryFts(memory, content);
+    return memory;
+  }
+
+  deleteMemory(workspaceId: string, memoryId: string): void {
+    this.database.prepare('DELETE FROM memory_fts WHERE memory_id = ?').run(memoryId);
+    this.database.prepare('DELETE FROM memories WHERE workspace_id = ? AND id = ?').run(workspaceId, memoryId);
+  }
+
+  updateMemory(workspaceId: string, memoryId: string, update: Partial<Pick<MemoryRecord, 'type' | 'status' | 'title' | 'summary' | 'contentPath' | 'tags' | 'relatedFiles' | 'sourceRunIds' | 'importance' | 'confidence' | 'lastAccessedAt'>>, content?: string): MemoryRecord {
+    const current = this.getMemory(workspaceId, memoryId);
+    if (!current) throw new Error('Memory not found');
+    const next = { ...current, ...update, updatedAt: new Date().toISOString() };
+    this.database.prepare(`
+      UPDATE memories
+      SET memory_type = ?, status = ?, title = ?, summary = ?, content_path = ?, tags_json = ?,
+        related_files_json = ?, importance = ?, confidence = ?, updated_at = ?, last_accessed_at = ?
+      WHERE workspace_id = ? AND id = ?
+    `).run(
+      next.type, next.status, next.title, next.summary, next.contentPath, JSON.stringify(next.tags), JSON.stringify(next.relatedFiles),
+      next.importance, next.confidence, next.updatedAt, next.lastAccessedAt ?? null, workspaceId, memoryId,
+    );
+    this.replaceMemorySources(next);
+    if (content !== undefined) this.replaceMemoryFts(next, content);
+    return next;
+  }
+
+  getMemory(workspaceId: string, memoryId: string): MemoryRecord | undefined {
+    const row = this.database.prepare(`
+      SELECT id, workspace_id, memory_type, status, title, summary, content_path, tags_json,
+        related_files_json, importance, confidence, created_at, updated_at, last_accessed_at
+      FROM memories WHERE workspace_id = ? AND id = ?
+    `).get(workspaceId, memoryId) as MemoryRow | undefined;
+    if (!row) return undefined;
+    const sourceRows = this.database.prepare('SELECT run_id FROM memory_sources WHERE memory_id = ? ORDER BY run_id').all(memoryId) as Array<{ run_id: string }>;
+    return this.toMemory(row, sourceRows.map(source => source.run_id));
+  }
+
+  listMemories(workspaceId: string, filter: { query?: string; type?: MemoryType; status?: MemoryStatus | 'all'; limit?: number } = {}): MemoryRecord[] {
+    const status = filter.status ?? 'active';
+    const limit = Math.min(100, Math.max(1, filter.limit ?? 50));
+    const params: unknown[] = [workspaceId];
+    const conditions = ['memories.workspace_id = ?'];
+    if (status !== 'all') { conditions.push('memories.status = ?'); params.push(status); }
+    if (filter.type) { conditions.push('memories.memory_type = ?'); params.push(filter.type); }
+    const query = filter.query?.trim();
+    let sql = `
+      SELECT memories.id, memories.workspace_id, memories.memory_type, memories.status, memories.title, memories.summary,
+        memories.content_path, memories.tags_json, memories.related_files_json, memories.importance, memories.confidence,
+        memories.created_at, memories.updated_at, memories.last_accessed_at
+      FROM memories
+      WHERE ${conditions.join(' AND ')}
+    `;
+    if (query) {
+      sql += ' AND (memories.title LIKE ? OR memories.summary LIKE ? OR memories.id IN (SELECT memory_id FROM memory_fts WHERE memory_fts MATCH ?) OR memories.id IN (SELECT memory_id FROM memory_fts WHERE content LIKE ? OR tags LIKE ?))';
+      const likeQuery = `%${query}%`;
+      params.push(likeQuery, likeQuery, toFtsQuery(query), likeQuery, likeQuery);
+    }
+    sql += ' ORDER BY memories.updated_at DESC LIMIT ?';
+    params.push(limit);
+    const rows = this.database.prepare(sql).all(...params) as MemoryRow[];
+    return rows.map(row => {
+      const sourceRows = this.database.prepare('SELECT run_id FROM memory_sources WHERE memory_id = ? ORDER BY run_id').all(row.id) as Array<{ run_id: string }>;
+      return this.toMemory(row, sourceRows.map(source => source.run_id));
+    });
+  }
+
+  searchMemories(workspaceId: string, filter: { query?: string; type?: MemoryType; status?: MemoryStatus | 'all'; limit?: number } = {}): MemorySearchResult[] {
+    const query = filter.query?.trim();
+    const records = this.listMemories(workspaceId, filter);
+    if (!query || records.length === 0) return records.map(memory => ({ memory, ftsRank: null }));
+
+    let rankedRows: Array<{ memory_id: string; fts_rank: number }>;
+    try {
+      rankedRows = this.database.prepare(`
+        SELECT memory_fts.memory_id, bm25(memory_fts) AS fts_rank
+        FROM memory_fts
+        INNER JOIN memories ON memories.id = memory_fts.memory_id
+        WHERE memories.workspace_id = ?
+          AND (? = 'all' OR memories.status = ?)
+          AND (? IS NULL OR memories.memory_type = ?)
+          AND memory_fts MATCH ?
+        ORDER BY fts_rank ASC
+      `).all(
+        workspaceId,
+        filter.status ?? 'active', filter.status ?? 'active',
+        filter.type ?? null, filter.type ?? null,
+        toFtsQuery(query),
+      ) as Array<{ memory_id: string; fts_rank: number }>;
+    } catch {
+      rankedRows = [];
+    }
+    const ranks = new Map(rankedRows.map(row => [row.memory_id, row.fts_rank]));
+    return records.map(memory => ({ memory, ftsRank: ranks.get(memory.id) ?? null }));
+  }
+
+  private replaceMemorySources(memory: MemoryRecord): void {
+    this.database.prepare('DELETE FROM memory_sources WHERE memory_id = ?').run(memory.id);
+    const insert = this.database.prepare('INSERT OR IGNORE INTO memory_sources (memory_id, run_id) VALUES (?, ?)');
+    for (const runId of memory.sourceRunIds) insert.run(memory.id, runId);
+  }
+
+  private replaceMemoryFts(memory: MemoryRecord, content: string): void {
+    this.database.prepare('DELETE FROM memory_fts WHERE memory_id = ?').run(memory.id);
+    this.database.prepare('INSERT INTO memory_fts (memory_id, title, summary, content, tags) VALUES (?, ?, ?, ?, ?)')
+      .run(memory.id, memory.title, memory.summary, content, memory.tags.join(' '));
+  }
+
+  createMemoryUsage(usage: MemoryUsage): void {
+    this.database.prepare(`
+      INSERT OR IGNORE INTO run_memory_usage (run_id, memory_id, rank, injected_characters, used_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(usage.runId, usage.memoryId, usage.rank, usage.injectedCharacters, usage.usedAt);
+  }
+
+  listMemoryUsage(workspaceId: string, runId: string): MemoryUsage[] {
+    const rows = this.database.prepare(`
+      SELECT usage.run_id, usage.memory_id, usage.rank, usage.injected_characters, usage.used_at
+      FROM run_memory_usage AS usage
+      INNER JOIN agent_runs ON agent_runs.id = usage.run_id
+      WHERE agent_runs.workspace_id = ? AND usage.run_id = ?
+      ORDER BY usage.rank ASC
+    `).all(workspaceId, runId) as Array<{ run_id: string; memory_id: string; rank: number; injected_characters: number; used_at: string }>;
+    return rows.map(row => ({ runId: row.run_id, memoryId: row.memory_id, rank: row.rank, injectedCharacters: row.injected_characters, usedAt: row.used_at }));
+  }
+
+  createMemoryCandidate(candidate: MemoryCandidate): MemoryCandidate {
+    const run = this.getRun(candidate.workspaceId, candidate.runId);
+    if (!run) throw new Error('Run not found for memory candidate');
+    this.database.prepare(`
+      INSERT INTO memory_candidates (
+        id, workspace_id, run_id, memory_type, title, summary, content, confidence,
+        operation, conflicting_memory_ids_json, status, created_at, reviewed_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      candidate.id, candidate.workspaceId, candidate.runId, candidate.type, candidate.title, candidate.summary,
+      candidate.content, candidate.confidence, candidate.operation, JSON.stringify(candidate.conflictingMemoryIds),
+      candidate.status, candidate.createdAt, candidate.reviewedAt ?? null,
+    );
+    return candidate;
+  }
+
+  getMemoryCandidate(workspaceId: string, candidateId: string): MemoryCandidate | undefined {
+    const row = this.database.prepare(`
+      SELECT id, workspace_id, run_id, memory_type, title, summary, content, confidence,
+        operation, conflicting_memory_ids_json, status, created_at, reviewed_at
+      FROM memory_candidates WHERE workspace_id = ? AND id = ?
+    `).get(workspaceId, candidateId) as MemoryCandidateRow | undefined;
+    return row ? this.toMemoryCandidate(row) : undefined;
+  }
+
+  listMemoryCandidates(workspaceId: string, status: MemoryCandidateStatus | 'all' = 'pending', limit = 100): MemoryCandidate[] {
+    const normalizedLimit = Math.min(100, Math.max(1, limit));
+    const params: unknown[] = [workspaceId];
+    const statusClause = status === 'all' ? '' : ' AND status = ?';
+    if (status !== 'all') params.push(status);
+    params.push(normalizedLimit);
+    const rows = this.database.prepare(`
+      SELECT id, workspace_id, run_id, memory_type, title, summary, content, confidence,
+        operation, conflicting_memory_ids_json, status, created_at, reviewed_at
+      FROM memory_candidates
+      WHERE workspace_id = ?${statusClause}
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(...params) as MemoryCandidateRow[];
+    return rows.map(row => this.toMemoryCandidate(row));
+  }
+
+  updateMemoryCandidateStatus(workspaceId: string, candidateId: string, status: MemoryCandidateStatus, reviewedAt = new Date().toISOString()): MemoryCandidate {
+    const current = this.getMemoryCandidate(workspaceId, candidateId);
+    if (!current) throw new Error('Memory candidate not found');
+    if (current.status !== 'pending') throw new Error('Memory candidate has already been reviewed');
+    this.database.prepare('UPDATE memory_candidates SET status = ?, reviewed_at = ? WHERE workspace_id = ? AND id = ?')
+      .run(status, reviewedAt, workspaceId, candidateId);
+    return this.getMemoryCandidate(workspaceId, candidateId) ?? { ...current, status, reviewedAt };
   }
 
   close(): void {
@@ -651,6 +1163,7 @@ export class SqliteStore implements Store {
 
       CREATE TABLE IF NOT EXISTS executions (
         id TEXT PRIMARY KEY,
+        run_id TEXT,
         conversation_id TEXT NOT NULL,
         workspace_id TEXT NOT NULL,
         source_message_id TEXT NOT NULL,
@@ -665,6 +1178,26 @@ export class SqliteStore implements Store {
         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
         FOREIGN KEY (source_message_id) REFERENCES messages(id) ON DELETE RESTRICT
       );
+
+      CREATE TABLE IF NOT EXISTS agent_runs (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        source_message_id TEXT NOT NULL,
+        objective TEXT NOT NULL,
+        status TEXT NOT NULL,
+        result_summary TEXT,
+        failure_reason TEXT,
+        started_at TEXT,
+        completed_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+        FOREIGN KEY (source_message_id) REFERENCES messages(id) ON DELETE RESTRICT
+      );
+
+      CREATE INDEX IF NOT EXISTS agent_runs_conversation_updated
+        ON agent_runs (conversation_id, updated_at DESC);
 
       CREATE INDEX IF NOT EXISTS executions_conversation_updated
         ON executions (conversation_id, updated_at DESC);
@@ -681,10 +1214,154 @@ export class SqliteStore implements Store {
 
       CREATE INDEX IF NOT EXISTS execution_events_execution_created
       ON execution_events (execution_id, created_at ASC);
+
+      CREATE TABLE IF NOT EXISTS agent_events (
+        event_id TEXT PRIMARY KEY,
+        schema_version INTEGER NOT NULL,
+        event_type TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        conversation_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        execution_id TEXT,
+        agent_id TEXT,
+        timestamp TEXT NOT NULL,
+        payload_json TEXT NOT NULL
+      );
+
+      CREATE INDEX IF NOT EXISTS agent_events_workspace_run_timestamp
+        ON agent_events (workspace_id, run_id, timestamp ASC);
+
+      CREATE TABLE IF NOT EXISTS run_cli_invocations (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL,
+        execution_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        cli_kind TEXT NOT NULL,
+        command_label TEXT NOT NULL,
+        model TEXT,
+        thinking_effort TEXT,
+        exit_code INTEGER,
+        duration_ms INTEGER NOT NULL,
+        started_at TEXT NOT NULL,
+        completed_at TEXT NOT NULL,
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS run_cli_invocations_run_started
+        ON run_cli_invocations (run_id, started_at ASC);
+
+      CREATE TABLE IF NOT EXISTS run_file_changes (
+        run_id TEXT NOT NULL,
+        path TEXT NOT NULL,
+        change_type TEXT NOT NULL,
+        PRIMARY KEY (run_id, path, change_type),
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS memories (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        memory_type TEXT NOT NULL,
+        status TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        content_path TEXT NOT NULL,
+        tags_json TEXT NOT NULL,
+        related_files_json TEXT NOT NULL,
+        importance INTEGER NOT NULL,
+        confidence INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        last_accessed_at TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS memories_workspace_updated
+        ON memories (workspace_id, status, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS memory_sources (
+        memory_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        PRIMARY KEY (memory_id, run_id),
+        FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
+      );
+
+      CREATE VIRTUAL TABLE IF NOT EXISTS memory_fts USING fts5(
+        memory_id UNINDEXED, title, summary, content, tags
+      );
+
+      CREATE TABLE IF NOT EXISTS run_memory_usage (
+        run_id TEXT NOT NULL,
+        memory_id TEXT NOT NULL,
+        rank INTEGER NOT NULL,
+        injected_characters INTEGER NOT NULL,
+        used_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, memory_id),
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+        FOREIGN KEY (memory_id) REFERENCES memories(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS memory_candidates (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        memory_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT NOT NULL,
+        content TEXT NOT NULL,
+        confidence INTEGER NOT NULL,
+        operation TEXT NOT NULL,
+        conflicting_memory_ids_json TEXT NOT NULL,
+        status TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        reviewed_at TEXT,
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS memory_candidates_workspace_status_created
+        ON memory_candidates (workspace_id, status, created_at DESC);
     `);
     this.ensureColumn('agent_profiles', 'thinking_effort', "TEXT NOT NULL DEFAULT 'auto'");
     this.ensureColumn('conversations', 'model', 'TEXT');
     this.ensureColumn('conversations', 'thinking_effort', 'TEXT');
+    this.ensureColumn('executions', 'run_id', 'TEXT');
+    this.ensureColumn('agent_runs', 'waiting_question', 'TEXT');
+    this.ensureColumn('agent_runs', 'waiting_execution_id', 'TEXT');
+    this.ensureColumn('agent_runs', 'waiting_agent_id', 'TEXT');
+    this.migrateLegacyExecutionRuns();
+  }
+
+  private migrateLegacyExecutionRuns(): void {
+    const rows = this.database.prepare(`
+      SELECT id, conversation_id, workspace_id, source_message_id, status, error, created_at, updated_at
+      FROM executions
+      WHERE run_id IS NULL
+      ORDER BY rowid ASC
+    `).all() as Array<Pick<ExecutionRow, 'id' | 'conversation_id' | 'workspace_id' | 'source_message_id' | 'status' | 'error' | 'created_at' | 'updated_at'>>;
+    for (const row of rows) {
+      const runId = `legacy-run-${row.id}`;
+      const message = this.database.prepare('SELECT content FROM messages WHERE id = ?').get(row.source_message_id) as { content: string } | undefined;
+      const status = legacyRunStatus(row.status);
+      this.database.prepare(`
+        INSERT OR IGNORE INTO agent_runs (
+          id, workspace_id, conversation_id, source_message_id, objective, status,
+          result_summary, failure_reason, started_at, completed_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        runId,
+        row.workspace_id,
+        row.conversation_id,
+        row.source_message_id,
+        message?.content || '历史执行记录',
+        status,
+        status === 'completed' ? '历史执行记录' : null,
+        status === 'failed' ? row.error ?? '历史执行失败' : null,
+        status === 'running' ? row.created_at : null,
+        status === 'completed' || status === 'failed' || status === 'cancelled' ? row.updated_at : null,
+        row.created_at,
+        row.updated_at,
+      );
+      this.database.prepare('UPDATE executions SET run_id = ? WHERE id = ? AND run_id IS NULL').run(runId, row.id);
+    }
   }
 
   private migrateLegacyAgentProfiles(): void {
@@ -799,6 +1476,7 @@ export class SqliteStore implements Store {
   private toExecution(row: ExecutionRow): AgentExecution {
     return {
       id: row.id,
+      runId: row.run_id,
       conversationId: row.conversation_id,
       workspaceId: row.workspace_id,
       sourceMessageId: row.source_message_id,
@@ -813,6 +1491,53 @@ export class SqliteStore implements Store {
     };
   }
 
+  private toRun(row: AgentRunRow): AgentRun {
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      conversationId: row.conversation_id,
+      sourceMessageId: row.source_message_id,
+      objective: row.objective,
+      status: row.status,
+      ...(row.result_summary ? { resultSummary: row.result_summary } : {}),
+      ...(row.failure_reason ? { failureReason: row.failure_reason } : {}),
+      ...(row.started_at ? { startedAt: row.started_at } : {}),
+      ...(row.completed_at ? { completedAt: row.completed_at } : {}),
+      ...(row.waiting_question ? { waitingQuestion: row.waiting_question } : {}),
+      ...(row.waiting_execution_id ? { waitingExecutionId: row.waiting_execution_id } : {}),
+      ...(row.waiting_agent_id ? { waitingAgentId: row.waiting_agent_id } : {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private toMemory(row: MemoryRow, sourceRunIds: string[]): MemoryRecord {
+    return {
+      id: row.id, workspaceId: row.workspace_id, type: row.memory_type, status: row.status, title: row.title, summary: row.summary,
+      contentPath: row.content_path, tags: parseJson<string[]>(row.tags_json, []), relatedFiles: parseJson<string[]>(row.related_files_json, []),
+      sourceRunIds, importance: row.importance, confidence: row.confidence, createdAt: row.created_at, updatedAt: row.updated_at,
+      ...(row.last_accessed_at ? { lastAccessedAt: row.last_accessed_at } : {}),
+    };
+  }
+
+  private toMemoryCandidate(row: MemoryCandidateRow): MemoryCandidate {
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      runId: row.run_id,
+      type: row.memory_type,
+      title: row.title,
+      summary: row.summary,
+      content: row.content,
+      confidence: row.confidence,
+      operation: row.operation,
+      conflictingMemoryIds: parseJson<string[]>(row.conflicting_memory_ids_json, []),
+      status: row.status,
+      createdAt: row.created_at,
+      ...(row.reviewed_at ? { reviewedAt: row.reviewed_at } : {}),
+    };
+  }
+
   private ensureColumn(table: string, column: string, definition: string): void {
     const columns = this.database.prepare(`PRAGMA table_info(${table})`).all() as Array<{ name: string }>;
     if (!columns.some(item => item.name === column)) {
@@ -823,6 +1548,14 @@ export class SqliteStore implements Store {
 
 function normalizeThinkingEffort(value: string | null | undefined): ThinkingEffort {
   return value === 'low' || value === 'medium' || value === 'high' ? value : 'auto';
+}
+
+function legacyRunStatus(status: AgentExecution['status']): AgentRun['status'] {
+  if (status === 'completed') return 'completed';
+  if (status === 'failed') return 'failed';
+  if (status === 'cancelled') return 'cancelled';
+  if (status === 'queued') return 'queued';
+  return 'running';
 }
 
 function migrateLegacyKimiAgents(workspaces: Workspace[]): boolean {
@@ -844,6 +1577,10 @@ function parseJson<T>(value: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function toFtsQuery(query: string): string {
+  return query.split(/\s+/).filter(Boolean).map(token => `"${token.replaceAll('"', '""')}"`).join(' AND ');
 }
 
 function defaultRoleTitle(role: AgentProfile['role']): string {

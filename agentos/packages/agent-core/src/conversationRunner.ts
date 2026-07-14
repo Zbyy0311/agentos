@@ -1,9 +1,11 @@
 import type {
+  CliInvocationObservation,
   AgentProfile,
   ConversationMessage,
   ExecutionStatus,
+  RunFileChange,
 } from '@agentos/shared';
-import { CLIExecutor, type ExecuteContext } from './executor.js';
+import { CLIError, CLIExecutor, type ExecuteContext } from './executor.js';
 import { isCodexCli, isOpenCodeCli } from './config.js';
 import type { AgentConfig } from './types.js';
 import type { AgentImageAttachment } from './imageInput.js';
@@ -15,8 +17,9 @@ export interface ConversationExecutionEvent {
 }
 
 export interface ConversationRunResult {
-  status: Extract<ExecutionStatus, 'completed' | 'failed' | 'cancelled'>;
+  status: Extract<ExecutionStatus, 'waiting_user' | 'completed' | 'failed' | 'cancelled'>;
   content: string;
+  waitingQuestion?: string;
   error?: string;
   mode: 'real' | 'mock';
   startedAt: string;
@@ -33,6 +36,9 @@ export interface ConversationAgentRunnerOptions {
   attachments?: AgentImageAttachment[];
   signal?: AbortSignal;
   onEvent?: (event: ConversationExecutionEvent) => void;
+  onInvocationStarted?: (observation: CliInvocationObservation) => void;
+  onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'model' | 'thinkingEffort'>) => void;
+  onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
 }
 
 export class ConversationAgentRunner {
@@ -44,26 +50,39 @@ export class ConversationAgentRunner {
     const prompt = buildConversationPrompt(this.options.agent, this.options.history, this.options.message);
     this.emit('running_cli', '正在调用 Agent CLI');
 
-    let emittedContent = false;
+    let streamedContent = '';
     const context: ExecuteContext = {
       workspaceRoot: this.options.workspaceRoot,
       taskId: this.options.executionId,
       signal: this.options.signal,
+      onInvocationStarted: this.options.onInvocationStarted,
+      onInvocationCompleted: this.options.onInvocationCompleted,
+      onFileChanges: this.options.onFileChanges,
       onChunk: (content) => {
         if (!content) return;
-        emittedContent = true;
-        this.emit('streaming_response', '正在生成回复', content);
+        streamedContent += content;
       },
     };
 
     try {
       const log = await CLIExecutor.execute(toAgentConfig(this.options.agent, this.options.runtimeOverrides, this.options.attachments), prompt, context);
       if (log.exitCode !== 0) {
-        const detail = log.stderr || log.stdout || 'no CLI output';
-        throw new Error(`${this.options.agent.name} CLI failed with exit code ${log.exitCode}: ${detail}`);
+        throw new Error(`${this.options.agent.name} CLI failed with exit code ${log.exitCode}; CLI output omitted`);
       }
-      const content = log.stdout || log.stderr;
-      if (!emittedContent && content) this.emit('streaming_response', '正在生成回复', content);
+      const content = streamedContent || log.stdout || log.stderr;
+      const waiting = parseWaitingUserMarker(content);
+      if (waiting) {
+        this.emit('waiting_user', '等待用户补充信息', waiting.question);
+        return {
+          status: 'waiting_user',
+          content: '',
+          waitingQuestion: waiting.question,
+          mode: log.mode ?? 'real',
+          startedAt,
+          completedAt: new Date().toISOString(),
+        };
+      }
+      if (content) this.emit('streaming_response', '正在生成回复', content);
       this.emit('completed', '执行完成');
       return {
         status: 'completed',
@@ -74,7 +93,9 @@ export class ConversationAgentRunner {
       };
     } catch (error) {
       const cancelled = this.options.signal?.aborted === true;
-      const message = error instanceof Error ? error.message : String(error);
+      const message = error instanceof CLIError
+        ? `${this.options.agent.name} CLI 执行失败${error.exitCode === null ? '' : `（退出码 ${error.exitCode}）`}，诊断输出已省略`
+        : error instanceof Error ? error.message : String(error);
       this.emit(cancelled ? 'cancelled' : 'failed', cancelled ? '执行已取消' : '执行失败', message);
       return {
         status: cancelled ? 'cancelled' : 'failed',
@@ -143,9 +164,25 @@ function buildConversationPrompt(
     agent.systemPrompt,
     '',
     '请依据你的职责和权限完成用户请求。仅输出用户可见的结论、执行进度和必要证据；不要输出私有思维链。',
-    '这是一次单轮 CLI 调用，不要等待进一步确认。',
+    '如果缺少完成任务所必需的用户信息，停止执行并输出唯一的等待标记：<!-- agentos-waiting-user: {"question":"需要用户补充的信息"} -->。不要在普通成功结果中输出该标记。',
     priorMessages ? `## 最近会话\n${priorMessages}` : '',
     '## 当前用户消息',
     message,
   ].filter(Boolean).join('\n');
+}
+
+function parseWaitingUserMarker(content: string): { question: string } | undefined {
+  const match = content.match(/^\s*<!--\s*agentos-waiting-user\s*:\s*(\{[\s\S]*?\})\s*-->\s*$/im);
+  if (!match) return undefined;
+  try {
+    const value: unknown = JSON.parse(match[1]!);
+    const question = value && typeof value === 'object' && typeof (value as { question?: unknown }).question === 'string'
+      ? (value as { question: string }).question.trim()
+      : '';
+    if (!question) throw new Error('Agent waiting question is invalid');
+    return { question };
+  } catch (error) {
+    if (error instanceof Error && error.message === 'Agent waiting question is invalid') throw error;
+    throw new Error('Agent waiting question is invalid');
+  }
 }

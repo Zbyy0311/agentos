@@ -7,7 +7,7 @@ import { createRequire } from 'node:module';
 import { SqliteStore } from './SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 
-const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; close(): void } };
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { get(...parameters: unknown[]): unknown }; close(): void } };
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-sqlite-store-'));
@@ -293,9 +293,13 @@ test('persists execution activity with the conversation it belongs to', () => {
       id: 'message-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', senderType: 'user',
       content: '检查项目', createdAt: '2026-07-12T01:01:00.000Z',
     });
+    activeStore.createRun({
+      id: 'run-a', workspaceId: 'workspace-a', conversationId: 'conversation-a', sourceMessageId: 'message-a',
+      objective: '检查项目', status: 'queued', createdAt: '2026-07-12T01:01:00.000Z', updatedAt: '2026-07-12T01:01:00.000Z',
+    });
     activeStore.createExecution({
       id: 'execution-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', sourceMessageId: 'message-a',
-      agentId: 'codex', status: 'queued', mode: 'mock', error: 'initial error', createdAt: '2026-07-12T01:01:00.000Z', updatedAt: '2026-07-12T01:01:00.000Z',
+      runId: 'run-a', agentId: 'codex', status: 'queued', mode: 'mock', error: 'initial error', createdAt: '2026-07-12T01:01:00.000Z', updatedAt: '2026-07-12T01:01:00.000Z',
     });
     activeStore.appendExecutionEvent({
       id: 'event-a', executionId: 'execution-a', status: 'running_cli', activity: '正在调用 Agent CLI',
@@ -314,6 +318,164 @@ test('persists execution activity with the conversation it belongs to', () => {
     assert.equal(activeStore.listExecutions('workspace-a', 'conversation-a')[0]?.error, 'initial error');
     assert.deepEqual(activeStore.listExecutionEvents('workspace-a', 'execution-a').map(event => event.activity), ['正在调用 Agent CLI']);
     assert.deepEqual(activeStore.listExecutionEvents('workspace-b', 'execution-a'), []);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('persists request-level runs, keeps workspace isolation, and cascades with conversations', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.createConversation({
+      id: 'run-conversation-a', workspaceId: 'workspace-a', type: 'direct', title: 'Run A', agentId: 'codex',
+      createdAt: '2026-07-12T05:00:00.000Z', updatedAt: '2026-07-12T05:00:00.000Z',
+    });
+    store.createMessage({
+      id: 'run-message-a', conversationId: 'run-conversation-a', workspaceId: 'workspace-a', senderType: 'user',
+      content: '运行任务', createdAt: '2026-07-12T05:00:01.000Z',
+    });
+    const run = store.createRun({
+      id: 'run-a', workspaceId: 'workspace-a', conversationId: 'run-conversation-a', sourceMessageId: 'run-message-a',
+      objective: '运行任务', status: 'queued', createdAt: '2026-07-12T05:00:01.000Z', updatedAt: '2026-07-12T05:00:01.000Z',
+    });
+    assert.equal(store.getRun('workspace-b', 'run-a'), undefined);
+    assert.deepEqual(store.listRuns('workspace-a', 'run-conversation-a'), [run]);
+
+    store.updateRun('workspace-a', 'run-a', { status: 'completed', resultSummary: '完成', completedAt: '2026-07-12T05:00:02.000Z' });
+    store.close();
+    store = new SqliteStore(root);
+    assert.equal(store.getRun('workspace-a', 'run-a')?.status, 'completed');
+    assert.equal(store.getRun('workspace-a', 'run-a')?.resultSummary, '完成');
+
+    store.deleteConversation('workspace-a', 'run-conversation-a');
+    assert.equal(store.getRun('workspace-a', 'run-a'), undefined);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('persists waiting-user fields across restart and allows a resumed execution source message', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'waiting-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Waiting', agentId: 'codex', createdAt: '2026-07-12T05:10:00.000Z', updatedAt: '2026-07-12T05:10:00.000Z' });
+    store.createMessage({ id: 'waiting-source', workspaceId: 'workspace-a', conversationId: 'waiting-conversation', senderType: 'user', content: '需要环境信息', createdAt: '2026-07-12T05:10:01.000Z' });
+    store.createRun({
+      id: 'waiting-run', workspaceId: 'workspace-a', conversationId: 'waiting-conversation', sourceMessageId: 'waiting-source',
+      objective: '需要环境信息', status: 'waiting_user', waitingQuestion: '请提供部署环境', waitingExecutionId: 'waiting-execution', waitingAgentId: 'codex',
+      createdAt: '2026-07-12T05:10:01.000Z', updatedAt: '2026-07-12T05:10:02.000Z',
+    });
+    store.close();
+    store = new SqliteStore(root);
+    const persisted = store.getRun('workspace-a', 'waiting-run');
+    assert.equal(persisted?.status, 'waiting_user');
+    assert.equal(persisted?.waitingQuestion, '请提供部署环境');
+    assert.equal(persisted?.waitingExecutionId, 'waiting-execution');
+    assert.equal(persisted?.waitingAgentId, 'codex');
+    assert.deepEqual(store!.listRunsForRecovery(), []);
+
+    store!.createMessage({ id: 'waiting-resume-message', workspaceId: 'workspace-a', conversationId: 'waiting-conversation', senderType: 'user', content: '生产环境', createdAt: '2026-07-12T05:10:03.000Z' });
+    assert.doesNotThrow(() => store!.createExecution({
+      id: 'waiting-resume-execution', runId: 'waiting-run', conversationId: 'waiting-conversation', workspaceId: 'workspace-a', sourceMessageId: 'waiting-resume-message',
+      agentId: 'codex', status: 'queued', mode: 'mock', createdAt: '2026-07-12T05:10:03.000Z', updatedAt: '2026-07-12T05:10:03.000Z',
+    }));
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('migrates legacy executions without reducing historical row counts', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    mkdirSync(join(root, '.agentos'), { recursive: true });
+    const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
+    database.exec(`
+      CREATE TABLE conversations (
+        id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, conversation_type TEXT NOT NULL,
+        title TEXT NOT NULL, agent_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE messages (
+        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
+        sender_type TEXT NOT NULL, sender_agent_id TEXT, content TEXT NOT NULL, created_at TEXT NOT NULL
+      );
+      CREATE TABLE executions (
+        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
+        source_message_id TEXT NOT NULL, agent_id TEXT NOT NULL, status TEXT NOT NULL,
+        mode TEXT NOT NULL, error TEXT, started_at TEXT, completed_at TEXT,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+      );
+      CREATE TABLE execution_events (
+        id TEXT PRIMARY KEY, execution_id TEXT NOT NULL, status TEXT NOT NULL,
+        activity TEXT NOT NULL, content TEXT, created_at TEXT NOT NULL
+      );
+      INSERT INTO conversations VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z');
+      INSERT INTO messages VALUES ('legacy-message', 'legacy-conversation', 'workspace-a', 'user', NULL, '历史任务', '2026-07-12T06:00:01.000Z');
+      INSERT INTO executions VALUES ('legacy-execution', 'legacy-conversation', 'workspace-a', 'legacy-message', 'codex', 'completed', 'mock', NULL, NULL, '2026-07-12T06:00:02.000Z', '2026-07-12T06:00:01.000Z', '2026-07-12T06:00:02.000Z');
+      INSERT INTO execution_events VALUES ('legacy-event', 'legacy-execution', 'completed', '历史完成', NULL, '2026-07-12T06:00:02.000Z');
+    `);
+    const before = { workspaces: 2, agents: 1, conversations: 1, messages: 1, executions: 1, executionEvents: 1 };
+    database.close();
+
+    store = new SqliteStore(root);
+    const execution = store.listExecutions('workspace-a', 'legacy-conversation')[0];
+    assert.equal(execution?.runId, 'legacy-run-legacy-execution');
+    assert.equal(store.getRun('workspace-a', 'legacy-run-legacy-execution')?.objective, '历史任务');
+    const reopened = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
+    const count = (table: string) => Number((reopened.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count);
+    assert.ok(store.loadWorkspaces().length >= before.workspaces);
+    assert.ok(store.listAgentProfiles('workspace-a').length >= before.agents);
+    assert.ok(count('conversations') >= before.conversations);
+    assert.ok(count('messages') >= before.messages);
+    assert.ok(count('executions') >= before.executions);
+    assert.ok(count('execution_events') >= before.executionEvents);
+    reopened.close();
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('persists unified agent events and isolates them by workspace and run', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'event-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Events', agentId: 'codex', createdAt: '2026-07-12T07:00:00.000Z', updatedAt: '2026-07-12T07:00:00.000Z' });
+    store.createMessage({ id: 'event-message', conversationId: 'event-conversation', workspaceId: 'workspace-a', senderType: 'user', content: '事件', createdAt: '2026-07-12T07:00:01.000Z' });
+    store.createRun({ id: 'event-run', workspaceId: 'workspace-a', conversationId: 'event-conversation', sourceMessageId: 'event-message', objective: '事件', status: 'queued', createdAt: '2026-07-12T07:00:01.000Z', updatedAt: '2026-07-12T07:00:01.000Z' });
+    store.appendAgentEvent({ eventId: 'event-1', schemaVersion: 1, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'event-conversation', runId: 'event-run', timestamp: '2026-07-12T07:00:01.000Z', payload: { objective: '事件' } });
+    store.appendAgentEvent({ eventId: 'event-1', schemaVersion: 1, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'event-conversation', runId: 'event-run', timestamp: '2026-07-12T07:00:01.000Z', payload: { objective: '重复事件' } });
+    store.close();
+    store = new SqliteStore(root);
+    assert.deepEqual(store.listAgentEvents('workspace-a', 'event-run').map(event => event.payload), [{ objective: '事件' }]);
+    assert.deepEqual(store.listAgentEvents('workspace-b', 'event-run'), []);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('persists sanitized CLI invocation and deduplicated file evidence', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'evidence-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Evidence', agentId: 'codex', createdAt: '2026-07-12T07:10:00.000Z', updatedAt: '2026-07-12T07:10:00.000Z' });
+    store.createMessage({ id: 'evidence-message', conversationId: 'evidence-conversation', workspaceId: 'workspace-a', senderType: 'user', content: '证据', createdAt: '2026-07-12T07:10:01.000Z' });
+    store.createRun({ id: 'evidence-run', workspaceId: 'workspace-a', conversationId: 'evidence-conversation', sourceMessageId: 'evidence-message', objective: '证据', status: 'running', createdAt: '2026-07-12T07:10:01.000Z', updatedAt: '2026-07-12T07:10:01.000Z' });
+    store.createExecution({ id: 'evidence-execution', runId: 'evidence-run', conversationId: 'evidence-conversation', workspaceId: 'workspace-a', sourceMessageId: 'evidence-message', agentId: 'codex', status: 'running_cli', mode: 'mock', createdAt: '2026-07-12T07:10:01.000Z', updatedAt: '2026-07-12T07:10:01.000Z' });
+    store.saveRunCliInvocation({ id: 'invocation-a', runId: 'evidence-run', executionId: 'evidence-execution', agentId: 'codex', cliKind: 'codex', commandLabel: 'codex exec', model: 'gpt-5.5', thinkingEffort: 'medium', exitCode: 0, durationMs: 42, startedAt: '2026-07-12T07:10:02.000Z', completedAt: '2026-07-12T07:10:02.042Z' });
+    store.createRunFileChange({ runId: 'evidence-run', path: 'src/index.ts', changeType: 'modified' });
+    store.createRunFileChange({ runId: 'evidence-run', path: 'src/index.ts', changeType: 'modified' });
+    assert.equal(store.listRunCliInvocations('workspace-a', 'evidence-run')[0]?.commandLabel, 'codex exec');
+    assert.deepEqual(store.listRunFileChanges('workspace-a', 'evidence-run'), [{ runId: 'evidence-run', path: 'src/index.ts', changeType: 'modified' }]);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });
@@ -372,9 +534,13 @@ test('deletes one conversation and all dependent records without affecting anoth
       id: 'message-to-delete', conversationId: 'group-to-delete', workspaceId: 'workspace-a', senderType: 'user',
       content: 'Delete this message', createdAt: '2026-07-12T04:02:00.000Z',
     });
+    store.createRun({
+      id: 'run-to-delete', workspaceId: 'workspace-a', conversationId: 'group-to-delete', sourceMessageId: 'message-to-delete',
+      objective: 'Delete this message', status: 'completed', createdAt: '2026-07-12T04:02:00.000Z', updatedAt: '2026-07-12T04:02:00.000Z',
+    });
     store.createExecution({
       id: 'execution-to-delete', conversationId: 'group-to-delete', workspaceId: 'workspace-a', sourceMessageId: 'message-to-delete',
-      agentId: 'codex', status: 'completed', mode: 'mock', createdAt: '2026-07-12T04:02:00.000Z', updatedAt: '2026-07-12T04:02:00.000Z',
+      runId: 'run-to-delete', agentId: 'codex', status: 'completed', mode: 'mock', createdAt: '2026-07-12T04:02:00.000Z', updatedAt: '2026-07-12T04:02:00.000Z',
     });
     store.appendExecutionEvent({
       id: 'event-to-delete', executionId: 'execution-to-delete', status: 'completed', activity: 'Done',
@@ -408,9 +574,13 @@ test('removes all SQLite workspace data when the workspace is removed', () => {
       id: 'message-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', senderType: 'user',
       content: '检查项目', createdAt: '2026-07-12T03:00:01.000Z',
     });
+    store.createRun({
+      id: 'run-a', workspaceId: 'workspace-a', conversationId: 'conversation-a', sourceMessageId: 'message-a',
+      objective: '检查项目', status: 'queued', createdAt: '2026-07-12T03:00:01.000Z', updatedAt: '2026-07-12T03:00:01.000Z',
+    });
     store.createExecution({
       id: 'execution-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', sourceMessageId: 'message-a',
-      agentId: 'codex', status: 'queued', mode: 'mock', createdAt: '2026-07-12T03:00:01.000Z', updatedAt: '2026-07-12T03:00:01.000Z',
+      runId: 'run-a', agentId: 'codex', status: 'queued', mode: 'mock', createdAt: '2026-07-12T03:00:01.000Z', updatedAt: '2026-07-12T03:00:01.000Z',
     });
     store.appendExecutionEvent({
       id: 'event-a', executionId: 'execution-a', status: 'running_cli', activity: '正在执行',

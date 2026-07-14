@@ -7,15 +7,17 @@ import { ConversationService } from '../services/ConversationService.js';
 import { cleanupConversationAttachments, getAttachmentAbsolutePath, validateConversationAttachmentInputs, type ConversationAttachmentInput } from '../services/ConversationAttachmentService.js';
 import { CliModelDiscovery, type ModelDiscoveryService } from '../services/CliModelDiscovery.js';
 import { SqliteStore } from '../store/SqliteStore.js';
+import { EventBus } from '../events/EventBus.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
 
 export function createConversationRoutes(
   store: SqliteStore,
   workspaceManager: WorkspaceManager,
   modelDiscovery: ModelDiscoveryService = new CliModelDiscovery(),
+  eventBus?: EventBus,
 ): Router {
   const router = Router({ mergeParams: true });
-  const service = new ConversationService(store);
+  const service = new ConversationService(store, eventBus);
 
   router.get('/agents', async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -284,6 +286,7 @@ export function createConversationRoutes(
           content,
           attachments,
           runtimeOverrides,
+          memoryEnabled: workspace.memoryEnabled,
           signal: abortController.signal,
           onExecutionEvent: event => send('execution', event),
         });
@@ -296,12 +299,55 @@ export function createConversationRoutes(
           conversationId: conversation.id,
           content,
           attachments,
+          memoryEnabled: workspace.memoryEnabled,
           signal: abortController.signal,
           onExecutionEvent: event => send('execution', event),
           onAgentMessage: message => send('message', { message }),
         });
         send('done', { executions: result.executions });
       }
+    } catch (error) {
+      send('error', { error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      finished = true;
+      stopHeartbeat();
+      res.end();
+    }
+  });
+
+  router.post('/conversations/:conversationId/runs/:runId/resume/stream', async (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    if (conversation.type === 'group') return res.status(409).json({ error: '群聊暂不支持等待用户恢复' });
+    const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
+    if (!content) return res.status(400).json({ error: '补充信息不能为空' });
+    const run = store.getRun(workspace.id, req.params.runId);
+    if (!run || run.conversationId !== conversation.id) return res.status(404).json({ error: 'Run not found' });
+    if (run.status !== 'waiting_user') return res.status(409).json({ error: 'Run is not waiting for user input' });
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = createSseWriter(res);
+    const stopHeartbeat = startSseHeartbeat(res);
+    const abortController = new AbortController();
+    let finished = false;
+    res.on('close', () => {
+      if (!finished) abortController.abort();
+    });
+    try {
+      const result = await service.resumeDirectMessage({
+        workspaceId: workspace.id, workspaceRoot: workspace.rootPath, conversationId: conversation.id,
+        runId: run.id, content, memoryEnabled: workspace.memoryEnabled, signal: abortController.signal,
+        onExecutionEvent: event => send('execution', event),
+      });
+      send('message', { message: result.responseMessage });
+      send('done', { execution: result.execution });
     } catch (error) {
       send('error', { error: error instanceof Error ? error.message : String(error) });
     } finally {
