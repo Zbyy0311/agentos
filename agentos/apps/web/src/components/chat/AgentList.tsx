@@ -15,9 +15,10 @@ interface AgentListProps {
   onCreateGroup(): void;
   onContextMenu(conversationId: string, event: MouseEvent<HTMLButtonElement>): void;
   onBackToWorkspace(): void;
+  onOpenMemories(): void;
 }
 
-export function AgentList({ agents, selectedAgentId, activeStatus, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace }: AgentListProps) {
+export function AgentList({ agents, selectedAgentId, activeStatus, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenMemories }: AgentListProps) {
   return <aside className="workspace-sidebar ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4">
     <div className="mb-6 px-2">
       <div className="flex items-center justify-between gap-2">
@@ -52,5 +53,6 @@ export function AgentList({ agents, selectedAgentId, activeStatus, groups, selec
         {groups.length === 0 && <div className="workspace-copy rounded-lg px-3 py-2 text-xs leading-5 ui-dim">点击 + 创建协作群聊</div>}
       </div>
     </div>
+    <button type="button" onClick={onOpenMemories} className="mt-auto rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost">📚 <span className="ml-1">项目知识</span></button>
   </aside>;
 }

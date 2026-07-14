@@ -21,6 +21,7 @@ interface ChatPanelProps {
   streamingContent: string;
   activeEvents: VisibleExecutionEvent[];
   activeStatus?: ExecutionStatus;
+  waitingQuestion?: string;
   error: string;
   sending: boolean;
   modelOptions: AgentModelOption[];
@@ -43,6 +44,7 @@ const statusLabels: Partial<Record<ExecutionStatus, string>> = {
   preparing_context: '正在准备会话上下文',
   running_cli: '正在调用 Agent CLI',
   streaming_response: '正在生成回复',
+  waiting_user: '等待你的补充信息',
 };
 
 function MessageContent({ content }: { content: string }) {
@@ -95,6 +97,7 @@ const executionLabels: Partial<Record<ExecutionStatus, string>> = {
   preparing_context: '准备上下文',
   running_cli: '调用 Agent CLI',
   streaming_response: '生成回复',
+  waiting_user: '等待用户补充',
   completed: '执行完成',
   failed: '执行失败',
   cancelled: '执行已取消',
@@ -142,7 +145,7 @@ function ThinkingProcess({ events, sending }: { events: VisibleExecutionEvent[];
   );
 }
 
-export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeStatus, error, sending, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onRename }: ChatPanelProps) {
+export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeStatus, waitingQuestion, error, sending, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onRename }: ChatPanelProps) {
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streamingContent, activeEvents]);
 
@@ -167,12 +170,13 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
         <ThinkingProcess events={activeEvents} sending={sending} />
         {streamingContent && <div className="flex gap-3"><div className="ui-message-agent max-w-[86%] rounded-2xl border px-4 py-3 text-sm leading-6 sm:max-w-[78%]"><MessageContent content={streamingContent} /><span className="ml-1 inline-block h-4 w-1 animate-pulse bg-[var(--app-accent)] align-[-2px]" /></div></div>}
         {status && <div className="ui-status rounded-xl border px-4 py-3 text-sm">{status}</div>}
+        {activeStatus === 'waiting_user' && waitingQuestion && <div className="rounded-xl border border-[var(--app-accent)]/40 bg-[var(--app-accent-soft)] px-4 py-3 text-sm ui-text-soft"><div className="mb-1 text-xs font-medium ui-accent">Agent 需要补充信息</div>{waitingQuestion}</div>}
         {error && <div className="ui-error rounded-xl border px-4 py-3 text-sm">{error}</div>}
         <div ref={endRef} />
       </div></div>
 
       <div className="border-t ui-border bg-[color:var(--app-bg)]/95 px-4 py-4 sm:px-6"><div className="mx-auto max-w-3xl rounded-2xl border ui-border bg-[var(--app-surface-raised)] p-3 transition focus-within:border-[var(--app-accent)]" onPaste={event => { const imageFiles = Array.from(event.clipboardData.items).filter(isImageClipboardItem).map(item => item.getAsFile()).filter((file): file is File => Boolean(file)); if (imageFiles.length > 0) { event.preventDefault(); onFiles(imageFiles); } }}>
-        <textarea aria-label="消息输入框" value={draft} onChange={event => onDraftChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} disabled={sending} placeholder={target.kind === 'group' ? `向群聊“${target.label}”发送消息…` : `向 ${target.label} 发送消息…`} className="h-20 w-full resize-none bg-transparent px-1 text-sm leading-6 ui-text outline-none placeholder:ui-dim disabled:cursor-not-allowed" />
+        <textarea aria-label="消息输入框" value={draft} onChange={event => onDraftChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} disabled={sending} placeholder={activeStatus === 'waiting_user' ? '补充信息…' : target.kind === 'group' ? `向群聊“${target.label}”发送消息…` : `向 ${target.label} 发送消息…`} className="h-20 w-full resize-none bg-transparent px-1 text-sm leading-6 ui-text outline-none placeholder:ui-dim disabled:cursor-not-allowed" />
         {attachmentError && <div role="alert" className="ui-error mt-2 rounded-lg border px-2.5 py-1.5 text-xs">{attachmentError}</div>}
         <div className="mt-2 flex items-center justify-between gap-3"><ImageAttachments drafts={attachments} disabled={sending} onFiles={onFiles} onRemove={onRemoveAttachment} /><span className="hidden text-xs ui-dim sm:inline">Enter 发送 · Shift + Enter 换行</span><div className="ml-auto flex min-w-0 items-center gap-2"><ComposerControls isGroup={isGroup} modelOptions={modelOptions} model={composerModel} thinkingEffort={composerThinkingEffort} thinkingEfforts={composerThinkingEfforts} modelSource={modelSource} disabled={sending} onModelChange={onComposerModelChange} onThinkingEffortChange={onComposerThinkingEffortChange} /><button type="button" onClick={onSend} disabled={sending || (!draft.trim() && attachments.length === 0)} aria-label="发送消息" className="ui-button-primary grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg disabled:cursor-not-allowed">↑</button></div></div>
       </div></div>
