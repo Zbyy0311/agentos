@@ -82,3 +82,7 @@
 - 重启恢复：通过；`queued/running` 被标记为失败，`waiting_user` 保持等待。
 
 本次脚本总退出码仍为 1，原因仅为真实 Kimi 单聊和依赖该成员的群聊 gate 未通过；不能将本次结果标记为全部完成。
+
+## 浏览器 1.4 冒烟复验（2026-07-14）
+
+在 `http://localhost:3001/workspace/d7994c0c` 创建 Codex 单聊并发送 `AGENTOS_UI_SMOKE_OK`，确认公开回复、执行完成时间线和会话标题可见；刷新后消息、会话和完成状态仍然存在，浏览器 error/warn 日志为空。该证据支持计划项 1.4，未改变真实 Kimi/群聊 release gate 的未通过结论。

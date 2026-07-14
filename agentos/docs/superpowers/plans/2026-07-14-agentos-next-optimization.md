@@ -92,7 +92,7 @@ pnpm -r run build
 
 使用 `Get-Content -Encoding utf8` 检查 README、V2 文档、`ConversationService.ts`、`conversationRunner.ts` 和 `ExecutionInspector.tsx`。只有文件字节实际损坏时才修复，不能根据终端代码页显示异常盲目批量替换。
 
-- [ ] **1.4 完成真实 UI 冒烟验收**
+- [x] **1.4 完成真实 UI 冒烟验收**
 
 使用真实浏览器完成：打开 Workspace、创建单聊、发送消息、查看执行时间线、刷新页面、确认消息和执行历史仍在。结果写入基线文档。
 

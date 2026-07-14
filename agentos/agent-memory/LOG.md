@@ -213,3 +213,9 @@
 - 2026-07-14 隔离真实 E2E run 4：使用 `C:\tmp\agentos-e2e-real-isolated-4`、端口 3200、临时 SQLite 和临时 Git Workspace。Codex 单聊、OpenCode 单聊、真实记忆注入、无隐藏标记候选生成/接受/拒绝、失败、取消和 waiting_user resume 均通过；确定性生命周期与重启恢复通过。Kimi 单聊因当前计费周期配额耗尽失败，三 Agent 群聊随之失败；脚本总退出码 1，真实外部 Agent gate 继续未通过。
 - 2026-07-14 续验修复：为混合中文/ASCII 任务增加记忆检索回归测试并修正 tokenizer；为真实 waiting_user 验收补充明确缺失字段和 resume 范围。阶段提交 `e8b3987 test: harden real memory and waiting-user E2E`。
 - 2026-07-14 验收生命周期修复：Next 生产构建改用独立 `AGENTOS_NEXT_TSCONFIG_PATH` 临时配置，不再改写主 `apps/web/tsconfig.json`；在 3001 保持运行时完整验收通过，主 tsconfig SHA-256 不变，3001 根路径和 Workspace 路径均 HTTP 200。阶段提交 `76b4600 fix: isolate acceptance TypeScript configuration`。
+| 2026-07-14T13:29:00.509Z | Codex | codex_manager | 35793aa5-d5e4-4588-83cd-63b1b286d523 | real | OK |
+
+## 2026-07-14 - AgentOS 浏览器 1.4 冒烟复验
+
+- 在 `http://localhost:3001/workspace/d7994c0c` 创建 Codex 单聊，发送 `AGENTOS_UI_SMOKE_OK`，确认公开回复、执行完成时间线和会话标题；刷新后消息、会话和完成状态仍在，浏览器 error/warn 日志为空。计划项 1.4 已据此勾选。
+- 真实 Kimi 单聊当前计费周期返回 HTTP 403，依赖 Kimi 的三 Agent 群聊 gate 继续保持未通过。
