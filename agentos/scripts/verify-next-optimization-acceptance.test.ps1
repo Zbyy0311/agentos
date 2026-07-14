@@ -8,6 +8,8 @@ foreach ($required in @(
   '3101',
   'AGENTOS_PROJECT_ROOT',
   'AGENTOS_NEXT_DIST_DIR',
+  'AGENTOS_NEXT_TSCONFIG_PATH',
+  'tsconfig.acceptance-',
   'Get-NetTCPConnection',
   'next start',
   'try {',
@@ -19,8 +21,8 @@ foreach ($required in @(
 }
 
 $nextConfig = Get-Content -Raw -LiteralPath (Join-Path $root 'apps/web/next.config.js')
-if ($nextConfig -notmatch 'AGENTOS_NEXT_DIST_DIR') {
-  throw 'Next config must support an isolated production dist directory.'
+if ($nextConfig -notmatch 'AGENTOS_NEXT_DIST_DIR' -or $nextConfig -notmatch 'tsconfigPath') {
+  throw 'Next config must support isolated production dist and tsconfig paths.'
 }
 
 Write-Host 'Acceptance script lifecycle contract passed.'

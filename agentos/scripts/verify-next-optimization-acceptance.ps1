@@ -14,9 +14,11 @@ $startedProcesses = New-Object System.Collections.Generic.List[System.Diagnostic
 $originalApiBase = $env:NEXT_PUBLIC_API_URL
 $originalProjectRoot = $env:AGENTOS_PROJECT_ROOT
 $originalNextDistDir = $env:AGENTOS_NEXT_DIST_DIR
+$originalNextTsConfigPath = $env:AGENTOS_NEXT_TSCONFIG_PATH
 $isolatedNextDistDirName = ".next-acceptance-$([guid]::NewGuid().ToString('N'))"
-$webTsConfigPath = Join-Path $webRoot 'tsconfig.json'
-$originalWebTsConfigBytes = [System.IO.File]::ReadAllBytes($webTsConfigPath)
+$isolatedNextTsConfigName = "tsconfig.acceptance-$([guid]::NewGuid().ToString('N')).json"
+$isolatedNextTsConfigPath = Join-Path $webRoot $isolatedNextTsConfigName
+$originalWebTsConfigBytes = [System.IO.File]::ReadAllBytes((Join-Path $webRoot 'tsconfig.json'))
 $createdAcceptanceRoot = $false
 
 function Invoke-Check([string] $Name, [scriptblock] $Command) {
@@ -89,8 +91,10 @@ function Normalize-ProcessPath {
   if ($pathValue) { $env:Path = $pathValue }
 }
 
-function Restore-WebTsConfig {
-  [System.IO.File]::WriteAllBytes($webTsConfigPath, $originalWebTsConfigBytes)
+function Remove-IsolatedWebTsConfig {
+  if (Test-Path -LiteralPath $isolatedNextTsConfigPath) {
+    Remove-Item -LiteralPath $isolatedNextTsConfigPath -Force -ErrorAction SilentlyContinue
+  }
 }
 
 try {
@@ -111,14 +115,15 @@ try {
 
   $env:NEXT_PUBLIC_API_URL = "http://localhost:$ServerPort"
   $env:AGENTOS_NEXT_DIST_DIR = $isolatedNextDistDirName
+  [System.IO.File]::WriteAllBytes($isolatedNextTsConfigPath, $originalWebTsConfigBytes)
+  $env:AGENTOS_NEXT_TSCONFIG_PATH = $isolatedNextTsConfigName
   Invoke-Check 'Frozen install' { pnpm.cmd install --frozen-lockfile }
   Invoke-Check 'Shared build' { pnpm.cmd --filter @agentos/shared build }
   Invoke-Check 'Agent Core tests' { pnpm.cmd --filter @agentos/agent-core test }
   Invoke-Check 'Server tests' { pnpm.cmd --filter @agentos/server test }
   Invoke-Check 'Web build' { pnpm.cmd --filter @agentos/web build }
   Invoke-Check 'Monorepo build' { pnpm.cmd -r run build }
-  Restore-WebTsConfig
-  Write-Host 'Restored apps/web/tsconfig.json after isolated production build.'
+  Write-Host "Used isolated $isolatedNextTsConfigName for production builds; apps/web/tsconfig.json was not modified."
 
   # Production web process: next start, never next dev.
   Normalize-ProcessPath
@@ -134,7 +139,6 @@ try {
 
   Write-Host 'Acceptance checks passed: frozen install, builds, tests, isolated production services, health, API, and page response.'
 } finally {
-  Restore-WebTsConfig
   foreach ($process in @($startedProcesses)) {
     if ($process -and -not $process.HasExited) { Stop-ProcessTree -ProcessId $process.Id }
   }
@@ -144,6 +148,8 @@ try {
   if ($originalApiBase) { $env:NEXT_PUBLIC_API_URL = $originalApiBase } else { Remove-Item Env:NEXT_PUBLIC_API_URL -ErrorAction SilentlyContinue }
   if ($originalProjectRoot) { $env:AGENTOS_PROJECT_ROOT = $originalProjectRoot } else { Remove-Item Env:AGENTOS_PROJECT_ROOT -ErrorAction SilentlyContinue }
   if ($originalNextDistDir) { $env:AGENTOS_NEXT_DIST_DIR = $originalNextDistDir } else { Remove-Item Env:AGENTOS_NEXT_DIST_DIR -ErrorAction SilentlyContinue }
+  if ($originalNextTsConfigPath) { $env:AGENTOS_NEXT_TSCONFIG_PATH = $originalNextTsConfigPath } else { Remove-Item Env:AGENTOS_NEXT_TSCONFIG_PATH -ErrorAction SilentlyContinue }
+  Remove-IsolatedWebTsConfig
   $nextDistPath = Join-Path $webRoot $isolatedNextDistDirName
   if (Test-Path -LiteralPath $nextDistPath) {
     try {
