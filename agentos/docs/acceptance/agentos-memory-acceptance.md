@@ -61,6 +61,6 @@
 - 最新复验中 `MEMORY_CANDIDATE: failed`：候选流程依赖的后续真实 Agent 执行未完成，因此本次不能把候选生成、接受、拒绝和重新检索标记为 release gate 通过。此前曾有一次 Kimi 候选闭环通过，但不作为本次稳定性结论。
 - `REAL_EXTERNAL_AGENT: failed`：本次 Codex 和 OpenCode CLI 返回退出码 1；Kimi 单聊一次通过但后续执行不稳定；真实三 Agent 群聊、真实等待用户尚未满足 release gate。
 - 本次预恢复阶段输出 `RECOVERY: not_run`，重启恢复阶段输出 `RECOVERY: passed`；这是脚本按阶段隔离 gate 后的预期结果。
-- 后续空目录 CLI 探针（不读取 AgentOS 私有 Workspace）确认：Codex 固定短提示 exit 0，OpenCode 固定短提示 exit 0；Kimi 返回 exit 1，错误为当前计费周期用量已达上限（HTTP 403）。因此完整三 Agent release gate 仍不能通过，且未将空目录探针替代 E2E。
+- 后续空目录 CLI 探针（不读取 AgentOS 私有 Workspace）确认：Codex 固定短提示 exit 0，OpenCode 固定短提示 exit 0；Kimi 的 OAuth 参数路径和按 AgentOS 映射的 API-Key 路径均返回 exit 1，错误为当前计费周期用量已达上限（HTTP 403）。因此完整三 Agent release gate 仍不能通过，且未将空目录探针替代 E2E。
 
 因此本记录明确区分“自动化/确定性回归通过”和“真实外部 Agent release gate 未通过”，计划不能据此标记为全部完成。
