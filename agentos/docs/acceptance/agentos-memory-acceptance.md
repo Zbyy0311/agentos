@@ -48,7 +48,7 @@
 
 ## 验收脚本说明
 
-统一脚本中的构建、测试和 monorepo build 阶段均通过；此前一次脚本末尾健康检查因 `next dev` 与 `next build` 同时写入同一 `.next` 目录而出现缺失 chunk。已清理 `.next`、重新单独启动 3001，并再次确认 Web HTTP 200；当前开发服务未与构建并行运行。
+统一脚本中的构建、测试和 monorepo build 阶段均通过；此前一次脚本末尾健康检查因 `next dev` 与 `next build` 同时写入同一 `.next` 目录而出现缺失 chunk。现已使用独立 `AGENTOS_NEXT_DIST_DIR` 和临时 `AGENTOS_NEXT_TSCONFIG_PATH`，验收脚本不再改写主 tsconfig；已清理受影响的 `.next`、重新启动 3001，并确认根路径和 Workspace 路径均 HTTP 200、浏览器无错误日志。
 
 ## 收尾 E2E 记录（2026-07-14）
 

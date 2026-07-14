@@ -45,7 +45,7 @@
 
 ## 2026-07-14 收尾复验
 
-本次收尾使用独立生产服务端口，不接管 3000/3001；生产 Web 构建使用临时的 `AGENTOS_NEXT_DIST_DIR`，并在脚本结束时恢复 `apps/web/tsconfig.json`、删除临时 dist，避免与开发服务共享 `.next` 生命周期：
+本次收尾使用独立生产服务端口，不接管 3000/3001；生产 Web 构建使用临时的 `AGENTOS_NEXT_DIST_DIR` 和唯一临时 tsconfig（通过 `AGENTOS_NEXT_TSCONFIG_PATH`），脚本结束时删除临时配置与 dist，主 `apps/web/tsconfig.json` 不被修改，避免与开发服务共享 `.next` 生命周期：
 
 | 检查 | 结果 | 证据 |
 |---|---|---|
@@ -53,9 +53,9 @@
 | Server | 通过，86/86，exit 0 | `pnpm --filter @agentos/server test` |
 | Web build | 通过，exit 0 | `pnpm --filter @agentos/web build` |
 | Monorepo build | 通过，4 个构建工作区，exit 0 | `pnpm -r run build` |
-| 独立生产验收 | 连续两次通过，exit 0 | `verify-next-optimization-acceptance.ps1`；3100/3101 每次均释放 |
+| 独立生产验收 | 连续两次通过，最新一次主 tsconfig SHA-256 不变，exit 0 | `verify-next-optimization-acceptance.ps1`；3100/3101 每次均释放，3001 保持 HTTP 200 |
 | E2E 确定性生命周期 | 通过 | waiting_user 暂停/恢复、失败 Run、候选生成 409 |
 | E2E 重启恢复 | 通过 | queued/running 变 failed，waiting_user 保持 |
-| E2E 真实外部 Agent | 未通过 | 当前 Codex/OpenCode CLI 返回 exit 1；不得冒充 release gate |
+| E2E 真实外部 Agent | 未通过 | Codex/OpenCode 单聊通过；Kimi 当前计费周期配额 403，群聊随之失败；不得冒充 release gate |
 
 生产验收脚本会停止本次启动的进程树并检查端口；Windows 偶发持有 SQLite 文件句柄时只保留临时目录告警，不接管用户目录，也不会影响端口清理结果。

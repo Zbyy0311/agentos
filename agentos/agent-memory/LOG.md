@@ -212,3 +212,4 @@
 - 2026-07-14 外部 CLI 安全探针：空目录固定短提示下 Codex exit 0、OpenCode exit 0；Kimi 的 OAuth 和按 AgentOS 映射的 API-Key 两条路径均 exit 1，返回当前计费周期配额耗尽的 403。该结果仅说明 CLI/账号状态，不替代私有 Workspace 的真实 E2E，也不改变 release gate 失败结论。
 - 2026-07-14 隔离真实 E2E run 4：使用 `C:\tmp\agentos-e2e-real-isolated-4`、端口 3200、临时 SQLite 和临时 Git Workspace。Codex 单聊、OpenCode 单聊、真实记忆注入、无隐藏标记候选生成/接受/拒绝、失败、取消和 waiting_user resume 均通过；确定性生命周期与重启恢复通过。Kimi 单聊因当前计费周期配额耗尽失败，三 Agent 群聊随之失败；脚本总退出码 1，真实外部 Agent gate 继续未通过。
 - 2026-07-14 续验修复：为混合中文/ASCII 任务增加记忆检索回归测试并修正 tokenizer；为真实 waiting_user 验收补充明确缺失字段和 resume 范围。阶段提交 `e8b3987 test: harden real memory and waiting-user E2E`。
+- 2026-07-14 验收生命周期修复：Next 生产构建改用独立 `AGENTOS_NEXT_TSCONFIG_PATH` 临时配置，不再改写主 `apps/web/tsconfig.json`；在 3001 保持运行时完整验收通过，主 tsconfig SHA-256 不变，3001 根路径和 Workspace 路径均 HTTP 200。阶段提交 `76b4600 fix: isolate acceptance TypeScript configuration`。
