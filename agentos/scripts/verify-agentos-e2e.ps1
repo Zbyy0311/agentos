@@ -85,9 +85,11 @@ try {
   $workspaceRoot = Join-Path $AcceptanceRoot 'workspace'
   $logRoot = Join-Path $AcceptanceRoot 'logs'
   New-Item -ItemType Directory -Force -Path $workspaceRoot, $logRoot | Out-Null
+  git -C $workspaceRoot init --quiet
+  if ($LASTEXITCODE -ne 0) { throw "Failed to initialize temporary E2E Git workspace: $workspaceRoot" }
 
   $config = Get-Content -Raw -LiteralPath (Join-Path $repoRoot 'workspace/workspaces.json') | ConvertFrom-Json
-  foreach ($workspace in $config.workspaces) { $workspace.rootPath = $AcceptanceRoot }
+  foreach ($workspace in $config.workspaces) { $workspace.rootPath = $workspaceRoot }
   $primary = $config.workspaces | Select-Object -First 1
   if (-not $primary) { throw 'No workspace was available for E2E verification.' }
   $fixtureRoot = Join-Path $repoRoot 'scripts/fixtures'

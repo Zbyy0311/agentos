@@ -405,6 +405,27 @@ describe('CLIExecutor', () => {
     expect(env.CODEX_HOME).toBe('C:\\Users\\TestUser\\.codex');
   });
 
+  it('derives HOME from USERPROFILE for external CLI child processes', () => {
+    const env = resolveAgentEnvironment({
+      ...okConfig,
+      cliCommand: 'C:\\Users\\TestUser\\.codex\\.sandbox-bin\\codex.exe',
+    }, { USERPROFILE: 'C:\\Users\\TestUser' });
+
+    expect(env.HOME).toBe('C:\\Users\\TestUser');
+  });
+
+  it('preserves an explicitly inherited HOME', () => {
+    const env = resolveAgentEnvironment({
+      ...okConfig,
+      cliCommand: 'C:\\Users\\TestUser\\.codex\\.sandbox-bin\\codex.exe',
+    }, {
+      HOME: 'D:\\agent-home',
+      USERPROFILE: 'C:\\Users\\TestUser',
+    });
+
+    expect(env.HOME).toBe('D:\\agent-home');
+  });
+
   it('preserves agent CODEX_HOME over inherited and derived values', () => {
     const env = resolveAgentEnvironment({
       ...okConfig,

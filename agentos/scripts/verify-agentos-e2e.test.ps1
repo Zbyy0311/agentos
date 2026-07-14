@@ -5,7 +5,8 @@ $driver = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'verify-agentos
 
 foreach ($required in @(
   'AGENTOS_PROJECT_ROOT', 'AGENTOS_E2E_PHASE', 'e2e-failing-agent.mjs', 'e2e-waiting-agent.mjs',
-  'REAL_EXTERNAL_AGENT', 'DETERMINISTIC_LIFECYCLE', 'RECOVERY', 'MEMORY_CANDIDATE', 'agentos.sqlite'
+  'REAL_EXTERNAL_AGENT', 'DETERMINISTIC_LIFECYCLE', 'RECOVERY', 'MEMORY_CANDIDATE', 'agentos.sqlite',
+  '$workspace.rootPath = $workspaceRoot', 'git -C $workspaceRoot init'
 )) {
   if ($script -notmatch [regex]::Escape($required) -and $driver -notmatch [regex]::Escape($required)) {
     throw "E2E contract is missing: $required"

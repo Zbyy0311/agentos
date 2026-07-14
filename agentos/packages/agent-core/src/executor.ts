@@ -38,6 +38,8 @@ export function resolveAgentEnvironment(
   inheritedEnv: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const env = { ...inheritedEnv, ...config.env };
+  if (!env.HOME && env.USERPROFILE) env.HOME = env.USERPROFILE;
+  if (!env.USERPROFILE && env.HOME) env.USERPROFILE = env.HOME;
   const usesCodexCli = config.role === 'codex_manager'
     || config.role === 'codex_final_review'
     || isCodexCli(config.cliCommand);
