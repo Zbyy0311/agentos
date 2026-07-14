@@ -1,9 +1,11 @@
-import { useEffect, useRef } from 'react';
-import type { AgentModelOption, AgentProfile, ConversationAttachment, ConversationMessage, ExecutionStatus, ModelDiscoverySource, ThinkingEffort } from '@agentos/shared';
+import { useEffect, useRef, useState } from 'react';
+import type { AgentModelOption, AgentProfile, ConversationAttachment, ConversationMessage, ExecutionEvent, ExecutionStatus, ModelDiscoverySource, ThinkingEffort } from '@agentos/shared';
 import { isImageClipboardItem, type ImageDraft } from '@/lib/imageAttachments';
 import { getChatTarget } from '@/lib/conversationSelection';
 import { ComposerControls } from './ComposerControls';
 import { ImageAttachments } from './ImageAttachments';
+
+type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string };
 
 interface ChatPanelProps {
   agentName?: string;
@@ -17,6 +19,7 @@ interface ChatPanelProps {
   attachments: ImageDraft[];
   attachmentError: string;
   streamingContent: string;
+  activeEvents: VisibleExecutionEvent[];
   activeStatus?: ExecutionStatus;
   error: string;
   sending: boolean;
@@ -48,17 +51,12 @@ function MessageContent({ content }: { content: string }) {
 
   for (const line of content.split('\n')) {
     if (line.trimStart().startsWith('```')) {
-      if (codeLines) {
-        blocks.push({ type: 'code', lines: codeLines });
-        codeLines = null;
-      } else {
-        codeLines = [];
-      }
+      if (codeLines) { blocks.push({ type: 'code', lines: codeLines }); codeLines = null; }
+      else codeLines = [];
       continue;
     }
-    if (codeLines) {
-      codeLines.push(line);
-    } else {
+    if (codeLines) codeLines.push(line);
+    else {
       const last = blocks.at(-1);
       if (last?.type === 'text') last.lines.push(line);
       else blocks.push({ type: 'text', lines: [line] });
@@ -68,17 +66,17 @@ function MessageContent({ content }: { content: string }) {
 
   return <div className="space-y-2">
     {blocks.map((block, blockIndex) => block.type === 'code'
-      ? <pre key={blockIndex} className="overflow-x-auto rounded-xl border border-slate-800 bg-[#0b1118] px-3 py-2 font-mono text-xs leading-5 text-slate-200"><code>{block.lines.join('\n')}</code></pre>
+      ? <pre key={blockIndex} className="overflow-x-auto rounded-xl border ui-border bg-[var(--app-bg)] px-3 py-2 font-mono text-xs leading-5 ui-text-soft"><code>{block.lines.join('\n')}</code></pre>
       : block.lines.map((line, lineIndex) => {
         const key = `${blockIndex}-${lineIndex}`;
         const displayLine = line.replace(/^-\s+(?=#{1,3}\s)/, '');
         if (!displayLine.trim()) return <div key={key} className="h-2" />;
-        if (displayLine.startsWith('### ')) return <h4 key={key} className="pt-2 text-sm font-semibold text-slate-50">{displayLine.slice(4)}</h4>;
-        if (displayLine.startsWith('## ')) return <h3 key={key} className="pt-2 text-base font-semibold text-slate-50">{displayLine.slice(3)}</h3>;
-        if (displayLine.startsWith('# ')) return <h2 key={key} className="pt-2 text-lg font-semibold text-slate-50">{displayLine.slice(2)}</h2>;
+        if (displayLine.startsWith('### ')) return <h4 key={key} className="pt-2 text-sm font-semibold ui-text">{displayLine.slice(4)}</h4>;
+        if (displayLine.startsWith('## ')) return <h3 key={key} className="pt-2 text-base font-semibold ui-text">{displayLine.slice(3)}</h3>;
+        if (displayLine.startsWith('# ')) return <h2 key={key} className="pt-2 text-lg font-semibold ui-text">{displayLine.slice(2)}</h2>;
         const numbered = displayLine.match(/^(\d+)\.\s+(.*)$/);
-        if (numbered) return <p key={key} className="flex gap-2"><span className="shrink-0 text-blue-300">{numbered[1]}.</span><span>{numbered[2]}</span></p>;
-        if (displayLine.startsWith('- ')) return <p key={key} className="flex gap-2"><span className="text-blue-300">•</span><span>{displayLine.slice(2)}</span></p>;
+        if (numbered) return <p key={key} className="flex gap-2"><span className="shrink-0 ui-accent">{numbered[1]}.</span><span>{numbered[2]}</span></p>;
+        if (displayLine.startsWith('- ')) return <p key={key} className="flex gap-2"><span className="ui-accent">•</span><span>{displayLine.slice(2)}</span></p>;
         return <p key={key}>{displayLine}</p>;
       }),
     )}
@@ -88,77 +86,96 @@ function MessageContent({ content }: { content: string }) {
 function MessageAttachments({ attachments }: { attachments?: ConversationAttachment[] }) {
   if (!attachments?.length) return null;
   return <div className="mt-3 flex flex-wrap gap-2">
-    {attachments.map(attachment => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer" title={attachment.name}>
-      <img src={attachment.url} alt={attachment.name} className="h-28 w-28 rounded-xl border border-white/15 object-cover transition hover:border-blue-300" />
-    </a>)}
+    {attachments.map(attachment => <a key={attachment.id} href={attachment.url} target="_blank" rel="noreferrer" title={attachment.name}><img src={attachment.url} alt={attachment.name} className="h-28 w-28 rounded-xl border ui-border object-cover transition hover:border-[var(--app-accent)]" /></a>)}
   </div>;
 }
 
-export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeStatus, error, sending, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onRename }: ChatPanelProps) {
+const executionLabels: Partial<Record<ExecutionStatus, string>> = {
+  queued: '已进入队列',
+  preparing_context: '准备上下文',
+  running_cli: '调用 Agent CLI',
+  streaming_response: '生成回复',
+  completed: '执行完成',
+  failed: '执行失败',
+  cancelled: '执行已取消',
+};
+
+function formatExecutionTime(createdAt: string) {
+  return new Date(createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function ThinkingProcess({ events, sending }: { events: VisibleExecutionEvent[]; sending: boolean }) {
+  const [expanded, setExpanded] = useState(sending);
+  useEffect(() => setExpanded(sending), [sending]);
+  if (!events.length && !sending) return null;
+  const latest = events.at(-1);
+  const label = latest ? executionLabels[latest.status] ?? latest.activity : '正在准备执行过程';
+  const latestLabel = latest?.agentName ? `${latest.agentName} · ${label}` : label;
+  return (
+    <div className="thinking-process">
+    <button type="button" className="thinking-process-header w-full text-left" aria-expanded={expanded} aria-controls="thinking-process-body" onClick={() => setExpanded(current => !current)}>
+      <span className="flex min-w-0 items-center gap-2">
+        <span className={`h-2 w-2 shrink-0 rounded-full ${latest?.status === 'failed' ? 'bg-[var(--app-danger)]' : latest?.status === 'completed' ? 'bg-[var(--app-success)]' : 'bg-[var(--app-accent)]'}`} />
+        <span className="truncate text-xs font-medium ui-text">思考进度</span>
+        <span className="truncate text-xs ui-muted">{latestLabel}</span>
+      </span>
+      <span className="flex shrink-0 items-center gap-1 text-[11px] ui-dim">
+        <span>{events.length ? `${events.length} 个步骤` : '进行中'}</span>
+        <span>· {expanded ? '收起' : '展开'}</span>
+        <span aria-hidden="true">{expanded ? '⌃' : '⌄'}</span>
+      </span>
+    </button>
+    {expanded && <div id="thinking-process-body" className="thinking-process-body space-y-2">
+      {events.map(event => (
+        <div key={event.id} className="flex gap-2.5">
+          <span className={`mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full ${event.status === 'failed' ? 'bg-[var(--app-danger)]' : event.status === 'completed' ? 'bg-[var(--app-success)]' : 'bg-[var(--app-accent)]'}`} />
+          <div className="min-w-0">
+            <div className="text-xs leading-5 ui-text-soft">{event.agentName ? <span className="font-medium ui-accent">{event.agentName} · </span> : null}{event.activity}</div>
+            <div className="text-[10px] ui-dim">{executionLabels[event.status] ?? event.status} · {formatExecutionTime(event.createdAt)}</div>
+            {event.content && event.status !== 'streaming_response' ? <div className="mt-0.5 line-clamp-2 text-[11px] leading-5 ui-muted">{event.content}</div> : null}
+          </div>
+        </div>
+      ))}
+      {!events.length && <div className="text-xs ui-muted">正在等待 Agent 返回第一个执行阶段...</div>}
+    </div>}
+    </div>
+  );
+}
+
+export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeStatus, error, sending, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onRename }: ChatPanelProps) {
   const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streamingContent]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streamingContent, activeEvents]);
 
   const target = getChatTarget({ groupTitle: isGroup ? groupName : undefined, agentName });
   const title = conversationTitle ?? (agentName ? `${agentName} · ${roleTitle ?? 'Agent'}` : '选择一个 Agent 开始对话');
   const status = activeStatus ? statusLabels[activeStatus] : undefined;
 
-  return <main className="flex min-w-0 flex-1 flex-col bg-[#0b1118]">
-    <header className="flex min-h-[4.5rem] items-center justify-between border-b border-slate-800/80 px-6 py-3">
-      <div className="min-w-0">
-        <h1 className="truncate text-[15px] font-semibold text-slate-100">{title}</h1>
-        {target.kind !== 'none' && <p className="mt-1 text-xs text-slate-500">{isGroup ? '协作群聊记录保存在当前工作区' : '私聊会话仅属于当前工作区'}</p>}
-      </div>
-      <div className="flex items-center gap-3">
-        {isGroup && onRename && <button type="button" onClick={onRename} className="text-xs text-slate-500 transition hover:text-slate-200">编辑群聊</button>}
-        {sending && <button type="button" onClick={onCancel} className="rounded-lg border border-red-400/30 px-3 py-1.5 text-xs font-medium text-red-300 transition hover:bg-red-500/10">取消执行</button>}
-      </div>
+  return <main className="flex min-w-0 flex-1 flex-col bg-[var(--app-bg)]">
+    <header className="flex min-h-[4.75rem] items-center justify-between border-b ui-border px-5 py-3 sm:px-7">
+      <div className="min-w-0"><div className="mb-1 text-[11px] font-medium tracking-[0.14em] ui-dim">ACTIVE SESSION</div><h1 className="truncate text-[15px] font-semibold ui-text">{title}</h1>{target.kind !== 'none' && <p className="mt-1 text-xs ui-muted">{isGroup ? '协作群聊记录保存在当前工作区' : '私聊会话仅属于当前工作区'}</p>}</div>
+      <div className="flex items-center gap-3">{isGroup && onRename && <button type="button" onClick={onRename} className="ui-button-ghost rounded-lg px-2 py-1 text-xs">编辑群聊</button>}{sending && <button type="button" onClick={onCancel} className="rounded-lg border border-[color:var(--app-danger)]/50 px-3 py-1.5 text-xs font-medium text-[var(--app-danger)] transition hover:bg-[color:var(--app-danger)]/10">取消执行</button>}</div>
     </header>
 
-    {target.kind === 'none' ? <div className="grid flex-1 place-items-center px-6 text-center text-sm text-slate-500">从左侧选择一个 Agent 或群聊。</div> : <>
-      <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6">
-        <div className="mx-auto max-w-3xl space-y-5">
-          {messages.length === 0 && !streamingContent && <div className="rounded-2xl border border-dashed border-slate-800 bg-slate-900/20 px-5 py-10 text-center text-sm leading-7 text-slate-500">{target.kind === 'group' ? `这是群聊“${target.label}”的新会话。直接输入需求即可开始协作。` : `这是与 ${target.label} 的新会话。直接输入需求即可开始执行。`}</div>}
-          {messages.map(message => {
-            const sender = message.senderAgentId ? agents.find(agent => agent.id === message.senderAgentId) : undefined;
-            const userMessage = message.senderType === 'user';
-            return <div key={message.id} className={`flex gap-3 ${userMessage ? 'justify-end' : 'justify-start'}`}>
-              <div className={`${userMessage ? 'order-2 bg-blue-600 text-white' : message.senderType === 'system' ? 'border border-amber-500/30 bg-amber-500/10 text-amber-100' : 'border border-slate-800 bg-[#151e2a] text-slate-200'} max-w-[86%] rounded-2xl px-4 py-3 text-sm leading-6 shadow-sm sm:max-w-[78%]`}>
-                {isGroup && sender && <div className="mb-2 border-b border-slate-700/70 pb-2 text-xs font-medium text-blue-300">{sender.name}<span className="ml-1 font-normal text-slate-500">· {sender.roleTitle}</span></div>}
-                <MessageContent content={message.content} />
-                <MessageAttachments attachments={message.attachments} />
-              </div>
-            </div>;
-          })}
-          {streamingContent && <div className="flex gap-3"><div className="max-w-[86%] rounded-2xl border border-slate-800 bg-[#151e2a] px-4 py-3 text-sm leading-6 text-slate-200 shadow-sm sm:max-w-[78%]"><MessageContent content={streamingContent} /><span className="ml-1 inline-block h-4 w-1 animate-pulse bg-blue-400 align-[-2px]" /></div></div>}
-          {status && <div className="rounded-xl border border-blue-400/20 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{status}</div>}
-          {error && <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
-          <div ref={endRef} />
-        </div>
-      </div>
+    {target.kind === 'none' ? <div className="grid flex-1 place-items-center px-6 text-center"><div><div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-[var(--app-accent-soft)] text-2xl ui-accent">✦</div><p className="mt-4 text-sm ui-muted">从左侧选择一个 Agent 或群聊。</p></div></div> : <>
+      <div className="flex-1 overflow-y-auto px-4 py-6 sm:px-6"><div className="mx-auto max-w-3xl space-y-5">
+        {messages.length === 0 && !streamingContent && <div className="rounded-2xl border border-dashed ui-border bg-[var(--app-surface)] px-5 py-10 text-center text-sm leading-7 ui-muted">{target.kind === 'group' ? `这是群聊“${target.label}”的新会话。直接输入需求即可开始协作。` : `这是与 ${target.label} 的新会话。直接输入需求即可开始执行。`}</div>}
+        {messages.map(message => {
+          const sender = message.senderAgentId ? agents.find(agent => agent.id === message.senderAgentId) : undefined;
+          const userMessage = message.senderType === 'user';
+          return <div key={message.id} className={`flex gap-3 ${userMessage ? 'justify-end' : 'justify-start'}`}><div className={`${userMessage ? 'ui-message-user order-2' : message.senderType === 'system' ? 'ui-message-system' : 'ui-message-agent'} max-w-[86%] rounded-2xl border px-4 py-3 text-sm leading-6 sm:max-w-[78%]`}>{isGroup && sender && <div className="mb-2 border-b ui-border pb-2 text-xs font-medium ui-accent">{sender.name}<span className="ml-1 font-normal ui-muted">· {sender.roleTitle}</span></div>}<MessageContent content={message.content} /><MessageAttachments attachments={message.attachments} /></div></div>;
+        })}
+        <ThinkingProcess events={activeEvents} sending={sending} />
+        {streamingContent && <div className="flex gap-3"><div className="ui-message-agent max-w-[86%] rounded-2xl border px-4 py-3 text-sm leading-6 sm:max-w-[78%]"><MessageContent content={streamingContent} /><span className="ml-1 inline-block h-4 w-1 animate-pulse bg-[var(--app-accent)] align-[-2px]" /></div></div>}
+        {status && <div className="ui-status rounded-xl border px-4 py-3 text-sm">{status}</div>}
+        {error && <div className="ui-error rounded-xl border px-4 py-3 text-sm">{error}</div>}
+        <div ref={endRef} />
+      </div></div>
 
-      <div className="border-t border-slate-800/80 bg-[#0b1118]/95 px-4 py-4 sm:px-6">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-slate-700/80 bg-[#151d28] p-3 shadow-[0_12px_40px_rgba(0,0,0,0.18)] transition focus-within:border-slate-600" onPaste={event => {
-          const imageFiles = Array.from(event.clipboardData.items)
-            .filter(isImageClipboardItem)
-            .map(item => item.getAsFile())
-            .filter((file): file is File => Boolean(file));
-          if (imageFiles.length > 0) {
-            event.preventDefault();
-            onFiles(imageFiles);
-          }
-        }}>
-          <textarea aria-label="消息输入框" value={draft} onChange={event => onDraftChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} disabled={sending} placeholder={target.kind === 'group' ? `向群聊“${target.label}”发送消息…` : `向 ${target.label} 发送消息…`} className="h-20 w-full resize-none bg-transparent px-1 text-sm leading-6 text-slate-100 outline-none placeholder:text-slate-600 disabled:cursor-not-allowed" />
-          {attachmentError && <div role="alert" className="mt-2 rounded-lg border border-red-500/25 bg-red-500/10 px-2.5 py-1.5 text-xs text-red-200">{attachmentError}</div>}
-          <div className="mt-2 flex items-center justify-between gap-3">
-            <ImageAttachments drafts={attachments} disabled={sending} onFiles={onFiles} onRemove={onRemoveAttachment} />
-            <span className="hidden text-xs text-slate-600 sm:inline">Enter 发送 · Shift + Enter 换行</span>
-            <div className="ml-auto flex min-w-0 items-center gap-2">
-              <ComposerControls isGroup={isGroup} modelOptions={modelOptions} model={composerModel} thinkingEffort={composerThinkingEffort} thinkingEfforts={composerThinkingEfforts} modelSource={modelSource} disabled={sending} onModelChange={onComposerModelChange} onThinkingEffortChange={onComposerThinkingEffortChange} />
-              <button type="button" onClick={onSend} disabled={sending || (!draft.trim() && attachments.length === 0)} aria-label="发送消息" className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-600 text-lg text-white shadow-lg shadow-blue-950/40 transition hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-500">↑</button>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="border-t ui-border bg-[color:var(--app-bg)]/95 px-4 py-4 sm:px-6"><div className="mx-auto max-w-3xl rounded-2xl border ui-border bg-[var(--app-surface-raised)] p-3 transition focus-within:border-[var(--app-accent)]" onPaste={event => { const imageFiles = Array.from(event.clipboardData.items).filter(isImageClipboardItem).map(item => item.getAsFile()).filter((file): file is File => Boolean(file)); if (imageFiles.length > 0) { event.preventDefault(); onFiles(imageFiles); } }}>
+        <textarea aria-label="消息输入框" value={draft} onChange={event => onDraftChange(event.target.value)} onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); onSend(); } }} disabled={sending} placeholder={target.kind === 'group' ? `向群聊“${target.label}”发送消息…` : `向 ${target.label} 发送消息…`} className="h-20 w-full resize-none bg-transparent px-1 text-sm leading-6 ui-text outline-none placeholder:ui-dim disabled:cursor-not-allowed" />
+        {attachmentError && <div role="alert" className="ui-error mt-2 rounded-lg border px-2.5 py-1.5 text-xs">{attachmentError}</div>}
+        <div className="mt-2 flex items-center justify-between gap-3"><ImageAttachments drafts={attachments} disabled={sending} onFiles={onFiles} onRemove={onRemoveAttachment} /><span className="hidden text-xs ui-dim sm:inline">Enter 发送 · Shift + Enter 换行</span><div className="ml-auto flex min-w-0 items-center gap-2"><ComposerControls isGroup={isGroup} modelOptions={modelOptions} model={composerModel} thinkingEffort={composerThinkingEffort} thinkingEfforts={composerThinkingEfforts} modelSource={modelSource} disabled={sending} onModelChange={onComposerModelChange} onThinkingEffortChange={onComposerThinkingEffortChange} /><button type="button" onClick={onSend} disabled={sending || (!draft.trim() && attachments.length === 0)} aria-label="发送消息" className="ui-button-primary grid h-9 w-9 shrink-0 place-items-center rounded-xl text-lg disabled:cursor-not-allowed">↑</button></div></div>
+      </div></div>
     </>}
   </main>;
 }

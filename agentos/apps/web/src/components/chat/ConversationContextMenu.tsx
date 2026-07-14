@@ -30,16 +30,16 @@ export function ConversationContextMenu({ conversation, clientX, clientY, onRena
     role="menu"
     aria-label={`${conversation.title} 会话操作`}
     onMouseDown={event => event.stopPropagation()}
-    className="fixed z-[60] w-48 overflow-hidden rounded-xl border border-slate-700 bg-[#121a25] p-1.5 shadow-2xl shadow-black/40"
+    className="ui-panel-raised fixed z-[60] w-48 overflow-hidden rounded-xl border p-1.5 shadow-[var(--app-shadow)]"
     style={{ left, top }}
   >
-    <button type="button" role="menuitem" onClick={() => run(onRename)} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800">
+    <button type="button" role="menuitem" onClick={() => run(onRename)} className="ui-button-ghost w-full rounded-lg px-3 py-2 text-left text-sm">
       重命名
     </button>
-    <button type="button" role="menuitem" onClick={() => run(onCopyId)} className="w-full rounded-lg px-3 py-2 text-left text-sm text-slate-200 transition hover:bg-slate-800">
+    <button type="button" role="menuitem" onClick={() => run(onCopyId)} className="ui-button-ghost w-full rounded-lg px-3 py-2 text-left text-sm">
       复制会话 ID
     </button>
-    <button type="button" role="menuitem" onClick={() => run(onDelete)} className="w-full rounded-lg px-3 py-2 text-left text-sm text-rose-300 transition hover:bg-rose-950/50">
+    <button type="button" role="menuitem" onClick={() => run(onDelete)} className="ui-button-ghost w-full rounded-lg px-3 py-2 text-left text-sm text-[var(--app-danger)]">
       删除会话
     </button>
   </div>;

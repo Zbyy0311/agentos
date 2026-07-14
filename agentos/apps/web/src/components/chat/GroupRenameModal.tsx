@@ -10,11 +10,11 @@ interface GroupRenameModalProps {
 
 export function GroupRenameModal({ title: initialTitle, saving, entityLabel = '群聊', onClose, onSave }: GroupRenameModalProps) {
   const [title, setTitle] = useState(initialTitle);
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/70 p-6 backdrop-blur-sm">
-    <form onSubmit={event => { event.preventDefault(); onSave(title); }} className="w-full max-w-md rounded-2xl border border-slate-700 bg-[#121a25] p-6 shadow-2xl">
-      <div className="mb-5 flex items-center justify-between"><h2 className="text-lg font-semibold text-slate-100">编辑{entityLabel}名称</h2><button type="button" onClick={onClose} className="text-sm text-slate-500 hover:text-slate-200">关闭</button></div>
-      <label className="block text-sm text-slate-300">{entityLabel}名称<input autoFocus value={title} onChange={event => setTitle(event.target.value)} className="mt-2 w-full rounded-lg border border-slate-700 bg-[#0d131b] px-3 py-2 text-slate-100 outline-none focus:border-blue-500" /></label>
-      <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-400">取消</button><button disabled={saving || !title.trim()} className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white disabled:bg-slate-700">{saving ? '保存中…' : '保存'}</button></div>
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-[var(--app-overlay)] p-4 backdrop-blur-sm sm:p-6">
+    <form onSubmit={event => { event.preventDefault(); onSave(title); }} className="ui-panel-raised w-full max-w-md rounded-2xl border p-5 shadow-[var(--app-shadow)] sm:p-6">
+      <div className="mb-5 flex items-start justify-between"><div><p className="text-xs font-medium tracking-[0.16em] ui-accent">RENAME</p><h2 className="mt-2 text-lg font-semibold ui-text">编辑{entityLabel}名称</h2></div><button type="button" onClick={onClose} className="ui-button-ghost rounded-lg px-2 py-1 text-sm">关闭</button></div>
+      <label className="block text-sm ui-text-soft">{entityLabel}名称<input autoFocus value={title} onChange={event => setTitle(event.target.value)} className="ui-input mt-2 w-full rounded-xl px-3 py-2 outline-none" /></label>
+      <div className="mt-6 flex justify-end gap-3"><button type="button" onClick={onClose} className="ui-button-secondary rounded-xl px-4 py-2 text-sm">取消</button><button disabled={saving || !title.trim()} className="ui-button-primary rounded-xl px-4 py-2 text-sm font-medium disabled:cursor-not-allowed">{saving ? '保存中…' : '保存'}</button></div>
     </form>
   </div>;
 }

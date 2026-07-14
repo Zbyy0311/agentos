@@ -1,7 +1,8 @@
 import type { AgentProfile, Conversation, ExecutionStatus } from '@agentos/shared';
 import type { MouseEvent } from 'react';
+import { ThemeToggle } from '@/components/theme/ThemeToggle';
 
-const avatarColors = ['bg-blue-600', 'bg-violet-600', 'bg-emerald-600', 'bg-amber-600'];
+const avatarColors = ['bg-[var(--app-accent)]', 'bg-[var(--app-info)]', 'bg-[var(--app-success)]', 'bg-[var(--app-warning)]'];
 
 interface AgentListProps {
   agents: AgentProfile[];
@@ -17,32 +18,38 @@ interface AgentListProps {
 }
 
 export function AgentList({ agents, selectedAgentId, activeStatus, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace }: AgentListProps) {
-  return <aside className="w-52 shrink-0 overflow-y-auto border-r border-slate-800/80 bg-[#0f1721] px-3 py-4">
+  return <aside className="workspace-sidebar ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4">
     <div className="mb-6 px-2">
-      <div className="text-lg font-semibold tracking-tight text-slate-100">AgentOS</div>
-      <div className="mt-1 text-xs text-slate-500">当前工作区的协作成员</div>
-      <button type="button" onClick={onBackToWorkspace} className="mt-3 text-xs text-blue-400 transition hover:text-blue-300">← 返回工作区</button>
+      <div className="flex items-center justify-between gap-2">
+        <div className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--app-accent)] text-[11px] font-bold text-white">A/</div>
+        <div className="workspace-theme-label"><ThemeToggle /></div>
+      </div>
+      <div className="workspace-copy mt-4 text-base font-semibold tracking-tight ui-text">AgentOS</div>
+      <div className="workspace-copy mt-1 text-xs leading-5 ui-muted">当前工作区的协作成员</div>
+      <button type="button" onClick={onBackToWorkspace} className="workspace-return-label ui-button-ghost mt-4 rounded-lg border ui-border px-2.5 py-1.5 text-xs hover:border-[var(--app-accent)]">← 返回工作区</button>
     </div>
-    <div className="mb-2 px-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500">智能体</div>
+
+    <div className="workspace-nav-label mb-2 px-2 text-[11px] font-medium tracking-[0.14em] ui-dim">AGENTS</div>
     <div className="space-y-1">
       {agents.map((agent, index) => {
         const selected = agent.id === selectedAgentId;
         const active = selected && activeStatus && !['completed', 'failed', 'cancelled'].includes(activeStatus);
-        return <button type="button" key={agent.id} onClick={() => onSelect(agent.id)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-left transition ${selected ? 'bg-slate-800/90 text-white ring-1 ring-slate-700' : 'text-slate-300 hover:bg-slate-800/60'}`}>
-          <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-full text-sm font-semibold text-white ${avatarColors[index % avatarColors.length]}`}>
+        return <button type="button" key={agent.id} onClick={() => onSelect(agent.id)} className={`workspace-agent-button flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${selected ? 'ui-selected' : 'ui-button-ghost'}`}>
+          <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-semibold text-white ${avatarColors[index % avatarColors.length]}`}>
             {agent.name.slice(0, 1).toUpperCase()}
-            <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#0f1721] ${active ? 'bg-amber-400' : agent.enabled ? 'bg-emerald-400' : 'bg-slate-600'}`} />
+            <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--app-surface)] ${active ? 'bg-[var(--app-warning)]' : agent.enabled ? 'bg-[var(--app-success)]' : 'bg-[var(--app-dim)]'}`} />
           </span>
-          <span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{agent.name}</span><span className="mt-0.5 block truncate text-xs text-slate-500">{agent.roleTitle}</span></span>
+          <span className="workspace-agent-copy min-w-0 flex-1"><span className="block truncate text-sm font-medium">{agent.name}</span><span className="mt-0.5 block truncate text-xs ui-muted">{agent.roleTitle}</span></span>
         </button>;
       })}
-      {agents.length === 0 && <div className="px-2 py-3 text-xs leading-5 text-slate-600">暂无可用 Agent</div>}
+      {agents.length === 0 && <div className="workspace-copy px-2 py-3 text-xs leading-5 ui-dim">暂无可用 Agent</div>}
     </div>
-    <div className="mt-8 border-t border-slate-800/80 pt-5">
-      <div className="mb-2 flex items-center justify-between px-2 text-[11px] font-medium uppercase tracking-[0.16em] text-slate-500"><span>团队分组</span><button type="button" onClick={onCreateGroup} className="text-base font-normal hover:text-slate-200">+</button></div>
+
+    <div className="mt-8 border-t ui-border pt-5">
+      <div className="workspace-nav-label mb-2 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.14em] ui-dim"><span>GROUPS</span><button type="button" onClick={onCreateGroup} className="ui-button-ghost rounded-md px-1.5 text-base font-normal">+</button></div>
       <div className="space-y-1">
-        {groups.map(group => <button type="button" key={group.id} onClick={() => onSelectGroup(group.id)} onContextMenu={event => onContextMenu(group.id, event)} className={`w-full truncate rounded-lg px-3 py-2 text-left text-sm transition ${selectedGroupId === group.id ? 'bg-slate-800 text-slate-100' : 'text-slate-500 hover:bg-slate-800/70 hover:text-slate-300'}`}>👥 {group.title}</button>)}
-        {groups.length === 0 && <div className="rounded-lg px-3 py-2 text-xs leading-5 text-slate-600">点击 + 创建协作群聊</div>}
+        {groups.map(group => <button type="button" key={group.id} onClick={() => onSelectGroup(group.id)} onContextMenu={event => onContextMenu(group.id, event)} className={`workspace-group-copy w-full truncate rounded-lg px-3 py-2 text-left text-sm transition ${selectedGroupId === group.id ? 'ui-selected' : 'ui-button-ghost'}`}>⌘ <span className="ml-1">{group.title}</span></button>)}
+        {groups.length === 0 && <div className="workspace-copy rounded-lg px-3 py-2 text-xs leading-5 ui-dim">点击 + 创建协作群聊</div>}
       </div>
     </div>
   </aside>;

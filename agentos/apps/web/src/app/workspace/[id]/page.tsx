@@ -20,7 +20,8 @@ import { parseSseChunk, parseSseEventData } from '@/lib/sse';
 import { canSendMessage, fileToImageDraft, validateImageDrafts, type ImageDraft } from '@/lib/imageAttachments';
 import { resolveAttachmentUrl } from '@/lib/attachmentUrls';
 
-type StreamEvent = Pick<ExecutionEvent, 'status' | 'activity' | 'content'>;
+type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string };
+type StreamEvent = Pick<VisibleExecutionEvent, 'status' | 'activity' | 'content' | 'agentId' | 'agentName'>;
 type ContextMenuState = { conversation: Conversation; clientX: number; clientY: number };
 
 export default function WorkspacePage() {
@@ -37,7 +38,7 @@ export default function WorkspacePage() {
   const [selectedDirectConversationId, setSelectedDirectConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
-  const [activeEvents, setActiveEvents] = useState<ExecutionEvent[]>([]);
+  const [activeEvents, setActiveEvents] = useState<VisibleExecutionEvent[]>([]);
   const [activeStatus, setActiveStatus] = useState<ExecutionStatus>();
   const [draft, setDraft] = useState('');
   const [attachments, setAttachments] = useState<ImageDraft[]>([]);
@@ -151,9 +152,17 @@ export default function WorkspacePage() {
       })),
     })));
     setExecutions(executionResult.executions);
-    setActiveEvents(executionResult.executions[0]?.events ?? []);
+    const agentNames = new Map(agents.map(agent => [agent.id, agent.name]));
+    const visibleEvents = executionResult.executions
+      .flatMap(execution => execution.events.map(event => ({
+        ...event,
+        agentId: execution.agentId,
+        agentName: agentNames.get(execution.agentId),
+      })))
+      .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+    setActiveEvents(visibleEvents);
     setActiveStatus(executionResult.executions[0]?.status);
-  }, [API_BASE, request, workspaceId]);
+  }, [API_BASE, agents, request, workspaceId]);
 
   const loadConversations = useCallback(async (agentId: string) => {
     if (!workspaceId) return;
@@ -270,7 +279,7 @@ export default function WorkspacePage() {
             if (event.event === 'execution') {
               const time = new Date().toISOString();
               setActiveStatus(data.status);
-              setActiveEvents(current => [...current, { id: `${time}-${current.length}`, executionId: 'active', status: data.status, activity: data.activity, ...(data.content ? { content: data.content } : {}), createdAt: time }]);
+              setActiveEvents(current => [...current, { id: `${time}-${current.length}`, executionId: 'active', status: data.status, activity: data.activity, ...(data.content ? { content: data.content } : {}), ...(data.agentId ? { agentId: data.agentId } : {}), ...(data.agentName ? { agentName: data.agentName } : {}), createdAt: time }]);
               if (data.status === 'streaming_response' && data.content) setStreamingContent(current => current + data.content);
             } else if (event.event === 'message' && data.message) {
               setStreamingContent(''); setMessages(current => [...current, data.message!]);
@@ -370,18 +379,18 @@ export default function WorkspacePage() {
     setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveStatus(undefined);
   }, [groups, selectedGroupId]);
 
-  if (!workspaceId) return <div className="grid h-screen place-items-center bg-[#0b1118] text-slate-400">工作区不存在</div>;
-  if (!workspace && !error) return <div className="grid h-screen place-items-center bg-[#0b1118] text-slate-400">正在加载工作区…</div>;
+  if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
+  if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
 
-  return <div className="flex h-screen min-w-[960px] overflow-hidden bg-[#0b1118] text-slate-200">
+  return <div className="app-shell flex h-screen min-w-0 overflow-hidden">
     <AgentList agents={agents} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={agentId => { setSelectedAgentId(agentId); setSelectedGroupId(null); setSelectedDirectConversationId(null); setError(''); }} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} />
     <ConversationHistory title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => setError(createError instanceof Error ? createError.message : String(createError))); }} onSelect={selectedGroupId ? selectGroup : setSelectedDirectConversationId} onContextMenu={openContextMenu} />
-    <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `👥 ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} streamingContent={streamingContent} activeStatus={activeStatus} error={error} sending={sending} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} onDraftChange={setDraft} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={() => abortRef.current?.abort()} onRename={isGroupConversation ? () => { if (selectedConversation) setRenamingConversation(selectedConversation); } : undefined} />
+    <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `👥 ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} streamingContent={streamingContent} activeEvents={activeEvents} activeStatus={activeStatus} error={error} sending={sending} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} onDraftChange={setDraft} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={() => abortRef.current?.abort()} onRename={isGroupConversation ? () => { if (selectedConversation) setRenamingConversation(selectedConversation); } : undefined} />
     <ExecutionInspector agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} executions={executions} activeStatus={activeStatus} onEdit={() => setEditingAgent(true)} />
     {editingAgent && selectedAgent && <AgentEditor key={`${selectedAgent.id}-${selectedAgent.capability?.modelSource}-${selectedAgent.capability?.models.join('|')}`} agent={selectedAgent} saving={savingAgent} refreshingModels={savingAgent} onClose={() => setEditingAgent(false)} onRefreshModels={() => { void refreshAgentModels(); }} onSave={update => { void saveAgent(update); }} />}
     {creatingGroup && <GroupCreator agents={agents} saving={savingGroup} onClose={() => setCreatingGroup(false)} onCreate={input => { void createGroup(input); }} />}
     {renamingConversation && <GroupRenameModal title={renamingConversation.title} entityLabel={renamingConversation.type === 'group' ? '群聊' : '会话'} saving={savingConversationTitle} onClose={() => setRenamingConversation(null)} onSave={title => { void saveConversationTitle(title); }} />}
     {contextMenu && <ConversationContextMenu conversation={contextMenu.conversation} clientX={contextMenu.clientX} clientY={contextMenu.clientY} onRename={() => setRenamingConversation(contextMenu.conversation)} onCopyId={() => { void copyConversationId(contextMenu.conversation.id); }} onDelete={() => { void deleteConversation(contextMenu.conversation); }} onClose={() => setContextMenu(null)} />}
-    {actionNotice && <div className="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded-lg border border-emerald-500/30 bg-emerald-950/90 px-4 py-2 text-sm text-emerald-200 shadow-xl">{actionNotice}</div>}
+    {actionNotice && <div className="fixed bottom-6 left-1/2 z-[70] -translate-x-1/2 rounded-xl border border-[color:var(--app-success)]/40 bg-[var(--app-surface-raised)] px-4 py-2 text-sm text-[var(--app-success)] shadow-[var(--app-shadow)]">{actionNotice}</div>}
   </div>;
 }

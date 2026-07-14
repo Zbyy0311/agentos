@@ -1,8 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { ConversationAgentRunner, resolveImageInput, type ConversationExecutionEvent } from '@agentos/agent-core';
+import { ConversationAgentRunner, resolveImageInput, type ConversationExecutionEvent as RunnerExecutionEvent } from '@agentos/agent-core';
 import type { AgentExecution, AgentProfile, ConversationMessage } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { cleanupConversationAttachments, getAttachmentAbsolutePath, saveConversationAttachments, type ConversationAttachmentInput, type StoredConversationAttachment } from './ConversationAttachmentService.js';
+
+type StreamExecutionEvent = RunnerExecutionEvent & { agentId: string; agentName: string };
 
 export interface SendDirectMessageInput {
   workspaceId: string;
@@ -13,7 +15,7 @@ export interface SendDirectMessageInput {
   attachments?: ConversationAttachmentInput[];
   runtimeOverrides?: Pick<AgentProfile, 'model' | 'thinkingEffort'>;
   signal?: AbortSignal;
-  onExecutionEvent?: (event: ConversationExecutionEvent) => void;
+  onExecutionEvent?: (event: StreamExecutionEvent) => void;
 }
 
 export interface SendDirectMessageResult {
@@ -29,7 +31,7 @@ export interface SendGroupMessageInput {
   content: string;
   attachments?: ConversationAttachmentInput[];
   signal?: AbortSignal;
-  onExecutionEvent?: (event: ConversationExecutionEvent) => void;
+  onExecutionEvent?: (event: StreamExecutionEvent) => void;
   onAgentMessage?: (message: ConversationMessage) => void;
 }
 
@@ -94,7 +96,7 @@ export class ConversationService {
       updatedAt: now,
     };
     this.store.createExecution(execution);
-    this.recordExecutionEvent(execution, { status: 'queued', activity: '消息已进入执行队列' }, input.onExecutionEvent);
+    this.recordExecutionEvent(execution, { status: 'queued', activity: '消息已进入执行队列' }, input.onExecutionEvent, agent);
 
     const history = this.store.listMessages(input.workspaceId, input.conversationId).filter(message => message.id !== userMessage.id);
     const runner = new ConversationAgentRunner({
@@ -106,7 +108,7 @@ export class ConversationService {
       history,
       attachments: storedAttachments.map(attachment => ({ name: attachment.name, mimeType: attachment.mimeType, absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath) })),
       signal: input.signal,
-      onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent),
+      onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent, agent),
     });
     const runResult = await runner.run();
     const completedAt = new Date().toISOString();
@@ -214,7 +216,7 @@ export class ConversationService {
     prompt: string;
     attachments?: StoredConversationAttachment[];
     signal?: AbortSignal;
-    onExecutionEvent?: (event: ConversationExecutionEvent) => void;
+    onExecutionEvent?: (event: StreamExecutionEvent) => void;
     onAgentMessage?: (message: ConversationMessage) => void;
   }): Promise<{ responseMessage: ConversationMessage; execution: AgentExecution }> {
     const now = new Date().toISOString();
@@ -224,14 +226,14 @@ export class ConversationService {
       mode: process.env.AGENTOS_FORCE_MOCK === 'true' ? 'mock' : 'real', createdAt: now, updatedAt: now,
     };
     this.store.createExecution(execution);
-    this.recordExecutionEvent(execution, { status: 'queued', activity: `${input.agent.name} 已进入执行队列` }, input.onExecutionEvent);
+    this.recordExecutionEvent(execution, { status: 'queued', activity: `${input.agent.name} 已进入执行队列` }, input.onExecutionEvent, input.agent);
     const history = this.store.listMessages(input.workspaceId, input.conversationId).filter(message => message.id !== input.sourceMessage.id);
     const runResult = await new ConversationAgentRunner({
       agent: input.agent, workspaceRoot: input.workspaceRoot, executionId: execution.id,
       message: input.prompt, history,
       attachments: input.attachments?.map(attachment => ({ name: attachment.name, mimeType: attachment.mimeType, absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath) })),
       signal: input.signal,
-      onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent),
+      onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent, input.agent),
     }).run();
     const responseMessage: ConversationMessage = {
       id: randomUUID(), conversationId: input.conversationId, workspaceId: input.workspaceId,
@@ -249,8 +251,9 @@ export class ConversationService {
 
   private recordExecutionEvent(
     execution: AgentExecution,
-    event: ConversationExecutionEvent,
-    onExecutionEvent?: (event: ConversationExecutionEvent) => void,
+    event: RunnerExecutionEvent,
+    onExecutionEvent?: (event: StreamExecutionEvent) => void,
+    agent?: Pick<AgentProfile, 'id' | 'name'>,
   ): void {
     const now = new Date().toISOString();
     this.store.appendExecutionEvent({
@@ -274,7 +277,7 @@ export class ConversationService {
         updatedAt: now,
       });
     }
-    onExecutionEvent?.(event);
+    onExecutionEvent?.(agent ? { ...event, agentId: agent.id, agentName: agent.name } : { ...event, agentId: execution.agentId, agentName: execution.agentId });
   }
 }
 
