@@ -86,3 +86,5 @@
 ## 浏览器 1.4 冒烟复验（2026-07-14）
 
 在 `http://localhost:3001/workspace/d7994c0c` 创建 Codex 单聊并发送 `AGENTOS_UI_SMOKE_OK`，确认公开回复、执行完成时间线和会话标题可见；刷新后消息、会话和完成状态仍然存在，浏览器 error/warn 日志为空。该证据支持计划项 1.4，未改变真实 Kimi/群聊 release gate 的未通过结论。
+
+最新 Kimi 环境复核：在空临时目录用固定短提示分别调用默认模型 `kimi-code/kimi-for-coding` 和配置中的 `kimi-code/kimi-for-coding-highspeed`，两者均 exit 1 并命中当前计费周期配额 403；未将该探针替代正式 Workspace 的真实 E2E。
