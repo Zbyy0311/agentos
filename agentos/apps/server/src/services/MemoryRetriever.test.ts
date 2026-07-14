@@ -30,3 +30,23 @@ test('retrieves deterministic active memories and respects fixed context budget'
     assert.equal(ranked.some(item => item.ftsRank !== null), true);
   } finally { store?.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test('matches an ASCII memory token inside a mixed Chinese task prompt', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-retriever-mixed-'));
+  let store: SqliteStore | undefined;
+  try {
+    mkdirSync(join(root, 'workspace'), { recursive: true });
+    writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [{ id: 'workspace-a', name: 'A', rootPath: root, gitEnabled: true, memoryEnabled: true, agents: [], lastOpenedAt: '2026-07-12T00:00:00.000Z', createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z' }] }), 'utf8');
+    store = new SqliteStore(root);
+    const memory = await new MemoryService(store).create({
+      workspaceId: 'workspace-a', workspaceRoot: root, memoryEnabled: true, type: 'experience',
+      title: 'External memory token', summary: 'AGENTOS_MEMORY_MIXED_TOKEN', content: 'The public memory token is AGENTOS_MEMORY_MIXED_TOKEN.',
+    });
+    const result = await new MemoryRetriever(store).search(root, {
+      workspaceId: 'workspace-a',
+      query: '请验证你能看到项目记忆 AGENTOS_MEMORY_MIXED_TOKEN，只给出公开验证结论。',
+      limit: 5, maxCharacters: 6000,
+    });
+    assert.equal(result.some(item => item.memory.id === memory.id), true);
+  } finally { store?.close(); rmSync(root, { recursive: true, force: true }); }
+});

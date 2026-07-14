@@ -53,7 +53,10 @@ export class MemoryRetriever {
 function tokenize(value: string): string[] {
   const normalized = value.toLocaleLowerCase().trim();
   if (!normalized) return [];
-  const tokens = normalized.split(/\s+/).map(token => token.trim()).filter(Boolean);
-  if (tokens.length > 1 || !/[\u3400-\u9fff]/u.test(normalized)) return tokens;
-  return Array.from({ length: Math.max(0, normalized.length - 1) }, (_, index) => normalized.slice(index, index + 2));
+  const asciiTokens = normalized.match(/[a-z0-9]+(?:[_-][a-z0-9]+)*/g) ?? [];
+  const cjkRuns = normalized.match(/[\u3400-\u9fff]+/g) ?? [];
+  const cjkTokens = cjkRuns.flatMap(run => run.length < 2
+    ? [run]
+    : Array.from({ length: run.length - 1 }, (_, index) => run.slice(index, index + 2)));
+  return [...new Set([...asciiTokens, ...cjkTokens])];
 }

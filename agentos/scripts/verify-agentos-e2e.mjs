@@ -210,7 +210,7 @@ async function realExternalMatrix(workspaceId, profiles) {
 
     memoryCandidatePassed = await attempt('REAL_MEMORY_CANDIDATE', async () => {
       const conversation = await createConversation(workspaceId, candidateAgent, 'real candidate');
-      const result = await runDirect(workspaceId, conversation, '请输出公开的决定、方案和验证结果，明确说明测试已验证；不要输出 agentos-memory 隐藏标记。');
+      const result = await runDirect(workspaceId, conversation, '请完成 AGENTOS_CANDIDATE_SCOPE 只读验收：不修改文件，针对 AgentOS 的执行档案与公开证据，输出一条明确的决定、一条执行方案和一条验证结果；验证结果必须明确说明本次验收已验证；不要输出 agentos-memory 隐藏标记。');
       assert.equal(result.run.status, 'completed');
       const generated = await jsonRequest(`/api/workspaces/${workspaceId}/runs/${result.run.id}/memory-candidates/generate`, { method: 'POST' });
       assert.equal(generated.response.status, 201, JSON.stringify(generated.body));
@@ -247,9 +247,9 @@ async function realExternalMatrix(workspaceId, profiles) {
 
   await attempt('REAL_WAITING_USER', async () => {
     const conversation = await createConversation(workspaceId, lifecycleAgent, 'real waiting user');
-    const result = await runDirect(workspaceId, conversation, '如果缺少完成任务所必需的信息，请按公开协议等待用户补充，不要猜测。');
+    const result = await runDirect(workspaceId, conversation, '请执行 AGENTOS_WAITING_REQUIRED 验收，但当前任务刻意缺少两个必需用户字段：验收项目名称和目标分支。不要猜测或执行；在用户补充这两个字段前，严格只输出公开等待标记。');
     assert.equal(result.run.status, 'waiting_user');
-    const resumed = await streamRequest(`/api/workspaces/${workspaceId}/conversations/${conversation.id}/runs/${result.run.id}/resume/stream`, { content: '补充：请按默认配置完成。' });
+    const resumed = await streamRequest(`/api/workspaces/${workspaceId}/conversations/${conversation.id}/runs/${result.run.id}/resume/stream`, { content: '补充：AGENTOS_RESUME_SCOPE，验收对象是 AgentOS 直接执行链路；范围是不修改文件并验证恢复流程；请在完成后返回公开短语 AGENTOS_RESUME_OK。' });
     assert.ok(resumed.events.some(event => event.event === 'done'));
     assert.equal((await waitForRunStatus(workspaceId, conversation.id, 'completed')).status, 'completed');
   }, failures);

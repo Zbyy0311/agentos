@@ -1,12 +1,12 @@
 $ErrorActionPreference = 'Stop'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
-$script = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'verify-agentos-e2e.ps1')
-$driver = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot 'verify-agentos-e2e.mjs')
+$script = Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $PSScriptRoot 'verify-agentos-e2e.ps1')
+$driver = Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $PSScriptRoot 'verify-agentos-e2e.mjs')
 
 foreach ($required in @(
   'AGENTOS_PROJECT_ROOT', 'AGENTOS_E2E_PHASE', 'e2e-failing-agent.mjs', 'e2e-waiting-agent.mjs',
   'REAL_EXTERNAL_AGENT', 'DETERMINISTIC_LIFECYCLE', 'RECOVERY', 'MEMORY_CANDIDATE', 'agentos.sqlite',
-  '$workspace.rootPath = $workspaceRoot', 'git -C $workspaceRoot init'
+  '$workspace.rootPath = $workspaceRoot', 'git -C $workspaceRoot init', 'AGENTOS_RESUME_SCOPE', 'AGENTOS_CANDIDATE_SCOPE', 'AGENTOS_WAITING_REQUIRED'
 )) {
   if ($script -notmatch [regex]::Escape($required) -and $driver -notmatch [regex]::Escape($required)) {
     throw "E2E contract is missing: $required"
