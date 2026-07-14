@@ -49,8 +49,8 @@
 
 | 检查 | 结果 | 证据 |
 |---|---|---|
-| Agent Core | 通过，75/75，exit 0 | `pnpm --filter @agentos/agent-core test` |
-| Server | 通过，86/86，exit 0 | `pnpm --filter @agentos/server test` |
+| Agent Core | 通过，77/77，exit 0 | `pnpm --filter @agentos/agent-core test` |
+| Server | 通过，87/87，exit 0 | `pnpm --filter @agentos/server test` |
 | Web build | 通过，exit 0 | `pnpm --filter @agentos/web build` |
 | Monorepo build | 通过，4 个构建工作区，exit 0 | `pnpm -r run build` |
 | 独立生产验收 | 连续两次通过，最新一次主 tsconfig SHA-256 不变，exit 0 | `verify-next-optimization-acceptance.ps1`；3100/3101 每次均释放，3001 保持 HTTP 200 |
