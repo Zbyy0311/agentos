@@ -33,7 +33,7 @@
 
 - SQLite 和 AgentOS 持久化日志只保存公开状态、脱敏 CLI 标签、模型/思考强度、退出码、耗时、相对文件路径和用户可见结果。
 - 诊断日志不写入完整参数、Prompt、CLI stdout/stderr；任务日志只保存输出长度和“content omitted”标记。
-- 不保存 API Key、访问令牌或私有思维链；候选提取只接受结构化公开结果中的显式候选标记。
+- 不保存 API Key、访问令牌或私有思维链；候选提取只接受显式公开标记或公开执行证据，不读取隐藏 Prompt 和原始 CLI 输出。
 
 ## 浏览器复核
 
@@ -64,3 +64,21 @@
 - 后续空目录 CLI 探针（不读取 AgentOS 私有 Workspace）确认：Codex 固定短提示 exit 0，OpenCode 固定短提示 exit 0；Kimi 的 OAuth 参数路径和按 AgentOS 映射的 API-Key 路径均返回 exit 1，错误为当前计费周期用量已达上限（HTTP 403）。因此完整三 Agent release gate 仍不能通过，且未将空目录探针替代 E2E。
 
 因此本记录明确区分“自动化/确定性回归通过”和“真实外部 Agent release gate 未通过”，计划不能据此标记为全部完成。
+
+## 最新隔离真实 E2E 复验（2026-07-14，run 4）
+
+命令通过 `scripts/verify-agentos-e2e.ps1 -AcceptanceRoot C:\tmp\agentos-e2e-real-isolated-4` 执行。验收服务使用独立端口 3200、临时 SQLite、临时 Workspace Git 仓库和临时 Markdown 记忆目录；正式 Workspace、3000/3001 和正式数据库未被修改。脚本只输出状态、退出码和脱敏失败摘要。
+
+- Codex 单聊：通过；存在 CLI invocation，Run 为 `completed`。
+- OpenCode 单聊：通过；存在 CLI invocation，Run 为 `completed`。
+- Kimi 单聊：失败；当前计费周期配额耗尽，返回 HTTP 403。此前的空目录探针也已验证 OAuth 和 AgentOS API-Key 两条路径均受同一配额限制。
+- 三 Agent 群聊：失败；Kimi 成员失败导致群聊 Run 未完成，因此 10.4 和真实外部 Agent release gate 继续保持未通过。
+- 真实记忆注入：通过；唯一 token 被检索并产生 `MemoryUsage`。
+- 真实候选闭环：通过；无隐藏标记的公开决定/方案/验证证据生成候选，接受和拒绝均成功，接受后的记忆保留来源 Run。
+- 真实 CLI 失败：通过；无效模型路径产生 `failed` Run，未生成候选。
+- 真实 CLI 取消：通过；取消后 Run 为 `cancelled`。
+- 真实 waiting_user：通过；明确缺少必需字段时进入 `waiting_user`，resume 使用同一 Run 的新 Execution，最终为 `completed`。
+- 确定性生命周期：通过；fixture 覆盖 waiting/resume、失败和候选生成 409。
+- 重启恢复：通过；`queued/running` 被标记为失败，`waiting_user` 保持等待。
+
+本次脚本总退出码仍为 1，原因仅为真实 Kimi 单聊和依赖该成员的群聊 gate 未通过；不能将本次结果标记为全部完成。
