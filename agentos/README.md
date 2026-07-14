@@ -79,6 +79,14 @@ Codex (Manager) → KimiCode (Worker) → OpenCode (Reviewer) → Codex (Final R
 4. 流水线运行中可通过 **Cancel** 按钮中止（会杀掉后端正在执行的 Agent 进程）
 5. 每个阶段的输出会持久化保存，刷新页面后仍然可见
 
+## 执行档案与项目知识
+
+v2 会为每条单聊或群聊请求创建一个 `AgentRun`，统一保存公开事件、可观测 CLI 元数据、Git 文件变化、最终结果和记忆用量；历史详情可从执行状态面板打开。项目知识保存在 `agent-memory/records/` 下的 UTF-8 Markdown，SQLite 保存索引和来源，默认只检索 active 记忆并使用固定预算注入。成功 Run 只能生成待审核候选，必须人工接受后才会进入正式记忆。
+
+- 架构与接口说明：[docs/AGENTOS_V2.md](docs/AGENTOS_V2.md)
+- 记忆系统边界：[docs/MEMORY_SYSTEM.md](docs/MEMORY_SYSTEM.md)
+- 全链路验收记录：[docs/acceptance/agentos-memory-acceptance.md](docs/acceptance/agentos-memory-acceptance.md)
+
 ## 项目结构
 
 ```
@@ -109,3 +117,14 @@ agentos/
 | `AGENTOS_AGENT_TIMEOUT` | `0`（禁用） | 可选无活动超时（毫秒）；`0`、空值或 `null` 表示无限等待，正数仅在 Agent 持续无 stdout/stderr 输出时终止任务。 |
 | `PORT` | `3000` | 后端端口 |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3000` | 前端 API 地址 |
+
+## 收尾验收
+
+执行计划收尾使用独立生产服务端口，不接管用户正在使用的 3000/3001：
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-next-optimization-acceptance.ps1
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-agentos-e2e.ps1
+```
+
+前一个脚本负责 3100/3101 的构建、健康检查、Workspace API 和页面响应；后一个脚本在临时项目根目录验证确定性失败/等待恢复、重启恢复、记忆候选闭环，并单独报告真实外部 Agent gate。真实 Codex/Kimi/OpenCode 尚未全部通过时，不得将计划标记为全部完成。

@@ -176,3 +176,35 @@
 - UI: Agent editor now displays discovered model labels/IDs, model source, warning state, refresh action, and preserves custom-model clearing.
 - Verification: discovery 7/7, server 37/37, agent-core 60/60, web build and full workspace build passed; local Codex returned 7 models and Kimi returned 2 models.
 - Verification update: located the configured OpenCode 1.17.11 executable at `E:\software\opencode\node_modules\opencode-ai\bin\opencode.exe`; plain `models` output was parsed successfully and returned 9 models. JSON/legacy fallback behavior remains covered by tests.
+| 2026-07-14T08:04:49.441Z | Codex | codex_manager | f028a302-855c-4aa7-9bb4-b2d14f982acb | real | OK |
+
+## 2026-07-14 - AgentOS 下一阶段优化实施
+
+- 变更：按计划完成 AgentRun、统一事件、CLI/文件证据、Run 详情、Markdown Memory CRUD、FTS5 检索与固定预算注入、候选记忆审批及前端入口。
+- 数据安全：保留 SQLite/Markdown/JSON/agent-memory 现有架构；事件和证据只保存公开状态、安全 CLI 标签、耗时和工作区相对路径，不保存密钥、完整 CLI 输出或私有思维链。
+- 验证：Agent Core 73/73、Server 68/68、Web build、shared/server build、monorepo build 以及 3000/3001 健康检查均通过。
+- 风险：真实浏览器单聊曾因当前 3000 进程使用真实 CLI 而停滞；Windows 临时 Git reparse 清理为 best-effort；禁止 next dev 与 next build 并行写同一 `.next`。
+- 下一步：在真实 CLI 可返回时补做单聊/群聊/候选审核；当前 3001 已刷新并确认消息、执行历史和项目知识界面可用。
+
+## 2026-07-14 - AgentOS 下一阶段优化最终回归
+
+- 变更：补齐 Memory 已归档筛选、标签/相关文件编辑字段、FTS5 排名路径、RunDetails 参与 Agent 区块、旧表迁移行数守恒和真实子进程失败/取消覆盖。
+- 隐私：执行器和会话错误不再把完整参数、Prompt 或 CLI stdout/stderr 写入持久化任务日志；仅保留安全元数据和 AgentOS 生成的公开终态说明。
+- 验证：`pnpm install --frozen-lockfile` 通过；Agent Core 74/74；Server 73/73；Web build 通过；`pnpm -r run build` 通过；3001 HTTP 200。
+- 浏览器：内置浏览器确认 Workspace、项目知识、已归档筛选、标签字段和相关文件字段均可渲染。真实外部 Agent CLI 浏览器链路仍按环境限制记录，未冒充通过。
+- 环境：一次统一验收脚本末尾健康检查受 `next dev` 与 `next build` 并行写 `.next` 影响；已清理缓存并单独重启 3001，当前服务正常。
+- 2026-07-14：严格按优化计划逐项复核并补齐知识详情的 Markdown 只读预览：新增安全的 `MemoryMarkdownPreview`，不使用 `dangerouslySetInnerHTML`；浏览器已验证标题、UTF-8 列表和代码块均能渲染。
+- 当前验证：`pnpm install --frozen-lockfile` 通过；Agent Core 74/74；Server 73/73；Web build 通过（Workspace route 21.4 kB）；monorepo build 通过（4/5 packages，exit 0）；3001 HTTP 200，当前开发服务 PID 15100。
+- 浏览器复核：真实 Workspace、项目知识页、6 个类型筛选项、标签/相关文件字段和 Markdown 只读预览均已确认；真实外部 Agent CLI 的完整浏览器链路仍按环境限制记录，未冒充通过。
+- 2026-07-14：收尾计划 Task 0 基线：当前分支 `codex/agentos-current`，原实施代码和验收文档仍处于未提交状态；`.claude/`、`.playwright-cli/` 为保留的本地文件；计划原有 53 项均未勾选；`git diff --check` 通过；3000/3001 当前无监听进程，后续验收使用独立端口并只清理本次启动的进程。
+
+## 2026-07-14 - AgentOS 收尾实施与复验
+
+- Task 1：事件持久化失败显式失败；Server 测试 86/86。
+- Task 2：已完成 Run 使用 `completedAt` 固定耗时；Web helper 测试 4/4，Web build 通过。
+- Task 3：无隐藏标记时从公开摘要、回复和文件变化生成候选；候选接受/拒绝/重新检索测试通过。
+- Task 4：单聊 `waiting_user` 暂停与 resume 使用同一 Run 的新 Execution；Agent Core 75/75、Server 86/86。
+- Task 5：生产验收脚本连续两次 exit 0；3100/3101 健康检查和清理检查通过。
+- Task 6：确定性 fixture、临时 SQLite、重启恢复和候选回归通过；当前真实 Codex/OpenCode 返回 exit 1，`REAL_EXTERNAL_AGENT` 保持 failed，未将计划标为全部完成。
+- 2026-07-14 最新 E2E 复验：Kimi 单聊一次通过，Codex/OpenCode 返回 exit 1；群聊、真实 waiting_user 和依赖后续成功执行的候选闭环未通过。预恢复阶段 `RECOVERY: not_run`，重启恢复阶段 `RECOVERY: passed`；确定性生命周期保持通过。最新结果不将此前一次候选闭环通过记录视为稳定 release gate。
+- 约束：验收期间未修改正式 `.agentos/agentos.sqlite`，未记录 API Key、完整 Prompt 或完整 CLI stdout/stderr，未纳入 `.claude/`、`.playwright-cli/`。

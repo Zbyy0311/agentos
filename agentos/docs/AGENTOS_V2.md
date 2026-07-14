@@ -28,6 +28,14 @@
 - Agent 禁用后不可发起新执行；身份权限在服务端配置中保存。
 - 真实模式下，未授予 `write` 的 Codex CLI 会强制使用 `read-only` sandbox；其他无法确认只读能力的 CLI 会被拒绝执行。
 
+## AgentRun 与项目知识
+
+每条用户请求对应一个 `AgentRun`；群聊中规划、成员执行和最终总结的多个 `AgentExecution` 共享同一个 `runId`。Run 详情只展示可观察证据：公开事件、脱敏 CLI 标签与耗时、退出码、工作区相对文件变化、最终结果和使用的正式记忆。
+
+项目知识由 `agent-memory/records/{overview,conventions,decisions,experiences}/` 下的 Markdown 正文和 SQLite 元数据组成。检索使用 FTS5，并受最多 5 条、总计 6000 字符、单条 1800 字符的预算限制；归档记忆和待审核候选不会进入 Prompt。完成 Run 后可生成最多 3 条候选，只有接受后才写入正式记忆，并保留来源 Run。
+
+详细数据模型、迁移、备份和隐私边界见 [`docs/MEMORY_SYSTEM.md`](MEMORY_SYSTEM.md)。
+
 ## 分阶段任务顺序与验收
 
 | 阶段 | 交付内容 | 验收标准 | 当前状态 |
@@ -48,5 +56,26 @@
 - `GET /api/workspaces/:workspaceId/conversations/:conversationId/messages`
 - `GET /api/workspaces/:workspaceId/conversations/:conversationId/executions`
 - `POST /api/workspaces/:workspaceId/conversations/:conversationId/messages/stream`
+- `GET /api/workspaces/:workspaceId/runs`
+- `GET /api/workspaces/:workspaceId/runs/:runId`
+- `GET|POST /api/workspaces/:workspaceId/memories`
+- `PATCH /api/workspaces/:workspaceId/memories/:memoryId`
+- `POST /api/workspaces/:workspaceId/memories/:memoryId/archive`
+- `GET|POST /api/workspaces/:workspaceId/memory-candidates`
 
 最后一个接口使用 SSE，发送 `execution`、`message`、`done` 与 `error` 事件。
+
+## 等待用户补充与隔离验收
+
+单聊等待用户补充信息时，Run 会进入 `waiting_user` 并保留问题、等待 Execution 和 Agent；恢复使用：
+
+```http
+POST /api/workspaces/:workspaceId/conversations/:conversationId/runs/:runId/resume/stream
+Content-Type: application/json
+
+{"content":"用户补充的信息"}
+```
+
+恢复会在同一 Run 下创建新的 Execution，原始消息、事件、CLI 调用和文件证据保持可追溯；群聊返回等待标记时明确失败，不进入半等待状态。
+
+生产验收使用 `scripts/verify-next-optimization-acceptance.ps1` 的 3100/3101 隔离生命周期，以及 `scripts/verify-agentos-e2e.ps1` 的临时数据库和确定性 fixture。脚本输出 `REAL_EXTERNAL_AGENT`、`DETERMINISTIC_LIFECYCLE`、`RECOVERY`、`MEMORY_CANDIDATE` 四个 gate。
