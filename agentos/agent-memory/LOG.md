@@ -208,3 +208,4 @@
 - Task 6：确定性 fixture、临时 SQLite、重启恢复和候选回归通过；当前真实 Codex/OpenCode 返回 exit 1，`REAL_EXTERNAL_AGENT` 保持 failed，未将计划标为全部完成。
 - 2026-07-14 最新 E2E 复验：Kimi 单聊一次通过，Codex/OpenCode 返回 exit 1；群聊、真实 waiting_user 和依赖后续成功执行的候选闭环未通过。预恢复阶段 `RECOVERY: not_run`，重启恢复阶段 `RECOVERY: passed`；确定性生命周期保持通过。最新结果不将此前一次候选闭环通过记录视为稳定 release gate。
 - 约束：验收期间未修改正式 `.agentos/agentos.sqlite`，未记录 API Key、完整 Prompt 或完整 CLI stdout/stderr，未纳入 `.claude/`、`.playwright-cli/`。
+- 2026-07-14 续验：为真实 CLI 子进程补充 `HOME`/`USERPROFILE` 归一化，并让 E2E 临时 Workspace 使用独立 Git 仓库；Agent Core 77/77、Server 86/86、Web build 和两个脚本契约测试通过。真实外部 Agent 尚未重跑，计划仍保留 3 项未勾选。
