@@ -6,6 +6,7 @@ const avatarColors = ['bg-[var(--app-accent)]', 'bg-[var(--app-info)]', 'bg-[var
 
 interface AgentListProps {
   agents: AgentProfile[];
+  panelWidth?: number;
   selectedAgentId: string | null;
   activeStatus?: ExecutionStatus;
   groups: Conversation[];
@@ -18,8 +19,8 @@ interface AgentListProps {
   onOpenMemories(): void;
 }
 
-export function AgentList({ agents, selectedAgentId, activeStatus, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenMemories }: AgentListProps) {
-  return <aside className="workspace-sidebar ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4">
+export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenMemories }: AgentListProps) {
+  return <aside className="workspace-sidebar ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
     <div className="mb-6 px-2">
       <div className="flex items-center justify-between gap-2">
         <div className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--app-accent)] text-[11px] font-bold text-white">A/</div>
@@ -49,10 +50,10 @@ export function AgentList({ agents, selectedAgentId, activeStatus, groups, selec
     <div className="mt-8 border-t ui-border pt-5">
       <div className="workspace-nav-label mb-2 flex items-center justify-between px-2 text-[11px] font-medium tracking-[0.14em] ui-dim"><span>GROUPS</span><button type="button" onClick={onCreateGroup} className="ui-button-ghost rounded-md px-1.5 text-base font-normal">+</button></div>
       <div className="space-y-1">
-        {groups.map(group => <button type="button" key={group.id} onClick={() => onSelectGroup(group.id)} onContextMenu={event => onContextMenu(group.id, event)} className={`workspace-group-copy w-full truncate rounded-lg px-3 py-2 text-left text-sm transition ${selectedGroupId === group.id ? 'ui-selected' : 'ui-button-ghost'}`}>⌘ <span className="ml-1">{group.title}</span></button>)}
+        {groups.map(group => <button type="button" key={group.id} aria-label={group.title} title={group.title} onClick={() => onSelectGroup(group.id)} onContextMenu={event => onContextMenu(group.id, event)} className={`workspace-group-button w-full truncate rounded-lg px-3 py-2 text-left text-sm transition ${selectedGroupId === group.id ? 'ui-selected' : 'ui-button-ghost'}`}>⌘ <span className="workspace-group-copy ml-1">{group.title}</span></button>)}
         {groups.length === 0 && <div className="workspace-copy rounded-lg px-3 py-2 text-xs leading-5 ui-dim">点击 + 创建协作群聊</div>}
       </div>
     </div>
-    <button type="button" onClick={onOpenMemories} className="mt-auto rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost">📚 <span className="ml-1">项目知识</span></button>
+    <button type="button" aria-label="打开项目知识" title="项目知识" onClick={onOpenMemories} className="workspace-knowledge-button mt-auto rounded-xl border ui-border px-3 py-2.5 text-left text-sm ui-button-ghost"><span aria-hidden="true">📚</span> <span className="workspace-knowledge-label ml-1">项目知识</span></button>
   </aside>;
 }

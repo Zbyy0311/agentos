@@ -286,6 +286,7 @@ test('records terminal failed and cancelled Run states without persisting CLI ou
     const cancelled = await new ConversationService(store).sendDirectMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'cancel-conversation', agentId: 'codex', content: '取消路径', signal: controller.signal });
     assert.equal(cancelled.execution.status, 'cancelled');
     assert.equal(store.listRuns('workspace-a', 'cancel-conversation')[0]?.status, 'cancelled');
+    assert.equal(store.listMessages('workspace-a', 'cancel-conversation').at(-1)?.content, '执行已取消：Codex 执行已取消');
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;

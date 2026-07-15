@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ConversationAgentRunner, resolveImageInput, type ConversationExecutionEvent as RunnerExecutionEvent } from '@agentos/agent-core';
-import type { AgentEvent, AgentExecution, AgentProfile, CliInvocationObservation, ConversationMessage, MemoryUsage, RunCliInvocation, RunFileChange } from '@agentos/shared';
+import type { AgentEvent, AgentExecution, AgentProfile, AgentRun, CliInvocationObservation, ConversationMessage, MemoryUsage, RunCliInvocation, RunFileChange } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { createAgentEvent } from '../events/createAgentEvent.js';
@@ -23,6 +23,7 @@ export interface SendDirectMessageInput {
   runtimeOverrides?: Pick<AgentProfile, 'model' | 'thinkingEffort'>;
   memoryEnabled?: boolean;
   signal?: AbortSignal;
+  onRunCreated?: (run: AgentRun) => void;
   onExecutionEvent?: (event: StreamExecutionEvent) => void;
 }
 
@@ -41,6 +42,7 @@ export interface ResumeDirectMessageInput {
   content: string;
   memoryEnabled?: boolean;
   signal?: AbortSignal;
+  onRunCreated?: (run: AgentRun) => void;
   onExecutionEvent?: (event: StreamExecutionEvent) => void;
 }
 
@@ -51,6 +53,7 @@ export interface SendGroupMessageInput {
   content: string;
   attachments?: ConversationAttachmentInput[];
   signal?: AbortSignal;
+  onRunCreated?: (run: AgentRun) => void;
   onExecutionEvent?: (event: StreamExecutionEvent) => void;
   onAgentMessage?: (message: ConversationMessage) => void;
   memoryEnabled?: boolean;
@@ -120,6 +123,7 @@ export class ConversationService {
       createdAt: now,
       updatedAt: now,
     });
+    input.onRunCreated?.(run);
     this.publishEvent(createAgentEvent({
       type: 'run.created', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
       payload: { objective: run.objective, status: run.status },
@@ -196,7 +200,7 @@ export class ConversationService {
         ? runResult.content
         : finalStatus === 'waiting_user'
           ? `等待补充信息：${runResult.waitingQuestion}`
-          : `执行失败：${finalFailureReason ?? runResult.error ?? '未知错误'}`,
+          : `${finalStatus === 'cancelled' ? '执行已取消' : '执行失败'}：${finalFailureReason ?? runResult.error ?? '未知错误'}`,
       createdAt: completedAt,
     };
     this.store.createMessage(responseMessage);
@@ -221,6 +225,7 @@ export class ConversationService {
     const run = this.store.getRun(input.workspaceId, input.runId);
     if (!run || run.conversationId !== conversation.id) throw new Error('Run not found');
     if (run.status !== 'waiting_user') throw new Error('Run is not waiting for user input');
+    input.onRunCreated?.(run);
     const agentId = run.waitingAgentId ?? conversation.agentId;
     if (!agentId) throw new Error('Waiting agent is unavailable');
     const agent = this.store.listAgentProfiles(input.workspaceId).find(item => item.id === agentId && item.enabled);
@@ -294,7 +299,7 @@ export class ConversationService {
         ? runResult.content
         : finalStatus === 'waiting_user'
           ? `等待补充信息：${runResult.waitingQuestion}`
-          : `执行失败：${finalFailureReason ?? runResult.error ?? '未知错误'}`,
+          : `${finalStatus === 'cancelled' ? '执行已取消' : '执行失败'}：${finalFailureReason ?? runResult.error ?? '未知错误'}`,
       createdAt: completedAt,
     };
     this.store.createMessage(responseMessage);
@@ -356,6 +361,7 @@ export class ConversationService {
       createdAt: now,
       updatedAt: now,
     });
+    input.onRunCreated?.(run);
     this.publishEvent(createAgentEvent({
       type: 'run.created', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
       payload: { objective: run.objective, status: run.status },
@@ -474,7 +480,9 @@ export class ConversationService {
       id: randomUUID(), conversationId: input.conversationId, workspaceId: input.workspaceId,
       senderType: runResult.status === 'completed' ? 'agent' : 'system',
       ...(runResult.status === 'completed' ? { senderAgentId: input.agent.id } : {}),
-      content: runResult.status === 'completed' ? runResult.content : `执行失败：${runResult.error ?? '未知错误'}`,
+      content: runResult.status === 'completed'
+        ? runResult.content
+        : `${runResult.status === 'cancelled' ? '执行已取消' : '执行失败'}：${runResult.error ?? '未知错误'}`,
       createdAt: new Date().toISOString(),
     };
     this.store.createMessage(responseMessage);

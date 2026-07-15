@@ -24,6 +24,13 @@ export function isImageClipboardItem(item: { type?: string } | null | undefined)
   return Boolean(item?.type && isSupportedImageMimeType(item.type));
 }
 
+export function getAdjacentImageId(items: Array<{ id: string }>, currentId: string, direction: -1 | 1): string | undefined {
+  if (items.length === 0) return undefined;
+  const currentIndex = items.findIndex(item => item.id === currentId);
+  const nextIndex = (Math.max(currentIndex, 0) + direction + items.length) % items.length;
+  return items[nextIndex]?.id;
+}
+
 export function validateImageDrafts(drafts: ImageDraft[]): ImageValidationResult {
   if (drafts.length > MAX_IMAGE_COUNT) return { ok: false, error: `最多选择 ${MAX_IMAGE_COUNT} 张图片` };
   if (drafts.some(draft => !isSupportedImageMimeType(draft.mimeType))) return { ok: false, error: '仅支持 PNG、JPEG、GIF 和 WebP 图片' };

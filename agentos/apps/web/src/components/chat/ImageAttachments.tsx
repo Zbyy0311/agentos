@@ -1,5 +1,6 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import type { ImageDraft } from '@/lib/imageAttachments';
+import { ImagePreviewModal, type ImagePreviewItem } from './ImagePreviewModal';
 
 interface ImageAttachmentsProps {
   drafts: ImageDraft[];
@@ -10,6 +11,8 @@ interface ImageAttachmentsProps {
 
 export function ImageAttachments({ drafts, disabled, onFiles, onRemove }: ImageAttachmentsProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const previewItems: ImagePreviewItem[] = drafts.map(draft => ({ id: draft.id, name: draft.name, url: draft.previewUrl }));
 
   return <div className="flex min-w-0 items-center gap-2">
     <input
@@ -37,7 +40,9 @@ export function ImageAttachments({ drafts, disabled, onFiles, onRemove }: ImageA
     </button>
     {drafts.length > 0 && <div className="flex min-w-0 items-center gap-1.5 overflow-x-auto py-0.5">
       {drafts.map(draft => <div key={draft.id} className="group ui-panel relative h-11 w-11 shrink-0 overflow-hidden rounded-lg border">
-        <img src={draft.previewUrl} alt={draft.name} title={draft.name} className="h-full w-full object-cover" />
+        <button type="button" aria-label={`放大 ${draft.name}`} onClick={() => setSelectedId(draft.id)} className="h-full w-full cursor-zoom-in focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--app-accent)]">
+          <img src={draft.previewUrl} alt={draft.name} title={draft.name} className="h-full w-full object-cover transition duration-200 group-hover:scale-105" />
+        </button>
         <button
           type="button"
           aria-label={`移除 ${draft.name}`}
@@ -46,5 +51,6 @@ export function ImageAttachments({ drafts, disabled, onFiles, onRemove }: ImageA
         >×</button>
       </div>)}
     </div>}
+    <ImagePreviewModal items={previewItems} selectedId={selectedId} onClose={() => setSelectedId(null)} onSelect={setSelectedId} />
   </div>;
 }

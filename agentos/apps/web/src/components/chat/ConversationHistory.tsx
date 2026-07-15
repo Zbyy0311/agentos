@@ -3,6 +3,7 @@ import type { MouseEvent } from 'react';
 
 interface ConversationHistoryProps {
   title: string;
+  panelWidth?: number;
   conversations: Conversation[];
   selectedConversationId: string | null;
   createLabel: string;
@@ -11,8 +12,8 @@ interface ConversationHistoryProps {
   onContextMenu(conversationId: string, event: MouseEvent<HTMLButtonElement>): void;
 }
 
-export function ConversationHistory({ title, conversations, selectedConversationId, createLabel, onCreate, onSelect, onContextMenu }: ConversationHistoryProps) {
-  return <aside className="history-sidebar ui-panel flex w-64 shrink-0 flex-col border-r px-3 py-4">
+export function ConversationHistory({ title, panelWidth, conversations, selectedConversationId, createLabel, onCreate, onSelect, onContextMenu }: ConversationHistoryProps) {
+  return <aside className="history-sidebar ui-panel flex w-64 shrink-0 flex-col border-r px-3 py-4" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
     <div className="mb-4 px-2">
       <div className="text-[11px] font-medium tracking-[0.14em] ui-dim">CONVERSATIONS</div>
       <div className="mt-2 truncate text-sm font-semibold ui-text">{title}</div>

@@ -4,6 +4,7 @@ import { getAgentCapability } from '@agentos/agent-core';
 import type { AgentCapability, AgentModelOption, AgentProfile, Conversation, ThinkingEffort } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ConversationService } from '../services/ConversationService.js';
+import { RunStreamRegistry, type RunStreamEvent } from '../services/RunStreamRegistry.js';
 import { cleanupConversationAttachments, getAttachmentAbsolutePath, validateConversationAttachmentInputs, type ConversationAttachmentInput } from '../services/ConversationAttachmentService.js';
 import { CliModelDiscovery, type ModelDiscoveryService } from '../services/CliModelDiscovery.js';
 import { SqliteStore } from '../store/SqliteStore.js';
@@ -18,6 +19,7 @@ export function createConversationRoutes(
 ): Router {
   const router = Router({ mergeParams: true });
   const service = new ConversationService(store, eventBus);
+  const runStreams = new RunStreamRegistry();
 
   router.get('/agents', async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -270,10 +272,19 @@ export function createConversationRoutes(
     const send = createSseWriter(res);
     const stopHeartbeat = startSseHeartbeat(res);
     const abortController = new AbortController();
-    let finished = false;
+    let activeRunId: string | undefined;
+    let unsubscribe = () => {};
+    const forward = (item: RunStreamEvent) => send(item.event, item.data);
+    const attachRun = (run: { id: string }) => {
+      activeRunId = run.id;
+      runStreams.open(run.id, abortController);
+      unsubscribe = runStreams.subscribe(run.id, 0, forward) ?? (() => {});
+      runStreams.emit(run.id, 'run', { runId: run.id, run });
+    };
 
     res.on('close', () => {
-      if (!finished) abortController.abort();
+      unsubscribe();
+      stopHeartbeat();
     });
 
     try {
@@ -288,10 +299,13 @@ export function createConversationRoutes(
           runtimeOverrides,
           memoryEnabled: workspace.memoryEnabled,
           signal: abortController.signal,
-          onExecutionEvent: event => send('execution', event),
+          onRunCreated: attachRun,
+          onExecutionEvent: event => { if (activeRunId) runStreams.emit(activeRunId, 'execution', event); },
         });
-        send('message', { message: result.responseMessage });
-        send('done', { execution: result.execution });
+        if (activeRunId) {
+          runStreams.emit(activeRunId, 'message', { message: result.responseMessage });
+          runStreams.finish(activeRunId, 'done', { execution: result.execution });
+        }
       } else {
         const result = await service.sendGroupMessage({
           workspaceId: workspace.id,
@@ -301,18 +315,65 @@ export function createConversationRoutes(
           attachments,
           memoryEnabled: workspace.memoryEnabled,
           signal: abortController.signal,
-          onExecutionEvent: event => send('execution', event),
-          onAgentMessage: message => send('message', { message }),
+          onRunCreated: attachRun,
+          onExecutionEvent: event => { if (activeRunId) runStreams.emit(activeRunId, 'execution', event); },
+          onAgentMessage: message => { if (activeRunId) runStreams.emit(activeRunId, 'message', { message }); },
         });
-        send('done', { executions: result.executions });
+        if (activeRunId) runStreams.finish(activeRunId, 'done', { executions: result.executions });
       }
     } catch (error) {
-      send('error', { error: error instanceof Error ? error.message : String(error) });
+      const message = error instanceof Error ? error.message : String(error);
+      if (activeRunId) runStreams.finish(activeRunId, 'error', { error: message });
+      else send('error', { error: message });
     } finally {
-      finished = true;
+      unsubscribe();
       stopHeartbeat();
       res.end();
     }
+  });
+
+  router.get('/conversations/:conversationId/runs/:runId/stream', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    const run = store.getRun(workspace.id, req.params.runId);
+    if (!run || run.conversationId !== conversation.id) return res.status(404).json({ error: 'Run not found' });
+    if (!runStreams.has(run.id)) return res.status(503).json({ error: 'Run stream is no longer available' });
+
+    const cursor = parseStreamCursor(req.query.cursor);
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = createSseWriter(res);
+    const stopHeartbeat = startSseHeartbeat(res);
+    const onEvent = (item: RunStreamEvent) => {
+      send(item.event, item.data);
+      if (item.event === 'done' || item.event === 'error') {
+        stopHeartbeat();
+        res.end();
+      }
+    };
+    const unsubscribe = runStreams.subscribe(run.id, cursor, onEvent) ?? (() => {});
+    res.on('close', () => {
+      unsubscribe();
+      stopHeartbeat();
+    });
+    if (runStreams.isFinished(run.id)) res.end();
+  });
+
+  router.post('/conversations/:conversationId/runs/:runId/cancel', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    const run = store.getRun(workspace.id, req.params.runId);
+    if (!run || run.conversationId !== conversation.id) return res.status(404).json({ error: 'Run not found' });
+    if (!runStreams.cancel(run.id)) return res.status(409).json({ error: 'Run is no longer active' });
+    res.json({ runId: run.id, cancelled: true });
   });
 
   router.post('/conversations/:conversationId/runs/:runId/resume/stream', async (req: Request, res: Response) => {
@@ -336,22 +397,25 @@ export function createConversationRoutes(
     const send = createSseWriter(res);
     const stopHeartbeat = startSseHeartbeat(res);
     const abortController = new AbortController();
-    let finished = false;
+    runStreams.open(run.id, abortController);
+    const unsubscribe = runStreams.subscribe(run.id, 0, item => send(item.event, item.data)) ?? (() => {});
+    runStreams.emit(run.id, 'run', { runId: run.id, run });
     res.on('close', () => {
-      if (!finished) abortController.abort();
+      unsubscribe();
+      stopHeartbeat();
     });
     try {
       const result = await service.resumeDirectMessage({
         workspaceId: workspace.id, workspaceRoot: workspace.rootPath, conversationId: conversation.id,
         runId: run.id, content, memoryEnabled: workspace.memoryEnabled, signal: abortController.signal,
-        onExecutionEvent: event => send('execution', event),
+        onExecutionEvent: event => runStreams.emit(run.id, 'execution', event),
       });
-      send('message', { message: result.responseMessage });
-      send('done', { execution: result.execution });
+      runStreams.emit(run.id, 'message', { message: result.responseMessage });
+      runStreams.finish(run.id, 'done', { execution: result.execution });
     } catch (error) {
-      send('error', { error: error instanceof Error ? error.message : String(error) });
+      runStreams.finish(run.id, 'error', { error: error instanceof Error ? error.message : String(error) });
     } finally {
-      finished = true;
+      unsubscribe();
       stopHeartbeat();
       res.end();
     }
@@ -371,6 +435,11 @@ function parseAttachmentInputs(value: unknown): ConversationAttachmentInput[] {
     }
     return { name: attachment.name, mimeType: attachment.mimeType, dataUrl: attachment.dataUrl };
   });
+}
+
+function parseStreamCursor(value: unknown): number {
+  const parsed = typeof value === 'string' ? Number.parseInt(value, 10) : 0;
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
 function isThinkingEffort(value: unknown): value is ThinkingEffort {

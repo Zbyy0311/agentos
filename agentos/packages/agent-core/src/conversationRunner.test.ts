@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentProfile, ExecutionStatus } from '@agentos/shared';
 import { ConversationAgentRunner } from './conversationRunner.js';
-import { CLIExecutor } from './executor.js';
+import { CLIError, CLIExecutor } from './executor.js';
 
 const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
 let workspaceRoot: string;
@@ -203,6 +203,30 @@ describe('ConversationAgentRunner', () => {
 
     expect(result.status).toBe('failed');
     expect(result.error).toContain('exit code 1');
+  });
+
+  it('reports cancellation separately from a CLI failure', async () => {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    const controller = new AbortController();
+    vi.spyOn(CLIExecutor, 'execute').mockImplementation(async () => {
+      controller.abort();
+      throw new CLIError('cancelled', 'opencode_reviewer', null, '');
+    });
+    const agent: AgentProfile = {
+      id: 'opencode', workspaceId: 'workspace-1', name: 'OpenCode', role: 'opencode', roleTitle: 'Reviewer',
+      systemPrompt: 'Read-only review.', permissions: ['read', 'review'], enabled: true, cliCommand: 'opencode', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+
+    const events: Array<{ status: ExecutionStatus; activity: string; content?: string }> = [];
+    const result = await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-cancelled', message: '取消', history: [], signal: controller.signal,
+      onEvent: event => events.push(event),
+    }).run();
+
+    expect(result.status).toBe('cancelled');
+    expect(result.error).toBe('OpenCode 执行已取消');
+    expect(events.at(-1)).toEqual({ status: 'cancelled', activity: '执行已取消', content: 'OpenCode 执行已取消' });
   });
 
   it('pauses on a waiting-user marker without exposing the marker text', async () => {

@@ -365,3 +365,52 @@ test('pauses a direct run for user input and resumes it under the same Run', asy
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('reconnects to a completed Run without creating another message or execution', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  const store = new SqliteStore(root);
+  const app = express();
+  const server = app.listen(0);
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, new WorkspaceManager(store)));
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('Test server did not bind a port');
+    const base = `http://127.0.0.1:${address.port}/api/workspaces/workspace-a`;
+
+    const created = await fetch(`${base}/conversations`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ agentId: 'codex', title: 'Reconnect' }),
+    }).then(response => response.json()) as { conversation: { id: string } };
+    const initial = await fetch(`${base}/conversations/${created.conversation.id}/messages/stream`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify({ content: '连接恢复测试' }),
+    });
+    assert.equal(initial.status, 200);
+    assert.match(await initial.text(), /event: run/);
+
+    const run = store.listRuns('workspace-a', created.conversation.id)[0];
+    assert.ok(run);
+    const beforeMessages = store.listMessages('workspace-a', created.conversation.id).length;
+    const beforeExecutions = store.listExecutions('workspace-a', created.conversation.id).length;
+
+    const recovered = await fetch(`${base}/conversations/${created.conversation.id}/runs/${run.id}/stream?cursor=0`, {
+      headers: { Accept: 'text/event-stream' },
+    });
+    const recoveredStream = await recovered.text();
+    assert.equal(recovered.status, 200);
+    assert.match(recoveredStream, /event: run/);
+    assert.match(recoveredStream, /event: done/);
+    assert.equal(store.listMessages('workspace-a', created.conversation.id).length, beforeMessages);
+    assert.equal(store.listExecutions('workspace-a', created.conversation.id).length, beforeExecutions);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

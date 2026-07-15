@@ -93,9 +93,11 @@ export class ConversationAgentRunner {
       };
     } catch (error) {
       const cancelled = this.options.signal?.aborted === true;
-      const message = error instanceof CLIError
-        ? `${this.options.agent.name} CLI 执行失败${error.exitCode === null ? '' : `（退出码 ${error.exitCode}）`}，诊断输出已省略`
-        : error instanceof Error ? error.message : String(error);
+      const message = cancelled
+        ? `${this.options.agent.name} 执行已取消`
+        : error instanceof CLIError
+          ? `${this.options.agent.name} CLI 执行失败${error.exitCode === null ? '' : `（退出码 ${error.exitCode}）`}，诊断输出已省略`
+          : error instanceof Error ? error.message : String(error);
       this.emit(cancelled ? 'cancelled' : 'failed', cancelled ? '执行已取消' : '执行失败', message);
       return {
         status: cancelled ? 'cancelled' : 'failed',

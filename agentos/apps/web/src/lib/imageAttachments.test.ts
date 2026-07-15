@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { canSendMessage, fileToImageDraft, isImageClipboardItem, validateImageDrafts, type ImageDraft } from './imageAttachments';
+import { canSendMessage, fileToImageDraft, getAdjacentImageId, isImageClipboardItem, validateImageDrafts, type ImageDraft } from './imageAttachments.ts';
 
 function draft(overrides: Partial<ImageDraft> = {}): ImageDraft {
   return {
@@ -48,6 +48,17 @@ test('allows an image-only message and requires either text or an image', () => 
 test('recognizes image clipboard items without intercepting text items', () => {
   assert.equal(isImageClipboardItem({ type: 'image/png' }), true);
   assert.equal(isImageClipboardItem({ type: 'text/plain' }), false);
+});
+
+test('moves through image drafts and wraps at both ends', () => {
+  const drafts = [draft({ id: 'first' }), draft({ id: 'second' }), draft({ id: 'third' })];
+  assert.equal(getAdjacentImageId(drafts, 'first', 1), 'second');
+  assert.equal(getAdjacentImageId(drafts, 'first', -1), 'third');
+  assert.equal(getAdjacentImageId(drafts, 'third', 1), 'first');
+});
+
+test('returns no adjacent image when the carousel is empty', () => {
+  assert.equal(getAdjacentImageId([], 'missing', 1), undefined);
 });
 
 test('converts a browser image file into a draft with a data URL preview', async () => {
