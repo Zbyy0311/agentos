@@ -1,7 +1,8 @@
 import type { Response } from 'express';
 
-export function createSseWriter(res: Pick<Response, 'write'>) {
+export function createSseWriter(res: Pick<Response, 'write'> & Partial<Pick<Response, 'writableEnded'>>) {
   return (event: string, data: unknown) => {
+    if (res.writableEnded) return;
     try {
       res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
     } catch {

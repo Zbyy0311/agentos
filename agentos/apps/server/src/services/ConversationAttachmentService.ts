@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
+import { realpathSync } from 'node:fs';
 import { mkdir, unlink, writeFile } from 'node:fs/promises';
-import { isAbsolute, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path';
 
 const MAX_IMAGE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_IMAGE_COUNT = 5;
@@ -90,7 +91,34 @@ export function getAttachmentAbsolutePath(workspaceRoot: string, relativePath: s
   const absolutePath = resolve(workspaceRoot, relativePath);
   const pathFromRoot = relative(attachmentRoot, absolutePath);
   if (!pathFromRoot || pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) throw new Error('附件路径无效');
+  const realWorkspaceRoot = resolveExistingPath(resolve(workspaceRoot));
+  const realAttachmentRoot = resolveExistingPath(attachmentRoot);
+  assertContainedPath(realWorkspaceRoot, realAttachmentRoot);
+  assertContainedPath(realAttachmentRoot, resolveExistingPath(absolutePath));
   return absolutePath;
+}
+
+function resolveExistingPath(path: string): string {
+  let current = path;
+  const missingSegments: string[] = [];
+  while (true) {
+    try {
+      const realCurrent = realpathSync.native(current);
+      return missingSegments.reduceRight((resolved, segment) => join(resolved, segment), realCurrent);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') throw new Error('附件路径无效');
+      const parent = dirname(current);
+      if (parent === current) throw new Error('附件路径无效');
+      missingSegments.push(basename(current));
+      current = parent;
+    }
+  }
+}
+
+function assertContainedPath(root: string, target: string): void {
+  const pathFromRoot = relative(root, target);
+  if (!pathFromRoot || pathFromRoot.startsWith('..') || isAbsolute(pathFromRoot)) throw new Error('附件路径无效');
 }
 
 function validateAttachmentCount(attachments: ConversationAttachmentInput[]): void {

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, readFile, rm, stat, symlink, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -84,5 +84,24 @@ test('cleanup removes saved files', async () => {
     await assert.rejects(stat(join(root, attachments[0]!.relativePath)));
   } finally {
     await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('rejects an attachment directory symlink that points outside the workspace', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'agentos-attachments-'));
+  const outside = await mkdtemp(join(tmpdir(), 'agentos-attachments-outside-'));
+  try {
+    await mkdir(join(root, '.agentos'), { recursive: true });
+    await symlink(outside, join(root, '.agentos', 'attachments'), 'junction');
+
+    await assert.rejects(
+      saveConversationAttachments({ workspaceRoot: root, workspaceId: 'workspace-a', conversationId: 'conversation-a', messageId: 'message-a', attachments: [input()] }),
+      /附件路径无效/,
+    );
+    assert.deepEqual((await stat(outside)).isDirectory(), true);
+    assert.deepEqual((await stat(outside)).size, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+    await rm(outside, { recursive: true, force: true });
   }
 });

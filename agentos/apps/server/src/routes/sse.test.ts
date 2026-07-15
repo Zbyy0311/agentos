@@ -16,6 +16,21 @@ test('createSseWriter emits SSE event payloads', () => {
   assert.deepEqual(writes, ['event: status\ndata: {"ok":true}\n\n']);
 });
 
+test('createSseWriter does not write after the response has ended', () => {
+  const writes: string[] = [];
+  const write = createSseWriter({
+    writableEnded: true,
+    write(chunk: string) {
+      writes.push(chunk);
+      return true;
+    },
+  });
+
+  write('status', { ok: true });
+
+  assert.deepEqual(writes, []);
+});
+
 test('startSseHeartbeat writes keepalive comments until stopped', async () => {
   const writes: string[] = [];
   const res = {

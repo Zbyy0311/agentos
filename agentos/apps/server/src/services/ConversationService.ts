@@ -10,6 +10,8 @@ import { MAX_MEMORY_CHARACTERS, MAX_MEMORY_ITEMS, RunContextBuilder } from './Ru
 
 type StreamExecutionEvent = RunnerExecutionEvent & { agentId: string; agentName: string };
 const CRITICAL_EVENT_PERSISTENCE_FAILURE = '关键事件持久化失败';
+const MEMORY_USAGE_PERSISTENCE_FAILURE = '记忆使用记录持久化失败';
+const GROUP_WAITING_USER_FAILURE = '群聊暂不支持等待用户恢复';
 
 export interface SendDirectMessageInput {
   workspaceId: string;
@@ -161,28 +163,40 @@ export class ConversationService {
     });
     const runResult = await runner.run();
     const completedAt = new Date().toISOString();
+    let finalStatus = runResult.status;
+    let finalFailureReason: string | undefined;
     if (runResult.status === 'completed') {
-      this.persistMemoryUsage(input.workspaceId, input.conversationId, runContext.usages);
-      this.store.updateRun(input.workspaceId, run.id, { status: 'completed', resultSummary: runResult.content, completedAt });
+      try {
+        this.persistMemoryUsage(input.workspaceId, input.conversationId, runContext.usages);
+        this.store.updateRun(input.workspaceId, run.id, { status: 'completed', resultSummary: runResult.content, completedAt });
+      } catch {
+        finalStatus = 'failed';
+        finalFailureReason = MEMORY_USAGE_PERSISTENCE_FAILURE;
+        this.store.updateRun(input.workspaceId, run.id, { status: finalStatus, failureReason: finalFailureReason, completedAt });
+        this.publishEvent(createAgentEvent({
+          type: 'run.failed', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
+          executionId: execution.id, agentId: agent.id, payload: { status: finalStatus, reason: finalFailureReason },
+        }));
+      }
     } else if (runResult.status === 'waiting_user') {
       this.store.updateRun(input.workspaceId, run.id, {
         status: 'waiting_user', waitingQuestion: runResult.waitingQuestion, waitingExecutionId: execution.id,
         waitingAgentId: agent.id, completedAt: undefined,
       });
     } else {
-      this.store.updateRun(input.workspaceId, run.id, { status: runResult.status, failureReason: runResult.error ?? '执行未完成', completedAt });
+      this.store.updateRun(input.workspaceId, run.id, { status: finalStatus, failureReason: runResult.error ?? '执行未完成', completedAt });
     }
     const responseMessage: ConversationMessage = {
       id: randomUUID(),
       conversationId: input.conversationId,
       workspaceId: input.workspaceId,
-      senderType: runResult.status === 'completed' ? 'agent' : 'system',
-      ...(runResult.status === 'completed' ? { senderAgentId: agent.id } : {}),
-      content: runResult.status === 'completed'
+      senderType: finalStatus === 'completed' ? 'agent' : 'system',
+      ...(finalStatus === 'completed' ? { senderAgentId: agent.id } : {}),
+      content: finalStatus === 'completed'
         ? runResult.content
-        : runResult.status === 'waiting_user'
+        : finalStatus === 'waiting_user'
           ? `等待补充信息：${runResult.waitingQuestion}`
-          : `执行失败：${runResult.error ?? '未知错误'}`,
+          : `执行失败：${finalFailureReason ?? runResult.error ?? '未知错误'}`,
       createdAt: completedAt,
     };
     this.store.createMessage(responseMessage);
@@ -195,6 +209,7 @@ export class ConversationService {
     const latest = this.store.listExecutions(input.workspaceId, input.conversationId)
       .find(item => item.id === execution.id);
     if (!latest) throw new Error('Execution was not persisted');
+    if (finalFailureReason) throw new Error(finalFailureReason);
     return { userMessage, responseMessage, execution: latest, ...(runResult.waitingQuestion ? { waitingQuestion: runResult.waitingQuestion } : {}) };
   }
 
@@ -248,26 +263,38 @@ export class ConversationService {
     });
     const runResult = await runner.run();
     const completedAt = new Date().toISOString();
+    let finalStatus = runResult.status;
+    let finalFailureReason: string | undefined;
     if (runResult.status === 'completed') {
-      this.persistMemoryUsage(input.workspaceId, conversation.id, runContext.usages);
-      this.store.updateRun(input.workspaceId, run.id, { status: 'completed', resultSummary: runResult.content, completedAt });
+      try {
+        this.persistMemoryUsage(input.workspaceId, conversation.id, runContext.usages);
+        this.store.updateRun(input.workspaceId, run.id, { status: 'completed', resultSummary: runResult.content, completedAt });
+      } catch {
+        finalStatus = 'failed';
+        finalFailureReason = MEMORY_USAGE_PERSISTENCE_FAILURE;
+        this.store.updateRun(input.workspaceId, run.id, { status: finalStatus, failureReason: finalFailureReason, completedAt });
+        this.publishEvent(createAgentEvent({
+          type: 'run.failed', workspaceId: input.workspaceId, conversationId: conversation.id, runId: run.id,
+          executionId: execution.id, agentId: agent.id, payload: { status: finalStatus, reason: finalFailureReason },
+        }));
+      }
     } else if (runResult.status === 'waiting_user') {
       this.store.updateRun(input.workspaceId, run.id, {
         status: 'waiting_user', waitingQuestion: runResult.waitingQuestion, waitingExecutionId: execution.id,
         waitingAgentId: agent.id, completedAt: undefined,
       });
     } else {
-      this.store.updateRun(input.workspaceId, run.id, { status: runResult.status, failureReason: runResult.error ?? '执行未完成', completedAt });
+      this.store.updateRun(input.workspaceId, run.id, { status: finalStatus, failureReason: runResult.error ?? '执行未完成', completedAt });
     }
     const responseMessage: ConversationMessage = {
       id: randomUUID(), conversationId: conversation.id, workspaceId: input.workspaceId,
-      senderType: runResult.status === 'completed' ? 'agent' : 'system',
-      ...(runResult.status === 'completed' ? { senderAgentId: agent.id } : {}),
-      content: runResult.status === 'completed'
+      senderType: finalStatus === 'completed' ? 'agent' : 'system',
+      ...(finalStatus === 'completed' ? { senderAgentId: agent.id } : {}),
+      content: finalStatus === 'completed'
         ? runResult.content
-        : runResult.status === 'waiting_user'
+        : finalStatus === 'waiting_user'
           ? `等待补充信息：${runResult.waitingQuestion}`
-          : `执行失败：${runResult.error ?? '未知错误'}`,
+          : `执行失败：${finalFailureReason ?? runResult.error ?? '未知错误'}`,
       createdAt: completedAt,
     };
     this.store.createMessage(responseMessage);
@@ -278,6 +305,7 @@ export class ConversationService {
     await this.flushEventsForRun(input.workspaceId, run.id);
     const latest = this.store.listExecutions(input.workspaceId, conversation.id).find(item => item.id === execution.id);
     if (!latest) throw new Error('Execution was not persisted');
+    if (finalFailureReason) throw new Error(finalFailureReason);
     return { userMessage, responseMessage, execution: latest, ...(runResult.waitingQuestion ? { waitingQuestion: runResult.waitingQuestion } : {}) };
   }
 
@@ -340,8 +368,6 @@ export class ConversationService {
       runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
-    this.persistMemoryUsage(input.workspaceId, input.conversationId, runContext.usages);
-
     const planned = await this.runAgentTurn({
       workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: input.conversationId, runId: run.id,
       sourceMessage: userMessage, agent: leader,
@@ -382,7 +408,7 @@ export class ConversationService {
     const workerSummary = turns.slice(1)
       .map(turn => `${turn.responseMessage.senderAgentId ?? turn.execution.agentId}: ${turn.responseMessage.content}`)
       .join('\n\n');
-    turns.push(await this.runAgentTurn({
+    const summary = await this.runAgentTurn({
       workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: input.conversationId, runId: run.id,
       sourceMessage: userMessage, agent: leader,
       memoryContext: runContext.context,
@@ -391,7 +417,22 @@ export class ConversationService {
       signal: input.signal, onExecutionEvent: input.onExecutionEvent,
       onAgentMessage: input.onAgentMessage,
       finalizeRun: true,
-    }));
+    });
+    turns.push(summary);
+
+    if (summary.status === 'completed') {
+      try {
+        this.persistMemoryUsage(input.workspaceId, input.conversationId, runContext.usages);
+      } catch {
+        const failureReason = MEMORY_USAGE_PERSISTENCE_FAILURE;
+        this.store.updateRun(input.workspaceId, run.id, { status: 'failed', failureReason, completedAt: new Date().toISOString() });
+        this.publishEvent(createAgentEvent({
+          type: 'run.failed', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
+          executionId: summary.execution.id, agentId: leader.id, payload: { status: 'failed', reason: failureReason },
+        }));
+        throw new Error(failureReason);
+      }
+    }
 
     await this.flushEventsForRun(input.workspaceId, run.id);
     return { userMessage, agentMessages: turns.map(turn => turn.responseMessage), executions: turns.map(turn => turn.execution) };
@@ -454,12 +495,15 @@ export class ConversationService {
   }
 
   private async failGroupWaitingRun(workspaceId: string, conversationId: string, runId: string, execution: AgentExecution, agent: AgentProfile): Promise<never> {
-    const failureReason = '群聊暂不支持等待用户恢复';
-    this.store.updateRun(workspaceId, runId, { status: 'failed', failureReason, completedAt: new Date().toISOString() });
-    this.publishEvent(createAgentEvent({
-      type: 'run.failed', workspaceId, conversationId, runId, executionId: execution.id, agentId: agent.id,
-      payload: { status: 'failed', reason: failureReason },
-    }));
+    const failureReason = GROUP_WAITING_USER_FAILURE;
+    const currentRun = this.store.getRun(workspaceId, runId);
+    if (currentRun?.status !== 'failed' || currentRun.failureReason !== failureReason) {
+      this.store.updateRun(workspaceId, runId, { status: 'failed', failureReason, completedAt: new Date().toISOString() });
+      this.publishEvent(createAgentEvent({
+        type: 'run.failed', workspaceId, conversationId, runId, executionId: execution.id, agentId: agent.id,
+        payload: { status: 'failed', reason: failureReason },
+      }));
+    }
     await this.flushEventsForRun(workspaceId, runId);
     throw new Error(failureReason);
   }
@@ -509,15 +553,26 @@ export class ConversationService {
         }));
       }
     } else if (event.status === 'waiting_user') {
-      this.store.updateRun(execution.workspaceId, runId, {
-        status: 'waiting_user', waitingQuestion: event.content, waitingExecutionId: execution.id,
-        waitingAgentId: execution.agentId, completedAt: undefined,
-      });
-      this.publishEvent(createAgentEvent({
-        type: 'run.waiting_user', workspaceId: execution.workspaceId, conversationId: execution.conversationId, runId,
-        executionId: execution.id, agentId: execution.agentId,
-        payload: { question: event.content ?? '' },
-      }));
+      if (finalizeRun) {
+        this.store.updateRun(execution.workspaceId, runId, {
+          status: 'waiting_user', waitingQuestion: event.content, waitingExecutionId: execution.id,
+          waitingAgentId: execution.agentId, completedAt: undefined,
+        });
+        this.publishEvent(createAgentEvent({
+          type: 'run.waiting_user', workspaceId: execution.workspaceId, conversationId: execution.conversationId, runId,
+          executionId: execution.id, agentId: execution.agentId,
+          payload: { question: event.content ?? '' },
+        }));
+      } else {
+        this.store.updateRun(execution.workspaceId, runId, {
+          status: 'failed', failureReason: GROUP_WAITING_USER_FAILURE, completedAt: now,
+        });
+        this.publishEvent(createAgentEvent({
+          type: 'run.failed', workspaceId: execution.workspaceId, conversationId: execution.conversationId, runId,
+          executionId: execution.id, agentId: execution.agentId,
+          payload: { status: 'failed', reason: GROUP_WAITING_USER_FAILURE },
+        }));
+      }
     } else if (finalizeRun && (event.status === 'completed' || event.status === 'failed' || event.status === 'cancelled')) {
       this.store.updateRun(execution.workspaceId, runId, {
         status: event.status,

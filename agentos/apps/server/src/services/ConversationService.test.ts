@@ -173,6 +173,74 @@ test('does not return success when critical group-run event persistence fails', 
   }
 });
 
+test('marks the direct run failed and persists a failure message when memory usage persistence fails', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'memory-failure-direct', workspaceId: 'workspace-a', type: 'direct', title: 'Memory failure', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+    await new MemoryService(store).create({
+      workspaceId: 'workspace-a', workspaceRoot: root, memoryEnabled: true,
+      type: 'decision', title: '需要注入的记忆', summary: '测试摘要', content: '测试内容', importance: 80,
+    });
+    store.createMemoryUsage = () => { throw new Error('memory usage storage unavailable'); };
+
+    await assert.rejects(
+      new ConversationService(store).sendDirectMessage({
+        workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'memory-failure-direct', agentId: 'codex', content: '触发记忆写入失败',
+      }),
+      /记忆使用记录持久化失败/,
+    );
+
+    const run = store.listRuns('workspace-a', 'memory-failure-direct')[0];
+    assert.equal(run?.status, 'failed');
+    assert.match(run?.failureReason ?? '', /记忆使用记录持久化失败/);
+    assert.match(store.listMessages('workspace-a', 'memory-failure-direct').at(-1)?.content ?? '', /记忆使用记录持久化失败/);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('persists group memory usage after all group executions have been created', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createGroupConversation({ id: 'memory-timing-group', workspaceId: 'workspace-a', type: 'group', title: 'Memory timing', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' }, [
+      { conversationId: 'memory-timing-group', agentId: 'codex', roleTitle: 'leader', isLeader: true, createdAt: '2026-07-12T01:00:00.000Z' },
+      { conversationId: 'memory-timing-group', agentId: 'kimi', roleTitle: 'worker', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
+    ]);
+    await new MemoryService(store).create({
+      workspaceId: 'workspace-a', workspaceRoot: root, memoryEnabled: true,
+      type: 'decision', title: '群聊记忆', summary: '群聊摘要', content: '群聊内容', importance: 80,
+    });
+    let executionCountAtUsage = -1;
+    const originalCreateMemoryUsage = store.createMemoryUsage.bind(store);
+    store.createMemoryUsage = usage => {
+      executionCountAtUsage = store!.listExecutions('workspace-a', 'memory-timing-group').length;
+      originalCreateMemoryUsage(usage);
+    };
+
+    await new ConversationService(store).sendGroupMessage({
+      workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'memory-timing-group', content: '检查群聊记忆',
+    });
+
+    assert.equal(executionCountAtUsage, 3);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('injects only active memories and persists per-run memory usage', async () => {
   const root = createProjectRoot();
   const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
@@ -390,7 +458,14 @@ test('fails a group explicitly when an agent requests user input', async () => {
       { conversationId: 'group-waiting', agentId: 'codex', roleTitle: '群主', isLeader: true, createdAt: '2026-07-12T01:00:00.000Z' },
       { conversationId: 'group-waiting', agentId: 'kimi', roleTitle: '执行工程师', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
     ]);
-    await assert.rejects(new ConversationService(store).sendGroupMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'group-waiting', content: '需要补充信息' }), /群聊暂不支持等待用户恢复/);
+    const observedRunStatuses: string[] = [];
+    await assert.rejects(new ConversationService(store).sendGroupMessage({
+      workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'group-waiting', content: '需要补充信息',
+      onExecutionEvent: event => {
+        if (event.status === 'waiting_user') observedRunStatuses.push(store!.listRuns('workspace-a', 'group-waiting')[0]?.status ?? 'missing');
+      },
+    }), /群聊暂不支持等待用户恢复/);
+    assert.deepEqual(observedRunStatuses, ['failed']);
     const run = store.listRuns('workspace-a', 'group-waiting')[0];
     assert.equal(run?.status, 'failed');
     assert.equal(run?.failureReason, '群聊暂不支持等待用户恢复');

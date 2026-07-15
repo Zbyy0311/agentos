@@ -17,6 +17,7 @@ import { getActiveConversationId, shouldResetGroupView } from '@/lib/conversatio
 import { getNextConversationId } from '@/lib/conversationActions';
 import { getInitialComposerSettings, getModelOptions, getRuntimeOverrides, getThinkingEfforts, normalizeThinkingEffort } from '@/lib/composerSettings';
 import { parseSseChunk, parseSseEventData } from '@/lib/sse';
+import { getDoneExecution } from '@/lib/streamDoneExecution';
 import { canSendMessage, fileToImageDraft, validateImageDrafts, type ImageDraft } from '@/lib/imageAttachments';
 import { resolveAttachmentUrl } from '@/lib/attachmentUrls';
 import { RunDetails } from '@/components/runs/RunDetails';
@@ -320,7 +321,7 @@ export default function WorkspacePage() {
           const parsed = parseSseChunk(buffer, decoder.decode(value, { stream: true }));
           buffer = parsed.remainder;
           for (const event of parsed.events) {
-            const data = parseSseEventData<StreamEvent & { message?: ConversationMessage; execution?: AgentExecution; error?: string }>(event.data);
+            const data = parseSseEventData<StreamEvent & { message?: ConversationMessage; execution?: AgentExecution; executions?: AgentExecution[]; error?: string }>(event.data);
             if (!data) continue;
             if (event.event === 'execution') {
               const time = new Date().toISOString();
@@ -331,9 +332,13 @@ export default function WorkspacePage() {
               if (data.status === 'streaming_response' && data.content) setStreamingContent(current => current + data.content);
             } else if (event.event === 'message' && data.message) {
               setStreamingContent(''); setMessages(current => [...current, data.message!]);
-            } else if (event.event === 'done' && data.execution) {
-              setActiveStatus(data.execution.status);
-              setActiveRunId(data.execution.runId);
+            } else if (event.event === 'done') {
+              setStreamingContent('');
+              const doneExecution = getDoneExecution(data);
+              if (doneExecution) {
+                setActiveStatus(doneExecution.status);
+                setActiveRunId(doneExecution.runId);
+              }
             } else if (event.event === 'error') {
               throw new Error(data.error ?? '执行失败');
             }
