@@ -220,3 +220,4 @@
 - 在 `http://localhost:3001/workspace/d7994c0c` 创建 Codex 单聊，发送 `AGENTOS_UI_SMOKE_OK`，确认公开回复、执行完成时间线和会话标题；刷新后消息、会话和完成状态仍在，浏览器 error/warn 日志为空。计划项 1.4 已据此勾选。
 - 真实 Kimi 单聊当前计费周期返回 HTTP 403，依赖 Kimi 的三 Agent 群聊 gate 继续保持未通过。
 - 续验：空临时目录固定短提示下，Kimi 默认模型 `kimi-code/kimi-for-coding` 与配置中的 `kimi-code/kimi-for-coding-highspeed` 均返回 exit 1，并命中计费周期配额 403；当前没有可用的 Kimi 模型入口可用于完成真实群聊 gate。
+- 2026-07-15 配额恢复后真实 E2E run 5：Codex/Kimi/OpenCode 单聊和三 Agent 群聊均通过；真实记忆注入、无隐藏标记候选闭环、失败、取消、waiting_user resume、确定性生命周期与重启恢复均通过，脚本 exit 0。群聊提示增加 `REAL_GROUP_NO_WAIT` 和完整公开范围，修复 Kimi 将群聊任务误判为等待用户的问题。

@@ -85,6 +85,10 @@
 
 ## 浏览器 1.4 冒烟复验（2026-07-14）
 
-在 `http://localhost:3001/workspace/d7994c0c` 创建 Codex 单聊并发送 `AGENTOS_UI_SMOKE_OK`，确认公开回复、执行完成时间线和会话标题可见；刷新后消息、会话和完成状态仍然存在，浏览器 error/warn 日志为空。该证据支持计划项 1.4，未改变真实 Kimi/群聊 release gate 的未通过结论。
+在 `http://localhost:3001/workspace/d7994c0c` 创建 Codex 单聊并发送 `AGENTOS_UI_SMOKE_OK`，确认公开回复、执行完成时间线和会话标题可见；刷新后消息、会话和完成状态仍然存在，浏览器 error/warn 日志为空。该证据支持计划项 1.4；真实 Kimi/群聊 release gate 随后在 2026-07-15 的 run 5 中通过。
 
-最新 Kimi 环境复核：在空临时目录用固定短提示分别调用默认模型 `kimi-code/kimi-for-coding` 和配置中的 `kimi-code/kimi-for-coding-highspeed`，两者均 exit 1 并命中当前计费周期配额 403；未将该探针替代正式 Workspace 的真实 E2E。
+此前 Kimi 环境复核（2026-07-14）：在空临时目录用固定短提示分别调用默认模型 `kimi-code/kimi-for-coding` 和配置中的 `kimi-code/kimi-for-coding-highspeed`，两者均 exit 1 并命中当时的计费周期配额 403；未将该探针替代正式 Workspace 的真实 E2E。2026-07-15 配额恢复后已由 run 5 正式通过。
+
+## 最新真实 E2E 通过记录（2026-07-15，run 5）
+
+Kimi 配额恢复后，在 `C:\tmp\agentos-e2e-real-isolated-20260715b` 使用独立端口 3200 重跑真实验收。Codex/Kimi/OpenCode 单聊、三 Agent 群聊、记忆注入、无隐藏标记候选生成与接受/拒绝、CLI 失败、取消、`waiting_user` resume、确定性生命周期和重启恢复均通过；脚本 exit 0。群聊提示增加了明确的公开验收范围和 `REAL_GROUP_NO_WAIT`，避免将完整群聊任务误判为等待用户。

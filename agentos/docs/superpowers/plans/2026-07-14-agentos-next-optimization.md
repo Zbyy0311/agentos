@@ -890,7 +890,7 @@ pnpm -r run build
 
 发送涉及已有项目知识的问题，确认创建 Run、记录 Execution、检索相关 Memory、产生 MemoryUsage、完成后可打开 RunDetails。
 
-- [ ] **10.4 验证 group conversation**
+- [x] **10.4 验证 group conversation**
 
 使用至少三名 Agent，确认一个 Run 下存在群主规划、成员执行和群主总结多个 Execution；同一组检索记忆被共享；最终总结和失败成员均可追溯。
 
@@ -968,5 +968,5 @@ git commit -m "docs: complete AgentOS memory system acceptance"
 - [x] 已完成 Run 耗时固定
 - [x] 无隐藏标记的成功任务可生成候选
 - [x] 单聊 waiting_user 可恢复
-- [ ] 真实外部 Agent 单聊和群聊通过
+- [x] 真实外部 Agent 单聊和群聊通过
 - [x] 阶段性提交和最终工作区清理完成

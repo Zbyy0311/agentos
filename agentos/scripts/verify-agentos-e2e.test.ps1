@@ -6,7 +6,7 @@ $driver = Get-Content -Raw -Encoding utf8 -LiteralPath (Join-Path $PSScriptRoot 
 foreach ($required in @(
   'AGENTOS_PROJECT_ROOT', 'AGENTOS_E2E_PHASE', 'e2e-failing-agent.mjs', 'e2e-waiting-agent.mjs',
   'REAL_EXTERNAL_AGENT', 'DETERMINISTIC_LIFECYCLE', 'RECOVERY', 'MEMORY_CANDIDATE', 'agentos.sqlite',
-  '$workspace.rootPath = $workspaceRoot', 'git -C $workspaceRoot init', 'AGENTOS_RESUME_SCOPE', 'AGENTOS_CANDIDATE_SCOPE', 'AGENTOS_WAITING_REQUIRED'
+  '$workspace.rootPath = $workspaceRoot', 'git -C $workspaceRoot init', 'AGENTOS_RESUME_SCOPE', 'AGENTOS_CANDIDATE_SCOPE', 'AGENTOS_WAITING_REQUIRED', 'REAL_GROUP_SCOPE', 'REAL_GROUP_NO_WAIT'
 )) {
   if ($script -notmatch [regex]::Escape($required) -and $driver -notmatch [regex]::Escape($required)) {
     throw "E2E contract is missing: $required"

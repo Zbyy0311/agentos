@@ -183,7 +183,7 @@ async function realExternalMatrix(workspaceId, profiles) {
 
   await attempt('REAL_GROUP', async () => {
     const group = await createConversation(workspaceId, 'codex', 'real group', 'group');
-    const result = await runDirect(workspaceId, group, '请完成一次公开群聊验收并给出可追溯总结。');
+    const result = await runDirect(workspaceId, group, 'REAL_GROUP_SCOPE REAL_GROUP_NO_WAIT：这是一次无需用户补充的三 Agent 群聊验收。验收对象是 AgentOS；目标是验证 Codex、Kimi、OpenCode 的并行执行和可追溯总结；范围是只读，不修改文件；所有完成任务所需信息已在本消息中提供。不要请求用户补充信息，不要输出 waiting-user 标记；请直接返回公开群聊总结。');
     assert.equal(result.run.status, 'completed');
     assert.ok(result.details.executions.length >= 3);
     assert.equal(new Set(result.details.executions.map(execution => execution.runId)).size, 1);
