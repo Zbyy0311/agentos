@@ -1,0 +1,147 @@
+- generic [active] [ref=f1e1]:
+  - alert [ref=f1e30]
+  - generic [ref=f1e54]:
+    - complementary [ref=f1e55]:
+      - generic [ref=f1e56]:
+        - generic [ref=f1e57]:
+          - generic [ref=f1e58]: A/
+          - button "切换到浅色主题" [ref=f1e60] [cursor=pointer]:
+            - generic [ref=f1e61]: ☼
+            - generic [ref=f1e62]: 深色
+        - generic [ref=f1e63]: AgentOS
+        - generic [ref=f1e64]: 当前工作区的协作成员
+        - button "← 返回工作区" [ref=f1e65] [cursor=pointer]
+      - generic [ref=f1e66]: AGENTS
+      - generic [ref=f1e67]:
+        - button "C Codex 首席架构师" [ref=f1e68] [cursor=pointer]:
+          - generic [ref=f1e69]: C
+          - generic [ref=f1e71]:
+            - generic [ref=f1e72]: Codex
+            - generic [ref=f1e73]: 首席架构师
+        - button "K KimiCode 高级开发工程师" [ref=f1e74] [cursor=pointer]:
+          - generic [ref=f1e75]: K
+          - generic [ref=f1e77]:
+            - generic [ref=f1e78]: KimiCode
+            - generic [ref=f1e79]: 高级开发工程师
+        - button "O OpenCode 代码审查工程师" [ref=f1e80] [cursor=pointer]:
+          - generic [ref=f1e81]: O
+          - generic [ref=f1e83]:
+            - generic [ref=f1e84]: OpenCode
+            - generic [ref=f1e85]: 代码审查工程师
+      - generic [ref=f1e86]:
+        - generic [ref=f1e87]:
+          - generic [ref=f1e88]: GROUPS
+          - button "+" [ref=f1e89] [cursor=pointer]
+        - generic [ref=f1e90]: 点击 + 创建协作群聊
+      - button "打开项目知识" [ref=f1e92] [cursor=pointer]: 📚 项目知识
+    - separator "调整工作区导航栏宽度" [ref=f1e93]
+    - complementary [ref=f1e94]:
+      - generic [ref=f1e95]:
+        - generic [ref=f1e96]: CONVERSATIONS
+        - generic [ref=f1e97]: Codex
+      - button "+ 新建会话" [ref=f1e98] [cursor=pointer]:
+        - generic [ref=f1e99]: +
+        - text: 新建会话
+      - generic [ref=f1e100]:
+        - button "与 Codex 的新对话 7/14 21:29" [ref=f1e101] [cursor=pointer]:
+          - generic [ref=f1e102]: 与 Codex 的新对话
+          - generic [ref=f1e103]: 7/14 21:29
+        - button "与 Codex 的新对话 7/14 16:04" [ref=f1e104] [cursor=pointer]:
+          - generic [ref=f1e105]: 与 Codex 的新对话
+          - generic [ref=f1e106]: 7/14 16:04
+    - separator "调整会话历史栏宽度" [ref=f1e107]
+    - main [ref=f1e108]:
+      - generic [ref=f1e110]:
+        - generic [ref=f1e111]: ACTIVE SESSION
+        - heading "Codex · 首席架构师" [level=1] [ref=f1e112]
+        - paragraph [ref=f1e113]: 私聊会话仅属于当前工作区
+      - generic [ref=f1e115]:
+        - paragraph [ref=f1e120]: 请只返回公开短语 AGENTOS_UI_SMOKE_OK，不修改文件。
+        - paragraph [ref=f1e125]: AGENTOS_UI_SMOKE_OK
+        - button "思考进度 Codex · 执行完成 5 个步骤 · 展开" [ref=f1e128] [cursor=pointer]:
+          - generic [ref=f1e129]:
+            - generic [ref=f1e131]: 思考进度
+            - generic [ref=f1e132]: Codex · 执行完成
+          - generic [ref=f1e133]:
+            - generic [ref=f1e134]: 5 个步骤
+            - generic [ref=f1e135]: · 展开
+            - generic [ref=f1e136]: ⌄
+      - generic [ref=f1e138]:
+        - textbox "消息输入框" [ref=f1e139]:
+          - /placeholder: 向 Codex 发送消息…
+        - generic [ref=f1e140]:
+          - button "添加图片" [ref=f1e142] [cursor=pointer]
+          - generic [ref=f1e145]: Enter 发送 · Shift + Enter 换行
+          - generic [ref=f1e146]:
+            - generic [ref=f1e147]:
+              - button "选择模型" [ref=f1e149] [cursor=pointer]:
+                - generic [ref=f1e150]: 模型
+                - generic [ref=f1e151]: 默认模型
+                - generic [ref=f1e152]: ⌄
+              - button "选择思考强度" [ref=f1e154] [cursor=pointer]:
+                - generic [ref=f1e155]: 思考
+                - generic [ref=f1e156]: 自动
+                - generic [ref=f1e157]: ⌄
+              - generic "模型来源：本地缓存" [ref=f1e158]: 本地缓存
+            - button "发送消息" [disabled] [ref=f1e159]:
+              - generic [ref=f1e160]: ↑
+    - complementary [ref=f1e161]:
+      - generic [ref=f1e162]:
+        - heading "执行状态" [level=2] [ref=f1e163]
+        - button "编辑身份" [ref=f1e164] [cursor=pointer]
+      - generic [ref=f1e165]:
+        - generic [ref=f1e166]: C
+        - generic [ref=f1e167]:
+          - generic [ref=f1e168]: Codex
+          - generic [ref=f1e169]: 首席架构师
+      - generic [ref=f1e170]:
+        - heading "PERMISSIONS" [level=3] [ref=f1e171]
+        - generic [ref=f1e172]:
+          - generic [ref=f1e173]:
+            - generic [ref=f1e174]: ✓
+            - text: 读取项目文件
+          - generic [ref=f1e175]:
+            - generic [ref=f1e176]: ·
+            - text: 修改项目文件
+          - generic [ref=f1e177]:
+            - generic [ref=f1e178]: ✓
+            - text: 代码审查
+      - generic [ref=f1e179]:
+        - generic [ref=f1e180]:
+          - heading "TIMELINE" [level=3] [ref=f1e181]
+          - generic [ref=f1e182]: 完成
+        - button "查看本次执行详情" [ref=f1e183] [cursor=pointer]
+        - list [ref=f1e184]:
+          - listitem [ref=f1e185]:
+            - generic [ref=f1e188]:
+              - generic [ref=f1e189]:
+                - generic [ref=f1e190]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f1e191]: 排队中 · 21:28:52
+          - listitem [ref=f1e192]:
+            - generic [ref=f1e195]:
+              - generic [ref=f1e196]:
+                - generic [ref=f1e197]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f1e198]: 准备上下文 · 21:28:52
+          - listitem [ref=f1e199]:
+            - generic [ref=f1e202]:
+              - generic [ref=f1e203]:
+                - generic [ref=f1e204]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f1e205]: 调用 CLI · 21:28:52
+          - listitem [ref=f1e206]:
+            - generic [ref=f1e209]:
+              - generic [ref=f1e210]:
+                - generic [ref=f1e211]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f1e212]: 生成回复 · 21:29:00
+          - listitem [ref=f1e213]:
+            - generic [ref=f1e215]:
+              - generic [ref=f1e216]:
+                - generic [ref=f1e217]: Codex ·
+                - text: 执行完成
+              - generic [ref=f1e218]: 完成 · 21:29:00
+      - generic [ref=f1e219]:
+        - text: 已用时间
+        - generic [ref=f1e220]: 2473:36

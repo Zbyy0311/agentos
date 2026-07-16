@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentProfile, ExecutionStatus } from '@agentos/shared';
-import { ConversationAgentRunner } from './conversationRunner.js';
+import { ConversationAgentRunner, type ConversationExecutionEvent } from './conversationRunner.js';
 import { CLIError, CLIExecutor } from './executor.js';
 
 const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
@@ -21,6 +21,67 @@ afterEach(() => {
 });
 
 describe('ConversationAgentRunner', () => {
+  it('forwards each non-empty CLI output chunk as a streaming response event', async () => {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    vi.spyOn(CLIExecutor, 'execute').mockImplementation(async (_config, _prompt, context) => {
+      context.onChunk?.('第一段', false);
+      context.onChunk?.('第二段', false);
+      context.onChunk?.('', true);
+      return {
+        stage: 'codex_manager', agentName: 'Codex', stdout: '第一段第二段', stderr: '', exitCode: 0,
+        timestamp: '2026-07-12T00:00:00.000Z', duration: 1, mode: 'real',
+      };
+    });
+    const events: ConversationExecutionEvent[] = [];
+    const agent: AgentProfile = {
+      id: 'codex', workspaceId: 'workspace-1', name: 'Codex', role: 'codex', roleTitle: '架构师',
+      systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true, cliCommand: 'codex', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+
+    const result = await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-streaming-chunks', message: '执行任务', history: [],
+      onEvent: event => events.push(event),
+    }).run();
+
+    expect(result.content).toBe('第一段第二段');
+    expect(events.filter(event => event.status === 'streaming_response')).toEqual([
+      { status: 'streaming_response', activity: '正在生成回复', content: '第一段' },
+      { status: 'streaming_response', activity: '正在生成回复', content: '第二段' },
+    ]);
+  });
+
+  it('does not expose a waiting-user marker split across CLI output chunks', async () => {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    vi.spyOn(CLIExecutor, 'execute').mockImplementation(async (_config, _prompt, context) => {
+      context.onChunk?.('<!-- agentos-waiting-', false);
+      context.onChunk?.('user: {"question":"请提供部署环境"}', false);
+      context.onChunk?.(' -->', false);
+      context.onChunk?.('', true);
+      return {
+        stage: 'codex_manager', agentName: 'Codex',
+        stdout: '<!-- agentos-waiting-user: {"question":"请提供部署环境"} -->',
+        stderr: '', exitCode: 0, timestamp: '2026-07-12T00:00:00.000Z', duration: 1, mode: 'real',
+      };
+    });
+    const events: ConversationExecutionEvent[] = [];
+    const agent: AgentProfile = {
+      id: 'codex', workspaceId: 'workspace-1', name: 'Codex', role: 'codex', roleTitle: '架构师',
+      systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true, cliCommand: 'codex', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+
+    const result = await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-streaming-waiting', message: '部署项目', history: [],
+      onEvent: event => events.push(event),
+    }).run();
+
+    expect(result.status).toBe('waiting_user');
+    expect(result.waitingQuestion).toBe('请提供部署环境');
+    expect(events.some(event => event.status === 'streaming_response')).toBe(false);
+    expect(events.every(event => !event.content?.includes('agentos-waiting-user'))).toBe(true);
+  });
+
   it('emits public execution states around a direct agent reply', async () => {
     process.env.AGENTOS_FORCE_MOCK = 'true';
     const states: ExecutionStatus[] = [];

@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from 'react';
 import { readStoredTheme, THEME_STORAGE_KEY, type Theme } from './themePreference';
 
 interface ThemeContextValue {
@@ -12,11 +12,19 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() =>
-    typeof window === 'undefined' ? 'dark' : readStoredTheme(window.localStorage),
-  );
+  const [theme, setTheme] = useState<Theme>('dark');
+  const hasLoadedPreference = useRef(false);
 
   useEffect(() => {
+    if (!hasLoadedPreference.current) {
+      hasLoadedPreference.current = true;
+      const savedTheme = readStoredTheme(window.localStorage);
+      document.documentElement.dataset.theme = savedTheme;
+      window.localStorage.setItem(THEME_STORAGE_KEY, savedTheme);
+      setTheme(savedTheme);
+      return;
+    }
+
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);

@@ -22,6 +22,8 @@
   --app-info: #a6a078;
   --app-overlay: rgba(7, 9, 9, 0.72);
   --app-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+  --app-grid-line: rgba(255, 255, 255, 0.035);
+  --app-glow: rgba(210, 103, 59, 0.16);
 }
 
 html[data-theme='light'] {
@@ -44,6 +46,8 @@ html[data-theme='light'] {
   --app-info: #756f4d;
   --app-overlay: rgba(26, 28, 27, 0.38);
   --app-shadow: 0 18px 45px rgba(45, 42, 35, 0.14);
+  --app-grid-line: rgba(32, 39, 41, 0.055);
+  --app-glow: rgba(180, 82, 50, 0.1);
 }
 
 * {
@@ -98,6 +102,307 @@ input:focus-visible {
 .app-shell {
   background: var(--app-bg);
   color: var(--app-text);
+}
+
+.signal-page {
+  position: relative;
+  isolation: isolate;
+  height: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--app-bg);
+}
+
+.signal-page::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(90deg, var(--app-grid-line) 1px, transparent 1px), linear-gradient(var(--app-grid-line) 1px, transparent 1px), radial-gradient(circle at 76% 12%, var(--app-glow), transparent 27rem);
+  background-size: 48px 48px, 48px 48px, auto;
+  content: '';
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.signal-header {
+  background: color-mix(in srgb, var(--app-surface) 88%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.signal-mark {
+  position: relative;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-accent-strong) 26%, transparent), 0 10px 24px color-mix(in srgb, var(--app-accent) 18%, transparent);
+}
+
+.signal-mark::after {
+  position: absolute;
+  right: -0.2rem;
+  bottom: -0.2rem;
+  width: 0.42rem;
+  height: 0.42rem;
+  border: 2px solid var(--app-surface);
+  border-radius: 999px;
+  background: var(--app-success);
+  content: '';
+}
+
+.signal-running-dot {
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-success) 34%, transparent);
+  animation: signal-ready-pulse 2.2s ease-out infinite;
+}
+
+@keyframes signal-ready-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-success) 34%, transparent); }
+  70% { box-shadow: 0 0 0 0.45rem color-mix(in srgb, var(--app-success) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-success) 0%, transparent); }
+}
+
+.signal-hero {
+  position: relative;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+}
+
+.signal-hero::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--app-accent), transparent);
+  content: '';
+  opacity: 0.55;
+}
+
+.signal-hero-copy {
+  max-width: 42rem;
+}
+
+.signal-hero-title {
+  max-width: 13ch;
+  font-size: clamp(2.35rem, 5vw, 4.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.065em;
+}
+
+.signal-hero-rail {
+  position: relative;
+  min-width: min(20rem, 100%);
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 1.25rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--app-surface-raised) 88%, transparent), color-mix(in srgb, var(--app-surface) 78%, transparent));
+  box-shadow: var(--app-shadow);
+}
+
+.signal-hero-rail::before {
+  position: absolute;
+  top: -3rem;
+  right: -2rem;
+  width: 9rem;
+  height: 9rem;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 34%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1rem color-mix(in srgb, var(--app-accent) 7%, transparent), 0 0 0 2rem color-mix(in srgb, var(--app-accent) 4%, transparent);
+  content: '';
+  opacity: 0.9;
+}
+
+.signal-panel {
+  background: color-mix(in srgb, var(--app-surface-raised) 92%, transparent);
+  border-color: color-mix(in srgb, var(--app-border) 88%, transparent);
+  box-shadow: 0 24px 70px color-mix(in srgb, #000 22%, transparent);
+}
+
+.signal-panel-heading {
+  border-bottom: 1px solid var(--app-border);
+}
+
+.signal-section-label {
+  color: var(--app-dim);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1rem;
+  text-transform: uppercase;
+}
+
+.signal-workspace-row {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--app-surface) 74%, transparent);
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.signal-workspace-row::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--app-accent);
+  content: '';
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.signal-workspace-row:hover {
+  border-color: color-mix(in srgb, var(--app-accent) 62%, var(--app-border));
+  background: color-mix(in srgb, var(--app-accent-soft) 42%, var(--app-surface));
+  box-shadow: 0 14px 30px color-mix(in srgb, #000 16%, transparent);
+  transform: translateY(-1px);
+}
+
+.signal-workspace-row:hover::before {
+  opacity: 1;
+}
+
+.signal-workspace-icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 35%, var(--app-border));
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--app-accent-soft) 68%, var(--app-surface));
+  color: var(--app-accent-strong);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.signal-workspace-meta {
+  color: var(--app-dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+
+.signal-workspace,
+.signal-rail,
+.signal-history,
+.signal-inspector,
+.signal-chat {
+  min-width: 0;
+  background: var(--app-bg);
+}
+
+.signal-rail {
+  background: color-mix(in srgb, var(--app-surface) 92%, var(--app-bg));
+}
+
+.signal-history,
+.signal-inspector {
+  background: color-mix(in srgb, var(--app-surface) 78%, var(--app-bg));
+}
+
+.signal-agent-button,
+.signal-history-button {
+  position: relative;
+}
+
+.signal-agent-button::before,
+.signal-history-button::before {
+  position: absolute;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  left: 0;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--app-accent);
+  content: '';
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.signal-agent-button.ui-selected::before,
+.signal-history-button.ui-selected::before {
+  opacity: 1;
+}
+
+.signal-chat-header {
+  background: color-mix(in srgb, var(--app-surface) 56%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.signal-chat-scroll {
+  scrollbar-gutter: stable;
+}
+
+.signal-message {
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 10%, transparent);
+}
+
+.signal-composer-shell {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 84%, transparent), var(--app-bg));
+}
+
+.signal-composer {
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 25%, transparent);
+}
+
+.signal-empty {
+  position: relative;
+  overflow: hidden;
+  border: 1px dashed var(--app-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--app-surface) 58%, transparent);
+}
+
+.signal-empty::before {
+  position: absolute;
+  top: -4rem;
+  left: 50%;
+  width: 12rem;
+  height: 12rem;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 20%, transparent);
+  border-radius: 999px;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.signal-status-card {
+  border-color: color-mix(in srgb, var(--app-accent) 32%, var(--app-border));
+  background: color-mix(in srgb, var(--app-accent-soft) 42%, var(--app-surface));
+}
+
+.signal-inspector-summary {
+  border: 1px solid var(--app-border);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--app-surface-raised) 82%, transparent);
+}
+
+.signal-timeline {
+  position: relative;
+}
+
+.signal-timeline-item {
+  position: relative;
+}
+
+.signal-timeline-item:last-child .signal-timeline-line {
+  display: none;
+}
+
+.signal-timeline-dot {
+  box-shadow: 0 0 0 4px var(--app-surface), 0 0 0 5px color-mix(in srgb, var(--app-border) 52%, transparent);
+}
+
+.signal-timeline-dot-current {
+  animation: signal-pulse 1.8s ease-in-out infinite;
+}
+
+.signal-timeline-line {
+  position: absolute;
+  top: 0.8rem;
+  bottom: 0;
+  left: 0.3rem;
+  width: 1px;
+  background: var(--app-border);
+}
+
+@keyframes signal-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px var(--app-surface), 0 0 0 5px color-mix(in srgb, var(--app-accent) 40%, transparent), 0 0 0 0 color-mix(in srgb, var(--app-accent) 0%, transparent); }
+  50% { box-shadow: 0 0 0 4px var(--app-surface), 0 0 0 5px color-mix(in srgb, var(--app-accent) 52%, transparent), 0 0 0 8px color-mix(in srgb, var(--app-accent) 0%, transparent); }
 }
 
 .ui-panel {
@@ -463,6 +768,19 @@ body.resizing-panels {
 }
 
 @media (max-width: 680px) {
+  .signal-hero-title {
+    max-width: 11ch;
+    font-size: clamp(2.25rem, 13vw, 3.3rem);
+  }
+
+  .signal-hero-rail {
+    min-width: 0;
+  }
+
+  .signal-workspace-row {
+    border-radius: 0.85rem;
+  }
+
   .workspace-sidebar {
     width: 74px !important;
     padding-left: 0.55rem !important;

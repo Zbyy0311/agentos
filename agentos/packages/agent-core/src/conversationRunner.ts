@@ -51,6 +51,8 @@ export class ConversationAgentRunner {
     this.emit('running_cli', '正在调用 Agent CLI');
 
     let streamedContent = '';
+    let pendingStreamContent = '';
+    let emittedStreamContent = false;
     const context: ExecuteContext = {
       workspaceRoot: this.options.workspaceRoot,
       taskId: this.options.executionId,
@@ -61,6 +63,11 @@ export class ConversationAgentRunner {
       onChunk: (content) => {
         if (!content) return;
         streamedContent += content;
+        pendingStreamContent += content;
+        if (isPotentialWaitingUserMarker(pendingStreamContent)) return;
+        this.emit('streaming_response', '正在生成回复', pendingStreamContent);
+        pendingStreamContent = '';
+        emittedStreamContent = true;
       },
     };
 
@@ -82,7 +89,12 @@ export class ConversationAgentRunner {
           completedAt: new Date().toISOString(),
         };
       }
-      if (content) this.emit('streaming_response', '正在生成回复', content);
+      if (pendingStreamContent) {
+        this.emit('streaming_response', '正在生成回复', pendingStreamContent);
+        emittedStreamContent = true;
+      } else if (!emittedStreamContent && content) {
+        this.emit('streaming_response', '正在生成回复', content);
+      }
       this.emit('completed', '执行完成');
       return {
         status: 'completed',
@@ -113,6 +125,13 @@ export class ConversationAgentRunner {
   private emit(status: ExecutionStatus, activity: string, content?: string): void {
     this.options.onEvent?.({ status, activity, ...(content ? { content } : {}) });
   }
+}
+
+const WAITING_USER_MARKER_START = '<!-- agentos-waiting-user';
+
+function isPotentialWaitingUserMarker(content: string): boolean {
+  const trimmed = content.trimStart();
+  return WAITING_USER_MARKER_START.startsWith(trimmed) || trimmed.startsWith(WAITING_USER_MARKER_START);
 }
 
 function toAgentConfig(

@@ -644,7 +644,7 @@ export default function WorkspacePage() {
   if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
   if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
 
-  return <div ref={layoutRef} data-workspace-layout className="app-shell flex h-screen min-w-0 overflow-hidden">
+  return <div ref={layoutRef} data-signal-workspace data-workspace-layout className="signal-workspace app-shell flex h-screen min-w-0 overflow-hidden">
     <AgentList panelWidth={workspacePanelWidth} agents={agents} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={agentId => { setSelectedAgentId(agentId); setSelectedGroupId(null); setSelectedDirectConversationId(null); setError(''); }} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenMemories={() => setShowMemories(true)} />
     <PanelResizeHandle panel="workspace" width={workspacePanelWidth} onPointerDown={handleResizePointerDown} />
     <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectedGroupId ? selectGroup : setSelectedDirectConversationId} onContextMenu={openContextMenu} />

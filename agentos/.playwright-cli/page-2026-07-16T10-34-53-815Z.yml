@@ -1,0 +1,31 @@
+- generic [active] [ref=f14e1]:
+  - generic [ref=f14e2]:
+    - banner [ref=f14e3]:
+      - generic [ref=f14e4]:
+        - generic [ref=f14e5]: A/
+        - generic [ref=f14e6]:
+          - generic [ref=f14e7]: AgentOS
+          - generic [ref=f14e8]: 本地多 Agent 工作台
+      - button "切换到深色主题" [ref=f14e9] [cursor=pointer]:
+        - generic [ref=f14e10]: ◐
+        - generic [ref=f14e11]: 浅色
+    - main [ref=f14e12]:
+      - generic [ref=f14e13]:
+        - generic [ref=f14e14]:
+          - paragraph [ref=f14e15]: WORKSPACE INDEX
+          - heading "把每个项目，整理成一个可以工作的空间。" [level=1] [ref=f14e16]
+          - paragraph [ref=f14e17]: 从本地目录进入项目，管理 Agent、会话和执行状态。所有工作区都保留在当前环境中。
+        - button "+ 新建工作区" [ref=f14e18] [cursor=pointer]:
+          - generic [ref=f14e19]: +
+          - text: 新建工作区
+      - generic [ref=f14e20]:
+        - generic [ref=f14e21]:
+          - generic [ref=f14e22]:
+            - heading "工作区" [level=2] [ref=f14e23]
+            - paragraph [ref=f14e24]: 打开一个工作区，继续上次的协作上下文。
+          - generic [ref=f14e25]: 0 个已连接
+        - generic [ref=f14e26]:
+          - textbox "输入本地目录路径以导入…" [ref=f14e27]
+          - button "导入目录" [disabled] [ref=f14e28]
+        - generic [ref=f14e29]: 正在读取工作区…
+  - alert [ref=f14e30]

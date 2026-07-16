@@ -1,0 +1,27 @@
+{
+  "task_id": "20260715-045554-2-78-begin-2-78-b1-senddirectmessage-persistmemoryusage",
+  "goal": "[已粘贴文本 #2 · 78 行]\n\n--- Begin [已粘贴文本 #2 · 78 行] ---\n审查报告验证结果\r\n🔴 阻断性问题\r\nB1. sendDirectMessage: persistMemoryUsage 在 updateRun 之前调用\r\n\r\n✅ 核心排序问题存在 — 第 165 行 persistMemoryUsage 确实在 166 行 updateRun 之前执行。\r\n❌ \"不一致性\"描述有误 — 报告声称 resumeDirectMessage（第 251-252 行）是\"先 updateRun 再 persistMemoryUsage\"，但实际源码中两者顺序相同：都是先 persistMemoryUsage 再 updateRun。不存在所谓的顺序不一致性。\r\nB2. sendGroupMessage: persistMemoryUsage 在成员执行之前调用\r\n\r\n✅ 源码确认 — persistMemoryUsage 在第 343 行，然后 345+ 行才开始 leader 规划和成员轮次。\r\nB3. failGroupWaitingRun 的 throw 导致 sendGroupMessage 中途终止\r\n\r\n✅ [源码确认](apps/server/src/services/ConversationService.ts:355-357, 456-464) — failGroupWaitingRun 总是 throw，通过路由 catch 块处理。\r\nB4. recordExecutionEvent: waiting_user 无条件覆盖 run 状态\r\n\r\n✅ 源码确认 — waiting_user 分支没有检查 finalizeRun（对比 521 行 completed/failed/cancelled 分支有检查）。成员 agent 的 waiting_user 事件确实可能污染 run 状态。\r\nB5. SqliteStore.ensureColumn 字符串拼接 SQL\r\n\r\n✅ 源码确认 — SQL DDL 使用模板字符串拼接，无转义。当前调用者是硬编码常量，但函数签名确实脆弱。\r\nB6. executor.ts appendToAgentLog 文件句柄泄露风险\r\n\r\n❌ 描述不准确 — 源码中使用的是标准的 try/finally 模式。在 async 函数中，finally 块无论同步还是异步异常都会执行。file.stat() 即使抛出异常，file.close() 也一定会被调用。这不是真正的风险。\r\n🟡 应修复问题\r\nY1. 前端 done 事件未清除 streamingContent\r\n\r\n✅ 源码确认 — done 事件处理中确实没有调用 setStreamingContent('')。\r\nY2. 前端 done 事件后 loadConversationDetails 覆盖 activeRunId\r\n\r\n✅ [源码确认](apps/web/src/app/workspace/[id]/page.tsx:177, 347) — loadConversationDetails 从 DB 重新加载后，setActiveRunId(executionResult.executions[0]?.runId ?? ...) 覆盖了 done 事件设置的 run ID。\r\nY3. handleSend 成功后乐观消息和持久化消息共存\r\n\r\n✅ [源码确认](apps/web/src/app/workspace/[id]/page.tsx:291, 347, 355) — 乐观消息仅在 catch 中移除（第 355 行），成功路径中不删除，同时 loadConversationDetails 从 DB 加载的消息也会加入，导致重复。\r\nY4. createSseWriter 未检查 writableEnded\r\n\r\n✅ 源码确认 — createSseWriter 没有 writableEnded 检查，而 startSseHeartbeat（第 19 行）有。\r\nY5. attachments 路由为非 async 但调用异步 sendFile\r\n\r\n✅ 确实如此，但实际影响有限 — Express 的 res.sendFile 回调中检查了 !res.headersSent（第 225 行），这是 Express 的标准模式。\r\nY6. SSE error 发送后响应可能已结束\r\n\r\n✅ [源码确认](apps/server/src/routes/conversations.ts:309-310, 275-277) — 客户端断连后 abort → catch 块尝试 send('error', ...)，但 createSseWriter 静默吞掉了异常。\r\nY7. useEffect 中未等待的 Promise\r\n\r\n✅ 源码确认 — Promise 确实未在 useEffect 中 await，但 React 18 中已卸载组件上 setState 是 no-op，实际影响较小。\r\nY8. ConversationAttachmentService 路径穿越检查脆弱\r\n\r\n✅ path.resolve 是词法操作，不解析符号链接。但实际利用场景取决于工作区配置。\r\nY9. 组消息 done 事件前端条件错误\r\n\r\n✅ 这是真正的严重 bug。服务端发送 { executions: result.executions }（复数，第 307 行），但前端检查 data.execution（单数，第 334 行）。组消息的 done 事件永远不被前端处理，UI 停留在\"执行中\"状态。\r\nY10. parseRuntimeOverrides 条件表达式的歧义\r\n\r\n✅ 技术上正确 — thinkingEffort ? { thinkingEffort } : {} 在所有有效值（'auto'|'low'|'medium'|'high'）下都是 truthy 的，实际不影响功能。\r\n🔵 建议改进\r\nC1-C6 — 全部与实际源码一致。特别是：\r\npublishEvent 静默吞错误（ConversationService.ts:540）\r\ndeleteWorkspace 手动删除在 ON DELETE CASCADE 下冗余（SqliteStore.ts:254-278，CASCADE 在第 229 行启用）\r\nparseJson\u003cT\u003e 无运行时类型验证（SqliteStore.ts:1574-1579）\r\nassertWorkspaceExists 额外查询（SqliteStore.ts:1425-1429）\r\n汇总纠正表\r\n编号\t原结论\t验证结果\t备注\r\nB1\t🔴 阻断性\t⚠️ 核心问题存在，不一致性描述有误\tresumeDirectMessage 实际也是 persistMemoryUsage 在前，不是反过来\r\nB6\t🔴 阻断性\t❌ 误报\ttry/finally 模式安全，Node.js 会自动释放 fd\r\nY9\t🟡 应修复\t↑ 应提升为 🔴\t组消息最后一步功能彻底失效\r\nY6\t🟡 应修复\t⚠️ 问题存在但已由 catch 兜底\t影响程度低于描述\r\nY7\t🟡 应修复\t⚠️ 问题存在但影响较小\tReact 18+ 中已安全处理\r\n建议更新的优先修复列表：\r\n\r\n优先级\t编号\t问题\t影响\r\nP0\tY9\t组消息 done 事件条件错误\t组消息功能最后一步失效，UI 永久显示\"执行中\"\r\nP0\tB1\tpersistMemoryUsage 与 updateRun 顺序\t直接消息完成后 run 状态可能丢失\r\nP1\tY3\t乐观消息未清除\t用户看到重复消息\r\nP1\tB2\tgroup 消息中 persistMemoryUsage 时机过早\t失败时产生孤立记录\r\nP2\tY1/Y2\t前端状态残留\t幽灵文字 / run ID 覆盖\r\n所以这份报告 22 项发现中约 20 项是有效、准确的。主要修正点：\r\n\r\nB6 是误报 — 文件描述符泄漏风险不存在\r\nB1 的不一致性描述不准确 — 两个方法顺序相同\r\nY9 严重程度应提升为阻断性 — 它是组消息流程的致命 bug\n--- End [已粘贴文本 #2 · 78 行] ---\n以下是claudecode对你审查的内容反馈",
+  "scope": null,
+  "non_goals": null,
+  "allowed_operations": {
+    "write": true,
+    "network": false,
+    "publish": false
+  },
+  "success_criteria": [
+    {
+      "id": "objective_evidence",
+      "description": "The goal outcome is supported by direct evidence, such as inspected code, reproduced behavior, source material, or concrete findings.",
+      "required": true,
+      "evidence_ids": [
+        "f1"
+      ]
+    },
+    {
+      "id": "verification",
+      "description": "The result has relevant verification evidence, such as tests, commands, benchmarks, manual checks, or a documented reason why verification is not applicable.",
+      "required": true,
+      "evidence_ids": null
+    }
+  ]
+}
