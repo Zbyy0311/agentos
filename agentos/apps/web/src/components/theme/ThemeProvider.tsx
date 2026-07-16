@@ -1,8 +1,7 @@
 'use client';
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-
-export type Theme = 'dark' | 'light';
+import { readStoredTheme, THEME_STORAGE_KEY, type Theme } from './themePreference';
 
 interface ThemeContextValue {
   theme: Theme;
@@ -13,16 +12,13 @@ interface ThemeContextValue {
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>('dark');
-
-  useEffect(() => {
-    const saved = window.localStorage.getItem('agentos-theme');
-    if (saved === 'light' || saved === 'dark') setTheme(saved);
-  }, []);
+  const [theme, setTheme] = useState<Theme>(() =>
+    typeof window === 'undefined' ? 'dark' : readStoredTheme(window.localStorage),
+  );
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem('agentos-theme', theme);
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme]);
 
   return <ThemeContext.Provider value={{ theme, setTheme, toggleTheme: () => setTheme(current => current === 'dark' ? 'light' : 'dark') }}>{children}</ThemeContext.Provider>;

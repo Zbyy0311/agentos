@@ -13,7 +13,7 @@
 
 ## 方案
 
-在 `ThemeProvider` 的 `useState` 惰性初始化函数中读取 `localStorage`。服务端渲染时检测 `window` 是否存在，避免访问浏览器 API；客户端首次初始化即可使用已保存主题，避免先渲染深色再切换。主题变化时继续通过现有副作用设置 `document.documentElement.dataset.theme` 并写回 `localStorage`。
+在页面绘制前通过布局中的内联脚本读取 `localStorage`，同步设置 `document.documentElement.dataset.theme`，确保首屏直接使用用户选择的模式。`ThemeProvider` 再通过 `useState` 惰性初始化读取同一值，避免 React 状态与首屏属性不一致。服务端渲染时默认深色；主题变化时继续通过现有副作用设置属性并写回 `localStorage`。
 
 ## 验证
 
