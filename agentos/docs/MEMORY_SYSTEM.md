@@ -29,6 +29,14 @@ agent-memory/records/experiences/<id>.md
 
 Prompt、完整 CLI 输出、私有思维链、密钥、Authorization 头和环境变量不写入事件、Run 详情或候选输入。CLI 证据只保存安全命令标签、模型/思考级别、退出码、耗时以及工作区相对文件路径。
 
+## 自适应交互与工作偏好
+
+项目知识记忆之外，系统还维护一套双层偏好记忆：`workspace` 层只对当前项目生效，`global` 层在满足跨 Workspace 的独立证据条件后才可形成。第一阶段只观察交互与工作方式，例如回答详略、执行方式、修改范围、验收深度和进度更新方式，不保存项目内容。
+
+偏好只由用户可见的隐式信号产生：重复工作指令、后续修正、成功运行后的应用结果。生命周期固定为 `observed -> provisional -> stable -> dormant`；当前用户明确要求、系统安全规则和 Workspace 配置始终优先于已学习偏好。注入文本带有“历史默认偏好”提示，并限制在固定字符预算内。
+
+控制面板位于工作区左侧的“交互偏好”，支持查看场景和置信度、暂停/恢复学习、清除可注入投影、休眠单条偏好和打开来源 Run。清除只移除投影，不删除证据；系统没有点赞/点踩等显式评分入口。完整验收命令见 [docs/acceptance/adaptive-user-preference-memory.md](acceptance/adaptive-user-preference-memory.md)。
+
 ## 迁移与备份
 
 打开 Store 时会增量创建记忆、来源、FTS、用量和候选表，不重建既有消息或执行记录。旧执行记录会迁移到 `legacy-run-<executionId>`，并回填 `executions.run_id`。迁移前应备份 `.agentos/agentos.sqlite`、`workspace/workspaces.json` 和 `agent-memory/`；若 Markdown 写入或数据库写入失败，服务会删除本次正文并恢复更新前的文件。
