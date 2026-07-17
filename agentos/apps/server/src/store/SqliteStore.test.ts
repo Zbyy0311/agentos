@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { SqliteStore } from './SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import type { PreferenceEvidence, PreferenceProjection } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { get(...parameters: unknown[]): unknown }; close(): void } };
 
@@ -629,6 +630,68 @@ test('persists and hydrates message attachments across store reopen', () => {
     assert.equal(store.listMessages('workspace-a', 'conversation-attachments')[0]?.attachments?.[0]?.name, 'screen.png');
     store.deleteConversation('workspace-a', 'conversation-attachments');
     assert.deepEqual(store.listMessages('workspace-a', 'conversation-attachments'), []);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('persists preference evidence, projections, applications, and scoped controls across reopen', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    for (const [workspaceId, suffix] of [['workspace-a', 'a'], ['workspace-b', 'b']] as const) {
+      store.createConversation({
+        id: `preference-conversation-${suffix}`, workspaceId, type: 'direct', title: `Preference ${suffix}`, agentId: 'codex',
+        createdAt: '2026-07-17T00:00:00.000Z', updatedAt: '2026-07-17T00:00:00.000Z',
+      });
+      store.createMessage({
+        id: `preference-message-${suffix}`, conversationId: `preference-conversation-${suffix}`, workspaceId,
+        senderType: 'user', content: '偏好测试', createdAt: '2026-07-17T00:00:00.000Z',
+      });
+      store.createRun({
+        id: `run-${suffix}`, workspaceId, conversationId: `preference-conversation-${suffix}`,
+        sourceMessageId: `preference-message-${suffix}`, objective: '偏好测试', status: 'completed',
+        createdAt: '2026-07-17T00:00:00.000Z', updatedAt: '2026-07-17T00:00:00.000Z',
+      });
+    }
+    const profile = store.getDefaultUserProfile();
+    const evidence: PreferenceEvidence = {
+      id: 'preference-evidence-a', profileId: profile.id, workspaceId: 'workspace-a',
+      conversationId: 'preference-conversation-a', runId: 'run-a', sourceEventId: 'event-a',
+      dimension: 'response_detail', contextKind: 'coding', candidateValue: 'concise',
+      signalType: 'direct_correction', polarity: 'positive', weight: 4,
+      summary: '用户要求回答更简洁', status: 'active',
+      observedAt: '2026-07-17T00:00:00.000Z', createdAt: '2026-07-17T00:00:00.000Z',
+    };
+    store.createPreferenceEvidence(evidence);
+    store.createPreferenceEvidence({ ...evidence, id: 'preference-evidence-b', workspaceId: 'workspace-b', runId: 'run-b', sourceEventId: 'event-b' });
+    const projection: PreferenceProjection = {
+      id: 'preference-projection-a', profileId: profile.id, scope: 'workspace', workspaceId: 'workspace-a',
+      dimension: 'response_detail', contextKind: 'coding', preferredValue: 'concise', confidence: 62,
+      score: 4, evidenceCount: 1, independentRunCount: 1, status: 'observed',
+      lastSupportedAt: '2026-07-17T00:00:00.000Z', lastConflictedAt: undefined,
+      createdAt: '2026-07-17T00:00:00.000Z', updatedAt: '2026-07-17T00:00:00.000Z',
+    };
+    store.upsertPreferenceProjection(projection, [{ evidenceId: evidence.id, contribution: 4 }]);
+    store.createPreferenceApplication({
+      runId: 'run-a', projectionId: projection.id, resolvedValue: 'concise', rank: 1,
+      injectedCharacters: 42, appliedAt: '2026-07-17T00:00:00.000Z',
+    });
+
+    assert.equal(store.listPreferenceEvidence(profile.id, 'workspace-a').length, 1);
+    assert.equal(store.listPreferenceProjections(profile.id, 'workspace-a')[0]?.preferredValue, 'concise');
+    assert.equal(store.listPreferenceApplications('workspace-a', 'run-a')[0]?.projectionId, projection.id);
+    assert.deepEqual(store.listPreferenceProjections(profile.id, 'workspace-b'), []);
+
+    store.close();
+    store = new SqliteStore(root);
+    assert.equal(store.listPreferenceEvidence(profile.id, 'workspace-a')[0]?.id, evidence.id);
+    assert.equal(store.listPreferenceProjections(profile.id, 'workspace-a')[0]?.status, 'observed');
+    store.clearPreferenceProjections(profile.id);
+    assert.deepEqual(store.listPreferenceProjections(profile.id, 'workspace-a'), []);
+    assert.equal(store.listPreferenceEvidence(profile.id, 'workspace-a').length, 1);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });

@@ -15,6 +15,11 @@ import type {
   MemoryUsage,
   MemoryCandidate,
   MemoryCandidateStatus,
+  UserProfile,
+  PreferenceEvidence,
+  PreferenceProjection,
+  PreferenceProjectionEvidence,
+  PreferenceApplication,
   RuntimeArtifact,
   Conversation,
   ConversationMember,
@@ -239,6 +244,52 @@ interface MemoryCandidateRow {
   status: MemoryCandidateStatus;
   created_at: string;
   reviewed_at: string | null;
+}
+
+interface UserProfileRow {
+  id: string;
+  display_name: string;
+  learning_enabled: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface PreferenceEvidenceRow {
+  id: string;
+  profile_id: string;
+  workspace_id: string | null;
+  conversation_id: string;
+  run_id: string;
+  source_event_id: string;
+  dimension: PreferenceEvidence['dimension'];
+  context_kind: PreferenceEvidence['contextKind'];
+  candidate_value: string;
+  signal_type: PreferenceEvidence['signalType'];
+  polarity: PreferenceEvidence['polarity'];
+  weight: number;
+  summary: string;
+  status: PreferenceEvidence['status'];
+  observed_at: string;
+  created_at: string;
+}
+
+interface PreferenceProjectionRow {
+  id: string;
+  profile_id: string;
+  scope: PreferenceProjection['scope'];
+  workspace_id: string | null;
+  dimension: PreferenceProjection['dimension'];
+  context_kind: PreferenceProjection['contextKind'];
+  preferred_value: string;
+  confidence: number;
+  score: number;
+  evidence_count: number;
+  independent_run_count: number;
+  status: PreferenceProjection['status'];
+  last_supported_at: string;
+  last_conflicted_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export class SqliteStore implements Store {
@@ -1107,6 +1158,173 @@ export class SqliteStore implements Store {
     return rows.map(row => ({ runId: row.run_id, memoryId: row.memory_id, rank: row.rank, injectedCharacters: row.injected_characters, usedAt: row.used_at }));
   }
 
+  getDefaultUserProfile(): UserProfile {
+    const existing = this.database.prepare(`
+      SELECT id, display_name, learning_enabled, created_at, updated_at
+      FROM user_profiles WHERE id = 'default'
+    `).get() as UserProfileRow | undefined;
+    if (existing) return this.toUserProfile(existing);
+    const now = new Date().toISOString();
+    this.database.prepare(`
+      INSERT INTO user_profiles (id, display_name, learning_enabled, created_at, updated_at)
+      VALUES ('default', '本地用户', 1, ?, ?)
+    `).run(now, now);
+    return { id: 'default', displayName: '本地用户', learningEnabled: true, createdAt: now, updatedAt: now };
+  }
+
+  setPreferenceLearningEnabled(profileId: string, enabled: boolean): UserProfile {
+    const profile = this.getUserProfile(profileId);
+    if (!profile) throw new Error('User profile not found');
+    const updatedAt = new Date().toISOString();
+    this.database.prepare('UPDATE user_profiles SET learning_enabled = ?, updated_at = ? WHERE id = ?')
+      .run(enabled ? 1 : 0, updatedAt, profileId);
+    return this.getUserProfile(profileId)!;
+  }
+
+  createPreferenceEvidence(evidence: PreferenceEvidence): PreferenceEvidence {
+    if (!evidence.id || !evidence.profileId || !evidence.sourceEventId || !evidence.summary.trim()) {
+      throw new Error('Invalid preference evidence');
+    }
+    this.database.prepare(`
+      INSERT OR IGNORE INTO preference_evidence (
+        id, profile_id, workspace_id, conversation_id, run_id, source_event_id, dimension, context_kind,
+        candidate_value, signal_type, polarity, weight, summary, status, observed_at, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      evidence.id, evidence.profileId, evidence.workspaceId ?? null, evidence.conversationId, evidence.runId,
+      evidence.sourceEventId, evidence.dimension, evidence.contextKind, evidence.candidateValue, evidence.signalType,
+      evidence.polarity, evidence.weight, evidence.summary.trim(), evidence.status, evidence.observedAt, evidence.createdAt,
+    );
+    return this.getPreferenceEvidence(evidence.profileId, evidence.id) ?? evidence;
+  }
+
+  getPreferenceEvidence(profileId: string, evidenceId: string): PreferenceEvidence | undefined {
+    const row = this.database.prepare(`
+      SELECT id, profile_id, workspace_id, conversation_id, run_id, source_event_id, dimension, context_kind,
+        candidate_value, signal_type, polarity, weight, summary, status, observed_at, created_at
+      FROM preference_evidence WHERE profile_id = ? AND id = ?
+    `).get(profileId, evidenceId) as PreferenceEvidenceRow | undefined;
+    return row ? this.toPreferenceEvidence(row) : undefined;
+  }
+
+  listPreferenceEvidence(profileId: string, workspaceId?: string): PreferenceEvidence[] {
+    const rows = (workspaceId
+      ? this.database.prepare(`
+        SELECT id, profile_id, workspace_id, conversation_id, run_id, source_event_id, dimension, context_kind,
+          candidate_value, signal_type, polarity, weight, summary, status, observed_at, created_at
+        FROM preference_evidence
+        WHERE profile_id = ? AND (workspace_id = ? OR workspace_id IS NULL)
+        ORDER BY observed_at ASC, id ASC
+      `).all(profileId, workspaceId)
+      : this.database.prepare(`
+        SELECT id, profile_id, workspace_id, conversation_id, run_id, source_event_id, dimension, context_kind,
+          candidate_value, signal_type, polarity, weight, summary, status, observed_at, created_at
+        FROM preference_evidence WHERE profile_id = ?
+        ORDER BY observed_at ASC, id ASC
+      `).all(profileId)) as PreferenceEvidenceRow[];
+    return rows.map(row => this.toPreferenceEvidence(row));
+  }
+
+  listPreferenceProjections(profileId: string, workspaceId?: string): PreferenceProjection[] {
+    const rows = (workspaceId
+      ? this.database.prepare(`
+        SELECT id, profile_id, scope, workspace_id, dimension, context_kind, preferred_value, confidence, score,
+          evidence_count, independent_run_count, status, last_supported_at, last_conflicted_at, created_at, updated_at
+        FROM preference_projections
+        WHERE profile_id = ? AND (scope = 'global' OR (scope = 'workspace' AND workspace_id = ?))
+        ORDER BY updated_at DESC, id ASC
+      `).all(profileId, workspaceId)
+      : this.database.prepare(`
+        SELECT id, profile_id, scope, workspace_id, dimension, context_kind, preferred_value, confidence, score,
+          evidence_count, independent_run_count, status, last_supported_at, last_conflicted_at, created_at, updated_at
+        FROM preference_projections WHERE profile_id = ?
+        ORDER BY updated_at DESC, id ASC
+      `).all(profileId)) as PreferenceProjectionRow[];
+    return rows.map(row => this.toPreferenceProjection(row));
+  }
+
+  upsertPreferenceProjection(projection: PreferenceProjection, links: Array<Pick<PreferenceProjectionEvidence, 'evidenceId' | 'contribution'>> = []): PreferenceProjection {
+    this.database.exec('BEGIN');
+    try {
+      this.database.prepare(`
+        INSERT INTO preference_projections (
+          id, profile_id, scope, workspace_id, dimension, context_kind, preferred_value, confidence, score,
+          evidence_count, independent_run_count, status, last_supported_at, last_conflicted_at, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT (id) DO UPDATE SET
+          profile_id = excluded.profile_id, scope = excluded.scope, workspace_id = excluded.workspace_id,
+          dimension = excluded.dimension, context_kind = excluded.context_kind, preferred_value = excluded.preferred_value,
+          confidence = excluded.confidence, score = excluded.score, evidence_count = excluded.evidence_count,
+          independent_run_count = excluded.independent_run_count, status = excluded.status,
+          last_supported_at = excluded.last_supported_at, last_conflicted_at = excluded.last_conflicted_at,
+          updated_at = excluded.updated_at
+      `).run(
+        projection.id, projection.profileId, projection.scope, projection.workspaceId ?? null, projection.dimension,
+        projection.contextKind, projection.preferredValue, projection.confidence, projection.score,
+        projection.evidenceCount, projection.independentRunCount, projection.status, projection.lastSupportedAt,
+        projection.lastConflictedAt ?? null, projection.createdAt, projection.updatedAt,
+      );
+      this.database.prepare('DELETE FROM preference_projection_evidence WHERE projection_id = ?').run(projection.id);
+      for (const link of links) {
+        this.database.prepare(`
+          INSERT INTO preference_projection_evidence (projection_id, evidence_id, contribution)
+          VALUES (?, ?, ?)
+        `).run(projection.id, link.evidenceId, link.contribution);
+      }
+      this.database.exec('COMMIT');
+      return projection;
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  createPreferenceApplication(application: PreferenceApplication): PreferenceApplication {
+    this.database.prepare(`
+      INSERT OR IGNORE INTO preference_applications (run_id, projection_id, resolved_value, rank, injected_characters, applied_at)
+      VALUES (?, ?, ?, ?, ?, ?)
+    `).run(application.runId, application.projectionId, application.resolvedValue, application.rank, application.injectedCharacters, application.appliedAt);
+    return application;
+  }
+
+  listPreferenceApplications(workspaceId: string, runId: string): PreferenceApplication[] {
+    const rows = this.database.prepare(`
+      SELECT applications.run_id, applications.projection_id, applications.resolved_value,
+        applications.rank, applications.injected_characters, applications.applied_at
+      FROM preference_applications AS applications
+      INNER JOIN agent_runs ON agent_runs.id = applications.run_id
+      WHERE agent_runs.workspace_id = ? AND applications.run_id = ?
+      ORDER BY applications.rank ASC, applications.projection_id ASC
+    `).all(workspaceId, runId) as Array<{ run_id: string; projection_id: string; resolved_value: string; rank: number; injected_characters: number; applied_at: string }>;
+    return rows.map(row => ({
+      runId: row.run_id, projectionId: row.projection_id, resolvedValue: row.resolved_value,
+      rank: row.rank, injectedCharacters: row.injected_characters, appliedAt: row.applied_at,
+    }));
+  }
+
+  clearPreferenceProjections(profileId: string): void {
+    this.database.exec('BEGIN');
+    try {
+      this.database.prepare(`
+        DELETE FROM preference_applications
+        WHERE projection_id IN (SELECT id FROM preference_projections WHERE profile_id = ?)
+      `).run(profileId);
+      this.database.prepare('DELETE FROM preference_projections WHERE profile_id = ?').run(profileId);
+      this.database.exec('COMMIT');
+    } catch (error) {
+      this.database.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  sleepPreferenceProjection(profileId: string, projectionId: string): PreferenceProjection {
+    this.database.prepare(`UPDATE preference_projections SET status = 'dormant', updated_at = ? WHERE profile_id = ? AND id = ?`)
+      .run(new Date().toISOString(), profileId, projectionId);
+    const projection = this.listPreferenceProjections(profileId).find(item => item.id === projectionId);
+    if (!projection) throw new Error('Preference projection not found');
+    return projection;
+  }
+
   createMemoryCandidate(candidate: MemoryCandidate): MemoryCandidate {
     const run = this.getRun(candidate.workspaceId, candidate.runId);
     if (!run) throw new Error('Run not found for memory candidate');
@@ -1421,7 +1639,93 @@ export class SqliteStore implements Store {
 
       CREATE INDEX IF NOT EXISTS memory_candidates_workspace_status_created
         ON memory_candidates (workspace_id, status, created_at DESC);
+
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        id TEXT PRIMARY KEY,
+        display_name TEXT NOT NULL,
+        learning_enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS preference_evidence (
+        id TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL,
+        workspace_id TEXT,
+        conversation_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        source_event_id TEXT NOT NULL,
+        dimension TEXT NOT NULL,
+        context_kind TEXT NOT NULL,
+        candidate_value TEXT NOT NULL,
+        signal_type TEXT NOT NULL,
+        polarity TEXT NOT NULL,
+        weight INTEGER NOT NULL,
+        summary TEXT NOT NULL,
+        status TEXT NOT NULL,
+        observed_at TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        UNIQUE (profile_id, source_event_id, dimension, context_kind, candidate_value, signal_type, polarity),
+        FOREIGN KEY (profile_id) REFERENCES user_profiles(id) ON DELETE CASCADE,
+        FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS preference_evidence_profile_scope_time
+        ON preference_evidence (profile_id, workspace_id, observed_at ASC);
+
+      CREATE TABLE IF NOT EXISTS preference_projections (
+        id TEXT PRIMARY KEY,
+        profile_id TEXT NOT NULL,
+        scope TEXT NOT NULL,
+        workspace_id TEXT,
+        dimension TEXT NOT NULL,
+        context_kind TEXT NOT NULL,
+        preferred_value TEXT NOT NULL,
+        confidence INTEGER NOT NULL,
+        score INTEGER NOT NULL,
+        evidence_count INTEGER NOT NULL,
+        independent_run_count INTEGER NOT NULL,
+        status TEXT NOT NULL,
+        last_supported_at TEXT NOT NULL,
+        last_conflicted_at TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        UNIQUE (profile_id, scope, workspace_id, dimension, context_kind),
+        FOREIGN KEY (profile_id) REFERENCES user_profiles(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS preference_projections_profile_scope_status
+        ON preference_projections (profile_id, scope, workspace_id, status, updated_at DESC);
+
+      CREATE TABLE IF NOT EXISTS preference_projection_evidence (
+        projection_id TEXT NOT NULL,
+        evidence_id TEXT NOT NULL,
+        contribution INTEGER NOT NULL,
+        PRIMARY KEY (projection_id, evidence_id),
+        FOREIGN KEY (projection_id) REFERENCES preference_projections(id) ON DELETE CASCADE,
+        FOREIGN KEY (evidence_id) REFERENCES preference_evidence(id) ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS preference_applications (
+        run_id TEXT NOT NULL,
+        projection_id TEXT NOT NULL,
+        resolved_value TEXT NOT NULL,
+        rank INTEGER NOT NULL,
+        injected_characters INTEGER NOT NULL,
+        applied_at TEXT NOT NULL,
+        PRIMARY KEY (run_id, projection_id),
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS preference_applications_run_rank
+        ON preference_applications (run_id, rank ASC);
     `);
+    const now = new Date().toISOString();
+    this.database.prepare(`
+      INSERT OR IGNORE INTO user_profiles (id, display_name, learning_enabled, created_at, updated_at)
+      VALUES ('default', '本地用户', 1, ?, ?)
+    `).run(now, now);
     this.ensureColumn('agent_profiles', 'thinking_effort', "TEXT NOT NULL DEFAULT 'auto'");
     this.ensureColumn('conversations', 'model', 'TEXT');
     this.ensureColumn('conversations', 'thinking_effort', 'TEXT');
@@ -1541,6 +1845,66 @@ export class SqliteStore implements Store {
       SELECT id FROM messages WHERE id = ? AND conversation_id = ? AND workspace_id = ?
     `).get(messageId, conversationId, workspaceId) as { id: string } | undefined;
     if (!row) throw new Error('Message not found in conversation');
+  }
+
+  private getUserProfile(profileId: string): UserProfile | undefined {
+    const row = this.database.prepare(`
+      SELECT id, display_name, learning_enabled, created_at, updated_at
+      FROM user_profiles WHERE id = ?
+    `).get(profileId) as UserProfileRow | undefined;
+    return row ? this.toUserProfile(row) : undefined;
+  }
+
+  private toUserProfile(row: UserProfileRow): UserProfile {
+    return {
+      id: row.id,
+      displayName: row.display_name,
+      learningEnabled: row.learning_enabled === 1,
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
+  private toPreferenceEvidence(row: PreferenceEvidenceRow): PreferenceEvidence {
+    return {
+      id: row.id,
+      profileId: row.profile_id,
+      ...(row.workspace_id ? { workspaceId: row.workspace_id } : {}),
+      conversationId: row.conversation_id,
+      runId: row.run_id,
+      sourceEventId: row.source_event_id,
+      dimension: row.dimension,
+      contextKind: row.context_kind,
+      candidateValue: row.candidate_value,
+      signalType: row.signal_type,
+      polarity: row.polarity,
+      weight: row.weight,
+      summary: row.summary,
+      status: row.status,
+      observedAt: row.observed_at,
+      createdAt: row.created_at,
+    };
+  }
+
+  private toPreferenceProjection(row: PreferenceProjectionRow): PreferenceProjection {
+    return {
+      id: row.id,
+      profileId: row.profile_id,
+      scope: row.scope,
+      ...(row.workspace_id ? { workspaceId: row.workspace_id } : {}),
+      dimension: row.dimension,
+      contextKind: row.context_kind,
+      preferredValue: row.preferred_value,
+      confidence: row.confidence,
+      score: row.score,
+      evidenceCount: row.evidence_count,
+      independentRunCount: row.independent_run_count,
+      status: row.status,
+      lastSupportedAt: row.last_supported_at,
+      ...(row.last_conflicted_at ? { lastConflictedAt: row.last_conflicted_at } : {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
   }
 
   private toAgentProfile(row: AgentProfileRow): AgentProfile {

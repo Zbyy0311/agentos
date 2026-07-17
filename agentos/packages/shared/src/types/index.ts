@@ -227,6 +227,90 @@ export interface MemoryUsage {
   usedAt: string;
 }
 
+export type PreferenceScope = 'global' | 'workspace';
+export type PreferenceContextKind = 'coding' | 'debugging' | 'planning' | 'review' | 'explanation' | 'general';
+export type PreferenceDimension =
+  | 'response_language'
+  | 'response_detail'
+  | 'execution_style'
+  | 'clarification_style'
+  | 'change_scope'
+  | 'verification_depth'
+  | 'progress_update_style'
+  | 'delivery_format'
+  | 'tooling_habit';
+export type PreferenceProjectionStatus = 'observed' | 'provisional' | 'stable' | 'dormant';
+export type PreferenceEvidenceStatus = 'active' | 'retracted';
+export type PreferenceSignalType = 'direct_correction' | 'repeated_instruction' | 'workflow_choice' | 'successful_application' | 'rework' | 'conflict';
+export type PreferenceEvidencePolarity = 'positive' | 'negative';
+
+export interface UserProfile {
+  id: string;
+  displayName: string;
+  learningEnabled: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PreferenceEvidence {
+  id: string;
+  profileId: string;
+  workspaceId?: string;
+  conversationId: string;
+  runId: string;
+  sourceEventId: string;
+  dimension: PreferenceDimension;
+  contextKind: PreferenceContextKind;
+  candidateValue: string;
+  signalType: PreferenceSignalType;
+  polarity: PreferenceEvidencePolarity;
+  weight: number;
+  summary: string;
+  status: PreferenceEvidenceStatus;
+  observedAt: string;
+  createdAt: string;
+}
+
+export interface PreferenceProjection {
+  id: string;
+  profileId: string;
+  scope: PreferenceScope;
+  workspaceId?: string;
+  dimension: PreferenceDimension;
+  contextKind: PreferenceContextKind;
+  preferredValue: string;
+  confidence: number;
+  score: number;
+  evidenceCount: number;
+  independentRunCount: number;
+  status: PreferenceProjectionStatus;
+  lastSupportedAt: string;
+  lastConflictedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PreferenceProjectionEvidence {
+  projectionId: string;
+  evidenceId: string;
+  contribution: number;
+}
+
+export interface PreferenceApplication {
+  runId: string;
+  projectionId: string;
+  resolvedValue: string;
+  rank: number;
+  injectedCharacters: number;
+  appliedAt: string;
+}
+
+export interface PreferenceContext {
+  contextKind: PreferenceContextKind;
+  text: string;
+  applications: PreferenceApplication[];
+}
+
 export interface MemorySearchInput {
   workspaceId: string;
   query: string;
