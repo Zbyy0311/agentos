@@ -20,7 +20,7 @@ export interface WorkspaceChange {
 export async function captureWorkspaceSnapshot(workspaceRoot: string): Promise<WorkspaceStatusSnapshot> {
   if (!existsSync(`${workspaceRoot}\\.git`)) return { gitAvailable: false, entries: new Map() };
   try {
-    const result = await execFileAsync('git', ['-C', workspaceRoot, 'status', '--porcelain=v1', '-z'], { windowsHide: true });
+    const result = await execFileAsync('git', ['-C', workspaceRoot, 'status', '--porcelain=v1', '-z', '-uall'], { windowsHide: true });
     const entries = new Map<string, string>();
     for (const item of result.stdout.split('\0').filter(Boolean)) {
       const status = item.slice(0, 2);

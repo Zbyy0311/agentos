@@ -11,7 +11,10 @@ import { resolveCommand } from './resolveCommand.js';
 import { isCodexCli } from './config.js';
 import { getCliCapability } from './capabilities.js';
 import { resolveImageInput } from './imageInput.js';
-import type { AgentConfig, ChunkCallback, ActivityCallback } from './types.js';
+import type { AgentConfig, ChunkCallback, ActivityCallback, RuntimeEventCallback } from './types.js';
+import type { NormalizedCliEvent } from './adapters/types.js';
+import { AgentCliAdapterRegistry } from './adapters/registry.js';
+import { PlainTextAdapter } from './adapters/plainTextAdapter.js';
 import type { CliInvocationObservation, TaskLog, AgentStage, ThinkingEffort, RunFileChange } from '@agentos/shared';
 import { captureWorkspaceSnapshot, diffWorkspaceSnapshots } from './workspaceChanges.js';
 
@@ -201,6 +204,7 @@ export interface ExecuteContext {
   onInvocationStarted?: (observation: CliInvocationObservation) => void;
   onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'model' | 'thinkingEffort'>) => void;
   onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
+  onRuntimeEvent?: RuntimeEventCallback;
 }
 
 export interface CommandInvocation {
@@ -361,6 +365,7 @@ export class CLIExecutor {
       const log = this.buildLog(stage, agentName, result.stdout, result.stderr, 0, startTime, 'mock');
       recordActivity('stdout');
       await this.persistLog(log, workspaceRoot, taskId);
+      for (const event of new PlainTextAdapter().createParser().push(result.stdout)) ctx.onRuntimeEvent?.(event);
       if (onChunk) {
         onChunk(result.stdout, false);
         onChunk('', true);
@@ -396,15 +401,33 @@ export class CLIExecutor {
       );
     }
 
+    const adapterResolution = await new AgentCliAdapterRegistry().resolve(resolved);
+    const adapter = adapterResolution.adapter;
+    const runtimeParser = adapter.createParser();
+    if (adapterResolution.diagnostic) ctx.onRuntimeEvent?.(adapterResolution.diagnostic);
+
     let stdout = '';
     let stderr = '';
+
+    const emitRuntimeEvents = (events: NormalizedCliEvent[]) => {
+      for (const event of events) {
+        ctx.onRuntimeEvent?.(event);
+        if (event.type === 'assistant.message') {
+          stdout += event.text;
+          onChunk?.(event.text, false);
+        }
+      }
+    };
 
     let invocation: CommandInvocation;
     const kimiCodeHome = config.role === 'kimi_worker'
       ? (process.env.AGENTOS_KIMI_CODE_HOME ?? join(workspaceRoot, '.agentos', 'kimi-code'))
       : undefined;
     try {
-      const cliArgs = [...resolvedRuntime.cliArgs, ...imagePlan.cliArgs];
+      const cliArgs = [
+        ...adapter.decorateArgs(resolvedRuntime.cliArgs),
+        ...imagePlan.cliArgs,
+      ];
       if (kimiCodeHome) {
         const sourceKimiHome = process.env.KIMI_CODE_HOME ?? join(homedir(), '.kimi-code');
         await prepareKimiCodeHome(sourceKimiHome, kimiCodeHome);
@@ -456,9 +479,8 @@ export class CLIExecutor {
 
     child.stdout!.on('data', (chunk: Buffer) => {
       const text = stdoutDecoder.decode(chunk, { stream: true });
-      stdout += text;
       recordActivity('stdout');
-      if (onChunk) onChunk(text, false);
+      emitRuntimeEvents(runtimeParser.push(text));
     });
 
     child.stderr!.on('data', (chunk: Buffer) => {
@@ -548,7 +570,9 @@ export class CLIExecutor {
       });
     });
 
-    stdout += stdoutDecoder.decode();
+    const finalStdout = stdoutDecoder.decode();
+    if (finalStdout) emitRuntimeEvents(runtimeParser.push(finalStdout));
+    emitRuntimeEvents(runtimeParser.finish());
     stderr += stderrDecoder.decode();
     const invocationCompletedAt = new Date().toISOString();
     ctx.onInvocationCompleted?.({

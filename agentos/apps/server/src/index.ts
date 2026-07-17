@@ -15,11 +15,13 @@ import { recoverInterruptedRunningTasks } from './taskRecovery.js';
 import { recoverInterruptedRuns } from './runRecovery.js';
 import { EventBus } from './events/EventBus.js';
 import { createRunRoutes } from './routes/runs.js';
+import { createArtifactRoutes } from './routes/artifacts.js';
 import { createMemoryRoutes } from './routes/memories.js';
 import { createMemoryCandidateRoutes } from './routes/memoryCandidates.js';
 import { createJsonErrorHandler } from './errorHandler.js';
 import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
+import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -48,6 +50,7 @@ const recoveredTasks = recoverInterruptedRunningTasks(store);
 const recoveredRuns = recoverInterruptedRuns(store);
 const eventBus = new EventBus();
 eventBus.subscribe(event => store.appendAgentEvent(event));
+const artifactService = new RuntimeArtifactService(store, PROJECT_ROOT);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -60,8 +63,9 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
-app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus));
+app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus, artifactService));
 app.use('/api/workspaces/:workspaceId', createRunRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceManager, artifactService));
 app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));

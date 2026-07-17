@@ -15,6 +15,7 @@ import type {
   MemoryUsage,
   MemoryCandidate,
   MemoryCandidateStatus,
+  RuntimeArtifact,
   Conversation,
   ConversationMember,
   ConversationMessage,
@@ -177,6 +178,29 @@ interface RunFileChangeRow {
   run_id: string;
   path: string;
   change_type: RunFileChange['changeType'];
+}
+
+interface RuntimeArtifactRow {
+  id: string;
+  workspace_id: string;
+  run_id: string;
+  source_execution_id: string;
+  agent_id: string;
+  artifact_type: RuntimeArtifact['type'];
+  title: string;
+  summary: string | null;
+  original_path: string | null;
+  storage_key: string | null;
+  mime_type: string | null;
+  size_bytes: number;
+  sha256: string | null;
+  content_available: number;
+  created_at: string;
+}
+
+export interface RuntimeArtifactRecord {
+  artifact: RuntimeArtifact;
+  storageKey: string | null;
 }
 
 interface MemoryRow {
@@ -752,6 +776,16 @@ export class SqliteStore implements Store {
     return rows.map(row => this.toExecution(row));
   }
 
+  getExecution(workspaceId: string, executionId: string): AgentExecution | undefined {
+    const row = this.database.prepare(`
+      SELECT id, run_id, conversation_id, workspace_id, source_message_id, agent_id, status, mode, error,
+        started_at, completed_at, created_at, updated_at
+      FROM executions
+      WHERE workspace_id = ? AND id = ?
+    `).get(workspaceId, executionId) as ExecutionRow | undefined;
+    return row ? this.toExecution(row) : undefined;
+  }
+
   appendExecutionEvent(event: ExecutionEvent): ExecutionEvent {
     this.database.prepare(`
       INSERT INTO execution_events (id, execution_id, status, activity, content, created_at)
@@ -887,6 +921,51 @@ export class SqliteStore implements Store {
       ORDER BY changes.path ASC
     `).all(workspaceId, runId) as RunFileChangeRow[];
     return rows.map(row => ({ runId: row.run_id, path: row.path, changeType: row.change_type }));
+  }
+
+  createRuntimeArtifact(artifact: RuntimeArtifact, storageKey: string | null): void {
+    const run = this.getRun(artifact.workspaceId, artifact.runId);
+    const execution = this.getExecution(artifact.workspaceId, artifact.sourceExecutionId);
+    if (!run || !execution || execution.runId !== artifact.runId || execution.agentId !== artifact.agentId) {
+      throw new Error('Runtime artifact provenance is invalid');
+    }
+    this.database.prepare(`
+      INSERT INTO runtime_artifacts (
+        id, workspace_id, run_id, source_execution_id, agent_id, artifact_type, title, summary,
+        original_path, storage_key, mime_type, size_bytes, sha256, content_available, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      artifact.id, artifact.workspaceId, artifact.runId, artifact.sourceExecutionId, artifact.agentId, artifact.type,
+      artifact.title, artifact.summary ?? null, artifact.originalPath ?? null, storageKey, artifact.mimeType ?? null,
+      artifact.sizeBytes, artifact.sha256 ?? null, artifact.contentAvailable ? 1 : 0, artifact.createdAt,
+    );
+  }
+
+  listRuntimeArtifacts(workspaceId: string, runId: string): RuntimeArtifact[] {
+    const rows = this.database.prepare(`
+      SELECT artifacts.id, artifacts.workspace_id, artifacts.run_id, artifacts.source_execution_id, artifacts.agent_id,
+        artifacts.artifact_type, artifacts.title, artifacts.summary, artifacts.original_path, artifacts.storage_key,
+        artifacts.mime_type, artifacts.size_bytes, artifacts.sha256, artifacts.content_available, artifacts.created_at
+      FROM runtime_artifacts AS artifacts
+      INNER JOIN agent_runs ON agent_runs.id = artifacts.run_id
+      WHERE artifacts.workspace_id = ? AND artifacts.run_id = ?
+      ORDER BY artifacts.created_at ASC, artifacts.id ASC
+    `).all(workspaceId, runId) as RuntimeArtifactRow[];
+    return rows.map(row => this.toRuntimeArtifact(row));
+  }
+
+  getRuntimeArtifactRecord(workspaceId: string, artifactId: string): RuntimeArtifactRecord | undefined {
+    const row = this.database.prepare(`
+      SELECT id, workspace_id, run_id, source_execution_id, agent_id, artifact_type, title, summary,
+        original_path, storage_key, mime_type, size_bytes, sha256, content_available, created_at
+      FROM runtime_artifacts
+      WHERE workspace_id = ? AND id = ?
+    `).get(workspaceId, artifactId) as RuntimeArtifactRow | undefined;
+    return row ? { artifact: this.toRuntimeArtifact(row), storageKey: row.storage_key } : undefined;
+  }
+
+  deleteRuntimeArtifact(workspaceId: string, artifactId: string): void {
+    this.database.prepare('DELETE FROM runtime_artifacts WHERE workspace_id = ? AND id = ?').run(workspaceId, artifactId);
   }
 
   createMemory(memory: MemoryRecord, content: string): MemoryRecord {
@@ -1258,6 +1337,29 @@ export class SqliteStore implements Store {
         FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
       );
 
+      CREATE TABLE IF NOT EXISTS runtime_artifacts (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        source_execution_id TEXT NOT NULL,
+        agent_id TEXT NOT NULL,
+        artifact_type TEXT NOT NULL,
+        title TEXT NOT NULL,
+        summary TEXT,
+        original_path TEXT,
+        storage_key TEXT,
+        mime_type TEXT,
+        size_bytes INTEGER NOT NULL,
+        sha256 TEXT,
+        content_available INTEGER NOT NULL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+        FOREIGN KEY (source_execution_id) REFERENCES executions(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS runtime_artifacts_run_created
+        ON runtime_artifacts (workspace_id, run_id, created_at, id);
+
       CREATE TABLE IF NOT EXISTS memories (
         id TEXT PRIMARY KEY,
         workspace_id TEXT NOT NULL,
@@ -1508,6 +1610,25 @@ export class SqliteStore implements Store {
       ...(row.waiting_agent_id ? { waitingAgentId: row.waiting_agent_id } : {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    };
+  }
+
+  private toRuntimeArtifact(row: RuntimeArtifactRow): RuntimeArtifact {
+    return {
+      id: row.id,
+      workspaceId: row.workspace_id,
+      runId: row.run_id,
+      sourceExecutionId: row.source_execution_id,
+      agentId: row.agent_id,
+      type: row.artifact_type,
+      title: row.title,
+      ...(row.summary ? { summary: row.summary } : {}),
+      ...(row.original_path ? { originalPath: row.original_path } : {}),
+      ...(row.mime_type ? { mimeType: row.mime_type } : {}),
+      sizeBytes: row.size_bytes,
+      ...(row.sha256 ? { sha256: row.sha256 } : {}),
+      contentAvailable: row.content_available === 1,
+      createdAt: row.created_at,
     };
   }
 

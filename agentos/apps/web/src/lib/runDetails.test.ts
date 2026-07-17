@@ -13,6 +13,7 @@ const details: AgentRunDetails = {
   ],
   cliInvocations: [],
   fileChanges: [{ runId: 'run-a', path: 'src/a.ts', changeType: 'modified' }, { runId: 'run-a', path: 'src/a.ts', changeType: 'modified' }],
+  artifacts: [],
   usedMemories: [],
 };
 

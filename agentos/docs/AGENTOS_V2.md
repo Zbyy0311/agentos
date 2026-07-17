@@ -47,6 +47,10 @@
 | 4 | 群聊与角色协作 | 至少两名成员、唯一群主；按群主规划、成员执行、群主总结顺序持久化并实时推送 | 已完成 |
 | 5 | 页面视觉与交互验收 | 群聊标题正确切换；Markdown 标题、列表和代码块可读；输入框和时间线正常滚动 | 待人工刷新确认 |
 
+## Codex Runtime 与 RuntimeArtifact
+
+Codex 通过 Adapter 将 JSONL 转换为统一事件；未适配 CLI 保持 plain 文本降级。Artifact 元数据写入 SQLite，内容以不可变快照保存在 `.agentos/artifacts/<workspace>/<run>/<artifact>/content`，按类型限制大小并记录 SHA-256。Artifact 包括文件快照、Git diff、测试报告、图片和公开运行日志；删除会话时清理对应快照。WindowsApps 原始入口本身仍返回 `Access denied`，但同版本 CLI 与 `codex-code-mode-host.exe` 的临时可执行副本已通过真实 AgentOS Gate。
+
 ## 核心 API
 
 - `GET /api/workspaces/:workspaceId/agents`

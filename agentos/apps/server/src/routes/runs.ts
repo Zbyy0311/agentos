@@ -28,6 +28,7 @@ export function createRunRoutes(store: SqliteStore, workspaceManager: WorkspaceM
       events: store.listAgentEvents(workspace.id, run.id),
       cliInvocations: store.listRunCliInvocations(workspace.id, run.id),
       fileChanges: store.listRunFileChanges(workspace.id, run.id),
+      artifacts: store.listRuntimeArtifacts(workspace.id, run.id),
       usedMemories: store.listMemoryUsage(workspace.id, run.id),
     };
     res.json(details);

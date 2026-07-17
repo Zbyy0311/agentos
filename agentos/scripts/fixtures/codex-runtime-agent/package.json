@@ -1,0 +1,7 @@
+{
+  "name": "agentos-codex-runtime-fixture",
+  "private": true,
+  "scripts": {
+    "test": "node test.mjs"
+  }
+}

@@ -10,15 +10,17 @@ import { CliModelDiscovery, type ModelDiscoveryService } from '../services/CliMo
 import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
+import { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
 
 export function createConversationRoutes(
   store: SqliteStore,
   workspaceManager: WorkspaceManager,
   modelDiscovery: ModelDiscoveryService = new CliModelDiscovery(),
   eventBus?: EventBus,
+  artifactService?: RuntimeArtifactService,
 ): Router {
   const router = Router({ mergeParams: true });
-  const service = new ConversationService(store, eventBus);
+  const service = new ConversationService(store, eventBus, artifactService);
   const runStreams = new RunStreamRegistry();
 
   router.get('/agents', async (req: Request, res: Response) => {
@@ -192,6 +194,7 @@ export function createConversationRoutes(
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     try {
       const attachments = store.listConversationAttachments(workspace.id, req.params.conversationId);
+      await artifactService?.cleanupConversation(workspace.id, req.params.conversationId);
       store.deleteConversation(workspace.id, req.params.conversationId);
       await cleanupConversationAttachments(workspace.rootPath, attachments);
       res.json({ conversationId: req.params.conversationId });
@@ -301,6 +304,7 @@ export function createConversationRoutes(
           signal: abortController.signal,
           onRunCreated: attachRun,
           onExecutionEvent: event => { if (activeRunId) runStreams.emit(activeRunId, 'execution', event); },
+          onRuntimeEvent: event => { if (activeRunId) runStreams.emit(activeRunId, 'runtime', event); },
         });
         if (activeRunId) {
           runStreams.emit(activeRunId, 'message', { message: result.responseMessage });
@@ -317,6 +321,7 @@ export function createConversationRoutes(
           signal: abortController.signal,
           onRunCreated: attachRun,
           onExecutionEvent: event => { if (activeRunId) runStreams.emit(activeRunId, 'execution', event); },
+          onRuntimeEvent: event => { if (activeRunId) runStreams.emit(activeRunId, 'runtime', event); },
           onAgentMessage: message => { if (activeRunId) runStreams.emit(activeRunId, 'message', { message }); },
         });
         if (activeRunId) runStreams.finish(activeRunId, 'done', { executions: result.executions });
@@ -409,6 +414,7 @@ export function createConversationRoutes(
         workspaceId: workspace.id, workspaceRoot: workspace.rootPath, conversationId: conversation.id,
         runId: run.id, content, memoryEnabled: workspace.memoryEnabled, signal: abortController.signal,
         onExecutionEvent: event => runStreams.emit(run.id, 'execution', event),
+        onRuntimeEvent: event => runStreams.emit(run.id, 'runtime', event),
       });
       runStreams.emit(run.id, 'message', { message: result.responseMessage });
       runStreams.finish(run.id, 'done', { execution: result.execution });

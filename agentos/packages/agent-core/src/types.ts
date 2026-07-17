@@ -1,5 +1,6 @@
 import type { TaskLog, AgentStage, ThinkingEffort, Workspace } from '@agentos/shared';
 import type { AgentImageAttachment } from './imageInput.js';
+import type { NormalizedCliEvent } from './adapters/types.js';
 
 export interface AgentConfig {
   name: string;
@@ -20,5 +21,6 @@ export interface PipelineResult {
 
 export type ChunkCallback = (text: string, done: boolean) => void;
 export type ActivityCallback = (source: 'stdout' | 'stderr') => void;
+export type RuntimeEventCallback = (event: NormalizedCliEvent) => void;
 
 export type { Workspace };

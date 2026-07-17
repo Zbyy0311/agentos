@@ -9,6 +9,7 @@ import { CLIError, CLIExecutor, type ExecuteContext } from './executor.js';
 import { isCodexCli, isOpenCodeCli } from './config.js';
 import type { AgentConfig } from './types.js';
 import type { AgentImageAttachment } from './imageInput.js';
+import type { NormalizedCliEvent } from './adapters/types.js';
 
 export interface ConversationExecutionEvent {
   status: ExecutionStatus;
@@ -39,6 +40,7 @@ export interface ConversationAgentRunnerOptions {
   onInvocationStarted?: (observation: CliInvocationObservation) => void;
   onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'model' | 'thinkingEffort'>) => void;
   onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
+  onRuntimeEvent?: (event: NormalizedCliEvent) => void;
 }
 
 export class ConversationAgentRunner {
@@ -60,6 +62,7 @@ export class ConversationAgentRunner {
       onInvocationStarted: this.options.onInvocationStarted,
       onInvocationCompleted: this.options.onInvocationCompleted,
       onFileChanges: this.options.onFileChanges,
+      onRuntimeEvent: this.options.onRuntimeEvent,
       onChunk: (content) => {
         if (!content) return;
         streamedContent += content;

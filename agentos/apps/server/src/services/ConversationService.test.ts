@@ -7,6 +7,8 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { ConversationService } from './ConversationService.js';
 import { EventBus } from '../events/EventBus.js';
 import { MemoryService } from './MemoryService.js';
+import { RuntimeArtifactService } from './RuntimeArtifactService.js';
+import type { AgentEvent } from '@agentos/shared';
 
 function createProjectRoot(options: {
   codex?: { cliCommand: string; cliArgs: string[] };
@@ -68,6 +70,29 @@ test('persists public status events and the final direct-agent reply', async () 
   }
 });
 
+test('persists runtime log artifacts and artifact-created events for an observable run', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'artifact-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Artifacts', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+    const bus = new EventBus();
+    bus.subscribe(event => store!.appendAgentEvent(event));
+    const service = new ConversationService(store, bus, new RuntimeArtifactService(store, root));
+    const result = await service.sendDirectMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'artifact-conversation', agentId: 'codex', content: 'artifact evidence' });
+    const artifacts = store.listRuntimeArtifacts('workspace-a', result.execution.runId);
+    assert.ok(artifacts.some(artifact => artifact.type === 'log' && artifact.contentAvailable));
+    assert.ok(store.listAgentEvents('workspace-a', result.execution.runId).some(event => event.type === 'execution.artifact.created'));
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('runs a direct real child process and persists observable invocation evidence', async () => {
   const root = createProjectRoot({ codex: { cliCommand: process.execPath, cliArgs: ['-e', "console.log('direct real reply')"] } });
   const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
@@ -108,6 +133,34 @@ test('publishes and persists unified events for a direct run', async () => {
     assert.equal(events[0]?.schemaVersion, 1);
     assert.equal(events.some(event => event.type === 'run.created'), true);
     assert.equal(events.some(event => event.type === 'run.completed'), true);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('projects normalized runtime events into persisted AgentEvents and callback output', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'runtime-event-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Runtime events', agentId: 'codex', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' });
+    const bus = new EventBus();
+    bus.subscribe(event => store!.appendAgentEvent(event));
+    const observed: AgentEvent[] = [];
+    const result = await new ConversationService(store, bus).sendDirectMessage({
+      workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'runtime-event-conversation', agentId: 'codex', content: '运行时事件',
+      onRuntimeEvent: event => observed.push(event),
+    });
+    const persisted = store.listAgentEvents('workspace-a', result.execution.runId);
+    assert.equal(observed.some(event => event.type === 'execution.output.appended'), true);
+    assert.equal(persisted.some(event => event.type === 'execution.output.appended'), true);
+    assert.equal(persisted.some(event => event.type === 'execution.tool.started'), false);
+    assert.equal(persisted.every(event => event.executionId === undefined || event.executionId === result.execution.id), true);
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;

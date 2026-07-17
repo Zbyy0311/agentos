@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { MouseEvent, PointerEvent as ReactPointerEvent } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import type { AgentExecution, AgentProfile, AgentRun, AgentRunDetails, Conversation, ConversationMessage, ExecutionEvent, ExecutionStatus, ThinkingEffort, Workspace } from '@agentos/shared';
+import type { AgentEvent, AgentExecution, AgentProfile, AgentRun, AgentRunDetails, Conversation, ConversationMessage, ExecutionEvent, ExecutionStatus, RuntimeArtifact, ThinkingEffort, Workspace } from '@agentos/shared';
 import { AgentList } from '@/components/chat/AgentList';
 import { AgentEditor } from '@/components/chat/AgentEditor';
 import { GroupCreator } from '@/components/chat/GroupCreator';
@@ -27,10 +27,13 @@ import { MemoryPanel } from '@/components/memory/MemoryPanel';
 import { MemoryCandidateQueue } from '@/components/memory/MemoryCandidateQueue';
 import { ToastStack } from '@/components/feedback/ToastStack';
 import { classifyUiError, getComposerValidationError, TOAST_DURATION_MS, type ToastItem, type ToastTone } from '@/lib/uiFeedback';
+import { TypewriterQueue } from '@/lib/typewriterQueue';
+import { selectActiveRunExecutions } from '@/lib/runtimeSelection';
+import { collapseStreamingExecutionEvents } from '@/lib/executionTimeline';
 
 type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string };
 type StreamEvent = Pick<VisibleExecutionEvent, 'status' | 'activity' | 'content' | 'agentId' | 'agentName'>;
-type ConversationStreamData = StreamEvent & { cursor?: number; runId?: string; run?: AgentRun; message?: ConversationMessage; execution?: AgentExecution; executions?: AgentExecution[]; error?: string };
+type ConversationStreamData = StreamEvent & { cursor?: number; runId?: string; run?: AgentRun; message?: ConversationMessage; execution?: AgentExecution; executions?: AgentExecution[]; runtime?: AgentEvent; error?: string };
 type ContextMenuState = { conversation: Conversation; clientX: number; clientY: number };
 type ResizePanel = 'workspace' | 'history';
 type ActivePanelResize = { panel: ResizePanel; startX: number; startWidth: number; cleanup: () => void };
@@ -83,6 +86,8 @@ export default function WorkspacePage() {
   const [messages, setMessages] = useState<ConversationMessage[]>([]);
   const [executions, setExecutions] = useState<AgentExecution[]>([]);
   const [activeEvents, setActiveEvents] = useState<VisibleExecutionEvent[]>([]);
+  const [activeRuntimeEvents, setActiveRuntimeEvents] = useState<AgentEvent[]>([]);
+  const [activeArtifacts, setActiveArtifacts] = useState<RuntimeArtifact[]>([]);
   const [activeStatus, setActiveStatus] = useState<ExecutionStatus>();
   const [activeStartedAt, setActiveStartedAt] = useState<string>();
   const [activeRunId, setActiveRunId] = useState<string>();
@@ -121,6 +126,7 @@ export default function WorkspacePage() {
   const drainingQueueRef = useRef(false);
   const activeResizeRef = useRef<ActivePanelResize | null>(null);
   const toastIdRef = useRef(0);
+  const typewriterRef = useRef(new TypewriterQueue());
 
   const selectedAgent = agents.find(agent => agent.id === selectedAgentId);
   const activeConversationId = getActiveConversationId({ selectedGroupId, selectedDirectConversationId });
@@ -133,6 +139,14 @@ export default function WorkspacePage() {
   const historyTitle = selectedGroupId ? '群聊' : selectedAgent?.name ?? '会话';
   const composerModelOptions = getModelOptions(selectedAgent);
   const composerThinkingEfforts = getThinkingEfforts(selectedAgent, composerModel ?? selectedAgent?.model);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      const character = typewriterRef.current.drainOne();
+      if (character) setStreamingContent(current => current + character);
+    }, 12);
+    return () => window.clearInterval(timer);
+  }, []);
 
   const pushToast = useCallback((tone: ToastTone, message: string) => {
     const id = `toast-${Date.now()}-${toastIdRef.current++}`;
@@ -287,6 +301,11 @@ export default function WorkspacePage() {
       request<{ executions: Array<AgentExecution & { events: ExecutionEvent[] }> }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/executions`),
       request<{ runs: AgentRun[] }>(`/api/workspaces/${workspaceId}/runs?conversationId=${encodeURIComponent(conversationId)}`),
     ]);
+    const latestRun = runResult.runs[0];
+    const latestRunDetails = latestRun
+      ? await request<AgentRunDetails>(`/api/workspaces/${workspaceId}/runs/${latestRun.id}`)
+      : undefined;
+    const activeRun = selectActiveRunExecutions(executionResult.executions, runResult.runs);
     setMessages(messageResult.messages.map(message => ({
       ...message,
       attachments: message.attachments?.map(attachment => ({
@@ -294,20 +313,21 @@ export default function WorkspacePage() {
         url: resolveAttachmentUrl(API_BASE, attachment.url),
       })),
     })));
-    setExecutions(executionResult.executions);
+    setExecutions(activeRun.executions);
     const agentNames = new Map(agents.map(agent => [agent.id, agent.name]));
-    const visibleEvents = executionResult.executions
+    const visibleEvents = activeRun.executions
       .flatMap(execution => execution.events.map(event => ({
         ...event,
         agentId: execution.agentId,
         agentName: agentNames.get(execution.agentId),
       })))
       .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
-    setActiveEvents(visibleEvents);
-    setActiveStatus(executionResult.executions[0]?.status);
-    setActiveStartedAt(executionResult.executions[0]?.startedAt);
-    setActiveRunId(executionResult.executions[0]?.runId ?? runResult.runs[0]?.id);
+    setActiveEvents(collapseStreamingExecutionEvents(visibleEvents));
+    setActiveStatus(activeRun.executions[0]?.status);
+    setActiveStartedAt(activeRun.executions[0]?.startedAt);
+    setActiveRunId(activeRun.runId);
     setActiveWaitingQuestion(runResult.runs[0]?.waitingQuestion);
+    setActiveArtifacts(latestRunDetails?.artifacts ?? []);
   }, [API_BASE, agents, request, workspaceId]);
 
   const loadConversations = useCallback(async (agentId: string) => {
@@ -315,7 +335,7 @@ export default function WorkspacePage() {
     const result = await request<{ conversations: Conversation[] }>(`/api/workspaces/${workspaceId}/conversations?agentId=${encodeURIComponent(agentId)}`);
     setConversations(result.conversations);
     setSelectedDirectConversationId(result.conversations[0]?.id ?? null);
-    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
   }, [request, workspaceId]);
 
   const loadGroups = useCallback(async () => {
@@ -364,7 +384,7 @@ export default function WorkspacePage() {
     setConversations(current => [conversation, ...current.filter(item => item.id !== conversation.id)]);
     setSelectedDirectConversationId(conversation.id);
     setSelectedGroupId(null);
-    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
     return conversation;
   }, [composerModel, composerThinkingEffort, persistConversationSettings, request, selectedAgent, workspaceId]);
 
@@ -439,8 +459,11 @@ export default function WorkspacePage() {
       const optimistic: ConversationMessage = { id: optimisticId, conversationId: conversation.id, workspaceId, senderType: 'user', content, attachments: optimisticAttachments, createdAt: new Date().toISOString() };
       setMessages(current => [...current, optimistic]);
       setSending(true);
+      typewriterRef.current.flush();
       setStreamingContent('');
       setActiveEvents([]);
+      setActiveRuntimeEvents([]);
+      setActiveArtifacts([]);
       setActiveStatus('queued');
       setActiveStartedAt(undefined);
       setActiveWaitingQuestion(undefined);
@@ -471,12 +494,27 @@ export default function WorkspacePage() {
           setActiveStatus(data.status);
           if (data.status === 'waiting_user' && data.content) setActiveWaitingQuestion(data.content);
           if (data.status !== 'queued') setActiveStartedAt(current => current ?? time);
-          setActiveEvents(current => [...current, { id: time + '-' + current.length, executionId: 'active', status: data.status, activity: data.activity, ...(data.content ? { content: data.content } : {}), ...(data.agentId ? { agentId: data.agentId } : {}), ...(data.agentName ? { agentName: data.agentName } : {}), createdAt: time }]);
-          if (data.status === 'streaming_response' && data.content) setStreamingContent(current => current + data.content);
+          setActiveEvents(current => collapseStreamingExecutionEvents([...current, { id: time + '-' + current.length, executionId: 'active', status: data.status, activity: data.activity, ...(data.content ? { content: data.content } : {}), ...(data.agentId ? { agentId: data.agentId } : {}), ...(data.agentName ? { agentName: data.agentName } : {}), createdAt: time }]));
+          if (data.status === 'streaming_response' && data.content) typewriterRef.current.enqueue(data.content);
+        } else if (event.event === 'runtime' && data.runtime) {
+          const payload = data.runtime.payload as Record<string, unknown>;
+          const runtimeLabel = typeof payload.toolName === 'string' ? payload.toolName : data.runtime.type;
+          const runtimeSummary = typeof payload.summary === 'string' ? payload.summary : typeof payload.text === 'string' ? payload.text : undefined;
+          setActiveEvents(current => current.some(item => item.id === data.runtime!.eventId) ? current : collapseStreamingExecutionEvents([...current, {
+            id: data.runtime!.eventId,
+            executionId: data.runtime!.executionId ?? 'active',
+            status: 'streaming_response',
+            activity: runtimeLabel,
+            ...(runtimeSummary ? { content: runtimeSummary } : {}),
+            runtimeEvent: data.runtime,
+            createdAt: data.runtime!.timestamp,
+          }]));
         } else if (event.event === 'message' && data.message) {
+          typewriterRef.current.flush();
           setStreamingContent('');
           setMessages(current => current.some(message => message.id === data.message?.id) ? current : [...current, data.message!]);
         } else if (event.event === 'done') {
+          typewriterRef.current.flush();
           setStreamingContent('');
           const doneExecution = getDoneExecution(data);
           if (doneExecution) {
@@ -601,7 +639,7 @@ export default function WorkspacePage() {
       const result = await request<{ conversation: Conversation }>(`/api/workspaces/${workspaceId}/conversations`, { method: 'POST', body: { type: 'group', ...input } });
       setGroups(current => [result.conversation, ...current]);
       setSelectedGroupId(result.conversation.id); setSelectedAgentId(null);
-      setMessages([]); setExecutions([]); setActiveEvents([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setCreatingGroup(false);
+      setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setCreatingGroup(false);
     } catch (groupError) { notifyError(groupError, '创建群聊失败'); }
     finally { setSavingGroup(false); }
   }, [notifyError, request, workspaceId]);
@@ -625,10 +663,10 @@ export default function WorkspacePage() {
       const nextId = conversation.type === 'group' ? getNextConversationId(groups, conversation.id) : getNextConversationId(conversations, conversation.id);
       if (conversation.type === 'group') {
         setGroups(current => current.filter(group => group.id !== conversation.id));
-        if (selectedGroupId === conversation.id) { setSelectedGroupId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
+        if (selectedGroupId === conversation.id) { setSelectedGroupId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
       } else {
         setConversations(current => current.filter(item => item.id !== conversation.id));
-        if (selectedDirectConversationId === conversation.id) { setSelectedDirectConversationId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
+        if (selectedDirectConversationId === conversation.id) { setSelectedDirectConversationId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
       }
       setContextMenu(null); pushToast('success', '会话已删除');
     } catch (deleteError) { notifyError(deleteError, '删除会话失败'); }
@@ -638,7 +676,7 @@ export default function WorkspacePage() {
     const group = groups.find(item => item.id === groupId);
     if (!group) return;
     if (!shouldResetGroupView({ selectedGroupId, nextGroupId: groupId })) { setSelectedAgentId(null); return; }
-    setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
   }, [groups, selectedGroupId]);
 
   if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
@@ -649,13 +687,13 @@ export default function WorkspacePage() {
     <PanelResizeHandle panel="workspace" width={workspacePanelWidth} onPointerDown={handleResizePointerDown} />
     <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectedGroupId ? selectGroup : setSelectedDirectConversationId} onContextMenu={openContextMenu} />
     <PanelResizeHandle panel="history" width={historyPanelWidth} onPointerDown={handleResizePointerDown} />
-    <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} onRename={isGroupConversation ? () => { if (selectedConversation) setRenamingConversation(selectedConversation); } : undefined} />
+    <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} onRename={isGroupConversation ? () => { if (selectedConversation) setRenamingConversation(selectedConversation); } : undefined} />
     <ExecutionInspector agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} />
     {editingAgent && selectedAgent && <AgentEditor key={`${selectedAgent.id}-${selectedAgent.capability?.modelSource}-${selectedAgent.capability?.models.join('|')}`} agent={selectedAgent} saving={savingAgent} refreshingModels={savingAgent} onClose={() => setEditingAgent(false)} onRefreshModels={() => { void refreshAgentModels(); }} onSave={update => { void saveAgent(update); }} />}
     {creatingGroup && <GroupCreator agents={agents} saving={savingGroup} onClose={() => setCreatingGroup(false)} onCreate={input => { void createGroup(input); }} />}
     {renamingConversation && <GroupRenameModal title={renamingConversation.title} entityLabel={renamingConversation.type === 'group' ? '群聊' : '会话'} saving={savingConversationTitle} onClose={() => setRenamingConversation(null)} onSave={title => { void saveConversationTitle(title); }} />}
     {contextMenu && <ConversationContextMenu conversation={contextMenu.conversation} clientX={contextMenu.clientX} clientY={contextMenu.clientY} onRename={() => setRenamingConversation(contextMenu.conversation)} onCopyId={() => { void copyConversationId(contextMenu.conversation.id); }} onDelete={() => { void deleteConversation(contextMenu.conversation); }} onClose={() => setContextMenu(null)} />}
-    {runDetails && <RunDetails details={runDetails} onClose={() => setRunDetails(null)} onGenerateCandidates={runId => { void generateMemoryCandidates(runId); }} generatingCandidates={generatingCandidates} />}
+    {runDetails && <RunDetails details={runDetails} apiBase={API_BASE} onClose={() => setRunDetails(null)} onGenerateCandidates={runId => { void generateMemoryCandidates(runId); }} generatingCandidates={generatingCandidates} />}
     {showMemories && <MemoryPanel workspaceId={workspaceId} onClose={() => setShowMemories(false)} onOpenRun={runId => { setShowMemories(false); void openRunDetails(runId); }} />}
     {showCandidateQueue && <MemoryCandidateQueue workspaceId={workspaceId} onClose={() => setShowCandidateQueue(false)} onOpenRun={runId => { setShowCandidateQueue(false); void openRunDetails(runId); }} />}
     <ToastStack toasts={toasts} onDismiss={dismissToast} />

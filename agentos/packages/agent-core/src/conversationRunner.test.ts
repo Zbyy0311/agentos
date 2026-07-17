@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentProfile, ExecutionStatus } from '@agentos/shared';
+import type { NormalizedCliEvent } from './adapters/types.js';
 import { ConversationAgentRunner, type ConversationExecutionEvent } from './conversationRunner.js';
 import { CLIError, CLIExecutor } from './executor.js';
 
@@ -80,6 +81,31 @@ describe('ConversationAgentRunner', () => {
     expect(result.waitingQuestion).toBe('请提供部署环境');
     expect(events.some(event => event.status === 'streaming_response')).toBe(false);
     expect(events.every(event => !event.content?.includes('agentos-waiting-user'))).toBe(true);
+  });
+
+  it('forwards normalized runtime events without adding tool output to the final reply', async () => {
+    process.env.AGENTOS_FORCE_MOCK = 'false';
+    vi.spyOn(CLIExecutor, 'execute').mockImplementation(async (_config, _prompt, context) => {
+      context.onRuntimeEvent?.({ type: 'tool.started', callId: 'tool-1', toolName: 'read_file', summary: '读取文件' });
+      context.onRuntimeEvent?.({ type: 'tool.completed', callId: 'tool-1', toolName: 'read_file', success: true, summary: '读取完成' });
+      context.onChunk?.('assistant reply', false);
+      context.onChunk?.('', true);
+      return { stage: 'codex_manager', agentName: 'Codex', stdout: 'assistant reply', stderr: '', exitCode: 0, timestamp: new Date().toISOString(), duration: 1, mode: 'real' };
+    });
+    const runtimeEvents: NormalizedCliEvent[] = [];
+    const agent: AgentProfile = {
+      id: 'codex', workspaceId: 'workspace-1', name: 'Codex', role: 'codex', roleTitle: '架构师',
+      systemPrompt: '完成任务', permissions: ['read', 'write'], enabled: true, cliCommand: 'codex', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+
+    const result = await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-runtime-events', message: '执行任务', history: [],
+      onRuntimeEvent: event => runtimeEvents.push(event),
+    }).run();
+
+    expect(result.content).toBe('assistant reply');
+    expect(runtimeEvents.map(event => event.type)).toEqual(['tool.started', 'tool.completed']);
   });
 
   it('emits public execution states around a direct agent reply', async () => {

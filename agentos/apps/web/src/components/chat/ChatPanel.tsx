@@ -1,14 +1,16 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AgentModelOption, AgentProfile, ConversationAttachment, ConversationMessage, ExecutionEvent, ExecutionStatus, ModelDiscoverySource, ThinkingEffort } from '@agentos/shared';
+import type { AgentEvent, AgentModelOption, AgentProfile, ConversationAttachment, ConversationMessage, ExecutionEvent, ExecutionStatus, ModelDiscoverySource, RuntimeArtifact, ThinkingEffort } from '@agentos/shared';
 import { canSendMessage, isImageClipboardItem, type ImageDraft } from '@/lib/imageAttachments';
+import { getChatVisibleArtifacts } from '@/lib/artifacts';
 import { getChatTarget } from '@/lib/conversationSelection';
 import { chunkResponseBlocks, getResponseLineCount, RESPONSE_CHUNK_THRESHOLD, type ResponseBlock } from '@/lib/responseRendering';
 import { getSendButtonState } from '@/lib/uiFeedback';
 import { ComposerControls } from './ComposerControls';
 import { ImageAttachments } from './ImageAttachments';
 import { ImagePreviewModal, type ImagePreviewItem } from './ImagePreviewModal';
+import { ArtifactShelf } from '@/components/runs/ArtifactShelf';
 
-type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string };
+type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string; runtimeEvent?: AgentEvent };
 
 interface ChatPanelProps {
   agentName?: string;
@@ -23,6 +25,9 @@ interface ChatPanelProps {
   attachmentError: string;
   streamingContent: string;
   activeEvents: VisibleExecutionEvent[];
+  activeRuntimeEvents?: AgentEvent[];
+  artifacts?: RuntimeArtifact[];
+  apiBase?: string;
   activeStatus?: ExecutionStatus;
   waitingQuestion?: string;
   connectionNotice?: string;
@@ -128,10 +133,52 @@ function formatExecutionTime(createdAt: string) {
   return new Date(createdAt).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
-function ThinkingProcess({ events, sending }: { events: VisibleExecutionEvent[]; sending: boolean }) {
+function RuntimeTimeline({ events }: { events: AgentEvent[] }) {
+  const visibleEvents = mergeToolEvents(events);
+  if (!visibleEvents.length) return null;
+  return <div className="mt-3 space-y-1.5 border-l ui-border pl-3" aria-label="Tool timeline">
+    {visibleEvents.map(event => {
+      const payload = event.payload as Record<string, unknown>;
+      const label = typeof payload.toolName === 'string' ? payload.toolName : event.type.replace('execution.', '');
+      const summary = typeof payload.summary === 'string' ? payload.summary : typeof payload.text === 'string' ? payload.text : '';
+      return <div key={event.eventId} className="rounded-lg border ui-border px-2.5 py-2 text-xs">
+        <div className="flex items-center gap-2 ui-text-soft"><span aria-hidden="true">{event.type === 'execution.tool.started' ? '⚙' : event.type === 'execution.tool.completed' ? '✓' : '·'}</span><span className="font-medium">{label}</span><span className="ml-auto ui-dim">{event.type.replace('execution.', '')}</span></div>
+        {summary && <div className="mt-1 line-clamp-2 ui-muted">{summary}</div>}
+      </div>;
+    })}
+  </div>;
+}
+
+function mergeToolEvents(events: AgentEvent[]): AgentEvent[] {
+  const merged: AgentEvent[] = [];
+  const byCallId = new Map<string, AgentEvent>();
+  for (const event of events) {
+    if (event.type !== 'execution.tool.started' && event.type !== 'execution.tool.completed') {
+      merged.push(event);
+      continue;
+    }
+    const payload = event.payload as Record<string, unknown>;
+    const callId = typeof payload.callId === 'string' ? payload.callId : undefined;
+    if (!callId) { merged.push(event); continue; }
+    const prior = byCallId.get(callId);
+    if (prior) {
+      const index = merged.indexOf(prior);
+      const next = { ...event, payload: { ...prior.payload, ...event.payload } };
+      if (index >= 0) merged[index] = next;
+      byCallId.set(callId, next);
+    } else {
+      merged.push(event);
+      byCallId.set(callId, event);
+    }
+  }
+  return merged;
+}
+
+function ThinkingProcess({ events, runtimeEvents = [], sending }: { events: VisibleExecutionEvent[]; runtimeEvents?: AgentEvent[]; sending: boolean }) {
   const [expanded, setExpanded] = useState(sending);
   useEffect(() => setExpanded(sending), [sending]);
-  if (!events.length && !sending) return null;
+  const projectedRuntimeEvents = runtimeEvents.length > 0 ? runtimeEvents : events.flatMap(event => event.runtimeEvent ? [event.runtimeEvent] : []);
+  if (!events.length && !projectedRuntimeEvents.length && !sending) return null;
   const latest = events.at(-1);
   const label = latest ? executionLabels[latest.status] ?? latest.activity : '正在准备执行过程';
   const latestLabel = latest?.agentName ? `${latest.agentName} · ${label}` : label;
@@ -161,16 +208,18 @@ function ThinkingProcess({ events, sending }: { events: VisibleExecutionEvent[];
         </div>
       ))}
       {!events.length && <div className="text-xs ui-muted">正在等待 Agent 返回第一个执行阶段...</div>}
+      <RuntimeTimeline events={projectedRuntimeEvents} />
     </div>}
     </div>
   );
 }
 
-export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onRename }: ChatPanelProps) {
+export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, isGroup = false, agents, messages, draft, attachments, attachmentError, streamingContent, activeEvents, activeRuntimeEvents = [], artifacts = [], apiBase = '', activeStatus, waitingQuestion, connectionNotice, validationError, error, sending, queuedMessageCount, modelOptions, composerModel, composerThinkingEffort, composerThinkingEfforts, modelSource, onDraftChange, onFiles, onRemoveAttachment, onComposerModelChange, onComposerThinkingEffortChange, onSend, onCancel, onRename }: ChatPanelProps) {
   const endRef = useRef<HTMLDivElement>(null);
-  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streamingContent, activeEvents]);
+  useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streamingContent, activeEvents, activeRuntimeEvents]);
 
   const target = getChatTarget({ groupTitle: isGroup ? groupName : undefined, agentName });
+  const chatArtifacts = getChatVisibleArtifacts(artifacts);
   const title = conversationTitle ?? (agentName ? `${agentName} · ${roleTitle ?? 'Agent'}` : '选择一个 Agent 开始对话');
   const status = activeStatus ? statusLabels[activeStatus] : undefined;
   const sendButtonState = getSendButtonState({ canSend: canSendMessage(draft, attachments), sending });
@@ -189,12 +238,13 @@ export function ChatPanel({ agentName, roleTitle, conversationTitle, groupName, 
           const userMessage = message.senderType === 'user';
           return <div key={message.id} className={`flex gap-3 ${userMessage ? 'justify-end' : 'justify-start'}`}><div className={`signal-message ${userMessage ? 'ui-message-user order-2' : message.senderType === 'system' ? 'ui-message-system' : 'ui-message-agent'} max-w-[86%] rounded-2xl border px-4 py-3 text-sm leading-6 sm:max-w-[78%]`}>{isGroup && sender && <div className="mb-2 border-b ui-border pb-2 text-xs font-medium ui-accent">{sender.name}<span className="ml-1 font-normal ui-muted">· {sender.roleTitle}</span></div>}<MessageContent content={message.content} /><MessageAttachments attachments={message.attachments} /></div></div>;
         })}
-        <ThinkingProcess events={activeEvents} sending={sending} />
+        <ThinkingProcess events={activeEvents} runtimeEvents={activeRuntimeEvents} sending={sending} />
         {streamingContent && <div className="flex gap-3"><div className="signal-message ui-message-agent max-w-[86%] rounded-2xl border px-4 py-3 text-sm leading-6 sm:max-w-[78%]"><MessageContent content={streamingContent} /><span className="ml-1 inline-block h-4 w-1 animate-pulse bg-[var(--app-accent)] align-[-2px]" /></div></div>}
         {status && <div className="signal-status-card rounded-xl border px-4 py-3 text-sm">{status}</div>}
         {connectionNotice && <div className="rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-4 py-3 text-sm ui-text-soft">{connectionNotice}</div>}
         {activeStatus === 'waiting_user' && waitingQuestion && <div className="rounded-xl border border-[var(--app-accent)]/40 bg-[var(--app-accent-soft)] px-4 py-3 text-sm ui-text-soft"><div className="mb-1 text-xs font-medium ui-accent">Agent 需要补充信息</div>{waitingQuestion}</div>}
         {error && <div className="ui-error rounded-xl border px-4 py-3 text-sm">{error}</div>}
+        {!sending && chatArtifacts.length > 0 && apiBase && <div className="rounded-2xl border ui-border bg-[var(--app-surface-raised)] p-4"><ArtifactShelf artifacts={chatArtifacts} apiBase={apiBase} /></div>}
         <div ref={endRef} />
       </div></div>
 

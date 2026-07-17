@@ -100,6 +100,7 @@ test('creates a direct conversation and streams a persisted response', async () 
     const stream = await response.text();
     assert.equal(response.status, 200);
     assert.match(stream, /event: execution/);
+    assert.match(stream, /event: runtime/);
     assert.match(stream, /event: message/);
 
     const messages = await fetch(`${baseUrl}/conversations/${created.conversation.id}/messages`)

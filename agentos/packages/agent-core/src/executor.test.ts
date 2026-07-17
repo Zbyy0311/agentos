@@ -117,6 +117,42 @@ describe('CLIExecutor', () => {
     expect(log.stdout).toContain('ok');
   });
 
+  it('decodes a structured Codex spawn stream without persisting raw JSONL', async () => {
+    const commandRoot = mkdtempSync(join(tmpdir(), 'agentos-structured-codex-'));
+    const commandPath = join(commandRoot, 'codex.cmd');
+    const scriptPath = join(commandRoot, 'fake-codex.mjs');
+    writeFileSync(commandPath, '@echo off\r\nnode "%~dp0fake-codex.mjs" %*\r\nexit /b %ERRORLEVEL%\r\n', 'utf8');
+    writeFileSync(scriptPath, [
+      "const args = process.argv.slice(2);",
+      "if (args.includes('--version')) { console.log('codex 0.0.0'); }",
+      "else if (args.includes('--help')) { console.log('Usage: codex exec --json'); }",
+      "else {",
+      "  const lines = [JSON.stringify({type:'thread.started'}), JSON.stringify({type:'item.started',item:{id:'cmd-1',type:'command_execution',command:'echo evidence'}}), JSON.stringify({type:'item.completed',item:{id:'cmd-1',type:'command_execution',status:'completed',exit_code:0}}), JSON.stringify({type:'item.completed',item:{id:'msg-1',type:'agent_message',text:'结构化回复'}}), JSON.stringify({type:'turn.completed',usage:{output_tokens:2}})];",
+      "  process.stdout.write(lines[0] + '\\n'); setTimeout(() => process.stdout.write(lines[1] + '\\n' + lines[2] + '\\n'), 10); setTimeout(() => { process.stdout.write(lines[3] + '\\n' + lines[4] + '\\n'); }, 20);",
+      "}",
+    ].join('\n'), 'utf8');
+
+    try {
+      const runtimeEvents: string[] = [];
+      const chunks: Array<{ text: string; done: boolean }> = [];
+      const log = await CLIExecutor.execute({
+        name: 'Fake Codex', role: 'codex_manager', cliCommand: commandPath, cliArgs: ['exec'],
+      }, 'structured prompt', {
+        ...ctx('structured-codex'),
+        onRuntimeEvent: event => runtimeEvents.push(event.type),
+        onChunk: (text, done) => chunks.push({ text, done }),
+      });
+
+      expect(log.stdout).toBe('结构化回复');
+      expect(log.stdout).not.toContain('item.completed');
+      expect(runtimeEvents).toEqual(['status', 'tool.started', 'tool.completed', 'assistant.message', 'status', 'usage']);
+      expect(chunks.filter(chunk => !chunk.done).map(chunk => chunk.text)).toEqual(['结构化回复']);
+      expect(chunks.filter(chunk => chunk.done)).toHaveLength(1);
+    } finally {
+      rmSync(commandRoot, { recursive: true, force: true });
+    }
+  });
+
   it('reports a redacted CLI lifecycle and Git file changes', async () => {
     execFileSync('git', ['init', workspaceRoot], { stdio: 'ignore' });
     writeFileSync(join(workspaceRoot, 'tracked.txt'), 'before', 'utf8');

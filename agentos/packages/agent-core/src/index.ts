@@ -8,5 +8,14 @@ export { buildStageInstructions, buildStageOutputRequirements, buildStagePrompt 
 export { parseWorkerEvidence, parseReviewerDecision, parseFinalDecision } from './parsers.js';
 export { resolveCommand } from './resolveCommand.js';
 export { resolveImageInput } from './imageInput.js';
+export { NORMALIZED_CLI_EVENT_TYPES } from './adapters/types.js';
+export type { AgentCliAdapter, CliEventParser, CliProvider, NormalizedCliEvent } from './adapters/types.js';
+export { CodexAdapter } from './adapters/codexAdapter.js';
+export { PlainTextAdapter } from './adapters/plainTextAdapter.js';
+export { AgentCliAdapterRegistry } from './adapters/registry.js';
+export { probeCodexCli } from './adapters/capabilityProbe.js';
+export type { AdapterResolution } from './adapters/registry.js';
+export type { CodexProbeResult, ProbeCommand } from './adapters/capabilityProbe.js';
+export { redactRuntimeText, summarizeToolInput } from './adapters/redaction.js';
 export type { AgentImageAttachment, ImageInputPlan, ImageInputTransport } from './imageInput.js';
 export type { AgentConfig, PipelineResult, Workspace } from './types.js';

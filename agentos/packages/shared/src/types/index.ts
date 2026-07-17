@@ -25,6 +25,12 @@ export type AgentEventType =
   | 'execution.cli.started'
   | 'execution.cli.completed'
   | 'execution.files.changed'
+  | 'execution.output.appended'
+  | 'execution.tool.started'
+  | 'execution.tool.completed'
+  | 'execution.usage.recorded'
+  | 'execution.diagnostic'
+  | 'execution.artifact.created'
   | 'memory.used'
   | 'memory.candidate.created'
   | 'run.completed'
@@ -194,6 +200,25 @@ export interface RunFileChange {
   changeType: 'created' | 'modified' | 'deleted' | 'renamed';
 }
 
+export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log';
+
+export interface RuntimeArtifact {
+  id: string;
+  workspaceId: string;
+  runId: string;
+  sourceExecutionId: string;
+  agentId: string;
+  type: RuntimeArtifactType;
+  title: string;
+  summary?: string;
+  originalPath?: string;
+  mimeType?: string;
+  sizeBytes: number;
+  sha256?: string;
+  contentAvailable: boolean;
+  createdAt: string;
+}
+
 export interface MemoryUsage {
   runId: string;
   memoryId: string;
@@ -258,6 +283,7 @@ export interface AgentRunDetails {
   events: AgentEvent[];
   cliInvocations: RunCliInvocation[];
   fileChanges: RunFileChange[];
+  artifacts: RuntimeArtifact[];
   usedMemories: MemoryUsage[];
 }
 

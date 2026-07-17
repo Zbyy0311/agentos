@@ -1,0 +1,8 @@
+{"type":"thread.started","thread_id":"thread-fixture"}
+{"type":"turn.started","turn_id":"turn-fixture"}
+{"type":"item.started","item":{"id":"cmd-1","type":"command_execution","command":"cat executor.ts","status":"in_progress"}}
+{"type":"item.completed","item":{"id":"cmd-1","type":"command_execution","command":"cat executor.ts","aggregated_output":"executor source","exit_code":0,"status":"completed"}}
+{"type":"item.completed","item":{"id":"file-1","type":"file_change","path":"executor.ts","status":"completed"}}
+{"type":"item.completed","item":{"id":"msg-1","type":"agent_message","text":"已检查 executor.ts"}}
+{"type":"item.completed","item":{"id":"reason-1","type":"reasoning","text":"private reasoning fixture"}}
+{"type":"turn.completed","usage":{"input_tokens":12,"cached_input_tokens":3,"output_tokens":7}}

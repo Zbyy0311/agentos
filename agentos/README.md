@@ -4,7 +4,7 @@
 
 ## 系统要求
 
-- Node.js >= 18
+- Node.js >= 22.5
 - pnpm（`npm install -g pnpm`）
 - 可选：`codex` 和 `opencode` 命令需要在 PATH 中（否则只能使用 Mock 模式）
 
@@ -83,6 +83,8 @@ Codex (Manager) → KimiCode (Worker) → OpenCode (Reviewer) → Codex (Final R
 
 v2 会为每条单聊或群聊请求创建一个 `AgentRun`，统一保存公开事件、可观测 CLI 元数据、Git 文件变化、最终结果和记忆用量；历史详情可从执行状态面板打开。项目知识保存在 `agent-memory/records/` 下的 UTF-8 Markdown，SQLite 保存索引和来源，默认只检索 active 记忆并使用固定预算注入。成功 Run 只能生成待审核候选，必须人工接受后才会进入正式记忆。
 
+Codex Runtime 现在支持结构化 JSONL 事件、脱敏工具时间线、可控逐字输出和 `RuntimeArtifact`（文件快照、diff、测试报告、图片、公开日志）。KimiCode/OpenCode 在本计划中保持 plain 文本降级，后续分别建立独立 Adapter 与真实 Gate。当前验收记录见 [docs/acceptance/codex-runtime-final.md](docs/acceptance/codex-runtime-final.md)；WindowsApps 原始入口不能直接启动，但使用同版本 CLI 与 `codex-code-mode-host.exe` 的临时可执行副本已通过真实 AgentOS Gate。
+
 - 架构与接口说明：[docs/AGENTOS_V2.md](docs/AGENTOS_V2.md)
 - 记忆系统边界：[docs/MEMORY_SYSTEM.md](docs/MEMORY_SYSTEM.md)
 - 全链路验收记录：[docs/acceptance/agentos-memory-acceptance.md](docs/acceptance/agentos-memory-acceptance.md)
@@ -127,4 +129,4 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-next-op
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-agentos-e2e.ps1
 ```
 
-前一个脚本负责 3100/3101 的构建、健康检查、Workspace API 和页面响应；后一个脚本在临时项目根目录验证确定性失败/等待恢复、重启恢复、记忆候选闭环，并单独报告真实外部 Agent gate。真实 Codex/Kimi/OpenCode 尚未全部通过时，不得将计划标记为全部完成。
+前一个脚本负责 3100/3101 的构建、健康检查、Workspace API 和页面响应；`verify-codex-runtime-e2e.ps1` 验证确定性 Runtime/Artifact 闭环，`verify-real-codex-runtime-e2e.ps1` 在提供可执行 Codex 与配套 code-mode host 时运行真实 AgentOS Gate。KimiCode/OpenCode 仍未接入本计划。
