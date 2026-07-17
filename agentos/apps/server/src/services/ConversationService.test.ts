@@ -530,3 +530,42 @@ test('fails a group explicitly when an agent requests user input', async () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('applies learned preference context and keeps learning failures out of Run success', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  let store: SqliteStore | undefined;
+  try {
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'preference-direct', workspaceId: 'workspace-a', type: 'direct', title: 'Preference', agentId: 'codex', createdAt: '2026-07-17T00:00:00.000Z', updatedAt: '2026-07-17T00:00:00.000Z' });
+    const preferenceService = {
+      resolved: [] as Array<{ objective: string; conversationType?: string }>,
+      applications: [] as unknown[],
+      observed: [] as unknown[],
+      resolveForRun(input: { objective: string; conversationType?: string }) {
+        this.resolved.push(input);
+        return {
+          contextKind: 'coding' as const,
+          text: 'PREFERENCE_MARKER',
+          applications: [{ runId: 'filled-by-test', projectionId: 'projection-a', resolvedValue: 'concise', rank: 1, injectedCharacters: 16, appliedAt: '2026-07-17T00:00:00.000Z' }],
+        };
+      },
+      recordApplications(applications: unknown[]) { this.applications.push(...applications); },
+      recordRunEvidence(input: unknown) { this.observed.push(input); return Promise.reject(new Error('learning unavailable')); },
+    };
+    const result = await new ConversationService(store, undefined, undefined, preferenceService).sendDirectMessage({
+      workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'preference-direct', agentId: 'codex', content: '实现设置页面',
+    });
+    assert.equal(result.responseMessage.senderType, 'agent');
+    assert.equal(preferenceService.resolved[0]?.conversationType, 'direct');
+    assert.equal(preferenceService.applications.length, 1);
+    assert.equal(preferenceService.observed.length, 1);
+    assert.equal(store.getRun('workspace-a', result.execution.runId)?.status, 'completed');
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

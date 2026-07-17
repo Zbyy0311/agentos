@@ -16,6 +16,7 @@ export interface ObserveRunInput {
   status: AgentRunStatus;
   resultSummary?: string;
   appliedProjections?: PreferenceProjection[];
+  appliedProjectionIds?: string[];
   followUpMessages?: PreferenceFollowUpMessage[];
   priorEvidence?: PreferenceEvidence[];
 }

@@ -369,6 +369,7 @@ export interface AgentRunDetails {
   fileChanges: RunFileChange[];
   artifacts: RuntimeArtifact[];
   usedMemories: MemoryUsage[];
+  preferenceApplications: PreferenceApplication[];
 }
 
 export interface CliInvocationObservation {

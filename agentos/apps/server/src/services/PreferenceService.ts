@@ -22,7 +22,10 @@ export class PreferenceService {
     const profile = this.store.getDefaultUserProfile();
     if (!profile.learningEnabled || profile.id !== input.profileId) return [];
     const priorEvidence = input.priorEvidence ?? this.store.listPreferenceEvidence(input.profileId, input.workspaceId);
-    const observed = this.observer.observeRun({ ...input, priorEvidence });
+    const appliedProjections = input.appliedProjections ?? (input.appliedProjectionIds?.length
+      ? this.store.listPreferenceProjections(input.profileId, input.workspaceId).filter(item => input.appliedProjectionIds?.includes(item.id))
+      : []);
+    const observed = this.observer.observeRun({ ...input, priorEvidence, appliedProjections });
     const inserted = observed
       .map(item => normalizePreferenceEvidence(item))
       .filter((item): item is PreferenceEvidence => Boolean(item))

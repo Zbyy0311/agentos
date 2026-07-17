@@ -11,6 +11,7 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
 import { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
+import type { PreferenceLearningService } from '../services/ConversationService.js';
 
 export function createConversationRoutes(
   store: SqliteStore,
@@ -18,9 +19,10 @@ export function createConversationRoutes(
   modelDiscovery: ModelDiscoveryService = new CliModelDiscovery(),
   eventBus?: EventBus,
   artifactService?: RuntimeArtifactService,
+  preferenceService?: PreferenceLearningService,
 ): Router {
   const router = Router({ mergeParams: true });
-  const service = new ConversationService(store, eventBus, artifactService);
+  const service = new ConversationService(store, eventBus, artifactService, preferenceService);
   const runStreams = new RunStreamRegistry();
 
   router.get('/agents', async (req: Request, res: Response) => {

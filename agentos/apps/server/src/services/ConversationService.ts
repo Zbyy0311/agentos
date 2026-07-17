@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { ConversationAgentRunner, resolveImageInput, type ConversationExecutionEvent as RunnerExecutionEvent, type NormalizedCliEvent } from '@agentos/agent-core';
-import type { AgentEvent, AgentExecution, AgentProfile, AgentRun, CliInvocationObservation, ConversationMessage, MemoryUsage, RunCliInvocation, RunFileChange, RuntimeArtifact } from '@agentos/shared';
+import type { AgentEvent, AgentExecution, AgentProfile, AgentRun, CliInvocationObservation, ConversationMessage, MemoryUsage, PreferenceContext, RunCliInvocation, RunFileChange, RuntimeArtifact } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { createAgentEvent } from '../events/createAgentEvent.js';
@@ -10,6 +10,7 @@ import { MAX_MEMORY_CHARACTERS, MAX_MEMORY_ITEMS, RunContextBuilder } from './Ru
 import { RuntimeEventProjector } from './RuntimeEventProjector.js';
 import { RuntimeArtifactCollector, type ArtifactCollectionContext } from './RuntimeArtifactCollector.js';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
+import { PreferenceService, type ObserveRunInput } from './PreferenceService.js';
 
 type StreamExecutionEvent = RunnerExecutionEvent & { agentId: string; agentName: string };
 const CRITICAL_EVENT_PERSISTENCE_FAILURE = '关键事件持久化失败';
@@ -71,10 +72,17 @@ export interface SendGroupMessageResult {
   executions: AgentExecution[];
 }
 
+export interface PreferenceLearningService {
+  resolveForRun(input: { profileId: string; workspaceId: string; objective: string; conversationType?: 'direct' | 'group'; runId: string }): PreferenceContext;
+  recordApplications(applications: PreferenceContext['applications']): void;
+  recordRunEvidence(input: ObserveRunInput): Promise<unknown>;
+}
+
 export class ConversationService {
   private readonly pendingEvents = new Set<Promise<void>>();
   private readonly pendingArtifacts = new Set<Promise<void>>();
   private readonly contextBuilder: RunContextBuilder;
+  private readonly preferenceService: PreferenceLearningService;
   private readonly runtimeEventProjector = new RuntimeEventProjector();
   private readonly artifactCollector?: RuntimeArtifactCollector;
 
@@ -82,8 +90,10 @@ export class ConversationService {
     private readonly store: SqliteStore,
     private readonly eventBus?: EventBus,
     artifactService?: RuntimeArtifactService,
+    preferenceService?: PreferenceLearningService,
   ) {
     this.contextBuilder = new RunContextBuilder(new MemoryRetriever(store));
+    this.preferenceService = preferenceService ?? new PreferenceService(store);
     this.artifactCollector = artifactService
       ? new RuntimeArtifactCollector(artifactService, artifact => this.publishArtifactCreated(artifact))
       : undefined;
@@ -172,6 +182,10 @@ export class ConversationService {
       runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
+    const preferenceContext = this.resolvePreferenceContext({
+      runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'direct',
+    });
+    this.preferenceService.recordApplications(preferenceContext.applications);
 
     const execution: AgentExecution = {
       id: randomUUID(),
@@ -195,7 +209,7 @@ export class ConversationService {
       runtimeOverrides: input.runtimeOverrides,
       workspaceRoot: input.workspaceRoot,
       executionId: execution.id,
-      message: runContext.context ? `${runContext.context}\n\n${content}` : content,
+      message: this.combineContexts(runContext.context, preferenceContext.text, content),
       history,
       attachments: storedAttachments.map(attachment => ({ name: attachment.name, mimeType: attachment.mimeType, absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath) })),
       signal: input.signal,
@@ -228,6 +242,11 @@ export class ConversationService {
     } else {
       this.store.updateRun(input.workspaceId, run.id, { status: finalStatus, failureReason: runResult.error ?? '执行未完成', completedAt });
     }
+    this.learnFromRun({
+      profileId: 'default', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
+      objective: run.objective, status: finalStatus, resultSummary: runResult.content,
+      appliedProjectionIds: preferenceContext.applications.map(application => application.projectionId),
+    });
     const responseMessage: ConversationMessage = {
       id: randomUUID(),
       conversationId: input.conversationId,
@@ -293,6 +312,10 @@ export class ConversationService {
       runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
+    const preferenceContext = this.resolvePreferenceContext({
+      runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'direct',
+    });
+    this.preferenceService.recordApplications(preferenceContext.applications);
     const execution: AgentExecution = {
       id: randomUUID(), runId: run.id, conversationId: conversation.id, workspaceId: input.workspaceId,
       sourceMessageId: userMessage.id, agentId: agent.id, status: 'queued',
@@ -305,7 +328,7 @@ export class ConversationService {
     const prompt = `原始任务：${run.objective}\n上次等待问题：${previousQuestion}\n用户补充信息：${content}`;
     const runner = new ConversationAgentRunner({
       agent, workspaceRoot: input.workspaceRoot, executionId: execution.id,
-      message: runContext.context ? `${runContext.context}\n\n${prompt}` : prompt, history,
+      message: this.combineContexts(runContext.context, preferenceContext.text, prompt), history,
       signal: input.signal,
       ...this.createEvidenceCallbacks(run.id, execution, agent, input.workspaceRoot),
       onRuntimeEvent: event => this.recordRuntimeEvent(run.id, execution, agent, event, input.onRuntimeEvent, input.workspaceRoot),
@@ -336,6 +359,11 @@ export class ConversationService {
     } else {
       this.store.updateRun(input.workspaceId, run.id, { status: finalStatus, failureReason: runResult.error ?? '执行未完成', completedAt });
     }
+    this.learnFromRun({
+      profileId: 'default', workspaceId: input.workspaceId, conversationId: conversation.id, runId: run.id,
+      objective: run.objective, status: finalStatus, resultSummary: runResult.content,
+      appliedProjectionIds: preferenceContext.applications.map(application => application.projectionId),
+    });
     const responseMessage: ConversationMessage = {
       id: randomUUID(), conversationId: conversation.id, workspaceId: input.workspaceId,
       senderType: finalStatus === 'completed' ? 'agent' : 'system',
@@ -424,10 +452,14 @@ export class ConversationService {
       runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content,
       limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false,
     });
+    const preferenceContext = this.resolvePreferenceContext({
+      runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'group',
+    });
+    this.preferenceService.recordApplications(preferenceContext.applications);
     const planned = await this.runAgentTurn({
       workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: input.conversationId, runId: run.id,
       sourceMessage: userMessage, agent: leader,
-      memoryContext: runContext.context,
+      memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
       attachments: storedAttachments,
       prompt: `你是本群群主。用户任务：${content}\n请先公开拆分计划，并按成员职责给出后续委派。`,
       signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent,
@@ -445,7 +477,7 @@ export class ConversationService {
         return this.runAgentTurn({
           workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: input.conversationId, runId: run.id,
           sourceMessage: userMessage, agent,
-          memoryContext: runContext.context,
+          memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
           attachments: storedAttachments,
           prompt: `群主计划：${planned.responseMessage.content}\n你在本群的职责是：${member.roleTitle}\n请执行被委派的部分并公开报告结果。`,
           signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent,
@@ -467,7 +499,7 @@ export class ConversationService {
     const summary = await this.runAgentTurn({
       workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: input.conversationId, runId: run.id,
       sourceMessage: userMessage, agent: leader,
-      memoryContext: runContext.context,
+      memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
       attachments: storedAttachments,
       prompt: `请作为群主总结本次任务。原始任务：${content}\n成员报告：\n${workerSummary || '无可用成员报告'}\n给出最终结论、阻塞项和下一步。`,
       signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent,
@@ -494,6 +526,12 @@ export class ConversationService {
     await this.artifactCollector?.finalize(this.artifactContext(summary.execution, input.workspaceRoot));
     await this.flushArtifacts();
     await this.flushEventsForRun(input.workspaceId, run.id);
+    this.learnFromRun({
+      profileId: 'default', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
+      objective: run.objective, status: this.store.getRun(input.workspaceId, run.id)?.status ?? 'failed',
+      resultSummary: summary.responseMessage.content,
+      appliedProjectionIds: preferenceContext.applications.map(application => application.projectionId),
+    });
     return { userMessage, agentMessages: turns.map(turn => turn.responseMessage), executions: turns.map(turn => turn.execution) };
   }
 
@@ -736,6 +774,22 @@ export class ConversationService {
         },
       }));
     }
+  }
+
+  private resolvePreferenceContext(input: { runId: string; workspaceId: string; objective: string; conversationType: 'direct' | 'group' }): PreferenceContext {
+    try {
+      return this.preferenceService.resolveForRun({ profileId: 'default', ...input });
+    } catch {
+      return { contextKind: 'general', text: '', applications: [] };
+    }
+  }
+
+  private combineContexts(...contexts: Array<string | undefined>): string {
+    return contexts.filter((context): context is string => Boolean(context?.trim())).join('\n\n');
+  }
+
+  private learnFromRun(input: ObserveRunInput): void {
+    void this.preferenceService.recordRunEvidence(input).catch(() => undefined);
   }
 
   private createEvidenceCallbacks(runId: string, execution: AgentExecution, agent: AgentProfile, workspaceRoot: string): {

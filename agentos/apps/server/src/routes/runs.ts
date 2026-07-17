@@ -30,6 +30,7 @@ export function createRunRoutes(store: SqliteStore, workspaceManager: WorkspaceM
       fileChanges: store.listRunFileChanges(workspace.id, run.id),
       artifacts: store.listRuntimeArtifacts(workspace.id, run.id),
       usedMemories: store.listMemoryUsage(workspace.id, run.id),
+      preferenceApplications: store.listPreferenceApplications(workspace.id, run.id),
     };
     res.json(details);
   });

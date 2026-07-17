@@ -22,6 +22,7 @@ import { createJsonErrorHandler } from './errorHandler.js';
 import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
 import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
+import { PreferenceService } from './services/PreferenceService.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -51,6 +52,7 @@ const recoveredRuns = recoverInterruptedRuns(store);
 const eventBus = new EventBus();
 eventBus.subscribe(event => store.appendAgentEvent(event));
 const artifactService = new RuntimeArtifactService(store, PROJECT_ROOT);
+const preferenceService = new PreferenceService(store);
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -63,7 +65,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
-app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus, artifactService));
+app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus, artifactService, preferenceService));
 app.use('/api/workspaces/:workspaceId', createRunRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceManager, artifactService));
 app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));

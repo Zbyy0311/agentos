@@ -15,6 +15,7 @@ const details: AgentRunDetails = {
   fileChanges: [{ runId: 'run-a', path: 'src/a.ts', changeType: 'modified' }, { runId: 'run-a', path: 'src/a.ts', changeType: 'modified' }],
   artifacts: [],
   usedMemories: [],
+  preferenceApplications: [],
 };
 
 test('normalizes event order and removes duplicate file changes', () => {
