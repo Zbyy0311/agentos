@@ -29,20 +29,25 @@ test('lists and controls scoped preference projections without exposing another 
     status: 'stable', lastSupportedAt: '2026-07-12T00:00:00.000Z', createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
   };
   store.upsertPreferenceProjection(projection);
-  const app = express(); app.use(express.json()); app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, new WorkspaceManager(store), new PreferenceService(store)));
+  const app = express(); app.use(express.json()); const routes = createPreferenceRoutes(store, new WorkspaceManager(store), new PreferenceService(store)); app.use('/api/workspaces/:workspaceId', routes); app.use('/api', routes);
   const server = app.listen(0);
   try {
     await new Promise<void>(resolve => server.once('listening', resolve));
     const address = server.address(); if (!address || typeof address === 'string') throw new Error('bind failed');
     const base = `http://127.0.0.1:${address.port}/api/workspaces`;
+    const globalBase = `http://127.0.0.1:${address.port}/api`;
     const listed = await fetch(`${base}/workspace-a/preferences?context=coding`).then(response => response.json()) as { profile: { learningEnabled: boolean }; projections: PreferenceProjection[] };
     assert.equal(listed.profile.learningEnabled, true);
     assert.deepEqual(listed.projections.map(item => item.id), ['projection-a']);
+    const alias = await fetch(`${globalBase}/preferences?workspaceId=workspace-a`).then(response => response.json()) as { projections: PreferenceProjection[] };
+    assert.deepEqual(alias.projections.map(item => item.id), ['projection-a']);
     assert.deepEqual((await fetch(`${base}/workspace-b/preferences`).then(response => response.json()) as { projections: PreferenceProjection[] }).projections, []);
     assert.equal((await fetch(`${base}/workspace-a/preferences/projection-a/sleep`, { method: 'POST' })).status, 200);
     assert.equal((await fetch(`${base}/workspace-a/preferences?status=dormant`).then(response => response.json()) as { projections: PreferenceProjection[] }).projections[0]?.status, 'dormant');
     const paused = await fetch(`${base}/workspace-a/preferences/learning`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: false }) }).then(response => response.json()) as { profile: { learningEnabled: boolean } };
     assert.equal(paused.profile.learningEnabled, false);
+    const pausedAlias = await fetch(`${globalBase}/preferences/pause?workspaceId=workspace-a`, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+    assert.equal(pausedAlias.status, 200);
     assert.equal((await fetch(`${base}/workspace-a/preferences/clear`, { method: 'POST' })).status, 200);
     assert.deepEqual((await fetch(`${base}/workspace-a/preferences`).then(response => response.json()) as { projections: PreferenceProjection[] }).projections, []);
   } finally { server.close(); store.close(); rmSync(root, { recursive: true, force: true }); }

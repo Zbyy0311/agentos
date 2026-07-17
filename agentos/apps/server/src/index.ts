@@ -72,6 +72,7 @@ app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceMan
 app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
 app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
+app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
 app.use('/api/agents', createAgentRoutes(workspaceManager));
