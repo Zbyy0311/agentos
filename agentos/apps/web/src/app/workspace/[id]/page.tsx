@@ -25,6 +25,7 @@ import { resolveAttachmentUrl } from '@/lib/attachmentUrls';
 import { RunDetails } from '@/components/runs/RunDetails';
 import { MemoryPanel } from '@/components/memory/MemoryPanel';
 import { MemoryCandidateQueue } from '@/components/memory/MemoryCandidateQueue';
+import { PreferencePanel } from '@/components/preference/PreferencePanel';
 import { ToastStack } from '@/components/feedback/ToastStack';
 import { classifyUiError, getComposerValidationError, TOAST_DURATION_MS, type ToastItem, type ToastTone } from '@/lib/uiFeedback';
 import { TypewriterQueue } from '@/lib/typewriterQueue';
@@ -115,6 +116,7 @@ export default function WorkspacePage() {
   const [generatingCandidates, setGeneratingCandidates] = useState(false);
   const [showCandidateQueue, setShowCandidateQueue] = useState(false);
   const [showMemories, setShowMemories] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
   const [workspacePanelWidth, setWorkspacePanelWidth] = useState<number>();
   const [historyPanelWidth, setHistoryPanelWidth] = useState<number>();
   const layoutRef = useRef<HTMLDivElement>(null);
@@ -683,7 +685,7 @@ export default function WorkspacePage() {
   if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
 
   return <div ref={layoutRef} data-signal-workspace data-workspace-layout className="signal-workspace app-shell flex h-screen min-w-0 overflow-hidden">
-    <AgentList panelWidth={workspacePanelWidth} agents={agents} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={agentId => { setSelectedAgentId(agentId); setSelectedGroupId(null); setSelectedDirectConversationId(null); setError(''); }} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenMemories={() => setShowMemories(true)} />
+    <AgentList panelWidth={workspacePanelWidth} agents={agents} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={agentId => { setSelectedAgentId(agentId); setSelectedGroupId(null); setSelectedDirectConversationId(null); setError(''); }} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenMemories={() => setShowMemories(true)} onOpenPreferences={() => setShowPreferences(true)} />
     <PanelResizeHandle panel="workspace" width={workspacePanelWidth} onPointerDown={handleResizePointerDown} />
     <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectedGroupId ? selectGroup : setSelectedDirectConversationId} onContextMenu={openContextMenu} />
     <PanelResizeHandle panel="history" width={historyPanelWidth} onPointerDown={handleResizePointerDown} />
@@ -695,6 +697,7 @@ export default function WorkspacePage() {
     {contextMenu && <ConversationContextMenu conversation={contextMenu.conversation} clientX={contextMenu.clientX} clientY={contextMenu.clientY} onRename={() => setRenamingConversation(contextMenu.conversation)} onCopyId={() => { void copyConversationId(contextMenu.conversation.id); }} onDelete={() => { void deleteConversation(contextMenu.conversation); }} onClose={() => setContextMenu(null)} />}
     {runDetails && <RunDetails details={runDetails} apiBase={API_BASE} onClose={() => setRunDetails(null)} onGenerateCandidates={runId => { void generateMemoryCandidates(runId); }} generatingCandidates={generatingCandidates} />}
     {showMemories && <MemoryPanel workspaceId={workspaceId} onClose={() => setShowMemories(false)} onOpenRun={runId => { setShowMemories(false); void openRunDetails(runId); }} />}
+    {showPreferences && <PreferencePanel workspaceId={workspaceId} onClose={() => setShowPreferences(false)} onOpenRun={runId => { setShowPreferences(false); void openRunDetails(runId); }} />}
     {showCandidateQueue && <MemoryCandidateQueue workspaceId={workspaceId} onClose={() => setShowCandidateQueue(false)} onOpenRun={runId => { setShowCandidateQueue(false); void openRunDetails(runId); }} />}
     <ToastStack toasts={toasts} onDismiss={dismissToast} />
   </div>;

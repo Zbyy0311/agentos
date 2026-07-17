@@ -23,6 +23,7 @@ import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
 import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 import { PreferenceService } from './services/PreferenceService.js';
+import { createPreferenceRoutes } from './routes/preferences.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -70,6 +71,7 @@ app.use('/api/workspaces/:workspaceId', createRunRoutes(store, workspaceManager)
 app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceManager, artifactService));
 app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
+app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
 app.use('/api/agents', createAgentRoutes(workspaceManager));

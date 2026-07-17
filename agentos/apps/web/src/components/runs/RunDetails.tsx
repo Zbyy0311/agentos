@@ -36,6 +36,7 @@ export function RunDetails({ details: sourceDetails, apiBase, onClose, onGenerat
         <ArtifactShelf artifacts={details.artifacts} apiBase={apiBase} />
         <section><h3 className="mb-2 font-medium ui-text">最终总结</h3><p className="whitespace-pre-wrap leading-6 ui-text-soft">{details.run.resultSummary || failureReason || '暂无最终总结'}</p></section>
         <section><h3 className="mb-2 font-medium ui-text">使用的项目记忆</h3>{details.usedMemories.length ? <ul className="space-y-1 text-xs ui-text-soft">{details.usedMemories.map(memory => <li key={memory.memoryId}>{memory.memoryId} · {memory.injectedCharacters} 字符</li>)}</ul> : <p className="ui-dim">本次未使用项目记忆</p>}</section>
+        <section><h3 className="mb-2 font-medium ui-text">应用的交互偏好</h3>{details.preferenceApplications.length ? <ul className="space-y-1 text-xs ui-text-soft">{details.preferenceApplications.map(application => <li key={application.projectionId}>{application.resolvedValue} · {application.injectedCharacters} 字符</li>)}</ul> : <p className="ui-dim">本次未注入交互偏好</p>}</section>
       </div>
     </section>
   </div>;
