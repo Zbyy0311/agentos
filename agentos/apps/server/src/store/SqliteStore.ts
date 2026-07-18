@@ -1394,6 +1394,26 @@ export class SqliteStore implements Store {
     return rows.map(row => this.toMemoryCandidate(row));
   }
 
+  pruneReviewedMemoryCandidates(cutoffAt: string, minimumPerWorkspace: number): number {
+    const minimum = Math.max(0, Math.floor(minimumPerWorkspace));
+    const result = this.database.prepare(`
+      DELETE FROM memory_candidates AS candidates
+      WHERE candidates.status IN ('accepted', 'rejected')
+        AND candidates.reviewed_at IS NOT NULL
+        AND candidates.reviewed_at < ?
+        AND candidates.id NOT IN (
+          SELECT retained.id
+          FROM memory_candidates AS retained
+          WHERE retained.workspace_id = candidates.workspace_id
+            AND retained.status IN ('accepted', 'rejected')
+            AND retained.reviewed_at IS NOT NULL
+          ORDER BY retained.reviewed_at DESC, retained.id DESC
+          LIMIT ?
+        )
+    `).run(cutoffAt, minimum) as { changes: number };
+    return result.changes;
+  }
+
   updateMemoryCandidateStatus(workspaceId: string, candidateId: string, status: MemoryCandidateStatus, reviewedAt = new Date().toISOString()): MemoryCandidate {
     const current = this.getMemoryCandidate(workspaceId, candidateId);
     if (!current) throw new Error('Memory candidate not found');

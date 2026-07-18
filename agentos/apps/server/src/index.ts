@@ -23,6 +23,7 @@ import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
 import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 import { PreferenceService } from './services/PreferenceService.js';
+import { RetentionService } from './services/RetentionService.js';
 import { createPreferenceRoutes } from './routes/preferences.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -54,6 +55,16 @@ const eventBus = new EventBus();
 eventBus.subscribe(event => store.appendAgentEvent(event));
 const artifactService = new RuntimeArtifactService(store, PROJECT_ROOT);
 const preferenceService = new PreferenceService(store);
+const retentionService = new RetentionService(store, undefined, error => {
+  diagLog(`RETENTION_ERROR error=${error instanceof Error ? error.message : String(error)}`);
+});
+try {
+  const result = retentionService.run();
+  diagLog(`RETENTION_RUN reviewedMemoryCandidatesDeleted=${result.reviewedMemoryCandidatesDeleted}`);
+} catch (error) {
+  diagLog(`RETENTION_ERROR error=${error instanceof Error ? error.message : String(error)}`);
+}
+retentionService.start();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
