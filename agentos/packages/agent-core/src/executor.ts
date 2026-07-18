@@ -17,6 +17,7 @@ import { AgentCliAdapterRegistry } from './adapters/registry.js';
 import { PlainTextAdapter } from './adapters/plainTextAdapter.js';
 import type { CliInvocationObservation, TaskLog, AgentStage, ThinkingEffort, RunFileChange } from '@agentos/shared';
 import { captureWorkspaceSnapshot, diffWorkspaceSnapshots } from './workspaceChanges.js';
+import { removeArgPair, replaceConfigArg, replaceOrAppendArg } from './runtimeArgs.js';
 
 const DIAG_LOG_DIR = process.env.AGENTOS_DIAG_LOG_DIR
   ?? join(process.env.AGENTOS_WORKSPACE_ROOT ?? process.cwd(), '.agentos', 'logs', 'diagnostics');
@@ -95,60 +96,6 @@ export interface RuntimeResolvedConfig {
   cliArgs: string[];
   env: NodeJS.ProcessEnv;
   cliKind: 'kimi' | 'opencode' | 'codex' | 'unknown';
-}
-
-function replaceOrAppendArg(args: string[], flag: string, value: string): string[] {
-  const result: string[] = [];
-  let replaced = false;
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== flag) {
-      result.push(args[index]);
-      continue;
-    }
-    if (!replaced) {
-      result.push(flag, value);
-      replaced = true;
-    }
-    if (index + 1 < args.length) index += 1;
-  }
-  if (!replaced) result.push(flag, value);
-  return result;
-}
-
-function removeArgPair(args: string[], flag: string): string[] {
-  const result: string[] = [];
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] === flag) {
-      if (index + 1 < args.length) index += 1;
-      continue;
-    }
-    result.push(args[index]);
-  }
-  return result;
-}
-
-function replaceConfigArg(args: string[], key: string, value: string): string[] {
-  const assignment = `${key}=${value}`;
-  const result: string[] = [];
-  let replaced = false;
-  for (let index = 0; index < args.length; index += 1) {
-    if (args[index] !== '-c') {
-      result.push(args[index]);
-      continue;
-    }
-    const configValue = args[index + 1];
-    if (typeof configValue !== 'string' || !configValue.startsWith(`${key}=`)) {
-      result.push(args[index]);
-      continue;
-    }
-    if (!replaced) {
-      result.push('-c', assignment);
-      replaced = true;
-    }
-    index += 1;
-  }
-  if (!replaced) result.push('-c', assignment);
-  return result;
 }
 
 export function resolveAgentRuntimeConfig(

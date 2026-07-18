@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { PreferenceEvidence } from '@agentos/shared';
 import { calculatePreferenceProjection } from './PreferenceProjector.js';
+import { determineProjectionStatus } from './PreferenceRules.js';
 
 function evidence(
   weight: number,
@@ -89,4 +90,13 @@ test('caps all historical successful applications at three score points', () => 
   );
   assert.equal(projection?.score, 3);
   assert.equal(projection?.status, 'observed');
+});
+
+test('determines projection status from named promotion rules', () => {
+  assert.equal(determineProjectionStatus({ score: -1, runCount: 1, negativeRecent: 0, hasRecentStrongConflict: false }), 'dormant');
+  assert.equal(determineProjectionStatus({ score: 6, runCount: 2, negativeRecent: 0, hasRecentStrongConflict: false }), 'provisional');
+  assert.equal(determineProjectionStatus({ score: 12, runCount: 4, negativeRecent: 0, hasRecentStrongConflict: false }), 'stable');
+  assert.equal(determineProjectionStatus({ score: 12, runCount: 4, negativeRecent: 0, hasRecentStrongConflict: true }), 'provisional');
+  assert.equal(determineProjectionStatus({ score: 4, runCount: 3, negativeRecent: 0, hasRecentStrongConflict: false }), 'observed');
+  assert.equal(determineProjectionStatus({ score: 6, runCount: 2, negativeRecent: 2, hasRecentStrongConflict: false }), 'dormant');
 });

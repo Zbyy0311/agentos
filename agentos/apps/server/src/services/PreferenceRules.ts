@@ -1,4 +1,4 @@
-import type { PreferenceContextKind, PreferenceDimension, PreferenceEvidence, PreferenceScope } from '@agentos/shared';
+import type { PreferenceContextKind, PreferenceDimension, PreferenceEvidence, PreferenceProjectionStatus, PreferenceScope } from '@agentos/shared';
 
 export const PREFERENCE_CONTEXTS: readonly PreferenceContextKind[] = ['coding', 'debugging', 'planning', 'review', 'explanation', 'general'];
 
@@ -51,6 +51,20 @@ export function normalizePreferenceEvidence(input: PreferenceEvidence): Preferen
   return { ...input, summary: input.summary.trim(), weight: Math.abs(input.weight) };
 }
 
+export function determineProjectionStatus(input: {
+  score: number;
+  runCount: number;
+  negativeRecent: number;
+  hasRecentStrongConflict: boolean;
+}): PreferenceProjectionStatus {
+  if (input.score < PROMOTION_THRESHOLDS.dormantScore || input.negativeRecent >= 2) return 'dormant';
+  if (input.runCount >= PROMOTION_THRESHOLDS.stableRuns
+    && input.score >= PROMOTION_THRESHOLDS.stableScore
+    && !input.hasRecentStrongConflict) return 'stable';
+  if (input.runCount >= PROMOTION_THRESHOLDS.provisionalRuns && input.score >= PROMOTION_THRESHOLDS.provisionalScore) return 'provisional';
+  return 'observed';
+}
+
 export function calculatePreferenceProjection(
   input: PreferenceEvidence[],
   scope: PreferenceScope,
@@ -91,13 +105,7 @@ export function calculatePreferenceProjection(
   const negativeRecent = recentThree.filter(item => item.polarity === 'negative' && item.weight >= 3).length;
   const hasRecentStrongConflict = recentFour.some(item => item.polarity === 'negative' && item.weight >= 4);
   const runCount = new Set(selected.map(item => item.runId)).size;
-  const status = score < PROMOTION_THRESHOLDS.dormantScore || negativeRecent >= 2
-    ? 'dormant'
-    : runCount >= PROMOTION_THRESHOLDS.stableRuns && score >= PROMOTION_THRESHOLDS.stableScore && !hasRecentStrongConflict
-      ? 'stable'
-      : runCount >= PROMOTION_THRESHOLDS.provisionalRuns && score >= PROMOTION_THRESHOLDS.provisionalScore
-        ? 'provisional'
-        : 'observed';
+  const status = determineProjectionStatus({ score, runCount, negativeRecent, hasRecentStrongConflict });
   const latest = [...selected].sort((a, b) => a.observedAt.localeCompare(b.observedAt));
   const lastSupported = [...selected].filter(item => item.polarity === 'positive').pop() ?? latest[latest.length - 1];
   const lastConflict = [...allRelevant].filter(item => item.polarity === 'negative').pop();
