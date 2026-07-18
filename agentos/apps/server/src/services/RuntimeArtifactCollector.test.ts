@@ -12,6 +12,17 @@ function git(root: string, args: string[]): void {
   execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
 }
 
+// Temp-dir cleanup is best-effort: on Windows a background process watching the
+// filesystem can transiently hold a freshly created .git directory, so a failed
+// removal must not fail an otherwise-passing test.
+function removeTempDir(root: string): void {
+  try {
+    rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
+  } catch {
+    // ignore — leftover temp dir is harmless
+  }
+}
+
 test('collects file, clean-baseline diff, report, and public log artifacts', async () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-artifact-collector-'));
   mkdirSync(join(root, 'workspace'), { recursive: true });
@@ -46,7 +57,7 @@ test('collects file, clean-baseline diff, report, and public log artifacts', asy
     assert.equal(artifacts.every(artifact => artifact.sourceExecutionId === 'execution-a'), true);
   } finally {
     store.close();
-    rmSync(root, { recursive: true, force: true });
+    removeTempDir(root);
   }
 });
 
@@ -74,6 +85,11 @@ test('recognizes Windows shell wrappers around npm test for report artifacts', a
   collector.start(context);
   await collector.recordRuntimeEvent(context, { type: 'tool.started', callId: 'call-shell', toolName: 'command_execution', summary: 'command_execution', inputPreview: 'command_execution: "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command \'npm test\'' });
   await collector.recordRuntimeEvent(context, { type: 'tool.completed', callId: 'call-shell', toolName: 'command_execution', success: true, summary: 'command_execution complete', outputPreview: '1 passed' });
-  const artifacts = store.listRuntimeArtifacts(workspace.id, 'run-shell');
-  assert.equal(artifacts.some(artifact => artifact.type === 'report'), true);
+  try {
+    const artifacts = store.listRuntimeArtifacts(workspace.id, 'run-shell');
+    assert.equal(artifacts.some(artifact => artifact.type === 'report'), true);
+  } finally {
+    store.close();
+    removeTempDir(root);
+  }
 });
