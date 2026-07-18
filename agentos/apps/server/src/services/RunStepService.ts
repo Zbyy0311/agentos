@@ -4,6 +4,7 @@ import type {
   CreateRunStepInput,
   RunStep,
   RunStepStatus,
+  ConversationMember,
   UpdateRunStepInput,
 } from '@agentos/shared';
 import { createAgentEvent } from '../events/createAgentEvent.js';
@@ -71,6 +72,26 @@ export class RunStepService {
         ...(input.agentId ? { agentId: input.agentId } : {}),
       }));
     }
+    return steps;
+  }
+
+  async initializeGroupRun(input: { workspaceId: string; runId: string; members: readonly ConversationMember[] }): Promise<RunStep[]> {
+    const steps: RunStep[] = [];
+    for (const member of [...input.members].sort((left, right) => left.sequence - right.sequence)) {
+      steps.push(await this.createOrGet({
+        stableStepKey: `group.agent.${member.agentId}`,
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        agentId: member.agentId,
+        kind: member.roleKind === 'reviewer' ? 'review' : 'agent',
+        title: member.roleTitle,
+        sequence: member.sequence,
+      }));
+    }
+    steps.push(await this.createOrGet({
+      stableStepKey: 'group.summary', workspaceId: input.workspaceId, runId: input.runId,
+      kind: 'summary', title: '群聊总结', sequence: (Math.max(...input.members.map(member => member.sequence), 0) + 10),
+    }));
     return steps;
   }
 

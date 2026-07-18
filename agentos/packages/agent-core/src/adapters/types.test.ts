@@ -15,6 +15,10 @@ function eventLabel(event: NormalizedCliEvent): string {
       return String(event.outputTokens ?? 0);
     case 'diagnostic':
       return event.code;
+    case 'approval.requested':
+      return event.toolName;
+    case 'approval.resolved':
+      return event.decision;
     default: {
       const unreachable: never = event;
       return unreachable;
@@ -33,6 +37,8 @@ describe('normalized CLI event protocol', () => {
       'tool.completed',
       'usage',
       'diagnostic',
+      'approval.requested',
+      'approval.resolved',
     ]);
   });
 

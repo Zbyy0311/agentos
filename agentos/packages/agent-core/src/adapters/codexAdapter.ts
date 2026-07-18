@@ -57,12 +57,18 @@ class CodexJsonParser implements CliEventParser {
   }
 
   private mapUsage(value: unknown): NormalizedCliEvent[] {
-    if (!isRecord(value)) return [];
+    if (!isRecord(value)) return [{ type: 'usage', source: 'unavailable', provider: 'codex', estimated: false }];
+    const inputTokens = numberValue(value.input_tokens ?? value.inputTokens);
+    const cachedInputTokens = numberValue(value.cached_input_tokens ?? value.cachedInputTokens);
+    const outputTokens = numberValue(value.output_tokens ?? value.outputTokens);
+    if (inputTokens === undefined && cachedInputTokens === undefined && outputTokens === undefined) {
+      return [{ type: 'usage', source: 'unavailable', provider: 'codex', estimated: false }];
+    }
     return [{
-      type: 'usage',
-      ...(numberValue(value.input_tokens ?? value.inputTokens) !== undefined ? { inputTokens: numberValue(value.input_tokens ?? value.inputTokens) } : {}),
-      ...(numberValue(value.cached_input_tokens ?? value.cachedInputTokens) !== undefined ? { cachedInputTokens: numberValue(value.cached_input_tokens ?? value.cachedInputTokens) } : {}),
-      ...(numberValue(value.output_tokens ?? value.outputTokens) !== undefined ? { outputTokens: numberValue(value.output_tokens ?? value.outputTokens) } : {}),
+      type: 'usage', source: 'structured', provider: 'codex', estimated: false,
+      ...(inputTokens !== undefined ? { inputTokens } : {}),
+      ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
+      ...(outputTokens !== undefined ? { outputTokens } : {}),
     }];
   }
 

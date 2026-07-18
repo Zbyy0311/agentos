@@ -42,6 +42,10 @@ export class RuntimeEventProjector {
         });
       case 'usage':
         return this.create(context, 'execution.usage.recorded', {
+          ...(event.source ? { source: event.source } : {}),
+          ...(event.provider ? { provider: event.provider } : {}),
+          ...(event.model ? { model: event.model } : {}),
+          ...(event.estimated !== undefined ? { estimated: event.estimated } : {}),
           ...(event.inputTokens !== undefined ? { inputTokens: event.inputTokens } : {}),
           ...(event.cachedInputTokens !== undefined ? { cachedInputTokens: event.cachedInputTokens } : {}),
           ...(event.outputTokens !== undefined ? { outputTokens: event.outputTokens } : {}),
@@ -52,6 +56,16 @@ export class RuntimeEventProjector {
           code: event.code,
           message: redactRuntimeText(event.message),
         });
+      case 'approval.requested':
+        return this.create(context, 'execution.approval.requested', {
+          requestId: event.requestId,
+          toolName: redactRuntimeText(event.toolName, 128),
+          riskLevel: event.riskLevel,
+          summary: redactRuntimeText(event.summary),
+          ...(event.affectedPaths ? { affectedPaths: event.affectedPaths.slice(0, 32) } : {}),
+        });
+      case 'approval.resolved':
+        return this.create(context, 'execution.approval.resolved', { requestId: event.requestId, decision: event.decision });
     }
   }
 

@@ -73,6 +73,15 @@ test('merges tool completion, usage, and file changes into compact run evidence'
   assert.equal(summary.durationMs, 151000);
 });
 
+test('preserves usage provenance and marks unavailable token data', () => {
+  const summary = summarizeExecutionInspector({
+    status: 'completed',
+    events: [],
+    runtimeEvents: [event('execution.usage.recorded', { source: 'unavailable', provider: 'opencode', estimated: false }, '2026-07-18T00:02:30.000Z')],
+  });
+  assert.deepEqual(summary.usage, { source: 'unavailable', provider: 'opencode' });
+});
+
 test('falls back to execution status when no structured runtime event exists', () => {
   const summary = summarizeExecutionInspector({
     status: 'preparing_context',

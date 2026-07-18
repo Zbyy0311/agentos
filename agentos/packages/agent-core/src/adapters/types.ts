@@ -9,6 +9,8 @@ export const NORMALIZED_CLI_EVENT_TYPES = [
   'tool.completed',
   'usage',
   'diagnostic',
+  'approval.requested',
+  'approval.resolved',
 ] as const;
 
 export type NormalizedCliEvent =
@@ -16,8 +18,10 @@ export type NormalizedCliEvent =
   | { type: 'assistant.message'; text: string; messageId?: string }
   | { type: 'tool.started'; callId: string; toolName: string; summary: string; inputPreview?: string }
   | { type: 'tool.completed'; callId: string; toolName: string; success: boolean; summary: string; outputPreview?: string; durationMs?: number }
-  | { type: 'usage'; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number }
-  | { type: 'diagnostic'; level: 'warning' | 'error'; code: string; message: string };
+  | { type: 'usage'; source?: 'structured' | 'database_delta' | 'unavailable'; provider?: AgentProvider; model?: string; estimated?: boolean; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number }
+  | { type: 'diagnostic'; level: 'warning' | 'error'; code: string; message: string }
+  | { type: 'approval.requested'; requestId: string; toolName: string; riskLevel: 'low' | 'medium' | 'high' | 'critical'; summary: string; affectedPaths?: string[] }
+  | { type: 'approval.resolved'; requestId: string; decision: import('@agentos/shared').ApprovalDecision };
 
 export interface CliEventParser {
   push(chunk: string): NormalizedCliEvent[];
@@ -75,4 +79,5 @@ export interface AgentCliAdapter {
   probe(commandPath: string): Promise<ProviderProbeResult>;
   buildInvocation(input: ProviderInvocationInput): ProviderInvocation;
   createParser(): CliEventParser;
+  encodeApprovalDecision?(requestId: string, decision: import('@agentos/shared').ApprovalDecision): string;
 }

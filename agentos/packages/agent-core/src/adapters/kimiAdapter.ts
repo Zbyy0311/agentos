@@ -88,11 +88,13 @@ class KimiJsonParser implements CliEventParser {
     this.openTools.clear();
     if (this.usageSeen) {
       events.push({
-        type: 'usage',
+        type: 'usage', source: 'structured', provider: 'kimi', estimated: false,
         inputTokens: this.usage.inputTokens,
         cachedInputTokens: this.usage.cachedInputTokens,
         outputTokens: this.usage.outputTokens,
       });
+    } else {
+      events.push({ type: 'usage', source: 'unavailable', provider: 'kimi', estimated: false });
     }
     return events;
   }

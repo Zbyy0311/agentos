@@ -8,6 +8,8 @@ import { ConversationService } from './ConversationService.js';
 import { EventBus } from '../events/EventBus.js';
 import { MemoryService } from './MemoryService.js';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
+import { WorktreeManager } from './WorktreeManager.js';
+import { execFileSync } from 'node:child_process';
 import type { AgentEvent } from '@agentos/shared';
 
 function createProjectRoot(options: {
@@ -30,9 +32,7 @@ function createProjectRoot(options: {
 }
 
 function createFailingEventBus(): EventBus {
-  const bus = new EventBus();
-  bus.subscribe(() => { throw new Error('event persistence unavailable'); });
-  return bus;
+  return new EventBus(() => { throw new Error('event persistence unavailable'); });
 }
 
 test('persists public status events and the final direct-agent reply', async () => {
@@ -130,7 +130,7 @@ test('publishes and persists unified events for a direct run', async () => {
     const events = store.listAgentEvents('workspace-a', result.execution.runId);
     assert.ok(events.length >= 8);
     assert.equal(new Set(events.map(event => event.runId)).size, 1);
-    assert.equal(events[0]?.schemaVersion, 1);
+    assert.equal(events[0]?.schemaVersion, 2);
     assert.equal(events.some(event => event.type === 'run.created'), true);
     assert.equal(events.some(event => event.type === 'run.completed'), true);
   } finally {
@@ -158,6 +158,8 @@ test('projects normalized runtime events into persisted AgentEvents and callback
     });
     const persisted = store.listAgentEvents('workspace-a', result.execution.runId);
     assert.equal(observed.some(event => event.type === 'execution.output.appended'), true);
+    assert.equal(observed.some(event => event.type === 'execution.cli.started'), true);
+    assert.equal(observed.some(event => event.type === 'execution.cli.completed'), true);
     assert.equal(persisted.some(event => event.type === 'execution.output.appended'), true);
     assert.equal(persisted.some(event => event.type === 'execution.tool.started'), false);
     assert.equal(persisted.every(event => event.executionId === undefined || event.executionId === result.execution.id), true);
@@ -494,6 +496,52 @@ test('runs independent group workers concurrently after the leader plan', async 
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
     store?.close();
     rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('parallel_isolated gives write-capable workers execution-specific worktrees and recovery bundles', async () => {
+  const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
+  const originalWorktreeMode = process.env.AGENTOS_WORKTREE_MODE;
+  let store: SqliteStore | undefined;
+  const worktreeRoot = mkdtempSync(join(tmpdir(), 'agentos-isolated-root-'));
+  try {
+    execFileSync('git', ['init', '-q', root]);
+    execFileSync('git', ['-C', root, 'config', 'user.email', 'agentos@example.test']);
+    execFileSync('git', ['-C', root, 'config', 'user.name', 'AgentOS Test']);
+    writeFileSync(join(root, '.gitignore'), '.agentos/\n');
+    execFileSync('git', ['-C', root, 'add', '.']);
+    execFileSync('git', ['-C', root, 'commit', '-qm', 'base']);
+    process.env.AGENTOS_FORCE_MOCK = 'true';
+    process.env.AGENTOS_WORKTREE_MODE = 'isolated';
+    store = new SqliteStore(root);
+    store.updateAgentProfile('workspace-a', 'codex', { roleTitle: '群主', systemPrompt: '只读规划。', permissions: ['read', 'write'], enabled: true });
+    store.updateAgentProfile('workspace-a', 'kimi', { roleTitle: '执行工程师', systemPrompt: '执行修改。', permissions: ['read', 'write'], enabled: true });
+    store.createGroupConversation({ id: 'isolated-group', workspaceId: 'workspace-a', type: 'group', title: '隔离执行', createdAt: '2026-07-19T00:00:00.000Z', updatedAt: '2026-07-19T00:00:00.000Z' }, [
+      { conversationId: 'isolated-group', agentId: 'codex', roleTitle: '群主', isLeader: true, createdAt: '2026-07-19T00:00:00.000Z' },
+      { conversationId: 'isolated-group', agentId: 'kimi', roleTitle: '执行工程师', isLeader: false, createdAt: '2026-07-19T00:00:00.000Z' },
+    ]);
+    execFileSync('git', ['-C', root, 'add', '-A']);
+    execFileSync('git', ['-C', root, 'commit', '-qm', 'fixture config']);
+    const manager = new WorktreeManager(worktreeRoot);
+    const service = new ConversationService(store, undefined, new RuntimeArtifactService(store, root), undefined, manager);
+    const result = await service.sendGroupMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'isolated-group', content: '隔离执行测试' });
+    const leases = manager.listLeases();
+    assert.equal(leases.length, 1);
+    assert.equal(leases[0]?.agentId, 'kimi');
+    assert.equal(leases[0]?.executionId, result.executions.find(execution => execution.agentId === 'kimi')?.id);
+    assert.equal(leases[0]?.status, 'completed');
+    assert.equal('absolutePath' in (leases[0] as object), false);
+    assert.equal(execFileSync('git', ['-C', root, 'status', '--porcelain=v1']).toString(), '');
+    const artifacts = store.listRuntimeArtifacts('workspace-a', result.executions.find(execution => execution.agentId === 'kimi')!.runId);
+    assert.equal(artifacts.some(artifact => artifact.type === 'archive'), true);
+    assert.equal(artifacts.some(artifact => artifact.type === 'manifest'), true);
+  } finally {
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK; else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
+    if (originalWorktreeMode === undefined) delete process.env.AGENTOS_WORKTREE_MODE; else process.env.AGENTOS_WORKTREE_MODE = originalWorktreeMode;
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+    rmSync(worktreeRoot, { recursive: true, force: true });
   }
 });
 

@@ -19,7 +19,7 @@ export interface ExecutionInspectorSummary {
     target?: string;
   };
   tools: ToolHistoryItem[];
-  usage?: { inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; totalTokens?: number };
+  usage?: { source?: 'structured' | 'database_delta' | 'unavailable'; provider?: string; inputTokens?: number; cachedInputTokens?: number; outputTokens?: number; totalTokens?: number };
   files: { added: number; removed: number; changed: number };
   durationMs?: number;
 }
@@ -71,6 +71,8 @@ export function summarizeExecutionInspector(input: {
       const cachedInputTokens = numberValue(payload.cachedInputTokens);
       const outputTokens = numberValue(payload.outputTokens);
       usage = {
+        ...(stringValue(payload.source) === 'structured' || stringValue(payload.source) === 'database_delta' || stringValue(payload.source) === 'unavailable' ? { source: stringValue(payload.source) as NonNullable<ExecutionInspectorSummary['usage']>['source'] } : {}),
+        ...(stringValue(payload.provider) ? { provider: stringValue(payload.provider) } : {}),
         ...(inputTokens !== undefined ? { inputTokens } : {}),
         ...(cachedInputTokens !== undefined ? { cachedInputTokens } : {}),
         ...(outputTokens !== undefined ? { outputTokens } : {}),

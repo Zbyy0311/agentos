@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import type { AgentModelOption, ModelDiscoverySource, ThinkingEffort } from '@agentos/shared';
+import type { AgentModelOption, ModelDiscoverySource, RunIntent, ThinkingEffort } from '@agentos/shared';
+import { RunModeSelector } from './RunModeSelector';
 
 interface ComposerControlsProps {
   isGroup: boolean;
@@ -11,6 +12,8 @@ interface ComposerControlsProps {
   disabled: boolean;
   onModelChange(value: string | undefined): void;
   onThinkingEffortChange(value: ThinkingEffort): void;
+  runIntent?: RunIntent;
+  onRunIntentChange?(value: RunIntent): void;
 }
 
 const effortLabels: Record<ThinkingEffort, string> = { auto: '自动', low: '低', medium: '中', high: '高' };
@@ -110,13 +113,14 @@ function EffortPicker({ value, efforts, disabled, onChange }: EffortPickerProps)
   </div>;
 }
 
-export function ComposerControls({ isGroup, modelOptions, model, thinkingEffort, thinkingEfforts, modelSource, disabled, onModelChange, onThinkingEffortChange }: ComposerControlsProps) {
+export function ComposerControls({ isGroup, modelOptions, model, thinkingEffort, thinkingEfforts, modelSource, disabled, onModelChange, onThinkingEffortChange, runIntent = 'execute', onRunIntentChange = () => undefined }: ComposerControlsProps) {
   if (isGroup) return <div className="ui-panel rounded-lg border px-3 py-1.5 text-xs ui-muted" title="群聊由每个成员自己的 Agent 配置执行"><span className="mr-2 inline-block h-1.5 w-1.5 rounded-full bg-[var(--app-accent)]" /><span>按成员配置</span></div>;
 
   const selectedModel = modelOptions.find(option => option.id === model);
   const modelPickerOptions: PickerOption[] = [{ value: '', label: '默认模型', detail: '使用当前 Agent 默认值' }, ...modelOptions.map(option => ({ value: option.id, label: option.label, detail: option.label !== option.id ? option.id : undefined }))];
 
   return <div className="flex min-w-0 items-center gap-1.5">
+    <RunModeSelector value={runIntent} disabled={disabled} onChange={onRunIntentChange} />
     <Picker label="模型" ariaLabel="选择模型" value={model ?? ''} displayValue={selectedModel?.label ?? '默认模型'} options={modelPickerOptions} disabled={disabled} widthClass="max-w-[13rem]" onChange={value => onModelChange(value || undefined)} />
     <EffortPicker value={thinkingEffort} efforts={thinkingEfforts} disabled={disabled} onChange={onThinkingEffortChange} />
     {modelSource && <span className="hidden text-[10px] ui-dim xl:inline" title={`模型来源：${sourceLabels[modelSource]}`}>{sourceLabels[modelSource]}</span>}

@@ -43,4 +43,9 @@ describe('CodexAdapter', () => {
     parser.push('{"type":"item.started","item":{"id":"open-1","type":"command_execution","command":"long task"}}\n');
     expect(parser.finish()).toEqual([{ type: 'tool.completed', callId: 'open-1', toolName: 'command_execution', success: false, summary: 'Tool interrupted before completion' }]);
   });
+
+  it('marks missing structured usage as unavailable instead of estimating tokens', () => {
+    const events = new CodexAdapter().createParser().push('{"type":"turn.completed"}\n');
+    expect(events).toContainEqual({ type: 'usage', source: 'unavailable', provider: 'codex', estimated: false });
+  });
 });

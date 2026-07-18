@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { ConversationAgentRunner, resolveImageInput, type ConversationExecutionEvent as RunnerExecutionEvent, type NormalizedCliEvent } from '@agentos/agent-core';
-import type { AgentEvent, AgentExecution, AgentProfile, AgentRun, CliInvocationObservation, ConversationMessage, MemoryUsage, PreferenceContext, RunCliInvocation, RunFileChange, RuntimeArtifact } from '@agentos/shared';
+import { ConversationAgentRunner, resolveImageInput, resolveRuntimePolicy, assertRuntimePolicySupported, type ConversationExecutionEvent as RunnerExecutionEvent, type NormalizedCliEvent } from '@agentos/agent-core';
+import type { AgentEvent, AgentEventDraft, AgentExecution, AgentProfile, AgentRun, CliInvocationObservation, ConversationMessage, ExecutionStatus, MemoryUsage, PreferenceContext, RunCliInvocation, RunFileChange, RuntimeArtifact, RunIntent, RuntimePolicy } from '@agentos/shared';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { createAgentEvent } from '../events/createAgentEvent.js';
@@ -11,6 +11,12 @@ import { RuntimeEventProjector } from './RuntimeEventProjector.js';
 import { RuntimeArtifactCollector, type ArtifactCollectionContext } from './RuntimeArtifactCollector.js';
 import { RuntimeArtifactService } from './RuntimeArtifactService.js';
 import { PreferenceService, type ObserveRunInput } from './PreferenceService.js';
+import { canTransitionRunStep, RunStepService } from './RunStepService.js';
+import { RunDecisionService } from './RunDecisionService.js';
+import { buildGroupTurns, resolveDispatchDecision } from './GroupDispatchService.js';
+import { WorktreeManager } from './WorktreeManager.js';
+import { WorktreeArtifactService } from './WorktreeArtifactService.js';
+import { RuntimeEventBuffer } from './RuntimeEventBuffer.js';
 
 type StreamExecutionEvent = RunnerExecutionEvent & { agentId: string; agentName: string };
 const CRITICAL_EVENT_PERSISTENCE_FAILURE = '关键事件持久化失败';
@@ -30,6 +36,7 @@ export interface SendDirectMessageInput {
   onRunCreated?: (run: AgentRun) => void;
   onExecutionEvent?: (event: StreamExecutionEvent) => void;
   onRuntimeEvent?: (event: AgentEvent) => void;
+  intent?: RunIntent;
 }
 
 export interface SendDirectMessageResult {
@@ -64,12 +71,28 @@ export interface SendGroupMessageInput {
   onRuntimeEvent?: (event: AgentEvent) => void;
   onAgentMessage?: (message: ConversationMessage) => void;
   memoryEnabled?: boolean;
+  mentionedAgentIds?: string[];
+  intent?: RunIntent;
 }
 
 export interface SendGroupMessageResult {
   userMessage: ConversationMessage;
   agentMessages: ConversationMessage[];
   executions: AgentExecution[];
+}
+
+export interface ResumeGroupMessageInput {
+  workspaceId: string;
+  workspaceRoot: string;
+  conversationId: string;
+  runId: string;
+  content: string;
+  memoryEnabled?: boolean;
+  signal?: AbortSignal;
+  onRunCreated?: (run: AgentRun) => void;
+  onExecutionEvent?: (event: StreamExecutionEvent) => void;
+  onRuntimeEvent?: (event: AgentEvent) => void;
+  onAgentMessage?: (message: ConversationMessage) => void;
 }
 
 export interface PreferenceLearningService {
@@ -79,21 +102,37 @@ export interface PreferenceLearningService {
 }
 
 export class ConversationService {
-  private readonly pendingEvents = new Set<Promise<void>>();
+  private readonly pendingEvents = new Set<Promise<AgentEvent>>();
   private readonly pendingArtifacts = new Set<Promise<void>>();
+  private readonly pendingStepMutations = new Set<Promise<unknown>>();
+  private stepMutationTail: Promise<void> = Promise.resolve();
   private readonly contextBuilder: RunContextBuilder;
   private readonly preferenceService: PreferenceLearningService;
   private readonly runtimeEventProjector = new RuntimeEventProjector();
   private readonly artifactCollector?: RuntimeArtifactCollector;
+  private readonly runStepService: RunStepService;
+  private readonly runDecisionService: RunDecisionService;
+  private readonly worktreeManager?: WorktreeManager;
+  private readonly worktreeArtifactService?: WorktreeArtifactService;
+  private readonly runtimeBuffers = new Map<string, RuntimeEventBuffer>();
+  private readonly runtimeQuotaNotices = new Set<string>();
+  private readonly runtimeFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(
     private readonly store: SqliteStore,
     private readonly eventBus?: EventBus,
     artifactService?: RuntimeArtifactService,
     preferenceService?: PreferenceLearningService,
+    worktreeManager?: WorktreeManager,
   ) {
     this.contextBuilder = new RunContextBuilder(new MemoryRetriever(store));
     this.preferenceService = preferenceService ?? new PreferenceService(store);
+    this.runStepService = new RunStepService(store, eventBus);
+    this.runDecisionService = new RunDecisionService(store);
+    this.worktreeManager = worktreeManager;
+    this.worktreeArtifactService = artifactService && worktreeManager
+      ? new WorktreeArtifactService(artifactService, worktreeManager)
+      : undefined;
     this.artifactCollector = artifactService
       ? new RuntimeArtifactCollector(artifactService, artifact => this.publishArtifactCreated(artifact))
       : undefined;
@@ -133,6 +172,9 @@ export class ConversationService {
       .find(item => item.id === input.agentId);
     if (!agent || !agent.enabled) throw new Error('Agent is unavailable');
     assertImageInputSupported(agent, input.attachments);
+    const intent = input.intent ?? 'execute';
+    const runtimePolicy = resolveRuntimePolicy(intent, agent);
+    if (intent !== 'execute') assertRuntimePolicySupported(runtimePolicy, process.env.AGENTOS_FORCE_MOCK === 'true');
 
     const now = new Date().toISOString();
     const userMessage: ConversationMessage = {
@@ -166,9 +208,14 @@ export class ConversationService {
       sourceMessageId: userMessage.id,
       objective: content || '分析用户附件',
       status: 'queued',
+      intent,
+      runtimePolicy,
       createdAt: now,
       updatedAt: now,
     });
+    userMessage.runId = run.id;
+    this.store.updateMessageRunId(input.workspaceId, userMessage.id, run.id);
+    await this.runStepService.initializeDirectRun({ workspaceId: input.workspaceId, runId: run.id, agentId: agent.id });
     input.onRunCreated?.(run);
     this.publishEvent(createAgentEvent({
       type: 'run.created', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
@@ -207,13 +254,14 @@ export class ConversationService {
     const runner = new ConversationAgentRunner({
       agent,
       runtimeOverrides: input.runtimeOverrides,
+      runtimePolicy,
       workspaceRoot: input.workspaceRoot,
       executionId: execution.id,
       message: this.combineContexts(runContext.context, preferenceContext.text, content),
       history,
       attachments: storedAttachments.map(attachment => ({ name: attachment.name, mimeType: attachment.mimeType, absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath) })),
       signal: input.signal,
-      ...this.createEvidenceCallbacks(run.id, execution, agent, input.workspaceRoot),
+      ...this.createEvidenceCallbacks(run.id, execution, agent, input.workspaceRoot, input.onRuntimeEvent),
       onRuntimeEvent: event => this.recordRuntimeEvent(run.id, execution, agent, event, input.onRuntimeEvent, input.workspaceRoot),
       onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent, agent, { runId: run.id, finalizeRun: true }),
     });
@@ -251,6 +299,7 @@ export class ConversationService {
       id: randomUUID(),
       conversationId: input.conversationId,
       workspaceId: input.workspaceId,
+      runId: run.id,
       senderType: finalStatus === 'completed' ? 'agent' : 'system',
       ...(finalStatus === 'completed' ? { senderAgentId: agent.id } : {}),
       content: finalStatus === 'completed'
@@ -270,6 +319,8 @@ export class ConversationService {
       await this.artifactCollector?.finalize(this.artifactContext(execution, input.workspaceRoot));
     }
     await this.flushArtifacts();
+    await this.finishDirectRunSteps(input.workspaceId, run.id, finalStatus, finalFailureReason ?? runResult.error);
+    await this.flushStepMutations();
     await this.flushEventsForRun(input.workspaceId, run.id);
 
     const latest = this.store.listExecutions(input.workspaceId, input.conversationId)
@@ -330,7 +381,7 @@ export class ConversationService {
       agent, workspaceRoot: input.workspaceRoot, executionId: execution.id,
       message: this.combineContexts(runContext.context, preferenceContext.text, prompt), history,
       signal: input.signal,
-      ...this.createEvidenceCallbacks(run.id, execution, agent, input.workspaceRoot),
+      ...this.createEvidenceCallbacks(run.id, execution, agent, input.workspaceRoot, input.onRuntimeEvent),
       onRuntimeEvent: event => this.recordRuntimeEvent(run.id, execution, agent, event, input.onRuntimeEvent, input.workspaceRoot),
       onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent, agent, { runId: run.id, finalizeRun: true }),
     });
@@ -365,7 +416,7 @@ export class ConversationService {
       appliedProjectionIds: preferenceContext.applications.map(application => application.projectionId),
     });
     const responseMessage: ConversationMessage = {
-      id: randomUUID(), conversationId: conversation.id, workspaceId: input.workspaceId,
+      id: randomUUID(), conversationId: conversation.id, workspaceId: input.workspaceId, runId: run.id,
       senderType: finalStatus === 'completed' ? 'agent' : 'system',
       ...(finalStatus === 'completed' ? { senderAgentId: agent.id } : {}),
       content: finalStatus === 'completed'
@@ -385,6 +436,8 @@ export class ConversationService {
       await this.artifactCollector?.finalize(this.artifactContext(execution, input.workspaceRoot));
     }
     await this.flushArtifacts();
+    await this.finishDirectRunSteps(input.workspaceId, run.id, finalStatus, finalFailureReason ?? runResult.error);
+    await this.flushStepMutations();
     await this.flushEventsForRun(input.workspaceId, run.id);
     const latest = this.store.listExecutions(input.workspaceId, conversation.id).find(item => item.id === execution.id);
     if (!latest) throw new Error('Execution was not persisted');
@@ -403,6 +456,22 @@ export class ConversationService {
     const profiles = new Map(this.store.listAgentProfiles(input.workspaceId).filter(profile => profile.enabled).map(profile => [profile.id, profile]));
     const leader = profiles.get(leaderMember.agentId);
     if (!leader) throw new Error('Group leader is unavailable');
+    const intent = input.intent ?? 'execute';
+    const runtimePolicy = resolveRuntimePolicy(intent, leader);
+    if (intent !== 'execute') assertRuntimePolicySupported(runtimePolicy, process.env.AGENTOS_FORCE_MOCK === 'true');
+    const isolatedMode = process.env.AGENTOS_WORKTREE_MODE === 'isolated';
+    if (isolatedMode) {
+      if (!this.worktreeManager || !this.worktreeArtifactService) throw new Error('parallel_isolated requires worktree and artifact services');
+      await this.worktreeManager.preflight(input.workspaceRoot);
+      assertRuntimePolicySupported(resolveRuntimePolicy('review', leader), process.env.AGENTOS_FORCE_MOCK === 'true');
+    }
+    const dispatchDecision = resolveDispatchDecision(conversation, members, input.mentionedAgentIds ?? []);
+    if (dispatchDecision.action === 'need_user') throw new Error(dispatchDecision.question);
+    const selectedMemberIds = new Set(dispatchDecision.action === 'members'
+      ? dispatchDecision.agentIds
+      : dispatchDecision.action === 'full_pipeline'
+        ? members.filter(member => !member.isLeader).map(member => member.agentId)
+        : []);
     for (const member of members) {
       const agent = profiles.get(member.agentId);
       if (agent) assertImageInputSupported(agent, input.attachments);
@@ -436,9 +505,13 @@ export class ConversationService {
       sourceMessageId: userMessage.id,
       objective: content || '分析用户附件',
       status: 'queued',
+      intent,
+      runtimePolicy,
       createdAt: now,
       updatedAt: now,
     });
+    userMessage.runId = run.id;
+    this.store.updateMessageRunId(input.workspaceId, userMessage.id, run.id);
     input.onRunCreated?.(run);
     this.publishEvent(createAgentEvent({
       type: 'run.created', workspaceId: input.workspaceId, conversationId: input.conversationId, runId: run.id,
@@ -456,27 +529,44 @@ export class ConversationService {
       runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'group',
     });
     this.preferenceService.recordApplications(preferenceContext.applications);
+    await this.runStepService.initializeGroupRun({ workspaceId: input.workspaceId, runId: run.id, members });
+    const leaderPolicy = isolatedMode ? resolveRuntimePolicy('review', leader) : runtimePolicy;
     const planned = await this.runAgentTurn({
       workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: input.conversationId, runId: run.id,
-      sourceMessage: userMessage, agent: leader,
+      sourceMessage: userMessage, agent: leader, runtimePolicy: leaderPolicy,
       memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
       attachments: storedAttachments,
       prompt: `你是本群群主。用户任务：${content}\n请先公开拆分计划，并按成员职责给出后续委派。`,
       signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent,
       onAgentMessage: input.onAgentMessage,
-      finalizeRun: false,
+      finalizeRun: conversation.dispatchMode !== undefined,
     });
     if (planned.status === 'waiting_user') {
-      await this.failGroupWaitingRun(input.workspaceId, input.conversationId, run.id, planned.execution, leader);
+      if (conversation.dispatchMode === undefined) await this.failGroupWaitingRun(input.workspaceId, input.conversationId, run.id, planned.execution, leader);
+      await this.flushStepMutations();
+      await this.flushEventsForRun(input.workspaceId, run.id);
+      return { userMessage, agentMessages: [planned.responseMessage], executions: [planned.execution] };
     }
     const turns = [planned];
-    const memberTurns = await Promise.allSettled(
-      members.filter(member => !member.isLeader).map(async member => {
+    const selectedMembers = members.filter(member => !member.isLeader && selectedMemberIds.has(member.agentId)).sort((left, right) => left.sequence - right.sequence);
+    const runMember = async (member: typeof selectedMembers[number]) => {
         const agent = profiles.get(member.agentId);
         if (!agent) return null;
+        let executionWorkspaceRoot = input.workspaceRoot;
+        let worktreeLeaseId: string | undefined;
+        const executionId = randomUUID();
+        if (isolatedMode && agent.permissions.includes('write')) {
+          const lease = await this.worktreeManager!.createLease({
+            workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, runId: run.id,
+            executionId, agentId: agent.id,
+          });
+          worktreeLeaseId = lease.id;
+          executionWorkspaceRoot = this.worktreeManager!.getRecord(lease.id)!.absolutePath;
+        }
         return this.runAgentTurn({
           workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: input.conversationId, runId: run.id,
-          sourceMessage: userMessage, agent,
+          sourceMessage: userMessage, agent, executionId, runtimePolicy: resolveRuntimePolicy(intent, agent),
+          executionWorkspaceRoot, worktreeLeaseId,
           memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
           attachments: storedAttachments,
           prompt: `群主计划：${planned.responseMessage.content}\n你在本群的职责是：${member.roleTitle}\n请执行被委派的部分并公开报告结果。`,
@@ -484,8 +574,20 @@ export class ConversationService {
           onAgentMessage: input.onAgentMessage,
           finalizeRun: false,
         });
-      }),
-    );
+    };
+    const memberTurns = conversation.dispatchMode === undefined
+      ? await Promise.allSettled(selectedMembers.map(runMember))
+      : await (async () => {
+        const results: Array<PromiseSettledResult<Awaited<ReturnType<typeof runMember>>>> = [];
+        for (const member of selectedMembers) {
+          results.push(await Promise.resolve().then(() => runMember(member), reason => { throw reason; }).then(value => ({ status: 'fulfilled', value } as const), reason => ({ status: 'rejected', reason } as const)));
+        }
+        return results;
+      })();
+    if (isolatedMode) {
+      const rejected = memberTurns.find(result => result.status === 'rejected');
+      if (rejected?.status === 'rejected') throw rejected.reason;
+    }
     for (const result of memberTurns) {
       if (result.status === 'fulfilled' && result.value) turns.push(result.value);
     }
@@ -498,7 +600,7 @@ export class ConversationService {
       .join('\n\n');
     const summary = await this.runAgentTurn({
       workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: input.conversationId, runId: run.id,
-      sourceMessage: userMessage, agent: leader,
+      sourceMessage: userMessage, agent: leader, runtimePolicy: leaderPolicy,
       memoryContext: this.combineContexts(runContext.context, preferenceContext.text),
       attachments: storedAttachments,
       prompt: `请作为群主总结本次任务。原始任务：${content}\n成员报告：\n${workerSummary || '无可用成员报告'}\n给出最终结论、阻塞项和下一步。`,
@@ -507,6 +609,8 @@ export class ConversationService {
       finalizeRun: true,
     });
     turns.push(summary);
+
+    await this.finishGroupRunSteps(input.workspaceId, run.id, summary.status, summary.responseMessage.content);
 
     if (summary.status === 'completed') {
       try {
@@ -535,6 +639,34 @@ export class ConversationService {
     return { userMessage, agentMessages: turns.map(turn => turn.responseMessage), executions: turns.map(turn => turn.execution) };
   }
 
+  async resumeGroupMessage(input: ResumeGroupMessageInput): Promise<SendGroupMessageResult> {
+    const content = input.content.trim();
+    if (!content) throw new Error('补充信息不能为空');
+    const conversation = this.store.listConversations(input.workspaceId).find(item => item.id === input.conversationId);
+    if (!conversation || conversation.type !== 'group') throw new Error('Group conversation not found');
+    const run = this.store.getRun(input.workspaceId, input.runId);
+    if (!run || run.conversationId !== conversation.id) throw new Error('Run not found');
+    if (run.status !== 'waiting_user') throw new Error('Run is not waiting for user input');
+    const members = this.store.listConversationMembers(input.workspaceId, conversation.id);
+    const agentId = run.waitingAgentId ?? members.find(member => member.roleKind === 'leader')?.agentId;
+    const agent = this.store.listAgentProfiles(input.workspaceId).find(item => item.id === agentId && item.enabled);
+    if (!agent) throw new Error('Waiting agent is unavailable');
+    const now = new Date().toISOString();
+    const userMessage: ConversationMessage = { id: randomUUID(), conversationId: conversation.id, workspaceId: input.workspaceId, senderType: 'user', content, runId: run.id, createdAt: now };
+    this.store.createMessage(userMessage);
+    this.store.updateRun(input.workspaceId, run.id, { status: 'running', waitingQuestion: undefined, waitingExecutionId: undefined, waitingAgentId: undefined, completedAt: undefined });
+    input.onRunCreated?.(run);
+    this.publishEvent(createAgentEvent({ type: 'conversation.message.created', workspaceId: input.workspaceId, conversationId: conversation.id, runId: run.id, payload: { senderType: 'user' } }));
+    const runContext = await this.contextBuilder.build({ runId: run.id, workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, query: content, limit: MAX_MEMORY_ITEMS, maxCharacters: MAX_MEMORY_CHARACTERS, memoryEnabled: input.memoryEnabled !== false });
+    const preferenceContext = this.resolvePreferenceContext({ runId: run.id, workspaceId: input.workspaceId, objective: run.objective, conversationType: 'group' });
+    this.preferenceService.recordApplications(preferenceContext.applications);
+    const planned = await this.runAgentTurn({ workspaceId: input.workspaceId, workspaceRoot: input.workspaceRoot, conversationId: conversation.id, runId: run.id, sourceMessage: userMessage, agent, runtimePolicy: run.runtimePolicy ?? resolveRuntimePolicy('execute', agent), memoryContext: this.combineContexts(runContext.context, preferenceContext.text), prompt: `原始任务：${run.objective}\n用户补充信息：${content}`, signal: input.signal, onExecutionEvent: input.onExecutionEvent, onRuntimeEvent: input.onRuntimeEvent, onAgentMessage: input.onAgentMessage, finalizeRun: true });
+    await this.finishGroupRunSteps(input.workspaceId, run.id, planned.status, planned.responseMessage.content);
+    await this.flushStepMutations();
+    await this.flushEventsForRun(input.workspaceId, run.id);
+    return { userMessage, agentMessages: [planned.responseMessage], executions: [planned.execution] };
+  }
+
   private async runAgentTurn(input: {
     workspaceId: string;
     workspaceRoot: string;
@@ -542,6 +674,10 @@ export class ConversationService {
     runId: string;
     sourceMessage: ConversationMessage;
     agent: AgentProfile;
+    executionId?: string;
+    executionWorkspaceRoot?: string;
+    worktreeLeaseId?: string;
+    runtimePolicy?: RuntimePolicy;
     prompt: string;
     memoryContext?: string;
     attachments?: StoredConversationAttachment[];
@@ -551,27 +687,43 @@ export class ConversationService {
     onAgentMessage?: (message: ConversationMessage) => void;
     finalizeRun: boolean;
   }): Promise<{ responseMessage: ConversationMessage; execution: AgentExecution; status: 'waiting_user' | 'completed' | 'failed' | 'cancelled'; waitingQuestion?: string }> {
+    const executionWorkspaceRoot = input.executionWorkspaceRoot ?? input.workspaceRoot;
     const now = new Date().toISOString();
     const execution: AgentExecution = {
-      id: randomUUID(), runId: input.runId, conversationId: input.conversationId, workspaceId: input.workspaceId,
+      id: input.executionId ?? randomUUID(), runId: input.runId, conversationId: input.conversationId, workspaceId: input.workspaceId,
       sourceMessageId: input.sourceMessage.id, agentId: input.agent.id, status: 'queued',
       mode: process.env.AGENTOS_FORCE_MOCK === 'true' ? 'mock' : 'real', createdAt: now, updatedAt: now,
     };
     this.store.createExecution(execution);
-    this.artifactCollector?.start(this.artifactContext(execution, input.workspaceRoot));
+    this.artifactCollector?.start(this.artifactContext(execution, executionWorkspaceRoot));
     this.recordExecutionEvent(execution, { status: 'queued', activity: `${input.agent.name} 已进入执行队列` }, input.onExecutionEvent, input.agent, { runId: input.runId, finalizeRun: input.finalizeRun });
     const history = this.store.listMessages(input.workspaceId, input.conversationId).filter(message => message.id !== input.sourceMessage.id);
     const runResult = await new ConversationAgentRunner({
-      agent: input.agent, workspaceRoot: input.workspaceRoot, executionId: execution.id,
+      agent: input.agent, workspaceRoot: executionWorkspaceRoot, executionId: execution.id,
+      runtimePolicy: input.runtimePolicy,
       message: input.memoryContext ? `${input.memoryContext}\n\n${input.prompt}` : input.prompt, history,
       attachments: input.attachments?.map(attachment => ({ name: attachment.name, mimeType: attachment.mimeType, absolutePath: getAttachmentAbsolutePath(input.workspaceRoot, attachment.relativePath) })),
       signal: input.signal,
-      ...this.createEvidenceCallbacks(input.runId, execution, input.agent, input.workspaceRoot),
-      onRuntimeEvent: event => this.recordRuntimeEvent(input.runId, execution, input.agent, event, input.onRuntimeEvent, input.workspaceRoot),
+      ...this.createEvidenceCallbacks(input.runId, execution, input.agent, executionWorkspaceRoot, input.onRuntimeEvent),
+      onRuntimeEvent: event => this.recordRuntimeEvent(input.runId, execution, input.agent, event, input.onRuntimeEvent, executionWorkspaceRoot),
       onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent, input.agent, { runId: input.runId, finalizeRun: input.finalizeRun }),
     }).run();
+    if (input.worktreeLeaseId && this.worktreeArtifactService) {
+      try {
+        await this.worktreeArtifactService.createBundle(input.worktreeLeaseId, {
+          workspaceId: input.workspaceId, runId: input.runId, executionId: execution.id, agentId: input.agent.id,
+        });
+      } catch (error) {
+        this.worktreeManager?.markCleanupPending(input.worktreeLeaseId);
+        this.publishEvent(createAgentEvent({
+          type: 'execution.diagnostic', workspaceId: input.workspaceId, conversationId: input.conversationId,
+          runId: input.runId, executionId: execution.id, agentId: input.agent.id,
+          payload: { level: 'error', code: 'worktree.recovery_bundle_failed', message: error instanceof Error ? error.message : String(error) },
+        }));
+      }
+    }
     const responseMessage: ConversationMessage = {
-      id: randomUUID(), conversationId: input.conversationId, workspaceId: input.workspaceId,
+      id: randomUUID(), conversationId: input.conversationId, workspaceId: input.workspaceId, runId: input.runId,
       senderType: runResult.status === 'completed' ? 'agent' : 'system',
       ...(runResult.status === 'completed' ? { senderAgentId: input.agent.id } : {}),
       content: runResult.status === 'completed'
@@ -591,9 +743,18 @@ export class ConversationService {
         ? { status: 'completed', resultSummary: runResult.content, completedAt }
         : { status: runResult.status, failureReason: runResult.error ?? '执行未完成', completedAt });
     }
+    const pendingDecision = runResult.status === 'failed'
+      ? this.runDecisionService.recordPartialWriteFailure({
+        workspaceId: input.workspaceId,
+        run: this.store.getRun(input.workspaceId, input.runId) ?? ({ id: input.runId } as AgentRun),
+        execution,
+        fileChanges: this.store.listRunFileChanges(input.workspaceId, input.runId),
+        writeCapable: input.agent.permissions.includes('write'),
+      })
+      : undefined;
     const latest = this.store.listExecutions(input.workspaceId, input.conversationId).find(item => item.id === execution.id);
     if (!latest) throw new Error('Execution was not persisted');
-    return { responseMessage, execution: latest, status: runResult.status, ...(runResult.waitingQuestion ? { waitingQuestion: runResult.waitingQuestion } : {}) };
+    return { responseMessage, execution: latest, status: pendingDecision ? 'waiting_user' : runResult.status, ...(pendingDecision ? { waitingQuestion: this.store.getRun(input.workspaceId, input.runId)?.waitingQuestion } : runResult.waitingQuestion ? { waitingQuestion: runResult.waitingQuestion } : {}) };
   }
 
   private async failGroupWaitingRun(workspaceId: string, conversationId: string, runId: string, execution: AgentExecution, agent: AgentProfile): Promise<never> {
@@ -619,6 +780,7 @@ export class ConversationService {
   ): void {
     const runId = options?.runId ?? execution.runId;
     const finalizeRun = options?.finalizeRun ?? false;
+    this.trackStepMutation(() => this.syncRunStepForExecution(execution.workspaceId, runId, execution.id, event.status, event.content));
     const now = new Date().toISOString();
     this.store.appendExecutionEvent({
       id: randomUUID(),
@@ -705,18 +867,63 @@ export class ConversationService {
       executionId: execution.id,
       agentId: agent.id,
     }, event);
-    this.publishEvent(projected);
-    onRuntimeEvent?.(projected);
+    const liveEvent = { ...projected, sequence: 0 } as AgentEvent;
+    onRuntimeEvent?.(liveEvent);
+    const buffer = this.runtimeBuffers.get(runId) ?? new RuntimeEventBuffer();
+    this.runtimeBuffers.set(runId, buffer);
+    const accepted = buffer.push(liveEvent);
+    if (!accepted && event.type !== 'diagnostic') {
+      const noticeKey = `${runId}:${event.type}`;
+      if (!this.runtimeQuotaNotices.has(noticeKey)) {
+        this.runtimeQuotaNotices.add(noticeKey);
+        this.publishEvent(createAgentEvent({
+          type: 'execution.diagnostic', workspaceId: execution.workspaceId, conversationId: execution.conversationId,
+          runId, executionId: execution.id, agentId: execution.agentId,
+          payload: { level: 'warning', code: 'runtime.quota_exceeded', message: `已达到 ${event.type} 持久化明细上限，后续明细已汇总。` },
+        }));
+      }
+    }
+    if (event.type === 'assistant.message') this.scheduleRuntimeFlush(runId);
+    else void this.flushRuntimeBuffer(runId);
     if (this.artifactCollector && workspaceRoot) {
       this.trackArtifact(this.artifactCollector.recordRuntimeEvent(this.artifactContext(execution, workspaceRoot, runId), event));
     }
   }
 
-  private publishEvent(event: AgentEvent): void {
-    if (!this.eventBus) return;
-    const pending = this.eventBus.publish(event);
+  private scheduleRuntimeFlush(runId: string): void {
+    if (this.runtimeFlushTimers.has(runId)) return;
+    const timer = setTimeout(() => {
+      this.runtimeFlushTimers.delete(runId);
+      void this.flushRuntimeBuffer(runId);
+    }, 260);
+    timer.unref?.();
+    this.runtimeFlushTimers.set(runId, timer);
+  }
+
+  private async flushRuntimeBuffer(runId: string): Promise<void> {
+    const timer = this.runtimeFlushTimers.get(runId);
+    if (timer) {
+      clearTimeout(timer);
+      this.runtimeFlushTimers.delete(runId);
+    }
+    const buffer = this.runtimeBuffers.get(runId);
+    if (!buffer) return;
+    const events = buffer.drain();
+    if (events.length === 0) return;
+    await Promise.all(events.map(event => this.publishEvent(event)));
+  }
+
+  private publishEvent(event: AgentEventDraft): Promise<AgentEvent | undefined> {
+    if (!this.eventBus) return Promise.resolve({ ...event, sequence: 0 });
+    let pending: Promise<AgentEvent>;
+    try {
+      pending = Promise.resolve(this.eventBus.publish(event));
+    } catch (error) {
+      pending = Promise.reject(error);
+    }
     this.pendingEvents.add(pending);
-    void pending.then(undefined, () => undefined);
+    void pending.catch(() => undefined);
+    return pending;
   }
 
   private publishArtifactCreated(artifact: RuntimeArtifact): void {
@@ -749,16 +956,100 @@ export class ConversationService {
     }
   }
 
+  private trackStepMutation(operation: () => Promise<unknown>): void {
+    const promise = this.stepMutationTail.then(operation);
+    this.stepMutationTail = promise.then(() => undefined, () => undefined);
+    this.pendingStepMutations.add(promise);
+    void promise.catch(() => undefined);
+  }
+
+  private async flushStepMutations(): Promise<void> {
+    if (this.pendingStepMutations.size === 0) return;
+    const pending = [...this.pendingStepMutations];
+    const results = await Promise.allSettled(pending);
+    for (const item of pending) this.pendingStepMutations.delete(item);
+    if (results.some(result => result.status === 'rejected')) throw new Error('RunStep persistence failed');
+  }
+
+  private async syncRunStepForExecution(workspaceId: string, runId: string, executionId: string, status: ExecutionStatus, content?: string): Promise<void> {
+    const steps = this.store.listRunSteps(workspaceId, runId);
+    if (steps.length === 0) return;
+    const execution = this.store.listExecutions(workspaceId, this.store.getRun(workspaceId, runId)?.conversationId ?? '').find(item => item.id === executionId);
+    const groupAgentStep = execution ? this.store.getRunStep(workspaceId, runId, `group.agent.${execution.agentId}`) : undefined;
+    if (groupAgentStep) {
+      const nextStatus = status === 'waiting_user'
+        ? 'waiting'
+        : status === 'completed'
+          ? 'completed'
+          : status === 'failed'
+            ? 'failed'
+            : status === 'cancelled'
+              ? 'cancelled'
+              : 'running';
+      if (groupAgentStep.status !== nextStatus && canTransitionRunStep(groupAgentStep.status, nextStatus)) {
+        await this.runStepService.update({ workspaceId, runId, stableStepKey: groupAgentStep.stableStepKey, status: nextStatus, executionId, ...(content ? { summary: content } : {}) });
+      }
+      return;
+    }
+    if (status === 'preparing_context') {
+      const contextStep = this.store.getRunStep(workspaceId, runId, 'direct.context');
+      if (contextStep?.status === 'pending') await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.context', status: 'running', executionId });
+    } else if (status === 'running_cli') {
+      const contextStep = this.store.getRunStep(workspaceId, runId, 'direct.context');
+      if (contextStep?.status === 'running') await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.context', status: 'completed', executionId });
+      const agentStep = this.store.getRunStep(workspaceId, runId, 'direct.agent');
+      if (agentStep?.status === 'pending' || agentStep?.status === 'waiting') await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.agent', status: 'running', executionId });
+    } else if (status === 'streaming_response') {
+      const agentStep = this.store.getRunStep(workspaceId, runId, 'direct.agent');
+      if (agentStep?.status === 'pending') await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.agent', status: 'running', executionId });
+    } else if (status === 'waiting_user') {
+      await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.agent', status: 'waiting', executionId, summary: content });
+    } else if (status === 'completed' || status === 'failed' || status === 'cancelled') {
+      const agentStep = this.store.getRunStep(workspaceId, runId, 'direct.agent');
+      if (agentStep && agentStep.status !== statusToRunStep(status)) {
+        await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.agent', status: statusToRunStep(status), executionId, summary: content });
+      }
+    }
+  }
+
+  private async finishDirectRunSteps(workspaceId: string, runId: string, status: AgentRun['status'], summary?: string): Promise<void> {
+    const artifactStep = this.store.getRunStep(workspaceId, runId, 'direct.artifacts');
+    const summaryStep = this.store.getRunStep(workspaceId, runId, 'direct.summary');
+    if (status === 'waiting_user') return;
+    if (artifactStep?.status === 'pending') await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.artifacts', status: 'running' });
+    const artifactTerminal = status === 'completed' ? 'completed' : status === 'cancelled' ? 'cancelled' : 'failed';
+    const refreshedArtifact = this.store.getRunStep(workspaceId, runId, 'direct.artifacts');
+    if (refreshedArtifact && refreshedArtifact.status === 'running') await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.artifacts', status: artifactTerminal, summary });
+    if (summaryStep?.status === 'pending') await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.summary', status: 'running' });
+    const refreshedSummary = this.store.getRunStep(workspaceId, runId, 'direct.summary');
+    if (refreshedSummary && refreshedSummary.status === 'running') await this.runStepService.update({ workspaceId, runId, stableStepKey: 'direct.summary', status: artifactTerminal, summary });
+  }
+
+  private async finishGroupRunSteps(workspaceId: string, runId: string, status: 'completed' | 'failed' | 'cancelled' | 'waiting_user', summary?: string): Promise<void> {
+    if (status === 'waiting_user') return;
+    const summaryStep = this.store.getRunStep(workspaceId, runId, 'group.summary');
+    if (!summaryStep) return;
+    if (summaryStep.status === 'pending') await this.runStepService.update({ workspaceId, runId, stableStepKey: summaryStep.stableStepKey, status: 'running' });
+    const terminal = status === 'completed' ? 'completed' : status === 'cancelled' ? 'cancelled' : 'failed';
+    const current = this.store.getRunStep(workspaceId, runId, summaryStep.stableStepKey);
+    if (current?.status === 'running') await this.runStepService.update({ workspaceId, runId, stableStepKey: current.stableStepKey, status: terminal, summary });
+  }
+
   private async flushEventsForRun(workspaceId: string, runId: string): Promise<void> {
     try {
+      await this.flushRuntimeBuffer(runId);
       await this.flushEvents();
-    } catch (error) {
+      this.runtimeBuffers.delete(runId);
+      this.runtimeQuotaNotices.forEach(key => {
+        if (key.startsWith(`${runId}:`)) this.runtimeQuotaNotices.delete(key);
+      });
+    } catch {
       this.store.updateRun(workspaceId, runId, {
         status: 'failed',
         failureReason: CRITICAL_EVENT_PERSISTENCE_FAILURE,
         completedAt: new Date().toISOString(),
       });
-      throw error;
+      throw new Error(CRITICAL_EVENT_PERSISTENCE_FAILURE);
     }
   }
 
@@ -792,18 +1083,27 @@ export class ConversationService {
     void this.preferenceService.recordRunEvidence(input).catch(() => undefined);
   }
 
-  private createEvidenceCallbacks(runId: string, execution: AgentExecution, agent: AgentProfile, workspaceRoot: string): {
+  private createEvidenceCallbacks(runId: string, execution: AgentExecution, agent: AgentProfile, workspaceRoot: string, onRuntimeEvent?: (event: AgentEvent) => void): {
     onInvocationStarted: (observation: CliInvocationObservation) => void;
     onInvocationCompleted: (observation: CompletedCliInvocationObservation) => void;
     onFileChanges: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
   } {
+    const emitEvidence = (event: AgentEventDraft): void => {
+      void this.publishEvent(event).then(persisted => {
+        if (persisted) onRuntimeEvent?.(persisted);
+      }, () => undefined);
+    };
+
     return {
       onInvocationStarted: observation => {
-        this.publishEvent(createAgentEvent({
+        emitEvidence(createAgentEvent({
           type: 'execution.cli.started', workspaceId: execution.workspaceId, conversationId: execution.conversationId,
           runId, executionId: execution.id, agentId: agent.id,
           payload: {
             cliKind: observation.cliKind, commandLabel: observation.commandLabel,
+            ...(observation.configuredProvider ? { configuredProvider: observation.configuredProvider } : {}),
+            ...(observation.detectedProvider ? { detectedProvider: observation.detectedProvider } : {}),
+            ...(observation.providerMismatch ? { providerMismatch: true } : {}),
             ...(observation.model ? { model: observation.model } : {}),
             ...(observation.thinkingEffort ? { thinkingEffort: observation.thinkingEffort } : {}),
             startedAt: observation.startedAt,
@@ -814,18 +1114,24 @@ export class ConversationService {
         const invocation: RunCliInvocation = {
           id: observation.invocationId, runId, executionId: execution.id, agentId: agent.id,
           cliKind: observation.cliKind, commandLabel: observation.commandLabel,
+          ...(observation.configuredProvider ? { configuredProvider: observation.configuredProvider } : {}),
+          ...(observation.detectedProvider ? { detectedProvider: observation.detectedProvider } : {}),
+          ...(observation.providerMismatch ? { providerMismatch: true } : {}),
           ...(observation.model ? { model: observation.model } : {}),
           ...(observation.thinkingEffort ? { thinkingEffort: observation.thinkingEffort } : {}),
           exitCode: observation.exitCode, durationMs: observation.durationMs,
           startedAt: observation.startedAt, completedAt: observation.completedAt,
         };
         this.store.saveRunCliInvocation(invocation);
-        this.publishEvent(createAgentEvent({
+        emitEvidence(createAgentEvent({
           type: 'execution.cli.completed', workspaceId: execution.workspaceId, conversationId: execution.conversationId,
           runId, executionId: execution.id, agentId: agent.id,
           payload: {
             cliKind: invocation.cliKind, commandLabel: invocation.commandLabel, exitCode: invocation.exitCode,
             durationMs: invocation.durationMs, startedAt: invocation.startedAt, completedAt: invocation.completedAt,
+            ...(invocation.configuredProvider ? { configuredProvider: invocation.configuredProvider } : {}),
+            ...(invocation.detectedProvider ? { detectedProvider: invocation.detectedProvider } : {}),
+            ...(invocation.providerMismatch ? { providerMismatch: true } : {}),
             ...(invocation.model ? { model: invocation.model } : {}),
             ...(invocation.thinkingEffort ? { thinkingEffort: invocation.thinkingEffort } : {}),
           },
@@ -841,7 +1147,7 @@ export class ConversationService {
         const persistedChanges = changes.map(change => ({ runId, path: change.path, changeType: change.changeType }));
         for (const change of persistedChanges) this.store.createRunFileChange(change);
         if (persistedChanges.length > 0) {
-          this.publishEvent(createAgentEvent({
+          emitEvidence(createAgentEvent({
             type: 'execution.files.changed', workspaceId: execution.workspaceId, conversationId: execution.conversationId,
             runId, executionId: execution.id, agentId: agent.id,
             payload: { changes: persistedChanges.map(change => ({ path: change.path, changeType: change.changeType })) },
@@ -852,7 +1158,11 @@ export class ConversationService {
   }
 }
 
-type CompletedCliInvocationObservation = Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'model' | 'thinkingEffort'>;
+type CompletedCliInvocationObservation = Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'configuredProvider' | 'detectedProvider' | 'providerMismatch' | 'model' | 'thinkingEffort'>;
+
+function statusToRunStep(status: Extract<ExecutionStatus, 'completed' | 'failed' | 'cancelled'>): 'completed' | 'failed' | 'cancelled' {
+  return status;
+}
 
 function assertImageInputSupported(agent: AgentProfile, attachments: ConversationAttachmentInput[] | undefined): void {
   if (!attachments?.length) return;

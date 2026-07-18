@@ -6,7 +6,7 @@
 
 ## Provider Runtime 状态
 
-Provider 与 collaboration role 分离。`WorkspaceAgent.provider` 是配置身份，Adapter `probe()` 返回 `detectedProvider` 与结构化、工具、usage、只读和审批能力；mismatch 会通过诊断、Run invocation 和 Agent Editor 对外可见。Kimi 适配器已按本机 `0.23.5` help/stream-json 能力实现，OpenCode 在 CLI 缺失时保持 BLOCKED，详见 `docs/acceptance/`。
+Provider 与 collaboration role 分离。`WorkspaceAgent.provider` 是配置身份，Adapter `probe()` 返回 `detectedProvider` 与结构化、工具、usage、只读和审批能力；mismatch 会通过诊断、Run invocation 和 Agent Editor 对外可见。Kimi 适配器已按本机 `0.23.5` help/stream-json 能力实现，OpenCode `1.17.11` 已完成真实 lifecycle gate，详见 `docs/acceptance/`。
 
 ## 运行要求
 
@@ -57,7 +57,7 @@ Provider 与 collaboration role 分离。`WorkspaceAgent.provider` 是配置身�
 
 ## Codex Runtime 与 RuntimeArtifact
 
-Codex 通过 Adapter 将 JSONL 转换为统一事件；未适配 CLI 保持 plain 文本降级。Artifact 元数据写入 SQLite，内容以不可变快照保存在 `.agentos/artifacts/<workspace>/<run>/<artifact>/content`，按类型限制大小并记录 SHA-256。Artifact 包括文件快照、Git diff、测试报告、图片和公开运行日志；删除会话时清理对应快照。WindowsApps 原始入口本身仍返回 `Access denied`，但同版本 CLI 与 `codex-code-mode-host.exe` 的临时可执行副本已通过真实 AgentOS Gate。
+Codex 通过 Adapter 将 JSONL 转换为统一事件，Kimi 使用 `stream-json`，OpenCode 使用数据库增量 usage；未适配字段保持安全的 plain 文本降级。Artifact 元数据写入 SQLite，内容以不可变快照保存在 `.agentos/artifacts/<workspace>/<run>/<artifact>/content`，按类型限制大小并记录 SHA-256。Artifact 包括文件快照、Git diff、测试报告、图片和公开运行日志；删除会话时清理对应快照。当前 Codex sandbox 入口、Kimi 和 OpenCode 的真实 Provider Gate 均已通过，详见 [`agentos-provider-gates.md`](acceptance/agentos-provider-gates.md)。
 
 ## 核心 API
 
@@ -91,3 +91,22 @@ Content-Type: application/json
 恢复会在同一 Run 下创建新的 Execution，原始消息、事件、CLI 调用和文件证据保持可追溯；群聊返回等待标记时明确失败，不进入半等待状态。
 
 生产验收使用 `scripts/verify-next-optimization-acceptance.ps1` 的 3100/3101 隔离生命周期，以及 `scripts/verify-agentos-e2e.ps1` 的临时数据库和确定性 fixture。脚本输出 `REAL_EXTERNAL_AGENT`、`DETERMINISTIC_LIFECYCLE`、`RECOVERY`、`MEMORY_CANDIDATE` 四个 gate。
+# AgentOS V2 协作运行时
+
+## 当前已落地
+
+- Agent Presence：统一展示 idle、queued、working、waiting、failed。
+- Collaboration Role：leader、worker、reviewer、specialist 与显式 sequence。
+- Group Dispatch：leader_route、full_pipeline、mentioned_only；mentions 不会越权调用非成员。
+- Partial Write Decision：写入失败有文件变化时暂停 Run，等待用户选择并可幂等恢复。
+- Run Intent：ask、execute、review；每次 Run 保存 RuntimePolicy 快照。
+- Approval 基础设施：风险分类、审批请求/决策、授权 grant、撤销 API 及 UI 卡片。
+- Isolation Release：clean-base Worktree lease、recovery bundle、容量统计与显式 retention token。
+
+## 安全边界
+
+Provider、协作角色和 Agent permissions 是三层独立概念。工作区只读只有在 provider 能力可证明时才对外承诺；否则 ask/review 在启动前返回 409。共享工作区不自动回滚，也不保存 reasoning 或原始 CLI 日志。
+
+## 下一阶段
+
+继续补齐 provider 原生审批 stdin 等待和 SQLite lease 持久化；真实 Codex/Kimi/OpenCode lifecycle 与双 Agent `parallel_isolated` Worktree Gate 已通过，后续可在保持显式 recovery/cleanup 边界的前提下扩展发布范围。

@@ -118,6 +118,11 @@ test('creates a direct conversation and streams a persisted response', async () 
       ] }),
     });
     assert.equal(invalidGroup.status, 400);
+    const invalidMention = await fetch(`${baseUrl}/conversations/${group.conversation.id}/messages/stream`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content: 'route', mentionedAgentIds: ['outside'] }),
+    });
+    assert.equal(invalidMention.status, 400);
 
     const renamedGroup = await fetch(`${baseUrl}/conversations/${group.conversation.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },

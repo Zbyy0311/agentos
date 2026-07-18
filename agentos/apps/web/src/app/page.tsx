@@ -57,7 +57,7 @@ export default function Home() {
         </div>
 
         <div className="mb-5 flex flex-col gap-2 rounded-xl border ui-border bg-[color:var(--app-bg)]/45 p-2 sm:flex-row">
-          <input type="text" value={importPath} onChange={event => setImportPath(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void handleImport(); }} placeholder="输入本地目录路径以导入…" className="ui-input min-w-0 flex-1 rounded-xl px-3.5 py-2.5 text-sm outline-none" />
+          <input suppressHydrationWarning type="text" value={importPath} onChange={event => setImportPath(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') void handleImport(); }} placeholder="输入本地目录路径以导入…" className="ui-input min-w-0 flex-1 rounded-xl px-3.5 py-2.5 text-sm outline-none" />
           <button type="button" onClick={() => void handleImport()} disabled={!importPath.trim()} className="ui-button-secondary rounded-lg px-4 py-2.5 text-sm disabled:cursor-not-allowed disabled:opacity-40">导入目录</button>
         </div>
 

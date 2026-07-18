@@ -4,6 +4,7 @@ import type {
   ConversationMessage,
   ExecutionStatus,
   RunFileChange,
+  RuntimePolicy,
 } from '@agentos/shared';
 import { CLIError, CLIExecutor, type ExecuteContext } from './executor.js';
 import { isCodexCli, isOpenCodeCli } from './config.js';
@@ -30,6 +31,7 @@ export interface ConversationRunResult {
 export interface ConversationAgentRunnerOptions {
   agent: AgentProfile;
   runtimeOverrides?: Pick<AgentProfile, 'model' | 'thinkingEffort'>;
+  runtimePolicy?: RuntimePolicy;
   workspaceRoot: string;
   executionId: string;
   message: string;
@@ -49,7 +51,9 @@ export class ConversationAgentRunner {
   async run(): Promise<ConversationRunResult> {
     const startedAt = new Date().toISOString();
     this.emit('preparing_context', '正在准备会话上下文');
-    const prompt = buildConversationPrompt(this.options.agent, this.options.history, this.options.message);
+    const prompt = buildConversationPrompt(this.options.agent, this.options.history, this.options.runtimePolicy?.promptPrefix
+      ? `${this.options.runtimePolicy.promptPrefix}\n\n${this.options.message}`
+      : this.options.message);
     this.emit('running_cli', '正在调用 Agent CLI');
 
     let streamedContent = '';
@@ -63,6 +67,7 @@ export class ConversationAgentRunner {
       onInvocationCompleted: this.options.onInvocationCompleted,
       onFileChanges: this.options.onFileChanges,
       onRuntimeEvent: this.options.onRuntimeEvent,
+      persistWorkspaceLog: this.options.runtimePolicy?.workspaceWrite !== false,
       onChunk: (content) => {
         if (!content) return;
         streamedContent += content;
@@ -75,7 +80,7 @@ export class ConversationAgentRunner {
     };
 
     try {
-      const log = await CLIExecutor.execute(toAgentConfig(this.options.agent, this.options.runtimeOverrides, this.options.attachments), prompt, context);
+      const log = await CLIExecutor.execute(toAgentConfig(this.options.agent, this.options.runtimeOverrides, this.options.attachments, this.options.runtimePolicy), prompt, context);
       if (log.exitCode !== 0) {
         throw new Error(`${this.options.agent.name} CLI failed with exit code ${log.exitCode}; CLI output omitted`);
       }
@@ -141,9 +146,10 @@ function toAgentConfig(
   agent: AgentProfile,
   runtimeOverrides?: Pick<AgentProfile, 'model' | 'thinkingEffort'>,
   attachments?: AgentImageAttachment[],
+  runtimePolicy?: RuntimePolicy,
 ): AgentConfig {
   let cliArgs = agent.cliArgs;
-  if (process.env.AGENTOS_FORCE_MOCK !== 'true' && !agent.permissions.includes('write')) {
+  if (process.env.AGENTOS_FORCE_MOCK !== 'true' && (runtimePolicy ? !runtimePolicy.workspaceWrite : !agent.permissions.includes('write'))) {
     if (!isCodexCli(agent.cliCommand) && !isOpenCodeCli(agent.cliCommand)) {
       throw new Error(
         `${agent.name} 的 CLI 不支持只读沙箱模式，无法限制执行权限。` +

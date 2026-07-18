@@ -220,7 +220,7 @@ describe('CLIExecutor', () => {
 
       expect(log.exitCode).toBe(0);
       expect(log.stdout).toContain('opencode without usage database');
-      expect(events.some(event => event.type === 'usage')).toBe(false);
+      expect(events.find(event => event.type === 'usage')).toMatchObject({ source: 'unavailable', provider: 'opencode', estimated: false });
     } finally {
       rmSync(commandRoot, { recursive: true, force: true });
     }

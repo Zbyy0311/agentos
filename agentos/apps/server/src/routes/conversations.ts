@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
-import { getAgentCapability } from '@agentos/agent-core';
-import type { AgentCapability, AgentModelOption, AgentProfile, AgentProvider, CollaborationRole, Conversation, ConversationMember, GroupDispatchMode, ThinkingEffort } from '@agentos/shared';
+import { assertRuntimePolicySupported, getAgentCapability, resolveRuntimePolicy } from '@agentos/agent-core';
+import type { AgentCapability, AgentModelOption, AgentProfile, AgentProvider, CollaborationRole, Conversation, ConversationMember, GroupDispatchMode, PartialWriteDecision, RunIntent, ThinkingEffort } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ConversationService } from '../services/ConversationService.js';
 import { RunStreamRegistry, type RunStreamEvent } from '../services/RunStreamRegistry.js';
@@ -12,6 +12,8 @@ import { EventBus } from '../events/EventBus.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
 import { RuntimeArtifactService } from '../services/RuntimeArtifactService.js';
 import type { PreferenceLearningService } from '../services/ConversationService.js';
+import { RunDecisionService } from '../services/RunDecisionService.js';
+import type { WorktreeManager } from '../services/WorktreeManager.js';
 
 export function createConversationRoutes(
   store: SqliteStore,
@@ -20,10 +22,12 @@ export function createConversationRoutes(
   eventBus?: EventBus,
   artifactService?: RuntimeArtifactService,
   preferenceService?: PreferenceLearningService,
+  worktreeManager?: WorktreeManager,
 ): Router {
   const router = Router({ mergeParams: true });
   const runStreams = new RunStreamRegistry();
-  const service = new ConversationService(store, eventBus, artifactService, preferenceService);
+  const service = new ConversationService(store, eventBus, artifactService, preferenceService, worktreeManager);
+  const runDecisionService = new RunDecisionService(store);
 
   // Step events are persisted through EventBus first, then projected into the
   // transport-local stream. The event sequence remains part of the payload so
@@ -135,7 +139,7 @@ export function createConversationRoutes(
       if (uniqueIds.length !== ids.length || !uniqueIds.includes(leader)) {
         return res.status(400).json({ error: 'Group members must be unique and include the leader' });
       }
-      const dispatchMode = rawDispatchMode === undefined ? 'leader_route' : parseDispatchMode(rawDispatchMode);
+      const dispatchMode = rawDispatchMode === undefined ? (explicitMembers ? 'leader_route' : 'full_pipeline') : parseDispatchMode(rawDispatchMode);
       if (!dispatchMode) return res.status(400).json({ error: 'dispatchMode must be leader_route, full_pipeline, or mentioned_only' });
       const leaderAgentId = leader;
       const profiles = new Map(store.listAgentProfiles(workspace.id).filter(profile => profile.enabled).map(profile => [profile.id, profile]));
@@ -233,6 +237,32 @@ export function createConversationRoutes(
     res.json({ conversation, members: store.listConversationMembers(workspace.id, conversation.id) });
   });
 
+  router.get('/conversations/:conversationId/runs/:runId/decision', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    const run = store.getRun(workspace.id, req.params.runId);
+    if (!run || run.conversationId !== req.params.conversationId) return res.status(404).json({ error: 'Run not found' });
+    res.json({ decision: runDecisionService.get(workspace.id, run.id) ?? null });
+  });
+
+  router.post('/conversations/:conversationId/runs/:runId/decisions/:decisionId/resolve', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    const run = store.getRun(workspace.id, req.params.runId);
+    if (!run || run.conversationId !== req.params.conversationId) return res.status(404).json({ error: 'Run not found' });
+    const decision = (req.body as { decision?: unknown }).decision;
+    if (decision !== 'keep_and_continue' && decision !== 'retry_current' && decision !== 'abort') return res.status(400).json({ error: 'decision is invalid' });
+    try {
+      const resolved = runDecisionService.resolve(workspace.id, req.params.decisionId, decision as PartialWriteDecision);
+      if (resolved.runId !== run.id) return res.status(404).json({ error: 'Decision not found for run' });
+      if (decision === 'abort') store.updateRun(workspace.id, run.id, { status: 'cancelled', completedAt: new Date().toISOString(), failureReason: 'User aborted after partial write failure' });
+      else if (run.status === 'waiting_user') store.updateRun(workspace.id, run.id, { status: 'running', waitingQuestion: undefined, waitingExecutionId: undefined, waitingAgentId: undefined, completedAt: undefined });
+      res.json({ decision: resolved, run: store.getRun(workspace.id, run.id) });
+    } catch (error) {
+      res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+    }
+  });
+
   router.patch('/conversations/:conversationId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
@@ -320,6 +350,10 @@ export function createConversationRoutes(
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const body = req.body as Record<string, unknown>;
     const content = typeof body.content === 'string' ? body.content : '';
+    const intent = parseRunIntent(body.intent);
+    if (!intent) return res.status(400).json({ error: 'intent must be ask, execute, or review' });
+    const mentionedAgentIds = parseMentionedAgentIds(body.mentionedAgentIds);
+    if (!mentionedAgentIds) return res.status(400).json({ error: 'mentionedAgentIds must be an array of agent ids' });
     let attachments: ConversationAttachmentInput[];
     try {
       attachments = parseAttachmentInputs(body.attachments);
@@ -340,10 +374,28 @@ export function createConversationRoutes(
         const agent = store.listAgentProfiles(workspace.id).find(item => item.id === conversation.agentId && item.enabled);
         if (!agent) return res.status(400).json({ error: 'Agent is unavailable' });
         const capableAgent = await withCapability(agent, modelDiscovery);
+        try {
+          if (intent !== 'execute') assertRuntimePolicySupported(resolveRuntimePolicy(intent, capableAgent), process.env.AGENTOS_FORCE_MOCK === 'true');
+        } catch (error) {
+          return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
+        }
         runtimeOverrides = parseRuntimeOverrides(req.body as Record<string, unknown>);
         validateRuntimeOverrides(capableAgent, runtimeOverrides);
       } catch (error) {
         return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      }
+    }
+    if (conversation.type === 'group') {
+      const memberIds = new Set(store.listConversationMembers(workspace.id, conversation.id).map(member => member.agentId));
+      if (mentionedAgentIds.some(agentId => !memberIds.has(agentId))) {
+        return res.status(400).json({ error: 'mentionedAgentIds must belong to the current group' });
+      }
+      const members = store.listConversationMembers(workspace.id, conversation.id);
+      const profiles = store.listAgentProfiles(workspace.id).filter(profile => members.some(member => member.agentId === profile.id));
+      try {
+        if (intent !== 'execute') profiles.forEach(profile => assertRuntimePolicySupported(resolveRuntimePolicy(intent, profile), process.env.AGENTOS_FORCE_MOCK === 'true'));
+      } catch (error) {
+        return res.status(409).json({ error: error instanceof Error ? error.message : String(error) });
       }
     }
 
@@ -369,6 +421,7 @@ export function createConversationRoutes(
     res.on('close', () => {
       unsubscribe();
       stopHeartbeat();
+      if (activeRunId && !runStreams.isFinished(activeRunId)) abortController.abort();
     });
 
     try {
@@ -381,6 +434,7 @@ export function createConversationRoutes(
           content,
           attachments,
           runtimeOverrides,
+          intent,
           memoryEnabled: workspace.memoryEnabled,
           signal: abortController.signal,
           onRunCreated: attachRun,
@@ -404,6 +458,8 @@ export function createConversationRoutes(
           onExecutionEvent: event => { if (activeRunId) runStreams.emit(activeRunId, 'execution', event); },
           onRuntimeEvent: event => { if (activeRunId) runStreams.emit(activeRunId, 'runtime', event); },
           onAgentMessage: message => { if (activeRunId) runStreams.emit(activeRunId, 'message', { message }); },
+          mentionedAgentIds,
+          intent,
         });
         if (activeRunId) runStreams.finish(activeRunId, 'done', { executions: result.executions });
       }
@@ -467,7 +523,6 @@ export function createConversationRoutes(
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
     const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
     if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
-    if (conversation.type === 'group') return res.status(409).json({ error: '群聊暂不支持等待用户恢复' });
     const content = typeof req.body?.content === 'string' ? req.body.content.trim() : '';
     if (!content) return res.status(400).json({ error: '补充信息不能为空' });
     const run = store.getRun(workspace.id, req.params.runId);
@@ -491,14 +546,25 @@ export function createConversationRoutes(
       stopHeartbeat();
     });
     try {
-      const result = await service.resumeDirectMessage({
-        workspaceId: workspace.id, workspaceRoot: workspace.rootPath, conversationId: conversation.id,
-        runId: run.id, content, memoryEnabled: workspace.memoryEnabled, signal: abortController.signal,
-        onExecutionEvent: event => runStreams.emit(run.id, 'execution', event),
-        onRuntimeEvent: event => runStreams.emit(run.id, 'runtime', event),
-      });
-      runStreams.emit(run.id, 'message', { message: result.responseMessage });
-      runStreams.finish(run.id, 'done', { execution: result.execution });
+      if (conversation.type === 'group') {
+        const result = await service.resumeGroupMessage({
+          workspaceId: workspace.id, workspaceRoot: workspace.rootPath, conversationId: conversation.id,
+          runId: run.id, content, memoryEnabled: workspace.memoryEnabled, signal: abortController.signal,
+          onExecutionEvent: event => runStreams.emit(run.id, 'execution', event),
+          onRuntimeEvent: event => runStreams.emit(run.id, 'runtime', event),
+          onAgentMessage: message => runStreams.emit(run.id, 'message', { message }),
+        });
+        runStreams.finish(run.id, 'done', { executions: result.executions });
+      } else {
+        const result = await service.resumeDirectMessage({
+          workspaceId: workspace.id, workspaceRoot: workspace.rootPath, conversationId: conversation.id,
+          runId: run.id, content, memoryEnabled: workspace.memoryEnabled, signal: abortController.signal,
+          onExecutionEvent: event => runStreams.emit(run.id, 'execution', event),
+          onRuntimeEvent: event => runStreams.emit(run.id, 'runtime', event),
+        });
+        runStreams.emit(run.id, 'message', { message: result.responseMessage });
+        runStreams.finish(run.id, 'done', { execution: result.execution });
+      }
     } catch (error) {
       runStreams.finish(run.id, 'error', { error: error instanceof Error ? error.message : String(error) });
     } finally {
@@ -517,6 +583,17 @@ function isAgentProvider(value: unknown): value is AgentProvider {
 
 function parseDispatchMode(value: unknown): GroupDispatchMode | undefined {
   return value === 'leader_route' || value === 'full_pipeline' || value === 'mentioned_only' ? value : undefined;
+}
+
+function parseMentionedAgentIds(value: unknown): string[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !item.trim())) return undefined;
+  return [...new Set(value.map(item => (item as string).trim()))];
+}
+
+function parseRunIntent(value: unknown): RunIntent | undefined {
+  if (value === undefined) return 'execute';
+  return value === 'ask' || value === 'execute' || value === 'review' ? value : undefined;
 }
 
 function parseGroupMembers(value: unknown): Array<{ agentId: string; roleKind: CollaborationRole; roleTitle?: string; sequence?: number }> | undefined {

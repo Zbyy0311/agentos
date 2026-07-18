@@ -8,6 +8,7 @@ export { buildStageInstructions, buildStageOutputRequirements, buildStagePrompt 
 export { parseWorkerEvidence, parseReviewerDecision, parseFinalDecision } from './parsers.js';
 export { resolveCommand } from './resolveCommand.js';
 export { resolveImageInput } from './imageInput.js';
+export { assertRuntimePolicySupported, isRunIntent, resolveRuntimePolicy } from './runtimePolicy.js';
 export { NORMALIZED_CLI_EVENT_TYPES } from './adapters/types.js';
 export type { AgentCliAdapter, CliEventParser, CliProvider, NormalizedCliEvent } from './adapters/types.js';
 export { CodexAdapter } from './adapters/codexAdapter.js';

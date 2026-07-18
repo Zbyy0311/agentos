@@ -40,6 +40,9 @@ test('creates an immutable file Artifact snapshot with provenance and hash', asy
     writeFileSync(source, 'after', 'utf8');
     const managedPath = join(fixture.root, '.agentos', 'artifacts', 'workspace-a', 'run-a', artifact.id, 'content');
     assert.equal(readFileSync(managedPath, 'utf8'), 'before');
+    assert.equal((await fixture.service.readContentBytes('workspace-a', artifact.id)).toString('utf8'), 'before');
+    writeFileSync(managedPath, 'tampered', 'utf8');
+    await assert.rejects(fixture.service.readContentBytes('workspace-a', artifact.id), /hash verification/);
     assert.equal(existsSync(managedPath), true);
   } finally {
     fixture.store.close();

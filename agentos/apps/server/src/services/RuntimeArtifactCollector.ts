@@ -234,6 +234,8 @@ function formatPublicEvent(event: NormalizedCliEvent): string {
     case 'tool.completed': return `[tool.completed] ${event.toolName}: ${event.success ? 'success' : 'failed'}${event.outputPreview ? `\n${event.outputPreview}` : ''}`;
     case 'usage': return `[usage] input=${event.inputTokens ?? 0} output=${event.outputTokens ?? 0}`;
     case 'diagnostic': return `[diagnostic] ${event.code}: ${event.message}`;
+    case 'approval.requested': return `[approval.requested] ${event.toolName}: ${event.riskLevel}`;
+    case 'approval.resolved': return `[approval.resolved] ${event.requestId}: ${event.decision}`;
   }
 }
 

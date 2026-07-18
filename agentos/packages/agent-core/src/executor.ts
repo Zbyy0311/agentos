@@ -156,6 +156,8 @@ export interface ExecuteContext {
   onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'configuredProvider' | 'detectedProvider' | 'providerMismatch' | 'model' | 'thinkingEffort'>) => void;
   onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
   onRuntimeEvent?: RuntimeEventCallback;
+  /** Read-only executions must not mutate tracked agent-memory files in the workspace. */
+  persistWorkspaceLog?: boolean;
 }
 
 export interface CommandInvocation {
@@ -315,7 +317,7 @@ export class CLIExecutor {
       const result = MockCLI.run(agentName, preparedPrompt);
       const log = this.buildLog(stage, agentName, result.stdout, result.stderr, 0, startTime, 'mock');
       recordActivity('stdout');
-      await this.persistLog(log, workspaceRoot, taskId);
+      await this.persistLog(log, workspaceRoot, taskId, ctx.persistWorkspaceLog !== false);
       for (const event of new PlainTextAdapter().createParser().push(result.stdout)) ctx.onRuntimeEvent?.(event);
       if (onChunk) {
         onChunk(result.stdout, false);
@@ -404,7 +406,7 @@ export class CLIExecutor {
     } catch (err) {
       const message = `${kimiCodeHome ? 'Kimi runtime setup failed' : 'Agent startup preparation failed'}: ${err instanceof Error ? err.message : String(err)}`;
       diagLog(`EXECUTION_FAIL executionId=${executionId} taskId=${taskId} reason=setup_error message=${message}`);
-      throw await this.createStartupError(stage, agentName, workspaceRoot, taskId, startTime, message);
+      throw await this.createStartupError(stage, agentName, workspaceRoot, taskId, startTime, message, ctx.persistWorkspaceLog !== false);
     }
 
     let child: ChildProcess;
@@ -439,7 +441,7 @@ export class CLIExecutor {
       await safeCleanup(invocation.cleanup);
       const message = `Agent process failed to start: ${err instanceof Error ? err.message : String(err)}`;
       diagLog(`CHILD_SPAWN_FAIL executionId=${executionId} taskId=${taskId} reason=${message}`);
-      throw await this.createStartupError(stage, agentName, workspaceRoot, taskId, startTime, message);
+      throw await this.createStartupError(stage, agentName, workspaceRoot, taskId, startTime, message, ctx.persistWorkspaceLog !== false);
     }
 
     const stdoutDecoder = new TextDecoder('utf-8');
@@ -549,11 +551,13 @@ export class CLIExecutor {
       );
       if (openCodeUsage) {
         emitRuntimeEvents([{
-          type: 'usage',
+          type: 'usage', source: 'database_delta', provider: 'opencode', estimated: false,
           inputTokens: openCodeUsage.inputTokens,
           cachedInputTokens: openCodeUsage.cachedInputTokens,
           outputTokens: openCodeUsage.outputTokens,
         }]);
+      } else {
+        emitRuntimeEvents([{ type: 'usage', source: 'unavailable', provider: 'opencode', estimated: false }]);
       }
     }
     stderr += stderrDecoder.decode();
@@ -572,7 +576,7 @@ export class CLIExecutor {
     await safeCleanup(invocation.cleanup);
 
     const log = this.buildLog(stage, agentName, stdout, stderr, exitCode, startTime, 'real');
-    await this.persistLog(log, workspaceRoot, taskId);
+    await this.persistLog(log, workspaceRoot, taskId, ctx.persistWorkspaceLog !== false);
 
     if (onChunk) onChunk('', true);
 
@@ -620,18 +624,19 @@ export class CLIExecutor {
     taskId: string,
     startTime: number,
     message: string,
+    persistWorkspaceLog = true,
   ): Promise<CLIError> {
     const log = this.buildLog(stage, agentName, '', message, null, startTime, 'real');
     try {
-      await this.persistLog(log, workspaceRoot, taskId);
+      await this.persistLog(log, workspaceRoot, taskId, persistWorkspaceLog);
     } catch (err) {
       log.stderr += `\n[AgentOS] Failed to persist startup log: ${err instanceof Error ? err.message : String(err)}`;
     }
     return new CLIError(`${agentName} (${stage}): ${message}`, stage, null, log.stderr, log);
   }
 
-  private static async persistLog(log: TaskLog, workspaceRoot: string, taskId: string): Promise<void> {
-    await this.appendToAgentLog(log, workspaceRoot, taskId);
+  private static async persistLog(log: TaskLog, workspaceRoot: string, taskId: string, persistWorkspaceLog = true): Promise<void> {
+    if (persistWorkspaceLog) await this.appendToAgentLog(log, workspaceRoot, taskId);
     await this.writeTaskLog(log, workspaceRoot, taskId);
   }
 

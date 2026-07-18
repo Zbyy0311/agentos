@@ -36,6 +36,8 @@ export type AgentEventType =
   | 'execution.tool.completed'
   | 'execution.usage.recorded'
   | 'execution.diagnostic'
+  | 'execution.approval.requested'
+  | 'execution.approval.resolved'
   | 'execution.artifact.created'
   | 'run.step.created'
   | 'run.step.updated'
@@ -220,8 +222,39 @@ export interface AgentRun {
   waitingQuestion?: string;
   waitingExecutionId?: string;
   waitingAgentId?: string;
+  /** User-selected execution intent. Legacy runs are treated as execute. */
+  intent?: RunIntent;
+  /** Immutable policy snapshot resolved when the run was created. */
+  runtimePolicy?: RuntimePolicy;
   createdAt: string;
   updatedAt: string;
+}
+
+export type WorktreeLeaseStatus = 'creating' | 'active' | 'completed' | 'cleanup_pending' | 'cleaned' | 'failed';
+
+export interface WorktreeLease {
+  id: string;
+  workspaceId: string;
+  runId: string;
+  executionId: string;
+  agentId: string;
+  branchName: string;
+  pathLabel: string;
+  baseCommit: string;
+  status: WorktreeLeaseStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type RunIntent = 'ask' | 'execute' | 'review';
+
+export interface RuntimePolicy {
+  workspaceWrite: boolean;
+  networkPolicy: 'provider-default' | 'blocked' | 'allowed';
+  toolPolicy: 'read-only' | 'configured' | 'approval';
+  extraArgs: string[];
+  promptPrefix: string;
+  enforcement: 'sandbox' | 'cli-flag' | 'unsupported';
 }
 
 export interface AgentExecution {
@@ -264,7 +297,59 @@ export interface RunFileChange {
   changeType: 'created' | 'modified' | 'deleted' | 'renamed';
 }
 
-export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log';
+export type PartialWriteDecision = 'keep_and_continue' | 'retry_current' | 'abort';
+
+export type ApprovalDecision = 'allow_once' | 'allow_run' | 'allow_conversation' | 'deny';
+
+export interface ToolApprovalRequest {
+  id: string;
+  workspaceId: string;
+  runId: string;
+  executionId: string;
+  agentId: string;
+  provider: AgentProvider;
+  providerVersion?: string;
+  sanitizedConfigHash: string;
+  toolName: string;
+  actionFingerprint: string;
+  riskLevel: 'low' | 'medium' | 'high' | 'critical';
+  commandSummary?: string;
+  affectedPaths: string[];
+  createdAt: string;
+}
+
+export interface ApprovalGrant {
+  id: string;
+  workspaceId: string;
+  conversationId: string;
+  provider: AgentProvider;
+  providerVersion?: string;
+  sanitizedConfigHash: string;
+  toolPattern: string;
+  actionFingerprint: string;
+  maximumRisk: 'low' | 'medium' | 'high';
+  expiresAt: string;
+  createdAt: string;
+  revokedAt?: string;
+}
+
+export interface PendingRunDecision {
+  id: string;
+  workspaceId: string;
+  runId: string;
+  executionId: string;
+  kind: 'partial_write_failure';
+  fileChanges: RunFileChange[];
+  allowedDecisions: PartialWriteDecision[];
+  resolvedDecision?: PartialWriteDecision;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log' | 'archive' | 'manifest';
+
+export interface UntrackedManifestEntry { path: string; sizeBytes: number; sha256: string; }
+export interface WorktreeRecoveryBundle { trackedPatchArtifactId: string; untrackedArchiveArtifactId: string; manifestArtifactId: string; entryCount: number; }
 
 export interface RuntimeArtifact {
   id: string;

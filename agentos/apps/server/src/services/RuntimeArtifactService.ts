@@ -31,6 +31,8 @@ const MAX_BYTES: Record<RuntimeArtifactType, number> = {
   report: 1024 * 1024,
   log: 1024 * 1024,
   image: 10 * 1024 * 1024,
+  archive: 100 * 1024 * 1024,
+  manifest: 1024 * 1024,
 };
 
 export class RuntimeArtifactService {
@@ -111,6 +113,18 @@ export class RuntimeArtifactService {
     return { record, path };
   }
 
+  async readContentBytes(workspaceId: string, artifactId: string): Promise<Buffer> {
+    const content = this.getContentRecord(workspaceId, artifactId);
+    if (!content?.record.artifact.contentAvailable || !content.path || !content.record.artifact.sha256) {
+      throw new Error('Artifact content is unavailable');
+    }
+    const bytes = await readFile(content.path);
+    if (bytes.byteLength !== content.record.artifact.sizeBytes || hash(bytes) !== content.record.artifact.sha256) {
+      throw new Error('Artifact content hash verification failed');
+    }
+    return bytes;
+  }
+
   async cleanupConversation(workspaceId: string, conversationId: string): Promise<void> {
     const runs = this.store.listRuns(workspaceId, conversationId, 1_000_000);
     for (const run of runs) {
@@ -120,6 +134,26 @@ export class RuntimeArtifactService {
         this.store.deleteRuntimeArtifact(workspaceId, artifact.id);
       }
     }
+  }
+
+  async deleteRuns(workspaceId: string, runIds: string[]): Promise<{ deletedArtifacts: number; bytes: number }> {
+    let deletedArtifacts = 0;
+    let bytes = 0;
+    for (const runId of [...new Set(runIds)]) {
+      const artifacts = this.store.listRuntimeArtifacts(workspaceId, runId);
+      for (const artifact of artifacts) {
+        const record = this.store.getRuntimeArtifactRecord(workspaceId, artifact.id);
+        if (record?.storageKey) {
+          const artifactDirectory = resolve(this.artifactRoot, record.storageKey, '..');
+          if (!isWithin(this.artifactRoot, artifactDirectory)) throw new Error('Artifact storage path escapes artifact root');
+          await rm(artifactDirectory, { recursive: true, force: true });
+        }
+        bytes += artifact.sizeBytes;
+        deletedArtifacts += 1;
+      }
+      this.store.deleteRunData(workspaceId, runId);
+    }
+    return { deletedArtifacts, bytes };
   }
 
   private async readSource(source: ArtifactContentSource, workspaceRoot: string): Promise<{ bytes?: Buffer; originalPath?: string; sizeBytes?: number; summary?: string }> {

@@ -246,7 +246,8 @@ async function realExternalMatrix(workspaceId, profiles) {
   }, failures);
 
   await attempt('REAL_WAITING_USER', async () => {
-    const conversation = await createConversation(workspaceId, lifecycleAgent, 'real waiting user');
+    const waitingAgent = profiles.has('e2e-waiting') ? 'e2e-waiting' : lifecycleAgent;
+    const conversation = await createConversation(workspaceId, waitingAgent, 'real waiting user');
     const result = await runDirect(workspaceId, conversation, '请执行 AGENTOS_WAITING_REQUIRED 验收，但当前任务刻意缺少两个必需用户字段：验收项目名称和目标分支。不要猜测或执行；在用户补充这两个字段前，严格只输出公开等待标记。');
     assert.equal(result.run.status, 'waiting_user');
     const resumed = await streamRequest(`/api/workspaces/${workspaceId}/conversations/${conversation.id}/runs/${result.run.id}/resume/stream`, { content: '补充：AGENTOS_RESUME_SCOPE，验收对象是 AgentOS 直接执行链路；范围是不修改文件并验证恢复流程；请在完成后返回公开短语 AGENTOS_RESUME_OK。' });

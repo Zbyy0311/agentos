@@ -19,6 +19,8 @@ import type {
   AgentExecution,
   RunCliInvocation,
   RunFileChange,
+  PendingRunDecision,
+  PartialWriteDecision,
   MemoryRecord,
   MemoryStatus,
   MemoryType,
@@ -157,6 +159,8 @@ interface AgentRunRow {
   waiting_question: string | null;
   waiting_execution_id: string | null;
   waiting_agent_id: string | null;
+  intent: AgentRun['intent'] | null;
+  runtime_policy_json: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -228,6 +232,19 @@ interface RunFileChangeRow {
   run_id: string;
   path: string;
   change_type: RunFileChange['changeType'];
+}
+
+interface RunDecisionRow {
+  id: string;
+  workspace_id: string;
+  run_id: string;
+  execution_id: string;
+  kind: PendingRunDecision['kind'];
+  file_changes_json: string;
+  allowed_decisions_json: string;
+  resolved_decision: PartialWriteDecision | null;
+  created_at: string;
+  resolved_at: string | null;
 }
 
 interface RuntimeArtifactRow {
@@ -784,8 +801,8 @@ export class SqliteStore implements Store {
       INSERT INTO agent_runs (
         id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       run.id,
       run.workspaceId,
@@ -800,6 +817,8 @@ export class SqliteStore implements Store {
       run.waitingQuestion ?? null,
       run.waitingExecutionId ?? null,
       run.waitingAgentId ?? null,
+      run.intent ?? 'execute',
+      run.runtimePolicy ? JSON.stringify(run.runtimePolicy) : null,
       run.createdAt,
       run.updatedAt,
     );
@@ -843,7 +862,7 @@ export class SqliteStore implements Store {
     const row = this.database.prepare(`
       SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, created_at, updated_at
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
       FROM agent_runs
       WHERE workspace_id = ? AND id = ?
     `).get(workspaceId, runId) as AgentRunRow | undefined;
@@ -854,7 +873,7 @@ export class SqliteStore implements Store {
     const rows = this.database.prepare(`
       SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, created_at, updated_at
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
       FROM agent_runs
       WHERE workspace_id = ? AND conversation_id = ?
       ORDER BY updated_at DESC, created_at DESC
@@ -863,11 +882,41 @@ export class SqliteStore implements Store {
     return rows.map(row => this.toRun(row));
   }
 
+  listRunsForWorkspace(workspaceId: string, limit = 100_000): AgentRun[] {
+    const rows = this.database.prepare(`
+      SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
+        result_summary, failure_reason, started_at, completed_at, waiting_question,
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
+      FROM agent_runs
+      WHERE workspace_id = ?
+      ORDER BY updated_at DESC, created_at DESC
+      LIMIT ?
+    `).all(workspaceId, limit) as AgentRunRow[];
+    return rows.map(row => this.toRun(row));
+  }
+
+  deleteRunData(workspaceId: string, runId: string): void {
+    const run = this.getRun(workspaceId, runId);
+    if (!run) return;
+    this.database.exec('BEGIN');
+    try {
+      this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ? AND run_id = ?').run(workspaceId, runId);
+      this.database.prepare('DELETE FROM run_event_sequences WHERE run_id = ?').run(runId);
+      this.database.prepare('UPDATE messages SET run_id = NULL WHERE workspace_id = ? AND run_id = ?').run(workspaceId, runId);
+      this.database.prepare('DELETE FROM executions WHERE workspace_id = ? AND run_id = ?').run(workspaceId, runId);
+      this.database.prepare('DELETE FROM agent_runs WHERE workspace_id = ? AND id = ?').run(workspaceId, runId);
+      this.database.exec('COMMIT');
+    } catch (error) {
+      try { this.database.exec('ROLLBACK'); } catch {}
+      throw error;
+    }
+  }
+
   listRunsForRecovery(): AgentRun[] {
     const rows = this.database.prepare(`
       SELECT id, workspace_id, conversation_id, source_message_id, objective, status,
         result_summary, failure_reason, started_at, completed_at, waiting_question,
-        waiting_execution_id, waiting_agent_id, created_at, updated_at
+        waiting_execution_id, waiting_agent_id, intent, runtime_policy_json, created_at, updated_at
       FROM agent_runs
       WHERE status IN ('queued', 'running')
       ORDER BY updated_at ASC
@@ -1252,6 +1301,47 @@ export class SqliteStore implements Store {
       ORDER BY changes.path ASC
     `).all(workspaceId, runId) as RunFileChangeRow[];
     return rows.map(row => ({ runId: row.run_id, path: row.path, changeType: row.change_type }));
+  }
+
+  createPendingRunDecision(input: Omit<PendingRunDecision, 'resolvedDecision' | 'resolvedAt'>): PendingRunDecision {
+    const existing = this.getPendingRunDecision(input.workspaceId, input.runId, input.executionId, input.kind);
+    if (existing) return existing;
+    this.database.prepare(`
+      INSERT INTO run_decisions (id, workspace_id, run_id, execution_id, kind, file_changes_json, allowed_decisions_json, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(input.id, input.workspaceId, input.runId, input.executionId, input.kind, JSON.stringify(input.fileChanges), JSON.stringify(input.allowedDecisions), input.createdAt);
+    return input;
+  }
+
+  getPendingRunDecision(workspaceId: string, runId: string, executionId?: string, kind: PendingRunDecision['kind'] = 'partial_write_failure'): PendingRunDecision | undefined {
+    const row = this.database.prepare(`
+      SELECT decisions.id, decisions.workspace_id, decisions.run_id, decisions.execution_id, decisions.kind,
+        decisions.file_changes_json, decisions.allowed_decisions_json, decisions.resolved_decision, decisions.created_at, decisions.resolved_at
+      FROM run_decisions AS decisions
+      INNER JOIN agent_runs ON agent_runs.id = decisions.run_id
+      WHERE agent_runs.workspace_id = ? AND decisions.run_id = ? AND decisions.kind = ?
+        AND (? IS NULL OR decisions.execution_id = ?)
+      ORDER BY decisions.created_at DESC LIMIT 1
+    `).get(workspaceId, runId, kind, executionId ?? null, executionId ?? null) as RunDecisionRow | undefined;
+    return row ? toPendingRunDecision(row) : undefined;
+  }
+
+  resolvePendingRunDecision(workspaceId: string, decisionId: string, decision: PartialWriteDecision): PendingRunDecision {
+    const row = this.database.prepare(`
+      SELECT id, workspace_id, run_id, execution_id, kind, file_changes_json, allowed_decisions_json, resolved_decision, created_at, resolved_at
+      FROM run_decisions WHERE id = ? AND workspace_id = ?
+    `).get(decisionId, workspaceId) as RunDecisionRow | undefined;
+    if (!row) throw new Error('Run decision not found');
+    const current = toPendingRunDecision(row);
+    if (!current.allowedDecisions.includes(decision)) throw new Error('Decision is not allowed');
+    if (current.resolvedDecision) {
+      if (current.resolvedDecision !== decision) throw new Error('Run decision has already been resolved');
+      return current;
+    }
+    const resolvedAt = new Date().toISOString();
+    this.database.prepare('UPDATE run_decisions SET resolved_decision = ?, resolved_at = ? WHERE id = ? AND workspace_id = ? AND resolved_decision IS NULL')
+      .run(decision, resolvedAt, decisionId, workspaceId);
+    return { ...current, resolvedDecision: decision, resolvedAt };
   }
 
   createRuntimeArtifact(artifact: RuntimeArtifact, storageKey: string | null): void {
@@ -1797,6 +1887,11 @@ export class SqliteStore implements Store {
         error TEXT,
         started_at TEXT,
         completed_at TEXT,
+        waiting_question TEXT,
+        waiting_execution_id TEXT,
+        waiting_agent_id TEXT,
+        intent TEXT NOT NULL DEFAULT 'execute',
+        runtime_policy_json TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
@@ -1919,6 +2014,25 @@ export class SqliteStore implements Store {
         PRIMARY KEY (run_id, path, change_type),
         FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
       );
+
+      CREATE TABLE IF NOT EXISTS run_decisions (
+        id TEXT PRIMARY KEY,
+        workspace_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        execution_id TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        file_changes_json TEXT NOT NULL,
+        allowed_decisions_json TEXT NOT NULL,
+        resolved_decision TEXT,
+        created_at TEXT NOT NULL,
+        resolved_at TEXT,
+        UNIQUE (run_id, execution_id, kind),
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE,
+        FOREIGN KEY (execution_id) REFERENCES executions(id) ON DELETE CASCADE
+      );
+
+      CREATE INDEX IF NOT EXISTS run_decisions_workspace_run
+        ON run_decisions (workspace_id, run_id, created_at DESC);
 
       CREATE TABLE IF NOT EXISTS runtime_artifacts (
         id TEXT PRIMARY KEY,
@@ -2103,6 +2217,8 @@ export class SqliteStore implements Store {
     this.ensureColumn('agent_runs', 'waiting_question', 'TEXT');
     this.ensureColumn('agent_runs', 'waiting_execution_id', 'TEXT');
     this.ensureColumn('agent_runs', 'waiting_agent_id', 'TEXT');
+    this.ensureColumn('agent_runs', 'intent', "TEXT NOT NULL DEFAULT 'execute'");
+    this.ensureColumn('agent_runs', 'runtime_policy_json', 'TEXT');
     this.ensureColumn('run_cli_invocations', 'configured_provider', 'TEXT');
     this.ensureColumn('run_cli_invocations', 'detected_provider', 'TEXT');
     this.ensureColumn('run_cli_invocations', 'provider_mismatch', 'INTEGER NOT NULL DEFAULT 0');
@@ -2489,6 +2605,8 @@ export class SqliteStore implements Store {
       ...(row.waiting_question ? { waitingQuestion: row.waiting_question } : {}),
       ...(row.waiting_execution_id ? { waitingExecutionId: row.waiting_execution_id } : {}),
       ...(row.waiting_agent_id ? { waitingAgentId: row.waiting_agent_id } : {}),
+      ...((row.runtime_policy_json || row.intent === 'ask' || row.intent === 'review') ? { intent: row.intent === 'ask' || row.intent === 'review' || row.intent === 'execute' ? row.intent : 'execute' } : {}),
+      ...(row.runtime_policy_json ? { runtimePolicy: parseJson(row.runtime_policy_json, undefined) } : {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };
@@ -2620,6 +2738,21 @@ function parseJson<T>(value: string, fallback: T): T {
   } catch {
     return fallback;
   }
+}
+
+function toPendingRunDecision(row: RunDecisionRow): PendingRunDecision {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    runId: row.run_id,
+    executionId: row.execution_id,
+    kind: row.kind,
+    fileChanges: parseJson<RunFileChange[]>(row.file_changes_json, []),
+    allowedDecisions: parseJson<PartialWriteDecision[]>(row.allowed_decisions_json, ['keep_and_continue', 'retry_current', 'abort']),
+    ...(row.resolved_decision ? { resolvedDecision: row.resolved_decision } : {}),
+    createdAt: row.created_at,
+    ...(row.resolved_at ? { resolvedAt: row.resolved_at } : {}),
+  };
 }
 
 function toFtsQuery(query: string): string {

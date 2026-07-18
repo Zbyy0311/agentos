@@ -47,6 +47,7 @@ describe('KimiAdapter', () => {
     expect(events).toEqual([
       { type: 'diagnostic', level: 'warning', code: 'adapter.unmatched_tool_result', message: 'Kimi returned an unmatched tool result' },
       { type: 'diagnostic', level: 'warning', code: 'adapter.invalid_json', message: 'Kimi returned an invalid JSONL line' },
+      { type: 'usage', source: 'unavailable', provider: 'kimi', estimated: false },
     ]);
   });
 });

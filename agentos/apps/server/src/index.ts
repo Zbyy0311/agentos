@@ -26,6 +26,10 @@ import { PreferenceService } from './services/PreferenceService.js';
 import { RetentionService } from './services/RetentionService.js';
 import { createPreferenceRoutes } from './routes/preferences.js';
 import { createAgentPresenceRoutes } from './routes/agentPresence.js';
+import { createWorktreeRoutes } from './routes/worktrees.js';
+import { WorktreeManager } from './services/WorktreeManager.js';
+import { createStorageRoutes } from './routes/storage.js';
+import { createApprovalRoutes } from './routes/approvals.js';
 import { createLocalCorsOptions, createLocalWriteGuard, resolveLocalApiSecurityConfig } from './localApiSecurity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,6 +55,8 @@ function diagLog(entry: string): void {
 diagLog(`INSTANCE_START pid=${process.pid} ppid=${process.ppid} instanceId=${serverInstanceId}`);
 
 const store = new SqliteStore(PROJECT_ROOT);
+const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(PROJECT_ROOT, '.agentos', 'worktrees'));
+void worktreeManager.reconcile().catch(error => diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
 const workspaceManager = new WorkspaceManager(store);
 const recoveredTasks = recoverInterruptedRunningTasks(store);
 const recoveredRuns = recoverInterruptedRuns(store);
@@ -86,13 +92,16 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
-app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus, artifactService, preferenceService));
+app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus, artifactService, preferenceService, worktreeManager));
 app.use('/api/workspaces/:workspaceId', createRunRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceManager, artifactService));
 app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
 app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
 app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store));
+app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, PROJECT_ROOT, store, artifactService));
+app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
 app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
