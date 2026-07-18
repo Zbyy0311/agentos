@@ -1,25 +1,39 @@
 import { Router, type Request, type Response } from 'express';
 import { existsSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 
-export function createGitRoutes(workspaceManager: WorkspaceManager): Router {
+const execFileAsync = promisify(execFile);
+
+export type GitCommandExecutor = (cwd: string, args: string[]) => Promise<string>;
+
+const executeGitFile: GitCommandExecutor = async (cwd, args) => {
+  const result = await execFileAsync('git', args, {
+    cwd,
+    encoding: 'utf8',
+    timeout: 10_000,
+    windowsHide: true,
+  });
+  return result.stdout;
+};
+
+export function createGitRoutes(
+  workspaceManager: WorkspaceManager,
+  executeGit: GitCommandExecutor = executeGitFile,
+): Router {
   const router = Router({ mergeParams: true });
 
-  function runGit(workspaceId: string, args: string[]): string {
+  async function runGit(workspaceId: string, args: string[]): Promise<string> {
     const workspace = workspaceManager.get(workspaceId);
     if (!workspace) throw new Error('Workspace not found');
     if (!existsSync(workspace.rootPath)) throw new Error('Workspace path does not exist');
-    return execFileSync('git', args, {
-      cwd: workspace.rootPath,
-      encoding: 'utf-8',
-      timeout: 10000,
-    });
+    return executeGit(workspace.rootPath, args);
   }
 
-  router.get('/diff', (req: Request, res: Response) => {
+  router.get('/diff', async (req: Request, res: Response) => {
     try {
-      const diff = runGit(req.params.workspaceId, ['diff']);
+      const diff = await runGit(req.params.workspaceId, ['diff']);
       res.json({ diff: diff || '(no changes)' });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -27,9 +41,9 @@ export function createGitRoutes(workspaceManager: WorkspaceManager): Router {
     }
   });
 
-  router.get('/status', (req: Request, res: Response) => {
+  router.get('/status', async (req: Request, res: Response) => {
     try {
-      const status = runGit(req.params.workspaceId, ['status', '--short']);
+      const status = await runGit(req.params.workspaceId, ['status', '--short']);
       res.json({ status: status || '(clean)' });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -37,9 +51,9 @@ export function createGitRoutes(workspaceManager: WorkspaceManager): Router {
     }
   });
 
-  router.get('/log', (req: Request, res: Response) => {
+  router.get('/log', async (req: Request, res: Response) => {
     try {
-      const log = runGit(req.params.workspaceId, ['log', '--oneline', '-20']);
+      const log = await runGit(req.params.workspaceId, ['log', '--oneline', '-20']);
       res.json({ log });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
