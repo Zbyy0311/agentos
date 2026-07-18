@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { promisify } from 'node:util';
-import { isAbsolute, normalize, relative } from 'node:path';
+import { isAbsolute, join, normalize, relative } from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
@@ -17,8 +17,12 @@ export interface WorkspaceChange {
   changeType: WorkspaceChangeType;
 }
 
+export function gitMetadataPath(workspaceRoot: string): string {
+  return join(workspaceRoot, '.git');
+}
+
 export async function captureWorkspaceSnapshot(workspaceRoot: string): Promise<WorkspaceStatusSnapshot> {
-  if (!existsSync(`${workspaceRoot}\\.git`)) return { gitAvailable: false, entries: new Map() };
+  if (!existsSync(gitMetadataPath(workspaceRoot))) return { gitAvailable: false, entries: new Map() };
   try {
     const result = await execFileAsync('git', ['-C', workspaceRoot, 'status', '--porcelain=v1', '-z', '-uall'], { windowsHide: true });
     const entries = new Map<string, string>();

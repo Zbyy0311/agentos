@@ -3,13 +3,18 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync, mkdirSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { captureWorkspaceSnapshot, diffWorkspaceSnapshots } from './workspaceChanges.js';
+import { captureWorkspaceSnapshot, diffWorkspaceSnapshots, gitMetadataPath } from './workspaceChanges.js';
 
 function git(root: string, args: string[]): void {
   execFileSync('git', ['-C', root, ...args], { stdio: 'ignore' });
 }
 
 describe('workspaceChanges', () => {
+it('uses the host platform path rules for Git metadata', () => {
+  const workspaceRoot = 'E:\\workspace\\agentos';
+  expect(gitMetadataPath(workspaceRoot)).toBe(join(workspaceRoot, '.git'));
+});
+
 it('detects created, modified, and deleted files in a Git workspace', async () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-workspace-changes-'));
   try {
