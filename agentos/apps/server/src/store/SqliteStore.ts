@@ -326,6 +326,10 @@ export class SqliteStore implements Store {
     this.legacy.saveTasks(workspaceId, tasks);
   }
 
+  saveTask(workspaceId: string, task: TaskItem): void {
+    this.legacy.saveTask(workspaceId, task);
+  }
+
   deleteWorkspace(workspaceId: string): void {
     this.database.exec('BEGIN');
     try {

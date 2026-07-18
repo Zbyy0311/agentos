@@ -50,6 +50,15 @@ export class JsonFileStore implements Store {
     this.writeJsonAtomically(file, { tasks });
   }
 
+  saveTask(workspaceId: string, task: TaskItem): void {
+    const tasks = this.loadTasks(workspaceId);
+    const index = tasks.findIndex(current => current.id === task.id);
+    const nextTask = structuredClone(task);
+    if (index >= 0) tasks[index] = nextTask;
+    else tasks.push(nextTask);
+    this.writeJsonAtomically(this.tasksFile(workspaceId), { tasks });
+  }
+
   private writeJsonAtomically(file: string, value: unknown): void {
     mkdirSync(dirname(file), { recursive: true });
     const tempFile = `${file}.${process.pid}.${randomUUID()}.tmp`;

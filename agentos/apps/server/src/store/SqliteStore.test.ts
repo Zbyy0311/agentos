@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { SqliteStore } from './SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import type { PreferenceEvidence, PreferenceProjection } from '@agentos/shared';
+import type { PreferenceEvidence, PreferenceProjection, TaskItem } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { get(...parameters: unknown[]): unknown }; close(): void } };
 
@@ -45,6 +45,43 @@ function createProjectRoot(): string {
   }), 'utf-8');
   return root;
 }
+
+function makeTask(id: string): TaskItem {
+  return {
+    id,
+    workspaceId: 'workspace-a',
+    title: id,
+    status: 'pending',
+    currentAgent: null,
+    outputs: [],
+    reviewDecision: 'unknown',
+    reviewBlocked: false,
+    createdAt: '2026-07-18T00:00:00.000Z',
+    updatedAt: '2026-07-18T00:00:00.000Z',
+  };
+}
+
+test('saveTask preserves peer tasks through the default SQLite store path', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.saveTasks('workspace-a', [makeTask('task-a')]);
+    const stale = store.loadTasks('workspace-a');
+
+    store.saveTask('workspace-a', makeTask('task-b'));
+    stale[0].status = 'running';
+    store.saveTask('workspace-a', stale[0]);
+
+    assert.deepEqual(
+      store.loadTasks('workspace-a').map(task => `${task.id}:${task.status}`).sort(),
+      ['task-a:running', 'task-b:pending'],
+    );
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 test('migrates legacy workspace agents into SQLite exactly once', () => {
   const root = createProjectRoot();

@@ -25,6 +25,14 @@ class MemoryStore implements Store {
   saveTasks(workspaceId: string, tasks: TaskItem[]): void {
     this.tasksByWorkspace[workspaceId] = tasks;
   }
+
+  saveTask(workspaceId: string, task: TaskItem): void {
+    const tasks = this.loadTasks(workspaceId);
+    const index = tasks.findIndex(current => current.id === task.id);
+    if (index >= 0) tasks[index] = structuredClone(task);
+    else tasks.push(structuredClone(task));
+    this.tasksByWorkspace[workspaceId] = tasks;
+  }
 }
 
 function makeWorkspace(id: string): Workspace {

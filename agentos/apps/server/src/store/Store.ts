@@ -6,4 +6,5 @@ export interface Store {
   deleteWorkspace?(workspaceId: string): void;
   loadTasks(workspaceId: string): TaskItem[];
   saveTasks(workspaceId: string, tasks: TaskItem[]): void;
+  saveTask(workspaceId: string, task: TaskItem): void;
 }

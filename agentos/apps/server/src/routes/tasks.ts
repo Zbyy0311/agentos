@@ -53,7 +53,6 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     if (!workspaceManager.get(workspaceId)) return res.status(404).json({ error: 'Workspace not found' });
     if (!title || typeof title !== 'string') return res.status(400).json({ error: 'title is required' });
 
-    const tasks = store.loadTasks(workspaceId);
     const task: TaskItem = {
       id: randomUUID().slice(0, 8),
       workspaceId,
@@ -66,8 +65,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-    tasks.push(task);
-    store.saveTasks(workspaceId, tasks);
+    store.saveTask(workspaceId, task);
 
     const memoryDir = workspaceMemoryDir(workspaceId, workspaceManager);
     if (memoryDir) {
@@ -96,7 +94,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     task.reviewDecision = 'unknown';
     task.reviewBlocked = false;
     touchTaskActivity(task);
-    store.saveTasks(workspaceId, tasks);
+    store.saveTask(workspaceId, task);
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -119,14 +117,14 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       if (signal.aborted) return;
       task.currentAgent = stage;
       touchTaskActivity(task);
-      store.saveTasks(workspaceId, tasks);
+      store.saveTask(workspaceId, task);
       const agentName = getStageAgentName(workspace, stage);
       sendEvent('stage', { stage, agent: agentName, status: 'running' });
       const log = await fn();
       if (signal.aborted) return;
       task.outputs.push(log);
       touchTaskActivity(task);
-      store.saveTasks(workspaceId, tasks);
+      store.saveTask(workspaceId, task);
       sendEvent('stage', { stage, status: 'completed', log });
     };
 
@@ -143,7 +141,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
         signal,
         onActivity: () => {
           touchTaskActivity(task);
-          store.saveTasks(workspaceId, tasks);
+          store.saveTask(workspaceId, task);
         },
       });
 
@@ -161,7 +159,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
         if (workerLog && getWorkerEvidenceFailure(workerLog)) {
           task.reviewBlocked = true;
           touchTaskActivity(task);
-          store.saveTasks(workspaceId, tasks);
+          store.saveTask(workspaceId, task);
           sendEvent('status', {
             taskId,
             status: 'reviewing',
@@ -174,7 +172,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
         if (signal.aborted) throw new Error('Pipeline cancelled');
 
         applyFinalReviewDecision(task, task.outputs[task.outputs.length - 1]!);
-        store.saveTasks(workspaceId, tasks);
+        store.saveTask(workspaceId, task);
 
         sendEvent('status', {
           taskId,
@@ -194,7 +192,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           task.currentAgent = null;
           task.error = '任务的实时连接已关闭，执行已取消。';
           task.updatedAt = new Date().toISOString();
-          store.saveTasks(workspaceId, tasks);
+          store.saveTask(workspaceId, task);
           sendEvent('status', {
             taskId,
             status: 'cancelled',
@@ -211,7 +209,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           });
         } else {
           applyStageFailure(task, err);
-          store.saveTasks(workspaceId, tasks);
+          store.saveTask(workspaceId, task);
           const message = err instanceof Error ? err.message : String(err);
           sendEvent('status', {
             taskId,
