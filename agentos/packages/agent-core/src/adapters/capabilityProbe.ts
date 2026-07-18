@@ -72,7 +72,7 @@ export function codexCapabilities(structuredOutput: boolean): AdapterCapabilitie
   };
 }
 
-const runProbeCommand: ProbeCommand = (command, args, timeoutMs) => new Promise((resolvePromise, reject) => {
+export const runProbeCommand: ProbeCommand = (command, args, timeoutMs) => new Promise((resolvePromise, reject) => {
   const isBatch = process.platform === 'win32' && /\.(?:cmd|bat)$/i.test(command);
   const executable = isBatch ? (process.env.ComSpec ?? 'cmd.exe') : command;
   const executableArgs = isBatch

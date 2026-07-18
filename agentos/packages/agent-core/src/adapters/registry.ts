@@ -1,6 +1,7 @@
 import type { AgentProvider } from '@agentos/shared';
 import { probeCodexCli, codexCapabilities, EMPTY_ADAPTER_CAPABILITIES, type CodexProbeResult } from './capabilityProbe.js';
 import { CodexAdapter } from './codexAdapter.js';
+import { KimiAdapter } from './kimiAdapter.js';
 import { PlainTextAdapter } from './plainTextAdapter.js';
 import type { AgentCliAdapter, NormalizedCliEvent, ProviderProbeResult, ResolvedRuntime } from './types.js';
 
@@ -20,18 +21,19 @@ type LegacyCodexProbeResult = Pick<CodexProbeResult, 'status' | 'version' | 'rea
 
 interface RegistryOptions {
   /** Legacy injection point retained for deterministic Codex probe tests. */
-  probe?: (command: string) => Promise<CodexProbeResult | LegacyCodexProbeResult>;
+  probe?: (command: string) => Promise<ProviderProbeResult | LegacyCodexProbeResult>;
   adapters?: AgentCliAdapter[];
 }
 
 export class AgentCliAdapterRegistry {
   private readonly codex = new CodexAdapter();
+  private readonly kimi = new KimiAdapter();
   private readonly plain = new PlainTextAdapter();
   private readonly adapters: AgentCliAdapter[];
-  private readonly probe?: (command: string) => Promise<CodexProbeResult | LegacyCodexProbeResult>;
+  private readonly probe?: (command: string) => Promise<ProviderProbeResult | LegacyCodexProbeResult>;
 
   constructor(options: RegistryOptions = {}) {
-    this.adapters = [this.codex, ...(options.adapters ?? [])];
+    this.adapters = [this.codex, this.kimi, ...(options.adapters ?? [])];
     this.probe = options.probe;
   }
 
@@ -49,7 +51,9 @@ export class AgentCliAdapterRegistry {
     const detectedProvider = probe.detectedProvider;
     const mismatch = Boolean(detectedProvider && detectedProvider !== request.configuredProvider);
     const detectedAdapter = detectedProvider ? this.findAdapter(detectedProvider) : undefined;
-    const structuredAvailable = probe.status === 'AVAILABLE' && probe.capabilities.structuredOutput;
+    const structuredAvailable = probe.status === 'AVAILABLE'
+      && probe.capabilities.structuredOutput
+      && (request.configuredProvider === 'codex' || detectedProvider === request.configuredProvider || Boolean(detectedAdapter));
     const adapter = structuredAvailable
       ? (mismatch ? detectedAdapter : configuredAdapter) ?? this.plain
       : this.plain;

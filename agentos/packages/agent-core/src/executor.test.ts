@@ -226,6 +226,35 @@ describe('CLIExecutor', () => {
     }
   });
 
+  it('runs a Kimi stream-json wrapper through the configured provider adapter', async () => {
+    const commandRoot = mkdtempSync(join(tmpdir(), 'agentos-fake-kimi-'));
+    const commandPath = join(commandRoot, 'kimi.cmd');
+    const scriptPath = join(commandRoot, 'fake-kimi.cjs');
+    writeFileSync(commandPath, '@echo off\r\nnode "%~dp0fake-kimi.cjs" %*\r\n', 'utf8');
+    writeFileSync(scriptPath, [
+      "const args = process.argv.slice(2);",
+      "if (args.includes('--version')) { console.log('0.23.5'); process.exit(0); }",
+      "if (args.includes('--help')) { console.log('Usage: kimi --output-format <format> (choices: text, stream-json)'); process.exit(0); }",
+      "console.log(JSON.stringify({role:'assistant',tool_calls:[{type:'function',id:'tool-1',function:{name:'Glob',arguments:'{\\\"pattern\\\":\\\"*.ts\\\"}'}}]}));",
+      "console.log(JSON.stringify({role:'tool',tool_call_id:'tool-1',content:'executor.ts'}));",
+      "console.log(JSON.stringify({role:'assistant',content:'Kimi done'}));",
+      "console.log(JSON.stringify({type:'step.end',id:'step-1',usage:{input_tokens:8,cached_input_tokens:2,output_tokens:3}}));",
+    ].join('\n'), 'utf8');
+    const events: Array<{ type: string; [key: string]: unknown }> = [];
+    try {
+      const log = await CLIExecutor.execute({
+        name: 'KimiCode', role: 'kimi_worker', provider: 'kimi', cliCommand: commandPath, cliArgs: ['-p'],
+      }, 'read files', { ...ctx('kimi-stream-json'), onRuntimeEvent: event => events.push(event) });
+      expect(log.exitCode).toBe(0);
+      expect(log.stdout).toContain('Kimi done');
+      expect(events.some(event => event.type === 'tool.started')).toBe(true);
+      expect(events.some(event => event.type === 'tool.completed')).toBe(true);
+      expect(events.find(event => event.type === 'usage')).toMatchObject({ inputTokens: 8, cachedInputTokens: 2, outputTokens: 3 });
+    } finally {
+      rmSync(commandRoot, { recursive: true, force: true });
+    }
+  });
+
   it('reports a redacted CLI lifecycle and Git file changes', async () => {
     execFileSync('git', ['init', workspaceRoot], { stdio: 'ignore' });
     writeFileSync(join(workspaceRoot, 'tracked.txt'), 'before', 'utf8');

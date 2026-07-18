@@ -1,0 +1,7 @@
+{"role":"assistant","tool_calls":[{"type":"function","id":"tool-1","function":{"name":"Glob","arguments":"{\"pattern\":\"packages/agent-core/src/executor.ts\",\"path\":\".\"}"}}]}
+{"role":"tool","tool_call_id":"tool-1","content":"packages/agent-core/src/executor.ts"}
+{"role":"assistant","content":"文件存在。"}
+{"type":"step.end","id":"step-1","usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":4}}
+{"type":"step.end","id":"step-1","usage":{"input_tokens":10,"cached_input_tokens":2,"output_tokens":4}}
+{"type":"step.end","id":"step-2","usage":{"input_tokens":3,"cached_input_tokens":1,"output_tokens":2}}
+{"role":"meta","type":"session.resume_hint","session_id":"redacted-session","command":"kimi -r redacted-session","content":"To resume this session"}
