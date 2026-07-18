@@ -4,7 +4,27 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Workspace } from '@agentos/shared';
 import { CLIExecutor } from './executor.js';
-import { AgentRunner } from './runner.js';
+import { AgentRunner, readMemoryFiles } from './runner.js';
+
+describe('AgentRunner memory loading', () => {
+  it('reads memory files concurrently while preserving declared order', async () => {
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const readTextFile = async (path: string, _encoding: 'utf-8'): Promise<string> => {
+      inFlight += 1;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise(resolve => setTimeout(resolve, path.endsWith('PROJECT.md') ? 20 : 5));
+      inFlight -= 1;
+      return path.split(/[\\/]/).at(-1)!;
+    };
+
+    const sections = await readMemoryFiles('C:\\workspace', ['PROJECT.md', 'TASKS.md', 'TEST.md'], readTextFile);
+
+    expect(maxInFlight).toBe(3);
+    expect(sections.map(section => section.file)).toEqual(['PROJECT.md', 'TASKS.md', 'TEST.md']);
+    expect(sections.map(section => section.content)).toEqual(['PROJECT.md', 'TASKS.md', 'TEST.md']);
+  });
+});
 
 describe('AgentRunner configuration propagation', () => {
   it('passes each workspace agent model and thinking effort through all pipeline stages', async () => {

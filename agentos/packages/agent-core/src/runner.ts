@@ -6,6 +6,27 @@ import { buildPreviousOutput, buildStageInstructions, buildStagePrompt } from '.
 import type { Workspace, AgentConfig, PipelineResult, ChunkCallback, ActivityCallback } from './types.js';
 import type { TaskLog, AgentStage } from '@agentos/shared';
 
+export interface MemoryFileSection {
+  file: string;
+  content?: string;
+}
+
+export type MemoryFileReader = (path: string, encoding: 'utf-8') => Promise<string>;
+
+export async function readMemoryFiles(
+  workspaceRoot: string,
+  memoryFiles: readonly string[],
+  readTextFile: MemoryFileReader = (path, encoding) => readFile(path, encoding),
+): Promise<MemoryFileSection[]> {
+  return Promise.all(memoryFiles.map(async file => {
+    try {
+      return { file, content: await readTextFile(join(workspaceRoot, 'agent-memory', file), 'utf-8') };
+    } catch {
+      return { file };
+    }
+  }));
+}
+
 export class AgentRunner {
   private workspace: Workspace;
   private taskId: string;
@@ -87,17 +108,12 @@ export class AgentRunner {
 
   private async readMemory(stage: AgentStage): Promise<string> {
     const memoryFiles = this.memoryFilesForStage(stage);
-    const parts: string[] = [];
-    for (const file of memoryFiles) {
-      try {
-        const content = await readFile(join(this.workspaceRoot, 'agent-memory', file), 'utf-8');
-        const maxChars = file === 'TASKS.md' ? 3000 : 2000;
-        parts.push(`--- ${file} ---\n${this.trimSection(content, maxChars)}`);
-      } catch {
-        parts.push(`--- ${file} ---\n(file not found)`);
-      }
-    }
-    return parts.join('\n\n');
+    const sections = await readMemoryFiles(this.workspaceRoot, memoryFiles);
+    return sections.map(({ file, content }) => {
+      if (content === undefined) return `--- ${file} ---\n(file not found)`;
+      const maxChars = file === 'TASKS.md' ? 3000 : 2000;
+      return `--- ${file} ---\n${this.trimSection(content, maxChars)}`;
+    }).join('\n\n');
   }
 
   private async readAgentRules(): Promise<string> {
