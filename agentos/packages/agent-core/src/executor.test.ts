@@ -1,5 +1,5 @@
-import { afterEach, describe, it, expect, beforeEach } from 'vitest';
-import { execFileSync } from 'node:child_process';
+import { afterEach, describe, it, expect, beforeEach, vi } from 'vitest';
+import { ChildProcess, execFileSync } from 'node:child_process';
 import { CLIExecutor, CLIError, createCommandInvocation, getInactivityTimeoutMs, getMaxExecutionTimeoutMs, prepareKimiCodeHome, resolveAgentEnvironment, resolveAgentRuntimeConfig, resolveKimiCliArgs, safeCleanup } from './executor.js';
 import type { AgentConfig } from './types.js';
 import type { RunFileChange } from '@agentos/shared';
@@ -352,6 +352,26 @@ describe('CLIExecutor', () => {
       expect((err as Error).message).toContain('inactive');
       return true;
     });
+  });
+
+  it('settles inactivity timeout even when kill does not produce close', async () => {
+    process.env.AGENTOS_AGENT_TIMEOUT = '50';
+    process.env.AGENTOS_MAX_EXECUTION_MS = '5000';
+    const kill = vi.spyOn(ChildProcess.prototype, 'kill').mockReturnValue(true);
+    const startedAt = Date.now();
+    try {
+      await expect(CLIExecutor.execute({
+        ...okConfig,
+        cliArgs: ['-e', 'setTimeout(() => process.exit(0), 1000);'],
+      }, 'ignored', ctx('inactive-without-close'))).rejects.toSatisfy((error: unknown) => {
+        expect(error).toBeInstanceOf(CLIError);
+        expect((error as Error).message).toContain('inactive');
+        return true;
+      });
+      expect(Date.now() - startedAt).toBeLessThan(500);
+    } finally {
+      kill.mockRestore();
+    }
   });
 
   it('still terminates an agent when its AbortSignal is cancelled', async () => {

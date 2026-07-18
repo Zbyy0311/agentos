@@ -546,6 +546,7 @@ export class CLIExecutor {
           stderr += `\n[AgentOS] Agent inactive for ${inactiveForMs}ms (threshold ${inactivityTimeoutMs}ms), killing process.`;
           diagLog(`TIMEOUT_TRIGGERED executionId=${executionId} taskId=${taskId} reason=inactivity_timeout inactivityTimeoutMs=${inactivityTimeoutMs} inactiveForMs=${inactiveForMs} lastActivityAt=${new Date(lastActivityAt).toISOString()} childPid=${child.pid}`);
           killChild('inactivity_timeout');
+          settle(null);
         }, Math.max(25, Math.min(inactivityTimeoutMs, 1000)));
       }
 
