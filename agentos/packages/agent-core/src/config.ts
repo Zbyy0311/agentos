@@ -4,7 +4,7 @@ import type { AgentRole, AgentStage, WorkspaceAgent } from '@agentos/shared';
 // CLI commands — assume they are in PATH, or override via env var
 const CODEX_CLI = process.env.AGENTOS_CODEX_CLI ?? 'codex';
 const KIMI_CLI = process.env.AGENTOS_KIMI_CLI ?? 'kimi';
-const OPENCODE_CLI = process.env.AGENTOS_OPENCODE_CLI ?? process.env.AGENTOS_CODEX_CLI ?? 'codex';
+const OPENCODE_CLI = process.env.AGENTOS_OPENCODE_CLI ?? 'opencode';
 const KIMI_MODEL = process.env.AGENTOS_KIMI_MODEL ?? 'kimi-code/kimi-for-coding';
 const OPENCODE_MODEL = process.env.AGENTOS_OPENCODE_MODEL ?? (OPENCODE_CLI === CODEX_CLI ? 'gpt-5.4' : 'deepseek/deepseek-v4-flash');
 const OPENCODE_ARGS = OPENCODE_CLI === CODEX_CLI

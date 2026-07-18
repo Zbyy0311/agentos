@@ -23,16 +23,21 @@ describe('AGENT_CONFIGS', () => {
     expect(AGENT_CONFIGS.kimi_worker.cliCommand).toBe('kimi-custom');
   });
 
-  it('falls back to codex for the reviewer when opencode is not configured', async () => {
+  it('uses OpenCode for the reviewer by default', async () => {
+    const { AGENT_CONFIGS } = await import('./config.js');
+
+    expect(AGENT_CONFIGS.opencode_reviewer.cliCommand).toBe('opencode');
+    expect(AGENT_CONFIGS.opencode_reviewer.cliArgs).toEqual([
+      '--pure', 'run', '--model', 'deepseek/deepseek-v4-flash',
+    ]);
+  });
+
+  it('allows an explicit Codex reviewer override', async () => {
+    process.env.AGENTOS_OPENCODE_CLI = 'codex';
     const { AGENT_CONFIGS } = await import('./config.js');
 
     expect(AGENT_CONFIGS.opencode_reviewer.cliCommand).toBe('codex');
-    expect(AGENT_CONFIGS.opencode_reviewer.cliArgs).toEqual([
-      'exec',
-      '--dangerously-bypass-approvals-and-sandbox',
-      '--skip-git-repo-check',
-      '--ephemeral',
-    ]);
+    expect(AGENT_CONFIGS.opencode_reviewer.cliArgs[0]).toBe('exec');
   });
 
   it('provides one stage-role map and workspace defaults from the core config', async () => {

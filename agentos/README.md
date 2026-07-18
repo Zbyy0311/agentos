@@ -113,7 +113,7 @@ agentos/
 | `AGENTOS_FORCE_MOCK` | `false` | `true` 时使用 Mock 输出，不需要安装 Agent CLI |
 | `AGENTOS_CODEX_CLI` | `codex` | Codex 命令路径或名称 |
 | `AGENTOS_KIMI_CLI` | `kimi` | KimiCode 命令路径或名称 |
-| `AGENTOS_OPENCODE_CLI` | `codex` | OpenCode Reviewer 命令路径或名称；未配置时默认回退到 Codex |
+| `AGENTOS_OPENCODE_CLI` | `opencode` | OpenCode Reviewer 命令路径或名称；如需使用 Codex 代替 Reviewer，必须显式设置为 `codex` |
 | `AGENTOS_KIMI_MODEL` | `kimi-code/kimi-for-coding` | KimiCode 模型 |
 | `AGENTOS_OPENCODE_MODEL` | `deepseek/deepseek-v4-flash` | OpenCode 模型 |
 | `AGENTOS_AGENT_TIMEOUT` | `0`（禁用） | 可选无活动超时（毫秒）；`0`、空值或 `null` 表示无限等待，正数仅在 Agent 持续无 stdout/stderr 输出时终止任务。 |
