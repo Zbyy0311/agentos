@@ -8,7 +8,7 @@ describe('probeCodexCli', () => {
       calls.push([...args]);
       return args[0] === '--version' ? 'codex 1.2.3' : 'Usage: codex exec --json';
     };
-    await expect(probeCodexCli('C:/tools/codex.exe', { run })).resolves.toMatchObject({ status: 'AVAILABLE', supportsStructuredOutput: true, version: 'codex 1.2.3' });
+    await expect(probeCodexCli('C:/tools/codex.exe', { run })).resolves.toMatchObject({ status: 'AVAILABLE', supportsStructuredOutput: true, configuredProvider: 'codex', detectedProvider: 'codex', version: 'codex 1.2.3', capabilities: { structuredOutput: true, jsonSchemaOutput: false } });
     expect(calls).toEqual([['--version'], ['exec', '--help']]);
   });
 

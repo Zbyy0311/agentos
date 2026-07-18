@@ -1,6 +1,7 @@
 import { JsonLineDecoder, type DecodedJsonLine } from './jsonLineDecoder.js';
 import { redactRuntimeText, summarizeToolInput } from './redaction.js';
-import type { AgentCliAdapter, CliEventParser, NormalizedCliEvent } from './types.js';
+import { probeCodexCli } from './capabilityProbe.js';
+import type { AgentCliAdapter, CliEventParser, NormalizedCliEvent, ProviderInvocationInput, ProviderInvocation, ProviderProbeResult } from './types.js';
 
 type JsonRecord = Record<string, unknown>;
 
@@ -104,21 +105,17 @@ class CodexJsonParser implements CliEventParser {
 export class CodexAdapter implements AgentCliAdapter {
   readonly provider = 'codex' as const;
 
-  matches(command: string): boolean {
-    return /(?:^|[\\/])codex(?:\.(?:exe|cmd|bat))?$/i.test(command.trim());
+  probe(commandPath: string): Promise<ProviderProbeResult> {
+    return probeCodexCli(commandPath);
   }
 
-  supportsStructuredOutput(helpText: string): boolean {
-    return /(?:^|\s)--json(?:\s|$)/m.test(helpText);
-  }
-
-  decorateArgs(args: readonly string[]): string[] {
-    const decorated = [...args];
-    if (decorated.includes('--json')) return decorated;
+  buildInvocation(input: ProviderInvocationInput): ProviderInvocation {
+    const decorated = [...input.baseArgs, ...input.imageArgs];
+    if (decorated.includes('--json')) return { args: decorated, promptTransport: 'argument', env: {} };
     const execIndex = decorated.indexOf('exec');
     if (execIndex >= 0) decorated.splice(execIndex + 1, 0, '--json');
     else decorated.push('--json');
-    return decorated;
+    return { args: decorated, promptTransport: 'argument', env: {} };
   }
 
   createParser(): CliEventParser {

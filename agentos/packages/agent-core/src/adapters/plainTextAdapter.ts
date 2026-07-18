@@ -1,4 +1,5 @@
-import type { AgentCliAdapter, CliEventParser, NormalizedCliEvent } from './types.js';
+import { EMPTY_ADAPTER_CAPABILITIES } from './capabilityProbe.js';
+import type { AgentCliAdapter, CliEventParser, NormalizedCliEvent, ProviderInvocationInput, ProviderInvocation, ProviderProbeResult } from './types.js';
 
 class PlainTextParser implements CliEventParser {
   push(chunk: string): NormalizedCliEvent[] {
@@ -13,16 +14,12 @@ class PlainTextParser implements CliEventParser {
 export class PlainTextAdapter implements AgentCliAdapter {
   readonly provider = 'plain' as const;
 
-  matches(_command: string): boolean {
-    return true;
+  async probe(_commandPath: string): Promise<ProviderProbeResult> {
+    return { status: 'UNAVAILABLE', configuredProvider: 'custom', capabilities: EMPTY_ADAPTER_CAPABILITIES, reason: 'plain fallback' };
   }
 
-  supportsStructuredOutput(_helpText: string): boolean {
-    return false;
-  }
-
-  decorateArgs(args: readonly string[]): string[] {
-    return [...args];
+  buildInvocation(input: ProviderInvocationInput): ProviderInvocation {
+    return { args: [...input.baseArgs, ...input.imageArgs], promptTransport: 'argument', env: {} };
   }
 
   createParser(): CliEventParser {

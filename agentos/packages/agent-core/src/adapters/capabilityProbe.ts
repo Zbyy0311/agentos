@@ -1,13 +1,8 @@
 import { execFile } from 'node:child_process';
 import { resolve } from 'node:path';
+import type { AdapterCapabilities, ProviderProbeResult } from './types.js';
 
-export interface CodexProbeResult {
-  status: 'AVAILABLE' | 'UNAVAILABLE';
-  supportsStructuredOutput: boolean;
-  version?: string;
-  helpText?: string;
-  reason?: string;
-}
+export type CodexProbeResult = ProviderProbeResult & { configuredProvider?: 'codex'; supportsStructuredOutput?: boolean };
 
 export type ProbeCommand = (command: string, args: readonly string[], timeoutMs: number) => Promise<string>;
 
@@ -17,6 +12,16 @@ interface ProbeOptions {
 }
 
 const cache = new Map<string, Promise<CodexProbeResult>>();
+
+export const EMPTY_ADAPTER_CAPABILITIES: AdapterCapabilities = {
+  structuredOutput: false,
+  jsonSchemaOutput: false,
+  assistantDelta: false,
+  toolEvents: false,
+  usage: false,
+  workspaceReadOnly: false,
+  approvalEvents: false,
+};
 
 export function probeCodexCli(command: string, options: ProbeOptions = {}): Promise<CodexProbeResult> {
   const key = resolve(command);
@@ -37,17 +42,34 @@ async function probeUncached(command: string, options: ProbeOptions): Promise<Co
     const helpText = await run(command, ['exec', '--help'], timeoutMs);
     return {
       status: 'AVAILABLE',
+      configuredProvider: 'codex',
+      detectedProvider: 'codex',
       supportsStructuredOutput: /(?:^|\s)--json(?:\s|$)/m.test(helpText),
       version: version.trim(),
       helpText: helpText.trim(),
+      capabilities: codexCapabilities(/(?:^|\s)--json(?:\s|$)/m.test(helpText)),
     };
   } catch (error) {
     return {
       status: 'UNAVAILABLE',
+      configuredProvider: 'codex',
       supportsStructuredOutput: false,
+      capabilities: EMPTY_ADAPTER_CAPABILITIES,
       reason: error instanceof Error ? error.message : String(error),
     };
   }
+}
+
+export function codexCapabilities(structuredOutput: boolean): AdapterCapabilities {
+  return {
+    structuredOutput,
+    jsonSchemaOutput: false,
+    assistantDelta: structuredOutput,
+    toolEvents: structuredOutput,
+    usage: structuredOutput,
+    workspaceReadOnly: true,
+    approvalEvents: false,
+  };
 }
 
 const runProbeCommand: ProbeCommand = (command, args, timeoutMs) => new Promise((resolvePromise, reject) => {

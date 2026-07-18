@@ -27,8 +27,9 @@ describe('CodexAdapter', () => {
 
   it('does not duplicate --json or move existing arguments', () => {
     const adapter = new CodexAdapter();
-    expect(adapter.decorateArgs(['exec', '--sandbox', 'workspace-write'])).toEqual(['exec', '--json', '--sandbox', 'workspace-write']);
-    expect(adapter.decorateArgs(['exec', '--json', '--sandbox', 'workspace-write'])).toEqual(['exec', '--json', '--sandbox', 'workspace-write']);
+    const invoke = (baseArgs: string[]) => adapter.buildInvocation({ commandPath: 'codex', baseArgs, prompt: '', workspaceRoot: '.', workspaceWrite: true, imageArgs: [] }).args;
+    expect(invoke(['exec', '--sandbox', 'workspace-write'])).toEqual(['exec', '--json', '--sandbox', 'workspace-write']);
+    expect(invoke(['exec', '--json', '--sandbox', 'workspace-write'])).toEqual(['exec', '--json', '--sandbox', 'workspace-write']);
   });
 
   it('turns unknown structured events into a safe diagnostic', () => {

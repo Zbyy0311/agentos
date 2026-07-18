@@ -1,10 +1,11 @@
-import type { TaskLog, AgentStage, ThinkingEffort, Workspace } from '@agentos/shared';
+import type { AgentProvider, TaskLog, AgentStage, ThinkingEffort, Workspace } from '@agentos/shared';
 import type { AgentImageAttachment } from './imageInput.js';
 import type { NormalizedCliEvent } from './adapters/types.js';
 
 export interface AgentConfig {
   name: string;
   role: AgentStage;
+  provider?: AgentProvider;
   cliCommand: string;
   cliArgs: string[];
   env?: NodeJS.ProcessEnv;

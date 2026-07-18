@@ -46,12 +46,24 @@ test('creates a direct conversation and streams a persisted response', async () 
     const updatedAgent = await fetch(`${baseUrl}/agents/codex`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roleTitle: '技术负责人', systemPrompt: '先分析，再执行。', permissions: ['read', 'write'], enabled: true, model: 'selected-codex-model', thinkingEffort: 'auto' }),
-    }).then(response => response.json()) as { agent: { roleTitle: string; permissions: string[]; model: string; thinkingEffort: string; capability: { cliKind: string } } };
+    }).then(response => response.json()) as { agent: { roleTitle: string; provider: string; permissions: string[]; model: string; thinkingEffort: string; capability: { cliKind: string } } };
     assert.equal(updatedAgent.agent.roleTitle, '技术负责人');
     assert.deepEqual(updatedAgent.agent.permissions, ['read', 'write']);
     assert.equal(updatedAgent.agent.model, 'selected-codex-model');
     assert.equal(updatedAgent.agent.thinkingEffort, 'auto');
     assert.equal(updatedAgent.agent.capability.cliKind, 'codex');
+
+    const providerUpdated = await fetch(`${baseUrl}/agents/codex`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'custom', roleTitle: '代码审查负责人' }),
+    }).then(response => response.json()) as { agent: { provider: string; roleTitle: string } };
+    assert.equal(providerUpdated.agent.provider, 'custom');
+    assert.equal(providerUpdated.agent.roleTitle, '代码审查负责人');
+    const invalidProvider = await fetch(`${baseUrl}/agents/codex`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ provider: 'reviewer' }),
+    });
+    assert.equal(invalidProvider.status, 400);
 
     const clearedAgent = await fetch(`${baseUrl}/agents/codex`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },

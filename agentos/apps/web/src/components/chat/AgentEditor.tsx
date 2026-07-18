@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { AgentModelOption, AgentPermission, AgentProfile, ModelDiscoverySource, ThinkingEffort } from '@agentos/shared';
+import type { AgentModelOption, AgentPermission, AgentProfile, AgentProvider, ModelDiscoverySource, ThinkingEffort } from '@agentos/shared';
 
 interface AgentEditorProps {
   agent: AgentProfile;
@@ -7,7 +7,7 @@ interface AgentEditorProps {
   refreshingModels?: boolean;
   onClose(): void;
   onRefreshModels?(): void;
-  onSave(update: Pick<AgentProfile, 'roleTitle' | 'systemPrompt' | 'permissions' | 'enabled'> & Partial<Pick<AgentProfile, 'name' | 'model'>> & { thinkingEffort: ThinkingEffort }): void;
+  onSave(update: Pick<AgentProfile, 'roleTitle' | 'systemPrompt' | 'permissions' | 'enabled'> & Partial<Pick<AgentProfile, 'name' | 'model' | 'provider'>> & { thinkingEffort: ThinkingEffort }): void;
 }
 
 const permissionOptions: Array<{ value: AgentPermission; label: string }> = [
@@ -24,6 +24,7 @@ export function AgentEditor({ agent, saving, refreshingModels = false, onClose, 
   const models = modelOptions.map(model => model.id);
   const knownModel = !agent.model || models.includes(agent.model);
   const [name, setName] = useState(agent.name);
+  const [provider, setProvider] = useState<AgentProvider>(agent.provider ?? agent.role);
   const [roleTitle, setRoleTitle] = useState(agent.roleTitle);
   const [systemPrompt, setSystemPrompt] = useState(agent.systemPrompt);
   const [modelChoice, setModelChoice] = useState(knownModel ? agent.model ?? '' : '__custom__');
@@ -37,7 +38,7 @@ export function AgentEditor({ agent, saving, refreshingModels = false, onClose, 
 
   const submit = () => {
     const selectedModel = modelChoice === '__custom__' ? customModel.trim() : modelChoice.trim();
-    onSave({ name, roleTitle, systemPrompt, model: selectedModel, thinkingEffort, enabled, permissions });
+    onSave({ name, provider, roleTitle, systemPrompt, model: selectedModel, thinkingEffort, enabled, permissions });
   };
 
   const togglePermission = (permission: AgentPermission) => setPermissions(current => current.includes(permission) ? current.filter(item => item !== permission) : [...current, permission]);
@@ -49,8 +50,13 @@ export function AgentEditor({ agent, saving, refreshingModels = false, onClose, 
       <div className="space-y-4">
         <label className="block text-sm ui-text-soft">显示名称<input value={name} onChange={event => setName(event.target.value)} className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 outline-none" /></label>
         <label className="block text-sm ui-text-soft">职责<input value={roleTitle} onChange={event => setRoleTitle(event.target.value)} className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 outline-none" /></label>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="block text-sm ui-text-soft">Provider<select value={provider} onChange={event => setProvider(event.target.value as AgentProvider)} className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 outline-none"><option value="codex">Codex</option><option value="kimi">Kimi</option><option value="opencode">OpenCode</option><option value="mimo">MiMo</option><option value="custom">Custom</option></select><span className="mt-1 block text-xs ui-muted">Provider 是运行时身份；职责仍单独由上方字段定义。</span></label>
+          <div className="block text-sm ui-text-soft">CLI 命令<div className="ui-input mt-2 rounded-xl px-3 py-2.5 font-mono text-xs ui-muted">{agent.cliCommand}</div><span className="mt-1 block text-xs ui-muted">当前版本只读显示，避免把职责字段当作 Provider。</span></div>
+        </div>
         <label className="block text-sm ui-text-soft">系统提示<textarea value={systemPrompt} onChange={event => setSystemPrompt(event.target.value)} className="ui-input mt-2 h-24 w-full resize-none rounded-xl px-3 py-2.5 outline-none" /></label>
         <label className="block text-sm ui-text-soft">默认模型<select value={modelChoice} onChange={event => { const nextChoice = event.target.value; const nextOption = modelOptions.find(model => model.id === nextChoice); setModelChoice(nextChoice); if (nextChoice !== '__custom__') setCustomModel(''); if (nextOption && !nextOption.thinkingEfforts.includes(thinkingEffort)) setThinkingEffort(nextOption.defaultThinkingEffort); }} className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 outline-none"><option value="">使用 CLI 默认模型</option>{modelOptions.map(model => <option key={model.id} value={model.id}>{model.label}{model.label !== model.id ? ` · ${model.id}` : ''}</option>)}<option value="__custom__">自定义模型</option></select>{source && <span className="mt-2 flex items-center justify-between text-xs ui-muted"><span>来源：{sourceLabels[source]}</span>{onRefreshModels && <button type="button" onClick={onRefreshModels} disabled={refreshingModels} className="ui-accent disabled:opacity-50">{refreshingModels ? '刷新中…' : '刷新模型列表'}</button>}</span>}{agent.capability?.modelSourceWarning && <span className="mt-1 block text-xs text-[var(--app-warning)]">{agent.capability.modelSourceWarning}</span>}</label>
+        {agent.runtime?.mismatch && <div className="rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-warning)]/10 px-3 py-2 text-xs ui-text-soft">配置：{agent.runtime.configuredProvider}；实际：{agent.runtime.detectedProvider ?? 'unknown'}。已记录为 Provider mismatch。</div>}
         {modelChoice === '__custom__' && <label className="block text-sm ui-text-soft">自定义模型标识<input value={customModel} onChange={event => setCustomModel(event.target.value)} placeholder="例如 provider/model-name" className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 outline-none" /></label>}
         <label className="block text-sm ui-text-soft">默认思考强度<select value={thinkingEffort} onChange={event => setThinkingEffort(event.target.value as ThinkingEffort)} className="ui-input mt-2 w-full rounded-xl px-3 py-2.5 outline-none">{availableThinkingEfforts.map(effort => <option key={effort} value={effort}>{effortLabels[effort]}</option>)}</select>{availableThinkingEfforts.length === 1 && <span className="mt-1 block text-xs ui-muted">当前模型或 CLI 不支持可调思考强度。</span>}</label>
         <fieldset><legend className="mb-2 text-sm ui-text-soft">权限</legend><div className="flex flex-wrap gap-2">{permissionOptions.map(option => <label key={option.value} className={`cursor-pointer rounded-xl border px-3 py-2 text-xs transition ${permissions.includes(option.value) ? 'border-[var(--app-accent)] bg-[var(--app-accent-soft)] ui-text' : 'ui-border ui-muted hover:border-[var(--app-border-strong)]'}`}><input className="sr-only" type="checkbox" checked={permissions.includes(option.value)} onChange={() => togglePermission(option.value)} />{option.label}</label>)}</div></fieldset>

@@ -3,6 +3,8 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentPermission,
+  AgentProvider,
+  AgentRuntimeStatus,
   AgentEvent,
   AgentProfile,
   AgentRun,
@@ -56,6 +58,7 @@ interface AgentProfileRow {
   id: string;
   name: string;
   agent_role: AgentProfile['role'];
+  provider: AgentProvider | null;
   role_title: string;
   system_prompt: string;
   permissions_json: string;
@@ -172,6 +175,9 @@ interface RunCliInvocationRow {
   agent_id: string;
   cli_kind: string;
   command_label: string;
+  configured_provider: AgentProvider | null;
+  detected_provider: AgentProvider | null;
+  provider_mismatch: number;
   model: string | null;
   thinking_effort: string | null;
   exit_code: number | null;
@@ -360,18 +366,18 @@ export class SqliteStore implements Store {
   listAgentProfiles(workspaceId: string): AgentProfile[] {
     const rows = this.database.prepare(`
       SELECT workspace_id, id, name, agent_role, role_title, system_prompt,
-        permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort, created_at, updated_at
+        provider, permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort, created_at, updated_at
       FROM agent_profiles
       WHERE workspace_id = ?
       ORDER BY name COLLATE NOCASE
     `).all(workspaceId) as AgentProfileRow[];
-    return rows.map(row => this.toAgentProfile(row));
+    return rows.map(row => this.toAgentProfile(row, this.latestAgentRuntime(workspaceId, row.id)));
   }
 
   updateAgentProfile(
     workspaceId: string,
     agentId: string,
-    update: Pick<AgentProfile, 'roleTitle' | 'systemPrompt' | 'permissions' | 'enabled'> & Partial<Pick<AgentProfile, 'name' | 'model' | 'thinkingEffort'>>,
+    update: Pick<AgentProfile, 'roleTitle' | 'systemPrompt' | 'permissions' | 'enabled'> & Partial<Pick<AgentProfile, 'name' | 'model' | 'thinkingEffort' | 'provider'>>,
   ): AgentProfile {
     const current = this.listAgentProfiles(workspaceId).find(agent => agent.id === agentId);
     if (!current) throw new Error('Agent not found');
@@ -388,10 +394,11 @@ export class SqliteStore implements Store {
     }
     this.database.prepare(`
       UPDATE agent_profiles
-      SET name = ?, role_title = ?, system_prompt = ?, permissions_json = ?, enabled = ?, model = ?, thinking_effort = ?, updated_at = ?
+      SET name = ?, provider = ?, role_title = ?, system_prompt = ?, permissions_json = ?, enabled = ?, model = ?, thinking_effort = ?, updated_at = ?
       WHERE workspace_id = ? AND id = ?
     `).run(
       next.name,
+      next.provider ?? providerFromLegacyRole(next.role),
       next.roleTitle,
       next.systemPrompt,
       JSON.stringify(next.permissions),
@@ -410,6 +417,7 @@ export class SqliteStore implements Store {
       const nextModel = next.model?.trim();
       legacyAgent.model = nextModel || undefined;
       legacyAgent.thinkingEffort = normalizeThinkingEffort(next.thinkingEffort);
+      legacyAgent.provider = next.provider ?? providerFromLegacyRole(legacyAgent.role);
       this.legacy.saveWorkspaces(workspaces);
     }
     return this.listAgentProfiles(workspaceId).find(agent => agent.id === agentId) ?? next;
@@ -924,17 +932,21 @@ export class SqliteStore implements Store {
     if (!run || !execution) throw new Error('Run not found for CLI invocation');
     this.database.prepare(`
       INSERT INTO run_cli_invocations (
-        id, run_id, execution_id, agent_id, cli_kind, command_label, model, thinking_effort,
+        id, run_id, execution_id, agent_id, cli_kind, command_label, configured_provider, detected_provider, provider_mismatch, model, thinking_effort,
         exit_code, duration_ms, started_at, completed_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(id) DO UPDATE SET
         exit_code = excluded.exit_code,
         duration_ms = excluded.duration_ms,
         completed_at = excluded.completed_at,
         model = excluded.model,
-        thinking_effort = excluded.thinking_effort
+        thinking_effort = excluded.thinking_effort,
+        configured_provider = excluded.configured_provider,
+        detected_provider = excluded.detected_provider,
+        provider_mismatch = excluded.provider_mismatch
     `).run(
       invocation.id, invocation.runId, invocation.executionId, invocation.agentId, invocation.cliKind, invocation.commandLabel,
+      invocation.configuredProvider ?? null, invocation.detectedProvider ?? null, invocation.providerMismatch ? 1 : 0,
       invocation.model ?? null, invocation.thinkingEffort ?? null, invocation.exitCode, invocation.durationMs,
       invocation.startedAt, invocation.completedAt,
     );
@@ -944,6 +956,7 @@ export class SqliteStore implements Store {
     const rows = this.database.prepare(`
       SELECT invocations.id, invocations.run_id, invocations.execution_id, invocations.agent_id,
         invocations.cli_kind, invocations.command_label, invocations.model, invocations.thinking_effort,
+        invocations.configured_provider, invocations.detected_provider, invocations.provider_mismatch,
         invocations.exit_code, invocations.duration_ms, invocations.started_at, invocations.completed_at
       FROM run_cli_invocations AS invocations
       INNER JOIN agent_runs ON agent_runs.id = invocations.run_id
@@ -953,6 +966,9 @@ export class SqliteStore implements Store {
     return rows.map(row => ({
       id: row.id, runId: row.run_id, executionId: row.execution_id, agentId: row.agent_id,
       cliKind: row.cli_kind, commandLabel: row.command_label,
+      ...(row.configured_provider ? { configuredProvider: row.configured_provider } : {}),
+      ...(row.detected_provider ? { detectedProvider: row.detected_provider } : {}),
+      ...(row.provider_mismatch === 1 ? { providerMismatch: true } : {}),
       ...(row.model ? { model: row.model } : {}),
       ...(row.thinking_effort ? { thinkingEffort: normalizeThinkingEffort(row.thinking_effort) } : {}),
       exitCode: row.exit_code, durationMs: row.duration_ms, startedAt: row.started_at, completedAt: row.completed_at,
@@ -1434,6 +1450,7 @@ export class SqliteStore implements Store {
         id TEXT NOT NULL,
         name TEXT NOT NULL,
         agent_role TEXT NOT NULL,
+        provider TEXT,
         role_title TEXT NOT NULL,
         system_prompt TEXT NOT NULL,
         permissions_json TEXT NOT NULL,
@@ -1582,6 +1599,9 @@ export class SqliteStore implements Store {
         agent_id TEXT NOT NULL,
         cli_kind TEXT NOT NULL,
         command_label TEXT NOT NULL,
+        configured_provider TEXT,
+        detected_provider TEXT,
+        provider_mismatch INTEGER NOT NULL DEFAULT 0,
         model TEXT,
         thinking_effort TEXT,
         exit_code INTEGER,
@@ -1774,12 +1794,16 @@ export class SqliteStore implements Store {
       VALUES ('default', '本地用户', 1, ?, ?)
     `).run(now, now);
     this.ensureColumn('agent_profiles', 'thinking_effort', "TEXT NOT NULL DEFAULT 'auto'");
+    this.ensureColumn('agent_profiles', 'provider', 'TEXT');
     this.ensureColumn('conversations', 'model', 'TEXT');
     this.ensureColumn('conversations', 'thinking_effort', 'TEXT');
     this.ensureColumn('executions', 'run_id', 'TEXT');
     this.ensureColumn('agent_runs', 'waiting_question', 'TEXT');
     this.ensureColumn('agent_runs', 'waiting_execution_id', 'TEXT');
     this.ensureColumn('agent_runs', 'waiting_agent_id', 'TEXT');
+    this.ensureColumn('run_cli_invocations', 'configured_provider', 'TEXT');
+    this.ensureColumn('run_cli_invocations', 'detected_provider', 'TEXT');
+    this.ensureColumn('run_cli_invocations', 'provider_mismatch', 'INTEGER NOT NULL DEFAULT 0');
     this.migrateLegacyExecutionRuns();
   }
 
@@ -1820,13 +1844,13 @@ export class SqliteStore implements Store {
   private migrateLegacyAgentProfiles(): void {
     const insert = this.database.prepare(`
       INSERT OR IGNORE INTO agent_profiles (
-        workspace_id, id, name, agent_role, role_title, system_prompt,
+        workspace_id, id, name, agent_role, provider, role_title, system_prompt,
         permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
     const updateCliConfiguration = this.database.prepare(`
       UPDATE agent_profiles
-      SET cli_command = ?, cli_args_json = ?,
+      SET provider = ?, cli_command = ?, cli_args_json = ?,
         model = CASE WHEN ? IS NULL THEN model ELSE ? END,
         thinking_effort = CASE WHEN ? IS NULL THEN thinking_effort ELSE ? END,
         name = CASE WHEN name = 'OpenCode (Codex fallback)' THEN ? ELSE name END,
@@ -1841,11 +1865,12 @@ export class SqliteStore implements Store {
           agent.id,
           agent.name,
           agent.role,
+          agent.provider ?? providerFromLegacyRole(agent.role),
           defaultRoleTitle(agent.role),
           defaultSystemPrompt(agent.role),
           JSON.stringify(defaultPermissions(agent.role)),
           agent.enabled ? 1 : 0,
-          agent.cliCommand,
+        agent.cliCommand,
           JSON.stringify(agent.cliArgs),
           agent.model ?? null,
           agent.thinkingEffort ?? 'auto',
@@ -1853,6 +1878,7 @@ export class SqliteStore implements Store {
           workspace.updatedAt,
         );
         updateCliConfiguration.run(
+          agent.provider ?? providerFromLegacyRole(agent.role),
           agent.cliCommand,
           JSON.stringify(agent.cliArgs),
           agent.model ?? null,
@@ -1954,12 +1980,14 @@ export class SqliteStore implements Store {
     };
   }
 
-  private toAgentProfile(row: AgentProfileRow): AgentProfile {
+  private toAgentProfile(row: AgentProfileRow, runtime?: AgentRuntimeStatus): AgentProfile {
     return {
       id: row.id,
       workspaceId: row.workspace_id,
       name: row.name,
       role: row.agent_role,
+      provider: row.provider ?? providerFromLegacyRole(row.agent_role),
+      ...(runtime ? { runtime } : {}),
       roleTitle: row.role_title,
       systemPrompt: row.system_prompt,
       permissions: parseJson<AgentPermission[]>(row.permissions_json, []),
@@ -1970,6 +1998,23 @@ export class SqliteStore implements Store {
       thinkingEffort: normalizeThinkingEffort(row.thinking_effort),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
+    };
+  }
+
+  private latestAgentRuntime(workspaceId: string, agentId: string): AgentRuntimeStatus | undefined {
+    const row = this.database.prepare(`
+      SELECT invocations.configured_provider, invocations.detected_provider, invocations.provider_mismatch
+      FROM run_cli_invocations AS invocations
+      INNER JOIN agent_runs ON agent_runs.id = invocations.run_id
+      WHERE agent_runs.workspace_id = ? AND invocations.agent_id = ?
+      ORDER BY invocations.completed_at DESC, invocations.started_at DESC
+      LIMIT 1
+    `).get(workspaceId, agentId) as { configured_provider: AgentProvider | null; detected_provider: AgentProvider | null; provider_mismatch: number } | undefined;
+    if (!row?.configured_provider) return undefined;
+    return {
+      configuredProvider: row.configured_provider,
+      ...(row.detected_provider ? { detectedProvider: row.detected_provider } : {}),
+      mismatch: row.provider_mismatch === 1,
     };
   }
 
@@ -2080,6 +2125,10 @@ export class SqliteStore implements Store {
 
 function normalizeThinkingEffort(value: string | null | undefined): ThinkingEffort {
   return value === 'low' || value === 'medium' || value === 'high' ? value : 'auto';
+}
+
+function providerFromLegacyRole(role: AgentProfile['role']): AgentProvider {
+  return role === 'codex' || role === 'kimi' || role === 'opencode' || role === 'mimo' ? role : 'custom';
 }
 
 function legacyRunStatus(status: AgentExecution['status']): AgentRun['status'] {

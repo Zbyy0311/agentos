@@ -16,4 +16,28 @@ describe('AgentCliAdapterRegistry', () => {
     const registry = new AgentCliAdapterRegistry({ probe: async () => ({ status: 'AVAILABLE', supportsStructuredOutput: true, version: '1.0.0' }) });
     await expect(registry.resolve('kimi')).resolves.toMatchObject({ adapter: { provider: 'plain' } });
   });
+
+  it('reports a configured OpenCode command that probes as Codex', async () => {
+    const registry = new AgentCliAdapterRegistry({
+      probe: async () => ({
+        status: 'AVAILABLE',
+        configuredProvider: 'opencode',
+        detectedProvider: 'codex',
+        version: 'codex 1.2.3',
+        capabilities: {
+          structuredOutput: true,
+          jsonSchemaOutput: false,
+          assistantDelta: true,
+          toolEvents: true,
+          usage: true,
+          workspaceReadOnly: true,
+          approvalEvents: true,
+        },
+      }),
+    });
+    const result = await registry.resolve({ configuredProvider: 'opencode', commandPath: 'wrapper.cmd' });
+    expect(result.runtime).toMatchObject({ configuredProvider: 'opencode', detectedProvider: 'codex', mismatch: true });
+    expect(result.adapter.provider).toBe('codex');
+    expect(result.diagnostic?.code).toBe('provider.mismatch');
+  });
 });

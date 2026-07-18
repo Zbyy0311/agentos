@@ -2,6 +2,8 @@ export type TaskStatus = 'pending' | 'running' | 'reviewing' | 'completed' | 'fa
 
 export type AgentRole = 'codex' | 'kimi' | 'opencode' | 'mimo';
 
+export type AgentProvider = 'codex' | 'kimi' | 'opencode' | 'mimo' | 'custom';
+
 export type AgentPermission = 'read' | 'write' | 'review';
 
 export type ThinkingEffort = 'auto' | 'low' | 'medium' | 'high';
@@ -59,6 +61,8 @@ export type AgentStage =
 export interface WorkspaceAgent {
   id: string;
   name: string;
+  /** Runtime provider identity. Legacy JSON may omit this and is normalized from role on load. */
+  provider?: AgentProvider;
   role: AgentRole;
   enabled: boolean;
   cliCommand: string;
@@ -80,6 +84,13 @@ export interface AgentCapability {
   defaultThinkingEffort: ThinkingEffort;
 }
 
+export interface AgentRuntimeStatus {
+  configuredProvider: AgentProvider;
+  detectedProvider?: AgentProvider;
+  mismatch: boolean;
+  version?: string;
+}
+
 export interface AgentModelOption {
   id: string;
   label: string;
@@ -98,6 +109,7 @@ export interface ModelDiscoveryResult {
 
 export interface AgentProfile extends WorkspaceAgent {
   capability?: AgentCapability;
+  runtime?: AgentRuntimeStatus;
   workspaceId: string;
   roleTitle: string;
   systemPrompt: string;
@@ -186,6 +198,9 @@ export interface RunCliInvocation {
   agentId: string;
   cliKind: string;
   commandLabel: string;
+  configuredProvider?: AgentProvider;
+  detectedProvider?: AgentProvider;
+  providerMismatch?: boolean;
   model?: string;
   thinkingEffort?: ThinkingEffort;
   exitCode: number | null;
@@ -376,6 +391,9 @@ export interface CliInvocationObservation {
   invocationId: string;
   cliKind: string;
   commandLabel: string;
+  configuredProvider?: AgentProvider;
+  detectedProvider?: AgentProvider;
+  providerMismatch?: boolean;
   model?: string;
   thinkingEffort?: ThinkingEffort;
   exitCode?: number | null;

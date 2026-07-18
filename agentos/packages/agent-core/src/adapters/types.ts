@@ -1,4 +1,6 @@
-export type CliProvider = 'codex' | 'plain';
+import type { AgentProvider } from '@agentos/shared';
+
+export type CliProvider = AgentProvider | 'plain';
 
 export const NORMALIZED_CLI_EVENT_TYPES = [
   'status',
@@ -22,10 +24,55 @@ export interface CliEventParser {
   finish(): NormalizedCliEvent[];
 }
 
+export interface AdapterCapabilities {
+  structuredOutput: boolean;
+  jsonSchemaOutput: boolean;
+  assistantDelta: boolean;
+  toolEvents: boolean;
+  usage: boolean;
+  workspaceReadOnly: boolean;
+  approvalEvents: boolean;
+}
+
+export interface ProviderProbeResult {
+  status: 'AVAILABLE' | 'UNAVAILABLE';
+  configuredProvider: AgentProvider;
+  detectedProvider?: AgentProvider;
+  version?: string;
+  capabilities: AdapterCapabilities;
+  reason?: string;
+  /** Kept for migration compatibility with the original Codex probe. */
+  supportsStructuredOutput?: boolean;
+  helpText?: string;
+}
+
+export interface ProviderInvocationInput {
+  commandPath: string;
+  baseArgs: readonly string[];
+  prompt: string;
+  workspaceRoot: string;
+  workspaceWrite: boolean;
+  imageArgs: readonly string[];
+}
+
+export interface ProviderInvocation {
+  args: string[];
+  promptTransport: 'argument' | 'stdin';
+  env: NodeJS.ProcessEnv;
+}
+
+export interface ResolvedRuntime {
+  configuredProvider: AgentProvider;
+  detectedProvider?: AgentProvider;
+  commandPath: string;
+  version?: string;
+  capabilities: AdapterCapabilities;
+  mismatch: boolean;
+}
+
 export interface AgentCliAdapter {
   readonly provider: CliProvider;
-  matches(command: string): boolean;
-  supportsStructuredOutput(helpText: string): boolean;
-  decorateArgs(args: readonly string[]): string[];
+  probe(commandPath: string): Promise<ProviderProbeResult>;
+  buildInvocation(input: ProviderInvocationInput): ProviderInvocation;
   createParser(): CliEventParser;
 }

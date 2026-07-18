@@ -8,14 +8,14 @@ import { TextDecoder } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { MockCLI } from './mock.js';
 import { resolveCommand } from './resolveCommand.js';
-import { isCodexCli } from './config.js';
+import { isCodexCli, resolveConfiguredProvider } from './config.js';
 import { getCliCapability } from './capabilities.js';
 import { resolveImageInput } from './imageInput.js';
 import type { AgentConfig, ChunkCallback, ActivityCallback, RuntimeEventCallback } from './types.js';
 import type { NormalizedCliEvent } from './adapters/types.js';
 import { AgentCliAdapterRegistry } from './adapters/registry.js';
 import { PlainTextAdapter } from './adapters/plainTextAdapter.js';
-import type { CliInvocationObservation, TaskLog, AgentStage, ThinkingEffort, RunFileChange } from '@agentos/shared';
+import type { AgentProvider, CliInvocationObservation, TaskLog, AgentStage, ThinkingEffort, RunFileChange } from '@agentos/shared';
 import { captureWorkspaceSnapshot, diffWorkspaceSnapshots } from './workspaceChanges.js';
 import { removeArgPair, replaceConfigArg, replaceOrAppendArg } from './runtimeArgs.js';
 import { diffOpenCodeUsage, readOpenCodeUsageSnapshot, type OpenCodeUsageSnapshot } from './opencodeUsage.js';
@@ -39,13 +39,14 @@ export function getMaxExecutionTimeoutMs(value = process.env.AGENTOS_MAX_EXECUTI
 }
 
 export function resolveAgentEnvironment(
-  config: Pick<AgentConfig, 'role' | 'cliCommand' | 'env'>,
+  config: Pick<AgentConfig, 'role' | 'cliCommand' | 'env' | 'provider'>,
   inheritedEnv: NodeJS.ProcessEnv = process.env,
 ): NodeJS.ProcessEnv {
   const env = { ...inheritedEnv, ...config.env };
   if (!env.HOME && env.USERPROFILE) env.HOME = env.USERPROFILE;
   if (!env.USERPROFILE && env.HOME) env.USERPROFILE = env.HOME;
-  const usesCodexCli = config.role === 'codex_manager'
+  const usesCodexCli = config.provider === 'codex'
+    || config.role === 'codex_manager'
     || config.role === 'codex_final_review'
     || isCodexCli(config.cliCommand);
 
@@ -63,14 +64,14 @@ export function resolveAgentEnvironment(
     }
   }
 
-  if (config.role === 'kimi_worker' && env.AGENTOS_KIMI_API_KEY) {
+  if ((config.provider === 'kimi' || config.role === 'kimi_worker') && env.AGENTOS_KIMI_API_KEY) {
     env.KIMI_MODEL_NAME = 'kimi-for-coding';
     env.KIMI_MODEL_API_KEY = env.AGENTOS_KIMI_API_KEY;
     env.KIMI_MODEL_PROVIDER_TYPE = 'kimi';
     env.KIMI_MODEL_BASE_URL = env.AGENTOS_KIMI_BASE_URL ?? 'https://api.kimi.com/coding/v1';
   }
 
-  if (config.role === 'opencode_reviewer') {
+  if (config.provider === 'opencode' || config.role === 'opencode_reviewer') {
     if (!env.XDG_CONFIG_HOME && env.AGENTOS_WORKSPACE_ROOT) {
       env.XDG_CONFIG_HOME = join(env.AGENTOS_WORKSPACE_ROOT, '.agentos', 'opencode');
     }
@@ -97,13 +98,15 @@ export interface RuntimeResolvedConfig {
   cliArgs: string[];
   env: NodeJS.ProcessEnv;
   cliKind: 'kimi' | 'opencode' | 'codex' | 'unknown';
+  configuredProvider: AgentProvider;
 }
 
 export function resolveAgentRuntimeConfig(
-  config: Pick<AgentConfig, 'role' | 'cliCommand' | 'cliArgs' | 'model' | 'thinkingEffort' | 'env'>,
+  config: Pick<AgentConfig, 'role' | 'cliCommand' | 'cliArgs' | 'model' | 'thinkingEffort' | 'env' | 'provider'>,
   inheritedEnv: NodeJS.ProcessEnv = process.env,
 ): RuntimeResolvedConfig {
-  const capability = getCliCapability(config.cliCommand);
+  const configuredProvider = resolveConfiguredProvider(config);
+  const capability = getCliCapability(config.cliCommand, config.provider);
   const thinkingEffort: ThinkingEffort = config.thinkingEffort ?? 'auto';
   if (!capability.thinkingEffortValues.includes(thinkingEffort)) {
     throw new Error(`${config.cliCommand} does not support thinking effort "${thinkingEffort}"`);
@@ -129,7 +132,7 @@ export function resolveAgentRuntimeConfig(
     cliArgs = replaceConfigArg(cliArgs, 'model_reasoning_effort', thinkingEffort);
   }
 
-  return { cliArgs, env, cliKind: capability.cliKind };
+  return { cliArgs, env, cliKind: capability.cliKind, configuredProvider };
 }
 
 async function diagLog(entry: string): Promise<void> {
@@ -150,7 +153,7 @@ export interface ExecuteContext {
   onActivity?: ActivityCallback;
   signal?: AbortSignal;
   onInvocationStarted?: (observation: CliInvocationObservation) => void;
-  onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'model' | 'thinkingEffort'>) => void;
+  onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'configuredProvider' | 'detectedProvider' | 'providerMismatch' | 'model' | 'thinkingEffort'>) => void;
   onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
   onRuntimeEvent?: RuntimeEventCallback;
 }
@@ -288,7 +291,7 @@ export class CLIExecutor {
       throw new CLIError(`${agentName} (${stage}): ${message}`, stage, null, message, log);
     }
     const preparedPrompt = imagePlan.promptSuffix ? `${prompt}\n\n${imagePlan.promptSuffix}` : prompt;
-    const cliKind = getCliCapability(config.cliCommand).cliKind;
+    const cliKind = getCliCapability(config.cliCommand, config.provider).cliKind;
     const commandLabel = toCommandLabel(cliKind);
     const invocationId = randomUUID();
     const invocationStartedAt = new Date().toISOString();
@@ -335,8 +338,7 @@ export class CLIExecutor {
       ...process.env,
       AGENTOS_WORKSPACE_ROOT: workspaceRoot,
     });
-    const childEnv = resolvedRuntime.env;
-    const resolved = await resolveCommand(config.cliCommand, childEnv);
+    const resolved = await resolveCommand(config.cliCommand, resolvedRuntime.env);
     if (!resolved) {
       diagLog(`EXECUTION_FAIL executionId=${executionId} taskId=${taskId} reason=command_not_found cmd=${config.cliCommand}`);
       const log = this.buildLog(stage, agentName, '', '', null, startTime, 'real');
@@ -349,12 +351,16 @@ export class CLIExecutor {
       );
     }
 
-    const openCodeUsageBefore: OpenCodeUsageSnapshot | undefined = resolvedRuntime.cliKind === 'opencode'
-      ? readOpenCodeUsageSnapshot({ workspaceRoot, env: childEnv })
-      : undefined;
-
-    const adapterResolution = await new AgentCliAdapterRegistry().resolve(resolved);
+    const adapterResolution = await new AgentCliAdapterRegistry().resolve({
+      configuredProvider: resolvedRuntime.configuredProvider ?? resolveConfiguredProvider(config),
+      commandPath: resolved,
+    });
     const adapter = adapterResolution.adapter;
+    const runtimeProvider = adapterResolution.runtime.detectedProvider ?? adapterResolution.runtime.configuredProvider;
+    const runtimeCliKind = toCliKind(runtimeProvider);
+    const openCodeUsageBefore: OpenCodeUsageSnapshot | undefined = runtimeProvider === 'opencode'
+      ? readOpenCodeUsageSnapshot({ workspaceRoot, env: resolvedRuntime.env })
+      : undefined;
     const runtimeParser = adapter.createParser();
     if (adapterResolution.diagnostic) ctx.onRuntimeEvent?.(adapterResolution.diagnostic);
 
@@ -371,23 +377,30 @@ export class CLIExecutor {
       }
     };
 
+    let childEnv = { ...resolvedRuntime.env };
     let invocation: CommandInvocation;
     const kimiCodeHome = config.role === 'kimi_worker'
       ? (process.env.AGENTOS_KIMI_CODE_HOME ?? join(workspaceRoot, '.agentos', 'kimi-code'))
       : undefined;
     try {
-      const cliArgs = [
-        ...adapter.decorateArgs(resolvedRuntime.cliArgs),
-        ...imagePlan.cliArgs,
-      ];
+      const providerInvocation = adapter.buildInvocation({
+        commandPath: resolved,
+        baseArgs: resolvedRuntime.cliArgs,
+        prompt: preparedPrompt,
+        workspaceRoot,
+        workspaceWrite: config.role !== 'opencode_reviewer',
+        imageArgs: imagePlan.cliArgs,
+      });
+      const cliArgs = providerInvocation.args;
+      childEnv = { ...childEnv, ...providerInvocation.env };
       if (kimiCodeHome) {
         const sourceKimiHome = process.env.KIMI_CODE_HOME ?? join(homedir(), '.kimi-code');
         await prepareKimiCodeHome(sourceKimiHome, kimiCodeHome);
       }
       invocation = await createCommandInvocation(resolved, cliArgs, preparedPrompt, process.platform, {
-        promptViaStdin: imagePlan.transport === 'cli-flag',
+        promptViaStdin: providerInvocation.promptTransport === 'stdin' || imagePlan.transport === 'cli-flag',
       });
-      diagLog(`CLI_RUNTIME_RESOLUTION executionId=${executionId} taskId=${taskId} stage=${stage} cliKind=${resolvedRuntime.cliKind} commandLabel=${commandLabel} model=${config.model?.trim() || 'default'} thinkingEffort=${config.thinkingEffort ?? 'auto'} argCount=${cliArgs.length} promptTransport=${imagePlan.transport}`);
+      diagLog(`CLI_RUNTIME_RESOLUTION executionId=${executionId} taskId=${taskId} stage=${stage} cliKind=${runtimeCliKind} configuredProvider=${adapterResolution.runtime.configuredProvider} detectedProvider=${adapterResolution.runtime.detectedProvider ?? 'unknown'} mismatch=${adapterResolution.runtime.mismatch} commandLabel=${commandLabel} model=${config.model?.trim() || 'default'} thinkingEffort=${config.thinkingEffort ?? 'auto'} argCount=${cliArgs.length} promptTransport=${providerInvocation.promptTransport}`);
     } catch (err) {
       const message = `${kimiCodeHome ? 'Kimi runtime setup failed' : 'Agent startup preparation failed'}: ${err instanceof Error ? err.message : String(err)}`;
       diagLog(`EXECUTION_FAIL executionId=${executionId} taskId=${taskId} reason=setup_error message=${message}`);
@@ -397,7 +410,10 @@ export class CLIExecutor {
     let child: ChildProcess;
     try {
       ctx.onInvocationStarted?.({
-        invocationId, cliKind: resolvedRuntime.cliKind, commandLabel: toCommandLabel(resolvedRuntime.cliKind),
+        invocationId, cliKind: runtimeCliKind, commandLabel: toCommandLabel(runtimeCliKind),
+        configuredProvider: adapterResolution.runtime.configuredProvider,
+        ...(adapterResolution.runtime.detectedProvider ? { detectedProvider: adapterResolution.runtime.detectedProvider } : {}),
+        providerMismatch: adapterResolution.runtime.mismatch,
         ...(config.model ? { model: config.model } : {}),
         thinkingEffort: config.thinkingEffort ?? 'auto',
         startedAt: invocationStartedAt,
@@ -526,7 +542,7 @@ export class CLIExecutor {
     const finalStdout = stdoutDecoder.decode();
     if (finalStdout) emitRuntimeEvents(runtimeParser.push(finalStdout));
     emitRuntimeEvents(runtimeParser.finish());
-    if (resolvedRuntime.cliKind === 'opencode') {
+    if (runtimeProvider === 'opencode') {
       const openCodeUsage = diffOpenCodeUsage(
         openCodeUsageBefore,
         readOpenCodeUsageSnapshot({ workspaceRoot, env: childEnv }),
@@ -543,7 +559,10 @@ export class CLIExecutor {
     stderr += stderrDecoder.decode();
     const invocationCompletedAt = new Date().toISOString();
     ctx.onInvocationCompleted?.({
-      invocationId, cliKind: resolvedRuntime.cliKind, commandLabel: toCommandLabel(resolvedRuntime.cliKind),
+      invocationId, cliKind: runtimeCliKind, commandLabel: toCommandLabel(runtimeCliKind),
+      configuredProvider: adapterResolution.runtime.configuredProvider,
+      ...(adapterResolution.runtime.detectedProvider ? { detectedProvider: adapterResolution.runtime.detectedProvider } : {}),
+      providerMismatch: adapterResolution.runtime.mismatch,
       exitCode, durationMs: Date.now() - startTime, startedAt: invocationStartedAt, completedAt: invocationCompletedAt,
       model: config.model,
       thinkingEffort: config.thinkingEffort ?? 'auto',
@@ -665,6 +684,10 @@ function toCommandLabel(cliKind: string): string {
   if (cliKind === 'kimi') return 'kimi -p';
   if (cliKind === 'opencode') return 'opencode run';
   return 'agent cli';
+}
+
+function toCliKind(provider: AgentProvider): 'kimi' | 'opencode' | 'codex' | 'unknown' {
+  return provider === 'kimi' || provider === 'opencode' || provider === 'codex' ? provider : 'unknown';
 }
 
 function publicFailureDetail(stderr: string, stdout: string): string {

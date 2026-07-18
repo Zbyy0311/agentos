@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
 import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import type { Workspace, TaskItem } from '@agentos/shared';
+import type { AgentProvider, Workspace, WorkspaceAgent, TaskItem } from '@agentos/shared';
 import type { Store } from './Store.js';
 
 export class JsonFileStore implements Store {
@@ -16,14 +16,24 @@ export class JsonFileStore implements Store {
       if (existsSync(this.workspacesFile)) {
         const raw = readFileSync(this.workspacesFile, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.workspaces)) return parsed.workspaces;
+        if (Array.isArray(parsed.workspaces)) {
+          return parsed.workspaces.map((workspace: Workspace) => ({
+            ...workspace,
+            agents: workspace.agents.map(normalizeAgentProvider),
+          }));
+        }
       }
     } catch { /* ignore */ }
     return [];
   }
 
   saveWorkspaces(workspaces: Workspace[]): void {
-    this.writeJsonAtomically(this.workspacesFile, { workspaces });
+    this.writeJsonAtomically(this.workspacesFile, {
+      workspaces: workspaces.map(workspace => ({
+        ...workspace,
+        agents: workspace.agents.map(normalizeAgentProvider),
+      })),
+    });
   }
 
   private tasksFile(workspaceId: string): string {
@@ -70,4 +80,10 @@ export class JsonFileStore implements Store {
       throw err;
     }
   }
+}
+
+function normalizeAgentProvider(agent: WorkspaceAgent): WorkspaceAgent {
+  const provider: AgentProvider = agent.provider
+    ?? (agent.role === 'codex' || agent.role === 'kimi' || agent.role === 'opencode' || agent.role === 'mimo' ? agent.role : 'custom');
+  return { ...agent, provider };
 }

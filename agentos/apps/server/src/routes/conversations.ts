@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { getAgentCapability } from '@agentos/agent-core';
-import type { AgentCapability, AgentModelOption, AgentProfile, Conversation, ThinkingEffort } from '@agentos/shared';
+import type { AgentCapability, AgentModelOption, AgentProfile, AgentProvider, Conversation, ThinkingEffort } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ConversationService } from '../services/ConversationService.js';
 import { RunStreamRegistry, type RunStreamEvent } from '../services/RunStreamRegistry.js';
@@ -52,6 +52,12 @@ export function createConversationRoutes(
       return res.status(400).json({ error: 'thinkingEffort must be auto, low, medium, or high' });
     }
     const nextModel = typeof body.model === 'string' ? body.model.trim() : current.model;
+    const provider = body.provider === undefined
+      ? current.provider
+      : isAgentProvider(body.provider) ? body.provider : undefined;
+    if (body.provider !== undefined && !provider) {
+      return res.status(400).json({ error: 'provider must be codex, kimi, opencode, mimo, or custom' });
+    }
     const capability = getAgentCapability(current.role, current.cliCommand, nextModel);
     if (!capability.thinkingEfforts.includes(thinkingEffort)) {
       return res.status(400).json({ error: `${current.name} does not support thinking effort "${thinkingEffort}"` });
@@ -63,6 +69,7 @@ export function createConversationRoutes(
         systemPrompt: typeof body.systemPrompt === 'string' ? body.systemPrompt : current.systemPrompt,
         permissions,
         enabled: typeof body.enabled === 'boolean' ? body.enabled : current.enabled,
+        provider,
         model: typeof body.model === 'string' ? body.model : current.model,
         thinkingEffort,
       });
@@ -430,6 +437,10 @@ export function createConversationRoutes(
   });
 
   return router;
+}
+
+function isAgentProvider(value: unknown): value is AgentProvider {
+  return value === 'codex' || value === 'kimi' || value === 'opencode' || value === 'mimo' || value === 'custom';
 }
 
 function parseAttachmentInputs(value: unknown): ConversationAttachmentInput[] {

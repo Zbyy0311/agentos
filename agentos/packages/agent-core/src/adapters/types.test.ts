@@ -56,9 +56,24 @@ describe('normalized CLI event protocol', () => {
     };
     const adapter: AgentCliAdapter = {
       provider: 'plain',
-      matches: command => command === 'plain',
-      supportsStructuredOutput: () => false,
-      decorateArgs: args => [...args],
+      probe: async () => ({
+        status: 'UNAVAILABLE',
+        configuredProvider: 'custom' as const,
+        capabilities: {
+          structuredOutput: false,
+          jsonSchemaOutput: false,
+          assistantDelta: false,
+          toolEvents: false,
+          usage: false,
+          workspaceReadOnly: false,
+          approvalEvents: false,
+        },
+      }),
+      buildInvocation: input => ({
+        args: [...input.baseArgs],
+        promptTransport: 'argument',
+        env: {},
+      }),
       createParser: () => parser,
     };
 

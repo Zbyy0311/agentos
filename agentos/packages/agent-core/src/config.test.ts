@@ -65,6 +65,12 @@ describe('AGENT_CONFIGS', () => {
     expect(isOpenCodeCli('E:\\software\\opencode\\node_modules\\opencode-ai\\bin\\opencode.exe')).toBe(true);
     expect(isOpenCodeCli('codex')).toBe(false);
   });
+
+  it('keeps an explicit custom provider separate from the collaboration role', async () => {
+    const { resolveConfiguredProvider } = await import('./config.js');
+    expect(resolveConfiguredProvider({ role: 'codex_manager', cliCommand: 'node', provider: 'custom' })).toBe('custom');
+    expect(resolveConfiguredProvider({ role: 'opencode_reviewer', cliCommand: 'codex' })).toBe('codex');
+  });
 });
 
 describe('CLI capabilities', () => {

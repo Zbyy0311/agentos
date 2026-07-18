@@ -1,4 +1,4 @@
-import type { AgentCapability, AgentRole, ThinkingEffort } from '@agentos/shared';
+import type { AgentCapability, AgentProvider, AgentRole, ThinkingEffort } from '@agentos/shared';
 import { isCodexCli, isOpenCodeCli } from './config.js';
 
 export interface CliCapability {
@@ -10,7 +10,12 @@ export interface CliCapability {
 
 const AUTO_ONLY: ThinkingEffort[] = ['auto'];
 
-export function getCliCapability(cliCommand: string): CliCapability {
+export function getCliCapability(cliCommand: string, configuredProvider?: AgentProvider): CliCapability {
+  if (configuredProvider) {
+    if (configuredProvider === 'kimi') return { cliKind: 'kimi', modelFlag: '-m', thinkingEffortMode: 'none', thinkingEffortValues: [...AUTO_ONLY] };
+    if (configuredProvider === 'opencode') return { cliKind: 'opencode', modelFlag: '--model', thinkingEffortMode: 'none', thinkingEffortValues: [...AUTO_ONLY] };
+    if (configuredProvider === 'codex') return { cliKind: 'codex', modelFlag: '-m', thinkingEffortMode: 'arg', thinkingEffortValues: ['auto', 'low', 'medium', 'high'] };
+  }
   if (/^(?:kimi)(?:\.(?:exe|cmd|bat))?$/i.test(cliCommand) || /[\\/]kimi(?:\.(?:exe|cmd|bat))?$/i.test(cliCommand)) {
     return {
       cliKind: 'kimi',

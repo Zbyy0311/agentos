@@ -93,8 +93,27 @@ test('migrates legacy workspace agents into SQLite exactly once', () => {
     const second = new SqliteStore(root);
     assert.deepEqual(second.listAgentProfiles('workspace-a').map(agent => agent.id), ['codex']);
     assert.deepEqual(second.listAgentProfiles('workspace-b').map(agent => agent.id), ['kimi']);
+    assert.equal(second.listAgentProfiles('workspace-a')[0]?.provider, 'codex');
+    assert.equal(second.listAgentProfiles('workspace-b')[0]?.provider, 'kimi');
     second.close();
   } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('migrates a legacy role into provider without rewriting a custom command', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    const workspaces = JSON.parse(readFileSync(join(root, 'workspace', 'workspaces.json'), 'utf-8'));
+    workspaces.workspaces[1].agents[0].cliCommand = 'custom-kimi.cmd';
+    writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify(workspaces), 'utf-8');
+    store = new SqliteStore(root);
+    const profile = store.listAgentProfiles('workspace-b')[0];
+    assert.equal(profile?.provider, 'kimi');
+    assert.equal(profile?.cliCommand, 'custom-kimi.cmd');
+  } finally {
+    store?.close();
     rmSync(root, { recursive: true, force: true });
   }
 });
@@ -509,10 +528,14 @@ test('persists sanitized CLI invocation and deduplicated file evidence', () => {
     store.createMessage({ id: 'evidence-message', conversationId: 'evidence-conversation', workspaceId: 'workspace-a', senderType: 'user', content: '证据', createdAt: '2026-07-12T07:10:01.000Z' });
     store.createRun({ id: 'evidence-run', workspaceId: 'workspace-a', conversationId: 'evidence-conversation', sourceMessageId: 'evidence-message', objective: '证据', status: 'running', createdAt: '2026-07-12T07:10:01.000Z', updatedAt: '2026-07-12T07:10:01.000Z' });
     store.createExecution({ id: 'evidence-execution', runId: 'evidence-run', conversationId: 'evidence-conversation', workspaceId: 'workspace-a', sourceMessageId: 'evidence-message', agentId: 'codex', status: 'running_cli', mode: 'mock', createdAt: '2026-07-12T07:10:01.000Z', updatedAt: '2026-07-12T07:10:01.000Z' });
-    store.saveRunCliInvocation({ id: 'invocation-a', runId: 'evidence-run', executionId: 'evidence-execution', agentId: 'codex', cliKind: 'codex', commandLabel: 'codex exec', model: 'gpt-5.5', thinkingEffort: 'medium', exitCode: 0, durationMs: 42, startedAt: '2026-07-12T07:10:02.000Z', completedAt: '2026-07-12T07:10:02.042Z' });
+    store.saveRunCliInvocation({ id: 'invocation-a', runId: 'evidence-run', executionId: 'evidence-execution', agentId: 'codex', cliKind: 'codex', commandLabel: 'codex exec', configuredProvider: 'opencode', detectedProvider: 'codex', providerMismatch: true, model: 'gpt-5.5', thinkingEffort: 'medium', exitCode: 0, durationMs: 42, startedAt: '2026-07-12T07:10:02.000Z', completedAt: '2026-07-12T07:10:02.042Z' });
     store.createRunFileChange({ runId: 'evidence-run', path: 'src/index.ts', changeType: 'modified' });
     store.createRunFileChange({ runId: 'evidence-run', path: 'src/index.ts', changeType: 'modified' });
     assert.equal(store.listRunCliInvocations('workspace-a', 'evidence-run')[0]?.commandLabel, 'codex exec');
+    const invocation = store.listRunCliInvocations('workspace-a', 'evidence-run')[0];
+    assert.equal(invocation?.configuredProvider, 'opencode');
+    assert.equal(invocation?.detectedProvider, 'codex');
+    assert.equal(invocation?.providerMismatch, true);
     assert.deepEqual(store.listRunFileChanges('workspace-a', 'evidence-run'), [{ runId: 'evidence-run', path: 'src/index.ts', changeType: 'modified' }]);
   } finally {
     store?.close();
