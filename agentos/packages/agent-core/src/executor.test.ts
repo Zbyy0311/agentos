@@ -6,6 +6,10 @@ import type { RunFileChange } from '@agentos/shared';
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { DatabaseSync } = require('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { run(...parameters: unknown[]): void }; close(): void } };
 
 // Ensure FORCE_MOCK is off for these tests unless explicitly toggled
 process.env.AGENTOS_FORCE_MOCK = 'false';
@@ -148,6 +152,75 @@ describe('CLIExecutor', () => {
       expect(runtimeEvents).toEqual(['status', 'tool.started', 'tool.completed', 'assistant.message', 'status', 'usage']);
       expect(chunks.filter(chunk => !chunk.done).map(chunk => chunk.text)).toEqual(['结构化回复']);
       expect(chunks.filter(chunk => chunk.done)).toHaveLength(1);
+    } finally {
+      rmSync(commandRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('emits OpenCode token usage from the per-run SQLite delta', async () => {
+    const commandRoot = mkdtempSync(join(tmpdir(), 'agentos-opencode-usage-cli-'));
+    const commandPath = join(commandRoot, 'opencode.exe');
+    const databasePath = join(commandRoot, 'opencode.db');
+    copyFileSync(process.execPath, commandPath);
+    const database = new DatabaseSync(databasePath);
+    database.exec(`CREATE TABLE session (
+      id TEXT PRIMARY KEY,
+      directory TEXT NOT NULL,
+      tokens_input INTEGER NOT NULL DEFAULT 0,
+      tokens_output INTEGER NOT NULL DEFAULT 0,
+      tokens_reasoning INTEGER NOT NULL DEFAULT 0,
+      tokens_cache_read INTEGER NOT NULL DEFAULT 0,
+      tokens_cache_write INTEGER NOT NULL DEFAULT 0
+    )`);
+    database.prepare('INSERT INTO session VALUES (?, ?, ?, ?, ?, ?, ?)').run('session-a', workspaceRoot, 10, 2, 1, 4, 0);
+    database.close();
+
+    try {
+      const runtimeEvents: Array<{ type: string; inputTokens?: number; outputTokens?: number; cachedInputTokens?: number }> = [];
+      const log = await CLIExecutor.execute({
+        name: 'OpenCode',
+        role: 'opencode_reviewer',
+        cliCommand: commandPath,
+        cliArgs: ['-e', `const { DatabaseSync } = require('node:sqlite'); const db = new DatabaseSync(${JSON.stringify(databasePath)}); db.prepare('UPDATE session SET tokens_input = 25, tokens_output = 8, tokens_reasoning = 2, tokens_cache_read = 11 WHERE id = ?').run('session-a'); db.close(); console.log('opencode ok');`],
+        env: { AGENTOS_OPENCODE_DB: databasePath },
+      }, 'opencode prompt', {
+        ...ctx('opencode-usage'),
+        onRuntimeEvent: event => runtimeEvents.push(event),
+      });
+
+      expect(log.stdout).toContain('opencode ok');
+      expect(runtimeEvents.find(event => event.type === 'usage')).toMatchObject({
+        inputTokens: 15,
+        outputTokens: 6,
+        cachedInputTokens: 7,
+      });
+    } finally {
+      rmSync(commandRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a successful OpenCode execution successful when usage storage is unavailable', async () => {
+    const commandRoot = mkdtempSync(join(tmpdir(), 'agentos-opencode-usage-missing-'));
+    const commandPath = join(commandRoot, 'opencode.exe');
+    const missingDatabasePath = join(commandRoot, 'missing', 'opencode.db');
+    copyFileSync(process.execPath, commandPath);
+
+    try {
+      const events: Array<{ type: string }> = [];
+      const log = await CLIExecutor.execute({
+        name: 'OpenCode',
+        role: 'opencode_reviewer',
+        cliCommand: commandPath,
+        cliArgs: ['-e', "console.log('opencode without usage database')"],
+        env: { AGENTOS_OPENCODE_DB: missingDatabasePath },
+      }, 'opencode prompt', {
+        ...ctx('opencode-usage-missing'),
+        onRuntimeEvent: event => events.push(event),
+      });
+
+      expect(log.exitCode).toBe(0);
+      expect(log.stdout).toContain('opencode without usage database');
+      expect(events.some(event => event.type === 'usage')).toBe(false);
     } finally {
       rmSync(commandRoot, { recursive: true, force: true });
     }

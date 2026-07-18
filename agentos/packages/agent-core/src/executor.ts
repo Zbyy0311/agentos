@@ -18,6 +18,7 @@ import { PlainTextAdapter } from './adapters/plainTextAdapter.js';
 import type { CliInvocationObservation, TaskLog, AgentStage, ThinkingEffort, RunFileChange } from '@agentos/shared';
 import { captureWorkspaceSnapshot, diffWorkspaceSnapshots } from './workspaceChanges.js';
 import { removeArgPair, replaceConfigArg, replaceOrAppendArg } from './runtimeArgs.js';
+import { diffOpenCodeUsage, readOpenCodeUsageSnapshot, type OpenCodeUsageSnapshot } from './opencodeUsage.js';
 
 const DIAG_LOG_DIR = process.env.AGENTOS_DIAG_LOG_DIR
   ?? join(process.env.AGENTOS_WORKSPACE_ROOT ?? process.cwd(), '.agentos', 'logs', 'diagnostics');
@@ -348,6 +349,10 @@ export class CLIExecutor {
       );
     }
 
+    const openCodeUsageBefore: OpenCodeUsageSnapshot | undefined = resolvedRuntime.cliKind === 'opencode'
+      ? readOpenCodeUsageSnapshot({ workspaceRoot, env: childEnv })
+      : undefined;
+
     const adapterResolution = await new AgentCliAdapterRegistry().resolve(resolved);
     const adapter = adapterResolution.adapter;
     const runtimeParser = adapter.createParser();
@@ -521,6 +526,20 @@ export class CLIExecutor {
     const finalStdout = stdoutDecoder.decode();
     if (finalStdout) emitRuntimeEvents(runtimeParser.push(finalStdout));
     emitRuntimeEvents(runtimeParser.finish());
+    if (resolvedRuntime.cliKind === 'opencode') {
+      const openCodeUsage = diffOpenCodeUsage(
+        openCodeUsageBefore,
+        readOpenCodeUsageSnapshot({ workspaceRoot, env: childEnv }),
+      );
+      if (openCodeUsage) {
+        emitRuntimeEvents([{
+          type: 'usage',
+          inputTokens: openCodeUsage.inputTokens,
+          cachedInputTokens: openCodeUsage.cachedInputTokens,
+          outputTokens: openCodeUsage.outputTokens,
+        }]);
+      }
+    }
     stderr += stderrDecoder.decode();
     const invocationCompletedAt = new Date().toISOString();
     ctx.onInvocationCompleted?.({
