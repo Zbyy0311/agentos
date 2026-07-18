@@ -18,6 +18,10 @@ if (Test-Path $envFile) {
 # Use mock mode when -Mock flag is set
 if ($Mock) { $env:AGENTOS_FORCE_MOCK = "true" }
 
+if (-not $env:AGENTOS_SERVER_HOST) { $env:AGENTOS_SERVER_HOST = "127.0.0.1" }
+if (-not $env:AGENTOS_WEB_ORIGINS) { $env:AGENTOS_WEB_ORIGINS = "http://localhost:3001,http://127.0.0.1:3001" }
+if (-not $env:AGENTOS_ALLOW_REMOTE) { $env:AGENTOS_ALLOW_REMOTE = "false" }
+
 $root = $PSScriptRoot
 $serverScript = if ($Stable) { "dev:stable" } else { "dev" }
 

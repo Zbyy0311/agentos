@@ -25,9 +25,11 @@ import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 import { PreferenceService } from './services/PreferenceService.js';
 import { RetentionService } from './services/RetentionService.js';
 import { createPreferenceRoutes } from './routes/preferences.js';
+import { createLocalCorsOptions, createLocalWriteGuard, resolveLocalApiSecurityConfig } from './localApiSecurity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
+const security = resolveLocalApiSecurityConfig(process.env);
 
 const serverInstanceId = randomUUID();
 process.env.AGENTOS_SERVER_INSTANCE_ID = serverInstanceId;
@@ -67,9 +69,11 @@ try {
 retentionService.start();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
+const PORT = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
 
-app.use(cors());
+app.use(cors(createLocalCorsOptions(security)));
+app.use(createLocalWriteGuard(security));
 app.use(express.json({ limit: '50mb' }));
 
 app.get('/api/health', (_req, res) => {
@@ -89,10 +93,10 @@ app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
 app.use('/api/agents', createAgentRoutes(workspaceManager));
 app.use(createJsonErrorHandler());
 
-app.listen(PORT, () => {
+app.listen(PORT, security.host, () => {
   const msg = `SERVER_LISTEN pid=${process.pid} instanceId=${serverInstanceId} port=${PORT}`;
-  console.log(`[AgentOS Server] running on http://localhost:${PORT}`);
-  console.log(`[AgentOS Server] API base: http://localhost:${PORT}/api`);
+  console.log(`[AgentOS Server] running on http://${security.host}:${PORT}`);
+  console.log(`[AgentOS Server] API base: http://${security.host}:${PORT}/api`);
   diagLog(msg);
   if (recoveredTasks.length > 0) {
     console.warn(`[AgentOS Server] recovered ${recoveredTasks.length} interrupted running task(s) as failed`);

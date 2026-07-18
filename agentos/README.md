@@ -116,9 +116,14 @@ agentos/
 | `AGENTOS_OPENCODE_CLI` | `opencode` | OpenCode Reviewer 命令路径或名称；如需使用 Codex 代替 Reviewer，必须显式设置为 `codex` |
 | `AGENTOS_KIMI_MODEL` | `kimi-code/kimi-for-coding` | KimiCode 模型 |
 | `AGENTOS_OPENCODE_MODEL` | `deepseek/deepseek-v4-flash` | OpenCode 模型 |
+| `AGENTOS_SERVER_HOST` | `127.0.0.1` | Server 监听地址；非 loopback 地址还需要 `AGENTOS_ALLOW_REMOTE=true` |
+| `AGENTOS_WEB_ORIGINS` | `http://localhost:3001,http://127.0.0.1:3001` | 浏览器 CORS Origin allowlist，不支持 `*` |
+| `AGENTOS_ALLOW_REMOTE` | `false` | 是否显式允许 Server 绑定非 loopback 地址；写请求仍要求 allowlist Origin 或 loopback 直连 |
 | `AGENTOS_AGENT_TIMEOUT` | `0`（禁用） | 可选无活动超时（毫秒）；`0`、空值或 `null` 表示无限等待，正数仅在 Agent 持续无 stdout/stderr 输出时终止任务。 |
 | `PORT` | `3000` | 后端端口 |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3000` | 前端 API 地址 |
+
+Server 默认只监听 `127.0.0.1`。所有 HTTP 写请求（POST/PATCH/PUT/DELETE）在进入 API 路由前统一经过 Origin/loopback guard；浏览器请求必须来自 `AGENTOS_WEB_ORIGINS`，无 Origin 的 CLI 请求只允许直接来自 loopback。只有明确设置 `AGENTOS_ALLOW_REMOTE=true` 才能启动非 loopback 监听，且不自动启用 Express `trust proxy`。
 
 ## 收尾验收
 
