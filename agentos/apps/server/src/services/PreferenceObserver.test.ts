@@ -61,6 +61,15 @@ test('creates positive repeated-instruction evidence across independent runs', (
   assert.equal(evidence[0]?.candidateValue, 'direct_execution');
 });
 
+test('does not learn concise from a negated concise instruction', () => {
+  const evidence = new PreferenceObserver().observeRun(input({
+    objective: '不要太简洁，保持信息完整',
+    appliedProjections: [],
+  }));
+  assert.equal(evidence.some(item => item.candidateValue === 'concise'), false);
+  assert.equal(evidence[0]?.candidateValue, 'balanced');
+});
+
 test('does not create successful-application evidence for failed runs', () => {
   const evidence = new PreferenceObserver().observeRun(input({ status: 'failed' }));
   assert.equal(evidence.some(item => item.signalType === 'successful_application'), false);

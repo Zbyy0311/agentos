@@ -1,5 +1,6 @@
-import type { AgentRunStatus, PreferenceContextKind, PreferenceDimension, PreferenceEvidence, PreferenceProjection } from '@agentos/shared';
+import type { AgentRunStatus, PreferenceEvidence, PreferenceProjection } from '@agentos/shared';
 import { classifyPreferenceContext } from './PreferenceContextClassifier.js';
+import { parsePreferenceDirective } from './PreferenceDirectiveParser.js';
 
 export interface PreferenceFollowUpMessage {
   id: string;
@@ -89,32 +90,7 @@ export class PreferenceObserver {
   }
 }
 
-interface ParsedDirective {
-  dimension: PreferenceDimension;
-  contextKind: PreferenceContextKind;
-  candidateValue: string;
-}
-
-function parsePreferenceDirective(objective: string, contextKind: PreferenceContextKind): ParsedDirective | undefined {
-  const text = objective.toLocaleLowerCase();
-  if (/(直接执行|直接做|不要先问|先别问)/i.test(text)) return { dimension: 'execution_style', contextKind: contextKind === 'general' ? 'coding' : contextKind, candidateValue: 'direct_execution' };
-  if (/(先给计划|先规划|先拆分|先设计)/i.test(text)) return { dimension: 'execution_style', contextKind: contextKind === 'general' ? 'planning' : contextKind, candidateValue: 'plan_first' };
-  if (/(简洁|简短|不要太长|少废话)/i.test(text)) return { dimension: 'response_detail', contextKind, candidateValue: 'concise' };
-  if (/(详细|展开说明|多解释)/i.test(text)) return { dimension: 'response_detail', contextKind, candidateValue: 'detailed' };
-  if (/(不要重构|最小改动|保持现有架构)/i.test(text)) return { dimension: 'change_scope', contextKind, candidateValue: 'surgical' };
-  if (/(完整测试|全链路|端到端验收)/i.test(text)) return { dimension: 'verification_depth', contextKind, candidateValue: 'full_flow' };
-  if (/(及时更新|每一步汇报|持续同步)/i.test(text)) return { dimension: 'progress_update_style', contextKind, candidateValue: 'frequent_updates' };
-  if (/(命令.*验收|测试结果.*命令)/i.test(text)) return { dimension: 'delivery_format', contextKind, candidateValue: 'summary_commands_validation' };
-  return undefined;
-}
-
 function isCorrectionFor(projection: PreferenceProjection, content: string): boolean {
-  const text = content.toLocaleLowerCase();
-  if (projection.dimension === 'response_detail' && projection.preferredValue === 'concise') return /(详细|展开|多解释|太简短|更多细节)/i.test(text);
-  if (projection.dimension === 'response_detail' && projection.preferredValue === 'detailed') return /(简洁|简短|太长|少说)/i.test(text);
-  if (projection.dimension === 'execution_style' && projection.preferredValue === 'direct_execution') return /(先规划|先计划|先问|不要直接)/i.test(text);
-  if (projection.dimension === 'execution_style' && projection.preferredValue === 'plan_first') return /(直接做|直接执行|不要计划)/i.test(text);
-  if (projection.dimension === 'change_scope' && projection.preferredValue === 'surgical') return /(可以重构|整体重做|扩大范围)/i.test(text);
-  if (projection.dimension === 'verification_depth' && projection.preferredValue === 'full_flow') return /(不用全量|只测|简单验证)/i.test(text);
-  return false;
+  const directive = parsePreferenceDirective(content, projection.contextKind);
+  return directive?.dimension === projection.dimension && directive.candidateValue !== projection.preferredValue;
 }
