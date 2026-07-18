@@ -31,6 +31,7 @@ export class PreferenceService {
       .filter((item): item is PreferenceEvidence => Boolean(item))
       .map(item => this.store.createPreferenceEvidence(item));
     if (inserted.length === 0) return [];
+    this.store.pruneSuccessfulPreferenceEvidence(input.profileId, input.workspaceId);
 
     const affected = new Map<string, PreferenceEvidence>();
     for (const item of inserted) affected.set(`${item.dimension}:${item.contextKind}`, item);

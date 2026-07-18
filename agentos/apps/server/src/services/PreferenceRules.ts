@@ -38,6 +38,8 @@ export const PROMOTION_THRESHOLDS = {
   successScoreCap: 3,
 } as const;
 
+export const MAX_SUCCESS_EVIDENCE_PER_KEY = 4;
+
 export function normalizePreferenceEvidence(input: PreferenceEvidence): PreferenceEvidence | undefined {
   if (!input.id || !input.profileId || !input.conversationId || !input.runId || !input.sourceEventId) return undefined;
   if (!PREFERENCE_DIMENSIONS.includes(input.dimension)) return undefined;

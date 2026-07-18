@@ -79,3 +79,47 @@ test('verifies lifecycle, scene separation, global eligibility, controls, and re
     assert.equal(store.listPreferenceEvidence('default').length, 8);
   } finally { store.close(); rmSync(root, { recursive: true, force: true }); }
 });
+
+test('prunes redundant successful evidence while preserving projection semantics', () => {
+  const root = createRoot();
+  const store = new SqliteStore(root);
+  try {
+    store.createConversation({ id: 'conversation-prune', workspaceId: 'workspace-a', type: 'direct', title: 'Prune', agentId: 'codex', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' });
+    for (let index = 1; index <= 20; index += 1) {
+      const runId = `run-prune-${index}`;
+      const messageId = `message-prune-${index}`;
+      store.createMessage({ id: messageId, conversationId: 'conversation-prune', workspaceId: 'workspace-a', senderType: 'user', content: 'source', createdAt: '2026-07-01T00:00:00.000Z' });
+      store.createRun({ id: runId, workspaceId: 'workspace-a', conversationId: 'conversation-prune', sourceMessageId: messageId, objective: 'preference test', status: 'completed', resultSummary: 'completed', createdAt: '2026-07-01T00:00:00.000Z', updatedAt: '2026-07-01T00:00:00.000Z' });
+      store.createPreferenceEvidence(evidence({
+        id: `success-${index}`, workspaceId: 'workspace-a', conversationId: 'conversation-prune', runId,
+        candidateValue: 'detailed', polarity: 'positive', weight: 1,
+        signalType: 'successful_application', observedAt: `2026-07-${String(index).padStart(2, '0')}T00:00:00.000Z`,
+      }));
+    }
+    const strongRunId = 'run-prune-strong';
+    const strongMessageId = 'message-prune-strong';
+    store.createMessage({ id: strongMessageId, conversationId: 'conversation-prune', workspaceId: 'workspace-a', senderType: 'user', content: 'source', createdAt: '2026-08-01T00:00:00.000Z' });
+    store.createRun({ id: strongRunId, workspaceId: 'workspace-a', conversationId: 'conversation-prune', sourceMessageId: strongMessageId, objective: 'preference test', status: 'completed', resultSummary: 'completed', createdAt: '2026-08-01T00:00:00.000Z', updatedAt: '2026-08-01T00:00:00.000Z' });
+    store.createPreferenceEvidence(evidence({
+      id: 'strong-correction', workspaceId: 'workspace-a', conversationId: 'conversation-prune', runId: strongRunId,
+      candidateValue: 'detailed', polarity: 'positive', weight: 4,
+      signalType: 'direct_correction', observedAt: '2026-08-01T00:00:00.000Z',
+    }));
+
+    const before = calculatePreferenceProjection(store.listPreferenceEvidence('default', 'workspace-a'), 'workspace', 'workspace-a');
+    const deleted = store.pruneSuccessfulPreferenceEvidence('default', 'workspace-a');
+    const remaining = store.listPreferenceEvidence('default', 'workspace-a');
+    const after = calculatePreferenceProjection(remaining, 'workspace', 'workspace-a');
+
+    assert.equal(deleted, 16);
+    assert.equal(remaining.filter(item => item.signalType === 'successful_application').length, 4);
+    assert.equal(remaining.filter(item => item.signalType === 'direct_correction').length, 1);
+    assert.deepEqual(
+      { preferredValue: after?.preferredValue, score: after?.score, confidence: after?.confidence, status: after?.status },
+      { preferredValue: before?.preferredValue, score: before?.score, confidence: before?.confidence, status: before?.status },
+    );
+  } finally {
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

@@ -78,3 +78,15 @@ test('does not create a global projection from one workspace', () => {
   ], 'global');
   assert.equal(projection, undefined);
 });
+
+test('caps all historical successful applications at three score points', () => {
+  const projection = calculatePreferenceProjection(
+    Array.from({ length: 100 }, (_, index) => evidence(1, `run-${index + 1}`, {
+      signalType: 'successful_application',
+    })),
+    'workspace',
+    'workspace-a',
+  );
+  assert.equal(projection?.score, 3);
+  assert.equal(projection?.status, 'observed');
+});

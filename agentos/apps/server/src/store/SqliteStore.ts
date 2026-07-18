@@ -32,6 +32,7 @@ import type {
 import { JsonFileStore } from './JsonFileStore.js';
 import type { Store } from './Store.js';
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
+import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -1200,6 +1201,28 @@ export class SqliteStore implements Store {
       evidence.polarity, evidence.weight, evidence.summary.trim(), evidence.status, evidence.observedAt, evidence.createdAt,
     );
     return this.getPreferenceEvidence(evidence.profileId, evidence.id) ?? evidence;
+  }
+
+  pruneSuccessfulPreferenceEvidence(profileId: string, workspaceId: string): number {
+    const result = this.database.prepare(`
+      DELETE FROM preference_evidence
+      WHERE id IN (
+        SELECT id FROM (
+          SELECT id,
+            ROW_NUMBER() OVER (
+              PARTITION BY profile_id, workspace_id, dimension, context_kind, candidate_value
+              ORDER BY observed_at DESC, id DESC
+            ) AS row_number
+          FROM preference_evidence
+          WHERE profile_id = ?
+            AND workspace_id = ?
+            AND signal_type = 'successful_application'
+            AND polarity = 'positive'
+        )
+        WHERE row_number > ?
+      )
+    `).run(profileId, workspaceId, MAX_SUCCESS_EVIDENCE_PER_KEY) as { changes: number };
+    return result.changes;
   }
 
   getPreferenceEvidence(profileId: string, evidenceId: string): PreferenceEvidence | undefined {
