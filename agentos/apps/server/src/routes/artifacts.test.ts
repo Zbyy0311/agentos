@@ -37,6 +37,7 @@ test('serves owned artifact content and rejects metadata-only artifacts', async 
     const content = await fetch(`${base}/${contentArtifact.id}/content`);
     assert.equal(content.status, 200);
     assert.equal(content.headers.get('x-content-type-options'), 'nosniff');
+    assert.match(content.headers.get('content-security-policy') ?? '', /default-src 'none'/);
     assert.equal(await content.text(), '1 passed');
     assert.equal((await fetch(`${base}/${metadataArtifact.id}/content`)).status, 409);
     assert.equal((await fetch(`http://127.0.0.1:${address.port}/api/workspaces/workspace-b/artifacts/${contentArtifact.id}/content`)).status, 404);

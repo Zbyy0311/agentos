@@ -2,6 +2,8 @@
 
 import type { RuntimeArtifact } from '@agentos/shared';
 import { getArtifactContentUrl, getArtifactIcon, getChatVisibleArtifacts } from '@/lib/artifacts';
+import { useState } from 'react';
+import { ArtifactPreviewDialog } from './ArtifactPreviewDialog';
 
 interface ArtifactShelfProps {
   artifacts: RuntimeArtifact[];
@@ -24,6 +26,7 @@ export function ArtifactShelf({ artifacts, apiBase }: ArtifactShelfProps) {
 }
 
 function ArtifactCard({ artifact, apiBase }: { artifact: RuntimeArtifact; apiBase: string }) {
+  const [previewOpen, setPreviewOpen] = useState(false);
   const url = getArtifactContentUrl(apiBase, artifact);
   const isImage = artifact.type === 'image' && Boolean(url);
   return <article className="rounded-xl border ui-border bg-[var(--app-surface-soft)] p-3" aria-label={`${artifact.type} artifact: ${artifact.title}`}>
@@ -38,10 +41,11 @@ function ArtifactCard({ artifact, apiBase }: { artifact: RuntimeArtifact; apiBas
     </div>
     <div className="mt-3 flex items-center gap-2">
       {url
-        ? <a href={url} target="_blank" rel="noreferrer" className="ui-button-ghost rounded-lg px-2.5 py-1 text-xs">Open</a>
+        ? <><button type="button" onClick={() => setPreviewOpen(true)} className="ui-button-ghost rounded-lg px-2.5 py-1 text-xs">预览</button><a href={url} target="_blank" rel="noreferrer" className="ui-button-ghost rounded-lg px-2.5 py-1 text-xs">打开</a></>
         : <span className="text-xs ui-dim">Metadata only</span>}
       {artifact.originalPath && <span className="truncate text-[11px] ui-dim" title={artifact.originalPath}>{artifact.originalPath}</span>}
     </div>
+    {previewOpen && url && <ArtifactPreviewDialog artifact={artifact} url={url} onClose={() => setPreviewOpen(false)} />}
   </article>;
 }
 

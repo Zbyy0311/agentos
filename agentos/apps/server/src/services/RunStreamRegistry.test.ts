@@ -40,3 +40,14 @@ test('returns no subscription for an unknown run', () => {
   assert.equal(registry.subscribe('missing', 0, () => {}), undefined);
   assert.equal(registry.cancel('missing'), false);
 });
+
+test('keeps persisted AgentEvent sequence in SSE data while cursor remains transport-local', () => {
+  const registry = new RunStreamRegistry();
+  registry.open('run-sequence', new AbortController());
+  const item = registry.emit('run-sequence', 'runtime', {
+    eventId: 'event-9', sequence: 42, type: 'execution.tool.started',
+  });
+  assert.equal(item?.cursor, 1);
+  assert.equal(item?.data.sequence, 42);
+  assert.equal(item?.data.cursor, 1);
+});

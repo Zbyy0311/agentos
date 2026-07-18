@@ -25,7 +25,8 @@ test('shows token consumption from execution statistics', async () => {
       events={[]}
       runtimeEvents={[{
         eventId: 'usage-1',
-        schemaVersion: 1,
+        schemaVersion: 2,
+        sequence: 1,
         type: 'execution.usage.recorded',
         workspaceId: 'workspace-a',
         conversationId: 'conversation-a',

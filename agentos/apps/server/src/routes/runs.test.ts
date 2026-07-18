@@ -30,7 +30,7 @@ test('returns run list and aggregated details with workspace isolation and cappe
     store.createMessage({ id: 'message-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', senderType: 'user', content: '详情', createdAt: '2026-07-12T01:00:01.000Z' });
     store.createRun({ id: 'run-a', workspaceId: 'workspace-a', conversationId: 'conversation-a', sourceMessageId: 'message-a', objective: '详情', status: 'completed', resultSummary: '完成', createdAt: '2026-07-12T01:00:01.000Z', updatedAt: '2026-07-12T01:00:02.000Z' });
     store.createExecution({ id: 'execution-a', runId: 'run-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', sourceMessageId: 'message-a', agentId: 'codex', status: 'completed', mode: 'mock', createdAt: '2026-07-12T01:00:01.000Z', updatedAt: '2026-07-12T01:00:02.000Z' });
-    store.appendAgentEvent({ eventId: 'event-a', schemaVersion: 1, type: 'run.completed', workspaceId: 'workspace-a', conversationId: 'conversation-a', runId: 'run-a', timestamp: '2026-07-12T01:00:02.000Z', payload: { status: 'completed' } });
+    store.appendAgentEvent({ eventId: 'event-a', schemaVersion: 2, type: 'run.completed', workspaceId: 'workspace-a', conversationId: 'conversation-a', runId: 'run-a', timestamp: '2026-07-12T01:00:02.000Z', payload: { status: 'completed' } });
     await new Promise<void>(resolve => server.once('listening', resolve));
     const address = server.address();
     if (!address || typeof address === 'string') throw new Error('server did not bind');

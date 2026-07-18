@@ -53,8 +53,12 @@ const store = new SqliteStore(PROJECT_ROOT);
 const workspaceManager = new WorkspaceManager(store);
 const recoveredTasks = recoverInterruptedRunningTasks(store);
 const recoveredRuns = recoverInterruptedRuns(store);
-const eventBus = new EventBus();
-eventBus.subscribe(event => store.appendAgentEvent(event));
+const eventBus = new EventBus(
+  draft => store.appendAgentEvent(draft),
+  (error, event) => {
+    diagLog(`EVENT_SUBSCRIBER_ERROR eventId=${event.eventId} sequence=${event.sequence} error=${error instanceof Error ? error.message : String(error)}`);
+  },
+);
 const artifactService = new RuntimeArtifactService(store, PROJECT_ROOT);
 const preferenceService = new PreferenceService(store);
 const retentionService = new RetentionService(store, undefined, error => {

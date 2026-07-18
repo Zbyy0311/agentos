@@ -22,8 +22,23 @@ export function createConversationRoutes(
   preferenceService?: PreferenceLearningService,
 ): Router {
   const router = Router({ mergeParams: true });
-  const service = new ConversationService(store, eventBus, artifactService, preferenceService);
   const runStreams = new RunStreamRegistry();
+  const service = new ConversationService(store, eventBus, artifactService, preferenceService);
+
+  // Step events are persisted through EventBus first, then projected into the
+  // transport-local stream. The event sequence remains part of the payload so
+  // the client can reject stale updates while SSE cursor semantics stay local.
+  eventBus?.subscribe(event => {
+    if (event.type !== 'run.step.created' && event.type !== 'run.step.updated') return;
+    const payload = event.payload as Record<string, unknown>;
+    if (!payload.step || typeof payload.step !== 'object') return;
+    runStreams.emit(event.runId, 'run.step', {
+      type: event.type,
+      runStep: payload.step,
+      eventId: event.eventId,
+      sequence: event.sequence,
+    });
+  });
 
   router.get('/agents', async (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);

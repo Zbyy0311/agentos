@@ -26,7 +26,9 @@ export function createArtifactRoutes(
     const artifact = record.record.artifact;
     const inline = artifact.type === 'image' || artifact.type === 'diff' || artifact.type === 'report' || artifact.type === 'log';
     res.setHeader('X-Content-Type-Options', 'nosniff');
-    res.setHeader('Content-Type', artifact.mimeType ?? (artifact.type === 'image' ? 'application/octet-stream' : 'text/plain; charset=utf-8'));
+    res.setHeader('Content-Security-Policy', "default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'");
+    res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+    res.setHeader('Content-Type', safeMimeType(artifact.mimeType, artifact.type));
     res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${safeFilename(artifact.title)}"`);
     return res.sendFile(record.path, error => {
       if (error && !res.headersSent) res.status(404).json({ error: 'Artifact content not found' });
@@ -39,4 +41,15 @@ export function createArtifactRoutes(
 function safeFilename(value: string): string {
   const name = value.split(/[\\/]/).pop()?.trim() || 'artifact';
   return name.replace(/["\r\n]/g, '_');
+}
+
+function safeMimeType(value: string | undefined, type: string): string {
+  if (!value) return type === 'image' ? 'application/octet-stream' : 'text/plain; charset=utf-8';
+  const normalized = value.toLowerCase().split(';', 1)[0].trim();
+  if (normalized === 'text/plain' || normalized === 'text/markdown' || normalized === 'text/css' || normalized === 'application/json' || normalized === 'application/pdf') {
+    return normalized === 'text/plain' ? 'text/plain; charset=utf-8' : normalized;
+  }
+  if (/^image\/(png|jpeg|gif|webp|svg\+xml)$/.test(normalized)) return normalized;
+  if (normalized === 'application/octet-stream') return normalized;
+  return 'application/octet-stream';
 }

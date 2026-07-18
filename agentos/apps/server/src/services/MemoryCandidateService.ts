@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, MemoryCandidate, MemoryCandidateStatus, MemoryType } from '@agentos/shared';
+import type { AgentEventDraft, MemoryCandidate, MemoryCandidateStatus, MemoryType } from '@agentos/shared';
 import { EventBus } from '../events/EventBus.js';
 import { createAgentEvent } from '../events/createAgentEvent.js';
 import { SqliteStore } from '../store/SqliteStore.js';
@@ -116,7 +116,7 @@ export class MemoryCandidateService {
     return [...matches.values()];
   }
 
-  private async publishEvent(event: AgentEvent): Promise<void> {
+  private async publishEvent(event: AgentEventDraft): Promise<void> {
     if (this.eventBus) await this.eventBus.publish(event);
   }
 }

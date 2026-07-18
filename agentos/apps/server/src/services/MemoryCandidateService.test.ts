@@ -104,8 +104,7 @@ test('keeps a candidate pending and rejects when event delivery fails', async ()
   try {
     store = new SqliteStore(root);
     seedCompletedRun(store);
-    const bus = new EventBus();
-    bus.subscribe(() => { throw new Error('event persistence unavailable'); });
+    const bus = new EventBus(() => { throw new Error('event persistence unavailable'); });
     const service = new MemoryCandidateService(store, new MemoryService(store), {
       extract: () => ({ drafts: [{ type: 'decision', title: 'event failure', summary: 'event failure', content: 'event failure', confidence: 90, operation: 'create' }], reason: 'public_evidence' as const }),
     }, bus);

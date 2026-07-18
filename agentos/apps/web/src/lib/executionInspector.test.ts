@@ -5,7 +5,8 @@ import { summarizeExecutionInspector } from './executionInspector.js';
 
 const event = <T extends AgentEvent['payload']>(type: AgentEvent['type'], payload: T, timestamp: string): AgentEvent<T> => ({
   eventId: `${type}-${timestamp}`,
-  schemaVersion: 1,
+  schemaVersion: 2,
+  sequence: 0,
   type,
   workspaceId: 'workspace-1',
   conversationId: 'conversation-1',

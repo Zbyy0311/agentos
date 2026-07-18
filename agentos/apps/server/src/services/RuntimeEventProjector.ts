@@ -1,4 +1,4 @@
-import type { AgentEvent, ExecutionStatus } from '@agentos/shared';
+import type { AgentEvent, AgentEventDraft, ExecutionStatus } from '@agentos/shared';
 import type { NormalizedCliEvent } from '@agentos/agent-core';
 import { createAgentEvent } from '../events/createAgentEvent.js';
 import { redactRuntimeText } from '@agentos/agent-core';
@@ -12,7 +12,7 @@ export interface RuntimeEventContext {
 }
 
 export class RuntimeEventProjector {
-  project(context: RuntimeEventContext, event: NormalizedCliEvent): AgentEvent {
+  project(context: RuntimeEventContext, event: NormalizedCliEvent): AgentEventDraft {
     switch (event.type) {
       case 'status':
         return this.create(context, 'execution.status.changed', {
@@ -59,7 +59,7 @@ export class RuntimeEventProjector {
     context: RuntimeEventContext,
     type: AgentEvent['type'],
     payload: TPayload,
-  ): AgentEvent<TPayload> {
+  ): AgentEventDraft<TPayload> {
     return createAgentEvent({ ...context, type, payload });
   }
 }

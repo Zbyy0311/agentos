@@ -1,5 +1,9 @@
 # AgentOS v2 聊天协作说明
 
+## Execution Workbench（计划 B）
+
+计划 B 已将执行过程升级为可回放工作台：AgentEvent 具备 SQLite 持久化 sequence，RunStep 支持 stable key、状态机、attempt 和 waiting resume；Web Inspector 展示当前动作、任务树、工具历史、统计和静态执行档案。消息支持安全 GFM、代码/diff 和 Artifact 预览，验收入口为 `docs/acceptance/execution-workbench-final.md` 与 `scripts/verify-execution-workbench.ps1`。
+
 ## Provider Runtime 状态
 
 Provider 与 collaboration role 分离。`WorkspaceAgent.provider` 是配置身份，Adapter `probe()` 返回 `detectedProvider` 与结构化、工具、usage、只读和审批能力；mismatch 会通过诊断、Run invocation 和 Agent Editor 对外可见。Kimi 适配器已按本机 `0.23.5` help/stream-json 能力实现，OpenCode 在 CLI 缺失时保持 BLOCKED，详见 `docs/acceptance/`。

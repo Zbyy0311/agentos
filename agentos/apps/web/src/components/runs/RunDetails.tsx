@@ -3,6 +3,8 @@
 import type { AgentRunDetails } from '@agentos/shared';
 import { getRunDurationMs, getRunFailureReason, normalizeRunDetails } from '@/lib/runDetails';
 import { ArtifactShelf } from './ArtifactShelf';
+import { RunTaskTree } from './RunTaskTree';
+import { ExecutionArchive } from './ExecutionArchive';
 
 interface RunDetailsProps {
   details: AgentRunDetails;
@@ -33,6 +35,8 @@ export function RunDetails({ details: sourceDetails, apiBase, onClose, onGenerat
         <section><h3 className="mb-2 font-medium ui-text">公开事件时间线</h3>{details.events.length ? <ol className="space-y-2">{details.events.map(event => <li key={event.eventId} className="rounded-lg border ui-border px-3 py-2"><div className="ui-text-soft">{event.type}</div><div className="mt-1 text-xs ui-dim">{new Date(event.timestamp).toLocaleString('zh-CN')}</div></li>)}</ol> : <p className="ui-dim">暂无公开事件</p>}</section>
         <section><h3 className="mb-2 font-medium ui-text">CLI 调用</h3>{details.cliInvocations.length ? <ul className="space-y-2">{details.cliInvocations.map(invocation => <li key={invocation.id} className="rounded-lg border ui-border px-3 py-2 text-xs ui-text-soft">{invocation.commandLabel} · {invocation.exitCode === 0 ? '成功' : `退出码 ${invocation.exitCode ?? '未知'}`} · {invocation.durationMs}ms</li>)}</ul> : <p className="ui-dim">暂无可观测 CLI 调用</p>}</section>
         <section><h3 className="mb-2 font-medium ui-text">修改文件</h3>{details.fileChanges.length ? <ul className="space-y-1 text-xs ui-text-soft">{details.fileChanges.map(change => <li key={`${change.path}:${change.changeType}`}>{change.changeType} · {change.path}</li>)}</ul> : <p className="ui-dim">无 Git 文件变化或当前工作区不可采集</p>}</section>
+        <section><h3 className="mb-2 font-medium ui-text">执行任务树</h3><RunTaskTree steps={details.steps} /></section>
+        <section><h3 className="mb-2 font-medium ui-text">执行档案</h3><ExecutionArchive details={details} /></section>
         <ArtifactShelf artifacts={details.artifacts} apiBase={apiBase} />
         <section><h3 className="mb-2 font-medium ui-text">最终总结</h3><p className="whitespace-pre-wrap leading-6 ui-text-soft">{details.run.resultSummary || failureReason || '暂无最终总结'}</p></section>
         <section><h3 className="mb-2 font-medium ui-text">使用的项目记忆</h3>{details.usedMemories.length ? <ul className="space-y-1 text-xs ui-text-soft">{details.usedMemories.map(memory => <li key={memory.memoryId}>{memory.memoryId} · {memory.injectedCharacters} 字符</li>)}</ul> : <p className="ui-dim">本次未使用项目记忆</p>}</section>

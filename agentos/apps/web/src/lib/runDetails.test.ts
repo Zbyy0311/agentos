@@ -8,14 +8,15 @@ const details: AgentRunDetails = {
   sourceMessage: { id: 'message-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', senderType: 'user', content: '任务', createdAt: '2026-07-12T01:00:00.000Z' },
   executions: [],
   events: [
-    { eventId: '2', schemaVersion: 1, type: 'run.failed', workspaceId: 'workspace-a', conversationId: 'conversation-a', runId: 'run-a', timestamp: '2026-07-12T01:00:02.000Z', payload: {} },
-    { eventId: '1', schemaVersion: 1, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'conversation-a', runId: 'run-a', timestamp: '2026-07-12T01:00:01.000Z', payload: {} },
+    { eventId: '2', schemaVersion: 2, sequence: 2, type: 'run.failed', workspaceId: 'workspace-a', conversationId: 'conversation-a', runId: 'run-a', timestamp: '2026-07-12T01:00:02.000Z', payload: {} },
+    { eventId: '1', schemaVersion: 2, sequence: 1, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'conversation-a', runId: 'run-a', timestamp: '2026-07-12T01:00:01.000Z', payload: {} },
   ],
   cliInvocations: [],
   fileChanges: [{ runId: 'run-a', path: 'src/a.ts', changeType: 'modified' }, { runId: 'run-a', path: 'src/a.ts', changeType: 'modified' }],
   artifacts: [],
   usedMemories: [],
   preferenceApplications: [],
+  steps: [],
 };
 
 test('normalizes event order and removes duplicate file changes', () => {

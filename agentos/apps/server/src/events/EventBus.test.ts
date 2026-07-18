@@ -1,49 +1,54 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventBus } from './EventBus.js';
-import type { AgentEvent } from '@agentos/shared';
+import type { AgentEvent, AgentEventDraft, PersistEventResult } from '@agentos/shared';
 
-function event(id: string): AgentEvent {
+function draft(id: string): AgentEventDraft {
   return {
-    eventId: id, schemaVersion: 1, type: 'run.created', workspaceId: 'workspace-a',
+    eventId: id, schemaVersion: 2, type: 'run.created', workspaceId: 'workspace-a',
     conversationId: 'conversation-a', runId: 'run-a', timestamp: id, payload: { id },
   };
 }
 
-test('publishes to subscribers in order and waits for async subscribers', async () => {
-  const bus = new EventBus();
+function persistWithSequence(): (event: AgentEventDraft) => PersistEventResult {
+  let sequence = 0;
+  return event => ({ event: { ...event, sequence: ++sequence }, inserted: true });
+}
+
+test('persists before broadcasting and returns the assigned sequence', async () => {
   const received: string[] = [];
+  const bus = new EventBus(persistWithSequence());
   bus.subscribe(async item => {
-    received.push(`first:${item.eventId}`);
+    received.push(`first:${item.eventId}:${item.sequence}`);
     await new Promise(resolve => setTimeout(resolve, 15));
     received.push('first:done');
   });
   bus.subscribe(item => { received.push(`second:${item.eventId}`); });
 
-  await bus.publish(event('one'));
-  assert.deepEqual(received, ['first:one', 'first:done', 'second:one']);
+  const persisted = await bus.publish(draft('one'));
+  assert.equal(persisted.sequence, 1);
+  assert.deepEqual(received, ['first:one:1', 'second:one', 'first:done']);
 });
 
-test('unsubscribe stops delivery and preserves subscriber errors', async () => {
-  const bus = new EventBus();
+test('duplicate persistence results are not broadcast again', async () => {
   const received: string[] = [];
-  const unsubscribe = bus.subscribe(item => { received.push(item.eventId); });
-  unsubscribe();
-  await bus.publish(event('ignored'));
-  assert.deepEqual(received, []);
-
-  const failure = new Error('subscriber failed');
-  bus.subscribe(() => { throw failure; });
-  await assert.rejects(bus.publish(event('broken')), error => error === failure);
+  const event: AgentEvent = { ...draft('one'), sequence: 1 };
+  const bus = new EventBus(input => ({ event, inserted: input.eventId !== 'duplicate' }));
+  bus.subscribe(item => { received.push(item.eventId); });
+  await bus.publish(draft('one'));
+  await bus.publish({ ...draft('duplicate'), eventId: 'duplicate' });
+  assert.deepEqual(received, ['one']);
 });
 
-test('preserves errors from asynchronous subscribers', async () => {
-  const bus = new EventBus();
-  const failure = new Error('async subscriber failed');
-  bus.subscribe(async () => {
-    await Promise.resolve();
-    throw failure;
-  });
+test('subscriber failures are isolated and reported after other subscribers run', async () => {
+  const received: string[] = [];
+  const failures: unknown[] = [];
+  const bus = new EventBus(persistWithSequence(), (error) => failures.push(error));
+  bus.subscribe(() => { throw new Error('subscriber failed'); });
+  bus.subscribe(item => { received.push(item.eventId); });
 
-  await assert.rejects(bus.publish(event('async-broken')), error => error === failure);
+  await bus.publish(draft('broken'));
+  assert.deepEqual(received, ['broken']);
+  assert.equal(failures.length, 1);
+  assert.equal((failures[0] as Error).message, 'subscriber failed');
 });

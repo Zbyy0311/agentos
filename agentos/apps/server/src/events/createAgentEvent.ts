@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
-import type { AgentEvent, AgentEventType } from '@agentos/shared';
+import type { AgentEventDraft, AgentEventType } from '@agentos/shared';
 
 export function createAgentEvent<TPayload extends Record<string, unknown>>(input: {
+  eventId?: string;
   type: AgentEventType;
   workspaceId: string;
   conversationId: string;
@@ -10,10 +11,10 @@ export function createAgentEvent<TPayload extends Record<string, unknown>>(input
   agentId?: string;
   timestamp?: string;
   payload: TPayload;
-}): AgentEvent<TPayload> {
+}): AgentEventDraft<TPayload> {
   return {
-    eventId: randomUUID(),
-    schemaVersion: 1,
+    eventId: input.eventId ?? randomUUID(),
+    schemaVersion: 2,
     type: input.type,
     workspaceId: input.workspaceId,
     conversationId: input.conversationId,

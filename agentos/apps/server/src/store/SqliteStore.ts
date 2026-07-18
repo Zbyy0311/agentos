@@ -6,6 +6,14 @@ import type {
   AgentProvider,
   AgentRuntimeStatus,
   AgentEvent,
+  AgentEventDraft,
+  PersistEventResult,
+  RunStep,
+  CreateRunStepInput,
+  UpdateRunStepInput,
+  RunStepMutation,
+  PersistRunStepMutationResult,
+  RunStepStatus,
   AgentProfile,
   AgentRun,
   AgentExecution,
@@ -97,6 +105,7 @@ interface MessageRow {
   workspace_id: string;
   sender_type: ConversationMessage['senderType'];
   sender_agent_id: string | null;
+  run_id: string | null;
   content: string;
   created_at: string;
 }
@@ -157,15 +166,38 @@ interface ExecutionEventRow {
 
 interface AgentEventRow {
   event_id: string;
-  schema_version: 1;
+  schema_version: number;
   event_type: AgentEvent['type'];
   workspace_id: string;
   conversation_id: string;
   run_id: string;
   execution_id: string | null;
   agent_id: string | null;
+  sequence: number;
   timestamp: string;
   payload_json: string;
+}
+
+interface RunStepRow {
+  id: string;
+  stable_step_key: string;
+  workspace_id: string;
+  run_id: string;
+  parent_step_id: string | null;
+  execution_id: string | null;
+  agent_id: string | null;
+  kind: RunStep['kind'];
+  title: string;
+  status: RunStepStatus;
+  sequence: number;
+  attempt: number;
+  created_event_sequence: number;
+  updated_event_sequence: number;
+  started_at: string | null;
+  completed_at: string | null;
+  summary: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface RunCliInvocationRow {
@@ -348,6 +380,10 @@ export class SqliteStore implements Store {
         WHERE execution_id IN (SELECT id FROM executions WHERE workspace_id = ?)
       `).run(workspaceId);
       this.database.prepare('DELETE FROM executions WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare(`
+        DELETE FROM run_event_sequences
+        WHERE run_id IN (SELECT id FROM agent_runs WHERE workspace_id = ?)
+      `).run(workspaceId);
       this.database.prepare('DELETE FROM agent_runs WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM messages WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare(`
@@ -578,14 +614,15 @@ export class SqliteStore implements Store {
   createMessage(message: ConversationMessage, attachments: StoredConversationAttachment[] = []): ConversationMessage {
     this.assertConversationWorkspace(message.conversationId, message.workspaceId);
     this.database.prepare(`
-      INSERT INTO messages (id, conversation_id, workspace_id, sender_type, sender_agent_id, content, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO messages (id, conversation_id, workspace_id, sender_type, sender_agent_id, run_id, content, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       message.id,
       message.conversationId,
       message.workspaceId,
       message.senderType,
       message.senderAgentId ?? null,
+      message.runId ?? null,
       message.content,
       message.createdAt,
     );
@@ -614,9 +651,14 @@ export class SqliteStore implements Store {
     return message;
   }
 
+  updateMessageRunId(workspaceId: string, messageId: string, runId: string): void {
+    this.database.prepare('UPDATE messages SET run_id = ? WHERE workspace_id = ? AND id = ?')
+      .run(runId, workspaceId, messageId);
+  }
+
   listMessages(workspaceId: string, conversationId: string, limit = 50): ConversationMessage[] {
     const rows = this.database.prepare(`
-      SELECT id, conversation_id, workspace_id, sender_type, sender_agent_id, content, created_at
+      SELECT id, conversation_id, workspace_id, sender_type, sender_agent_id, run_id, content, created_at
       FROM messages
       WHERE workspace_id = ? AND conversation_id = ?
       ORDER BY created_at DESC, rowid DESC
@@ -640,6 +682,7 @@ export class SqliteStore implements Store {
       workspaceId: row.workspace_id,
       senderType: row.sender_type,
       ...(row.sender_agent_id ? { senderAgentId: row.sender_agent_id } : {}),
+      ...(row.run_id ? { runId: row.run_id } : {}),
       content: row.content,
       ...(attachmentsByMessage.has(row.id) ? {
         attachments: attachmentsByMessage.get(row.id)!.map(attachment => ({
@@ -883,46 +926,197 @@ export class SqliteStore implements Store {
     }));
   }
 
-  appendAgentEvent(event: AgentEvent): void {
+  appendAgentEvent(draft: AgentEventDraft): PersistEventResult {
+    this.database.exec('BEGIN');
+    try {
+      const result = this.appendAgentEventInTransaction(draft);
+      this.database.exec('COMMIT');
+      return result;
+    } catch (error) {
+      try { this.database.exec('ROLLBACK'); } catch {}
+      throw error;
+    }
+  }
+
+  private appendAgentEventInTransaction(draft: AgentEventDraft): PersistEventResult {
+    const existing = this.database.prepare(`
+      SELECT event_id, schema_version, event_type, workspace_id, conversation_id, run_id,
+        execution_id, agent_id, sequence, timestamp, payload_json
+      FROM agent_events
+      WHERE event_id = ?
+    `).get(draft.eventId) as AgentEventRow | undefined;
+    if (existing) return { event: this.toAgentEvent(existing), inserted: false };
+
+    const sequence = this.allocateAgentEventSequence(draft.runId);
+    this.insertAgentEventRow(draft, sequence);
+    return { event: { ...draft, sequence }, inserted: true };
+  }
+
+  private allocateAgentEventSequence(runId: string): number {
+    const sequenceRow = this.database.prepare(`
+      SELECT next_sequence FROM run_event_sequences WHERE run_id = ?
+    `).get(runId) as { next_sequence: number } | undefined;
+    const sequence = sequenceRow?.next_sequence ?? 1;
+    if (sequenceRow) {
+      this.database.prepare('UPDATE run_event_sequences SET next_sequence = ? WHERE run_id = ?')
+        .run(sequence + 1, runId);
+    } else {
+      this.database.prepare('INSERT INTO run_event_sequences (run_id, next_sequence) VALUES (?, ?)')
+        .run(runId, sequence + 1);
+    }
+    return sequence;
+  }
+
+  private insertAgentEventRow(draft: AgentEventDraft, sequence: number): void {
     this.database.prepare(`
-      INSERT OR IGNORE INTO agent_events (
+      INSERT INTO agent_events (
         event_id, schema_version, event_type, workspace_id, conversation_id, run_id,
-        execution_id, agent_id, timestamp, payload_json
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        execution_id, agent_id, sequence, timestamp, payload_json
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
-      event.eventId,
-      event.schemaVersion,
-      event.type,
-      event.workspaceId,
-      event.conversationId,
-      event.runId,
-      event.executionId ?? null,
-      event.agentId ?? null,
-      event.timestamp,
-      JSON.stringify(event.payload),
+      draft.eventId,
+      draft.schemaVersion,
+      draft.type,
+      draft.workspaceId,
+      draft.conversationId,
+      draft.runId,
+      draft.executionId ?? null,
+      draft.agentId ?? null,
+      sequence,
+      draft.timestamp,
+      JSON.stringify(draft.payload),
     );
   }
 
   listAgentEvents(workspaceId: string, runId: string): AgentEvent[] {
     const rows = this.database.prepare(`
       SELECT event_id, schema_version, event_type, workspace_id, conversation_id, run_id,
-        execution_id, agent_id, timestamp, payload_json
+        execution_id, agent_id, sequence, timestamp, payload_json
       FROM agent_events
       WHERE workspace_id = ? AND run_id = ?
-      ORDER BY timestamp ASC, rowid ASC
+      ORDER BY sequence ASC
     `).all(workspaceId, runId) as AgentEventRow[];
-    return rows.map(row => ({
-      eventId: row.event_id,
-      schemaVersion: row.schema_version,
-      type: row.event_type,
-      workspaceId: row.workspace_id,
-      conversationId: row.conversation_id,
-      runId: row.run_id,
-      ...(row.execution_id ? { executionId: row.execution_id } : {}),
-      ...(row.agent_id ? { agentId: row.agent_id } : {}),
-      timestamp: row.timestamp,
-      payload: parseJson<Record<string, unknown>>(row.payload_json, {}),
-    }));
+    return rows.map(row => this.toAgentEvent(row));
+  }
+
+  listRunSteps(workspaceId: string, runId: string): RunStep[] {
+    const rows = this.database.prepare(`
+      SELECT id, stable_step_key, workspace_id, run_id, parent_step_id, execution_id, agent_id,
+        kind, title, status, sequence, attempt, created_event_sequence, updated_event_sequence,
+        started_at, completed_at, summary, created_at, updated_at
+      FROM run_steps
+      WHERE workspace_id = ? AND run_id = ?
+      ORDER BY sequence ASC, id ASC
+    `).all(workspaceId, runId) as RunStepRow[];
+    return rows.map(row => this.toRunStep(row));
+  }
+
+  getRunStep(workspaceId: string, runId: string, stableStepKey: string): RunStep | undefined {
+    const row = this.database.prepare(`
+      SELECT id, stable_step_key, workspace_id, run_id, parent_step_id, execution_id, agent_id,
+        kind, title, status, sequence, attempt, created_event_sequence, updated_event_sequence,
+        started_at, completed_at, summary, created_at, updated_at
+      FROM run_steps
+      WHERE workspace_id = ? AND run_id = ? AND stable_step_key = ?
+    `).get(workspaceId, runId, stableStepKey) as RunStepRow | undefined;
+    return row ? this.toRunStep(row) : undefined;
+  }
+
+  persistRunStepMutation(mutation: RunStepMutation, eventDraft: AgentEventDraft): PersistRunStepMutationResult {
+    this.database.exec('BEGIN');
+    try {
+      const existingEvent = this.database.prepare(`
+        SELECT event_id, schema_version, event_type, workspace_id, conversation_id, run_id,
+          execution_id, agent_id, sequence, timestamp, payload_json
+        FROM agent_events WHERE event_id = ?
+      `).get(mutation.eventId) as AgentEventRow | undefined;
+      if (existingEvent) {
+        const input = mutation.input;
+        const step = this.getRunStep(input.workspaceId, input.runId, input.stableStepKey);
+        if (!step) throw new Error('RunStep for duplicate event was not found');
+        this.database.exec('COMMIT');
+        return { step, event: this.toAgentEvent(existingEvent), inserted: false };
+      }
+
+      const input = mutation.input;
+      const current = this.getRunStep(input.workspaceId, input.runId, input.stableStepKey);
+      const now = eventDraft.timestamp;
+      const eventSequence = this.allocateAgentEventSequence(input.runId);
+      let step: RunStep;
+      if (mutation.operation === 'create') {
+        const createInput = input as CreateRunStepInput;
+        if (current) {
+          this.database.exec('ROLLBACK');
+          throw new Error(`RunStep stable key already exists: ${input.stableStepKey}`);
+        }
+        const id = `step-${eventDraft.eventId}`;
+        step = {
+          id,
+          stableStepKey: createInput.stableStepKey,
+          workspaceId: createInput.workspaceId,
+          runId: createInput.runId,
+          ...(createInput.parentStepId ? { parentStepId: createInput.parentStepId } : {}),
+          ...(createInput.agentId ? { agentId: createInput.agentId } : {}),
+          kind: createInput.kind,
+          title: createInput.title,
+          status: 'pending',
+          sequence: createInput.sequence,
+          attempt: 1,
+          createdEventSequence: eventSequence,
+          updatedEventSequence: eventSequence,
+          createdAt: now,
+          updatedAt: now,
+        };
+        this.database.prepare(`
+          INSERT INTO run_steps (
+            id, stable_step_key, workspace_id, run_id, parent_step_id, execution_id, agent_id,
+            kind, title, status, sequence, attempt, created_event_sequence, updated_event_sequence,
+            started_at, completed_at, summary, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          step.id, step.stableStepKey, step.workspaceId, step.runId, step.parentStepId ?? null, null, step.agentId ?? null,
+          step.kind, step.title, step.status, step.sequence, step.attempt, step.createdEventSequence, step.updatedEventSequence,
+          null, null, null, step.createdAt, step.updatedAt,
+        );
+      } else {
+        const updateInput = input as UpdateRunStepInput;
+        if (!current) {
+          this.database.exec('ROLLBACK');
+          throw new Error(`RunStep not found: ${input.stableStepKey}`);
+        }
+        const nextAttempt = current.status === 'waiting' && updateInput.status === 'running' ? current.attempt + 1 : current.attempt;
+        const startedAt = updateInput.status === 'running' && current.status !== 'running' ? now : current.startedAt;
+        const completedAt = isTerminalRunStepStatus(updateInput.status) ? now : undefined;
+        step = {
+          ...current,
+          status: updateInput.status,
+          attempt: nextAttempt,
+          updatedEventSequence: eventSequence,
+          updatedAt: now,
+          ...(updateInput.executionId ? { executionId: updateInput.executionId } : {}),
+          ...(updateInput.summary !== undefined ? { summary: updateInput.summary } : {}),
+          ...(startedAt ? { startedAt } : {}),
+          ...(completedAt ? { completedAt } : {}),
+        };
+        this.database.prepare(`
+          UPDATE run_steps
+          SET execution_id = ?, status = ?, attempt = ?, updated_event_sequence = ?,
+            started_at = ?, completed_at = ?, summary = ?, updated_at = ?
+          WHERE workspace_id = ? AND run_id = ? AND stable_step_key = ?
+        `).run(
+          step.executionId ?? null, step.status, step.attempt, step.updatedEventSequence,
+          step.startedAt ?? null, step.completedAt ?? null, step.summary ?? null, step.updatedAt,
+          step.workspaceId, step.runId, step.stableStepKey,
+        );
+      }
+      const event: AgentEvent = { ...eventDraft, sequence: eventSequence, payload: { ...eventDraft.payload, step } };
+      this.insertAgentEventRow({ ...eventDraft, payload: event.payload }, eventSequence);
+      this.database.exec('COMMIT');
+      return { step, event, inserted: true };
+    } catch (error) {
+      try { this.database.exec('ROLLBACK'); } catch {}
+      throw error;
+    }
   }
 
   saveRunCliInvocation(invocation: RunCliInvocation): void {
@@ -1495,6 +1689,7 @@ export class SqliteStore implements Store {
         workspace_id TEXT NOT NULL,
         sender_type TEXT NOT NULL CHECK (sender_type IN ('user', 'agent', 'system')),
         sender_agent_id TEXT,
+        run_id TEXT,
         content TEXT NOT NULL,
         created_at TEXT NOT NULL,
         FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
@@ -1560,6 +1755,35 @@ export class SqliteStore implements Store {
       CREATE INDEX IF NOT EXISTS agent_runs_conversation_updated
         ON agent_runs (conversation_id, updated_at DESC);
 
+      CREATE TABLE IF NOT EXISTS run_steps (
+        id TEXT PRIMARY KEY,
+        stable_step_key TEXT NOT NULL,
+        workspace_id TEXT NOT NULL,
+        run_id TEXT NOT NULL,
+        parent_step_id TEXT,
+        execution_id TEXT,
+        agent_id TEXT,
+        kind TEXT NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        sequence INTEGER NOT NULL,
+        attempt INTEGER NOT NULL DEFAULT 1,
+        created_event_sequence INTEGER NOT NULL,
+        updated_event_sequence INTEGER NOT NULL,
+        started_at TEXT,
+        completed_at TEXT,
+        summary TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (run_id) REFERENCES agent_runs(id) ON DELETE CASCADE
+      );
+
+      CREATE UNIQUE INDEX IF NOT EXISTS run_steps_stable_key
+        ON run_steps (run_id, stable_step_key);
+
+      CREATE UNIQUE INDEX IF NOT EXISTS run_steps_sibling_sequence
+        ON run_steps (run_id, IFNULL(parent_step_id, ''), sequence);
+
       CREATE INDEX IF NOT EXISTS executions_conversation_updated
         ON executions (conversation_id, updated_at DESC);
 
@@ -1585,8 +1809,14 @@ export class SqliteStore implements Store {
         run_id TEXT NOT NULL,
         execution_id TEXT,
         agent_id TEXT,
+        sequence INTEGER,
         timestamp TEXT NOT NULL,
         payload_json TEXT NOT NULL
+      );
+
+      CREATE TABLE IF NOT EXISTS run_event_sequences (
+        run_id TEXT PRIMARY KEY,
+        next_sequence INTEGER NOT NULL
       );
 
       CREATE INDEX IF NOT EXISTS agent_events_workspace_run_timestamp
@@ -1797,6 +2027,7 @@ export class SqliteStore implements Store {
     this.ensureColumn('agent_profiles', 'provider', 'TEXT');
     this.ensureColumn('conversations', 'model', 'TEXT');
     this.ensureColumn('conversations', 'thinking_effort', 'TEXT');
+    this.ensureColumn('messages', 'run_id', 'TEXT');
     this.ensureColumn('executions', 'run_id', 'TEXT');
     this.ensureColumn('agent_runs', 'waiting_question', 'TEXT');
     this.ensureColumn('agent_runs', 'waiting_execution_id', 'TEXT');
@@ -1804,7 +2035,52 @@ export class SqliteStore implements Store {
     this.ensureColumn('run_cli_invocations', 'configured_provider', 'TEXT');
     this.ensureColumn('run_cli_invocations', 'detected_provider', 'TEXT');
     this.ensureColumn('run_cli_invocations', 'provider_mismatch', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('agent_events', 'sequence', 'INTEGER');
+    this.ensureColumn('run_steps', 'attempt', 'INTEGER NOT NULL DEFAULT 1');
+    this.migrateAgentEventSequences();
     this.migrateLegacyExecutionRuns();
+  }
+
+  private migrateAgentEventSequences(): void {
+    this.database.exec('BEGIN');
+    try {
+      const runRows = this.database.prepare(`
+        SELECT DISTINCT run_id FROM agent_events ORDER BY run_id ASC
+      `).all() as Array<{ run_id: string }>;
+      for (const { run_id: runId } of runRows) {
+        const missing = this.database.prepare(`
+          SELECT event_id FROM agent_events
+          WHERE run_id = ? AND sequence IS NULL
+          ORDER BY timestamp ASC, rowid ASC
+        `).all(runId) as Array<{ event_id: string }>;
+        const maxRow = this.database.prepare(`
+          SELECT COALESCE(MAX(sequence), 0) AS max_sequence
+          FROM agent_events WHERE run_id = ?
+        `).get(runId) as { max_sequence: number };
+        let next = maxRow.max_sequence + 1;
+        for (const row of missing) {
+          this.database.prepare('UPDATE agent_events SET sequence = ? WHERE event_id = ?')
+            .run(next, row.event_id);
+          next += 1;
+        }
+        const existing = this.database.prepare('SELECT next_sequence FROM run_event_sequences WHERE run_id = ?')
+          .get(runId) as { next_sequence: number } | undefined;
+        const nextSequence = Math.max(next, existing?.next_sequence ?? 1);
+        this.database.prepare(`
+          INSERT INTO run_event_sequences (run_id, next_sequence) VALUES (?, ?)
+          ON CONFLICT(run_id) DO UPDATE SET next_sequence = excluded.next_sequence
+        `).run(runId, nextSequence);
+      }
+      this.database.exec('UPDATE agent_events SET schema_version = 2 WHERE schema_version < 2');
+      this.database.exec(`
+        CREATE UNIQUE INDEX IF NOT EXISTS agent_events_run_sequence
+        ON agent_events (run_id, sequence)
+      `);
+      this.database.exec('COMMIT');
+    } catch (error) {
+      try { this.database.exec('ROLLBACK'); } catch {}
+      throw error;
+    }
   }
 
   private migrateLegacyExecutionRuns(): void {
@@ -2018,6 +2294,46 @@ export class SqliteStore implements Store {
     };
   }
 
+  private toAgentEvent(row: AgentEventRow): AgentEvent {
+    return {
+      eventId: row.event_id,
+      schemaVersion: 2,
+      type: row.event_type,
+      workspaceId: row.workspace_id,
+      conversationId: row.conversation_id,
+      runId: row.run_id,
+      ...(row.execution_id ? { executionId: row.execution_id } : {}),
+      ...(row.agent_id ? { agentId: row.agent_id } : {}),
+      sequence: row.sequence,
+      timestamp: row.timestamp,
+      payload: parseJson<Record<string, unknown>>(row.payload_json, {}),
+    };
+  }
+
+  private toRunStep(row: RunStepRow): RunStep {
+    return {
+      id: row.id,
+      stableStepKey: row.stable_step_key,
+      workspaceId: row.workspace_id,
+      runId: row.run_id,
+      ...(row.parent_step_id ? { parentStepId: row.parent_step_id } : {}),
+      ...(row.execution_id ? { executionId: row.execution_id } : {}),
+      ...(row.agent_id ? { agentId: row.agent_id } : {}),
+      kind: row.kind,
+      title: row.title,
+      status: row.status,
+      sequence: row.sequence,
+      attempt: row.attempt,
+      createdEventSequence: row.created_event_sequence,
+      updatedEventSequence: row.updated_event_sequence,
+      ...(row.started_at ? { startedAt: row.started_at } : {}),
+      ...(row.completed_at ? { completedAt: row.completed_at } : {}),
+      ...(row.summary ? { summary: row.summary } : {}),
+      createdAt: row.created_at,
+      updatedAt: row.updated_at,
+    };
+  }
+
   private toStoredAttachment(row: MessageAttachmentRow): StoredConversationAttachment {
     return {
       id: row.id,
@@ -2121,6 +2437,10 @@ export class SqliteStore implements Store {
       this.database.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
   }
+}
+
+function isTerminalRunStepStatus(status: RunStepStatus): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled' || status === 'skipped';
 }
 
 function normalizeThinkingEffort(value: string | null | undefined): ThinkingEffort {

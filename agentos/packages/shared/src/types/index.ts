@@ -33,15 +33,17 @@ export type AgentEventType =
   | 'execution.usage.recorded'
   | 'execution.diagnostic'
   | 'execution.artifact.created'
+  | 'run.step.created'
+  | 'run.step.updated'
   | 'memory.used'
   | 'memory.candidate.created'
   | 'run.completed'
   | 'run.failed'
   | 'run.cancelled';
 
-export interface AgentEvent<TPayload = Record<string, unknown>> {
+export interface AgentEventDraft<TPayload = Record<string, unknown>> {
   eventId: string;
-  schemaVersion: 1;
+  schemaVersion: 2;
   type: AgentEventType;
   workspaceId: string;
   conversationId: string;
@@ -50,6 +52,21 @@ export interface AgentEvent<TPayload = Record<string, unknown>> {
   agentId?: string;
   timestamp: string;
   payload: TPayload;
+}
+
+export interface AgentEvent<TPayload = Record<string, unknown>> extends AgentEventDraft<TPayload> {
+  /** SQLite-assigned public ordering for this Run. */
+  sequence: number;
+}
+
+export interface PersistEventResult {
+  event: AgentEvent;
+  inserted: boolean;
+}
+
+export interface EventBusContract {
+  publish(draft: AgentEventDraft): Promise<AgentEvent>;
+  broadcastPersisted(event: AgentEvent): Promise<void>;
 }
 
 export type AgentStage =
@@ -152,6 +169,7 @@ export interface ConversationMessage {
   workspaceId: string;
   senderType: MessageSenderType;
   senderAgentId?: string;
+  runId?: string;
   content: string;
   attachments?: ConversationAttachment[];
   createdAt: string;
@@ -385,6 +403,68 @@ export interface AgentRunDetails {
   artifacts: RuntimeArtifact[];
   usedMemories: MemoryUsage[];
   preferenceApplications: PreferenceApplication[];
+  steps: RunStep[];
+}
+
+export type RunStepKind = 'context' | 'agent' | 'review' | 'artifact' | 'summary';
+export type RunStepStatus = 'pending' | 'running' | 'waiting' | 'completed' | 'failed' | 'cancelled' | 'skipped';
+
+export interface RunStep {
+  id: string;
+  stableStepKey: string;
+  workspaceId: string;
+  runId: string;
+  parentStepId?: string;
+  executionId?: string;
+  agentId?: string;
+  kind: RunStepKind;
+  title: string;
+  status: RunStepStatus;
+  sequence: number;
+  attempt: number;
+  createdEventSequence: number;
+  updatedEventSequence: number;
+  startedAt?: string;
+  completedAt?: string;
+  summary?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateRunStepInput {
+  stableStepKey: string;
+  workspaceId: string;
+  runId: string;
+  parentStepId?: string;
+  agentId?: string;
+  kind: RunStepKind;
+  title: string;
+  sequence: number;
+}
+
+export interface UpdateRunStepInput {
+  workspaceId: string;
+  runId: string;
+  stableStepKey: string;
+  status: RunStepStatus;
+  executionId?: string;
+  summary?: string;
+}
+
+export interface RunStepMutation {
+  eventId: string;
+  operation: 'create' | 'update';
+  input: CreateRunStepInput | UpdateRunStepInput;
+}
+
+export interface PersistRunStepMutationResult {
+  step: RunStep;
+  event: AgentEvent;
+  inserted: boolean;
+}
+
+export interface RunStepStore {
+  persistRunStepMutation(mutation: RunStepMutation, eventDraft: AgentEventDraft): PersistRunStepMutationResult;
 }
 
 export interface CliInvocationObservation {

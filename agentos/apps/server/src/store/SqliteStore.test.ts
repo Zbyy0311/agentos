@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
 import { SqliteStore } from './SqliteStore.js';
+import { EventBus } from '../events/EventBus.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import type { PreferenceEvidence, PreferenceProjection, TaskItem } from '@agentos/shared';
 
@@ -507,12 +508,77 @@ test('persists unified agent events and isolates them by workspace and run', () 
     store.createConversation({ id: 'event-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Events', agentId: 'codex', createdAt: '2026-07-12T07:00:00.000Z', updatedAt: '2026-07-12T07:00:00.000Z' });
     store.createMessage({ id: 'event-message', conversationId: 'event-conversation', workspaceId: 'workspace-a', senderType: 'user', content: '事件', createdAt: '2026-07-12T07:00:01.000Z' });
     store.createRun({ id: 'event-run', workspaceId: 'workspace-a', conversationId: 'event-conversation', sourceMessageId: 'event-message', objective: '事件', status: 'queued', createdAt: '2026-07-12T07:00:01.000Z', updatedAt: '2026-07-12T07:00:01.000Z' });
-    store.appendAgentEvent({ eventId: 'event-1', schemaVersion: 1, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'event-conversation', runId: 'event-run', timestamp: '2026-07-12T07:00:01.000Z', payload: { objective: '事件' } });
-    store.appendAgentEvent({ eventId: 'event-1', schemaVersion: 1, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'event-conversation', runId: 'event-run', timestamp: '2026-07-12T07:00:01.000Z', payload: { objective: '重复事件' } });
+    store.appendAgentEvent({ eventId: 'event-1', schemaVersion: 2, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'event-conversation', runId: 'event-run', timestamp: '2026-07-12T07:00:01.000Z', payload: { objective: '事件' } });
+    store.appendAgentEvent({ eventId: 'event-1', schemaVersion: 2, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'event-conversation', runId: 'event-run', timestamp: '2026-07-12T07:00:01.000Z', payload: { objective: '重复事件' } });
     store.close();
     store = new SqliteStore(root);
     assert.deepEqual(store.listAgentEvents('workspace-a', 'event-run').map(event => event.payload), [{ objective: '事件' }]);
     assert.deepEqual(store.listAgentEvents('workspace-b', 'event-run'), []);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('assigns monotonic sequences per run and keeps duplicate event ids idempotent', async () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'sequence-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Sequence', agentId: 'codex', createdAt: '2026-07-12T08:00:00.000Z', updatedAt: '2026-07-12T08:00:00.000Z' });
+    store.createMessage({ id: 'sequence-message', conversationId: 'sequence-conversation', workspaceId: 'workspace-a', senderType: 'user', content: 'sequence', createdAt: '2026-07-12T08:00:01.000Z' });
+    for (const runId of ['sequence-run', 'parallel-run', 'other-run']) {
+      store.createRun({ id: runId, workspaceId: 'workspace-a', conversationId: 'sequence-conversation', sourceMessageId: 'sequence-message', objective: runId, status: 'queued', createdAt: '2026-07-12T08:00:01.000Z', updatedAt: '2026-07-12T08:00:01.000Z' });
+    }
+    const first = store.appendAgentEvent({ eventId: 'sequence-a', schemaVersion: 2, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'sequence-conversation', runId: 'sequence-run', timestamp: '2026-07-12T08:00:02.000Z', payload: {} });
+    const second = store.appendAgentEvent({ eventId: 'sequence-b', schemaVersion: 2, type: 'run.started', workspaceId: 'workspace-a', conversationId: 'sequence-conversation', runId: 'sequence-run', timestamp: '2026-07-12T08:00:01.000Z', payload: {} });
+    const duplicate = store.appendAgentEvent({ eventId: 'sequence-a', schemaVersion: 2, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'sequence-conversation', runId: 'sequence-run', timestamp: '2026-07-12T08:00:02.000Z', payload: { duplicate: true } });
+    assert.equal(first.event.sequence, 1);
+    assert.equal(second.event.sequence, 2);
+    assert.equal(duplicate.event.sequence, 1);
+    assert.equal(duplicate.inserted, false);
+
+    const bus = new EventBus(draft => store!.appendAgentEvent(draft));
+    const parallel = await Promise.all(Array.from({ length: 1000 }, (_, index) => bus.publish({
+      eventId: `parallel-${index}`,
+      schemaVersion: 2,
+      type: 'execution.diagnostic',
+      workspaceId: 'workspace-a',
+      conversationId: 'sequence-conversation',
+      runId: 'parallel-run',
+      timestamp: new Date(1_700_000_000_000 + index).toISOString(),
+      payload: { index },
+    })));
+    assert.deepEqual(parallel.map(event => event.sequence).sort((a, b) => a - b), Array.from({ length: 1000 }, (_, index) => index + 1));
+    assert.equal(store.listAgentEvents('workspace-a', 'parallel-run').length, 1000);
+    assert.equal(store.appendAgentEvent({ eventId: 'other-run-event', schemaVersion: 2, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'sequence-conversation', runId: 'other-run', timestamp: '2026-07-12T08:00:03.000Z', payload: {} }).event.sequence, 1);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('backfills legacy event order once without changing timestamp ordering rules for new events', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.createConversation({ id: 'migration-conversation', workspaceId: 'workspace-a', type: 'direct', title: 'Migration', agentId: 'codex', createdAt: '2026-07-12T09:00:00.000Z', updatedAt: '2026-07-12T09:00:00.000Z' });
+    store.createMessage({ id: 'migration-message', conversationId: 'migration-conversation', workspaceId: 'workspace-a', senderType: 'user', content: 'migration', createdAt: '2026-07-12T09:00:01.000Z' });
+    store.createRun({ id: 'migration-run', workspaceId: 'workspace-a', conversationId: 'migration-conversation', sourceMessageId: 'migration-message', objective: 'migration', status: 'queued', createdAt: '2026-07-12T09:00:01.000Z', updatedAt: '2026-07-12T09:00:01.000Z' });
+    store.appendAgentEvent({ eventId: 'legacy-late', schemaVersion: 2, type: 'run.started', workspaceId: 'workspace-a', conversationId: 'migration-conversation', runId: 'migration-run', timestamp: '2026-07-12T09:00:03.000Z', payload: {} });
+    store.appendAgentEvent({ eventId: 'legacy-early', schemaVersion: 2, type: 'run.created', workspaceId: 'workspace-a', conversationId: 'migration-conversation', runId: 'migration-run', timestamp: '2026-07-12T09:00:02.000Z', payload: {} });
+    store.close();
+    store = undefined;
+    const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
+    database.exec('DELETE FROM run_event_sequences; UPDATE agent_events SET sequence = NULL;');
+    database.close();
+    store = new SqliteStore(root);
+    assert.deepEqual(store.listAgentEvents('workspace-a', 'migration-run').map(event => `${event.sequence}:${event.eventId}`), ['1:legacy-early', '2:legacy-late']);
+    const databaseAfter = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
+    const next = (databaseAfter.prepare('SELECT next_sequence FROM run_event_sequences WHERE run_id = ?').get('migration-run') as { next_sequence: number }).next_sequence;
+    databaseAfter.close();
+    assert.equal(next, 3);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });
