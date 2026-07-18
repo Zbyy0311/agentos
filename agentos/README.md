@@ -1,5 +1,15 @@
 # AgentOS
 
+## Provider Runtime
+
+Agent 配置中的 `provider` 表示用户配置身份，CLI 命令通过 Adapter 的异步 `probe()` 得到实际 `detectedProvider`。两者不一致时会公开 `provider.mismatch` 诊断，选择实际可用的 parser，并把 configured/detected provider 持久化到 Run invocation。Agent 编辑器同时展示 Provider、CLI 命令和最近一次 mismatch。
+
+- Codex：已有真实 Runtime Gate 与 JSONL Adapter。
+- Kimi：`0.23.5` 的 `stream-json` Adapter、脱敏 fixture 与 fake CLI Gate 已通过，见 [docs/acceptance/kimi-runtime-final.md](docs/acceptance/kimi-runtime-final.md)。
+- OpenCode：当前机器未找到 CLI，保持 BLOCKED，不创建猜测性 Adapter/fixture，见 [docs/acceptance/opencode-runtime-status.md](docs/acceptance/opencode-runtime-status.md)。
+
+使用 `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\verify-provider-runtime.ps1` 可运行本阶段的自动化验收。
+
 本地多 Agent 调度平台，管理 Codex、KimiCode、OpenCode 等 CLI Agent 协同开发同一项目。
 
 ## 系统要求

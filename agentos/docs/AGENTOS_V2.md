@@ -1,5 +1,9 @@
 # AgentOS v2 聊天协作说明
 
+## Provider Runtime 状态
+
+Provider 与 collaboration role 分离。`WorkspaceAgent.provider` 是配置身份，Adapter `probe()` 返回 `detectedProvider` 与结构化、工具、usage、只读和审批能力；mismatch 会通过诊断、Run invocation 和 Agent Editor 对外可见。Kimi 适配器已按本机 `0.23.5` help/stream-json 能力实现，OpenCode 在 CLI 缺失时保持 BLOCKED，详见 `docs/acceptance/`。
+
 ## 运行要求
 
 - Node.js `>= 22.5`：服务端使用内置 `node:sqlite` 保存 v2 聊天数据。
