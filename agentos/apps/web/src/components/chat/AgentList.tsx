@@ -1,6 +1,7 @@
-import type { AgentProfile, Conversation, ExecutionStatus } from '@agentos/shared';
+import type { AgentPresence, AgentProfile, Conversation, ExecutionStatus } from '@agentos/shared';
 import type { MouseEvent } from 'react';
 import { ThemeToggle } from '@/components/theme/ThemeToggle';
+import { PRESENCE_COLORS, PRESENCE_LABELS } from '@/lib/agentPresence';
 
 const avatarColors = ['bg-[var(--app-accent)]', 'bg-[var(--app-info)]', 'bg-[var(--app-success)]', 'bg-[var(--app-warning)]'];
 
@@ -9,6 +10,7 @@ interface AgentListProps {
   panelWidth?: number;
   selectedAgentId: string | null;
   activeStatus?: ExecutionStatus;
+  presence?: Record<string, AgentPresence>;
   groups: Conversation[];
   selectedGroupId: string | null;
   onSelect(agentId: string): void;
@@ -20,7 +22,7 @@ interface AgentListProps {
   onOpenPreferences(): void;
 }
 
-export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenMemories, onOpenPreferences }: AgentListProps) {
+export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, presence = {}, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenMemories, onOpenPreferences }: AgentListProps) {
   return <aside data-signal-agent-rail className="workspace-sidebar signal-rail ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
     <div className="mb-6 px-2">
       <div className="flex items-center justify-between gap-2">
@@ -36,13 +38,15 @@ export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, g
     <div className="space-y-1">
       {agents.map((agent, index) => {
         const selected = agent.id === selectedAgentId;
+        const agentPresence = presence[agent.id];
         const active = selected && activeStatus && !['completed', 'failed', 'cancelled'].includes(activeStatus);
+        const state = agentPresence?.state ?? (active ? 'working' : agent.enabled ? 'idle' : 'disabled');
         return <button type="button" key={agent.id} onClick={() => onSelect(agent.id)} className={`workspace-agent-button signal-agent-button flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition ${selected ? 'ui-selected' : 'ui-button-ghost'}`}>
           <span className={`relative grid h-9 w-9 shrink-0 place-items-center rounded-xl text-sm font-semibold text-white ${avatarColors[index % avatarColors.length]}`}>
             {agent.name.slice(0, 1).toUpperCase()}
-            <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--app-surface)] ${active ? 'bg-[var(--app-warning)]' : agent.enabled ? 'bg-[var(--app-success)]' : 'bg-[var(--app-dim)]'}`} />
+            <span className={`absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[var(--app-surface)] ${PRESENCE_COLORS[state]}`} />
           </span>
-          <span className="workspace-agent-copy min-w-0 flex-1"><span className="block truncate text-sm font-medium">{agent.name}</span><span className="mt-0.5 block truncate text-xs ui-muted">{agent.roleTitle}</span></span>
+          <span className="workspace-agent-copy min-w-0 flex-1"><span className="block truncate text-sm font-medium">{agent.name}</span><span className="mt-0.5 block truncate text-xs ui-muted">{agent.roleTitle} · {PRESENCE_LABELS[state]}</span>{agentPresence?.activity && <span className="block truncate text-[10px] ui-dim">{agentPresence.activity}</span>}</span>
         </button>;
       })}
       {agents.length === 0 && <div className="workspace-copy px-2 py-3 text-xs leading-5 ui-dim">暂无可用 Agent</div>}

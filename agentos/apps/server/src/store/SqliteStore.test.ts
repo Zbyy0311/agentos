@@ -306,6 +306,30 @@ test('persists model and thinking effort independently for each conversation', (
   }
 });
 
+test('persists explicit group roles, sequence, and dispatch mode', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    const workspaces = JSON.parse(readFileSync(join(root, 'workspace', 'workspaces.json'), 'utf-8')) as { workspaces: Array<{ id: string; agents: unknown[] }> };
+    workspaces.workspaces[0]!.agents.push({ id: 'kimi', name: 'KimiCode', role: 'kimi', enabled: true, cliCommand: 'kimi', cliArgs: ['-p'] });
+    writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify(workspaces), 'utf-8');
+    store = new SqliteStore(root);
+    const now = '2026-07-18T01:00:00.000Z';
+    store.createGroupConversation({ id: 'group-a', workspaceId: 'workspace-a', type: 'group', title: 'Explicit group', dispatchMode: 'mentioned_only', createdAt: now, updatedAt: now }, [
+      { conversationId: 'group-a', agentId: 'codex', roleTitle: 'Router', isLeader: true, roleKind: 'leader', sequence: 20, createdAt: now },
+      { conversationId: 'group-a', agentId: 'kimi', roleTitle: 'Reviewer', isLeader: false, roleKind: 'reviewer', sequence: 10, createdAt: now },
+    ]);
+    assert.equal(store.listConversations('workspace-a')[0]?.dispatchMode, 'mentioned_only');
+    assert.deepEqual(store.listConversationMembers('workspace-a', 'group-a').map(member => ({ agentId: member.agentId, roleKind: member.roleKind, sequence: member.sequence })), [
+      { agentId: 'kimi', roleKind: 'reviewer', sequence: 10 },
+      { agentId: 'codex', roleKind: 'leader', sequence: 20 },
+    ]);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('adds conversation settings columns to a legacy SQLite database', () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;

@@ -12,6 +12,10 @@ export type ModelDiscoverySource = 'live' | 'cache' | 'config' | 'fallback';
 
 export type ConversationType = 'direct' | 'group';
 
+export type CollaborationRole = 'leader' | 'worker' | 'reviewer' | 'specialist';
+
+export type GroupDispatchMode = 'leader_route' | 'full_pipeline' | 'mentioned_only';
+
 export type MessageSenderType = 'user' | 'agent' | 'system';
 
 export type ExecutionStatus = 'queued' | 'preparing_context' | 'running_cli' | 'streaming_response' | 'waiting_user' | 'completed' | 'failed' | 'cancelled';
@@ -108,6 +112,17 @@ export interface AgentRuntimeStatus {
   version?: string;
 }
 
+export type AgentPresenceState = 'disabled' | 'idle' | 'queued' | 'working' | 'waiting' | 'failed';
+
+export interface AgentPresence {
+  agentId: string;
+  state: AgentPresenceState;
+  activity?: string;
+  runId?: string;
+  conversationId?: string;
+  updatedAt: string;
+}
+
 export interface AgentModelOption {
   id: string;
   label: string;
@@ -143,6 +158,8 @@ export interface Conversation {
   agentId?: string;
   model?: string;
   thinkingEffort?: ThinkingEffort;
+  /** Group dispatch policy. Direct conversations leave this undefined. */
+  dispatchMode?: GroupDispatchMode;
   createdAt: string;
   updatedAt: string;
 }
@@ -151,8 +168,22 @@ export interface ConversationMember {
   conversationId: string;
   agentId: string;
   roleTitle: string;
-  isLeader: boolean;
+  /** Deprecated compatibility projection for old clients. */
+  isLeader?: boolean;
+  roleKind: CollaborationRole;
+  sequence: number;
   createdAt: string;
+}
+
+export interface LegacyConversationMember extends Omit<ConversationMember, 'roleKind' | 'sequence'> {
+  isLeader: boolean;
+}
+
+export interface GroupMemberInput {
+  agentId: string;
+  roleKind: CollaborationRole;
+  roleTitle: string;
+  sequence: number;
 }
 
 export interface ConversationAttachment {

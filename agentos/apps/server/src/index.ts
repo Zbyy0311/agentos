@@ -25,6 +25,7 @@ import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 import { PreferenceService } from './services/PreferenceService.js';
 import { RetentionService } from './services/RetentionService.js';
 import { createPreferenceRoutes } from './routes/preferences.js';
+import { createAgentPresenceRoutes } from './routes/agentPresence.js';
 import { createLocalCorsOptions, createLocalWriteGuard, resolveLocalApiSecurityConfig } from './localApiSecurity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -91,6 +92,7 @@ app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceMan
 app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
 app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
+app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
 app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));

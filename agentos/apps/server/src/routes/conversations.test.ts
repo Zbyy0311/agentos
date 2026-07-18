@@ -86,6 +86,39 @@ test('creates a direct conversation and streams a persisted response', async () 
     assert.deepEqual(group.members.map(member => member.agentId), ['codex', 'kimi']);
     assert.equal(group.members[0]?.isLeader, true);
 
+    const explicitGroup = await fetch(`${baseUrl}/conversations`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        type: 'group', title: '显式协作', dispatchMode: 'mentioned_only',
+        members: [
+          { agentId: 'codex', roleKind: 'leader', roleTitle: '路由负责人', sequence: 10 },
+          { agentId: 'kimi', roleKind: 'reviewer', roleTitle: '验证工程师', sequence: 20 },
+        ],
+      }),
+    }).then(response => response.json()) as { conversation: { id: string; dispatchMode: string }; members: Array<{ roleKind: string; sequence: number }> };
+    assert.equal(explicitGroup.conversation.dispatchMode, 'mentioned_only');
+    assert.deepEqual(explicitGroup.members.map(member => [member.roleKind, member.sequence]), [['leader', 10], ['reviewer', 20]]);
+    const updatedGroup = await fetch(`${baseUrl}/conversations/${explicitGroup.conversation.id}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        dispatchMode: 'leader_route',
+        members: [
+          { agentId: 'codex', roleKind: 'leader', roleTitle: '总协调', sequence: 20 },
+          { agentId: 'kimi', roleKind: 'worker', roleTitle: '实现工程师', sequence: 10 },
+        ],
+      }),
+    }).then(response => response.json()) as { conversation: { dispatchMode: string }; members: Array<{ roleKind: string; sequence: number }> };
+    assert.equal(updatedGroup.conversation.dispatchMode, 'leader_route');
+    assert.deepEqual(updatedGroup.members.map(member => [member.roleKind, member.sequence]), [['worker', 10], ['leader', 20]]);
+    const invalidGroup = await fetch(`${baseUrl}/conversations`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ type: 'group', members: [
+        { agentId: 'codex', roleKind: 'leader', roleTitle: 'Leader', sequence: 10 },
+        { agentId: 'kimi', roleKind: 'worker', roleTitle: 'Worker', sequence: 10 },
+      ] }),
+    });
+    assert.equal(invalidGroup.status, 400);
+
     const renamedGroup = await fetch(`${baseUrl}/conversations/${group.conversation.id}`, {
       method: 'PATCH', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ title: '登录重构协作群' }),

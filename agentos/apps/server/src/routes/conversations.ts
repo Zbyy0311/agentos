@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Router, type Request, type Response } from 'express';
 import { getAgentCapability } from '@agentos/agent-core';
-import type { AgentCapability, AgentModelOption, AgentProfile, AgentProvider, Conversation, ThinkingEffort } from '@agentos/shared';
+import type { AgentCapability, AgentModelOption, AgentProfile, AgentProvider, CollaborationRole, Conversation, ConversationMember, GroupDispatchMode, ThinkingEffort } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ConversationService } from '../services/ConversationService.js';
 import { RunStreamRegistry, type RunStreamEvent } from '../services/RunStreamRegistry.js';
@@ -118,30 +118,54 @@ export function createConversationRoutes(
   router.post('/conversations', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
-    const { agentId, title, type, memberAgentIds, leaderAgentId } = req.body as {
+    const { agentId, title, type, memberAgentIds, leaderAgentId: rawLeaderAgentId, members: rawMembers, dispatchMode: rawDispatchMode } = req.body as {
       agentId?: unknown; title?: unknown; type?: unknown; memberAgentIds?: unknown; leaderAgentId?: unknown;
+      members?: unknown; dispatchMode?: unknown;
     };
     if (type === 'group') {
-      if (!Array.isArray(memberAgentIds) || memberAgentIds.length < 2 || memberAgentIds.some(id => typeof id !== 'string') || typeof leaderAgentId !== 'string') {
-        return res.status(400).json({ error: 'Group requires at least two memberAgentIds and a leaderAgentId' });
+      const explicitMembers = parseGroupMembers(rawMembers);
+      const legacyIds = Array.isArray(memberAgentIds) && memberAgentIds.every(id => typeof id === 'string') ? memberAgentIds as string[] : undefined;
+      const ids = explicitMembers?.map(member => member.agentId) ?? legacyIds;
+      const leader = explicitMembers?.find(member => member.roleKind === 'leader')?.agentId
+        ?? (typeof rawLeaderAgentId === 'string' ? rawLeaderAgentId : undefined);
+      if (!ids || ids.length < 2 || !leader) {
+        return res.status(400).json({ error: 'Group requires at least two members and exactly one leader' });
       }
-      const uniqueIds = [...new Set(memberAgentIds)];
-      if (uniqueIds.length !== memberAgentIds.length || !uniqueIds.includes(leaderAgentId)) {
+      const uniqueIds = [...new Set(ids)];
+      if (uniqueIds.length !== ids.length || !uniqueIds.includes(leader)) {
         return res.status(400).json({ error: 'Group members must be unique and include the leader' });
       }
+      const dispatchMode = rawDispatchMode === undefined ? 'leader_route' : parseDispatchMode(rawDispatchMode);
+      if (!dispatchMode) return res.status(400).json({ error: 'dispatchMode must be leader_route, full_pipeline, or mentioned_only' });
+      const leaderAgentId = leader;
       const profiles = new Map(store.listAgentProfiles(workspace.id).filter(profile => profile.enabled).map(profile => [profile.id, profile]));
       if (uniqueIds.some(id => !profiles.has(id))) return res.status(400).json({ error: 'Group member is unavailable' });
       const now = new Date().toISOString();
       const conversation: Conversation = {
         id: randomUUID(), workspaceId: workspace.id, type: 'group',
+        dispatchMode,
         title: typeof title === 'string' && title.trim() ? title.trim() : '新建协作群聊', createdAt: now, updatedAt: now,
       };
       const members = uniqueIds.map(id => ({
         conversationId: conversation.id, agentId: id, roleTitle: id === leaderAgentId ? '群主' : profiles.get(id)!.roleTitle,
         isLeader: id === leaderAgentId, createdAt: now,
       }));
-      store.createGroupConversation(conversation, members);
-      return res.status(201).json({ conversation, members });
+      const configuredMembers: ConversationMember[] = members.map((member, index) => {
+        const explicit = explicitMembers?.find(item => item.agentId === member.agentId);
+        const roleKind: CollaborationRole = explicit?.roleKind ?? (member.isLeader ? 'leader' : 'worker');
+        return {
+          ...member,
+          roleKind,
+          isLeader: roleKind === 'leader',
+          sequence: explicit?.sequence ?? (index + 1) * 10,
+        };
+      });
+      try {
+        store.createGroupConversation(conversation, configuredMembers);
+      } catch (error) {
+        return res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
+      }
+      return res.status(201).json({ conversation, members: store.listConversationMembers(workspace.id, conversation.id) });
     }
     if (!agentId || typeof agentId !== 'string') return res.status(400).json({ error: 'agentId is required' });
 
@@ -200,13 +224,46 @@ export function createConversationRoutes(
     }
   });
 
+  router.get('/conversations/:conversationId/members', (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    const conversation = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
+    if (!conversation) return res.status(404).json({ error: 'Conversation not found' });
+    if (conversation.type !== 'group') return res.status(400).json({ error: 'Only group conversations have members' });
+    res.json({ conversation, members: store.listConversationMembers(workspace.id, conversation.id) });
+  });
+
   router.patch('/conversations/:conversationId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
-    const title = (req.body as { title?: unknown }).title;
-    if (typeof title !== 'string') return res.status(400).json({ error: 'title is required' });
+    const body = req.body as Record<string, unknown>;
     try {
-      const conversation = store.updateConversationTitle(workspace.id, req.params.conversationId, title);
+      const current = store.listConversations(workspace.id).find(item => item.id === req.params.conversationId);
+      if (!current) return res.status(404).json({ error: 'Conversation not found' });
+      let conversation = current;
+      if (body.title !== undefined) {
+        if (typeof body.title !== 'string') return res.status(400).json({ error: 'title must be a string' });
+        conversation = store.updateConversationTitle(workspace.id, req.params.conversationId, body.title);
+      }
+      if (current.type === 'group' && (body.members !== undefined || body.dispatchMode !== undefined)) {
+        const parsedMembers = parseGroupMembers(body.members);
+        if (!parsedMembers) return res.status(400).json({ error: 'members must define at least two explicit roles' });
+        const now = new Date().toISOString();
+        const members: ConversationMember[] = parsedMembers.map((member, index) => ({
+          conversationId: current.id,
+          agentId: member.agentId,
+          roleKind: member.roleKind,
+          roleTitle: member.roleTitle ?? '协作成员',
+          isLeader: member.roleKind === 'leader',
+          sequence: member.sequence ?? (index + 1) * 10,
+          createdAt: now,
+        }));
+        const dispatchMode = body.dispatchMode === undefined ? (current.dispatchMode ?? 'leader_route') : parseDispatchMode(body.dispatchMode);
+        if (!dispatchMode) return res.status(400).json({ error: 'dispatchMode must be leader_route, full_pipeline, or mentioned_only' });
+        const updated = store.updateGroupConversation(workspace.id, current.id, { members, dispatchMode });
+        conversation = updated.conversation;
+        return res.json({ conversation, members: updated.members });
+      }
       res.json({ conversation });
     } catch (error) {
       res.status(400).json({ error: error instanceof Error ? error.message : String(error) });
@@ -456,6 +513,31 @@ export function createConversationRoutes(
 
 function isAgentProvider(value: unknown): value is AgentProvider {
   return value === 'codex' || value === 'kimi' || value === 'opencode' || value === 'mimo' || value === 'custom';
+}
+
+function parseDispatchMode(value: unknown): GroupDispatchMode | undefined {
+  return value === 'leader_route' || value === 'full_pipeline' || value === 'mentioned_only' ? value : undefined;
+}
+
+function parseGroupMembers(value: unknown): Array<{ agentId: string; roleKind: CollaborationRole; roleTitle?: string; sequence?: number }> | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length < 2) return undefined;
+  const members: Array<{ agentId: string; roleKind: CollaborationRole; roleTitle?: string; sequence?: number }> = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') return undefined;
+    const entry = item as Record<string, unknown>;
+    if (typeof entry.agentId !== 'string' || !entry.agentId.trim()) return undefined;
+    if (entry.roleKind !== 'leader' && entry.roleKind !== 'worker' && entry.roleKind !== 'reviewer' && entry.roleKind !== 'specialist') return undefined;
+    if (entry.sequence !== undefined && (!Number.isInteger(entry.sequence) || Number(entry.sequence) <= 0)) return undefined;
+    if (entry.roleTitle !== undefined && typeof entry.roleTitle !== 'string') return undefined;
+    members.push({
+      agentId: entry.agentId,
+      roleKind: entry.roleKind,
+      ...(typeof entry.roleTitle === 'string' ? { roleTitle: entry.roleTitle.trim() } : {}),
+      ...(entry.sequence !== undefined ? { sequence: Number(entry.sequence) } : {}),
+    });
+  }
+  return members;
 }
 
 function parseAttachmentInputs(value: unknown): ConversationAttachmentInput[] {
