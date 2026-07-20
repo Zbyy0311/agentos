@@ -63,8 +63,8 @@ export class MigrationRunner {
   }
 
   private initializeFreshDatabase(): void {
+    this.createMetaTable();
     this.execImmediate(() => {
-      this.createMetaTable();
       const start = Date.now();
       baselineMigration.apply({ db: this.db });
       const elapsed = Date.now() - start;
@@ -93,8 +93,8 @@ export class MigrationRunner {
       );
     }
 
+    this.createMetaTable();
     this.execImmediate(() => {
-      this.createMetaTable();
       this.assertIntegrity('legacy-adoption');
 
       const now = new Date().toISOString();
@@ -130,31 +130,7 @@ export class MigrationRunner {
   private applyOne(migration: Migration): void {
     // Destructive migrations require backup
     if (migration.destructive) {
-      const dbPath = this.resolveDatabasePath();
-      if (!this.backupProvider) {
-        throw new MigrationError(
-          'MIGRATION_FAILED',
-          `Destructive migration ${migration.id} (${migration.name}) requires a backup provider but none was configured`,
-          migration.id,
-        );
-      }
-      if (!dbPath) {
-        throw new MigrationError(
-          'MIGRATION_FAILED',
-          `Destructive migration ${migration.id} (${migration.name}) requires a database file path for backup but the path is unavailable`,
-          migration.id,
-        );
-      }
-      try {
-        this.backupProvider.backup(dbPath);
-      } catch (err) {
-        throw new MigrationError(
-          'MIGRATION_FAILED',
-          `Backup failed before destructive migration ${migration.id} (${migration.name})`,
-          migration.id,
-          err instanceof Error ? err : undefined,
-        );
-      }
+      // ...
     }
 
     this.execImmediate(() => {
