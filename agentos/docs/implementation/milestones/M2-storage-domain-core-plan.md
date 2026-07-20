@@ -102,19 +102,22 @@ Parallel opportunities:
 
 ### M2.1 — Migration Runner and SQLite Foundation
 
-**Rationale:** The smallest, lowest-risk package that unblocks all others. Without a structured migration system, every schema change from M2.2 through M2.7 is ad-hoc and unrevertable.
+**Rationale:** Without a structured migration system, every schema change from M2.2 through M2.7 is ad-hoc and unrevertable. This package builds the migration infrastructure first.
 
 **Key deliverables:**
 1. `apps/server/src/migrations/MigrationRunner.ts`
-2. `apps/server/src/migrations/migrations/001-initial-schema.ts`
-3. `_migrations` SQLite table
-4. Minimal wiring into SqliteStore constructor
+2. `apps/server/src/migrations/migrations/001-baseline-schema.ts`
+3. `_schema_migrations` SQLite table
+4. Wiring into SqliteStore constructor (delegate to MigrationRunner)
+
+**Risk:** Medium — Blast radius: server startup and schema initialization. Legacy adoption requires strict structural verification of 25 tables.
 
 **Success conditions:**
-- Fresh database creates `_migrations` + all 25 existing tables
-- Existing database skips already-applied migrations
-- Rollback works for `001-initial-schema`
-- Backup file created before migration
+- Fresh database: empty → `_schema_migrations` → baseline → schema created
+- Legacy database: strict structural verification → adopt baseline → continue
+- Mismatched/worn schema: diagnostic report, not silent adoption
+- `PRAGMA integrity_check` + `PRAGMA foreign_key_check` pass after migration
+- Rollback restores previous schema state
 - All existing tests still pass
 
 ---
@@ -175,12 +178,13 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 
 | Risk | Likelihood | Impact | Mitigation |
 |---|---|---|---|
+| Migration runner bug prevents DB init | Low | Critical | Additive design with legacy fallback; tests on fresh + legacy DB |
+| Legacy adoption misidentifies schema | Low | High | Strict structural verification; mismatch → diagnostic, not silent adoption |
 | Task/Run separation breaks legacy pipeline | Medium | High | Keep JSON TaskItem working during transition; add comprehensive tests |
 | JSON migration loses data | Low | Critical | Backup before migration; integrity check after; rollback capability |
-| Version concurrency errors in existing callers | Low | Medium | Add version column with default=1; only enforce on explicit v2 endpoints |
-| Idempotency key conflicts with existing idempotent patterns | Low | Low | Idempotency key is optional — existing callers unchanged |
+| Version concurrency errors in existing callers | Low | Medium | Version column default=1; enforce only on v2 endpoints |
+| Idempotency key conflicts with existing patterns | Low | Low | Idempotency key is optional — existing callers unchanged |
 | Snapshot references create circular dependencies | Medium | Low | Snapshot stores JSON copy, not FK references |
-| Migration runner changes SqliteStore constructor timing | Low | Medium | Add MigrationRunner as optional parameter; default to legacy behavior |
 
 ---
 
@@ -194,9 +198,10 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 | Domain gap analysis completed | ✅ domain-gap-analysis.md (12 questions) |
 | Migration plan with 8 work packages | ✅ m2-migration-plan.md |
 | First implementation package selected | ✅ M2.1 — Migration Runner |
-| Branch naming convention defined | ✅ `m2/{package-name}` |
+| Branch naming convention defined | ✅ `runtime/m2-{N}-{name}` |
+| Worktree isolation | ✅ `E:\workspace\Multi-Agent-worktrees\agentos-m2-1` for M2.1 |
 | Clean git state confirmed | ✅ (worktree clean) |
 | No code written yet | ✅ (planning only) |
 
 ### Next Step
-Start M2.1: `git checkout -b m2/migration-runner` from `docs/ui-architecture-alignment` and implement MigrationRunner.
+Start M2.1: worktree at `E:\workspace\Multi-Agent-worktrees\agentos-m2-1` on branch `runtime/m2-1-migration-foundation` and implement MigrationRunner.

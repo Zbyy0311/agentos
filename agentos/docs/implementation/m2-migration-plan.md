@@ -1,10 +1,10 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
-> **Milestone:** M2  
-> **Status:** PLANNED  
-> **Date:** 2026-07-21  
-> **Repository:** `Zbyy0311/agentos`  
-> **Branch:** `docs/ui-architecture-alignment` (planning) → feature branches per work package  
+> **Milestone:** M2
+> **Status:** PLANNED
+> **Date:** 2026-07-21
+> **Repository:** `Zbyy0311/agentos`
+> **Branch:** `runtime/m2-1-migration-foundation` (active), then `runtime/m2-2-*` etc. per work package
 > **Reference:** docs/Runtime-Specification/10-Data-Model.md, 01-Core-Concepts.md
 
 ---
@@ -32,7 +32,7 @@
 
 **Goal:** Document all current tables, columns, relations, and migration logic.
 
-**Deliverable:** `docs/implementation/schema-inventory.md`  
+**Deliverable:** `docs/implementation/schema-inventory.md`
 **Status:** ✅ Complete in this planning phase
 
 ---
@@ -45,8 +45,8 @@
 - `MigrationRecord` — tracks applied migrations (version, name, appliedAt, checksum, rollbackScript?)
 
 #### Schema Changes
-- Create `_migrations` table
-- Create `_schema_version` table or use `_migrations` for tracking
+- Create `_schema_migrations` table (authoritative migration tracking)
+- Optionally sync `PRAGMA user_version` as secondary indicator, not sole source of truth
 - No existing table changes yet
 
 #### Existing Files
@@ -66,7 +66,14 @@
 - None — no endpoint changes
 
 #### Compatibility Impact
-- Existing `migrateSchema()` must continue to work unchanged; MigrationRunner is additive
+- Existing `migrateSchema()` must continue to work unchanged for legacy path
+- MigrationRunner is additive; `migrateSchema()` is progressively migrated one table at a time
+- Legacy adoption (non-empty database discovered at startup) uses **strict structural verification**:
+  1. Inspect existing tables, columns, and indexes
+  2. Compare against known legacy baseline schema
+  3. **Exact match** → adopt as base and record baseline migration
+  4. **Mismatch** → stop with diagnostic report; do NOT blindly mark latest migration as applied
+  5. Unknown or corrupted schema is never silently accepted
 - All existing IF NOT EXISTS / ensureColumn calls remain until formally migrated
 
 #### Tests
@@ -80,22 +87,30 @@
 - None — can start immediately
 
 #### Risks
-- Low — additive change, existing schema untouched
+- **Medium** — Blast radius: server startup and schema initialization
+- Touches `SqliteStore.migrateSchema()` which currently creates all 25 tables; a migration runner bug could prevent database initialization
+- Legacy adoption (detecting existing DB and verifying its structure) requires precise inspection of 25 tables, columns, and indexes
+- Unknown or corrupted schemas must be detected and rejected, not silently adopted
+- Risk is mitigated by: additive design, strict structural verification, integrity_check after migration, rollback support, and backup before destructive changes
 
 #### Out of Scope
 - Rolling back data migrations
 - Automated migration generation
 
 #### Exit Gate
-- `_migrations` table exists and is populated
+- `_schema_migrations` table exists and is populated
 - All existing tables can be recreated via MigrationRunner
-- MigrationRunner tests pass
+- Fresh database: empty → `_schema_migrations` → baseline migration → schema created
+- Legacy database: strict structural verification → adopt baseline → continue
+- Unknown or mismatched schema: diagnostic report, not silent adoption
+- MigrationRunner tests pass (apply, rollback, detect already-applied, legacy adoption)
+- `PRAGMA integrity_check` and `PRAGMA foreign_key_check` pass after migration
 
 #### Recommended Branch
-- `m2/migration-runner`
+- `runtime/m2-1-migration-foundation` (already created, based on main@5e2cd396)
 
 #### Recommended Worktree
-- Not needed for this isolated change
+- Required — dedicated worktree at `E:\workspace\Multi-Agent-worktrees\agentos-m2-1`
 
 #### Integration Order
 - 1/8 — must be first to enable all other schema changes
@@ -629,30 +644,39 @@ The following are explicitly out of scope for M2:
 **Package: M2.1 — Migration Runner and SQLite Foundation**
 
 ### Why start here
-1. **Zero risk** — additive only, no existing code changes
-2. **Unblocks everything** — every subsequent WP needs schema changes
-3. **Verifiable immediately** — tests run in isolation
-4. **Lowest blast radius** — if delayed, nothing else is blocked but nothing else can start safely
+1. **Unblocks everything** — every subsequent WP needs schema changes
+2. **Verifiable immediately** — tests run in isolation
+3. **Smallest blast radius among M2 packages** — only touches startup and schema init
+4. **Risk is Medium, not Low** — any migration runner bug could prevent database initialization; legacy adoption requires precise structural verification of 25 tables
 
 ### Estimated scope
 - New file: `apps/server/src/migrations/MigrationRunner.ts`
-- New file: `apps/server/src/migrations/migrations/001-initial-schema.ts`
-- New table: `_migrations`
-- Minimal change to `SqliteStore.ts`: call `MigrationRunner.apply()` instead of `migrateSchema()`
-- Tests: MigrationRunner with in-memory SQLite
+- New file: `apps/server/src/migrations/migrations/001-baseline-schema.ts`
+- New table: `_schema_migrations`
+- Minimal change to `SqliteStore.ts`: delegate to `MigrationRunner` instead of `migrateSchema()`
+- Tests: MigrationRunner with in-memory SQLite (fresh + legacy + mismatched schemas)
 
 ### Key design decisions
 1. Migrations are versioned by number (001, 002, ...)
 2. Each migration has `up()` and `down()` methods
-3. MigrationRunner compares version against `_migrations` table
-4. Backups are created before destructive migrations
-5. Integrity checks run after each migration
+3. MigrationRunner compares version against `_schema_migrations` table
+4. Each migration runs in its own transaction; `BEGIN IMMEDIATE` prevents dual-server race
+5. Migration files are immutable after application — checksum mismatch is a hard failure
+6. Failed migrations are rolled back and NOT recorded in `_schema_migrations`
+7. Destructive schema changes are preceded by automatic backup
+8. Integrity checks run after each migration
 
 ### Exit gate for M2.1
-- [x] `_migrations` table created on fresh database
+- [x] `_schema_migrations` table created on fresh database
 - [x] MigrationRunner applies pending migrations in order
-- [x] Already-applied migrations are skipped
-- [x] Rollback restores previous schema
-- [x] Backup created before migration
-- [x] All existing tables still created correctly
-- [x] Existing tests pass with MigrationRunner
+- [x] Already-applied migrations are skipped (checksum match)
+- [x] Checksum mismatch → hard failure, not silent re-execution
+- [x] Rollback restores previous schema state
+- [x] Legacy adoption: empty DB → fresh schema; populated DB → strict structural verification
+- [x] Structural mismatch → diagnostic report, not silent baseline adoption
+- [x] Backup created before destructive schema changes
+- [x] Each migration runs in its own transaction with `BEGIN IMMEDIATE`
+- [x] Failed migration is rolled back and NOT recorded
+- [x] `PRAGMA integrity_check` and `PRAGMA foreign_key_check` pass after migration
+- [x] `SqliteStore` delegates to MigrationRunner instead of raw `migrateSchema()`
+- [x] All existing tests pass with MigrationRunner

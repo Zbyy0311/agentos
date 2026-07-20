@@ -396,7 +396,7 @@ Operations requiring idempotency key:
 - Tests that verify migration from v1 to v2 schemas
 
 ### Migration Required
-1. Create `_migrations` table to track applied migrations
+1. Create `_schema_migrations` table to track applied migrations
 2. Convert schema creation to versioned migrations
 3. Add rollback scripts for each migration
 4. Add pre-migration backup step
