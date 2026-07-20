@@ -45,7 +45,19 @@
 - `MigrationRecord` — tracks applied migrations (version, name, appliedAt, checksum, rollbackScript?)
 
 #### Schema Changes
-- Create `_schema_migrations` table (authoritative migration tracking)
+- Create `_schema_migrations` table (authoritative migration tracking):
+
+```sql
+CREATE TABLE _schema_migrations (
+  migration_id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  checksum TEXT NOT NULL,
+  applied_at TEXT NOT NULL,
+  execution_ms INTEGER NOT NULL,
+  app_version TEXT
+);
+```
+
 - Optionally sync `PRAGMA user_version` as secondary indicator, not sole source of truth
 - No existing table changes yet
 
@@ -77,11 +89,11 @@
 - All existing IF NOT EXISTS / ensureColumn calls remain until formally migrated
 
 #### Tests
-- MigrationRunner unit tests (apply, rollback, detect already-applied)
+- MigrationRunner unit tests (apply, skip already-applied, detect checksum mismatch)
 - Migration from scratch creates expected schema
-- Migration on existing database is idempotent
-- Rollback restores previous schema state
-- Backup is created before migration
+- Migration on existing legacy database via strict structural verification
+- Migration failure rollback (transaction-level: failure before commit rolls back DDL + _schema_migrations record)
+- Backup is created before destructive changes
 
 #### Dependencies
 - None — can start immediately
@@ -658,7 +670,11 @@ The following are explicitly out of scope for M2:
 
 ### Key design decisions
 1. Migrations are versioned by number (001, 002, ...)
-2. Each migration has `up()` and `down()` methods
+2. Each migration exposes a single `apply(context)` method; there is no generic `down()`.
+   Rollback is handled by:
+   - **Transaction rollback** — if `apply()` fails before committing, the DDL + `_schema_migrations` record are rolled back together.
+   - **Pre-migration backup restore** — for post-commit recovery, restore the backup taken before the migration.
+   - **Forward repair migration** — for production schema fixes, write a new migration rather than reverting.
 3. MigrationRunner compares version against `_schema_migrations` table
 4. Each migration runs in its own transaction; `BEGIN IMMEDIATE` prevents dual-server race
 5. Migration files are immutable after application — checksum mismatch is a hard failure
@@ -667,16 +683,17 @@ The following are explicitly out of scope for M2:
 8. Integrity checks run after each migration
 
 ### Exit gate for M2.1
-- [x] `_schema_migrations` table created on fresh database
-- [x] MigrationRunner applies pending migrations in order
-- [x] Already-applied migrations are skipped (checksum match)
-- [x] Checksum mismatch → hard failure, not silent re-execution
-- [x] Rollback restores previous schema state
-- [x] Legacy adoption: empty DB → fresh schema; populated DB → strict structural verification
-- [x] Structural mismatch → diagnostic report, not silent baseline adoption
-- [x] Backup created before destructive schema changes
-- [x] Each migration runs in its own transaction with `BEGIN IMMEDIATE`
-- [x] Failed migration is rolled back and NOT recorded
-- [x] `PRAGMA integrity_check` and `PRAGMA foreign_key_check` pass after migration
-- [x] `SqliteStore` delegates to MigrationRunner instead of raw `migrateSchema()`
-- [x] All existing tests pass with MigrationRunner
+- [ ] `_schema_migrations` table created on fresh database
+- [ ] MigrationRunner applies pending migrations in order
+- [ ] Already-applied migrations are skipped (checksum match)
+- [ ] Checksum mismatch → hard failure, not silent re-execution
+- [ ] Migration failure → transaction rollback (DDL + record undone)
+- [ ] Fresh database: empty → `_schema_migrations` → baseline migration → schema created
+- [ ] Legacy database: strict structural verification → adopt baseline → continue
+- [ ] Structural mismatch → diagnostic report, not silent baseline adoption
+- [ ] Backup created before destructive schema changes
+- [ ] Each migration runs in its own transaction with `BEGIN IMMEDIATE`
+- [ ] Failed migration is rolled back and NOT recorded in `_schema_migrations`
+- [ ] `PRAGMA integrity_check` and `PRAGMA foreign_key_check` pass after migration
+- [ ] `SqliteStore` delegates to MigrationRunner instead of raw `migrateSchema()`
+- [ ] All existing tests pass with MigrationRunner
