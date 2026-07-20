@@ -46,6 +46,9 @@ import type {
 } from '@agentos/shared';
 import { JsonFileStore } from './JsonFileStore.js';
 import type { Store } from './Store.js';
+import { MigrationRunner } from '../migrations/MigrationRunner.js';
+import { MigrationRegistry } from '../migrations/registry.js';
+import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
 
@@ -364,7 +367,7 @@ export class SqliteStore implements Store {
     mkdirSync(dataDir, { recursive: true });
     this.database = new DatabaseSync(join(dataDir, 'agentos.sqlite'));
     this.database.exec('PRAGMA foreign_keys = ON');
-    this.migrateSchema();
+    this.runMigrations();
     this.migrateLegacyKimiWorkspaceConfigs();
     this.migrateLegacyAgentProfiles();
   }
@@ -1786,6 +1789,14 @@ export class SqliteStore implements Store {
     this.database.prepare('UPDATE memory_candidates SET status = ?, reviewed_at = ? WHERE workspace_id = ? AND id = ?')
       .run(status, reviewedAt, workspaceId, candidateId);
     return this.getMemoryCandidate(workspaceId, candidateId) ?? { ...current, status, reviewedAt };
+  }
+
+  private runMigrations(): void {
+    // MigrationRunner takes over schema initialization.
+    // migrateSchema() is kept as the implementation source for baseline DDL.
+    const registry = new MigrationRegistry([baselineMigration]);
+    const runner = new MigrationRunner(this.database as any, registry);
+    runner.run();
   }
 
   close(): void {

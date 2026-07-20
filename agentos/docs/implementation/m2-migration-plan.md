@@ -42,7 +42,8 @@
 **Goal:** Build structured migration infrastructure before any schema change.
 
 #### Domain Types
-- `MigrationRecord` — tracks applied migrations (version, name, appliedAt, checksum, rollbackScript?)
+- `MigrationRecord` — tracks applied migrations:
+  migrationId, name, checksum, appliedAt, executionMs, appVersion?
 
 #### Schema Changes
 - Create `_schema_migrations` table (authoritative migration tracking):
