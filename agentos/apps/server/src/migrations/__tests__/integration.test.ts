@@ -216,9 +216,10 @@ describe('Legacy database adoption', () => {
     const runner = new MigrationRunner(ctx.db, reg);
     assert.throws(() => runner.run());
 
-    // _schema_migrations is created by the runner, but no adoption record written
-    const records = ctx.db.prepare("SELECT COUNT(*) AS cnt FROM _schema_migrations").get() as { cnt: number };
-    assert.equal(records.cnt, 0, 'no migration records should exist');
+    // The runner throws MIGRATION_SCHEMA_INCOMPATIBLE before any write.
+    // No _schema_migrations table should exist.
+    const metaExists = ctx.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='_schema_migrations'").all() as Array<{ name: string }>;
+    assert.equal(metaExists.length, 0, '_schema_migrations should not be created for incompatible schema');
 
     // Original table should still exist
     const orig = ctx.db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='agent_profiles'").all();
@@ -333,6 +334,19 @@ describe('Destructive migration backup', () => {
     // This is acceptable — the file copy is what matters.
     // The real assertion: baselineMigration.destructive is not set.
     assert.equal(baselineMigration.destructive, undefined);
+  });
+
+  it('destructive migration without backup provider is rejected', () => {
+    const destructive: Migration = {
+      id: '002', name: 'no-backup', checksum: 'nb', destructive: true,
+      apply: () => { throw new Error('should not reach apply'); },
+    };
+    const reg = new MigrationRegistry([destructive]);
+    const runner = new MigrationRunner(ctx.db, reg);
+    assert.throws(() => runner.run(), (err: unknown) => {
+      return err instanceof MigrationError && err.code === 'MIGRATION_FAILED'
+        && err.message.includes('backup provider');
+    });
   });
 
   it('destructive migration creates backup before apply', () => {

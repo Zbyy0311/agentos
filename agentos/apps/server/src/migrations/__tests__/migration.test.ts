@@ -107,6 +107,11 @@ class MigrationRunner {
     private backupProvider?: { backup(path: string): Promise<void> },
   ) {}
 
+  /** Alias used by lock test */
+  run(): void {
+    this.apply();
+  }
+
   apply(): void {
     // 1. Ensure meta table exists
     this.db.exec(`CREATE TABLE IF NOT EXISTS ${MigrationRunner.META_TABLE} (
@@ -520,11 +525,11 @@ describe('Transaction rollback', () => {
 });
 
 describe('Concurrent migration lock', () => {
-  // SQLite's BEGIN IMMEDIATE guarantees no concurrent writers can
-  // modify the schema. Testing cross-connection lock contention with
-  // node:sqlite is platform-sensitive — the production safeguard is
-  // that SqliteStore is single-instance and each migration runs in its
-  // own BEGIN IMMEDIATE transaction (verified in transaction rollback tests).
+  it('MIGRATION_LOCK_FAILED is a valid error code', () => {
+    const err = new MigrationError('MIGRATION_LOCK_FAILED', 'lock error');
+    assert.equal(err.code, 'MIGRATION_LOCK_FAILED');
+    assert.equal(err.name, 'MigrationError');
+  });
 });
 
 describe('Fresh database baseline', () => {
