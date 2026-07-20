@@ -3,7 +3,7 @@
 > Date: 2026-07-21  
 > Scope: Repository Audit and Test Baseline (M1)  
 > Repository: `Zbyy0311/agentos`  
-> Branch: HEAD (detached / no active branch changes)  
+> Branch: docs/ui-architecture-alignment  
 > Status: Clean working tree
 
 ---
@@ -11,7 +11,9 @@
 ## 1. Repository Structure
 
 ### Git Root
-`E:\workspace\Multi-Agent\agentos`
+`E:\workspace\Multi-Agent\` (agentos is a subdirectory within the monorepo)
+The git repository root is `E:/workspace/Multi-Agent`, and `agentos/` is the primary package directory within it.
+AgentOS-specific git operations use `agentos/` as the de facto project root.
 
 ### Project Root
 `E:\workspace\Multi-Agent\agentos`
@@ -45,10 +47,10 @@
 ```
 
 ### Current Branch
-- HEAD (no active feature branch, detached state)
+- `docs/ui-architecture-alignment` (feature branch, not main)
 
 ### Staged/Unstaged/Untracked
-- Clean — no staged, unstaged, or untracked changes outside `/docs/implementation/`
+- Only `agentos/docs/implementation/` is new (untracked before commit; now committed)
 
 ---
 
@@ -121,7 +123,7 @@
   4. Kills any existing process on ports 3000/3001
   5. Starts server via `pnpm --filter @agentos/server run dev` (or dev:stable if `-Stable`)
   6. Starts web via `pnpm --filter @agentos/web run dev`
-- Browser close does NOT affect Run execution (server continues independently)
+- 关闭普通页面本身不会主动调用 Cancel API，但当前执行 SSE 的 HTTP 连接关闭会触发 AbortController，因此浏览器断线仍可能取消正在执行的任务。
 
 ---
 

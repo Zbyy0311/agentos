@@ -4,7 +4,7 @@
 > **Status:** ✅ COMPLETED  
 > **Date:** 2026-07-21  
 > **Repository:** `Zbyy0311/agentos`  
-> **Branch:** HEAD  
+> **Branch:** docs/ui-architecture-alignment  
 > **Working Tree:** Clean
 
 ---
@@ -25,10 +25,10 @@ Repository-wide audit of AgentOS v1 current state:
 ## 2. Completed Checks
 
 ### Repository Boundary
-- [x] Git root: `E:\workspace\Multi-Agent\agentos`
+- [x] Git root: `E:/workspace/Multi-Agent/` (agentos is a subdirectory)
 - [x] Monorepo workspace: pnpm workspaces (`apps/*`, `packages/*`)
 - [x] Directory structure: apps (server, web), packages (agent-core, shared), scripts, docs
-- [x] Current branch: HEAD
+- [x] Current branch: `docs/ui-architecture-alignment`
 - [x] Git status: clean (no staged/unstaged/untracked changes)
 - [x] No ongoing work outside docs/
 - [x] No user changes modified or overwritten
@@ -44,7 +44,7 @@ Repository-wide audit of AgentOS v1 current state:
 - [x] Production build: `tsc`
 - [x] Start script: `start-dev.ps1`
 - [x] Env vars: AGENTOS_FORCE_MOCK, AGENTOS_CODEX_CLI, AGENTOS_KIMI_CLI, etc.
-- [x] Browser close: currently cancels Run (anti-pattern per v2 spec)
+- [x] Browser close: 关闭普通页面本身不会主动调用 Cancel API，但当前执行 SSE 的 HTTP 连接关闭会触发 AbortController，因此浏览器断线仍可能取消正在执行的任务
 - [x] Server restart: recovers interrupted tasks (marks as failed)
 
 ### Runtime Implementation Audit
