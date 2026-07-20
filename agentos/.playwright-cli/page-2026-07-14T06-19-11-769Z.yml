@@ -1,0 +1,472 @@
+- generic [active] [ref=f15e1]:
+  - generic [ref=f15e2]:
+    - complementary [ref=f15e4]:
+      - generic [ref=f15e5]:
+        - generic [ref=f15e6]:
+          - generic [ref=f15e7]: A/
+          - button "切换到浅色主题" [ref=f15e9] [cursor=pointer]:
+            - generic [ref=f15e10]: ☼
+            - generic [ref=f15e11]: 深色
+        - generic [ref=f15e12]: AgentOS
+        - generic [ref=f15e13]: 当前工作区的协作成员
+        - button "← 返回工作区" [ref=f15e14] [cursor=pointer]
+      - generic [ref=f15e15]: AGENTS
+      - generic [ref=f15e16]:
+        - button "C Codex 首席架构师" [ref=f15e17] [cursor=pointer]:
+          - generic [ref=f15e18]: C
+          - generic [ref=f15e20]:
+            - generic [ref=f15e21]: Codex
+            - generic [ref=f15e22]: 首席架构师
+        - button "K KimiCode 高级开发工程师" [ref=f15e23] [cursor=pointer]:
+          - generic [ref=f15e24]: K
+          - generic [ref=f15e26]:
+            - generic [ref=f15e27]: KimiCode
+            - generic [ref=f15e28]: 高级开发工程师
+        - button "O OpenCode 代码审查工程师" [ref=f15e29] [cursor=pointer]:
+          - generic [ref=f15e30]: O
+          - generic [ref=f15e32]:
+            - generic [ref=f15e33]: OpenCode
+            - generic [ref=f15e34]: 代码审查工程师
+      - generic [ref=f15e35]:
+        - generic [ref=f15e36]:
+          - generic [ref=f15e37]: GROUPS
+          - button "+" [ref=f15e38] [cursor=pointer]
+        - button "⌘ test1" [ref=f15e40] [cursor=pointer]
+    - complementary [ref=f15e41]:
+      - generic [ref=f15e42]:
+        - generic [ref=f15e43]: CONVERSATIONS
+        - generic [ref=f15e44]: Codex
+      - button "+ 新建会话" [ref=f15e45] [cursor=pointer]:
+        - generic [ref=f15e46]: +
+        - text: 新建会话
+      - generic [ref=f15e47]:
+        - button "与 Codex 的新对话 7/14 13:51" [ref=f15e48] [cursor=pointer]:
+          - generic [ref=f15e49]: 与 Codex 的新对话
+          - generic [ref=f15e50]: 7/14 13:51
+        - button "与 Codex 的新对话 7/14 01:10" [ref=f15e51] [cursor=pointer]:
+          - generic [ref=f15e52]: 与 Codex 的新对话
+          - generic [ref=f15e53]: 7/14 01:10
+    - main [ref=f15e54]:
+      - generic [ref=f15e56]:
+        - generic [ref=f15e57]: ACTIVE SESSION
+        - heading "Codex · 首席架构师" [level=1] [ref=f15e58]
+        - paragraph [ref=f15e59]: 私聊会话仅属于当前工作区
+      - generic [ref=f15e61]:
+        - paragraph [ref=f15e65]: hello
+        - generic [ref=f15e68]:
+          - heading "Codex Manager Analysis" [level=3] [ref=f15e69]
+          - heading "Task Understanding" [level=4] [ref=f15e71]
+          - paragraph [ref=f15e72]: "Received task: 你是 Codex，身份是首席架构师。 负责分析需求、制定方案和完成最终决策。 请依据你的职责和权限完成用户请求。仅输出用户可见的结论、执行进度和必要证据；不要输出私有思维链。 这是一次单轮 CLI 调"
+          - heading "Subtask Breakdown" [level=4] [ref=f15e74]
+          - paragraph [ref=f15e75]:
+            - generic [ref=f15e76]: "1."
+            - generic [ref=f15e77]: Analyze requirements
+          - paragraph [ref=f15e78]:
+            - generic [ref=f15e79]: "2."
+            - generic [ref=f15e80]: Design solution architecture
+          - paragraph [ref=f15e81]:
+            - generic [ref=f15e82]: "3."
+            - generic [ref=f15e83]: Implement core logic
+          - paragraph [ref=f15e84]:
+            - generic [ref=f15e85]: "4."
+            - generic [ref=f15e86]: Review and validate
+          - heading "Risk Assessment" [level=4] [ref=f15e88]
+          - paragraph [ref=f15e89]:
+            - generic [ref=f15e90]: •
+            - generic [ref=f15e91]: "Low: Well-defined task"
+          - paragraph [ref=f15e92]:
+            - generic [ref=f15e93]: •
+            - generic [ref=f15e94]: "Medium: May need dependency installation"
+          - heading "Next Steps" [level=4] [ref=f15e96]
+          - paragraph [ref=f15e97]: Assigning to KimiCode for implementation.
+          - heading "Decision" [level=4] [ref=f15e99]
+          - paragraph [ref=f15e100]: Approved for implementation phase.
+        - paragraph [ref=f15e104]: 检查项目状态
+        - generic [ref=f15e107]:
+          - heading "Codex Manager Analysis" [level=3] [ref=f15e108]
+          - heading "Task Understanding" [level=4] [ref=f15e110]
+          - paragraph [ref=f15e111]: "Received task: 你是 Codex，身份是首席架构师。 负责分析需求、制定方案和完成最终决策。 请依据你的职责和权限完成用户请求。仅输出用户可见的结论、执行进度和必要证据；不要输出私有思维链。 这是一次单轮 CLI 调"
+          - heading "Subtask Breakdown" [level=4] [ref=f15e113]
+          - paragraph [ref=f15e114]:
+            - generic [ref=f15e115]: "1."
+            - generic [ref=f15e116]: Analyze requirements
+          - paragraph [ref=f15e117]:
+            - generic [ref=f15e118]: "2."
+            - generic [ref=f15e119]: Design solution architecture
+          - paragraph [ref=f15e120]:
+            - generic [ref=f15e121]: "3."
+            - generic [ref=f15e122]: Implement core logic
+          - paragraph [ref=f15e123]:
+            - generic [ref=f15e124]: "4."
+            - generic [ref=f15e125]: Review and validate
+          - heading "Risk Assessment" [level=4] [ref=f15e127]
+          - paragraph [ref=f15e128]:
+            - generic [ref=f15e129]: •
+            - generic [ref=f15e130]: "Low: Well-defined task"
+          - paragraph [ref=f15e131]:
+            - generic [ref=f15e132]: •
+            - generic [ref=f15e133]: "Medium: May need dependency installation"
+          - heading "Next Steps" [level=4] [ref=f15e135]
+          - paragraph [ref=f15e136]: Assigning to KimiCode for implementation.
+          - heading "Decision" [level=4] [ref=f15e138]
+          - paragraph [ref=f15e139]: Approved for implementation phase.
+        - paragraph [ref=f15e143]: hello
+        - paragraph [ref=f15e147]: 你好，我是 Codex，担任首席架构师。可以协助你分析需求、制定方案、审查项目状态并完成技术决策。
+        - link [ref=f15e153] [cursor=pointer]:
+          - /url: http://localhost:3000/api/workspaces/e525c034/attachments/b61105fd-0070-4357-b4e6-ab1acd6c5700
+          - img "image.png" [ref=f15e154]
+        - generic [ref=f15e157]:
+          - paragraph [ref=f15e158]: "执行失败：Codex (codex_manager) failed with exit code 1: Reading prompt from stdin..."
+          - paragraph [ref=f15e159]: No prompt provided via stdin.
+        - link [ref=f15e165] [cursor=pointer]:
+          - /url: http://localhost:3000/api/workspaces/e525c034/attachments/64277b48-0442-4dd7-87ec-b461428de27d
+          - img "image.png" [ref=f15e166]
+        - generic [ref=f15e169]:
+          - paragraph [ref=f15e170]: 当前可见状态如下：
+          - paragraph [ref=f15e172]:
+            - generic [ref=f15e173]: •
+            - generic [ref=f15e174]: 项目管理面板显示该会话已进入并完成执行流程，状态时间线最后一项为“执行完成”。
+          - paragraph [ref=f15e175]:
+            - generic [ref=f15e176]: •
+            - generic [ref=f15e177]: "权限项已勾选：`读取项目文件`、`修改项目文件`、`代码审查`。"
+          - paragraph [ref=f15e178]:
+            - generic [ref=f15e179]: •
+            - generic [ref=f15e180]: "当前会话标题为 `Codex · 首席架构师`，说明角色已切换到架构分析/决策模式。"
+          - paragraph [ref=f15e181]:
+            - generic [ref=f15e182]: •
+            - generic [ref=f15e183]: "输入框里没有新的待执行需求，最近一条用户消息是 `hello`，因此目前没有明确的新任务可落地。"
+          - paragraph [ref=f15e185]: 证据来源：
+          - paragraph [ref=f15e186]:
+            - generic [ref=f15e187]: •
+            - generic [ref=f15e188]: 你提供的界面截图中，右侧状态栏显示“执行完成”，并列出完整时间线。
+          - paragraph [ref=f15e189]:
+            - generic [ref=f15e190]: •
+            - generic [ref=f15e191]: 最近会话记录里没有新的功能需求或错误描述。
+          - paragraph [ref=f15e193]: 补充说明：
+          - paragraph [ref=f15e194]:
+            - generic [ref=f15e195]: •
+            - generic [ref=f15e196]: "我尝试读取本地工作区状态，但当前环境里的沙箱辅助程序不可用，导致无法直接执行 `git status` 或目录扫描来做本地证据核验。"
+          - paragraph [ref=f15e197]:
+            - generic [ref=f15e198]: •
+            - generic [ref=f15e199]: 如果你要我继续，我可以基于当前界面状态，直接帮你输出一份“项目状态结论”或“下一步架构建议”。
+        - generic [ref=f15e200]:
+          - generic [ref=f15e201] [cursor=pointer]:
+            - generic [ref=f15e202]:
+              - generic [ref=f15e204]: 思考进度
+              - generic [ref=f15e205]: Codex · 执行完成
+            - generic [ref=f15e206]: 24 个步骤
+          - generic [ref=f15e207]:
+            - generic [ref=f15e210]:
+              - generic [ref=f15e211]:
+                - generic [ref=f15e212]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e213]: 已进入队列 · 18:03:48
+            - generic [ref=f15e216]:
+              - generic [ref=f15e217]:
+                - generic [ref=f15e218]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e219]: 准备上下文 · 18:03:48
+            - generic [ref=f15e222]:
+              - generic [ref=f15e223]:
+                - generic [ref=f15e224]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e225]: 调用 Agent CLI · 18:03:48
+            - generic [ref=f15e228]:
+              - generic [ref=f15e229]:
+                - generic [ref=f15e230]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f15e231]: 生成回复 · 18:03:48
+            - generic [ref=f15e234]:
+              - generic [ref=f15e235]:
+                - generic [ref=f15e236]: Codex ·
+                - text: 执行完成
+              - generic [ref=f15e237]: 执行完成 · 18:03:48
+            - generic [ref=f15e240]:
+              - generic [ref=f15e241]:
+                - generic [ref=f15e242]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e243]: 已进入队列 · 18:04:01
+            - generic [ref=f15e246]:
+              - generic [ref=f15e247]:
+                - generic [ref=f15e248]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e249]: 准备上下文 · 18:04:01
+            - generic [ref=f15e252]:
+              - generic [ref=f15e253]:
+                - generic [ref=f15e254]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e255]: 调用 Agent CLI · 18:04:01
+            - generic [ref=f15e258]:
+              - generic [ref=f15e259]:
+                - generic [ref=f15e260]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f15e261]: 生成回复 · 18:04:01
+            - generic [ref=f15e264]:
+              - generic [ref=f15e265]:
+                - generic [ref=f15e266]: Codex ·
+                - text: 执行完成
+              - generic [ref=f15e267]: 执行完成 · 18:04:01
+            - generic [ref=f15e270]:
+              - generic [ref=f15e271]:
+                - generic [ref=f15e272]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e273]: 已进入队列 · 18:12:44
+            - generic [ref=f15e276]:
+              - generic [ref=f15e277]:
+                - generic [ref=f15e278]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e279]: 准备上下文 · 18:12:44
+            - generic [ref=f15e282]:
+              - generic [ref=f15e283]:
+                - generic [ref=f15e284]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e285]: 调用 Agent CLI · 18:12:44
+            - generic [ref=f15e288]:
+              - generic [ref=f15e289]:
+                - generic [ref=f15e290]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f15e291]: 生成回复 · 18:12:51
+            - generic [ref=f15e294]:
+              - generic [ref=f15e295]:
+                - generic [ref=f15e296]: Codex ·
+                - text: 执行完成
+              - generic [ref=f15e297]: 执行完成 · 18:12:52
+            - generic [ref=f15e300]:
+              - generic [ref=f15e301]:
+                - generic [ref=f15e302]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e303]: 已进入队列 · 21:40:24
+            - generic [ref=f15e306]:
+              - generic [ref=f15e307]:
+                - generic [ref=f15e308]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e309]: 准备上下文 · 21:40:24
+            - generic [ref=f15e312]:
+              - generic [ref=f15e313]:
+                - generic [ref=f15e314]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e315]: 调用 Agent CLI · 21:40:24
+            - generic [ref=f15e318]:
+              - generic [ref=f15e319]:
+                - generic [ref=f15e320]: Codex ·
+                - text: 执行失败
+              - generic [ref=f15e321]: 执行失败 · 21:40:25
+              - generic [ref=f15e322]: "Codex (codex_manager) failed with exit code 1: Reading prompt from stdin... No prompt provided via stdin."
+            - generic [ref=f15e325]:
+              - generic [ref=f15e326]:
+                - generic [ref=f15e327]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e328]: 已进入队列 · 13:40:38
+            - generic [ref=f15e331]:
+              - generic [ref=f15e332]:
+                - generic [ref=f15e333]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e334]: 准备上下文 · 13:40:38
+            - generic [ref=f15e337]:
+              - generic [ref=f15e338]:
+                - generic [ref=f15e339]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e340]: 调用 Agent CLI · 13:40:38
+            - generic [ref=f15e343]:
+              - generic [ref=f15e344]:
+                - generic [ref=f15e345]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f15e346]: 生成回复 · 13:40:59
+            - generic [ref=f15e349]:
+              - generic [ref=f15e350]:
+                - generic [ref=f15e351]: Codex ·
+                - text: 执行完成
+              - generic [ref=f15e352]: 执行完成 · 13:41:00
+      - generic [ref=f15e354]:
+        - textbox "消息输入框" [ref=f15e355]:
+          - /placeholder: 向 Codex 发送消息…
+        - generic [ref=f15e356]:
+          - button "添加图片" [ref=f15e358] [cursor=pointer]
+          - generic [ref=f15e361]: Enter 发送 · Shift + Enter 换行
+          - generic [ref=f15e362]:
+            - generic [ref=f15e363]:
+              - button "选择模型" [ref=f15e365] [cursor=pointer]:
+                - generic [ref=f15e366]: 模型
+                - generic [ref=f15e367]: GPT-5.4-Mini
+                - generic [ref=f15e368]: ⌄
+              - button "选择思考强度" [ref=f15e370] [cursor=pointer]:
+                - generic [ref=f15e371]: 思考
+                - generic [ref=f15e372]: 低
+                - generic [ref=f15e373]: ⌄
+              - generic "模型来源：本地缓存" [ref=f15e374]: 本地缓存
+            - button "发送消息" [disabled] [ref=f15e375]: ↑
+    - complementary [ref=f15e376]:
+      - generic [ref=f15e377]:
+        - heading "执行状态" [level=2] [ref=f15e378]
+        - button "编辑身份" [ref=f15e379] [cursor=pointer]
+      - generic [ref=f15e380]:
+        - generic [ref=f15e381]: C
+        - generic [ref=f15e382]:
+          - generic [ref=f15e383]: Codex
+          - generic [ref=f15e384]: 首席架构师
+      - generic [ref=f15e385]:
+        - heading "PERMISSIONS" [level=3] [ref=f15e386]
+        - generic [ref=f15e387]:
+          - generic [ref=f15e388]:
+            - generic [ref=f15e389]: ✓
+            - text: 读取项目文件
+          - generic [ref=f15e390]:
+            - generic [ref=f15e391]: ·
+            - text: 修改项目文件
+          - generic [ref=f15e392]:
+            - generic [ref=f15e393]: ✓
+            - text: 代码审查
+      - generic [ref=f15e394]:
+        - generic [ref=f15e395]:
+          - heading "TIMELINE" [level=3] [ref=f15e396]
+          - generic [ref=f15e397]: 完成
+        - list [ref=f15e398]:
+          - listitem [ref=f15e399]:
+            - generic [ref=f15e402]:
+              - generic [ref=f15e403]:
+                - generic [ref=f15e404]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e405]: 排队中 · 18:03:48
+          - listitem [ref=f15e406]:
+            - generic [ref=f15e409]:
+              - generic [ref=f15e410]:
+                - generic [ref=f15e411]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e412]: 准备上下文 · 18:03:48
+          - listitem [ref=f15e413]:
+            - generic [ref=f15e416]:
+              - generic [ref=f15e417]:
+                - generic [ref=f15e418]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e419]: 调用 CLI · 18:03:48
+          - listitem [ref=f15e420]:
+            - generic [ref=f15e423]:
+              - generic [ref=f15e424]:
+                - generic [ref=f15e425]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f15e426]: 生成回复 · 18:03:48
+          - listitem [ref=f15e427]:
+            - generic [ref=f15e430]:
+              - generic [ref=f15e431]:
+                - generic [ref=f15e432]: Codex ·
+                - text: 执行完成
+              - generic [ref=f15e433]: 完成 · 18:03:48
+          - listitem [ref=f15e434]:
+            - generic [ref=f15e437]:
+              - generic [ref=f15e438]:
+                - generic [ref=f15e439]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e440]: 排队中 · 18:04:01
+          - listitem [ref=f15e441]:
+            - generic [ref=f15e444]:
+              - generic [ref=f15e445]:
+                - generic [ref=f15e446]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e447]: 准备上下文 · 18:04:01
+          - listitem [ref=f15e448]:
+            - generic [ref=f15e451]:
+              - generic [ref=f15e452]:
+                - generic [ref=f15e453]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e454]: 调用 CLI · 18:04:01
+          - listitem [ref=f15e455]:
+            - generic [ref=f15e458]:
+              - generic [ref=f15e459]:
+                - generic [ref=f15e460]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f15e461]: 生成回复 · 18:04:01
+          - listitem [ref=f15e462]:
+            - generic [ref=f15e465]:
+              - generic [ref=f15e466]:
+                - generic [ref=f15e467]: Codex ·
+                - text: 执行完成
+              - generic [ref=f15e468]: 完成 · 18:04:01
+          - listitem [ref=f15e469]:
+            - generic [ref=f15e472]:
+              - generic [ref=f15e473]:
+                - generic [ref=f15e474]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e475]: 排队中 · 18:12:44
+          - listitem [ref=f15e476]:
+            - generic [ref=f15e479]:
+              - generic [ref=f15e480]:
+                - generic [ref=f15e481]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e482]: 准备上下文 · 18:12:44
+          - listitem [ref=f15e483]:
+            - generic [ref=f15e486]:
+              - generic [ref=f15e487]:
+                - generic [ref=f15e488]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e489]: 调用 CLI · 18:12:44
+          - listitem [ref=f15e490]:
+            - generic [ref=f15e493]:
+              - generic [ref=f15e494]:
+                - generic [ref=f15e495]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f15e496]: 生成回复 · 18:12:51
+          - listitem [ref=f15e497]:
+            - generic [ref=f15e500]:
+              - generic [ref=f15e501]:
+                - generic [ref=f15e502]: Codex ·
+                - text: 执行完成
+              - generic [ref=f15e503]: 完成 · 18:12:52
+          - listitem [ref=f15e504]:
+            - generic [ref=f15e507]:
+              - generic [ref=f15e508]:
+                - generic [ref=f15e509]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e510]: 排队中 · 21:40:24
+          - listitem [ref=f15e511]:
+            - generic [ref=f15e514]:
+              - generic [ref=f15e515]:
+                - generic [ref=f15e516]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e517]: 准备上下文 · 21:40:24
+          - listitem [ref=f15e518]:
+            - generic [ref=f15e521]:
+              - generic [ref=f15e522]:
+                - generic [ref=f15e523]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e524]: 调用 CLI · 21:40:24
+          - listitem [ref=f15e525]:
+            - generic [ref=f15e528]:
+              - generic [ref=f15e529]:
+                - generic [ref=f15e530]: Codex ·
+                - text: 执行失败
+              - generic [ref=f15e531]: 失败 · 21:40:25
+              - generic [ref=f15e532]: "Codex (codex_manager) failed with exit code 1: Reading prompt from stdin... No prompt provided via stdin."
+          - listitem [ref=f15e533]:
+            - generic [ref=f15e536]:
+              - generic [ref=f15e537]:
+                - generic [ref=f15e538]: Codex ·
+                - text: 消息已进入执行队列
+              - generic [ref=f15e539]: 排队中 · 13:40:38
+          - listitem [ref=f15e540]:
+            - generic [ref=f15e543]:
+              - generic [ref=f15e544]:
+                - generic [ref=f15e545]: Codex ·
+                - text: 正在准备会话上下文
+              - generic [ref=f15e546]: 准备上下文 · 13:40:38
+          - listitem [ref=f15e547]:
+            - generic [ref=f15e550]:
+              - generic [ref=f15e551]:
+                - generic [ref=f15e552]: Codex ·
+                - text: 正在调用 Agent CLI
+              - generic [ref=f15e553]: 调用 CLI · 13:40:38
+          - listitem [ref=f15e554]:
+            - generic [ref=f15e557]:
+              - generic [ref=f15e558]:
+                - generic [ref=f15e559]: Codex ·
+                - text: 正在生成回复
+              - generic [ref=f15e560]: 生成回复 · 13:40:59
+          - listitem [ref=f15e561]:
+            - generic [ref=f15e563]:
+              - generic [ref=f15e564]:
+                - generic [ref=f15e565]: Codex ·
+                - text: 执行完成
+              - generic [ref=f15e566]: 完成 · 13:41:00
+      - generic [ref=f15e567]:
+        - text: 已用时间
+        - generic [ref=f15e568]: 37:59
+  - alert [ref=f15e3]

@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@playwright/cli": "^0.1.17"
+  },
+  "_npx": {
+    "packages": [
+      "@playwright/cli"
+    ]
+  }
+}

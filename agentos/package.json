@@ -4,10 +4,12 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --parallel -r run dev",
+    "dev:stable": "pnpm --filter @agentos/server run dev:stable",
     "build": "pnpm -r run build",
-    "clean": "pnpm -r run clean"
+    "clean": "pnpm -r run clean",
+    "test:smoke": "pnpm --filter @agentos/agent-core run test:smoke"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22.5"
   }
 }

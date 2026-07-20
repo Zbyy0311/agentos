@@ -1,0 +1,17 @@
+- generic [ref=f1e3]:
+  - generic [ref=f1e6]:
+    - heading "无法访问此网站" [level=1] [ref=f1e7]
+    - paragraph [ref=f1e8]:
+      - strong [ref=f1e9]: localhost
+      - text: 拒绝了我们的连接请求。
+    - generic [ref=f1e10]:
+      - paragraph [ref=f1e11]: 请试试以下办法：
+      - list [ref=f1e12]:
+        - listitem [ref=f1e13]: 检查网络连接
+        - listitem [ref=f1e14]:
+          - link "检查代理服务器和防火墙" [ref=f1e15] [cursor=pointer]:
+            - /url: "#buttons"
+    - generic [ref=f1e16]: ERR_CONNECTION_REFUSED
+  - generic [ref=f1e17]:
+    - button "重新加载" [ref=f1e19] [cursor=pointer]
+    - button "详情" [ref=f1e20] [cursor=pointer]

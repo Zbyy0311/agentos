@@ -1,6 +1,7 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
 import { dirname, join } from 'node:path';
-import type { Workspace, TaskItem } from '@agentos/shared';
+import type { AgentProvider, Workspace, WorkspaceAgent, TaskItem } from '@agentos/shared';
 import type { Store } from './Store.js';
 
 export class JsonFileStore implements Store {
@@ -15,15 +16,24 @@ export class JsonFileStore implements Store {
       if (existsSync(this.workspacesFile)) {
         const raw = readFileSync(this.workspacesFile, 'utf-8');
         const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed.workspaces)) return parsed.workspaces;
+        if (Array.isArray(parsed.workspaces)) {
+          return parsed.workspaces.map((workspace: Workspace) => ({
+            ...workspace,
+            agents: workspace.agents.map(normalizeAgentProvider),
+          }));
+        }
       }
     } catch { /* ignore */ }
     return [];
   }
 
   saveWorkspaces(workspaces: Workspace[]): void {
-    mkdirSync(dirname(this.workspacesFile), { recursive: true });
-    writeFileSync(this.workspacesFile, JSON.stringify({ workspaces }, null, 2), 'utf-8');
+    this.writeJsonAtomically(this.workspacesFile, {
+      workspaces: workspaces.map(workspace => ({
+        ...workspace,
+        agents: workspace.agents.map(normalizeAgentProvider),
+      })),
+    });
   }
 
   private tasksFile(workspaceId: string): string {
@@ -47,7 +57,33 @@ export class JsonFileStore implements Store {
 
   saveTasks(workspaceId: string, tasks: TaskItem[]): void {
     const file = this.tasksFile(workspaceId);
-    mkdirSync(dirname(file), { recursive: true });
-    writeFileSync(file, JSON.stringify({ tasks }, null, 2), 'utf-8');
+    this.writeJsonAtomically(file, { tasks });
   }
+
+  saveTask(workspaceId: string, task: TaskItem): void {
+    const tasks = this.loadTasks(workspaceId);
+    const index = tasks.findIndex(current => current.id === task.id);
+    const nextTask = structuredClone(task);
+    if (index >= 0) tasks[index] = nextTask;
+    else tasks.push(nextTask);
+    this.writeJsonAtomically(this.tasksFile(workspaceId), { tasks });
+  }
+
+  private writeJsonAtomically(file: string, value: unknown): void {
+    mkdirSync(dirname(file), { recursive: true });
+    const tempFile = `${file}.${process.pid}.${randomUUID()}.tmp`;
+    try {
+      writeFileSync(tempFile, JSON.stringify(value, null, 2), 'utf-8');
+      renameSync(tempFile, file);
+    } catch (err) {
+      if (existsSync(tempFile)) unlinkSync(tempFile);
+      throw err;
+    }
+  }
+}
+
+function normalizeAgentProvider(agent: WorkspaceAgent): WorkspaceAgent {
+  const provider: AgentProvider = agent.provider
+    ?? (agent.role === 'codex' || agent.role === 'kimi' || agent.role === 'opencode' || agent.role === 'mimo' ? agent.role : 'custom');
+  return { ...agent, provider };
 }

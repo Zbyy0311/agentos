@@ -30,3 +30,10 @@
 - If CLI binary is not found, MockCLI is used automatically
 - Mock output is clearly distinguishable from real output
 - User is not blocked from testing when CLI is unavailable
+# Isolation release boundaries
+
+- Worktree paths are server-side only; public responses expose `pathLabel`.
+- Dirty workspaces are rejected before isolated execution.
+- Tracked patch, untracked archive and manifest must be produced before cleanup.
+- Retention is preview/apply and token-bound; automatic Run/Artifact deletion remains disabled.
+- OpenCode/provider capabilities are reported as PASS or BLOCKED, never inferred from a configured command name.

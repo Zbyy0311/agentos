@@ -9,7 +9,8 @@
     "build": "tsc",
     "clean": "rm -rf dist",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "test:smoke": "vitest run smoke"
   },
   "dependencies": {
     "@agentos/shared": "workspace:*"

@@ -1,371 +1,786 @@
 'use client';
 
-import { useParams } from 'next/navigation';
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import type { MouseEvent, PointerEvent as ReactPointerEvent } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import type { AgentEvent, AgentExecution, AgentPresence, AgentProfile, AgentRun, AgentRunDetails, Conversation, ConversationMember, ConversationMessage, ExecutionEvent, ExecutionStatus, GroupDispatchMode, RunIntent, RunStep, RuntimeArtifact, ThinkingEffort, Workspace } from '@agentos/shared';
+import { AgentList } from '@/components/chat/AgentList';
+import { AgentEditor } from '@/components/chat/AgentEditor';
+import { GroupCreator, type GroupCreateMember } from '@/components/chat/GroupCreator';
+import { GroupEditor } from '@/components/chat/GroupEditor';
+import { GroupRenameModal } from '@/components/chat/GroupRenameModal';
+import { ConversationContextMenu } from '@/components/chat/ConversationContextMenu';
+import { ChatPanel } from '@/components/chat/ChatPanel';
+import { ConversationHistory } from '@/components/chat/ConversationHistory';
+import { ExecutionInspector } from '@/components/chat/ExecutionInspector';
 import { useApi } from '@/lib/useApi';
-import { useTask } from '@/lib/useTask';
-import type { Workspace, TaskItem, TaskLog } from '@agentos/shared';
+import { getActiveConversationId, shouldResetGroupView } from '@/lib/conversationSelection';
+import { getNextConversationId } from '@/lib/conversationActions';
+import { getInitialComposerSettings, getModelOptions, getRuntimeOverrides, getThinkingEfforts, normalizeThinkingEffort } from '@/lib/composerSettings';
+import { getDoneExecution } from '@/lib/streamDoneExecution';
+import { MAX_RECONNECT_ATTEMPTS, TerminalStreamError, StreamHttpError, UnexpectedStreamEndError, consumeSseResponse, getReconnectDelay, retryWithExponentialBackoff, shouldReconnect } from '@/lib/streamReconnect';
+import { canSendMessage, fileToImageDraft, validateImageDrafts, type ImageDraft } from '@/lib/imageAttachments';
+import { getComposerSendIntent, preserveDraftAfterSendFailure } from '@/lib/composerInteraction';
+import { getResizablePanelWidth } from '@/lib/resizablePanels';
+import { resolveAttachmentUrl } from '@/lib/attachmentUrls';
+import { RunDetails } from '@/components/runs/RunDetails';
+import { MemoryPanel } from '@/components/memory/MemoryPanel';
+import { MemoryCandidateQueue } from '@/components/memory/MemoryCandidateQueue';
+import { PreferencePanel } from '@/components/preference/PreferencePanel';
+import { ToastStack } from '@/components/feedback/ToastStack';
+import { classifyUiError, getComposerValidationError, TOAST_DURATION_MS, type ToastItem, type ToastTone } from '@/lib/uiFeedback';
+import { TypewriterQueue } from '@/lib/typewriterQueue';
+import { selectActiveRunExecutions } from '@/lib/runtimeSelection';
+import { collapseStreamingExecutionEvents } from '@/lib/executionTimeline';
+import { upsertRunStep } from '@/lib/runSteps';
+import { indexPresence } from '@/lib/agentPresence';
 
-// ---------- Agent stage display helpers ----------
+type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string };
+type StreamEvent = Pick<VisibleExecutionEvent, 'status' | 'activity' | 'content' | 'agentId' | 'agentName'>;
+type ConversationStreamData = StreamEvent & { cursor?: number; runId?: string; run?: AgentRun; message?: ConversationMessage; execution?: AgentExecution; executions?: AgentExecution[]; runtime?: AgentEvent; runStep?: RunStep; eventId?: string; sequence?: number; error?: string };
+type ContextMenuState = { conversation: Conversation; clientX: number; clientY: number };
+type ResizePanel = 'workspace' | 'history';
+type ActivePanelResize = { panel: ResizePanel; startX: number; startWidth: number; cleanup: () => void };
 
-const STAGE_META: Record<string, { label: string; color: string; icon: string }> = {
-  codex_manager:       { label: 'Codex — Manager',        color: 'border-l-blue-500',  icon: '🧠' },
-  kimi_worker:         { label: 'KimiCode — Worker',      color: 'border-l-green-500', icon: '⚡' },
-  opencode_reviewer:   { label: 'OpenCode — Reviewer',    color: 'border-l-yellow-500',icon: '🔍' },
-  codex_final_review:  { label: 'Codex — Final Review',   color: 'border-l-purple-500',icon: '✅' },
+const PANEL_RESIZE_HANDLE_WIDTH = 8;
+const CHAT_MIN_WIDTH = 360;
+const PANEL_WIDTH_RANGES: Record<ResizePanel, { min: number; max: number }> = {
+  workspace: { min: 180, max: 360 },
+  history: { min: 180, max: 420 },
 };
 
-function StageCard({ log, collapsed: initial }: { log: TaskLog; collapsed?: boolean }) {
-  const [open, setOpen] = useState(initial ?? false);
-  const meta = STAGE_META[log.stage] || { label: log.stage, color: 'border-l-slate-500', icon: '🤖' };
-
-  return (
-    <div className={`border border-surface-600 rounded-lg bg-surface-800 border-l-4 ${meta.color} mb-3`}>
-      <button
-        className="w-full flex items-center gap-3 px-4 py-3 text-left"
-        onClick={() => setOpen(!open)}
-      >
-        <span className="text-lg">{meta.icon}</span>
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium">{meta.label}</div>
-          <div className="text-[11px] text-slate-500">
-            {log.duration}ms · exit {log.exitCode}
-          </div>
-        </div>
-        <span className={`text-xs px-2 py-0.5 rounded ${
-          log.exitCode === 0
-            ? 'bg-green-900 text-green-300'
-            : 'bg-red-900 text-red-300'
-        }`}>
-          {log.exitCode === 0 ? 'OK' : 'FAIL'}
-        </span>
-        <span className="text-slate-500 text-sm">{open ? '▾' : '▸'}</span>
-      </button>
-      {open && (
-        <div className="px-4 pb-4">
-          <pre className="text-[12px] text-slate-300 bg-surface-900 rounded p-3 overflow-x-auto whitespace-pre-wrap max-h-96 overflow-y-auto">
-            {log.stdout}
-          </pre>
-          {log.stderr && (
-            <details className="mt-2">
-              <summary className="text-[11px] text-red-400 cursor-pointer">stderr</summary>
-              <pre className="text-[11px] text-red-300 bg-surface-900 rounded p-2 mt-1 overflow-x-auto">{log.stderr}</pre>
-            </details>
-          )}
-        </div>
-      )}
-    </div>
-  );
+function PanelResizeHandle({ panel, width, onPointerDown }: { panel: ResizePanel; width?: number; onPointerDown(panel: ResizePanel, event: ReactPointerEvent<HTMLDivElement>): void }) {
+  const range = PANEL_WIDTH_RANGES[panel];
+  const label = panel === 'workspace' ? '调整工作区导航栏宽度' : '调整会话历史栏宽度';
+  return <div data-panel-resize={panel} role="separator" aria-orientation="vertical" aria-label={label} aria-valuemin={range.min} aria-valuemax={range.max} aria-valuenow={Math.round(width ?? (panel === 'workspace' ? 240 : 256))} className={`panel-resize-handle panel-resize-handle-${panel}`} onPointerDown={event => onPointerDown(panel, event)} />;
 }
 
-// ---------- Page ----------
+function waitForReconnect(delayMs: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException('The reconnect was aborted', 'AbortError'));
+      return;
+    }
+    let abort: () => void;
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener('abort', abort);
+      resolve();
+    }, delayMs);
+    abort = () => {
+      window.clearTimeout(timer);
+      signal.removeEventListener('abort', abort);
+      reject(new DOMException('The reconnect was aborted', 'AbortError'));
+    };
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
 
 export default function WorkspacePage() {
   const params = useParams();
+  const router = useRouter();
   const workspaceId = typeof params.id === 'string' ? params.id : null;
-  const { request } = useApi();
+  const { API_BASE, request } = useApi();
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
-  const [loadingWorkspace, setLoadingWorkspace] = useState(true);
-  const [workspaceError, setWorkspaceError] = useState('');
-  const { tasks, loading: loadingTasks, createTask, fetchTasks } = useTask(workspaceId);
-  const [taskTitle, setTaskTitle] = useState('');
-
-  // Pipeline state
-  const [runningTaskId, setRunningTaskId] = useState<string | null>(null);
-  const [status, setStatus] = useState<TaskItem['status']>('idle' as any);
-  const [outputs, setOutputs] = useState<TaskLog[]>([]);
-  const [executionMode, setExecutionMode] = useState<'real' | 'mock' | ''>('');
-
-  // SSE streaming — use a ref so we never lose partial lines across chunks
-  const streamTextRef = useRef('');
-  const [, forceRender] = useState(0);
-
-  // Abort controller ref — allows user to cancel a running pipeline
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
+  const [presence, setPresence] = useState<Record<string, AgentPresence>>({});
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [groups, setGroups] = useState<Conversation[]>([]);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [selectedDirectConversationId, setSelectedDirectConversationId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ConversationMessage[]>([]);
+  const [executions, setExecutions] = useState<AgentExecution[]>([]);
+  const [activeEvents, setActiveEvents] = useState<VisibleExecutionEvent[]>([]);
+  const [activeRuntimeEvents, setActiveRuntimeEvents] = useState<AgentEvent[]>([]);
+  const [activeRunSteps, setActiveRunSteps] = useState<RunStep[]>([]);
+  const [activeArtifacts, setActiveArtifacts] = useState<RuntimeArtifact[]>([]);
+  const [activeStatus, setActiveStatus] = useState<ExecutionStatus>();
+  const [activeStartedAt, setActiveStartedAt] = useState<string>();
+  const [activeRunId, setActiveRunId] = useState<string>();
+  const [activeWaitingQuestion, setActiveWaitingQuestion] = useState<string>();
+  const [draft, setDraft] = useState('');
+  const [mentionedAgentIds, setMentionedAgentIds] = useState<string[]>([]);
+  const [runIntent, setRunIntent] = useState<RunIntent>('execute');
+  useEffect(() => {
+    const handleRunIntent = (event: Event) => {
+      const value = (event as CustomEvent<RunIntent>).detail;
+      if (value === 'ask' || value === 'execute' || value === 'review') setRunIntent(value);
+    };
+    window.addEventListener('agentos:run-intent', handleRunIntent);
+    return () => window.removeEventListener('agentos:run-intent', handleRunIntent);
+  }, []);
+  const [attachments, setAttachments] = useState<ImageDraft[]>([]);
+  const [attachmentError, setAttachmentError] = useState('');
+  const [composerModel, setComposerModel] = useState<string | undefined>();
+  const [composerThinkingEffort, setComposerThinkingEffort] = useState<ThinkingEffort>('auto');
+  const [streamingContent, setStreamingContent] = useState('');
+  const [sending, setSending] = useState(false);
+  const [queuedMessageCount, setQueuedMessageCount] = useState(0);
+  const [error, setError] = useState('');
+  const [connectionNotice, setConnectionNotice] = useState('');
+  const [validationError, setValidationError] = useState('');
+  const [editingAgent, setEditingAgent] = useState(false);
+  const [savingAgent, setSavingAgent] = useState(false);
+  const [creatingGroup, setCreatingGroup] = useState(false);
+  const [savingGroup, setSavingGroup] = useState(false);
+  const [editingGroup, setEditingGroup] = useState<Conversation | null>(null);
+  const [editingGroupMembers, setEditingGroupMembers] = useState<ConversationMember[]>([]);
+  const [savingGroupSettings, setSavingGroupSettings] = useState(false);
+  const [renamingConversation, setRenamingConversation] = useState<Conversation | null>(null);
+  const [savingConversationTitle, setSavingConversationTitle] = useState(false);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState | null>(null);
+  const [toasts, setToasts] = useState<ToastItem[]>([]);
+  const [runDetails, setRunDetails] = useState<AgentRunDetails | null>(null);
+  const [generatingCandidates, setGeneratingCandidates] = useState(false);
+  const [showCandidateQueue, setShowCandidateQueue] = useState(false);
+  const [showMemories, setShowMemories] = useState(false);
+  const [showPreferences, setShowPreferences] = useState(false);
+  const [workspacePanelWidth, setWorkspacePanelWidth] = useState<number>();
+  const [historyPanelWidth, setHistoryPanelWidth] = useState<number>();
+  const layoutRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const streamRunIdRef = useRef<string>();
+  const streamCursorRef = useRef(0);
+  const userCancelledRef = useRef(false);
+  const pendingQueueRef = useRef<string[]>([]);
+  const drainingQueueRef = useRef(false);
+  const activeResizeRef = useRef<ActivePanelResize | null>(null);
+  const toastIdRef = useRef(0);
+  const typewriterRef = useRef(new TypewriterQueue());
 
-  const streamEndRef = useRef<HTMLDivElement>(null);
-  const outputEndRef = useRef<HTMLDivElement>(null);
+  const selectedAgent = agents.find(agent => agent.id === selectedAgentId);
+  const activeConversationId = getActiveConversationId({ selectedGroupId, selectedDirectConversationId });
+  const selectedConversation = selectedGroupId
+    ? groups.find(conversation => conversation.id === selectedGroupId)
+    : conversations.find(conversation => conversation.id === selectedDirectConversationId);
+  const isGroupConversation = selectedConversation?.type === 'group';
+  const activeComposerConversation = !isGroupConversation && selectedConversation?.agentId === selectedAgentId ? selectedConversation : undefined;
+  const historyConversations = selectedGroupId ? groups : conversations;
+  const historyTitle = selectedGroupId ? '群聊' : selectedAgent?.name ?? '会话';
+  const composerModelOptions = getModelOptions(selectedAgent);
+  const composerThinkingEfforts = getThinkingEfforts(selectedAgent, composerModel ?? selectedAgent?.model);
 
-  // Re-read latest streamText for the UI
-  const streamText = streamTextRef.current;
-
-  // Auto-scroll
-  useEffect(() => { streamEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [streamText]);
-  useEffect(() => { outputEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [outputs]);
-
-  // Load git diff
-  const [diff, setDiff] = useState('');
   useEffect(() => {
-    if (!workspaceId) return;
-    request<{ diff: string }>(`/api/workspaces/${workspaceId}/git/diff`)
-      .then(data => setDiff(data.diff))
-      .catch(() => {});
-  }, [workspaceId, request, status]);
-
-  // Fetch workspace
-  useEffect(() => {
-    if (!workspaceId) return;
-    setLoadingWorkspace(true);
-    setWorkspaceError('');
-    request<{ workspace: Workspace }>(`/api/workspaces/${workspaceId}`)
-      .then(data => setWorkspace(data.workspace))
-      .catch(e => setWorkspaceError(e instanceof Error ? e.message : String(e)))
-      .finally(() => setLoadingWorkspace(false));
-  }, [workspaceId, request]);
-
-  const handleCreateTask = async () => {
-    if (!taskTitle.trim()) return;
-    try {
-      await createTask(taskTitle);
-      setTaskTitle('');
-    } catch { /* ignore */ }
-  };
-
-  // Cancel pipeline
-  const cancelRun = useCallback(() => {
-    if (abortRef.current) {
-      abortRef.current.abort();
-      abortRef.current = null;
-    }
+    const timer = window.setInterval(() => {
+      const character = typewriterRef.current.drainOne();
+      if (character) setStreamingContent(current => current + character);
+    }, 12);
+    return () => window.clearInterval(timer);
   }, []);
 
-  const runTask = useCallback(async (taskId: string) => {
-    setRunningTaskId(taskId);
-    setStatus('running');
-    setOutputs([]);
-    setExecutionMode('');
-    streamTextRef.current = '';
-    forceRender(n => n + 1);
+  const pushToast = useCallback((tone: ToastTone, message: string) => {
+    const id = `toast-${Date.now()}-${toastIdRef.current++}`;
+    setToasts(current => [...current, { id, tone, message, durationMs: TOAST_DURATION_MS }].slice(-4));
+  }, []);
 
-    const controller = new AbortController();
-    abortRef.current = controller;
+  const dismissToast = useCallback((id: string) => {
+    setToasts(current => current.filter(toast => toast.id !== id));
+  }, []);
 
+  const notifyError = useCallback((error: unknown, fallback = '操作失败') => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (classifyUiError(error) === 'connection') {
+      setConnectionNotice(message || '连接异常，请稍后重试');
+      return;
+    }
+    pushToast('error', message || fallback);
+  }, [pushToast]);
+
+  const getPanelWidth = useCallback((panel: ResizePanel) => {
+    const selector = panel === 'workspace' ? '.workspace-sidebar' : '.history-sidebar';
+    const width = layoutRef.current?.querySelector<HTMLElement>(selector)?.getBoundingClientRect().width;
+    return width && width > 0 ? width : panel === 'workspace' ? 240 : 256;
+  }, []);
+
+  const stopResize = useCallback(() => {
+    activeResizeRef.current?.cleanup();
+    activeResizeRef.current = null;
+    document.body.classList.remove('resizing-panels');
+  }, []);
+
+  const handleResizePointerDown = useCallback((panel: ResizePanel, event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    stopResize();
+
+    const handle = event.currentTarget;
+    const activeResize: ActivePanelResize = { panel, startX: event.clientX, startWidth: getPanelWidth(panel), cleanup: () => {} };
+    const handleMove = (moveEvent: globalThis.PointerEvent) => {
+      const layout = layoutRef.current;
+      if (!layout) return;
+      const layoutWidth = layout.getBoundingClientRect().width;
+      const inspectorWidth = layout.querySelector<HTMLElement>('.inspector-sidebar')?.getBoundingClientRect().width ?? 0;
+      const nextWidth = getResizablePanelWidth({
+        proposed: activeResize.startWidth + moveEvent.clientX - activeResize.startX,
+        panelMin: PANEL_WIDTH_RANGES[panel].min,
+        panelMax: PANEL_WIDTH_RANGES[panel].max,
+        availableWidth: layoutWidth - inspectorWidth,
+        otherPanelWidth: getPanelWidth(panel === 'workspace' ? 'history' : 'workspace'),
+        handleWidth: PANEL_RESIZE_HANDLE_WIDTH * 2,
+        chatMinWidth: CHAT_MIN_WIDTH,
+      });
+      if (panel === 'workspace') setWorkspacePanelWidth(nextWidth);
+      else setHistoryPanelWidth(nextWidth);
+    };
+    const finish = () => {
+      window.removeEventListener('pointermove', handleMove);
+      window.removeEventListener('pointerup', finish);
+      window.removeEventListener('pointercancel', finish);
+      if (handle.hasPointerCapture(event.pointerId)) handle.releasePointerCapture(event.pointerId);
+      if (activeResizeRef.current === activeResize) activeResizeRef.current = null;
+      document.body.classList.remove('resizing-panels');
+    };
+
+    activeResize.cleanup = finish;
+    activeResizeRef.current = activeResize;
     try {
-      const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000'}/api/workspaces/${workspaceId}/tasks/${taskId}/run`,
-        {
-          method: 'POST',
-          headers: { Accept: 'text/event-stream' },
-          signal: controller.signal,
-        },
-      );
-      if (!response.ok || !response.body) throw new Error(`Run failed: ${response.status}`);
+      handle.setPointerCapture(event.pointerId);
+    } catch {
+      // Some browser automation environments do not expose native pointer capture.
+    }
+    document.body.classList.add('resizing-panels');
+    window.addEventListener('pointermove', handleMove);
+    window.addEventListener('pointerup', finish);
+    window.addEventListener('pointercancel', finish);
+  }, [getPanelWidth, stopResize]);
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      let currentEvent = '';
+  useEffect(() => () => stopResize(), [stopResize]);
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            currentEvent = line.slice(7).trim();
-          } else if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (currentEvent === 'thinking') {
-                // Append text directly to the ref — no line-joining logic needed
-                if (data.text) {
-                  streamTextRef.current += data.text;
-                  forceRender(n => n + 1);
-                }
-              } else if (currentEvent === 'stage') {
-                if (data.status === 'running') {
-                  streamTextRef.current += `\n━━━ ${data.agent || data.stage} ${data.status} ━━━\n`;
-                  forceRender(n => n + 1);
-                } else if (data.status === 'completed' && data.log) {
-                  setOutputs(prev => [...prev, data.log]);
-                  if (data.log.mode) setExecutionMode(data.log.mode);
-                  streamTextRef.current += `\n━━━ ${data.stage} completed ─── ${data.log.duration}ms\n`;
-                  forceRender(n => n + 1);
-                }
-              } else if (currentEvent === 'status' && data.status !== 'running') {
-                setStatus(data.status);
-              } else if (currentEvent === 'done') {
-                setStatus(data.status);
-                if (data.error) {
-                  streamTextRef.current += `\n✗ Pipeline failed: ${data.error}\n`;
-                  forceRender(n => n + 1);
-                }
-              }
-              if (currentEvent !== 'thinking') currentEvent = '';
-            } catch {
-              // ignore parse errors
+  useEffect(() => {
+    const settings = getInitialComposerSettings(selectedAgent, activeComposerConversation ? {
+      model: activeComposerConversation.model,
+      thinkingEffort: activeComposerConversation.thinkingEffort,
+    } : undefined);
+    setComposerModel(settings.model);
+    setComposerThinkingEffort(settings.thinkingEffort);
+  }, [activeComposerConversation?.id, activeComposerConversation?.model, activeComposerConversation?.thinkingEffort, selectedAgent]);
+
+  const persistConversationSettings = useCallback(async (conversationId: string, model: string | undefined, thinkingEffort: ThinkingEffort): Promise<Conversation> => {
+    if (!workspaceId) throw new Error('Workspace is unavailable');
+    const result = await request<{ conversation: Conversation }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/settings`, {
+      method: 'PATCH',
+      body: { model: model ?? null, thinkingEffort },
+    });
+    const update = (current: Conversation[]) => current.map(conversation => conversation.id === result.conversation.id ? result.conversation : conversation);
+    setConversations(update);
+    setGroups(update);
+    return result.conversation;
+  }, [request, workspaceId]);
+
+  const handleComposerModelChange = useCallback((model: string | undefined) => {
+    const efforts = getThinkingEfforts(selectedAgent, model);
+    const selectedOption = getModelOptions(selectedAgent).find(option => option.id === model);
+    const nextThinkingEffort = normalizeThinkingEffort(composerThinkingEffort, efforts, selectedOption?.defaultThinkingEffort);
+    setComposerModel(model);
+    setComposerThinkingEffort(nextThinkingEffort);
+    if (activeConversationId && !isGroupConversation) {
+      void persistConversationSettings(activeConversationId, model, nextThinkingEffort).catch(saveError => notifyError(saveError, '保存会话设置失败'));
+    }
+  }, [activeConversationId, composerThinkingEffort, isGroupConversation, notifyError, persistConversationSettings, selectedAgent]);
+
+  const handleComposerThinkingEffortChange = useCallback((thinkingEffort: ThinkingEffort) => {
+    setComposerThinkingEffort(thinkingEffort);
+    if (activeConversationId && !isGroupConversation) {
+      void persistConversationSettings(activeConversationId, composerModel, thinkingEffort).catch(saveError => notifyError(saveError, '保存会话设置失败'));
+    }
+  }, [activeConversationId, composerModel, isGroupConversation, notifyError, persistConversationSettings]);
+
+  const handleFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    setAttachmentError('');
+    setValidationError('');
+    const addedDrafts: ImageDraft[] = [];
+    try {
+      for (const file of files) addedDrafts.push(await fileToImageDraft(file));
+      const nextDrafts = [...attachments, ...addedDrafts];
+      const validation = validateImageDrafts(nextDrafts);
+      if (!validation.ok) {
+        for (const draft of addedDrafts) URL.revokeObjectURL(draft.previewUrl);
+        setAttachmentError(validation.error);
+        return;
+      }
+      setAttachments(nextDrafts);
+    } catch (error) {
+      for (const draft of addedDrafts) URL.revokeObjectURL(draft.previewUrl);
+      setAttachmentError(error instanceof Error ? error.message : String(error));
+    }
+  }, [attachments]);
+
+  const removeAttachment = useCallback((id: string) => {
+    setAttachments(current => {
+      const removed = current.find(attachment => attachment.id === id);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return current.filter(attachment => attachment.id !== id);
+    });
+    setAttachmentError('');
+  }, []);
+
+  const loadConversationDetails = useCallback(async (conversationId: string) => {
+    if (!workspaceId) return;
+    const [messageResult, executionResult, runResult] = await Promise.all([
+      request<{ messages: ConversationMessage[] }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/messages`),
+      request<{ executions: Array<AgentExecution & { events: ExecutionEvent[] }> }>(`/api/workspaces/${workspaceId}/conversations/${conversationId}/executions`),
+      request<{ runs: AgentRun[] }>(`/api/workspaces/${workspaceId}/runs?conversationId=${encodeURIComponent(conversationId)}`),
+    ]);
+    const latestRun = runResult.runs[0];
+    const latestRunDetails = latestRun
+      ? await request<AgentRunDetails>(`/api/workspaces/${workspaceId}/runs/${latestRun.id}`)
+      : undefined;
+    const activeRun = selectActiveRunExecutions(executionResult.executions, runResult.runs);
+    setMessages(messageResult.messages.map(message => ({
+      ...message,
+      attachments: message.attachments?.map(attachment => ({
+        ...attachment,
+        url: resolveAttachmentUrl(API_BASE, attachment.url),
+      })),
+    })));
+    setExecutions(activeRun.executions);
+    const agentNames = new Map(agents.map(agent => [agent.id, agent.name]));
+    const visibleEvents = activeRun.executions
+      .flatMap(execution => execution.events.map(event => ({
+        ...event,
+        agentId: execution.agentId,
+        agentName: agentNames.get(execution.agentId),
+      })))
+      .sort((left, right) => new Date(left.createdAt).getTime() - new Date(right.createdAt).getTime());
+    setActiveEvents(collapseStreamingExecutionEvents(visibleEvents));
+    setActiveRuntimeEvents((latestRunDetails?.events ?? []).filter(event => event.executionId && activeRun.executions.some(execution => execution.id === event.executionId)));
+    setActiveRunSteps(latestRunDetails?.steps ?? []);
+    setActiveStatus(activeRun.executions[0]?.status);
+    setActiveStartedAt(activeRun.executions[0]?.startedAt);
+    setActiveRunId(activeRun.runId);
+    setActiveWaitingQuestion(runResult.runs[0]?.waitingQuestion);
+    setActiveArtifacts(latestRunDetails?.artifacts ?? []);
+  }, [API_BASE, agents, request, workspaceId]);
+
+  const loadConversations = useCallback(async (agentId: string) => {
+    if (!workspaceId) return;
+    const result = await request<{ conversations: Conversation[] }>(`/api/workspaces/${workspaceId}/conversations?agentId=${encodeURIComponent(agentId)}`);
+    setConversations(result.conversations);
+    setSelectedDirectConversationId(result.conversations[0]?.id ?? null);
+    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+  }, [request, workspaceId]);
+
+  const loadGroups = useCallback(async () => {
+    if (!workspaceId) return;
+    const result = await request<{ conversations: Conversation[] }>(`/api/workspaces/${workspaceId}/conversations`);
+    setGroups(result.conversations.filter(conversation => conversation.type === 'group'));
+  }, [request, workspaceId]);
+
+  const loadPresence = useCallback(async () => {
+    if (!workspaceId) return;
+    const result = await request<{ presence: AgentPresence[] }>(`/api/workspaces/${workspaceId}/agents/presence`);
+    setPresence(Object.fromEntries(indexPresence(result.presence)));
+  }, [request, workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    let cancelled = false;
+    Promise.all([
+      request<{ workspace: Workspace }>(`/api/workspaces/${workspaceId}`),
+      request<{ agents: AgentProfile[] }>(`/api/workspaces/${workspaceId}/agents`),
+    ]).then(([workspaceResult, agentResult]) => {
+      if (cancelled) return;
+      setWorkspace(workspaceResult.workspace);
+      setAgents(agentResult.agents);
+      setSelectedAgentId(current => current && agentResult.agents.some(agent => agent.id === current) ? current : agentResult.agents[0]?.id ?? null);
+      void loadGroups();
+      void loadPresence().catch(loadError => notifyError(loadError, '加载 Agent 状态失败'));
+    }).catch(loadError => { if (!cancelled) setError(loadError instanceof Error ? loadError.message : String(loadError)); });
+    return () => { cancelled = true; };
+  }, [loadGroups, loadPresence, notifyError, request, workspaceId]);
+
+  useEffect(() => {
+    if (!workspaceId) return;
+    let timer: number | undefined;
+    const refresh = () => {
+      if (document.visibilityState === 'visible') void loadPresence().catch(() => undefined);
+    };
+    const syncTimer = () => {
+      if (timer !== undefined) window.clearInterval(timer);
+      timer = document.visibilityState === 'visible' ? window.setInterval(refresh, 15_000) : undefined;
+      if (document.visibilityState === 'visible') refresh();
+    };
+    document.addEventListener('visibilitychange', syncTimer);
+    syncTimer();
+    return () => {
+      document.removeEventListener('visibilitychange', syncTimer);
+      if (timer !== undefined) window.clearInterval(timer);
+    };
+  }, [loadPresence, workspaceId]);
+
+  useEffect(() => {
+    if (selectedAgentId) void loadConversations(selectedAgentId).catch(loadError => notifyError(loadError, '加载会话失败'));
+  }, [loadConversations, notifyError, selectedAgentId]);
+
+  useEffect(() => {
+    if (activeConversationId) void loadConversationDetails(activeConversationId).catch(loadError => notifyError(loadError, '加载会话详情失败'));
+  }, [activeConversationId, loadConversationDetails, notifyError]);
+
+  useEffect(() => {
+    if (!contextMenu) return;
+    const close = () => setContextMenu(null);
+    const closeOnKeyDown = (event: KeyboardEvent) => { if (event.key === 'Escape') close(); };
+    window.addEventListener('mousedown', close);
+    window.addEventListener('keydown', closeOnKeyDown);
+    return () => { window.removeEventListener('mousedown', close); window.removeEventListener('keydown', closeOnKeyDown); };
+  }, [contextMenu]);
+
+  const createConversation = useCallback(async (): Promise<Conversation | null> => {
+    if (!workspaceId || !selectedAgent) return null;
+    const result = await request<{ conversation: Conversation }>(`/api/workspaces/${workspaceId}/conversations`, { method: 'POST', body: { agentId: selectedAgent.id } });
+    const conversation = await persistConversationSettings(result.conversation.id, composerModel, composerThinkingEffort);
+    setConversations(current => [conversation, ...current.filter(item => item.id !== conversation.id)]);
+    setSelectedDirectConversationId(conversation.id);
+    setSelectedGroupId(null);
+    setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+    return conversation;
+  }, [composerModel, composerThinkingEffort, persistConversationSettings, request, selectedAgent, workspaceId]);
+
+  const openContextMenu = useCallback((conversationId: string, event: MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    const conversation = groups.find(item => item.id === conversationId) ?? conversations.find(item => item.id === conversationId);
+    if (conversation) setContextMenu({ conversation, clientX: event.clientX, clientY: event.clientY });
+  }, [conversations, groups]);
+
+  const copyConversationId = useCallback(async (conversationId: string) => {
+    try { await navigator.clipboard.writeText(conversationId); pushToast('success', '会话 ID 已复制'); }
+    catch (copyError) { notifyError(copyError, '复制会话 ID 失败'); }
+  }, [notifyError, pushToast]);
+
+  const openRunDetails = useCallback(async (runId: string) => {
+    if (!workspaceId) return;
+    try {
+      const details = await request<AgentRunDetails>(`/api/workspaces/${workspaceId}/runs/${runId}`);
+      setRunDetails(details);
+    } catch (detailsError) {
+      notifyError(detailsError, '加载运行详情失败');
+    }
+  }, [notifyError, request, workspaceId]);
+
+  const generateMemoryCandidates = useCallback(async (runId: string) => {
+    if (!workspaceId) return;
+    setGeneratingCandidates(true);
+    try {
+      const result = await request<{ candidates: unknown[]; outcome: 'created' | 'existing' | 'none'; reason?: 'no_valuable_public_evidence' }>(`/api/workspaces/${workspaceId}/runs/${runId}/memory-candidates/generate`, { method: 'POST' });
+      setShowCandidateQueue(result.candidates.length > 0);
+      pushToast('success', result.outcome === 'none'
+        ? '本次没有可复用的公开证据，未生成记忆候选'
+        : result.outcome === 'existing' ? '已复用待审核记忆候选' : '记忆候选已生成，请审核');
+    } catch (generateError) { notifyError(generateError, '生成记忆候选失败'); }
+    finally { setGeneratingCandidates(false); }
+  }, [notifyError, pushToast, request, workspaceId]);
+
+  const handleSend = useCallback(async (contentOverride?: string) => {
+    const contentSource = contentOverride ?? draft;
+    const queuedSend = contentOverride !== undefined;
+    const currentAttachments = queuedSend ? [] : attachments;
+    const intent = getComposerSendIntent({ sending, content: contentSource, hasAttachments: currentAttachments.length > 0 });
+    if (intent === 'idle') {
+      setValidationError(getComposerValidationError(contentSource, currentAttachments.length));
+      return;
+    }
+    if (intent === 'queue' && !contentSource.trim()) {
+      setValidationError(getComposerValidationError(contentSource, currentAttachments.length));
+      return;
+    }
+    setValidationError('');
+    if (intent === 'queue') {
+      pendingQueueRef.current.push(contentSource.trim());
+      setQueuedMessageCount(pendingQueueRef.current.length);
+      setDraft('');
+      pushToast('success', '已加入执行队列（' + pendingQueueRef.current.length + '）');
+      return;
+    }
+    if (!workspaceId || (!selectedAgent && !selectedGroupId) || !canSendMessage(contentSource, currentAttachments)) return;
+    setError('');
+    setConnectionNotice('');
+    const content = contentSource.trim();
+    const attachmentPayload = currentAttachments.map(({ name, mimeType, dataUrl }) => ({ name, mimeType, dataUrl }));
+    const optimisticAttachments = currentAttachments.map(attachment => ({ id: attachment.id, name: attachment.name, mimeType: attachment.mimeType, size: attachment.size, url: attachment.previewUrl }));
+    let optimisticId: string | undefined;
+    let conversation: Conversation | null | undefined = selectedConversation;
+    try {
+      if (!conversation) conversation = await createConversation();
+      if (!conversation) return;
+      const conversationId = conversation.id;
+      optimisticId = 'local-' + Date.now();
+      const optimistic: ConversationMessage = { id: optimisticId, conversationId: conversation.id, workspaceId, senderType: 'user', content, attachments: optimisticAttachments, createdAt: new Date().toISOString() };
+      setMessages(current => [...current, optimistic]);
+      setSending(true);
+      typewriterRef.current.flush();
+      setStreamingContent('');
+      setActiveEvents([]);
+      setActiveRuntimeEvents([]);
+      setActiveRunSteps([]);
+      setActiveArtifacts([]);
+      setActiveStatus('queued');
+      setActiveStartedAt(undefined);
+      setActiveWaitingQuestion(undefined);
+      if (!queuedSend) setDraft('');
+      if (conversation.type === 'group') setMentionedAgentIds([]);
+
+      const controller = new AbortController();
+      abortRef.current = controller;
+      userCancelledRef.current = false;
+      streamCursorRef.current = 0;
+      const runtimeOverrides = getRuntimeOverrides(selectedAgent, { model: composerModel, thinkingEffort: composerThinkingEffort });
+      const isWaitingResume = conversation.type === 'direct' && activeStatus === 'waiting_user' && Boolean(activeRunId);
+      streamRunIdRef.current = isWaitingResume ? activeRunId : undefined;
+      const streamPath = isWaitingResume
+        ? '/api/workspaces/' + workspaceId + '/conversations/' + conversation.id + '/runs/' + activeRunId + '/resume/stream'
+        : '/api/workspaces/' + workspaceId + '/conversations/' + conversation.id + '/messages/stream';
+      const body = isWaitingResume
+        ? { content, intent: runIntent }
+        : conversation.type === 'group'
+          ? { content, intent: runIntent, attachments: attachmentPayload, ...(mentionedAgentIds.length ? { mentionedAgentIds } : {}) }
+          : { content, intent: runIntent, attachments: attachmentPayload, ...(runtimeOverrides.model ? { model: runtimeOverrides.model } : {}), ...(runtimeOverrides.thinkingEffort ? { thinkingEffort: runtimeOverrides.thinkingEffort } : {}) };
+
+      const handleStreamEvent = async (event: { event: string }, data: ConversationStreamData) => {
+        if (event.event === 'run' && typeof data.runId === 'string') {
+          streamRunIdRef.current = data.runId;
+          setActiveRunId(data.runId);
+        } else if (event.event === 'execution') {
+          const time = new Date().toISOString();
+          setActiveStatus(data.status);
+          void loadPresence();
+          if (data.status === 'waiting_user' && data.content) setActiveWaitingQuestion(data.content);
+          if (data.status !== 'queued') setActiveStartedAt(current => current ?? time);
+          setActiveEvents(current => collapseStreamingExecutionEvents([...current, { id: time + '-' + current.length, executionId: 'active', status: data.status, activity: data.activity, ...(data.content ? { content: data.content } : {}), ...(data.agentId ? { agentId: data.agentId } : {}), ...(data.agentName ? { agentName: data.agentName } : {}), createdAt: time }]));
+          if (data.status === 'streaming_response' && data.content) typewriterRef.current.enqueue(data.content);
+        } else if (event.event === 'runtime' && data.runtime) {
+          setActiveRuntimeEvents(current => current.some(item => item.eventId === data.runtime!.eventId) ? current : [...current, data.runtime!]);
+          const payload = data.runtime.payload as Record<string, unknown>;
+          const runtimeLabel = typeof payload.toolName === 'string' ? payload.toolName : data.runtime.type;
+          const runtimeSummary = typeof payload.summary === 'string' ? payload.summary : typeof payload.text === 'string' ? payload.text : undefined;
+          setActiveEvents(current => current.some(item => item.id === data.runtime!.eventId) ? current : collapseStreamingExecutionEvents([...current, {
+            id: data.runtime!.eventId,
+            executionId: data.runtime!.executionId ?? 'active',
+            status: 'streaming_response',
+            activity: runtimeLabel,
+            ...(runtimeSummary ? { content: runtimeSummary } : {}),
+            runtimeEvent: data.runtime,
+            createdAt: data.runtime!.timestamp,
+          }]));
+        } else if (event.event === 'run.step' && data.runStep) {
+          setActiveRunSteps(current => upsertRunStep(current, data.runStep!));
+        } else if (event.event === 'message' && data.message) {
+          typewriterRef.current.flush();
+          setStreamingContent('');
+          setMessages(current => current.some(message => message.id === data.message?.id) ? current : [...current, data.message!]);
+        } else if (event.event === 'done') {
+          typewriterRef.current.flush();
+          setStreamingContent('');
+          const doneExecution = getDoneExecution(data);
+          if (doneExecution) {
+            if (data.execution) {
+              setExecutions(current => current.some(item => item.id === data.execution!.id)
+                ? current.map(item => item.id === data.execution!.id ? { ...item, ...data.execution } : item)
+                : [...current, data.execution!]);
+            } else if (data.executions?.length) {
+              setExecutions(data.executions);
             }
+            setActiveStatus(doneExecution.status);
+            setActiveRunId(doneExecution.runId);
           }
+        } else if (event.event === 'error') {
+          throw new TerminalStreamError(data.error ?? '执行失败');
+        }
+      };
+
+      const connectStream = async (path: string, method: 'GET' | 'POST', payload?: unknown) => {
+        const response = await fetch(API_BASE + path, {
+          method,
+          headers: method === 'POST' ? { 'Content-Type': 'application/json', Accept: 'text/event-stream' } : { Accept: 'text/event-stream' },
+          ...(method === 'POST' ? { body: JSON.stringify(payload) } : {}),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new StreamHttpError(response.status);
+        const result = await consumeSseResponse(response, (event, data) => handleStreamEvent(event, data as ConversationStreamData));
+        streamCursorRef.current = Math.max(streamCursorRef.current, result.lastCursor);
+      };
+
+      try {
+        await connectStream(streamPath, 'POST', body);
+      } catch (streamError) {
+        if (!streamRunIdRef.current || !shouldReconnect(streamError, { userCancelled: userCancelledRef.current })) throw streamError;
+        try {
+          await retryWithExponentialBackoff(
+            async attempt => {
+              const runId = streamRunIdRef.current;
+              if (!runId) throw new TerminalStreamError('无法恢复当前执行连接');
+              setConnectionNotice('正在重连（第 ' + (attempt + 1) + '/' + MAX_RECONNECT_ATTEMPTS + ' 次）…');
+              await waitForReconnect(getReconnectDelay(attempt), controller.signal);
+              await connectStream('/api/workspaces/' + workspaceId + '/conversations/' + conversationId + '/runs/' + runId + '/stream?cursor=' + streamCursorRef.current, 'GET');
+            },
+            {
+              maxRetries: MAX_RECONNECT_ATTEMPTS - 1,
+              sleep: async () => {},
+              shouldRetry: error => shouldReconnect(error, { userCancelled: userCancelledRef.current }),
+            },
+          );
+          setConnectionNotice('');
+          pushToast('success', '连接已恢复');
+        } catch (reconnectError) {
+          setConnectionNotice('连接断开，自动重连失败；任务可能仍在后台执行');
+          throw reconnectError;
         }
       }
-      // Refresh to get persisted outputs
-      try {
-        const statusRes = await request<{ task: TaskItem }>(`/api/workspaces/${workspaceId}/tasks/${taskId}/status`);
-        if (statusRes.task.outputs?.length) {
-          setOutputs(statusRes.task.outputs);
-          const mode = statusRes.task.outputs.find(o => o.mode)?.mode;
-          if (mode) setExecutionMode(mode as 'real' | 'mock');
-        }
-      } catch { /* ignore */ }
-      await fetchTasks();
-    } catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setStatus('failed' as any);
-        streamTextRef.current += '\n⛔ Pipeline cancelled\n';
-        forceRender(n => n + 1);
+
+      await Promise.all([
+        conversation.type === 'group' ? loadGroups() : selectedAgent ? loadConversations(selectedAgent.id) : Promise.resolve(),
+        loadConversationDetails(conversation.id),
+      ]);
+      if (conversation.type === 'group') setSelectedGroupId(conversation.id);
+      else setSelectedDirectConversationId(conversation.id);
+      setAttachments(current => { for (const attachment of current) URL.revokeObjectURL(attachment.previewUrl); return []; });
+      setAttachmentError('');
+    } catch (sendError) {
+      const hasServerRun = Boolean(streamRunIdRef.current);
+      if (optimisticId && !hasServerRun) setMessages(current => current.filter(message => message.id !== optimisticId));
+      if (!hasServerRun) setDraft(current => preserveDraftAfterSendFailure(current, content));
+      if (sendError instanceof DOMException && sendError.name === 'AbortError') {
+        if (!userCancelledRef.current) pushToast('error', '执行已取消');
+      } else if (sendError instanceof UnexpectedStreamEndError) {
+        setConnectionNotice('连接已断开，自动重连失败');
       } else {
-        setStatus('failed');
-        streamTextRef.current += `\n✗ Pipeline error: ${err instanceof Error ? err.message : String(err)}\n`;
-        forceRender(n => n + 1);
+        notifyError(sendError, '执行失败');
       }
     } finally {
-      setRunningTaskId(null);
+      setSending(false);
       abortRef.current = null;
+      streamRunIdRef.current = undefined;
     }
-  }, [workspaceId, request, fetchTasks]);
+  }, [API_BASE, activeRunId, activeStatus, attachments, composerModel, composerThinkingEffort, createConversation, draft, loadConversationDetails, loadConversations, loadGroups, loadPresence, mentionedAgentIds, notifyError, pushToast, selectedAgent, selectedConversation, selectedGroupId, sending, workspaceId]);
 
-  // Load persisted outputs when selecting completed/failed task
-  const selectTask = useCallback(async (task: TaskItem) => {
-    if (task.status === 'running' || task.status === 'pending') return;
-    setRunningTaskId(task.id);
-    setStatus(task.status as any);
-    streamTextRef.current = '';
-    forceRender(n => n + 1);
-    setOutputs(task.outputs || []);
-    const mode = task.outputs?.find(o => o.mode)?.mode;
-    setExecutionMode(mode as 'real' | 'mock' | '');
-  }, []);
+  useEffect(() => {
+    if (sending || drainingQueueRef.current || pendingQueueRef.current.length === 0) return;
+    const nextMessage = pendingQueueRef.current.shift();
+    if (!nextMessage) return;
+    setQueuedMessageCount(pendingQueueRef.current.length);
+    drainingQueueRef.current = true;
+    void handleSend(nextMessage).finally(() => { drainingQueueRef.current = false; });
+  }, [handleSend, queuedMessageCount, sending]);
 
-  if (loadingWorkspace) return <div className="p-8 text-slate-500">Loading workspace...</div>;
-  if (workspaceError) return <div className="p-8 text-red-400">Error: {workspaceError}</div>;
-  if (!workspace) return <div className="p-8 text-red-400">Workspace not found</div>;
+  const handleCancel = useCallback(() => {
+    userCancelledRef.current = true;
+    const runId = streamRunIdRef.current;
+    if (workspaceId && selectedConversation && runId) {
+      void request('/api/workspaces/' + workspaceId + '/conversations/' + selectedConversation.id + '/runs/' + runId + '/cancel', { method: 'POST' }).catch(() => {});
+    }
+    abortRef.current?.abort();
+    pendingQueueRef.current = [];
+    setQueuedMessageCount(0);
+  }, [request, selectedConversation, workspaceId]);
 
-  return (
-    <div className="flex flex-col h-screen bg-[#0f1117] text-slate-200">
-      <header className="flex items-center justify-between px-6 py-3 border-b border-surface-700 bg-surface-800">
-        <div>
-          <div className="font-semibold">{workspace.name}</div>
-          <div className="text-xs text-slate-500 truncate">{workspace.rootPath}</div>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-[10px] px-2 py-0.5 rounded ${
-            status === 'running' ? 'bg-blue-900 text-blue-300' :
-            status === 'completed' ? 'bg-green-900 text-green-300' :
-            status === 'failed' ? 'bg-red-900 text-red-300' :
-            'bg-slate-700 text-slate-400'
-          }`}>
-            {status}
-          </span>
-          {executionMode && (
-            <span className={`text-[10px] px-2 py-0.5 rounded font-medium ${
-              executionMode === 'mock'
-                ? 'bg-yellow-900 text-yellow-300'
-                : 'bg-emerald-900 text-emerald-300'
-            }`}>
-              {executionMode === 'mock' ? '🔄 Mock' : '⚡ Real'}
-            </span>
-          )}
-          {status === 'running' && runningTaskId && (
-            <button
-              onClick={cancelRun}
-              className="px-2 py-0.5 bg-red-700 hover:bg-red-600 rounded text-[10px]"
-            >
-              Cancel
-            </button>
-          )}
-        </div>
-      </header>
+  const saveAgent = useCallback(async (update: Pick<AgentProfile, 'roleTitle' | 'systemPrompt' | 'permissions' | 'enabled'> & Partial<Pick<AgentProfile, 'name' | 'model' | 'provider'>> & { thinkingEffort: ThinkingEffort }) => {
+    if (!workspaceId || !selectedAgent) return;
+    setSavingAgent(true);
+    try {
+      const result = await request<{ agent: AgentProfile }>(`/api/workspaces/${workspaceId}/agents/${selectedAgent.id}`, { method: 'PATCH', body: update });
+      setAgents(current => current.map(agent => agent.id === result.agent.id ? result.agent : agent));
+      setEditingAgent(false);
+    } catch (saveError) { notifyError(saveError, '保存智能体失败'); }
+    finally { setSavingAgent(false); }
+  }, [notifyError, request, selectedAgent, workspaceId]);
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: Task list */}
-        <aside className="w-64 border-r border-surface-700 bg-surface-800 p-4 overflow-y-auto flex flex-col">
-          <div className="text-xs font-medium text-slate-400 mb-2">TASKS</div>
-          <div className="flex gap-2 mb-3">
-            <input
-              type="text"
-              value={taskTitle}
-              onChange={e => setTaskTitle(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleCreateTask()}
-              placeholder="New task..."
-              className="flex-1 bg-surface-900 border border-surface-600 rounded px-2 py-1 text-xs outline-none focus:border-blue-500"
-            />
-            <button onClick={handleCreateTask} className="px-2 py-1 bg-blue-600 rounded text-xs">Add</button>
-          </div>
-          {loadingTasks && <div className="text-xs text-slate-500">Loading...</div>}
-          <div className="space-y-1 flex-1 overflow-y-auto">
-            {tasks.map(task => (
-              <div
-                key={task.id}
-                className={`flex items-center justify-between p-2 rounded text-xs cursor-pointer transition-colors ${
-                  runningTaskId === task.id
-                    ? 'bg-surface-700 ring-1 ring-blue-500'
-                    : 'bg-surface-900 hover:bg-surface-700'
-                }`}
-                onClick={() => selectTask(task)}
-              >
-                <span className="truncate flex-1">{task.title}</span>
-                <span className={`ml-2 text-[10px] px-1.5 py-0.5 rounded ${
-                  task.status === 'completed' ? 'bg-green-900 text-green-300' :
-                  task.status === 'failed' ? 'bg-red-900 text-red-300' :
-                  task.status === 'running' ? 'bg-blue-900 text-blue-300' :
-                  'bg-slate-700 text-slate-400'
-                }`}>
-                  {task.status}
-                </span>
-                <button
-                  onClick={e => { e.stopPropagation(); runTask(task.id); }}
-                  disabled={status === 'running'}
-                  className="ml-2 px-2 py-0.5 bg-green-700 rounded disabled:bg-slate-700"
-                >
-                  Run
-                </button>
-              </div>
-            ))}
-          </div>
-        </aside>
+  const refreshAgentModels = useCallback(async () => {
+    if (!workspaceId || !selectedAgent) return;
+    setSavingAgent(true);
+    try {
+      const result = await request<{ agent: AgentProfile }>(`/api/workspaces/${workspaceId}/agents/${selectedAgent.id}/models/refresh`, { method: 'POST' });
+      setAgents(current => current.map(agent => agent.id === result.agent.id ? result.agent : agent));
+    } catch (refreshError) { notifyError(refreshError, '刷新模型失败'); }
+    finally { setSavingAgent(false); }
+  }, [notifyError, request, selectedAgent, workspaceId]);
 
-        {/* Center: Pipeline output — structured stage cards + live stream */}
-        <main className="flex-1 flex flex-col overflow-hidden">
-          {/* Stage outputs (completed) */}
-          {outputs.length > 0 && (
-            <div className="flex-1 overflow-y-auto p-4">
-              <div className="text-xs font-medium text-slate-400 mb-3 uppercase tracking-wider">
-                Agent Outputs
-              </div>
-              {outputs.map((log, i) => (
-                <StageCard key={`${log.stage}-${i}`} log={log} collapsed={false} />
-              ))}
-              <div ref={outputEndRef} />
-            </div>
-          )}
+  const createGroup = useCallback(async (input: { title: string; members: GroupCreateMember[]; dispatchMode: GroupDispatchMode }) => {
+    if (!workspaceId) return;
+    setSavingGroup(true);
+    try {
+      const result = await request<{ conversation: Conversation }>(`/api/workspaces/${workspaceId}/conversations`, { method: 'POST', body: { type: 'group', ...input } });
+      setGroups(current => [result.conversation, ...current]);
+      setSelectedGroupId(result.conversation.id); setSelectedAgentId(null);
+      setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); setCreatingGroup(false);
+    } catch (groupError) { notifyError(groupError, '创建群聊失败'); }
+    finally { setSavingGroup(false); }
+  }, [notifyError, request, workspaceId]);
 
-          {/* Live stream (during run) */}
-          {streamText && (
-            <div className={`${outputs.length > 0 ? 'border-t border-surface-700 max-h-64' : 'flex-1'} overflow-y-auto p-4 font-mono text-xs`}>
-              {outputs.length > 0 && (
-                <div className="text-xs font-medium text-slate-400 mb-2 uppercase tracking-wider">Live Stream</div>
-              )}
-              <pre className="whitespace-pre-wrap">{streamText}</pre>
-              <div ref={streamEndRef} />
-            </div>
-          )}
+  const saveConversationTitle = useCallback(async (title: string) => {
+    if (!workspaceId || !renamingConversation) return;
+    setSavingConversationTitle(true);
+    try {
+      const result = await request<{ conversation: Conversation }>(`/api/workspaces/${workspaceId}/conversations/${renamingConversation.id}`, { method: 'PATCH', body: { title } });
+      if (result.conversation.type === 'group') setGroups(current => current.map(group => group.id === result.conversation.id ? result.conversation : group));
+      else setConversations(current => current.map(conversation => conversation.id === result.conversation.id ? result.conversation : conversation));
+      setRenamingConversation(null);
+    } catch (renameError) { notifyError(renameError, '重命名会话失败'); }
+    finally { setSavingConversationTitle(false); }
+  }, [notifyError, request, renamingConversation, workspaceId]);
 
-          {/* Empty state */}
-          {outputs.length === 0 && !streamText && (
-            <div className="flex-1 flex items-center justify-center text-slate-500 text-sm">
-              Select a task and click Run to start the pipeline.
-            </div>
-          )}
-        </main>
+  const openGroupEditor = useCallback(async (conversation: Conversation) => {
+    if (!workspaceId || conversation.type !== 'group') return;
+    try {
+      const result = await request<{ conversation: Conversation; members: ConversationMember[] }>(`/api/workspaces/${workspaceId}/conversations/${conversation.id}/members`);
+      setEditingGroup(result.conversation);
+      setEditingGroupMembers(result.members);
+    } catch (loadError) { notifyError(loadError, '加载群聊策略失败'); }
+  }, [notifyError, request, workspaceId]);
 
-        {/* Right: Git diff */}
-        <aside className="w-80 border-l border-surface-700 bg-surface-800 p-4 overflow-y-auto">
-          <div className="text-xs font-medium text-slate-400 mb-2">GIT DIFF</div>
-          <pre className="text-[11px] text-slate-400 whitespace-pre-wrap">{diff || '(no changes)'}</pre>
-        </aside>
-      </div>
-    </div>
-  );
+  const saveGroupSettings = useCallback(async (input: { members: Array<{ agentId: string; roleKind: NonNullable<ConversationMember['roleKind']>; roleTitle: string; sequence: number }>; dispatchMode: GroupDispatchMode }) => {
+    if (!workspaceId || !editingGroup) return;
+    setSavingGroupSettings(true);
+    try {
+      const result = await request<{ conversation: Conversation; members: ConversationMember[] }>(`/api/workspaces/${workspaceId}/conversations/${editingGroup.id}`, { method: 'PATCH', body: input });
+      setGroups(current => current.map(group => group.id === result.conversation.id ? result.conversation : group));
+      setEditingGroup(result.conversation);
+      setEditingGroupMembers(result.members);
+      pushToast('success', '群聊策略已保存');
+    } catch (saveError) { notifyError(saveError, '保存群聊策略失败'); }
+    finally { setSavingGroupSettings(false); }
+  }, [editingGroup, notifyError, pushToast, request, workspaceId]);
+
+  const deleteConversation = useCallback(async (conversation: Conversation) => {
+    if (!workspaceId || !window.confirm(`确定删除会话“${conversation.title}”吗？此操作不可撤销。`)) return;
+    try {
+      await request<{ conversationId: string }>(`/api/workspaces/${workspaceId}/conversations/${conversation.id}`, { method: 'DELETE' });
+      const nextId = conversation.type === 'group' ? getNextConversationId(groups, conversation.id) : getNextConversationId(conversations, conversation.id);
+      if (conversation.type === 'group') {
+        setGroups(current => current.filter(group => group.id !== conversation.id));
+        if (selectedGroupId === conversation.id) { setSelectedGroupId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
+      } else {
+        setConversations(current => current.filter(item => item.id !== conversation.id));
+        if (selectedDirectConversationId === conversation.id) { setSelectedDirectConversationId(nextId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined); }
+      }
+      setContextMenu(null); pushToast('success', '会话已删除');
+    } catch (deleteError) { notifyError(deleteError, '删除会话失败'); }
+  }, [conversations, groups, notifyError, pushToast, request, selectedDirectConversationId, selectedGroupId, workspaceId]);
+
+  const selectGroup = useCallback((groupId: string) => {
+    const group = groups.find(item => item.id === groupId);
+    if (!group) return;
+    if (!shouldResetGroupView({ selectedGroupId, nextGroupId: groupId })) { setSelectedAgentId(null); return; }
+    setSelectedGroupId(groupId); setSelectedAgentId(null); setMessages([]); setExecutions([]); setActiveEvents([]); setActiveRuntimeEvents([]); setActiveRunSteps([]); setActiveArtifacts([]); setActiveStatus(undefined); setActiveStartedAt(undefined); setActiveRunId(undefined); setActiveWaitingQuestion(undefined);
+  }, [groups, selectedGroupId]);
+
+  if (!workspaceId) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">工作区不存在</div>;
+  if (!workspace && !error) return <div className="app-shell grid h-screen place-items-center text-sm ui-muted">正在加载工作区…</div>;
+
+  return <div ref={layoutRef} data-signal-workspace data-workspace-layout className="signal-workspace app-shell flex h-screen min-w-0 overflow-hidden">
+    <AgentList panelWidth={workspacePanelWidth} agents={agents} presence={presence} groups={groups} selectedGroupId={selectedGroupId} selectedAgentId={selectedAgentId} activeStatus={activeStatus} onSelect={agentId => { setSelectedAgentId(agentId); setSelectedGroupId(null); setSelectedDirectConversationId(null); setError(''); }} onSelectGroup={selectGroup} onCreateGroup={() => setCreatingGroup(true)} onContextMenu={openContextMenu} onBackToWorkspace={() => router.push('/')} onOpenMemories={() => setShowMemories(true)} onOpenPreferences={() => setShowPreferences(true)} />
+    <PanelResizeHandle panel="workspace" width={workspacePanelWidth} onPointerDown={handleResizePointerDown} />
+    <ConversationHistory panelWidth={historyPanelWidth} title={historyTitle} conversations={historyConversations} selectedConversationId={activeConversationId} createLabel={selectedGroupId ? '新建群聊' : '新建会话'} onCreate={() => { if (selectedGroupId) setCreatingGroup(true); else void createConversation().catch(createError => notifyError(createError, '创建会话失败')); }} onSelect={selectedGroupId ? selectGroup : setSelectedDirectConversationId} onContextMenu={openContextMenu} />
+    <PanelResizeHandle panel="history" width={historyPanelWidth} onPointerDown={handleResizePointerDown} />
+     <ChatPanel agentName={selectedAgent?.name} roleTitle={selectedAgent?.roleTitle} conversationTitle={isGroupConversation && selectedConversation ? `群聊 · ${selectedConversation.title}` : undefined} groupName={isGroupConversation ? selectedConversation?.title : undefined} isGroup={isGroupConversation} agents={agents} messages={messages} draft={draft} attachments={attachments} attachmentError={attachmentError} validationError={validationError} streamingContent={streamingContent} activeEvents={activeEvents} activeRuntimeEvents={activeRuntimeEvents} artifacts={activeArtifacts} apiBase={API_BASE} activeStatus={activeStatus} waitingQuestion={activeWaitingQuestion} connectionNotice={connectionNotice} error={error} sending={sending} queuedMessageCount={queuedMessageCount} modelOptions={composerModelOptions} composerModel={composerModel} composerThinkingEffort={composerThinkingEffort} composerThinkingEfforts={composerThinkingEfforts} modelSource={selectedAgent?.capability?.modelSource} mentionedAgentIds={mentionedAgentIds} onMentionedAgentIdsChange={setMentionedAgentIds} onDraftChange={value => { setDraft(value); if (!getComposerValidationError(value, attachments.length)) setValidationError(''); }} onFiles={files => { void handleFiles(files); }} onRemoveAttachment={removeAttachment} onComposerModelChange={handleComposerModelChange} onComposerThinkingEffortChange={handleComposerThinkingEffortChange} onSend={() => { void handleSend(); }} onCancel={handleCancel} onRename={isGroupConversation ? () => { if (selectedConversation) setRenamingConversation(selectedConversation); } : undefined} />
+    <ExecutionInspector agent={isGroupConversation ? undefined : selectedAgent} groupTitle={isGroupConversation ? selectedConversation?.title : undefined} events={activeEvents} runtimeEvents={activeRuntimeEvents} steps={activeRunSteps} executions={executions} activeStatus={activeStatus} activeStartedAt={activeStartedAt} onEdit={() => setEditingAgent(true)} onOpenRunDetails={runId => { void openRunDetails(runId); }} />
+    {editingAgent && selectedAgent && <AgentEditor key={`${selectedAgent.id}-${selectedAgent.capability?.modelSource}-${selectedAgent.capability?.models.join('|')}`} agent={selectedAgent} saving={savingAgent} refreshingModels={savingAgent} onClose={() => setEditingAgent(false)} onRefreshModels={() => { void refreshAgentModels(); }} onSave={update => { void saveAgent(update); }} />}
+     {creatingGroup && <GroupCreator agents={agents} saving={savingGroup} onClose={() => setCreatingGroup(false)} onCreate={input => { void createGroup(input); }} />}
+     {editingGroup && <GroupEditor agents={agents} members={editingGroupMembers} dispatchMode={editingGroup.dispatchMode ?? 'leader_route'} saving={savingGroupSettings} onClose={() => setEditingGroup(null)} onSave={input => { void saveGroupSettings(input); }} />}
+    {renamingConversation && <GroupRenameModal title={renamingConversation.title} entityLabel={renamingConversation.type === 'group' ? '群聊' : '会话'} saving={savingConversationTitle} onClose={() => setRenamingConversation(null)} onSave={title => { void saveConversationTitle(title); }} />}
+     {contextMenu && <ConversationContextMenu conversation={contextMenu.conversation} clientX={contextMenu.clientX} clientY={contextMenu.clientY} onRename={() => setRenamingConversation(contextMenu.conversation)} onEditGroup={contextMenu.conversation.type === 'group' ? () => { void openGroupEditor(contextMenu.conversation); } : undefined} onCopyId={() => { void copyConversationId(contextMenu.conversation.id); }} onDelete={() => { void deleteConversation(contextMenu.conversation); }} onClose={() => setContextMenu(null)} />}
+    {runDetails && <RunDetails details={runDetails} apiBase={API_BASE} onClose={() => setRunDetails(null)} onGenerateCandidates={runId => { void generateMemoryCandidates(runId); }} generatingCandidates={generatingCandidates} />}
+    {showMemories && <MemoryPanel workspaceId={workspaceId} onClose={() => setShowMemories(false)} onOpenRun={runId => { setShowMemories(false); void openRunDetails(runId); }} />}
+    {showPreferences && <PreferencePanel workspaceId={workspaceId} onClose={() => setShowPreferences(false)} onOpenRun={runId => { setShowPreferences(false); void openRunDetails(runId); }} />}
+    {showCandidateQueue && <MemoryCandidateQueue workspaceId={workspaceId} onClose={() => setShowCandidateQueue(false)} onOpenRun={runId => { setShowCandidateQueue(false); void openRunDetails(runId); }} />}
+    <ToastStack toasts={toasts} onDismiss={dismissToast} />
+  </div>;
 }

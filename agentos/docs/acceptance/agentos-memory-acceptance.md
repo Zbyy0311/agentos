@@ -1,0 +1,94 @@
+# AgentOS 下一阶段优化全链路验收
+
+记录日期：2026-07-14
+工作区：`E:\workspace\Multi-Agent\agentos`
+
+## 自动化入口与结果
+
+统一入口：`scripts/verify-next-optimization-acceptance.ps1`
+
+本记录只引用实际执行结果；测试中的 `node` 子进程代表真实 CLI 进程边界，Mock 测试用于不依赖外部 Agent 安装的稳定回归。外部 Codex/Kimi/OpenCode CLI 的完整浏览器链路受当前本机 CLI 进程环境影响，未冒充已通过。
+
+| 检查 | 命令 | 结果 |
+|---|---|---|
+| frozen install | `pnpm install --frozen-lockfile` | 通过，退出码 0 |
+| shared build | `pnpm --filter @agentos/shared build` | 通过，退出码 0 |
+| Agent Core | `pnpm --filter @agentos/agent-core test` | 通过，74/74 |
+| Server | `pnpm --filter @agentos/server test` | 通过，73/73 |
+| Web build | `pnpm --filter @agentos/web build` | 通过，退出码 0 |
+| Monorepo build | `pnpm -r run build` | 通过，4/5 workspace 项目构建，退出码 0 |
+| API 健康检查 | `http://localhost:3000/api/health` | 已验证 HTTP 200 |
+| Web 健康检查 | `http://localhost:3001/` | 已验证 HTTP 200 |
+
+## 验收路径
+
+1. 旧数据库迁移：`SqliteStore.test.ts` 构造旧版 conversations/messages/executions/execution_events，打开新 Store 后验证历史行数不减少、Execution 自动关联 legacy Run，且不重建原执行表。
+2. Direct：`ConversationService.test.ts` 覆盖 Mock direct 持久化、真实 `node` 子进程成功、非零退出失败和 AbortSignal 取消；Run、Execution、终态和公开回复均可读取。
+3. Group：覆盖两 Agent 群聊、三 Agent 并行成员执行和成员失败；所有 Execution 共享一个 Run，成员失败不会抹掉其他执行记录。
+4. 重启恢复：`runRecovery.test.ts` 验证遗留 `queued/running` 变为“服务重启导致执行中断”，终态 Run 不修改。
+5. RunDetails：路由聚合需求、状态耗时、参与 Agent、公开事件、CLI 元数据、文件变化、最终总结/失败原因和记忆用量；Workspace 越权返回 404。
+6. 记忆治理：四类 Memory CRUD/归档、FTS5 与安全回退、5 条/6000/1800 字符预算、来源 Run、候选最多 3 条；pending 候选在接受前不进入正式记忆或检索，接受后才进入并保留来源，拒绝后保留审计状态。
+
+## 隐私边界
+
+- SQLite 和 AgentOS 持久化日志只保存公开状态、脱敏 CLI 标签、模型/思考强度、退出码、耗时、相对文件路径和用户可见结果。
+- 诊断日志不写入完整参数、Prompt、CLI stdout/stderr；任务日志只保存输出长度和“content omitted”标记。
+- 不保存 API Key、访问令牌或私有思维链；候选提取只接受显式公开标记或公开执行证据，不读取隐藏 Prompt 和原始 CLI 输出。
+
+## 浏览器复核
+
+3001 保持运行。内置浏览器已打开 Workspace，确认单聊消息和执行完成状态可见；刷新后消息和执行历史仍在；“项目知识”入口可打开并显示记忆管理面板，包含六个筛选项、标签/相关文件字段和 Markdown 只读预览。窄视口下 RunDetails 的第三侧栏按钮会按响应式布局隐藏，但 DOM 和构建产物包含详情入口；需要完整展示时扩大窗口即可。外部真实 Agent CLI 群聊和候选审核未在当前 CLI 进程环境中宣称通过。
+
+## 文档与决策
+
+- `README.md`、`docs/AGENTOS_V2.md` 链接并说明 AgentRun、RunDetails、Memory 和候选审批。
+- `docs/MEMORY_SYSTEM.md` 说明数据模型、目录、预算、来源、审批、隐私、迁移和备份。
+- `agent-memory/DECISIONS.md` 明确不使用向量数据库、不自动写永久记忆、只记录可观察执行证据。
+- `agent-memory/LOG.md` 记录实施、验证命令和当前浏览器限制。
+
+## 验收脚本说明
+
+统一脚本中的构建、测试和 monorepo build 阶段均通过；此前一次脚本末尾健康检查因 `next dev` 与 `next build` 同时写入同一 `.next` 目录而出现缺失 chunk。现已使用独立 `AGENTOS_NEXT_DIST_DIR` 和临时 `AGENTOS_NEXT_TSCONFIG_PATH`，验收脚本不再改写主 tsconfig；已清理受影响的 `.next`、重新启动 3001，并确认根路径和 Workspace 路径均 HTTP 200、浏览器无错误日志。
+
+## 收尾 E2E 记录（2026-07-14）
+
+新增 `scripts/verify-agentos-e2e.ps1`、`scripts/verify-agentos-e2e.mjs` 及两个确定性 fixture。脚本在临时根目录启动 Server，使用临时 SQLite 和 Markdown 记忆目录，不使用 `AGENTOS_FORCE_MOCK`，也不输出 API Key、完整 Prompt 或 CLI 原始输出。
+
+当前 gate 结果：
+
+- `DETERMINISTIC_LIFECYCLE: passed`：普通单聊等待、resume 同一 Run 新 Execution、失败 Run，以及候选生成 409。
+- `RECOVERY: passed`：重启后 queued/running 标记 failed，waiting_user 保持。
+- 最新复验中 `MEMORY_CANDIDATE: failed`：候选流程依赖的后续真实 Agent 执行未完成，因此本次不能把候选生成、接受、拒绝和重新检索标记为 release gate 通过。此前曾有一次 Kimi 候选闭环通过，但不作为本次稳定性结论。
+- `REAL_EXTERNAL_AGENT: failed`：本次 Codex 和 OpenCode CLI 返回退出码 1；Kimi 单聊一次通过但后续执行不稳定；真实三 Agent 群聊、真实等待用户尚未满足 release gate。
+- 本次预恢复阶段输出 `RECOVERY: not_run`，重启恢复阶段输出 `RECOVERY: passed`；这是脚本按阶段隔离 gate 后的预期结果。
+- 后续空目录 CLI 探针（不读取 AgentOS 私有 Workspace）确认：Codex 固定短提示 exit 0，OpenCode 固定短提示 exit 0；Kimi 的 OAuth 参数路径和按 AgentOS 映射的 API-Key 路径均返回 exit 1，错误为当前计费周期用量已达上限（HTTP 403）。因此完整三 Agent release gate 仍不能通过，且未将空目录探针替代 E2E。
+
+因此本记录明确区分“自动化/确定性回归通过”和“真实外部 Agent release gate 未通过”，计划不能据此标记为全部完成。
+
+## 最新隔离真实 E2E 复验（2026-07-14，run 4）
+
+命令通过 `scripts/verify-agentos-e2e.ps1 -AcceptanceRoot C:\tmp\agentos-e2e-real-isolated-4` 执行。验收服务使用独立端口 3200、临时 SQLite、临时 Workspace Git 仓库和临时 Markdown 记忆目录；正式 Workspace、3000/3001 和正式数据库未被修改。脚本只输出状态、退出码和脱敏失败摘要。
+
+- Codex 单聊：通过；存在 CLI invocation，Run 为 `completed`。
+- OpenCode 单聊：通过；存在 CLI invocation，Run 为 `completed`。
+- Kimi 单聊：失败；当前计费周期配额耗尽，返回 HTTP 403。此前的空目录探针也已验证 OAuth 和 AgentOS API-Key 两条路径均受同一配额限制。
+- 三 Agent 群聊：失败；Kimi 成员失败导致群聊 Run 未完成，因此 10.4 和真实外部 Agent release gate 继续保持未通过。
+- 真实记忆注入：通过；唯一 token 被检索并产生 `MemoryUsage`。
+- 真实候选闭环：通过；无隐藏标记的公开决定/方案/验证证据生成候选，接受和拒绝均成功，接受后的记忆保留来源 Run。
+- 真实 CLI 失败：通过；无效模型路径产生 `failed` Run，未生成候选。
+- 真实 CLI 取消：通过；取消后 Run 为 `cancelled`。
+- 真实 waiting_user：通过；明确缺少必需字段时进入 `waiting_user`，resume 使用同一 Run 的新 Execution，最终为 `completed`。
+- 确定性生命周期：通过；fixture 覆盖 waiting/resume、失败和候选生成 409。
+- 重启恢复：通过；`queued/running` 被标记为失败，`waiting_user` 保持等待。
+
+本次脚本总退出码仍为 1，原因仅为真实 Kimi 单聊和依赖该成员的群聊 gate 未通过；不能将本次结果标记为全部完成。
+
+## 浏览器 1.4 冒烟复验（2026-07-14）
+
+在 `http://localhost:3001/workspace/d7994c0c` 创建 Codex 单聊并发送 `AGENTOS_UI_SMOKE_OK`，确认公开回复、执行完成时间线和会话标题可见；刷新后消息、会话和完成状态仍然存在，浏览器 error/warn 日志为空。该证据支持计划项 1.4；真实 Kimi/群聊 release gate 随后在 2026-07-15 的 run 5 中通过。
+
+此前 Kimi 环境复核（2026-07-14）：在空临时目录用固定短提示分别调用默认模型 `kimi-code/kimi-for-coding` 和配置中的 `kimi-code/kimi-for-coding-highspeed`，两者均 exit 1 并命中当时的计费周期配额 403；未将该探针替代正式 Workspace 的真实 E2E。2026-07-15 配额恢复后已由 run 5 正式通过。
+
+## 最新真实 E2E 通过记录（2026-07-15，run 5）
+
+Kimi 配额恢复后，在 `C:\tmp\agentos-e2e-real-isolated-20260715b` 使用独立端口 3200 重跑真实验收。Codex/Kimi/OpenCode 单聊、三 Agent 群聊、记忆注入、无隐藏标记候选生成与接受/拒绝、CLI 失败、取消、`waiting_user` resume、确定性生命周期和重启恢复均通过；脚本 exit 0。群聊提示增加了明确的公开验收范围和 `REAL_GROUP_NO_WAIT`，避免将完整群聊任务误判为等待用户。

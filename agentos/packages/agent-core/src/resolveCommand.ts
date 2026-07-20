@@ -1,12 +1,12 @@
 import { access } from 'node:fs/promises';
 import { spawn } from 'node:child_process';
-import { isAbsolute, delimiter } from 'node:path';
+import { isAbsolute, delimiter, join } from 'node:path';
 
 /**
  * Resolve a command against PATH in a cross-platform way.
  * Returns the absolute path to the executable, or null if not found.
  */
-export async function resolveCommand(cmd: string): Promise<string | null> {
+export async function resolveCommand(cmd: string, env: NodeJS.ProcessEnv = process.env): Promise<string | null> {
   if (isAbsolute(cmd)) {
     try {
       await access(cmd);
@@ -25,6 +25,7 @@ export async function resolveCommand(cmd: string): Promise<string | null> {
 
     const child = spawn(shellCommand, [cmd], {
       shell: false,
+      env,
       windowsHide: true,
     });
 
@@ -46,11 +47,11 @@ export async function resolveCommand(cmd: string): Promise<string | null> {
   if (found) return found;
 
   // Fallback: manual PATH scan if which/where is unavailable
-  const pathEnv = process.env.PATH ?? '';
-  const extensions = platform === 'win32' ? (process.env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : [''];
+  const pathEnv = env.PATH ?? env.Path ?? '';
+  const extensions = platform === 'win32' ? (env.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : [''];
   for (const dir of pathEnv.split(delimiter)) {
     for (const ext of extensions) {
-      const candidate = `${dir}/${cmd}${ext.toLowerCase()}`;
+      const candidate = join(dir, `${cmd}${ext.toLowerCase()}`);
       try {
         await access(candidate);
         return candidate;

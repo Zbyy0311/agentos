@@ -1,0 +1,53 @@
+- generic [ref=f14e1]:
+  - generic [ref=f14e2]:
+    - banner [ref=f14e3]:
+      - generic [ref=f14e4]:
+        - generic [ref=f14e5]: A/
+        - generic [ref=f14e6]:
+          - generic [ref=f14e7]: AgentOS
+          - generic [ref=f14e8]: 本地多 Agent 工作台
+      - button "切换到浅色主题" [active] [ref=f14e54] [cursor=pointer]:
+        - generic [ref=f14e10]: ☼
+        - generic [ref=f14e11]: 深色
+    - main [ref=f14e12]:
+      - generic [ref=f14e13]:
+        - generic [ref=f14e14]:
+          - paragraph [ref=f14e15]: WORKSPACE INDEX
+          - heading "把每个项目，整理成一个可以工作的空间。" [level=1] [ref=f14e16]
+          - paragraph [ref=f14e17]: 从本地目录进入项目，管理 Agent、会话和执行状态。所有工作区都保留在当前环境中。
+        - button "+ 新建工作区" [ref=f14e18] [cursor=pointer]:
+          - generic [ref=f14e19]: +
+          - text: 新建工作区
+      - generic [ref=f14e20]:
+        - generic [ref=f14e21]:
+          - generic [ref=f14e22]:
+            - heading "工作区" [level=2] [ref=f14e23]
+            - paragraph [ref=f14e24]: 打开一个工作区，继续上次的协作上下文。
+          - generic [ref=f14e25]: 2 个已连接
+        - generic [ref=f14e26]:
+          - textbox "输入本地目录路径以导入…" [ref=f14e27]
+          - button "导入目录" [disabled] [ref=f14e28]
+        - generic [ref=f14e31]:
+          - article [ref=f14e32]:
+            - generic [ref=f14e33]:
+              - button "AI Content Factory E:\\workspace\\AI Content Factory" [ref=f14e34] [cursor=pointer]:
+                - generic [ref=f14e35]: AI Content Factory
+                - generic "E:\\workspace\\AI Content Factory" [ref=f14e36]
+              - button "删除 AI Content Factory" [ref=f14e37] [cursor=pointer]: 删除
+            - generic [ref=f14e38]:
+              - generic [ref=f14e39]: Git 已启用
+              - generic [ref=f14e40]: 记忆 已启用
+              - generic [ref=f14e41]: 3 个 Agent
+            - generic [ref=f14e42]: 最近打开：2026/7/11 17:06:52
+          - article [ref=f14e43]:
+            - generic [ref=f14e44]:
+              - button "agentos E:\\workspace\\Multi-Agent\\agentos" [ref=f14e45] [cursor=pointer]:
+                - generic [ref=f14e46]: agentos
+                - generic "E:\\workspace\\Multi-Agent\\agentos" [ref=f14e47]
+              - button "删除 agentos" [ref=f14e48] [cursor=pointer]: 删除
+            - generic [ref=f14e49]:
+              - generic [ref=f14e50]: Git 已启用
+              - generic [ref=f14e51]: 记忆 已启用
+              - generic [ref=f14e52]: 3 个 Agent
+            - generic [ref=f14e53]: 最近打开：2026/6/27 22:53:43
+  - alert [ref=f14e30]

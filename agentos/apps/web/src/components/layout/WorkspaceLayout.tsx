@@ -8,7 +8,7 @@ interface WorkspaceLayoutProps {
 
 export function WorkspaceLayout({ children, sidebar, rightPanel }: WorkspaceLayoutProps) {
   return (
-    <div className="flex flex-col h-screen bg-[#0f1117] text-slate-200 overflow-hidden">
+    <div className="app-shell flex h-screen flex-col overflow-hidden">
       {children}
       {rightPanel}
     </div>

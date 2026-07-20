@@ -1,6 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import { resolveCommand } from './resolveCommand.js';
-import { isAbsolute } from 'node:path';
+import { isAbsolute, join } from 'node:path';
+import { mkdtemp, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 
 describe('resolveCommand', () => {
   it('resolves node to an absolute path', async () => {
@@ -19,5 +21,19 @@ describe('resolveCommand', () => {
     expect(nodePath).toBeTruthy();
     const same = await resolveCommand(nodePath!);
     expect(same).toBe(nodePath);
+  });
+
+  it('resolves a command from the supplied child PATH', async () => {
+    const binDir = await mkdtemp(join(tmpdir(), 'agentos-command-path-'));
+    const command = 'agentos-test-codex';
+    const executable = join(binDir, `${command}.cmd`);
+    await writeFile(executable, '@echo off\r\necho ok\r\n');
+
+    const result = await resolveCommand(command, {
+      PATH: binDir,
+      PATHEXT: '.CMD',
+    });
+
+    expect(result).toBe(executable);
   });
 });

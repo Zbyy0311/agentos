@@ -2,19 +2,896 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --app-bg: #0d1011;
+  --app-surface: #121718;
+  --app-surface-raised: #171d1e;
+  --app-surface-soft: #1b2222;
+  --app-border: #2a3333;
+  --app-border-strong: #3b4646;
+  --app-text: #f3efe8;
+  --app-text-soft: #c6c1b9;
+  --app-muted: #929b99;
+  --app-dim: #687270;
+  --app-accent: #d2673b;
+  --app-accent-strong: #ed8050;
+  --app-accent-soft: rgba(210, 103, 59, 0.15);
+  --app-success: #91ad73;
+  --app-warning: #d3a15d;
+  --app-danger: #d56f60;
+  --app-info: #a6a078;
+  --app-overlay: rgba(7, 9, 9, 0.72);
+  --app-shadow: 0 18px 45px rgba(0, 0, 0, 0.28);
+  --app-grid-line: rgba(255, 255, 255, 0.035);
+  --app-glow: rgba(210, 103, 59, 0.16);
+}
+
+html[data-theme='light'] {
+  --app-bg: #f0eee9;
+  --app-surface: #faf9f6;
+  --app-surface-raised: #ffffff;
+  --app-surface-soft: #e8e5df;
+  --app-border: #d8d4cc;
+  --app-border-strong: #bcb7ae;
+  --app-text: #202729;
+  --app-text-soft: #4f595a;
+  --app-muted: #697373;
+  --app-dim: #8b9390;
+  --app-accent: #b45232;
+  --app-accent-strong: #cf6841;
+  --app-accent-soft: rgba(180, 82, 50, 0.11);
+  --app-success: #5d7c59;
+  --app-warning: #a77435;
+  --app-danger: #b45045;
+  --app-info: #756f4d;
+  --app-overlay: rgba(26, 28, 27, 0.38);
+  --app-shadow: 0 18px 45px rgba(45, 42, 35, 0.14);
+  --app-grid-line: rgba(32, 39, 41, 0.055);
+  --app-glow: rgba(180, 82, 50, 0.1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
 body {
-  background: #0f1117;
-  color: #e2e8f0;
+  min-height: 100%;
+}
+
+body {
+  background: var(--app-bg);
+  color: var(--app-text);
+  font-feature-settings: "cv11", "ss01";
+  transition: background-color 180ms ease, color 180ms ease;
+}
+
+button,
+select,
+textarea,
+input {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+::selection {
+  background: var(--app-accent-soft);
 }
 
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
 }
+
 ::-webkit-scrollbar-track {
-  background: #1a1b23;
+  background: transparent;
 }
+
 ::-webkit-scrollbar-thumb {
-  background: #3b3d4a;
-  border-radius: 3px;
+  background: var(--app-border-strong);
+  border-radius: 999px;
+}
+
+.app-shell {
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+.signal-page {
+  position: relative;
+  isolation: isolate;
+  height: 100%;
+  min-height: 100%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--app-bg);
+}
+
+.signal-page::before {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-image: linear-gradient(90deg, var(--app-grid-line) 1px, transparent 1px), linear-gradient(var(--app-grid-line) 1px, transparent 1px), radial-gradient(circle at 76% 12%, var(--app-glow), transparent 27rem);
+  background-size: 48px 48px, 48px 48px, auto;
+  content: '';
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.signal-header {
+  background: color-mix(in srgb, var(--app-surface) 88%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.signal-mark {
+  position: relative;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--app-accent-strong) 26%, transparent), 0 10px 24px color-mix(in srgb, var(--app-accent) 18%, transparent);
+}
+
+.signal-mark::after {
+  position: absolute;
+  right: -0.2rem;
+  bottom: -0.2rem;
+  width: 0.42rem;
+  height: 0.42rem;
+  border: 2px solid var(--app-surface);
+  border-radius: 999px;
+  background: var(--app-success);
+  content: '';
+}
+
+.signal-running-dot {
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-success) 34%, transparent);
+  animation: signal-ready-pulse 2.2s ease-out infinite;
+}
+
+@keyframes signal-ready-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-success) 34%, transparent); }
+  70% { box-shadow: 0 0 0 0.45rem color-mix(in srgb, var(--app-success) 0%, transparent); }
+  100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--app-success) 0%, transparent); }
+}
+
+.signal-hero {
+  position: relative;
+  border-bottom: 1px solid color-mix(in srgb, var(--app-border) 76%, transparent);
+}
+
+.signal-hero::after {
+  position: absolute;
+  right: 0;
+  bottom: -1px;
+  left: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--app-accent), transparent);
+  content: '';
+  opacity: 0.55;
+}
+
+.signal-hero-copy {
+  max-width: 42rem;
+}
+
+.signal-hero-title {
+  max-width: 13ch;
+  font-size: clamp(2.35rem, 5vw, 4.6rem);
+  line-height: 0.98;
+  letter-spacing: -0.065em;
+}
+
+.signal-hero-rail {
+  position: relative;
+  min-width: min(20rem, 100%);
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 1.25rem;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--app-surface-raised) 88%, transparent), color-mix(in srgb, var(--app-surface) 78%, transparent));
+  box-shadow: var(--app-shadow);
+}
+
+.signal-hero-rail::before {
+  position: absolute;
+  top: -3rem;
+  right: -2rem;
+  width: 9rem;
+  height: 9rem;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 34%, transparent);
+  border-radius: 999px;
+  box-shadow: 0 0 0 1rem color-mix(in srgb, var(--app-accent) 7%, transparent), 0 0 0 2rem color-mix(in srgb, var(--app-accent) 4%, transparent);
+  content: '';
+  opacity: 0.9;
+}
+
+.signal-panel {
+  background: color-mix(in srgb, var(--app-surface-raised) 92%, transparent);
+  border-color: color-mix(in srgb, var(--app-border) 88%, transparent);
+  box-shadow: 0 24px 70px color-mix(in srgb, #000 22%, transparent);
+}
+
+.signal-panel-heading {
+  border-bottom: 1px solid var(--app-border);
+}
+
+.signal-section-label {
+  color: var(--app-dim);
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  line-height: 1rem;
+  text-transform: uppercase;
+}
+
+.signal-workspace-row {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--app-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--app-surface) 74%, transparent);
+  transition: border-color 180ms ease, background-color 180ms ease, transform 180ms ease, box-shadow 180ms ease;
+}
+
+.signal-workspace-row::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 2px;
+  background: var(--app-accent);
+  content: '';
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.signal-workspace-row:hover {
+  border-color: color-mix(in srgb, var(--app-accent) 62%, var(--app-border));
+  background: color-mix(in srgb, var(--app-accent-soft) 42%, var(--app-surface));
+  box-shadow: 0 14px 30px color-mix(in srgb, #000 16%, transparent);
+  transform: translateY(-1px);
+}
+
+.signal-workspace-row:hover::before {
+  opacity: 1;
+}
+
+.signal-workspace-icon {
+  display: grid;
+  width: 2.75rem;
+  height: 2.75rem;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 35%, var(--app-border));
+  border-radius: 0.85rem;
+  background: color-mix(in srgb, var(--app-accent-soft) 68%, var(--app-surface));
+  color: var(--app-accent-strong);
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.signal-workspace-meta {
+  color: var(--app-dim);
+  font-size: 0.68rem;
+  letter-spacing: 0.02em;
+}
+
+.signal-workspace,
+.signal-rail,
+.signal-history,
+.signal-inspector,
+.signal-chat {
+  min-width: 0;
+  background: var(--app-bg);
+}
+
+.signal-rail {
+  background: color-mix(in srgb, var(--app-surface) 92%, var(--app-bg));
+}
+
+.signal-history,
+.signal-inspector {
+  background: color-mix(in srgb, var(--app-surface) 78%, var(--app-bg));
+}
+
+.signal-agent-button,
+.signal-history-button {
+  position: relative;
+}
+
+.signal-agent-button::before,
+.signal-history-button::before {
+  position: absolute;
+  top: 0.55rem;
+  bottom: 0.55rem;
+  left: 0;
+  width: 2px;
+  border-radius: 999px;
+  background: var(--app-accent);
+  content: '';
+  opacity: 0;
+  transition: opacity 180ms ease;
+}
+
+.signal-agent-button.ui-selected::before,
+.signal-history-button.ui-selected::before {
+  opacity: 1;
+}
+
+.signal-chat-header {
+  background: color-mix(in srgb, var(--app-surface) 56%, transparent);
+  backdrop-filter: blur(16px);
+}
+
+.signal-chat-scroll {
+  scrollbar-gutter: stable;
+}
+
+.signal-message {
+  box-shadow: 0 10px 24px color-mix(in srgb, #000 10%, transparent);
+}
+
+.signal-composer-shell {
+  background: linear-gradient(180deg, color-mix(in srgb, var(--app-bg) 84%, transparent), var(--app-bg));
+}
+
+.signal-composer {
+  box-shadow: 0 18px 50px color-mix(in srgb, #000 25%, transparent);
+}
+
+.composer-resize-handle {
+  display: flex;
+  width: 100%;
+  height: 0.75rem;
+  align-items: center;
+  justify-content: center;
+  margin: -0.15rem 0 0.1rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: var(--app-dim);
+  cursor: ns-resize;
+  touch-action: none;
+  user-select: none;
+}
+
+.composer-resize-handle span {
+  width: 2rem;
+  height: 0.18rem;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.55;
+  transition: width 150ms ease, background-color 150ms ease, opacity 150ms ease;
+}
+
+.composer-resize-handle:hover,
+.composer-resize-handle:focus-visible {
+  color: var(--app-accent);
+}
+
+.composer-resize-handle:hover span,
+.composer-resize-handle:focus-visible span {
+  width: 2.5rem;
+  opacity: 1;
+}
+
+.composer-resize-handle:focus-visible {
+  outline: 2px solid var(--app-accent);
+  outline-offset: 2px;
+}
+
+.signal-empty {
+  position: relative;
+  overflow: hidden;
+  border: 1px dashed var(--app-border);
+  border-radius: 1rem;
+  background: color-mix(in srgb, var(--app-surface) 58%, transparent);
+}
+
+.signal-empty::before {
+  position: absolute;
+  top: -4rem;
+  left: 50%;
+  width: 12rem;
+  height: 12rem;
+  border: 1px solid color-mix(in srgb, var(--app-accent) 20%, transparent);
+  border-radius: 999px;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.signal-status-card {
+  border-color: color-mix(in srgb, var(--app-accent) 32%, var(--app-border));
+  background: color-mix(in srgb, var(--app-accent-soft) 42%, var(--app-surface));
+}
+
+.signal-inspector-summary {
+  border: 1px solid var(--app-border);
+  border-radius: 0.9rem;
+  background: color-mix(in srgb, var(--app-surface-raised) 82%, transparent);
+}
+
+.signal-timeline {
+  position: relative;
+}
+
+.signal-timeline-item {
+  position: relative;
+}
+
+.signal-timeline-item:last-child .signal-timeline-line {
+  display: none;
+}
+
+.signal-timeline-dot {
+  box-shadow: 0 0 0 4px var(--app-surface), 0 0 0 5px color-mix(in srgb, var(--app-border) 52%, transparent);
+}
+
+.signal-timeline-dot-current {
+  animation: signal-pulse 1.8s ease-in-out infinite;
+}
+
+.signal-timeline-line {
+  position: absolute;
+  top: 0.8rem;
+  bottom: 0;
+  left: 0.3rem;
+  width: 1px;
+  background: var(--app-border);
+}
+
+@keyframes signal-pulse {
+  0%, 100% { box-shadow: 0 0 0 4px var(--app-surface), 0 0 0 5px color-mix(in srgb, var(--app-accent) 40%, transparent), 0 0 0 0 color-mix(in srgb, var(--app-accent) 0%, transparent); }
+  50% { box-shadow: 0 0 0 4px var(--app-surface), 0 0 0 5px color-mix(in srgb, var(--app-accent) 52%, transparent), 0 0 0 8px color-mix(in srgb, var(--app-accent) 0%, transparent); }
+}
+
+.ui-panel {
+  background: var(--app-surface);
+  border-color: var(--app-border);
+}
+
+.ui-panel-raised {
+  background: var(--app-surface-raised);
+  border-color: var(--app-border);
+}
+
+.ui-panel-soft {
+  background: var(--app-surface-soft);
+  border-color: var(--app-border);
+}
+
+.ui-border {
+  border-color: var(--app-border);
+}
+
+.ui-text {
+  color: var(--app-text);
+}
+
+.ui-text-soft {
+  color: var(--app-text-soft);
+}
+
+.ui-muted {
+  color: var(--app-muted);
+}
+
+.ui-dim {
+  color: var(--app-dim);
+}
+
+.ui-accent {
+  color: var(--app-accent-strong);
+}
+
+.ui-button-primary {
+  background: var(--app-accent);
+  color: #fffaf4;
+  transition: background-color 150ms ease, transform 150ms ease;
+}
+
+.ui-button-primary:hover {
+  background: var(--app-accent-strong);
+  transform: translateY(-1px);
+}
+
+.ui-button-primary:disabled {
+  background: var(--app-border-strong);
+  color: var(--app-dim);
+  transform: none;
+}
+
+.ui-button-secondary {
+  background: transparent;
+  border: 1px solid var(--app-border-strong);
+  color: var(--app-text-soft);
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.ui-button-secondary:hover {
+  background: var(--app-accent-soft);
+  border-color: var(--app-accent);
+  color: var(--app-text);
+}
+
+.ui-button-ghost {
+  color: var(--app-muted);
+  transition: background-color 150ms ease, color 150ms ease;
+}
+
+.ui-button-ghost:hover {
+  background: var(--app-accent-soft);
+  color: var(--app-text);
+}
+
+.ui-input {
+  background: var(--app-bg);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.ui-input::placeholder {
+  color: var(--app-dim);
+}
+
+.ui-input:hover {
+  border-color: var(--app-border-strong);
+}
+
+.ui-input:focus {
+  border-color: var(--app-accent);
+}
+
+.ui-selected {
+  background: var(--app-accent-soft);
+  box-shadow: inset 3px 0 0 var(--app-accent);
+  color: var(--app-text);
+}
+
+.ui-message-agent {
+  background: var(--app-surface-raised);
+  border-color: var(--app-border);
+  color: var(--app-text-soft);
+}
+
+.ui-message-user {
+  background: var(--app-accent);
+  color: #fffaf4;
+}
+
+.ui-message-system {
+  background: color-mix(in srgb, var(--app-warning) 12%, transparent);
+  border-color: color-mix(in srgb, var(--app-warning) 38%, transparent);
+  color: var(--app-text-soft);
+}
+
+.ui-status {
+  background: color-mix(in srgb, var(--app-info) 15%, transparent);
+  border-color: color-mix(in srgb, var(--app-info) 36%, transparent);
+  color: var(--app-text-soft);
+}
+
+.ui-error {
+  background: color-mix(in srgb, var(--app-danger) 13%, transparent);
+  border-color: color-mix(in srgb, var(--app-danger) 40%, transparent);
+  color: var(--app-text-soft);
+}
+
+.toast-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  border: 1px solid var(--app-border);
+  border-radius: 0.85rem;
+  padding: 0.75rem 0.8rem 0.75rem 0.9rem;
+  background: var(--app-surface-raised);
+  color: var(--app-text-soft);
+  box-shadow: var(--app-shadow);
+  font-size: 0.8125rem;
+  line-height: 1.35rem;
+}
+
+.toast-success {
+  border-color: color-mix(in srgb, var(--app-success) 46%, var(--app-border));
+}
+
+.toast-warning {
+  border-color: color-mix(in srgb, var(--app-warning) 46%, var(--app-border));
+}
+
+.toast-error {
+  border-color: color-mix(in srgb, var(--app-danger) 52%, var(--app-border));
+  background: color-mix(in srgb, var(--app-danger) 10%, var(--app-surface-raised));
+}
+
+.toast-dismiss {
+  color: var(--app-text-muted);
+  font-size: 1rem;
+  line-height: 1rem;
+  transition: color 150ms ease;
+}
+
+.toast-dismiss:hover {
+  color: var(--app-text);
+}
+
+@keyframes toast-enter {
+  from { opacity: 0; transform: translate3d(0, 0.4rem, 0) scale(0.98); }
+  to { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes toast-exit {
+  from { opacity: 1; transform: translate3d(0, 0, 0) scale(1); }
+  to { opacity: 0; transform: translate3d(0.4rem, 0, 0) scale(0.98); }
+}
+
+.toast-enter {
+  animation: toast-enter 180ms ease-out both;
+}
+
+.toast-exit {
+  animation: toast-exit 180ms ease-in both;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  padding: 0.42rem 0.7rem;
+  color: var(--app-muted);
+  font-size: 0.72rem;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.theme-toggle:hover {
+  background: var(--app-accent-soft);
+  border-color: var(--app-accent);
+  color: var(--app-text);
+}
+
+.effort-popover {
+  width: min(14rem, calc(100vw - 2rem));
+}
+
+.effort-slider {
+  position: relative;
+  height: 1.75rem;
+}
+
+.effort-slider input {
+  position: relative;
+  z-index: 2;
+  width: 100%;
+  height: 1.75rem;
+  margin: 0;
+  appearance: none;
+  cursor: pointer;
+  background: transparent;
+}
+
+.effort-slider input:disabled {
+  cursor: not-allowed;
+}
+
+.effort-slider input::-webkit-slider-runnable-track {
+  height: 0.55rem;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-surface-soft);
+}
+
+.effort-slider input::-moz-range-track {
+  height: 0.55rem;
+  border: 1px solid var(--app-border);
+  border-radius: 999px;
+  background: var(--app-surface-soft);
+}
+
+.effort-slider input::-webkit-slider-thumb {
+  width: 1rem;
+  height: 1rem;
+  margin-top: -0.3rem;
+  appearance: none;
+  border: 0;
+  border-radius: 0.3rem;
+  background: var(--app-text-soft);
+  box-shadow: 0 0 0 2px var(--app-surface-raised);
+}
+
+.effort-slider input::-moz-range-thumb {
+  width: 1rem;
+  height: 1rem;
+  border: 0;
+  border-radius: 0.3rem;
+  background: var(--app-text-soft);
+  box-shadow: 0 0 0 2px var(--app-surface-raised);
+}
+
+.effort-slider-ticks {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  right: 0.45rem;
+  left: 0.45rem;
+  display: grid;
+  align-items: center;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.effort-slider-ticks span {
+  justify-self: center;
+  width: 0.2rem;
+  height: 0.2rem;
+  border-radius: 999px;
+  background: var(--app-dim);
+}
+
+.effort-slider-ticks span:last-child {
+  background: var(--app-accent);
+}
+
+.thinking-process {
+  border: 1px solid var(--app-border);
+  border-radius: 0.9rem;
+  background: var(--app-surface);
+  color: var(--app-text-soft);
+}
+
+.response-render-chunk {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 1200px;
+}
+
+.thinking-process-header {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  display: flex;
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  list-style: none;
+}
+
+.thinking-process-header:hover {
+  background: var(--app-accent-soft);
+}
+
+.thinking-process-body {
+  border-top: 1px solid var(--app-border);
+  padding: 0.7rem 0.9rem 0.8rem;
+}
+
+.workspace-sidebar,
+.history-sidebar,
+.inspector-sidebar {
+  min-width: 0;
+}
+
+.panel-resize-handle {
+  flex: 0 0 8px;
+  width: 8px;
+  cursor: col-resize;
+  touch-action: none;
+  user-select: none;
+  transition: background-color 150ms ease;
+}
+
+.panel-resize-handle:hover,
+body.resizing-panels .panel-resize-handle {
+  background: var(--app-accent-soft);
+}
+
+body.resizing-panels {
+  user-select: none;
+}
+
+@media (max-width: 1180px) {
+  .inspector-sidebar {
+    display: none;
+  }
+}
+
+@media (max-width: 860px) {
+  .history-sidebar {
+    width: 210px;
+  }
+}
+
+@media (max-width: 680px) {
+  .signal-hero-title {
+    max-width: 11ch;
+    font-size: clamp(2.25rem, 13vw, 3.3rem);
+  }
+
+  .signal-hero-rail {
+    min-width: 0;
+  }
+
+  .signal-workspace-row {
+    border-radius: 0.85rem;
+  }
+
+  .workspace-sidebar {
+    width: 74px !important;
+    padding-left: 0.55rem !important;
+    padding-right: 0.55rem !important;
+  }
+
+  .workspace-sidebar .workspace-copy,
+  .workspace-sidebar .workspace-nav-label,
+  .workspace-sidebar .workspace-agent-copy,
+  .workspace-sidebar .workspace-group-copy,
+  .workspace-sidebar .workspace-knowledge-label,
+  .workspace-sidebar .workspace-return-label,
+  .workspace-sidebar .workspace-theme-label {
+    display: none;
+  }
+
+  .workspace-sidebar .workspace-agent-button {
+    justify-content: center;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .workspace-sidebar .workspace-group-button {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .workspace-sidebar .workspace-knowledge-button {
+    display: grid;
+    place-items: center;
+    padding-left: 0.5rem;
+    padding-right: 0.5rem;
+  }
+
+  .history-sidebar {
+    display: none;
+  }
+
+  .panel-resize-handle {
+    display: none;
+  }
+}
+
+main > div.border-t > div {
+  container-type: inline-size;
+}
+
+@container (max-width: 460px) {
+  main > div.border-t > div > div.mt-2.flex.items-center.justify-between.gap-3 {
+    flex-wrap: wrap;
+  }
+
+  main > div.border-t > div > div.mt-2.flex.items-center.justify-between.gap-3 > div.ml-auto {
+    width: 100%;
+    max-width: 100%;
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
 }
