@@ -200,6 +200,8 @@ export class MigrationRunner {
   }
 
   private createMetaTable(): void {
+    // CREATE TABLE IF NOT EXISTS is safe to run unprotected — it's idempotent
+    // and the execImmediate wrapper handles lock errors for the real work.
     this.db.exec(`CREATE TABLE IF NOT EXISTS ${META_TABLE} (
       migration_id TEXT PRIMARY KEY,
       name TEXT NOT NULL,
