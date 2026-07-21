@@ -86,10 +86,40 @@ test('Workspace.agents projected fields match Provider Configuration after updat
 
     const ws = manager.get(created.id)!;
     const codexAgent = ws.agents.find(a => a.id === 'codex')!;
+    assert.equal(codexAgent.providerConfigId, config.id);
     assert.equal(codexAgent.provider, 'opencode');
     assert.equal(codexAgent.cliCommand, 'ws-projected-cli');
     assert.deepEqual(codexAgent.cliArgs, ['--from-provider']);
     assert.equal(codexAgent.model, 'ws-projected-model');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Workspace.agents does not fall back to legacy model when Provider model is cleared', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('ClearedModelWS', join(root, 'cleared-model-ws'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const profile = store.listAgentProfiles(created.id).find(a => a.id === 'codex')!;
+    const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
+    const config = repo.findById(profile.providerConfigId!)!;
+    store.getDatabase().prepare(
+      'UPDATE agent_profiles SET model = ? WHERE workspace_id = ? AND id = ?',
+    ).run('legacy-agent-model', created.id, 'codex');
+    repo.update({
+      ...config,
+      model: undefined,
+      updatedAt: new Date().toISOString(),
+    }, config.version);
+
+    const agent = manager.get(created.id)!.agents.find(a => a.id === 'codex')!;
+    assert.equal(agent.model, undefined);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });

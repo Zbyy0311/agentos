@@ -117,6 +117,7 @@ export class ConversationService {
   private readonly runtimeBuffers = new Map<string, RuntimeEventBuffer>();
   private readonly runtimeQuotaNotices = new Set<string>();
   private readonly runtimeFlushTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly forceMock?: boolean;
 
   constructor(
     private readonly store: SqliteStore,
@@ -124,18 +125,24 @@ export class ConversationService {
     artifactService?: RuntimeArtifactService,
     preferenceService?: PreferenceLearningService,
     worktreeManager?: WorktreeManager,
+    options?: { forceMock?: boolean },
   ) {
     this.contextBuilder = new RunContextBuilder(new MemoryRetriever(store));
     this.preferenceService = preferenceService ?? new PreferenceService(store);
     this.runStepService = new RunStepService(store, eventBus);
     this.runDecisionService = new RunDecisionService(store);
     this.worktreeManager = worktreeManager;
+    this.forceMock = options?.forceMock;
     this.worktreeArtifactService = artifactService && worktreeManager
       ? new WorktreeArtifactService(artifactService, worktreeManager)
       : undefined;
     this.artifactCollector = artifactService
       ? new RuntimeArtifactCollector(artifactService, artifact => this.publishArtifactCreated(artifact))
       : undefined;
+  }
+
+  private isMockRuntime(): boolean {
+    return this.forceMock ?? process.env.AGENTOS_FORCE_MOCK === 'true';
   }
 
   private artifactContext(execution: AgentExecution, workspaceRoot: string, runId = execution.runId): ArtifactCollectionContext {
@@ -174,7 +181,7 @@ export class ConversationService {
     assertImageInputSupported(agent, input.attachments);
     const intent = input.intent ?? 'execute';
     const runtimePolicy = resolveRuntimePolicy(intent, agent);
-    if (intent !== 'execute') assertRuntimePolicySupported(runtimePolicy, process.env.AGENTOS_FORCE_MOCK === 'true');
+    if (intent !== 'execute') assertRuntimePolicySupported(runtimePolicy, this.isMockRuntime());
 
     const now = new Date().toISOString();
     const userMessage: ConversationMessage = {
@@ -242,7 +249,7 @@ export class ConversationService {
       sourceMessageId: userMessage.id,
       agentId: agent.id,
       status: 'queued',
-      mode: process.env.AGENTOS_FORCE_MOCK === 'true' ? 'mock' : 'real',
+      mode: this.isMockRuntime() ? 'mock' : 'real',
       createdAt: now,
       updatedAt: now,
     };
@@ -264,6 +271,7 @@ export class ConversationService {
       ...this.createEvidenceCallbacks(run.id, execution, agent, input.workspaceRoot, input.onRuntimeEvent),
       onRuntimeEvent: event => this.recordRuntimeEvent(run.id, execution, agent, event, input.onRuntimeEvent, input.workspaceRoot),
       onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent, agent, { runId: run.id, finalizeRun: true }),
+      forceMock: this.forceMock,
     });
     const runResult = await runner.run();
     const completedAt = new Date().toISOString();
@@ -370,7 +378,7 @@ export class ConversationService {
     const execution: AgentExecution = {
       id: randomUUID(), runId: run.id, conversationId: conversation.id, workspaceId: input.workspaceId,
       sourceMessageId: userMessage.id, agentId: agent.id, status: 'queued',
-      mode: process.env.AGENTOS_FORCE_MOCK === 'true' ? 'mock' : 'real', createdAt: now, updatedAt: now,
+      mode: this.isMockRuntime() ? 'mock' : 'real', createdAt: now, updatedAt: now,
     };
     this.store.createExecution(execution);
     this.artifactCollector?.start(this.artifactContext(execution, input.workspaceRoot));
@@ -384,6 +392,7 @@ export class ConversationService {
       ...this.createEvidenceCallbacks(run.id, execution, agent, input.workspaceRoot, input.onRuntimeEvent),
       onRuntimeEvent: event => this.recordRuntimeEvent(run.id, execution, agent, event, input.onRuntimeEvent, input.workspaceRoot),
       onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent, agent, { runId: run.id, finalizeRun: true }),
+      forceMock: this.forceMock,
     });
     const runResult = await runner.run();
     const completedAt = new Date().toISOString();
@@ -458,12 +467,12 @@ export class ConversationService {
     if (!leader) throw new Error('Group leader is unavailable');
     const intent = input.intent ?? 'execute';
     const runtimePolicy = resolveRuntimePolicy(intent, leader);
-    if (intent !== 'execute') assertRuntimePolicySupported(runtimePolicy, process.env.AGENTOS_FORCE_MOCK === 'true');
+    if (intent !== 'execute') assertRuntimePolicySupported(runtimePolicy, this.isMockRuntime());
     const isolatedMode = process.env.AGENTOS_WORKTREE_MODE === 'isolated';
     if (isolatedMode) {
       if (!this.worktreeManager || !this.worktreeArtifactService) throw new Error('parallel_isolated requires worktree and artifact services');
       await this.worktreeManager.preflight(input.workspaceRoot);
-      assertRuntimePolicySupported(resolveRuntimePolicy('review', leader), process.env.AGENTOS_FORCE_MOCK === 'true');
+      assertRuntimePolicySupported(resolveRuntimePolicy('review', leader), this.isMockRuntime());
     }
     const dispatchDecision = resolveDispatchDecision(conversation, members, input.mentionedAgentIds ?? []);
     if (dispatchDecision.action === 'need_user') throw new Error(dispatchDecision.question);
@@ -692,7 +701,7 @@ export class ConversationService {
     const execution: AgentExecution = {
       id: input.executionId ?? randomUUID(), runId: input.runId, conversationId: input.conversationId, workspaceId: input.workspaceId,
       sourceMessageId: input.sourceMessage.id, agentId: input.agent.id, status: 'queued',
-      mode: process.env.AGENTOS_FORCE_MOCK === 'true' ? 'mock' : 'real', createdAt: now, updatedAt: now,
+      mode: this.isMockRuntime() ? 'mock' : 'real', createdAt: now, updatedAt: now,
     };
     this.store.createExecution(execution);
     this.artifactCollector?.start(this.artifactContext(execution, executionWorkspaceRoot));
@@ -707,6 +716,7 @@ export class ConversationService {
       ...this.createEvidenceCallbacks(input.runId, execution, input.agent, executionWorkspaceRoot, input.onRuntimeEvent),
       onRuntimeEvent: event => this.recordRuntimeEvent(input.runId, execution, input.agent, event, input.onRuntimeEvent, executionWorkspaceRoot),
       onEvent: event => this.recordExecutionEvent(execution, event, input.onExecutionEvent, input.agent, { runId: input.runId, finalizeRun: input.finalizeRun }),
+      forceMock: this.forceMock,
     }).run();
     if (input.worktreeLeaseId && this.worktreeArtifactService) {
       try {

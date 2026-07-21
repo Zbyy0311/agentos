@@ -43,6 +43,7 @@ export interface ConversationAgentRunnerOptions {
   onInvocationCompleted?: (observation: Required<Pick<CliInvocationObservation, 'invocationId' | 'cliKind' | 'commandLabel' | 'startedAt' | 'completedAt' | 'exitCode' | 'durationMs'>> & Pick<CliInvocationObservation, 'model' | 'thinkingEffort'>) => void;
   onFileChanges?: (changes: Array<Omit<RunFileChange, 'runId'>>) => void;
   onRuntimeEvent?: (event: NormalizedCliEvent) => void;
+  forceMock?: boolean;
 }
 
 export class ConversationAgentRunner {
@@ -68,6 +69,7 @@ export class ConversationAgentRunner {
       onFileChanges: this.options.onFileChanges,
       onRuntimeEvent: this.options.onRuntimeEvent,
       persistWorkspaceLog: this.options.runtimePolicy?.workspaceWrite !== false,
+      forceMock: this.options.forceMock,
       onChunk: (content) => {
         if (!content) return;
         streamedContent += content;

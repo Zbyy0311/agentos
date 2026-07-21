@@ -206,11 +206,12 @@ export class WorkspaceRepository {
           ? parseJson<string[]>(row.provider_config_args_template_json ?? row.agent_cli_args_json!, [])
           : parseJson<string[]>(row.agent_cli_args_json!, []);
         const projectedModel = hasProviderConfig
-          ? (row.provider_config_model || row.agent_model || undefined)
-          : (row.agent_model || undefined);
+          ? (row.provider_config_model ?? undefined)
+          : (row.agent_model ?? undefined);
         const agent = {
           id: row.agent_id,
           name: row.agent_name!,
+          ...(row.provider_config_id ? { providerConfigId: row.provider_config_id } : {}),
           provider: projectedProvider as Workspace['agents'][number]['provider'],
           role: row.agent_role as Workspace['agents'][number]['role'],
           enabled: row.agent_enabled === 1,

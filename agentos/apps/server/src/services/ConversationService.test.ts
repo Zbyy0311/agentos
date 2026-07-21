@@ -214,7 +214,7 @@ test('does not return success when critical group-run event persistence fails', 
     ]);
 
     await assert.rejects(
-      new ConversationService(store, createFailingEventBus()).sendGroupMessage({
+      new ConversationService(store, createFailingEventBus(), undefined, undefined, undefined, { forceMock: true }).sendGroupMessage({
         workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'event-failure-group', content: 'event failure',
       }),
       error => error instanceof Error && error.message === '关键事件持久化失败',
@@ -248,7 +248,7 @@ test('marks the direct run failed and persists a failure message when memory usa
     store.createMemoryUsage = () => { throw new Error('memory usage storage unavailable'); };
 
     await assert.rejects(
-      new ConversationService(store).sendDirectMessage({
+      new ConversationService(store, undefined, undefined, undefined, undefined, { forceMock: true }).sendDirectMessage({
         workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'memory-failure-direct', agentId: 'codex', content: '触发记忆写入失败',
       }),
       /记忆使用记录持久化失败/,
