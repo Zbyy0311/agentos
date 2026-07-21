@@ -1,9 +1,9 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
-> **Milestone:** M2  
-> **Status:** PLANNED — Ready for implementation  
-> **Date:** 2026-07-21  
-> **Repository:** `Zbyy0311/agentos`  
+> **Milestone:** M2
+> **Status:** PLANNED — Ready for implementation
+> **Date:** 2026-07-21
+> **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
 > - `docs/implementation/schema-inventory.md`
 > - `docs/implementation/domain-gap-analysis.md`
@@ -204,6 +204,6 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 | No code written yet | ✅ (planning only) |
 
 ### Next Step
-M2.1 is VERIFIED on `runtime/m2-1-migration-foundation` (implementation `a804005f`).  
-M2.2 is VERIFIED on `runtime/m2-2-identity-version-repository` (implementation `bc9ff13d`).  
+M2.1 is VERIFIED on `runtime/m2-1-migration-foundation` (implementation `a804005f`).
+M2.2 is VERIFIED on `runtime/m2-2-identity-version-repository` (implementation `bc9ff13d`).
 Next: M2.2 PR review and merge, then M2.3 (Workspace, Agent Profile, Provider Configuration).
