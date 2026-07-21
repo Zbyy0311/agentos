@@ -204,5 +204,6 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 | No code written yet | ✅ (planning only) |
 
 ### Next Step
-M2.1 is VERIFIED on branch `runtime/m2-1-migration-foundation` (implementation commit `a804005f`).  
-M2.2 proceeds with Canonical Identity, Version and Repository.
+M2.1 is VERIFIED on `runtime/m2-1-migration-foundation` (implementation `a804005f`).  
+M2.2 is VERIFIED on `runtime/m2-2-identity-version-repository` (implementation `bc9ff13d`).  
+Next: M2.2 PR review and merge, then M2.3 (Workspace, Agent Profile, Provider Configuration).
