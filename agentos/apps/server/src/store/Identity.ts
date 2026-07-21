@@ -31,7 +31,7 @@ export const ENTITY_ID_PREFIXES = {
 
 export type EntityIdKind = keyof typeof ENTITY_ID_PREFIXES;
 
-// Crockford Base32 alphabet: avoids I, L, O, U for readability
+// Crockford Base32 alphabet — excludes I, L, O, U
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
 function encodeCrockford(bytes: Uint8Array): string {
@@ -52,127 +52,93 @@ function encodeCrockford(bytes: Uint8Array): string {
   return result;
 }
 
-// Timestamp in ms since 2024-01-01T00:00:00Z (enough entropy for the project lifetime)
 const ULID_EPOCH = Date.UTC(2024, 0, 1);
 const ENCODED_LEN = 26;
 const TIMESTAMP_BYTES = 6;
 const RANDOM_BYTES = 10;
 
-interface UlidComponents {
-  timestamp: number;
-  randomness: Uint8Array;
-}
-
-function encodeUlid(components: UlidComponents): string {
+function encodeUlid(timestamp: number, randomness: Uint8Array): string {
   const bytes = new Uint8Array(TIMESTAMP_BYTES + RANDOM_BYTES);
-
-  // Big-endian 48-bit timestamp
-  let ts = components.timestamp;
+  let ts = timestamp;
   for (let i = TIMESTAMP_BYTES - 1; i >= 0; i--) {
     bytes[i] = ts & 0xff;
     ts = Math.floor(ts / 256);
   }
-
-  // Random component
   for (let i = 0; i < RANDOM_BYTES; i++) {
-    bytes[TIMESTAMP_BYTES + i] = components.randomness[i];
+    bytes[TIMESTAMP_BYTES + i] = randomness[i];
   }
-
   return encodeCrockford(bytes);
 }
 
-/**
- * Clock source for timestamp generation. Returns ms since ULID_EPOCH.
- */
 export type ClockFn = () => number;
-
-/**
- * Random source for ULID randomness. Returns a Uint8Array of 10 bytes.
- */
 export type RandomSourceFn = () => Uint8Array;
 
-function defaultClock(): number {
-  return Date.now() - ULID_EPOCH;
-}
-
-function defaultRandom(): Uint8Array {
-  return randomBytes(RANDOM_BYTES);
-}
-
-let clock: ClockFn = defaultClock;
-let randomSource: RandomSourceFn = defaultRandom;
+const defaultClock: ClockFn = () => Date.now() - ULID_EPOCH;
+const defaultRandom: RandomSourceFn = () => randomBytes(RANDOM_BYTES);
 
 /**
- * Override clock and random sources for testing.
- * Returns a restore function.
+ * Options for testing — normally not used in production.
  */
-export function injectIdSources(
-  clockFn: ClockFn,
-  randomFn: RandomSourceFn,
-): () => void {
-  const prevClock = clock;
-  const prevRandom = randomSource;
-  clock = clockFn;
-  randomSource = randomFn;
-  return () => {
-    clock = prevClock;
-    randomSource = prevRandom;
-  };
+export interface IdGeneratorOptions {
+  clock?: ClockFn;
+  randomSource?: RandomSourceFn;
 }
 
-let lastTimestamp = 0;
-let lastRandomness: Uint8Array | null = null;
+export class EntityIdGenerator {
+  private readonly clock: ClockFn;
+  private readonly randomSource: RandomSourceFn;
+  private lastTimestamp = 0;
+  private lastRandomness: Uint8Array | null = null;
 
-/**
- * Create a canonical entity ID: `<prefix>_<ulid>`
- */
-export function createEntityId(kind: EntityIdKind): string {
-  const prefix = ENTITY_ID_PREFIXES[kind];
-  let ts = clock();
-
-  // Monotonic strategy:
-  // - ts > lastTimestamp: fresh ms, generate new random bytes.
-  // - ts === lastTimestamp or ts < lastTimestamp: increment the previous
-  //   random bytes as a big-endian integer.
-  // - We always encode with the larger of the two timestamps (pinning to
-  //   last seen when the clock regresses), so that lexicographic ordering
-  //   matches the order of creation.
-  let effectiveTs = ts;
-  let rand: Uint8Array;
-
-  if (ts > lastTimestamp || lastRandomness === null) {
-    effectiveTs = ts;
-    rand = randomSource();
-    lastRandomness = new Uint8Array(rand);
-    lastTimestamp = ts;
-  } else {
-    // Same ms or clock regression: use the previous randomness + 1
-    effectiveTs = lastTimestamp;
-    const bytes = new Uint8Array(lastRandomness);
-    let carry = 1;
-    for (let i = bytes.length - 1; i >= 0 && carry > 0; i--) {
-      const sum = bytes[i] + carry;
-      bytes[i] = sum & 0xff;
-      carry = sum >> 8;
-    }
-    if (carry > 0) {
-      throw new Error('ULID randomness overflow: too many IDs in the same millisecond');
-    }
-    rand = bytes;
-    lastRandomness = bytes;
-    // lastTimestamp stays at the value already recorded
+  constructor(options: IdGeneratorOptions = {}) {
+    this.clock = options.clock ?? defaultClock;
+    this.randomSource = options.randomSource ?? defaultRandom;
   }
 
-  const ulid = encodeUlid({ timestamp: effectiveTs, randomness: rand });
-  return `${prefix}_${ulid}`;
+  createEntityId(kind: EntityIdKind): string {
+    const prefix = ENTITY_ID_PREFIXES[kind];
+    const ts = this.clock();
+
+    let effectiveTs: number;
+    let rand: Uint8Array;
+
+    if (ts > this.lastTimestamp || this.lastRandomness === null) {
+      effectiveTs = ts;
+      rand = this.randomSource();
+      this.lastRandomness = new Uint8Array(rand);
+      this.lastTimestamp = ts;
+    } else {
+      // Same ms or clock regression: increment previous randomness
+      effectiveTs = this.lastTimestamp;
+      const bytes = new Uint8Array(this.lastRandomness);
+      let carry = 1;
+      for (let i = bytes.length - 1; i >= 0 && carry > 0; i--) {
+        const sum = bytes[i] + carry;
+        bytes[i] = sum & 0xff;
+        carry = sum >> 8;
+      }
+      if (carry > 0) {
+        throw new Error('ULID randomness overflow: too many IDs in the same millisecond');
+      }
+      rand = bytes;
+      this.lastRandomness = bytes;
+    }
+
+    return `${prefix}_${encodeUlid(effectiveTs, rand)}`;
+  }
+}
+
+// Production singleton
+const defaultGenerator = new EntityIdGenerator();
+
+export function createEntityId(kind: EntityIdKind): string {
+  return defaultGenerator.createEntityId(kind);
 }
 
 export function isValidEntityId(id: string, kind?: EntityIdKind): boolean {
   const prefix = kind ? ENTITY_ID_PREFIXES[kind] : null;
   const expectedPrefix = prefix ? `${prefix}_` : null;
-
   if (expectedPrefix && !id.startsWith(expectedPrefix)) return false;
-
   const ulid = expectedPrefix ? id.slice(expectedPrefix.length) : id;
   if (ulid.length !== ENCODED_LEN) return false;
   return /^[0-9A-HJKM-NP-TV-Z]{26}$/.test(ulid);
