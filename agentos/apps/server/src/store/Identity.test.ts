@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   createEntityId,
+  decodeUlidTimestamp,
   isValidEntityId,
   EntityIdGenerator,
   ENTITY_ID_PREFIXES,
@@ -64,6 +65,39 @@ describe('Identity — canonical entity IDs', () => {
   });
 
   // ----  per-generator deterministic tests ----
+
+  it('ULID timestamp is encoded as first 10 chars, decodes correctly', () => {
+    const testTs = 1234567890; // well within 48-bit range
+    const g = new EntityIdGenerator({
+      clock: () => testTs,
+      randomSource: () => new Uint8Array(10).fill(0),
+    });
+    const id = g.createEntityId('task');
+    const body = id.slice('task_'.length);
+    assert.equal(decodeUlidTimestamp(body), testTs);
+  });
+
+  it('ULID first character within 0–7', () => {
+    // With timestamp 0, the first char encodes the high 5 bits of the timestamp.
+    // Since timestamp is 0, the first 10 chars should all be '0'.
+    const g = new EntityIdGenerator({
+      clock: () => 0,
+      randomSource: () => new Uint8Array(10).fill(0),
+    });
+    const id = g.createEntityId('run');
+    const body = id.slice('run_'.length);
+    assert.equal(body[0], '0');
+    assert.equal(body.slice(0, 10), '0000000000');
+  });
+
+  it('ULID matches known reference (timestamp=0, random=0)', () => {
+    const g = new EntityIdGenerator({
+      clock: () => 0,
+      randomSource: () => new Uint8Array(10).fill(0),
+    });
+    const id = g.createEntityId('run');
+    assert.equal(id, 'run_00000000000000000000000000');
+  });
 
   it('time increase: same random, larger timestamp → strictly larger ID', () => {
     const g = new EntityIdGenerator({

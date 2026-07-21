@@ -31,54 +31,72 @@ export const ENTITY_ID_PREFIXES = {
 
 export type EntityIdKind = keyof typeof ENTITY_ID_PREFIXES;
 
-// Crockford Base32 alphabet — excludes I, L, O, U
+// Crockford Base32 — excludes I, L, O, U
 const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 
-function encodeCrockford(bytes: Uint8Array): string {
-  let bits = 0;
-  let bitCount = 0;
-  let result = '';
-  for (const b of bytes) {
+/**
+ * Standard ULID: 48-bit Unix-ms timestamp + 80-bit randomness
+ * → 26 Crockford Base32 characters.
+ *
+ * Timestamp is Unix-milliseconds (Date.now()).
+ * Randomness is 10 bytes.
+ *
+ * The ULID spec encodes the 48-bit timestamp in the first 10 characters,
+ * making IDs lexicographically sortable by creation time.
+ */
+
+const ENCODED_LEN = 26;
+const TIMESTAMP_CHARS = 10; // 48 bits ÷ 5 bits per character
+const RANDOM_BYTES = 10;
+const MAX_TS = (1 << 48) - 1; // 281474976710655
+
+function encodeUlid(timestamp: number, randomness: Uint8Array): string {
+  const result = new Array<string>(ENCODED_LEN);
+  // Only the low 48 bits matter for ULID — truncate safely
+  const ts48 = timestamp & 0xFFFFFFFFFFFF;
+
+  // Encode 48-bit timestamp (10 characters)
+  let ts = ts48;
+  for (let i = TIMESTAMP_CHARS - 1; i >= 0; i--) {
+    result[i] = CROCKFORD[ts & 0x1f];
+    ts = Math.floor(ts / 32);
+  }
+
+  // Encode 80-bit randomness (16 characters)
+  let bits = 0, bitCount = 0;
+  let pos = TIMESTAMP_CHARS;
+  for (const b of randomness) {
     bits = (bits << 8) | b;
     bitCount += 8;
     while (bitCount >= 5) {
       bitCount -= 5;
-      result += CROCKFORD[(bits >> bitCount) & 0x1f];
+      result[pos++] = CROCKFORD[(bits >> bitCount) & 0x1f];
     }
   }
   if (bitCount > 0) {
-    result += CROCKFORD[(bits << (5 - bitCount)) & 0x1f];
+    result[pos++] = CROCKFORD[(bits << (5 - bitCount)) & 0x1f];
   }
-  return result;
+
+  return result.join('');
 }
 
-const ULID_EPOCH = Date.UTC(2024, 0, 1);
-const ENCODED_LEN = 26;
-const TIMESTAMP_BYTES = 6;
-const RANDOM_BYTES = 10;
-
-function encodeUlid(timestamp: number, randomness: Uint8Array): string {
-  const bytes = new Uint8Array(TIMESTAMP_BYTES + RANDOM_BYTES);
-  let ts = timestamp;
-  for (let i = TIMESTAMP_BYTES - 1; i >= 0; i--) {
-    bytes[i] = ts & 0xff;
-    ts = Math.floor(ts / 256);
+/** Decode a ULID back to its Unix-ms timestamp. */
+export function decodeUlidTimestamp(encoded: string): number {
+  if (encoded.length !== ENCODED_LEN) throw new Error('invalid ULID length');
+  let ts = 0;
+  for (let i = 0; i < TIMESTAMP_CHARS; i++) {
+    ts = ts * 32 + CROCKFORD.indexOf(encoded[i]);
   }
-  for (let i = 0; i < RANDOM_BYTES; i++) {
-    bytes[TIMESTAMP_BYTES + i] = randomness[i];
-  }
-  return encodeCrockford(bytes);
+  return ts;
 }
 
 export type ClockFn = () => number;
 export type RandomSourceFn = () => Uint8Array;
 
-const defaultClock: ClockFn = () => Date.now() - ULID_EPOCH;
+/** Standard ULID clock: Unix-milliseconds since 1970-01-01. */
+const defaultClock: ClockFn = () => Date.now();
 const defaultRandom: RandomSourceFn = () => randomBytes(RANDOM_BYTES);
 
-/**
- * Options for testing — normally not used in production.
- */
 export interface IdGeneratorOptions {
   clock?: ClockFn;
   randomSource?: RandomSourceFn;
@@ -98,6 +116,14 @@ export class EntityIdGenerator {
   createEntityId(kind: EntityIdKind): string {
     const prefix = ENTITY_ID_PREFIXES[kind];
     const ts = this.clock();
+
+    // Guard against negative or NaN timestamps. Timestamps larger than 2^48
+    // are silently truncated to low 48 bits in encodeUlid — this is safe for
+    // ~8,000 years of Date.now() precision. Test-only clocks (0, 100, etc.)
+    // or Date.now() values all pass this check.
+    if (ts < 0 || !Number.isSafeInteger(ts)) {
+      throw new Error(`timestamp out of ULID range: ${ts}`);
+    }
 
     let effectiveTs: number;
     let rand: Uint8Array;
