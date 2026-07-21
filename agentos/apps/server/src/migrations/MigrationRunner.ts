@@ -128,8 +128,8 @@ export class MigrationRunner {
   }
 
   private applyOne(migration: Migration): void {
-    // Destructive migrations require backup before the transaction begins.
-    // Backup failure is a hard stop — the migration is NOT executed.
+    // Destructive migrations: acquire the migration lock FIRST, then backup
+    // so the backup matches the locked database state.
     if (migration.destructive) {
       const dbPath = this.resolveDatabasePath();
       if (!this.backupProvider) {
@@ -146,16 +146,30 @@ export class MigrationRunner {
           migration.id,
         );
       }
-      try {
-        this.backupProvider.backup(dbPath);
-      } catch (err) {
-        throw new MigrationError(
-          'MIGRATION_FAILED',
-          `Backup failed before destructive migration ${migration.id} (${migration.name}).`,
-          migration.id,
-          err instanceof Error ? err : undefined,
-        );
-      }
+      // Acquire lock, then backup, then apply.
+      this.execImmediate(() => {
+        try {
+          this.backupProvider!.backup(dbPath);
+        } catch (err) {
+          throw new MigrationError(
+            'MIGRATION_FAILED',
+            `Backup failed before destructive migration ${migration.id} (${migration.name}).`,
+            migration.id,
+            err instanceof Error ? err : undefined,
+          );
+        }
+        const start = Date.now();
+        migration.apply({ db: this.db });
+        const elapsed = Date.now() - start;
+        this.assertIntegrity(migration.id);
+
+        const now = new Date().toISOString();
+        this.db.prepare(`
+          INSERT INTO ${META_TABLE} (migration_id, name, checksum, applied_at, execution_ms, app_version)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run(migration.id, migration.name, migration.checksum, now, elapsed, this.appVersion ?? null);
+      });
+      return;
     }
 
     this.execImmediate(() => {

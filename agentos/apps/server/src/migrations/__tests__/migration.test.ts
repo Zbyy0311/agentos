@@ -309,13 +309,19 @@ describe('Backup verification', () => {
 // ---- Real DB ----
 describe('Real DB copy verification', () => {
   it('legacy adoption on copy of production database', () => {
-    // The production database lives at the primary project path
-    const prodPath = '/e/workspace/Multi-Agent/agentos/.agentos/agentos.sqlite';
+    // Real DB path prioritized: env override → primary project location.
+    const envPath = process.env.AGENTOS_REAL_DB_PATH?.trim();
+    const prodPath = envPath || '/e/workspace/Multi-Agent/agentos/.agentos/agentos.sqlite';
     const src = existsSync(prodPath) ? prodPath : null;
+
+    // This test is a verification gate: when a production DB exists, it MUST pass.
+    // Set AGENTOS_REAL_DB_PATH=/nonexistent to explicitly opt out in CI.
     if (!src) {
-      // No production database available — skip with informational message.
-      // This is valid for fresh worktree checkouts where no agent has ever run.
-      console.log('[Real DB] No production database found — skipping copy verification.');
+      if (envPath) {
+        assert.fail(`AGENTOS_REAL_DB_PATH is set to "${envPath}" but no file exists there`);
+      }
+      // No explicit env and no file found at default path — skip with note.
+      console.log(`[Real DB] No production database at ${prodPath} — skipping copy verification.`);
       return;
     }
 
