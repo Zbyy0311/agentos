@@ -89,43 +89,52 @@ export class WorkspaceRepository {
   }
 
   insert(workspace: Workspace): Workspace {
-    inTransaction(this.db, () => {
-      const canonicalPath = toCanonicalRootPath(workspace.rootPath);
-      this.db.prepare(`
-        INSERT INTO workspaces (id, name, root_path, canonical_root_path, git_enabled, memory_enabled,
-          last_opened_at, created_at, updated_at, version)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
-      `).run(
-        workspace.id, workspace.name, workspace.rootPath, canonicalPath,
-        workspace.gitEnabled ? 1 : 0, workspace.memoryEnabled ? 1 : 0,
-        workspace.lastOpenedAt, workspace.createdAt, workspace.updatedAt,
-      );
-    });
+    return inTransaction(this.db, () => this.insertWithinTransaction(workspace));
+  }
+
+  /** Insert only; the caller must already own the surrounding transaction. */
+  insertWithinTransaction(workspace: Workspace): Workspace {
+    const canonicalPath = toCanonicalRootPath(workspace.rootPath);
+    this.db.prepare(`
+      INSERT INTO workspaces (id, name, root_path, canonical_root_path, git_enabled, memory_enabled,
+        last_opened_at, created_at, updated_at, version)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+    `).run(
+      workspace.id, workspace.name, workspace.rootPath, canonicalPath,
+      workspace.gitEnabled ? 1 : 0, workspace.memoryEnabled ? 1 : 0,
+      workspace.lastOpenedAt, workspace.createdAt, workspace.updatedAt,
+    );
     return workspace;
   }
 
   update(workspace: Workspace): Workspace {
-    const canonicalPath = toCanonicalRootPath(workspace.rootPath);
     inTransaction(this.db, () => {
-      const row = this.db.prepare('SELECT version FROM workspaces WHERE id = ?')
-        .get(workspace.id) as { version: number } | undefined;
-      if (!row) throw new Error('Workspace not found');
+      this.updateWithinTransaction(workspace);
+    });
+    return workspace;
+  }
 
-      const result = this.db.prepare(`
-        UPDATE workspaces
-        SET name = ?, root_path = ?, canonical_root_path = ?, git_enabled = ?, memory_enabled = ?,
-          last_opened_at = ?, updated_at = ?, version = version + 1
-        WHERE id = ? AND version = ?
-      `).run(
-        workspace.name, workspace.rootPath, canonicalPath,
-        workspace.gitEnabled ? 1 : 0, workspace.memoryEnabled ? 1 : 0,
-        workspace.lastOpenedAt, workspace.updatedAt,
-        workspace.id, row.version,
-      );
+  /** Update only; the caller must already own the surrounding transaction. */
+  updateWithinTransaction(workspace: Workspace): Workspace {
+    const canonicalPath = toCanonicalRootPath(workspace.rootPath);
+    const row = this.db.prepare('SELECT version FROM workspaces WHERE id = ?')
+      .get(workspace.id) as { version: number } | undefined;
+    if (!row) throw new Error('Workspace not found');
 
-      assertVersionedMutation(result as { changes: number }, {
-        entityType: 'workspaces', entityId: workspace.id, expectedVersion: row.version,
-      });
+    const result = this.db.prepare(`
+      UPDATE workspaces
+      SET name = ?, root_path = ?, canonical_root_path = ?, git_enabled = ?, memory_enabled = ?,
+        last_opened_at = ?, updated_at = ?, version = version + 1
+      WHERE id = ? AND version = ?
+    `).run(
+      workspace.name, workspace.rootPath, canonicalPath,
+      workspace.gitEnabled ? 1 : 0, workspace.memoryEnabled ? 1 : 0,
+      workspace.lastOpenedAt, workspace.updatedAt,
+      workspace.id, row.version,
+    );
+
+    assertVersionedMutation(result as { changes: number }, {
+      entityType: 'workspaces', entityId: workspace.id, expectedVersion: row.version,
     });
     return workspace;
   }

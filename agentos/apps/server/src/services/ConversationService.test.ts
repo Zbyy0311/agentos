@@ -199,7 +199,10 @@ test('does not return success when critical direct-run event persistence fails',
 });
 
 test('does not return success when critical group-run event persistence fails', async () => {
-  const root = createProjectRoot();
+  const root = createProjectRoot({
+    codex: { cliCommand: process.execPath, cliArgs: ['-e', "console.log('stable group leader')"] },
+    kimi: { cliCommand: process.execPath, cliArgs: ['-e', "console.log('stable group worker')"] },
+  });
   const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
   let store: SqliteStore | undefined;
   try {
@@ -229,7 +232,9 @@ test('does not return success when critical group-run event persistence fails', 
 });
 
 test('marks the direct run failed and persists a failure message when memory usage persistence fails', async () => {
-  const root = createProjectRoot();
+  const root = createProjectRoot({
+    codex: { cliCommand: process.execPath, cliArgs: ['-e', "console.log('stable memory run')"] },
+  });
   const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
   let store: SqliteStore | undefined;
   try {
@@ -521,8 +526,6 @@ test('parallel_isolated gives write-capable workers execution-specific worktrees
       { conversationId: 'isolated-group', agentId: 'codex', roleTitle: '群主', isLeader: true, createdAt: '2026-07-19T00:00:00.000Z' },
       { conversationId: 'isolated-group', agentId: 'kimi', roleTitle: '执行工程师', isLeader: false, createdAt: '2026-07-19T00:00:00.000Z' },
     ]);
-    execFileSync('git', ['-C', root, 'add', '-A']);
-    execFileSync('git', ['-C', root, 'commit', '-qm', 'fixture config']);
     const manager = new WorktreeManager(worktreeRoot);
     const service = new ConversationService(store, undefined, new RuntimeArtifactService(store, root), undefined, manager);
     const result = await service.sendGroupMessage({ workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'isolated-group', content: '隔离执行测试' });

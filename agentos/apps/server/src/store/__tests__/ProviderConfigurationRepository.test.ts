@@ -105,7 +105,7 @@ test('update config fields', () => {
   const repo = new ProviderConfigurationRepository(db as any);
   const config = makeConfig();
   repo.insert(config);
-  const updated = repo.update({ ...config, name: 'Renamed', outputMode: 'structured', enabled: false, updatedAt: new Date().toISOString() });
+  const updated = repo.update({ ...config, name: 'Renamed', outputMode: 'structured', enabled: false, updatedAt: new Date().toISOString() }, config.version);
   assert.equal(updated.name, 'Renamed');
   assert.equal(updated.outputMode, 'structured');
   assert.equal(updated.enabled, false);
@@ -126,10 +126,34 @@ test('archive sets archivedAt', () => {
   const repo = new ProviderConfigurationRepository(db as any);
   const config = makeConfig();
   repo.insert(config);
-  repo.archive(config.id);
+  repo.archive(config.id, config.version);
   const found = repo.findById(config.id);
   assert.ok(found);
   assert.ok(found!.archivedAt);
+});
+
+test('requires expectedVersion for update and archive', () => {
+  const db = createDb();
+  const repo = new ProviderConfigurationRepository(db as any);
+  const config = makeConfig();
+  repo.insert(config);
+  const updateWithoutVersion = (value: ProviderConfiguration, expectedVersion?: number): ProviderConfiguration =>
+    (repo.update as unknown as (config: ProviderConfiguration, version: number) => ProviderConfiguration)(value, expectedVersion as number);
+  const archiveWithoutVersion = (id: string, expectedVersion?: number): void =>
+    (repo.archive as unknown as (providerId: string, version: number) => void)(id, expectedVersion as number);
+  assert.throws(() => updateWithoutVersion({ ...config, name: 'must fail' }), /expectedVersion is required/);
+  assert.throws(() => archiveWithoutVersion(config.id), /expectedVersion is required/);
+  assert.equal(repo.findById(config.id)?.version, 1);
+});
+
+test('archive rejects a stale expectedVersion without mutating the configuration', () => {
+  const db = createDb();
+  const repo = new ProviderConfigurationRepository(db as any);
+  const config = makeConfig();
+  repo.insert(config);
+  repo.update({ ...config, name: 'newer', updatedAt: new Date().toISOString() }, config.version);
+  assert.throws(() => repo.archive(config.id, config.version), /version conflict/);
+  assert.equal(repo.findById(config.id)?.archivedAt, undefined);
 });
 
 test('findByWorkspace excludes archived configs', () => {
@@ -137,6 +161,6 @@ test('findByWorkspace excludes archived configs', () => {
   const repo = new ProviderConfigurationRepository(db as any);
   const c1 = makeConfig({ id: 'provider_A', workspaceId: 'ws-1' });
   repo.insert(c1);
-  repo.archive(c1.id);
+  repo.archive(c1.id, c1.version);
   assert.equal(repo.findByWorkspace('ws-1').length, 0);
 });

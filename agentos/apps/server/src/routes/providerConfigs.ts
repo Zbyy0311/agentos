@@ -86,7 +86,9 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       if (!existing || existing.workspaceId !== workspace.id) {
         return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
       }
-      const expectedVersion = typeof req.body.expectedVersion === 'number' ? req.body.expectedVersion : undefined;
+      const expectedVersion = typeof req.body.expectedVersion === 'number' && Number.isInteger(req.body.expectedVersion)
+        ? req.body.expectedVersion
+        : undefined;
       if (expectedVersion === undefined) {
         return res.status(400).json({ error: 'expectedVersion is required for updates', code: 'VALIDATION_ERROR' });
       }
@@ -136,18 +138,30 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       if (!existing || existing.workspaceId !== workspace.id) {
         return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
       }
-      // Check if any active agent profile references this config
+      const expectedVersion = typeof req.body.expectedVersion === 'number' && Number.isInteger(req.body.expectedVersion)
+        ? req.body.expectedVersion
+        : undefined;
+      if (expectedVersion === undefined) {
+        return res.status(400).json({ error: 'expectedVersion is required for archive', code: 'VALIDATION_ERROR' });
+      }
+      if (existing.version !== expectedVersion) {
+        return res.status(409).json({
+          error: `Version conflict: expected ${expectedVersion}, current ${existing.version}`,
+          code: 'VERSION_CONFLICT',
+        });
+      }
+      // Check if any enabled agent profile references this config
       const db = store.getDatabase();
       const activeRef = db.prepare(`
         SELECT 1 FROM agent_profiles WHERE provider_config_id = ? AND enabled = 1 LIMIT 1
       `).get(existing.id) as undefined | Record<string, unknown>;
       if (activeRef) {
         return res.status(409).json({
-          error: 'Provider configuration is referenced by an active run and cannot be deleted',
+          error: 'Provider configuration is referenced by an enabled agent and cannot be archived',
           code: 'PROVIDER_CONFIG_IN_USE',
         });
       }
-      repo.archive(existing.id);
+      repo.archive(existing.id, expectedVersion);
       res.json({ ok: true });
     } catch (error) {
       res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });

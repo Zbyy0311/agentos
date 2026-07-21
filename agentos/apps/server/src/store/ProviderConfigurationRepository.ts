@@ -158,13 +158,12 @@ export class ProviderConfigurationRepository {
     return config;
   }
 
-  update(config: ProviderConfiguration, expectedVersion?: number): ProviderConfiguration {
+  update(config: ProviderConfiguration, expectedVersion: number): ProviderConfiguration {
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      throw new Error('expectedVersion is required');
+    }
     inTransaction(this.db, () => {
-      const row = expectedVersion !== undefined
-        ? { version: expectedVersion }
-        : this.db.prepare('SELECT version FROM provider_configurations WHERE id = ?')
-            .get(config.id) as { version: number } | undefined;
-      if (!row) throw new Error('Provider configuration not found');
+      const row = { version: expectedVersion };
 
       const result = this.db.prepare(`
         UPDATE provider_configurations SET
@@ -193,7 +192,10 @@ export class ProviderConfigurationRepository {
     return config;
   }
 
-  archive(id: string, expectedVersion?: number): void {
+  archive(id: string, expectedVersion: number): void {
+    if (!Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      throw new Error('expectedVersion is required');
+    }
     const config = this.findById(id);
     if (!config) throw new Error('Provider configuration not found');
     config.archivedAt = new Date().toISOString();

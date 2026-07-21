@@ -52,6 +52,8 @@ import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { inTransaction } from './Transaction.js';
 import { assertVersionedMutation } from './Repository.js';
+import { createEntityId } from './Identity.js';
+import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from './ProviderConfigurationRepository.js';
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
 
@@ -88,6 +90,11 @@ interface AgentProfileRow {
   thinking_effort: string | null;
   created_at: string;
   updated_at: string;
+  provider_config_id: string | null;
+  provider_config_provider_type: string | null;
+  provider_config_executable: string | null;
+  provider_config_args_template_json: string | null;
+  provider_config_model: string | null;
 }
 
 interface ConversationRow {
@@ -371,17 +378,16 @@ export class SqliteStore implements Store {
     mkdirSync(dataDir, { recursive: true });
     this.database = new DatabaseSync(join(dataDir, 'agentos.sqlite'));
     this.workspaceRepo = new WorkspaceRepository(this.database as any);
-    this.database.exec('PRAGMA foreign_keys = ON');
-    this.runMigrations();
-    // Ensure workspace tombstone table exists (internal, not a versioned migration).
-    this.database.exec(`CREATE TABLE IF NOT EXISTS _workspace_tombstones (
-      workspace_id TEXT PRIMARY KEY, deleted_at TEXT NOT NULL
-    )`);
-    this.migrateAgentEventSequences();
-    this.migrateLegacyExecutionRuns();
-    this.migrateLegacyKimiWorkspaceConfigs();
-    this.migrateLegacyAgentProfiles();
-    this.migrateLegacyWorkspaces();
+    try {
+      this.database.exec('PRAGMA foreign_keys = ON');
+      this.runMigrations();
+      this.migrateAgentEventSequences();
+      this.migrateLegacyExecutionRuns();
+      this.migrateLegacyWorkspaceAggregates();
+    } catch (error) {
+      try { this.database.close(); } catch { /* preserve the migration error */ }
+      throw error;
+    }
   }
 
   loadWorkspaces(): Workspace[] {
@@ -401,15 +407,33 @@ export class SqliteStore implements Store {
 
   saveWorkspaces(workspaces: Workspace[]): void {
     const nextWorkspaces = structuredClone(workspaces);
-    // Sync to SQLite: upsert each workspace into the workspaces table
-    for (const ws of nextWorkspaces) {
-      if (this.workspaceRepo.exists(ws.id)) {
-        this.workspaceRepo.update(ws);
-      } else {
-        this.workspaceRepo.insert(ws);
+    inTransaction(this.database, () => {
+      for (const workspace of nextWorkspaces) {
+        if (this.workspaceRepo.exists(workspace.id)) {
+          this.workspaceRepo.updateWithinTransaction(workspace);
+        } else {
+          this.workspaceRepo.insertWithinTransaction(workspace);
+        }
+        for (const agent of workspace.agents) {
+          const existing = this.database.prepare(`
+            SELECT provider_config_id FROM agent_profiles WHERE workspace_id = ? AND id = ?
+          `).get(workspace.id, agent.id) as { provider_config_id: string | null } | undefined;
+          const providerConfigId = existing?.provider_config_id ?? createEntityId('provider');
+
+          if (!existing?.provider_config_id) {
+            this.insertLegacyProviderConfiguration(workspace, agent, providerConfigId);
+          }
+
+          if (!existing) {
+            this.insertAgentProfile(workspace, agent, providerConfigId);
+          } else if (!existing.provider_config_id) {
+            this.database.prepare(`
+              UPDATE agent_profiles SET provider_config_id = ? WHERE workspace_id = ? AND id = ?
+            `).run(providerConfigId, workspace.id, agent.id);
+          }
+        }
       }
-    }
-    this.migrateLegacyAgentProfiles();
+    });
   }
 
   loadTasks(workspaceId: string): TaskItem[] {
@@ -454,13 +478,19 @@ export class SqliteStore implements Store {
 
   listAgentProfiles(workspaceId: string): AgentProfile[] {
     const rows = this.database.prepare(`
-      SELECT workspace_id, id, name, agent_role, role_title, system_prompt,
-        provider, permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort,
-        provider_config_id, created_at, updated_at
-      FROM agent_profiles
-      WHERE workspace_id = ?
-      ORDER BY name COLLATE NOCASE
-    `).all(workspaceId) as Array<AgentProfileRow & { provider_config_id: string | null }>;
+      SELECT ap.workspace_id, ap.id, ap.name, ap.agent_role, ap.role_title, ap.system_prompt,
+        ap.provider, ap.permissions_json, ap.enabled, ap.cli_command, ap.cli_args_json, ap.model, ap.thinking_effort,
+        ap.provider_config_id, ap.created_at, ap.updated_at,
+        pc.provider_type AS provider_config_provider_type,
+        pc.executable AS provider_config_executable,
+        pc.args_template_json AS provider_config_args_template_json,
+        pc.model AS provider_config_model
+      FROM agent_profiles ap
+      LEFT JOIN provider_configurations pc
+        ON pc.id = ap.provider_config_id AND pc.workspace_id = ap.workspace_id
+      WHERE ap.workspace_id = ?
+      ORDER BY ap.name COLLATE NOCASE
+    `).all(workspaceId) as AgentProfileRow[];
     return rows.map(row => this.toAgentProfile(row, this.latestAgentRuntime(workspaceId, row.id)));
   }
 
@@ -509,11 +539,29 @@ export class SqliteStore implements Store {
         row.version,
       );
 
-      return assertVersionedMutation(result as { changes: number }, {
+      const nextVersion = assertVersionedMutation(result as { changes: number }, {
         entityType: 'agent_profiles',
         entityId: agentId,
         expectedVersion: row.version,
       });
+
+      const binding = this.database.prepare(`
+        SELECT provider_config_id FROM agent_profiles WHERE workspace_id = ? AND id = ?
+      `).get(workspaceId, agentId) as { provider_config_id: string | null } | undefined;
+      if (binding?.provider_config_id) {
+        this.database.prepare(`
+          UPDATE provider_configurations
+          SET provider_type = ?, model = ?, updated_at = ?, version = version + 1
+          WHERE id = ? AND workspace_id = ?
+        `).run(
+          providerConfigurationTypeFromAgentProvider(next.provider),
+          next.model ?? null,
+          next.updatedAt,
+          binding.provider_config_id,
+          workspaceId,
+        );
+      }
+      return nextVersion;
     });
     return this.listAgentProfiles(workspaceId).find(agent => agent.id === agentId) ?? next;
   }
@@ -2391,88 +2439,121 @@ export class SqliteStore implements Store {
     }
   }
 
-  private migrateLegacyAgentProfiles(): void {
-    const insert = this.database.prepare(`
-      INSERT OR IGNORE INTO agent_profiles (
-        workspace_id, id, name, agent_role, provider, role_title, system_prompt,
-        permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `);
-    const updateCliConfiguration = this.database.prepare(`
-      UPDATE agent_profiles
-      SET provider = ?, cli_command = ?, cli_args_json = ?,
-        model = CASE WHEN ? IS NULL THEN model ELSE ? END,
-        thinking_effort = CASE WHEN ? IS NULL THEN thinking_effort ELSE ? END,
-        name = CASE WHEN name = 'OpenCode (Codex fallback)' THEN ? ELSE name END,
-        updated_at = ?
-      WHERE workspace_id = ? AND id = ?
-    `);
-
-    for (const workspace of this.legacy.loadWorkspaces()) {
-      for (const agent of workspace.agents) {
-        insert.run(
-          workspace.id,
-          agent.id,
-          agent.name,
-          agent.role,
-          agent.provider ?? providerFromLegacyRole(agent.role),
-          defaultRoleTitle(agent.role),
-          defaultSystemPrompt(agent.role),
-          JSON.stringify(defaultPermissions(agent.role)),
-          agent.enabled ? 1 : 0,
-        agent.cliCommand,
-          JSON.stringify(agent.cliArgs),
-          agent.model ?? null,
-          agent.thinkingEffort ?? 'auto',
-          workspace.createdAt,
-          workspace.updatedAt,
-        );
-        updateCliConfiguration.run(
-          agent.provider ?? providerFromLegacyRole(agent.role),
-          agent.cliCommand,
-          JSON.stringify(agent.cliArgs),
-          agent.model ?? null,
-          agent.model ?? null,
-          agent.thinkingEffort ?? null,
-          agent.thinkingEffort ?? null,
-          agent.name,
-          workspace.updatedAt,
-          workspace.id,
-          agent.id,
-        );
-      }
-    }
-  }
-
-  private migrateLegacyWorkspaces(): void {
-    const workspaces = this.legacy.loadWorkspaces();
-    for (const ws of workspaces) {
-      if (this.workspaceRepo.exists(ws.id)) continue;
+  private migrateLegacyWorkspaceAggregates(): void {
+    const workspaces = this.loadLegacyWorkspacesForMigration();
+    for (const workspace of workspaces) {
       try {
-        this.workspaceRepo.insert(ws);
-      } catch {
-        // canonical_path conflict with another workspace — skip silently.
-        // This is normal in test fixtures where multiple workspaces share a rootPath.
+        inTransaction(this.database, () => {
+          const tombstone = this.database.prepare(
+            'SELECT 1 FROM _workspace_tombstones WHERE workspace_id = ?',
+          ).get(workspace.id);
+          if (tombstone) return;
+          if (!this.workspaceRepo.exists(workspace.id)) {
+            this.workspaceRepo.insertWithinTransaction(workspace);
+          }
+          this.migrateLegacyAgentsWithinTransaction(workspace);
+        });
+      } catch (error) {
+        if (isExpectedLegacyCanonicalPathConflict(error)) {
+          console.warn(`[legacy-migration] skipped Workspace ${workspace.id}: canonical_root_path already exists`);
+          continue;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        throw new Error(`Legacy Workspace aggregate migration failed for ${workspace.id}: ${message}`, { cause: error });
       }
     }
   }
 
-  private migrateLegacyKimiWorkspaceConfigs(): void {
-    // One-time historical data fix: migrate old Kimi+OpenCode hybrid config to pure Kimi.
-    // The mutation is written to JSON so that downstream one-time migrations
-    // (migrateLegacyAgentProfiles, migrateLegacyWorkspaces) read the corrected data.
-    // This is NOT a runtime write path — it runs once at first construction after
-    // the schema migration sequence.
-    const workspaces = this.legacy.loadWorkspaces();
-    if (migrateLegacyKimiAgents(workspaces)) {
-      this.legacy.saveWorkspaces(workspaces);
+  private migrateLegacyAgentsWithinTransaction(workspace: Workspace): void {
+    for (const agent of workspace.agents) {
+      const existing = this.database.prepare(`
+        SELECT provider_config_id FROM agent_profiles WHERE workspace_id = ? AND id = ?
+      `).get(workspace.id, agent.id) as { provider_config_id: string | null } | undefined;
+      const providerConfigId = existing?.provider_config_id ?? createEntityId('provider');
+
+      if (!existing?.provider_config_id) {
+        this.insertLegacyProviderConfiguration(workspace, agent, providerConfigId);
+      } else {
+        const provider = this.database.prepare(
+          'SELECT workspace_id FROM provider_configurations WHERE id = ?',
+        ).get(providerConfigId) as { workspace_id: string } | undefined;
+        if (!provider || provider.workspace_id !== workspace.id) {
+          throw new Error(`Legacy agent ${workspace.id}/${agent.id} has an invalid Provider Configuration binding`);
+        }
+      }
+
+      if (!existing) {
+        this.insertAgentProfile(workspace, agent, providerConfigId);
+      } else if (!existing.provider_config_id) {
+        this.database.prepare(`
+          UPDATE agent_profiles SET provider_config_id = ? WHERE workspace_id = ? AND id = ?
+        `).run(providerConfigId, workspace.id, agent.id);
+      }
     }
+  }
+
+  private loadLegacyWorkspacesForMigration(): Workspace[] {
+    const workspaces = structuredClone(this.legacy.loadWorkspaces());
+    migrateLegacyKimiAgents(workspaces);
+    return workspaces;
+  }
+
+  private insertLegacyProviderConfiguration(workspace: Workspace, agent: Workspace['agents'][number], providerConfigId: string): void {
+    const now = workspace.updatedAt;
+    this.database.prepare(`
+      INSERT INTO provider_configurations (
+        id, workspace_id, name, provider_type, adapter_id, runtime_mode,
+        executable, args_template_json, model,
+        capabilities_json, timeout_policy_json,
+        approval_mode, output_mode, enabled, version, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, 'cli', ?, ?, ?, ?, ?, 'agentos', 'parsed-text', ?, 1, ?, ?)
+    `).run(
+      providerConfigId,
+      workspace.id,
+      `${agent.name} Provider`,
+      providerConfigurationType(agent),
+      `builtin.${agent.role}`,
+      agent.cliCommand,
+      JSON.stringify(agent.cliArgs),
+      agent.model ?? null,
+      JSON.stringify(DEFAULT_CAPABILITIES),
+      JSON.stringify(DEFAULT_TIMEOUT_POLICY),
+      agent.enabled ? 1 : 0,
+      now,
+      now,
+    );
+  }
+
+  private insertAgentProfile(workspace: Workspace, agent: Workspace['agents'][number], providerConfigId: string): void {
+    this.database.prepare(`
+      INSERT INTO agent_profiles (
+        workspace_id, id, name, agent_role, provider, role_title, system_prompt,
+        permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort,
+        provider_config_id, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      workspace.id,
+      agent.id,
+      agent.name,
+      agent.role,
+      agent.provider ?? providerFromLegacyRole(agent.role),
+      defaultRoleTitle(agent.role),
+      defaultSystemPrompt(agent.role),
+      JSON.stringify(defaultPermissions(agent.role)),
+      agent.enabled ? 1 : 0,
+      agent.cliCommand,
+      JSON.stringify(agent.cliArgs),
+      agent.model ?? null,
+      agent.thinkingEffort ?? 'auto',
+      providerConfigId,
+      workspace.createdAt,
+      workspace.updatedAt,
+    );
   }
 
   private assertWorkspaceExists(workspaceId: string): void {
-    if (!this.legacy.loadWorkspaces().some(workspace => workspace.id === workspaceId)) {
-      throw new Error('Workspace not found');
-    }
+    if (this.workspaceRepo.exists(workspaceId)) return;
+    if (!this.legacy.loadWorkspaces().some(workspace => workspace.id === workspaceId)) throw new Error('Workspace not found');
   }
 
   private assertConversationWorkspace(conversationId: string, workspaceId: string): void {
@@ -2549,20 +2630,31 @@ export class SqliteStore implements Store {
   }
 
   private toAgentProfile(row: AgentProfileRow & { provider_config_id: string | null }, runtime?: AgentRuntimeStatus): AgentProfile {
+    const hasProviderConfiguration = row.provider_config_id !== null;
+    const projectedProvider = hasProviderConfiguration
+      ? providerFromConfigurationType(row.provider_config_provider_type)
+      : (row.provider ?? providerFromLegacyRole(row.agent_role));
+    const projectedCliCommand = hasProviderConfiguration
+      ? row.provider_config_executable ?? row.cli_command
+      : row.cli_command;
+    const projectedCliArgs = hasProviderConfiguration
+      ? parseJson<string[]>(row.provider_config_args_template_json ?? '[]', [])
+      : parseJson<string[]>(row.cli_args_json, []);
+    const projectedModel = hasProviderConfiguration ? row.provider_config_model : row.model;
     return {
       id: row.id,
       workspaceId: row.workspace_id,
       name: row.name,
       role: row.agent_role,
-      provider: row.provider ?? providerFromLegacyRole(row.agent_role),
+      provider: projectedProvider,
       ...(runtime ? { runtime } : {}),
       roleTitle: row.role_title,
       systemPrompt: row.system_prompt,
       permissions: parseJson<AgentPermission[]>(row.permissions_json, []),
       enabled: row.enabled === 1,
-      cliCommand: row.cli_command,
-      cliArgs: parseJson<string[]>(row.cli_args_json, []),
-      ...(row.model ? { model: row.model } : {}),
+      cliCommand: projectedCliCommand,
+      cliArgs: projectedCliArgs,
+      ...(projectedModel ? { model: projectedModel } : {}),
       thinkingEffort: normalizeThinkingEffort(row.thinking_effort),
       ...(row.provider_config_id ? { providerConfigId: row.provider_config_id } : {}),
       createdAt: row.created_at,
@@ -2777,6 +2869,30 @@ function isCollaborationRole(value: unknown): value is CollaborationRole {
 
 function providerFromLegacyRole(role: AgentProfile['role']): AgentProvider {
   return role === 'codex' || role === 'kimi' || role === 'opencode' || role === 'mimo' ? role : 'custom';
+}
+
+function providerFromConfigurationType(providerType: string | null): AgentProvider {
+  if (providerType === 'codex' || providerType === 'opencode' || providerType === 'mimo') return providerType;
+  if (providerType === 'kimicode') return 'kimi';
+  return 'custom';
+}
+
+function providerConfigurationType(agent: Workspace['agents'][number]): string {
+  if (agent.role === 'codex') return 'codex';
+  if (agent.role === 'opencode') return 'opencode';
+  if (agent.role === 'kimi') return 'kimicode';
+  return 'custom-cli';
+}
+
+function providerConfigurationTypeFromAgentProvider(provider: AgentProvider | undefined): string {
+  if (provider === 'codex' || provider === 'opencode') return provider;
+  if (provider === 'kimi') return 'kimicode';
+  return 'custom-cli';
+}
+
+function isExpectedLegacyCanonicalPathConflict(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /unique constraint failed:\s*workspaces\.canonical_root_path/i.test(message);
 }
 
 export { providerFromLegacyRole, defaultRoleTitle, defaultSystemPrompt, defaultPermissions };

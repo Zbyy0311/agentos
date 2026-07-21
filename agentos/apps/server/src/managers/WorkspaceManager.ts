@@ -5,6 +5,7 @@ import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import { createEntityId } from '../store/Identity.js';
 import { toCanonicalRootPath } from '../store/WorkspacePath.js';
 import { providerFromLegacyRole, defaultRoleTitle, defaultSystemPrompt, defaultPermissions } from '../store/SqliteStore.js';
+import { inTransaction } from '../store/Transaction.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 
 export class WorkspaceManager {
@@ -46,54 +47,55 @@ export class WorkspaceManager {
     };
 
     this.initializeWorkspaceDirectory(workspace, options);
-    this.store.workspaceRepo.insert(workspace);
-    // Atomically create default agent_profiles and a provider_configuration for each.
     const db = this.store.getDatabase();
-    for (const agent of workspace.agents) {
-      const providerConfigId = createEntityId('provider');
-      db.prepare(`
-        INSERT INTO provider_configurations (
-          id, workspace_id, name, provider_type, adapter_id, runtime_mode,
-          executable, args_template_json, model,
-          capabilities_json, timeout_policy_json,
-          approval_mode, output_mode, enabled, version, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
-      `).run(
-        providerConfigId, wsId, `${agent.name} Provider`,
-        agent.role === 'codex' ? 'codex' : agent.role === 'opencode' ? 'opencode' : 'custom-cli',
-        `builtin.${agent.role}`,
-        'cli',
-        agent.cliCommand, JSON.stringify(agent.cliArgs), agent.model ?? null,
-        JSON.stringify({
-          sessionResume: false, structuredEvents: false, nativeApprovals: false,
-          subagents: false, toolEvents: false, fileEvents: false, usageEvents: false,
-          reasoningStream: false, interactiveInput: false, pause: false,
-          cancellation: false, modelSelection: false, workspaceAwareness: false,
-          nativeSandbox: false, outputContracts: false,
-        }),
-        JSON.stringify({
-          discoveryTimeoutMs: 10_000, validationTimeoutMs: 30_000,
-          startupTimeoutMs: 60_000, idleTimeoutMs: 600_000,
-          totalTimeoutMs: null, cancelGracePeriodMs: 5_000, approvalTimeoutMs: null,
-        }),
-        'agentos', 'parsed-text', 1, now, now,
-      );
-      const provider = providerFromLegacyRole(agent.role as any);
-      db.prepare(`
-        INSERT INTO agent_profiles (
-          workspace_id, id, name, agent_role, provider, role_title, system_prompt,
-          permissions_json, enabled, cli_command, cli_args_json, model,
-          thinking_effort, provider_config_id, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        wsId, agent.id, agent.name, agent.role, provider,
-        defaultRoleTitle(agent.role as any), defaultSystemPrompt(agent.role as any),
-        JSON.stringify(defaultPermissions(agent.role as any)),
-        agent.enabled ? 1 : 0,
-        agent.cliCommand, JSON.stringify(agent.cliArgs), agent.model ?? null,
-        agent.thinkingEffort ?? 'auto', providerConfigId, now, now,
-      );
-    }
+    inTransaction(db, () => {
+      this.store.workspaceRepo.insertWithinTransaction(workspace);
+      for (const agent of workspace.agents) {
+        const providerConfigId = createEntityId('provider');
+        db.prepare(`
+          INSERT INTO provider_configurations (
+            id, workspace_id, name, provider_type, adapter_id, runtime_mode,
+            executable, args_template_json, model,
+            capabilities_json, timeout_policy_json,
+            approval_mode, output_mode, enabled, version, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        `).run(
+          providerConfigId, wsId, `${agent.name} Provider`,
+          agent.role === 'codex' ? 'codex' : agent.role === 'opencode' ? 'opencode' : 'custom-cli',
+          `builtin.${agent.role}`,
+          'cli',
+          agent.cliCommand, JSON.stringify(agent.cliArgs), agent.model ?? null,
+          JSON.stringify({
+            sessionResume: false, structuredEvents: false, nativeApprovals: false,
+            subagents: false, toolEvents: false, fileEvents: false, usageEvents: false,
+            reasoningStream: false, interactiveInput: false, pause: false,
+            cancellation: false, modelSelection: false, workspaceAwareness: false,
+            nativeSandbox: false, outputContracts: false,
+          }),
+          JSON.stringify({
+            discoveryTimeoutMs: 10_000, validationTimeoutMs: 30_000,
+            startupTimeoutMs: 60_000, idleTimeoutMs: 600_000,
+            totalTimeoutMs: null, cancelGracePeriodMs: 5_000, approvalTimeoutMs: null,
+          }),
+          'agentos', 'parsed-text', 1, now, now,
+        );
+        const provider = providerFromLegacyRole(agent.role as any);
+        db.prepare(`
+          INSERT INTO agent_profiles (
+            workspace_id, id, name, agent_role, provider, role_title, system_prompt,
+            permissions_json, enabled, cli_command, cli_args_json, model,
+            thinking_effort, provider_config_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          wsId, agent.id, agent.name, agent.role, provider,
+          defaultRoleTitle(agent.role as any), defaultSystemPrompt(agent.role as any),
+          JSON.stringify(defaultPermissions(agent.role as any)),
+          agent.enabled ? 1 : 0,
+          agent.cliCommand, JSON.stringify(agent.cliArgs), agent.model ?? null,
+          agent.thinkingEffort ?? 'auto', providerConfigId, now, now,
+        );
+      }
+    });
     return workspace;
   }
 
