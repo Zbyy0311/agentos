@@ -8,10 +8,93 @@ import { createRequire } from 'node:module';
 import { SqliteStore } from './SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { createEntityId } from './Identity.js';
 import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
 import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
 import type { MigrationContext } from '../migrations/types.js';
 import type { PreferenceEvidence, PreferenceProjection, TaskItem } from '@agentos/shared';
+
+test('tombstoned workspace rejected by assertWorkspaceExists for new Conversation', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.deleteWorkspace('workspace-a');
+    store.close();
+    store = new SqliteStore(root);
+    assert.throws(() => {
+      store!.createConversation({
+        id: createEntityId('conversation'),
+        workspaceId: 'workspace-a',
+        type: 'direct',
+        title: 'should fail',
+        agentId: 'codex',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }, /Workspace not found/);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('new Workspace assigns kimicode provider type to Kimi agent', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('KimiWS', join(root, 'kimi-ws'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const db = store.getDatabase();
+    const pcRows = db.prepare(
+      'SELECT provider_type FROM provider_configurations WHERE workspace_id = ?',
+    ).all(created.id) as Array<{ provider_type: string }>;
+    const kimiConfig = pcRows.find(pc => pc.provider_type === 'kimicode');
+    assert.ok(kimiConfig, 'Kimi agent should get provider_type kimicode, not custom-cli');
+    const legacyConfig = pcRows.find(pc => pc.provider_type === 'custom-cli');
+    assert.equal(legacyConfig, undefined, 'No agent should fall through to custom-cli for known roles');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Workspace.agents projected fields match Provider Configuration after update', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('ProjectedWS', join(root, 'projected-ws'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const profiles = store.listAgentProfiles(created.id);
+    const codexProfile = profiles.find(a => a.id === 'codex')!;
+    const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
+    const config = repo.findById(codexProfile.providerConfigId!)!;
+    repo.update({
+      ...config,
+      providerType: 'opencode',
+      executable: 'ws-projected-cli',
+      argsTemplate: ['--from-provider'],
+      model: 'ws-projected-model',
+      updatedAt: new Date().toISOString(),
+    }, config.version);
+
+    const ws = manager.get(created.id)!;
+    const codexAgent = ws.agents.find(a => a.id === 'codex')!;
+    assert.equal(codexAgent.provider, 'opencode');
+    assert.equal(codexAgent.cliCommand, 'ws-projected-cli');
+    assert.deepEqual(codexAgent.cliArgs, ['--from-provider']);
+    assert.equal(codexAgent.model, 'ws-projected-model');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { get(...parameters: unknown[]): unknown }; close(): void } };
 

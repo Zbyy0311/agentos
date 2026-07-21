@@ -189,7 +189,7 @@ export class ProviderConfigurationRepository {
         entityType: 'provider_configurations', entityId: config.id, expectedVersion: row.version,
       });
     });
-    return config;
+    return { ...config, version: expectedVersion + 1 };
   }
 
   archive(id: string, expectedVersion: number): void {

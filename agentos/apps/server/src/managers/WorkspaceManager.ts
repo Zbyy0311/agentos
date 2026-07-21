@@ -61,7 +61,7 @@ export class WorkspaceManager {
           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
         `).run(
           providerConfigId, wsId, `${agent.name} Provider`,
-          agent.role === 'codex' ? 'codex' : agent.role === 'opencode' ? 'opencode' : 'custom-cli',
+          agent.role === 'codex' ? 'codex' : agent.role === 'opencode' ? 'opencode' : agent.role === 'kimi' ? 'kimicode' : 'custom-cli',
           `builtin.${agent.role}`,
           'cli',
           agent.cliCommand, JSON.stringify(agent.cliArgs), agent.model ?? null,

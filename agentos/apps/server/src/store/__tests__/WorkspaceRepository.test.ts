@@ -44,6 +44,22 @@ function createDb() {
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
     PRIMARY KEY (workspace_id, id)
   )`);
+  db.exec(`CREATE TABLE provider_configurations (
+    id TEXT PRIMARY KEY, workspace_id TEXT,
+    name TEXT NOT NULL, provider_type TEXT NOT NULL,
+    adapter_id TEXT, runtime_mode TEXT NOT NULL DEFAULT 'cli',
+    executable TEXT, args_template_json TEXT,
+    model TEXT, environment_profile_id TEXT, secret_profile_id TEXT,
+    working_directory_mode TEXT NOT NULL DEFAULT 'relative',
+    custom_working_directory TEXT,
+    capabilities_json TEXT NOT NULL DEFAULT '{}',
+    timeout_policy_json TEXT NOT NULL DEFAULT '{}',
+    approval_mode TEXT NOT NULL DEFAULT 'auto',
+    output_mode TEXT NOT NULL DEFAULT 'parsed-text',
+    enabled INTEGER NOT NULL DEFAULT 1,
+    version INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT
+  )`);
   return db;
 }
 

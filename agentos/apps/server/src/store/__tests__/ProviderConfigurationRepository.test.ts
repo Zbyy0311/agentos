@@ -6,6 +6,18 @@ import { createEntityId } from '../Identity.js';
 import { assertVersionedMutation } from '../Repository.js';
 import type { ProviderConfiguration } from '../ProviderConfigurationRepository.js';
 
+test('update returns incremented version', () => {
+  const db = createDb();
+  const repo = new ProviderConfigurationRepository(db as any);
+  const config = makeConfig();
+  repo.insert(config);
+  assert.equal(config.version, 1);
+  const updated = repo.update({ ...config, name: 'v2', updatedAt: new Date().toISOString() }, config.version);
+  assert.equal(updated.version, 2);
+  const found = repo.findById(config.id);
+  assert.equal(found!.version, 2);
+});
+
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string, opts?: { open?: boolean }) => {
     exec(sql: string): void;

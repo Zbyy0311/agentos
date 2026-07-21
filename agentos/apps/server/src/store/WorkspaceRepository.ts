@@ -38,6 +38,10 @@ export interface WorkspaceListRow {
   agent_model: string | null;
   agent_thinking_effort: string | null;
   provider_config_id: string | null;
+  provider_config_provider_type: string | null;
+  provider_config_executable: string | null;
+  provider_config_args_template_json: string | null;
+  provider_config_model: string | null;
 }
 
 export class WorkspaceRepository {
@@ -48,9 +52,15 @@ export class WorkspaceRepository {
       SELECT w.*, ap.id AS agent_id, ap.name AS agent_name, ap.agent_role,
         ap.provider AS agent_provider, ap.enabled AS agent_enabled,
         ap.cli_command AS agent_cli_command, ap.cli_args_json AS agent_cli_args_json,
-        ap.model AS agent_model, ap.thinking_effort AS agent_thinking_effort
+        ap.model AS agent_model, ap.thinking_effort AS agent_thinking_effort,
+        ap.provider_config_id,
+        pc.provider_type AS provider_config_provider_type,
+        pc.executable AS provider_config_executable,
+        pc.args_template_json AS provider_config_args_template_json,
+        pc.model AS provider_config_model
       FROM workspaces w
       LEFT JOIN agent_profiles ap ON ap.workspace_id = w.id
+      LEFT JOIN provider_configurations pc ON pc.id = ap.provider_config_id AND pc.workspace_id = ap.workspace_id
       ORDER BY w.last_opened_at DESC, ap.name COLLATE NOCASE
     `).all() as WorkspaceListRow[];
     return this.assembleRows(rows);
@@ -62,9 +72,14 @@ export class WorkspaceRepository {
         ap.provider AS agent_provider, ap.enabled AS agent_enabled,
         ap.cli_command AS agent_cli_command, ap.cli_args_json AS agent_cli_args_json,
         ap.model AS agent_model, ap.thinking_effort AS agent_thinking_effort,
-        ap.provider_config_id
+        ap.provider_config_id,
+        pc.provider_type AS provider_config_provider_type,
+        pc.executable AS provider_config_executable,
+        pc.args_template_json AS provider_config_args_template_json,
+        pc.model AS provider_config_model
       FROM workspaces w
       LEFT JOIN agent_profiles ap ON ap.workspace_id = w.id
+      LEFT JOIN provider_configurations pc ON pc.id = ap.provider_config_id AND pc.workspace_id = ap.workspace_id
       WHERE w.id = ?
       ORDER BY ap.name COLLATE NOCASE
     `).all(id) as WorkspaceListRow[];
@@ -78,9 +93,14 @@ export class WorkspaceRepository {
         ap.provider AS agent_provider, ap.enabled AS agent_enabled,
         ap.cli_command AS agent_cli_command, ap.cli_args_json AS agent_cli_args_json,
         ap.model AS agent_model, ap.thinking_effort AS agent_thinking_effort,
-        ap.provider_config_id
+        ap.provider_config_id,
+        pc.provider_type AS provider_config_provider_type,
+        pc.executable AS provider_config_executable,
+        pc.args_template_json AS provider_config_args_template_json,
+        pc.model AS provider_config_model
       FROM workspaces w
       LEFT JOIN agent_profiles ap ON ap.workspace_id = w.id
+      LEFT JOIN provider_configurations pc ON pc.id = ap.provider_config_id AND pc.workspace_id = ap.workspace_id
       WHERE w.canonical_root_path = ?
       ORDER BY ap.name COLLATE NOCASE
     `).all(canonicalPath) as WorkspaceListRow[];
@@ -175,15 +195,28 @@ export class WorkspaceRepository {
         map.set(row.id, ws);
       }
       if (row.agent_id) {
+        const hasProviderConfig = row.provider_config_id !== null;
+        const projectedProvider = hasProviderConfig
+          ? providerConfigTypeToAgentProvider(row.provider_config_provider_type)
+          : (row.agent_provider || row.agent_role) as Workspace['agents'][number]['provider'];
+        const projectedCliCommand = hasProviderConfig
+          ? (row.provider_config_executable ?? row.agent_cli_command!)
+          : row.agent_cli_command!;
+        const projectedCliArgs = hasProviderConfig
+          ? parseJson<string[]>(row.provider_config_args_template_json ?? row.agent_cli_args_json!, [])
+          : parseJson<string[]>(row.agent_cli_args_json!, []);
+        const projectedModel = hasProviderConfig
+          ? (row.provider_config_model || row.agent_model || undefined)
+          : (row.agent_model || undefined);
         const agent = {
           id: row.agent_id,
           name: row.agent_name!,
-          provider: (row.agent_provider || row.agent_role) as Workspace['agents'][number]['provider'],
+          provider: projectedProvider as Workspace['agents'][number]['provider'],
           role: row.agent_role as Workspace['agents'][number]['role'],
           enabled: row.agent_enabled === 1,
-          cliCommand: row.agent_cli_command!,
-          cliArgs: parseJson<string[]>(row.agent_cli_args_json!, []),
-          ...(row.agent_model ? { model: row.agent_model } : {}),
+          cliCommand: projectedCliCommand,
+          cliArgs: projectedCliArgs,
+          ...(projectedModel ? { model: projectedModel } : {}),
           thinkingEffort: (row.agent_thinking_effort || 'auto') as Workspace['agents'][number]['thinkingEffort'],
         };
         ws.agents.push(agent);
@@ -191,6 +224,13 @@ export class WorkspaceRepository {
     }
     return [...map.values()];
   }
+}
+
+function providerConfigTypeToAgentProvider(type: string | null): string {
+  if (type === 'codex') return 'codex';
+  if (type === 'opencode') return 'opencode';
+  if (type === 'kimicode') return 'kimi';
+  return 'custom';
 }
 
 function parseJson<T>(raw: string, fallback: T): T {

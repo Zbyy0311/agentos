@@ -2553,6 +2553,10 @@ export class SqliteStore implements Store {
 
   private assertWorkspaceExists(workspaceId: string): void {
     if (this.workspaceRepo.exists(workspaceId)) return;
+    const tombstone = this.database.prepare(
+      'SELECT 1 FROM _workspace_tombstones WHERE workspace_id = ?',
+    ).get(workspaceId);
+    if (tombstone) throw new Error('Workspace not found');
     if (!this.legacy.loadWorkspaces().some(workspace => workspace.id === workspaceId)) throw new Error('Workspace not found');
   }
 
