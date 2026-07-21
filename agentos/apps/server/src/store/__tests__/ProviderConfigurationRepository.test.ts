@@ -17,8 +17,24 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 function createDb() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
+  db.exec(`CREATE TABLE workspaces (
+    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+    root_path TEXT NOT NULL, canonical_root_path TEXT NOT NULL UNIQUE,
+    git_enabled INTEGER NOT NULL DEFAULT 1,
+    memory_enabled INTEGER NOT NULL DEFAULT 1,
+    last_opened_at TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    version INTEGER NOT NULL DEFAULT 1
+  )`);
+  db.exec(`INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)
+    VALUES ('ws-1', 'WS1', '/ws1', '/ws1', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`);
+  db.exec(`INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)
+    VALUES ('ws-2', 'WS2', '/ws2', '/ws2', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`);
+  db.exec(`INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)
+    VALUES ('ws-test1', 'Test', '/test', '/test', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-01-01T00:00:00.000Z')`);
   db.exec(`CREATE TABLE provider_configurations (
-    id TEXT PRIMARY KEY, workspace_id TEXT, name TEXT NOT NULL,
+    id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    name TEXT NOT NULL,
     provider_type TEXT NOT NULL CHECK (provider_type IN ('codex','claude-code','kimicode','opencode','gemini-cli','custom-cli','remote')),
     adapter_id TEXT NOT NULL, runtime_mode TEXT NOT NULL CHECK (runtime_mode IN ('cli','api','ssh','container')),
     executable TEXT, args_template_json TEXT NOT NULL DEFAULT '[]', model TEXT,

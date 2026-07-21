@@ -361,9 +361,11 @@ interface PreferenceProjectionRow {
 }
 
 export class SqliteStore implements Store {
+  readonly workspaceRepo: WorkspaceRepository;
   private readonly legacy: JsonFileStore;
-  private readonly workspaceRepo: WorkspaceRepository;
   private readonly database: SqliteDatabase;
+  /** Workspace IDs explicitly deleted from SQLite — prevents JSON fallback from re-adding them. */
+  private readonly deletedWorkspaceIds = new Set<string>();
 
   constructor(projectRoot: string) {
     this.legacy = new JsonFileStore(projectRoot);
@@ -373,6 +375,8 @@ export class SqliteStore implements Store {
     this.workspaceRepo = new WorkspaceRepository(this.database as any);
     this.database.exec('PRAGMA foreign_keys = ON');
     this.runMigrations();
+    this.migrateAgentEventSequences();
+    this.migrateLegacyExecutionRuns();
     this.migrateLegacyKimiWorkspaceConfigs();
     this.migrateLegacyAgentProfiles();
     this.migrateLegacyWorkspaces();
@@ -382,9 +386,10 @@ export class SqliteStore implements Store {
     const sqlite = this.workspaceRepo.findAll();
     const sqliteIds = new Set(sqlite.map(w => w.id));
     // Merge any JSON workspaces not already present in SQLite (one-time fallback)
+    // Explicitly deleted workspace IDs are excluded from the fallback.
     const json = this.legacy.loadWorkspaces();
     for (const ws of json) {
-      if (!sqliteIds.has(ws.id)) {
+      if (!sqliteIds.has(ws.id) && !this.deletedWorkspaceIds.has(ws.id)) {
         sqlite.push(ws);
       }
     }
@@ -395,7 +400,6 @@ export class SqliteStore implements Store {
   saveWorkspaces(workspaces: Workspace[]): void {
     const nextWorkspaces = structuredClone(workspaces);
     migrateLegacyKimiAgents(nextWorkspaces);
-    this.legacy.saveWorkspaces(nextWorkspaces);
     // Sync to SQLite: upsert each workspace into the workspaces table
     for (const ws of nextWorkspaces) {
       if (this.workspaceRepo.exists(ws.id)) {
@@ -442,17 +446,19 @@ export class SqliteStore implements Store {
       this.database.prepare('DELETE FROM conversations WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM agent_profiles WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId);
+      this.deletedWorkspaceIds.add(workspaceId);
     });
   }
 
   listAgentProfiles(workspaceId: string): AgentProfile[] {
     const rows = this.database.prepare(`
       SELECT workspace_id, id, name, agent_role, role_title, system_prompt,
-        provider, permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort, created_at, updated_at
+        provider, permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort,
+        provider_config_id, created_at, updated_at
       FROM agent_profiles
       WHERE workspace_id = ?
       ORDER BY name COLLATE NOCASE
-    `).all(workspaceId) as AgentProfileRow[];
+    `).all(workspaceId) as Array<AgentProfileRow & { provider_config_id: string | null }>;
     return rows.map(row => this.toAgentProfile(row, this.latestAgentRuntime(workspaceId, row.id)));
   }
 
@@ -507,17 +513,6 @@ export class SqliteStore implements Store {
         expectedVersion: row.version,
       });
     });
-    const workspaces = this.legacy.loadWorkspaces();
-    const legacyAgent = workspaces
-      .find(workspace => workspace.id === workspaceId)
-      ?.agents.find(agent => agent.id === agentId);
-    if (legacyAgent) {
-      const nextModel = next.model?.trim();
-      legacyAgent.model = nextModel || undefined;
-      legacyAgent.thinkingEffort = normalizeThinkingEffort(next.thinkingEffort);
-      legacyAgent.provider = next.provider ?? providerFromLegacyRole(legacyAgent.role);
-      this.legacy.saveWorkspaces(workspaces);
-    }
     return this.listAgentProfiles(workspaceId).find(agent => agent.id === agentId) ?? next;
   }
 
@@ -1835,6 +1830,11 @@ export class SqliteStore implements Store {
     runner.run();
   }
 
+  /** @internal Exposed for route-layer repository construction. */
+  getDatabase(): SqliteDatabase {
+    return this.database;
+  }
+
   close(): void {
     this.database.close();
   }
@@ -2455,6 +2455,9 @@ export class SqliteStore implements Store {
   }
 
   private migrateLegacyKimiWorkspaceConfigs(): void {
+    // One-time historical data fix: migrate old Kimi+OpenCode hybrid config to pure Kimi.
+    // This writes back to JSON because the fix corrects legacy data in place;
+    // the mutated data flows to SQLite via migrateLegacyWorkspaces / saveWorkspaces.
     const workspaces = this.legacy.loadWorkspaces();
     if (migrateLegacyKimiAgents(workspaces)) {
       this.legacy.saveWorkspaces(workspaces);
@@ -2540,7 +2543,7 @@ export class SqliteStore implements Store {
     };
   }
 
-  private toAgentProfile(row: AgentProfileRow, runtime?: AgentRuntimeStatus): AgentProfile {
+  private toAgentProfile(row: AgentProfileRow & { provider_config_id: string | null }, runtime?: AgentRuntimeStatus): AgentProfile {
     return {
       id: row.id,
       workspaceId: row.workspace_id,
@@ -2556,6 +2559,7 @@ export class SqliteStore implements Store {
       cliArgs: parseJson<string[]>(row.cli_args_json, []),
       ...(row.model ? { model: row.model } : {}),
       thinkingEffort: normalizeThinkingEffort(row.thinking_effort),
+      ...(row.provider_config_id ? { providerConfigId: row.provider_config_id } : {}),
       createdAt: row.created_at,
       updatedAt: row.updated_at,
     };

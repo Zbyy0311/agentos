@@ -1,49 +1,58 @@
 import { Router, type Request, type Response } from 'express';
+import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import { SqliteStore } from '../store/SqliteStore.js';
 import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
 
+const VALID_PROVIDER_TYPES = ['codex','claude-code','kimicode','opencode','gemini-cli','custom-cli','remote'] as const;
+
 export function createProviderConfigRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
   const router = Router({ mergeParams: true });
+  const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
 
   router.get('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
     try {
-      const repo = new ProviderConfigurationRepository((store as any).database);
       const configs = repo.findByWorkspace(workspace.id);
       res.json({ providerConfigs: configs, workspaceId: workspace.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
     }
   });
 
   router.get('/provider-configs/:providerConfigId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
     try {
-      const repo = new ProviderConfigurationRepository((store as any).database);
       const config = repo.findById(req.params.providerConfigId);
-      if (!config) return res.status(404).json({ error: 'Provider configuration not found' });
+      if (!config || config.workspaceId !== workspace.id) {
+        return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
+      }
       res.json({ providerConfig: config, workspaceId: workspace.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
     }
   });
 
   router.post('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
     try {
-      const repo = new ProviderConfigurationRepository((store as any).database);
+      const name = typeof req.body.name === 'string' && req.body.name.trim().length > 0 ? req.body.name.trim() : undefined;
+      if (!name) return res.status(400).json({ error: 'Provider name is required', code: 'VALIDATION_ERROR' });
+      const providerType = req.body.providerType;
+      if (providerType && !VALID_PROVIDER_TYPES.includes(providerType)) {
+        return res.status(400).json({ error: `Invalid provider type: ${providerType}`, code: 'VALIDATION_ERROR' });
+      }
+
       const now = new Date().toISOString();
       const config: ProviderConfiguration = {
         id: createEntityId('provider'),
         workspaceId: workspace.id,
-        name: req.body.name || 'New Provider',
-        providerType: req.body.providerType || 'custom-cli',
+        name,
+        providerType: providerType || 'custom-cli',
         adapterId: req.body.adapterId || 'builtin.custom-cli',
         runtimeMode: req.body.runtimeMode || 'cli',
         executable: req.body.executable,
@@ -65,17 +74,25 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       const created = repo.insert(config);
       res.status(201).json({ providerConfig: created, workspaceId: workspace.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
     }
   });
 
   router.put('/provider-configs/:providerConfigId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
     try {
-      const repo = new ProviderConfigurationRepository((store as any).database);
       const existing = repo.findById(req.params.providerConfigId);
-      if (!existing) return res.status(404).json({ error: 'Provider configuration not found' });
+      if (!existing || existing.workspaceId !== workspace.id) {
+        return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
+      }
+      const expectedVersion = typeof req.body.expectedVersion === 'number' ? req.body.expectedVersion : undefined;
+      if (expectedVersion !== undefined && existing.version !== expectedVersion) {
+        return res.status(409).json({
+          error: `Version conflict: expected ${expectedVersion}, current ${existing.version}`,
+          code: 'VERSION_CONFLICT',
+        });
+      }
       const updated: ProviderConfiguration = {
         ...existing,
         name: req.body.name ?? existing.name,
@@ -100,23 +117,35 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       res.json({ providerConfig: saved, workspaceId: workspace.id });
     } catch (error) {
       if (error instanceof Error && error.message.includes('version conflict')) {
-        return res.status(409).json({ error: error.message });
+        return res.status(409).json({ error: error.message, code: 'VERSION_CONFLICT' });
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
     }
   });
 
   router.delete('/provider-configs/:providerConfigId', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
-    if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
     try {
-      const repo = new ProviderConfigurationRepository((store as any).database);
       const existing = repo.findById(req.params.providerConfigId);
-      if (!existing) return res.status(404).json({ error: 'Provider configuration not found' });
-      repo.archive(req.params.providerConfigId);
+      if (!existing || existing.workspaceId !== workspace.id) {
+        return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
+      }
+      // Check if any active run references this config
+      const db = store.getDatabase();
+      const activeRef = db.prepare(`
+        SELECT 1 FROM run_stages WHERE provider_config_id = ? AND status IN ('running','queued','created') LIMIT 1
+      `).get(existing.id) as undefined | Record<string, unknown>;
+      if (activeRef) {
+        return res.status(409).json({
+          error: 'Provider configuration is referenced by an active run and cannot be deleted',
+          code: 'PROVIDER_CONFIG_IN_USE',
+        });
+      }
+      repo.archive(existing.id);
       res.json({ ok: true });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error) });
+      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
     }
   });
 

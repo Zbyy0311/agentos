@@ -2,11 +2,12 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Workspace } from '@agentos/shared';
 import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
-import type { Store } from '../store/Store.js';
 import { createEntityId } from '../store/Identity.js';
+import { toCanonicalRootPath } from '../store/WorkspacePath.js';
+import type { SqliteStore } from '../store/SqliteStore.js';
 
 export class WorkspaceManager {
-  constructor(private store: Store) {}
+  constructor(private store: SqliteStore) {}
 
   list(): Workspace[] {
     return this.store.loadWorkspaces().sort((a, b) =>
@@ -15,11 +16,17 @@ export class WorkspaceManager {
   }
 
   get(id: string): Workspace | undefined {
+    // SQLite-first: check repository
+    const ws = this.store.workspaceRepo.findById(id);
+    if (ws) return ws;
+    // Fallback: JSON dual-read (legacy workspaces not yet migrated to SQLite)
     return this.store.loadWorkspaces().find(w => w.id === id);
   }
 
   create(name: string, rootPath: string, options: { git?: boolean; memory?: boolean; readme?: boolean; docs?: boolean } = {}): Workspace {
-    if (this.store.loadWorkspaces().some(w => w.rootPath === rootPath)) {
+    const canonicalPath = toCanonicalRootPath(rootPath);
+    const existing = this.store.workspaceRepo.findByCanonicalPath(canonicalPath);
+    if (existing) {
       throw new Error('Workspace already exists at this path');
     }
 
@@ -37,13 +44,13 @@ export class WorkspaceManager {
     };
 
     this.initializeWorkspaceDirectory(workspace, options);
-    const workspaces = [...this.store.loadWorkspaces(), workspace];
-    this.store.saveWorkspaces(workspaces);
+    this.store.workspaceRepo.insert(workspace);
     return workspace;
   }
 
   importExisting(rootPath: string): Workspace {
-    const existing = this.store.loadWorkspaces().find(w => w.rootPath === rootPath);
+    const canonicalPath = toCanonicalRootPath(rootPath);
+    const existing = this.store.workspaceRepo.findByCanonicalPath(canonicalPath);
     if (existing) return this.touch(existing.id);
 
     const name = rootPath.split(/[\\/]/).pop() || 'imported';
@@ -56,25 +63,19 @@ export class WorkspaceManager {
   }
 
   remove(id: string): void {
-    const currentWorkspaces = this.store.loadWorkspaces();
-    const workspaces = currentWorkspaces.filter(w => w.id !== id);
-    this.store.saveWorkspaces(workspaces);
-    try {
-      this.store.deleteWorkspace?.(id);
-    } catch (error) {
-      try { this.store.saveWorkspaces(currentWorkspaces); } catch {}
-      throw error;
-    }
+    this.store.deleteWorkspace(id);
   }
 
   touch(id: string): Workspace {
-    const workspaces = this.store.loadWorkspaces();
-    const workspace = workspaces.find(w => w.id === id);
-    if (!workspace) throw new Error('Workspace not found');
-    workspace.lastOpenedAt = new Date().toISOString();
-    workspace.updatedAt = new Date().toISOString();
-    this.store.saveWorkspaces(workspaces);
-    return workspace;
+    const existing = this.store.workspaceRepo.findById(id);
+    if (!existing) throw new Error('Workspace not found');
+    const now = new Date().toISOString();
+    const updated = this.store.workspaceRepo.update({
+      ...existing,
+      lastOpenedAt: now,
+      updatedAt: now,
+    });
+    return updated;
   }
 
   recent(limit = 5): Workspace[] {

@@ -17,10 +17,22 @@ function createDb() {
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
   db.exec(`CREATE TABLE workspaces (
-    id TEXT PRIMARY KEY, name TEXT NOT NULL, root_path TEXT NOT NULL,
-    canonical_root_path TEXT NOT NULL UNIQUE, git_enabled INTEGER NOT NULL DEFAULT 1,
-    memory_enabled INTEGER NOT NULL DEFAULT 1, last_opened_at TEXT NOT NULL,
-    created_at TEXT NOT NULL, updated_at TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1
+    id TEXT PRIMARY KEY, name TEXT NOT NULL,
+    description TEXT, root_path TEXT NOT NULL,
+    canonical_root_path TEXT NOT NULL UNIQUE,
+    repository_type TEXT NOT NULL DEFAULT 'directory',
+    default_branch TEXT, default_agent_id TEXT,
+    default_provider_config_id TEXT,
+    default_workflow_definition_id TEXT,
+    default_policy_profile_id TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    settings_version INTEGER NOT NULL DEFAULT 1,
+    git_enabled INTEGER NOT NULL DEFAULT 1,
+    memory_enabled INTEGER NOT NULL DEFAULT 1,
+    last_opened_at TEXT NOT NULL,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+    archived_at TEXT, deleted_at TEXT,
+    version INTEGER NOT NULL DEFAULT 1
   )`);
   db.exec(`CREATE TABLE agent_profiles (
     workspace_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,

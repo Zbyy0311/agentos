@@ -7,9 +7,16 @@ import { createRequire } from 'node:module';
 import { SqliteStore } from './SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
+import type { MigrationContext } from '../migrations/types.js';
 import type { PreferenceEvidence, PreferenceProjection, TaskItem } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { get(...parameters: unknown[]): unknown }; close(): void } };
+
+/** Apply the full baseline schema to an in-memory or file-based database. */
+function applyBaseline(db: { exec(sql: string): void }): void {
+  baselineMigration.apply({ db } as MigrationContext);
+}
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-sqlite-store-'));
@@ -231,16 +238,8 @@ test('adds the thinking effort column when opening a legacy SQLite database', ()
   try {
     mkdirSync(join(root, '.agentos'), { recursive: true });
     const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
-    database.exec(`
-      CREATE TABLE agent_profiles (
-        workspace_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
-        agent_role TEXT NOT NULL, role_title TEXT NOT NULL, system_prompt TEXT NOT NULL,
-        permissions_json TEXT NOT NULL, enabled INTEGER NOT NULL,
-        cli_command TEXT NOT NULL, cli_args_json TEXT NOT NULL, model TEXT,
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-        PRIMARY KEY (workspace_id, id)
-      )
-    `);
+    // Create full baseline (already includes thinking_effort with default 'auto')
+    applyBaseline(database);
     database.close();
 
     store = new SqliteStore(root);
@@ -336,19 +335,10 @@ test('adds conversation settings columns to a legacy SQLite database', () => {
   try {
     mkdirSync(join(root, '.agentos'), { recursive: true });
     const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
-    database.exec(`
-      CREATE TABLE conversations (
-        id TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL,
-        conversation_type TEXT NOT NULL,
-        title TEXT NOT NULL,
-        agent_id TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      INSERT INTO conversations (id, workspace_id, conversation_type, title, agent_id, created_at, updated_at)
-      VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z');
-    `);
+    // Baseline already includes model, thinking_effort, dispatch_mode on conversations
+    applyBaseline(database);
+    database.exec(`INSERT INTO conversations (id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, created_at, updated_at)
+      VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', NULL, NULL, NULL, '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z')`);
     database.close();
 
     store = new SqliteStore(root);
@@ -477,33 +467,35 @@ test('migrates legacy executions without reducing historical row counts', () => 
   let store: SqliteStore | undefined;
   try {
     mkdirSync(join(root, '.agentos'), { recursive: true });
+    // Create a fully-migrated database, then downgrade agent_runs to test legacy migration
+    store = new SqliteStore(root);
+    store.close();
     const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
-    database.exec(`
-      CREATE TABLE conversations (
-        id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, conversation_type TEXT NOT NULL,
-        title TEXT NOT NULL, agent_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-      );
-      CREATE TABLE messages (
-        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
-        sender_type TEXT NOT NULL, sender_agent_id TEXT, content TEXT NOT NULL, created_at TEXT NOT NULL
-      );
-      CREATE TABLE executions (
-        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
-        source_message_id TEXT NOT NULL, agent_id TEXT NOT NULL, status TEXT NOT NULL,
-        mode TEXT NOT NULL, error TEXT, started_at TEXT, completed_at TEXT,
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-      );
-      CREATE TABLE execution_events (
-        id TEXT PRIMARY KEY, execution_id TEXT NOT NULL, status TEXT NOT NULL,
-        activity TEXT NOT NULL, content TEXT, created_at TEXT NOT NULL
-      );
-      INSERT INTO conversations VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z');
-      INSERT INTO messages VALUES ('legacy-message', 'legacy-conversation', 'workspace-a', 'user', NULL, '历史任务', '2026-07-12T06:00:01.000Z');
-      INSERT INTO executions VALUES ('legacy-execution', 'legacy-conversation', 'workspace-a', 'legacy-message', 'codex', 'completed', 'mock', NULL, NULL, '2026-07-12T06:00:02.000Z', '2026-07-12T06:00:01.000Z', '2026-07-12T06:00:02.000Z');
-      INSERT INTO execution_events VALUES ('legacy-event', 'legacy-execution', 'completed', '历史完成', NULL, '2026-07-12T06:00:02.000Z');
-    `);
+    database.exec('PRAGMA foreign_keys = OFF');
+    database.exec('DELETE FROM run_steps');
+    database.exec('DELETE FROM agent_runs');
+    database.exec('DROP TABLE run_steps');
+    database.exec('DROP TABLE agent_runs');
+    database.exec(`CREATE TABLE agent_runs (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
+      source_message_id TEXT NOT NULL, objective TEXT NOT NULL, status TEXT NOT NULL,
+      result_summary TEXT, failure_reason TEXT, started_at TEXT, completed_at TEXT,
+      waiting_question TEXT, waiting_execution_id TEXT, waiting_agent_id TEXT,
+      intent TEXT NOT NULL DEFAULT 'execute', runtime_policy_json TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`);
+    database.exec(`INSERT INTO conversations (id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, created_at, updated_at)
+      VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', NULL, NULL, NULL, '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z')`);
+    database.exec(`INSERT INTO messages (id, conversation_id, workspace_id, sender_type, sender_agent_id, run_id, content, created_at)
+      VALUES ('legacy-message', 'legacy-conversation', 'workspace-a', 'user', NULL, NULL, '历史任务', '2026-07-12T06:00:01.000Z')`);
+    database.exec(`INSERT INTO executions (id, run_id, conversation_id, workspace_id, source_message_id, agent_id, status, mode, error, started_at, completed_at, created_at, updated_at)
+      VALUES ('legacy-execution', NULL, 'legacy-conversation', 'workspace-a', 'legacy-message', 'codex', 'completed', 'mock', NULL, NULL, '2026-07-12T06:00:02.000Z', '2026-07-12T06:00:01.000Z', '2026-07-12T06:00:02.000Z')`);
+    database.exec(`INSERT INTO execution_events (id, execution_id, status, activity, content, created_at)
+      VALUES ('legacy-event', 'legacy-execution', 'completed', '历史完成', NULL, '2026-07-12T06:00:02.000Z')`);
+    database.exec('PRAGMA foreign_keys = ON');
     const before = { workspaces: 2, agents: 1, conversations: 1, messages: 1, executions: 1, executionEvents: 1 };
     database.close();
+    store = undefined;
 
     store = new SqliteStore(root);
     const execution = store.listExecutions('workspace-a', 'legacy-conversation')[0];
