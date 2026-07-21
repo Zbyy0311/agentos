@@ -94,6 +94,21 @@ describe('inTransaction', () => {
     assert.ok(!called);
   });
 
+  it('rejects async callback and rolls back', () => {
+    const db = open();
+    db.prepare('INSERT INTO txn_test (id, val) VALUES (99, ?)').run('before');
+    assert.throws(
+      () => inTransaction(db, async () => {
+        db.prepare('UPDATE txn_test SET val = ? WHERE id = 99').run('async-partial');
+        return 42 as any;
+      }),
+      (e: unknown) => e instanceof TypeError && (e as Error).message.includes('synchronous'),
+    );
+    const row = db.prepare('SELECT val FROM txn_test WHERE id = 99').get() as { val: string };
+    assert.equal(row.val, 'before');
+    db.close();
+  });
+
   it('produces no partial writes after rollback', () => {
     const db = open();
     db.exec('INSERT INTO txn_test (id, val) VALUES (10, ?)'.replace('?', "'pre-existing'"));

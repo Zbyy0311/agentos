@@ -398,8 +398,7 @@ export class SqliteStore implements Store {
   }
 
   deleteWorkspace(workspaceId: string): void {
-    this.database.exec('BEGIN');
-    try {
+    inTransaction(this.database, () => {
       this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM memory_fts WHERE memory_id IN (SELECT id FROM memories WHERE workspace_id = ?)').run(workspaceId);
       this.database.prepare('DELETE FROM memories WHERE workspace_id = ?').run(workspaceId);
@@ -420,11 +419,7 @@ export class SqliteStore implements Store {
       `).run(workspaceId);
       this.database.prepare('DELETE FROM conversations WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM agent_profiles WHERE workspace_id = ?').run(workspaceId);
-      this.database.exec('COMMIT');
-    } catch (error) {
-      try { this.database.exec('ROLLBACK'); } catch {}
-      throw error;
-    }
+    });
   }
 
   listAgentProfiles(workspaceId: string): AgentProfile[] {

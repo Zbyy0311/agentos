@@ -11,7 +11,14 @@ export function nextVersion(version: number): number {
   if (version <= 0) {
     throw new RangeError(`version must be positive, got ${version}`);
   }
-  return version + 1;
+  if (version >= Number.MAX_SAFE_INTEGER) {
+    throw new RangeError(`version overflow: ${version} >= MAX_SAFE_INTEGER`);
+  }
+  const next = version + 1;
+  if (!Number.isSafeInteger(next)) {
+    throw new RangeError(`version overflow: ${version} + 1 is not a safe integer`);
+  }
+  return next;
 }
 
 export class VersionConflictError extends Error {

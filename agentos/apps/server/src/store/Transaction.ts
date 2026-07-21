@@ -22,6 +22,19 @@ export function inTransaction<T>(
   }
   try {
     const result = fn();
+
+    // Reject async callbacks — they'd COMMIT before the promise settles.
+    if (
+      typeof result === 'object' &&
+      result !== null &&
+      'then' in result &&
+      typeof (result as Record<string, unknown>).then === 'function'
+    ) {
+      throw new TypeError(
+        'inTransaction only supports synchronous callbacks. An async function was passed.',
+      );
+    }
+
     db.exec('COMMIT');
     return result;
   } catch (err) {

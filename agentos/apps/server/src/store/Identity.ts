@@ -121,7 +121,7 @@ export function injectIdSources(
 }
 
 let lastTimestamp = 0;
-let sequenceCounter = 0;
+let lastRandomness: Uint8Array | null = null;
 
 /**
  * Create a canonical entity ID: `<prefix>_<ulid>`
@@ -129,31 +129,41 @@ let sequenceCounter = 0;
 export function createEntityId(kind: EntityIdKind): string {
   const prefix = ENTITY_ID_PREFIXES[kind];
   let ts = clock();
-  const rand = randomSource();
 
-  // Ensure monotonicity within the same millisecond
-  if (ts === lastTimestamp) {
-    sequenceCounter++;
-  } else if (ts < lastTimestamp) {
-    // Clock moved backwards — use lastTimestamp + sequence to preserve ordering
-    sequenceCounter++;
-    ts = lastTimestamp;
+  // Monotonic strategy:
+  // - ts > lastTimestamp: fresh ms, generate new random bytes.
+  // - ts === lastTimestamp or ts < lastTimestamp: increment the previous
+  //   random bytes as a big-endian integer.
+  // - We always encode with the larger of the two timestamps (pinning to
+  //   last seen when the clock regresses), so that lexicographic ordering
+  //   matches the order of creation.
+  let effectiveTs = ts;
+  let rand: Uint8Array;
+
+  if (ts > lastTimestamp || lastRandomness === null) {
+    effectiveTs = ts;
+    rand = randomSource();
+    lastRandomness = new Uint8Array(rand);
+    lastTimestamp = ts;
   } else {
-    sequenceCounter = 0;
-  }
-  lastTimestamp = ts;
-
-  // Mix sequence counter into randomness bytes for monotonicity in same ms
-  const randomness = new Uint8Array(rand);
-  if (sequenceCounter > 0) {
-    // XOR the sequence counter into the last few bytes
-    for (let i = 0; i < 4 && sequenceCounter > 0; i++) {
-      const byteIdx = randomness.length - 1 - i;
-      randomness[byteIdx] ^= (sequenceCounter >> (i * 8)) & 0xff;
+    // Same ms or clock regression: use the previous randomness + 1
+    effectiveTs = lastTimestamp;
+    const bytes = new Uint8Array(lastRandomness);
+    let carry = 1;
+    for (let i = bytes.length - 1; i >= 0 && carry > 0; i--) {
+      const sum = bytes[i] + carry;
+      bytes[i] = sum & 0xff;
+      carry = sum >> 8;
     }
+    if (carry > 0) {
+      throw new Error('ULID randomness overflow: too many IDs in the same millisecond');
+    }
+    rand = bytes;
+    lastRandomness = bytes;
+    // lastTimestamp stays at the value already recorded
   }
 
-  const ulid = encodeUlid({ timestamp: ts, randomness });
+  const ulid = encodeUlid({ timestamp: effectiveTs, randomness: rand });
   return `${prefix}_${ulid}`;
 }
 

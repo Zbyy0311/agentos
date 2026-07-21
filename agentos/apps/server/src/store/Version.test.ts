@@ -20,6 +20,10 @@ describe('Version — base types', () => {
     assert.throws(() => nextVersion(Infinity));
   });
 
+  it('nextVersion rejects MAX_SAFE_INTEGER', () => {
+    assert.throws(() => nextVersion(Number.MAX_SAFE_INTEGER));
+  });
+
   it('VersionConflictError has stable fields', () => {
     const err = new VersionConflictError('agent_profiles', 'agent_001', 1);
     assert.equal(err.code, 'VERSION_CONFLICT');

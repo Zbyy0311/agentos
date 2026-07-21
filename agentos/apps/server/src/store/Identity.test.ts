@@ -75,39 +75,40 @@ describe('Identity — canonical entity IDs', () => {
     assert.ok(id1 < id2, `${id1} should be < ${id2}`);
   });
 
-  it('monotonic within same millisecond', () => {
-    let counter = 0;
+  it('monotonic within same millisecond — IDs are strictly increasing', () => {
     const restore = injectIdSources(
-      () => 0, // always same timestamp
-      () => {
-        const buf = new Uint8Array(10).fill(0x42);
-        buf[0] = counter++;
-        return buf;
-      },
+      () => 100, // always same timestamp
+      () => new Uint8Array(10).fill(0x00),
     );
     try {
-      const ids = new Set<string>();
-      for (let i = 0; i < 50; i++) {
-        ids.add(createEntityId('run'));
+      const ids: string[] = [];
+      for (let i = 0; i < 200; i++) {
+        ids.push(createEntityId('run'));
       }
-      assert.equal(ids.size, 50);
+      // Uniqueness
+      assert.equal(new Set(ids).size, 200);
+      // Strict monotonicity
+      for (let i = 1; i < ids.length; i++) {
+        assert.ok(ids[i - 1] < ids[i], `id[${i - 1}] "${ids[i - 1]}" should be < id[${i}] "${ids[i]}"`);
+      }
     } finally {
       restore();
     }
   });
 
   it('clock regression does not produce reverse-order IDs', () => {
-    const restore1 = injectIdSources(() => 50, () => new Uint8Array(10).fill(0x12));
+    const restore1 = injectIdSources(() => 100, () => new Uint8Array(10).fill(0x12));
     const id1 = createEntityId('run');
     restore1();
 
-    const restore2 = injectIdSources(() => 10, () => new Uint8Array(10).fill(0x12));
+    // Clock moved backwards — monotonicity pins to last timestamp and
+    // increments randomness, so the second ID is still after the first.
+    const restore2 = injectIdSources(() => 50, () => new Uint8Array(10).fill(0x12));
     const id2 = createEntityId('run');
     restore2();
 
-    // Second call has lower timestamp but identical random; monotonicity uses
-    // the last-seen timestamp so id2 should not sort before id1.
-    assert.ok(id1 <= id2, `with clock regression, ${id1} should not be > ${id2}`);
+    // The body should NOT appear before id1 (it's the same timestamp, incremented randomness)
+    assert.ok(id1 <= id2, `${id1} should not be > ${id2}`);
   });
 
   it('isValidEntityId validates prefix and body', () => {
