@@ -71,8 +71,8 @@ Both corrections were committed in `12207fb8`.
 
 | WP | Name | Effort | Risk | Dependencies | Recommended Branch |
 |---|---|---|---|---|---|
-| M2.1 | Migration Runner and SQLite Foundation | Medium | Low | None | `m2/migration-runner` |
-| M2.2 | Canonical Identity, Version and Repository | Medium | Low | M2.1 | `m2/identity-version-repository` |
+| M2.1 | Migration Runner and SQLite Foundation | Medium | Medium | None | `runtime/m2-1-migration-foundation` |
+| M2.2 | Canonical Identity, Version and Repository | Medium | Medium | M2.1 | `runtime/m2-2-identity-version-repository` |
 | M2.3 | Workspace, Agent Profile and Provider Configuration | High | Medium | M2.1, M2.2 | `m2/workspace-agent-provider` |
 | M2.4 | Task and Run Separation | High | High | M2.3 | `m2/task-run-separation` |
 | M2.5 | Stage, Workflow Snapshot and Runtime Snapshot | Medium | Medium | M2.4 | `m2/snapshots` |
@@ -117,7 +117,7 @@ Parallel opportunities:
 - Legacy database: strict structural verification → adopt baseline → continue
 - Mismatched/worn schema: diagnostic report, not silent adoption
 - `PRAGMA integrity_check` + `PRAGMA foreign_key_check` pass after migration
-- Rollback restores previous schema state
+- Failed migration transaction rolls back its DDL, DML and migration record
 - All existing tests still pass
 
 ---
@@ -204,4 +204,5 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 | No code written yet | ✅ (planning only) |
 
 ### Next Step
-Start M2.1: worktree at `E:\workspace\Multi-Agent-worktrees\agentos-m2-1` on branch `runtime/m2-1-migration-foundation` and implement MigrationRunner.
+M2.1 is VERIFIED on branch `runtime/m2-1-migration-foundation` (implementation commit `a804005f`).  
+M2.2 proceeds with Canonical Identity, Version and Repository.
