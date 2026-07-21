@@ -315,7 +315,8 @@ describe('Real DB copy verification', () => {
     const src = existsSync(prodPath) ? prodPath : null;
 
     // This test is a verification gate: when a production DB exists, it MUST pass.
-    // Set AGENTOS_REAL_DB_PATH=/nonexistent to explicitly opt out in CI.
+    // Set AGENTOS_REAL_DB_PATH to require verification against a specific database.
+    // If the configured file does not exist, the test fails.
     if (!src) {
       if (envPath) {
         assert.fail(`AGENTOS_REAL_DB_PATH is set to "${envPath}" but no file exists there`);
