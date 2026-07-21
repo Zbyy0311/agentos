@@ -48,7 +48,9 @@ import { JsonFileStore } from './JsonFileStore.js';
 import type { Store } from './Store.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
-import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import { inTransaction } from './Transaction.js';
+import { assertVersionedMutation } from './Repository.js';
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
 
@@ -396,8 +398,7 @@ export class SqliteStore implements Store {
   }
 
   deleteWorkspace(workspaceId: string): void {
-    this.database.exec('BEGIN');
-    try {
+    inTransaction(this.database, () => {
       this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM memory_fts WHERE memory_id IN (SELECT id FROM memories WHERE workspace_id = ?)').run(workspaceId);
       this.database.prepare('DELETE FROM memories WHERE workspace_id = ?').run(workspaceId);
@@ -418,11 +419,7 @@ export class SqliteStore implements Store {
       `).run(workspaceId);
       this.database.prepare('DELETE FROM conversations WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM agent_profiles WHERE workspace_id = ?').run(workspaceId);
-      this.database.exec('COMMIT');
-    } catch (error) {
-      try { this.database.exec('ROLLBACK'); } catch {}
-      throw error;
-    }
+    });
   }
 
   listAgentProfiles(workspaceId: string): AgentProfile[] {
@@ -454,23 +451,39 @@ export class SqliteStore implements Store {
     if (!next.roleTitle || !next.systemPrompt || next.permissions.length === 0) {
       throw new Error('Agent identity fields are required');
     }
-    this.database.prepare(`
-      UPDATE agent_profiles
-      SET name = ?, provider = ?, role_title = ?, system_prompt = ?, permissions_json = ?, enabled = ?, model = ?, thinking_effort = ?, updated_at = ?
-      WHERE workspace_id = ? AND id = ?
-    `).run(
-      next.name,
-      next.provider ?? providerFromLegacyRole(next.role),
-      next.roleTitle,
-      next.systemPrompt,
-      JSON.stringify(next.permissions),
-      next.enabled ? 1 : 0,
-      next.model ?? null,
-      normalizeThinkingEffort(next.thinkingEffort),
-      next.updatedAt,
-      workspaceId,
-      agentId,
-    );
+
+    const newVersion = inTransaction(this.database, () => {
+      const row = this.database.prepare('SELECT version FROM agent_profiles WHERE workspace_id = ? AND id = ?')
+        .get(workspaceId, agentId) as { version: number } | undefined;
+      if (!row) throw new Error('Agent not found');
+
+      const result = this.database.prepare(`
+        UPDATE agent_profiles
+        SET name = ?, provider = ?, role_title = ?, system_prompt = ?, permissions_json = ?,
+            enabled = ?, model = ?, thinking_effort = ?, updated_at = ?,
+            version = version + 1
+        WHERE workspace_id = ? AND id = ? AND version = ?
+      `).run(
+        next.name,
+        next.provider ?? providerFromLegacyRole(next.role),
+        next.roleTitle,
+        next.systemPrompt,
+        JSON.stringify(next.permissions),
+        next.enabled ? 1 : 0,
+        next.model ?? null,
+        normalizeThinkingEffort(next.thinkingEffort),
+        next.updatedAt,
+        workspaceId,
+        agentId,
+        row.version,
+      );
+
+      return assertVersionedMutation(result as { changes: number }, {
+        entityType: 'agent_profiles',
+        entityId: agentId,
+        expectedVersion: row.version,
+      });
+    });
     const workspaces = this.legacy.loadWorkspaces();
     const legacyAgent = workspaces
       .find(workspace => workspace.id === workspaceId)
@@ -1794,7 +1807,7 @@ export class SqliteStore implements Store {
   private runMigrations(): void {
     // MigrationRunner takes over schema initialization.
     // migrateSchema() is kept as the implementation source for baseline DDL.
-    const registry = new MigrationRegistry([baselineMigration]);
+    const registry = new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS);
     const runner = new MigrationRunner(this.database as any, registry);
     runner.run();
   }
