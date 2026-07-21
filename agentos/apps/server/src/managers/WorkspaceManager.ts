@@ -1,9 +1,9 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { Workspace } from '@agentos/shared';
 import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import type { Store } from '../store/Store.js';
+import { createEntityId } from '../store/Identity.js';
 
 export class WorkspaceManager {
   constructor(private store: Store) {}
@@ -25,7 +25,7 @@ export class WorkspaceManager {
 
     const now = new Date().toISOString();
     const workspace: Workspace = {
-      id: randomUUID().slice(0, 8),
+      id: createEntityId('workspace'),
       name,
       rootPath,
       gitEnabled: options.git ?? true,

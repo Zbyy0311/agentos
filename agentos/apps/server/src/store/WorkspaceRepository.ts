@@ -175,9 +175,7 @@ export class WorkspaceRepository {
           cliCommand: row.agent_cli_command!,
           cliArgs: parseJson<string[]>(row.agent_cli_args_json!, []),
           ...(row.agent_model ? { model: row.agent_model } : {}),
-          ...(row.agent_thinking_effort && row.agent_thinking_effort !== 'auto'
-            ? { thinkingEffort: row.agent_thinking_effort as Workspace['agents'][number]['thinkingEffort'] }
-            : {}),
+          thinkingEffort: (row.agent_thinking_effort || 'auto') as Workspace['agents'][number]['thinkingEffort'],
         };
         ws.agents.push(agent);
       }

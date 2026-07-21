@@ -46,6 +46,7 @@ import type {
 } from '@agentos/shared';
 import { JsonFileStore } from './JsonFileStore.js';
 import type { Store } from './Store.js';
+import { WorkspaceRepository } from './WorkspaceRepository.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
@@ -361,6 +362,7 @@ interface PreferenceProjectionRow {
 
 export class SqliteStore implements Store {
   private readonly legacy: JsonFileStore;
+  private readonly workspaceRepo: WorkspaceRepository;
   private readonly database: SqliteDatabase;
 
   constructor(projectRoot: string) {
@@ -368,20 +370,40 @@ export class SqliteStore implements Store {
     const dataDir = join(projectRoot, '.agentos');
     mkdirSync(dataDir, { recursive: true });
     this.database = new DatabaseSync(join(dataDir, 'agentos.sqlite'));
+    this.workspaceRepo = new WorkspaceRepository(this.database as any);
     this.database.exec('PRAGMA foreign_keys = ON');
     this.runMigrations();
     this.migrateLegacyKimiWorkspaceConfigs();
     this.migrateLegacyAgentProfiles();
+    this.migrateLegacyWorkspaces();
   }
 
   loadWorkspaces(): Workspace[] {
-    return this.legacy.loadWorkspaces();
+    const sqlite = this.workspaceRepo.findAll();
+    const sqliteIds = new Set(sqlite.map(w => w.id));
+    // Merge any JSON workspaces not already present in SQLite (one-time fallback)
+    const json = this.legacy.loadWorkspaces();
+    for (const ws of json) {
+      if (!sqliteIds.has(ws.id)) {
+        sqlite.push(ws);
+      }
+    }
+    if (sqlite.length > 0) return sqlite;
+    return json;
   }
 
   saveWorkspaces(workspaces: Workspace[]): void {
     const nextWorkspaces = structuredClone(workspaces);
     migrateLegacyKimiAgents(nextWorkspaces);
     this.legacy.saveWorkspaces(nextWorkspaces);
+    // Sync to SQLite: upsert each workspace into the workspaces table
+    for (const ws of nextWorkspaces) {
+      if (this.workspaceRepo.exists(ws.id)) {
+        this.workspaceRepo.update(ws);
+      } else {
+        this.workspaceRepo.insert(ws);
+      }
+    }
     this.migrateLegacyAgentProfiles();
   }
 
@@ -419,6 +441,7 @@ export class SqliteStore implements Store {
       `).run(workspaceId);
       this.database.prepare('DELETE FROM conversations WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM agent_profiles WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId);
     });
   }
 
@@ -2415,6 +2438,18 @@ export class SqliteStore implements Store {
           workspace.id,
           agent.id,
         );
+      }
+    }
+  }
+
+  private migrateLegacyWorkspaces(): void {
+    if (this.workspaceRepo.count() > 0) return;
+    const workspaces = this.legacy.loadWorkspaces();
+    for (const ws of workspaces) {
+      try {
+        this.workspaceRepo.insert(ws);
+      } catch {
+        // workspace already exists (canonical path conflict) — skip
       }
     }
   }
