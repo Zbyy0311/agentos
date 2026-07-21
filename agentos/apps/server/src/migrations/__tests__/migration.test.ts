@@ -1,6 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync, existsSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, readFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -212,7 +212,7 @@ describe('Concurrent migration lock', () => {
   beforeEach(() => { ctx = tempDbPath(); });
   afterEach(() => { cleanup(ctx); });
 
-  it('returns lock error when another connection holds IMMEDIATE', () => {
+  it('returns MIGRATION_LOCK_FAILED when another connection holds IMMEDIATE', () => {
     const a = new DatabaseSync(ctx.path);
     a.exec('PRAGMA busy_timeout = 200');
     a.exec('BEGIN IMMEDIATE');
@@ -222,49 +222,163 @@ describe('Concurrent migration lock', () => {
     b.exec('PRAGMA busy_timeout = 200');
     let caught: unknown;
     try { new MigrationRunner(b, new MigrationRegistry([{ id: '001', name: 't', checksum: CS, apply: () => {} }])).run(); } catch (e) { caught = e; }
-    assert.ok(caught instanceof Error);
-    assert.ok((caught instanceof MigrationError && (caught as MigrationError).code === 'MIGRATION_LOCK_FAILED') ||
-      ((caught as Error).message.includes('locked')), `got ${caught}`);
+    assert.ok(caught instanceof MigrationError, `expected MigrationError, got ${caught}`);
+    assert.equal((caught as MigrationError).code, 'MIGRATION_LOCK_FAILED',
+      `expected MIGRATION_LOCK_FAILED, got ${(caught as MigrationError).code} / ${(caught as MigrationError).message}`);
     a.exec('ROLLBACK'); a.close(); b.close();
   });
 });
 
 // ---- Backup verification ----
 describe('Backup verification', () => {
-  let ctx: ReturnType<typeof tempDbPath>;
-  beforeEach(() => { ctx = tempDbPath(); });
-  afterEach(() => { cleanup(ctx); });
-
-  it('creates backup in backupDir and passes integrity_check', () => {
+  it('destructive migration backed up by MigrationRunner before execution', () => {
+    // Build a destructive migration: it records that it has been applied
+    // only after the backup has been attempted.  We provide a real
+    // backup provider that writes to a temp dir; the test asserts the
+    // backup file exists, passes integrity_check, and existed BEFORE
+    // the migration body ran.
     const dir2 = mkdtempSync(join(tmpdir(), 'bk-'));
     const p2 = join(dir2, 't.db');
     const db2 = new DatabaseSync(p2);
-
-    new MigrationRunner(db2, new MigrationRegistry([baselineMigration])).run();
-    db2.prepare("INSERT INTO conversations (id, workspace_id, conversation_type, title, created_at, updated_at) VALUES ('c1', 'ws', 'direct', 'PreBackup', '2026-01-01', '2026-01-01')").run();
-
     const bd = join(dir2, 'backups');
     const bp = createFileBackupProvider(bd);
-    bp.backup(p2);
+
+    // Insert data that should be visible in the backup snapshot
+    new MigrationRunner(db2, new MigrationRegistry([baselineMigration])).run();
+    db2.prepare("INSERT INTO conversations (id, workspace_id, conversation_type, title, created_at, updated_at) VALUES ('c1', 'ws', 'direct', 'PreDestructive', '2026-01-01', '2026-01-01')").run();
+
+    // Destructive migration (changes data) — must be backed up first
+    let applied = false;
+    const destructive: Migration = {
+      id: '099', name: 'destructive-test', checksum: CS, destructive: true,
+      apply: (c: MigrationContext) => {
+        applied = true;
+        c.db.exec("UPDATE conversations SET title='PostDestructive' WHERE id='c1'");
+      },
+    };
+
+    const runner = new MigrationRunner(db2, new MigrationRegistry([baselineMigration, destructive]), { backupProvider: bp });
+    runner.run();
+
+    assert.ok(applied, 'destructive migration should have been applied');
 
     const { readdirSync } = createRequire(import.meta.url)('node:fs') as { readdirSync: (p: string) => string[] };
     const files = readdirSync(bd);
     assert.ok(files.length > 0, `backup files exist in ${bd}: ${JSON.stringify(files)}`);
+
+    // Open backup — pre-migration data must be there
     const bf = join(bd, files[0]);
     const bdb = new DatabaseSync(bf);
     try {
       const r = bdb.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check: string }>;
       assert.equal(r[0].integrity_check, 'ok');
-      assert.equal((bdb.prepare("SELECT title FROM conversations WHERE id='c1'").get() as { title: string }).title, 'PreBackup');
+      const conv = bdb.prepare("SELECT title FROM conversations WHERE id='c1'").get() as { title: string } | undefined;
+      assert.ok(conv, 'backup should contain the pre-destructive conversation');
+      assert.equal(conv.title, 'PreDestructive', 'backup must capture state before destructive migration');
     } finally { bdb.close(); }
-    db2.close(); rmSync(dir2, { recursive: true, force: true });
+
+    // Live DB should have the post-destructive title
+    const live = db2.prepare("SELECT title FROM conversations WHERE id='c1'").get() as { title: string };
+    assert.equal(live.title, 'PostDestructive');
+
+    db2.close();
+    rmSync(dir2, { recursive: true, force: true });
+  });
+
+  it('destructive migration without backup provider rejected', () => {
+    const dir2 = mkdtempSync(join(tmpdir(), 'bk2-'));
+    const p2 = join(dir2, 't.db');
+    const db2 = new DatabaseSync(p2);
+
+    new MigrationRunner(db2, new MigrationRegistry([baselineMigration])).run();
+
+    const destructive: Migration = {
+      id: '099', name: 'no-backup', checksum: CS, destructive: true,
+      apply: () => { throw new Error('should not be reached'); },
+    };
+    assert.throws(() => new MigrationRunner(db2, new MigrationRegistry([baselineMigration, destructive])).run(),
+      (e: unknown) => e instanceof MigrationError &&
+        e.code === 'MIGRATION_FAILED' &&
+        e.message.includes('backup provider'));
+
+    db2.close();
+    rmSync(dir2, { recursive: true, force: true });
   });
 });
 
 // ---- Real DB ----
-describe('Real DB verification', () => {
-  it('reports worktree DB location', () => {
-    const p = join(process.cwd(), '..', '.agentos', 'agentos.sqlite');
-    console.log(`[DB] Worktree DB at ${p}: ${existsSync(p) ? 'EXISTS' : 'not found (fresh checkout — expected)'}`);
+describe('Real DB copy verification', () => {
+  it('legacy adoption on copy of production database', () => {
+    // The production database lives at the primary project path
+    const prodPath = '/e/workspace/Multi-Agent/agentos/.agentos/agentos.sqlite';
+    const src = existsSync(prodPath) ? prodPath : null;
+    if (!src) {
+      // No production database available — skip with informational message.
+      // This is valid for fresh worktree checkouts where no agent has ever run.
+      console.log('[Real DB] No production database found — skipping copy verification.');
+      return;
+    }
+
+    // Hash original file
+    const { createHash } = createRequire(import.meta.url)('node:crypto') as { createHash: (algo: string) => { update(buf: Buffer): { digest(enc: 'hex'): string } } };
+    const srcBuf = readFileSync(src);
+    const originalHash = createHash('sha256').update(srcBuf).digest('hex');
+
+    // Copy to temp
+    const dir2 = mkdtempSync(join(tmpdir(), 'real-db-'));
+    const copyPath = join(dir2, 'copy.sqlite');
+    copyFileSync(src, copyPath);
+
+    // Count core table rows before
+    const copyDb = new DatabaseSync(copyPath);
+    const beforeCounts = tableRowCounts(copyDb);
+    console.log(`[Real DB] before row counts: ${JSON.stringify(beforeCounts)}`);
+
+    // Run MigrationRunner on the copy
+    new MigrationRunner(copyDb, new MigrationRegistry([baselineMigration])).run();
+
+    // Second run must be no-op
+    new MigrationRunner(copyDb, new MigrationRegistry([baselineMigration])).run();
+
+    // Verify _schema_migrations has exactly 1 row
+    const recCount = (copyDb.prepare('SELECT COUNT(*) AS cnt FROM _schema_migrations').get() as { cnt: number }).cnt;
+    assert.equal(recCount, 1, 'legacy adoption should record exactly one migration');
+
+    // Core table row counts unchanged
+    const afterCounts = tableRowCounts(copyDb);
+    console.log(`[Real DB] after row counts: ${JSON.stringify(afterCounts)}`);
+
+    for (const [table, before] of Object.entries(beforeCounts)) {
+      assert.equal(afterCounts[table], before, `table ${table} row count must not change`);
+    }
+
+    copyDb.close();
+
+    // Original file hash unchanged
+    const srcBuf2 = readFileSync(src);
+    const finalHash = createHash('sha256').update(srcBuf2).digest('hex');
+    assert.equal(finalHash, originalHash, 'original database must be completely unchanged');
+
+    rmSync(dir2, { recursive: true, force: true });
   });
 });
+
+function tableRowCounts(db: { prepare(sql: string): { all(): Array<unknown> } }) {
+  const tables = [
+    'agent_profiles', 'conversations', 'conversation_members', 'messages',
+    'message_attachments', 'executions', 'agent_runs', 'run_steps',
+    'execution_events', 'agent_events', 'run_event_sequences',
+    'run_cli_invocations', 'run_file_changes', 'run_decisions',
+    'runtime_artifacts', 'memories', 'memory_sources', 'memory_candidates',
+    'user_profiles',
+  ];
+  const counts: Record<string, number> = {};
+  for (const t of tables) {
+    try {
+      counts[t] = (db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).all() as Array<{ c: number }>)[0]?.c ?? 0;
+    } catch {
+      counts[t] = -1; // table doesn't exist
+    }
+  }
+  return counts;
+}
