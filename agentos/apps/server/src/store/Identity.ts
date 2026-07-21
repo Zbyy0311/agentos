@@ -39,26 +39,36 @@ const CROCKFORD = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
  * → 26 Crockford Base32 characters.
  *
  * Timestamp is Unix-milliseconds (Date.now()).
- * Randomness is 10 bytes.
- *
- * The ULID spec encodes the 48-bit timestamp in the first 10 characters,
- * making IDs lexicographically sortable by creation time.
+ * Timestamps above 2^48-1 are rejected — no silent truncation.
+ * Randomness must be exactly 10 bytes.
  */
-
 const ENCODED_LEN = 26;
 const TIMESTAMP_CHARS = 10; // 48 bits ÷ 5 bits per character
 const RANDOM_BYTES = 10;
-const MAX_TS = (1 << 48) - 1; // 281474976710655
+const MAX_ULID_TIMESTAMP = 2 ** 48 - 1; // 281474976710655
+
+function validateUlidInputs(timestamp: number, randomness: Uint8Array): void {
+  if (!Number.isSafeInteger(timestamp)) {
+    throw new RangeError(`ULID timestamp must be a safe integer, got ${timestamp}`);
+  }
+  if (timestamp < 0 || timestamp > MAX_ULID_TIMESTAMP) {
+    throw new RangeError(`ULID timestamp out of range [0, ${MAX_ULID_TIMESTAMP}], got ${timestamp}`);
+  }
+  if (randomness.length !== RANDOM_BYTES) {
+    throw new RangeError(`ULID randomness must be exactly ${RANDOM_BYTES} bytes, got ${randomness.length}`);
+  }
+}
 
 function encodeUlid(timestamp: number, randomness: Uint8Array): string {
-  const result = new Array<string>(ENCODED_LEN);
-  // Only the low 48 bits matter for ULID — truncate safely
-  const ts48 = timestamp & 0xFFFFFFFFFFFF;
+  validateUlidInputs(timestamp, randomness);
 
-  // Encode 48-bit timestamp (10 characters)
-  let ts = ts48;
+  const result = new Array<string>(ENCODED_LEN);
+
+  // Encode 48-bit timestamp (10 characters) using division and modulo only.
+  // No bitwise operations — JavaScript bitwise ops truncate to 32-bit signed.
+  let ts = timestamp;
   for (let i = TIMESTAMP_CHARS - 1; i >= 0; i--) {
-    result[i] = CROCKFORD[ts & 0x1f];
+    result[i] = CROCKFORD[ts % 32];
     ts = Math.floor(ts / 32);
   }
 
@@ -80,7 +90,7 @@ function encodeUlid(timestamp: number, randomness: Uint8Array): string {
   return result.join('');
 }
 
-/** Decode a ULID back to its Unix-ms timestamp. */
+/** Decode a ULID back to its full 48-bit Unix-ms timestamp. */
 export function decodeUlidTimestamp(encoded: string): number {
   if (encoded.length !== ENCODED_LEN) throw new Error('invalid ULID length');
   let ts = 0;
@@ -93,7 +103,6 @@ export function decodeUlidTimestamp(encoded: string): number {
 export type ClockFn = () => number;
 export type RandomSourceFn = () => Uint8Array;
 
-/** Standard ULID clock: Unix-milliseconds since 1970-01-01. */
 const defaultClock: ClockFn = () => Date.now();
 const defaultRandom: RandomSourceFn = () => randomBytes(RANDOM_BYTES);
 
@@ -117,25 +126,21 @@ export class EntityIdGenerator {
     const prefix = ENTITY_ID_PREFIXES[kind];
     const ts = this.clock();
 
-    // Guard against negative or NaN timestamps. Timestamps larger than 2^48
-    // are silently truncated to low 48 bits in encodeUlid — this is safe for
-    // ~8,000 years of Date.now() precision. Test-only clocks (0, 100, etc.)
-    // or Date.now() values all pass this check.
-    if (ts < 0 || !Number.isSafeInteger(ts)) {
-      throw new Error(`timestamp out of ULID range: ${ts}`);
+    if (ts < 0 || !Number.isSafeInteger(ts) || ts > MAX_ULID_TIMESTAMP) {
+      throw new RangeError(`ULID timestamp out of range [0, ${MAX_ULID_TIMESTAMP}], got ${ts}`);
     }
 
-    let effectiveTs: number;
     let rand: Uint8Array;
 
     if (ts > this.lastTimestamp || this.lastRandomness === null) {
-      effectiveTs = ts;
       rand = this.randomSource();
+      if (rand.length !== RANDOM_BYTES) {
+        throw new RangeError(`ULID randomness must be exactly ${RANDOM_BYTES} bytes, got ${rand.length}`);
+      }
       this.lastRandomness = new Uint8Array(rand);
       this.lastTimestamp = ts;
     } else {
       // Same ms or clock regression: increment previous randomness
-      effectiveTs = this.lastTimestamp;
       const bytes = new Uint8Array(this.lastRandomness);
       let carry = 1;
       for (let i = bytes.length - 1; i >= 0 && carry > 0; i--) {
@@ -148,9 +153,10 @@ export class EntityIdGenerator {
       }
       rand = bytes;
       this.lastRandomness = bytes;
+      // effective timestamp stays at lastTimestamp
     }
 
-    return `${prefix}_${encodeUlid(effectiveTs, rand)}`;
+    return `${prefix}_${encodeUlid(this.lastTimestamp, rand)}`;
   }
 }
 
