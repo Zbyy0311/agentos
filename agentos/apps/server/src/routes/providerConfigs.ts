@@ -87,7 +87,10 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
         return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
       }
       const expectedVersion = typeof req.body.expectedVersion === 'number' ? req.body.expectedVersion : undefined;
-      if (expectedVersion !== undefined && existing.version !== expectedVersion) {
+      if (expectedVersion === undefined) {
+        return res.status(400).json({ error: 'expectedVersion is required for updates', code: 'VALIDATION_ERROR' });
+      }
+      if (existing.version !== expectedVersion) {
         return res.status(409).json({
           error: `Version conflict: expected ${expectedVersion}, current ${existing.version}`,
           code: 'VERSION_CONFLICT',
@@ -113,7 +116,9 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
         enabled: req.body.enabled !== undefined ? req.body.enabled : existing.enabled,
         updatedAt: new Date().toISOString(),
       };
-      const saved = repo.update(updated);
+      // Pass the client-provided version directly; repository uses it in the WHERE clause
+      // so stale clients are correctly rejected.
+      const saved = repo.update(updated, expectedVersion);
       res.json({ providerConfig: saved, workspaceId: workspace.id });
     } catch (error) {
       if (error instanceof Error && error.message.includes('version conflict')) {
@@ -131,10 +136,10 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       if (!existing || existing.workspaceId !== workspace.id) {
         return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
       }
-      // Check if any active run references this config
+      // Check if any active agent profile references this config
       const db = store.getDatabase();
       const activeRef = db.prepare(`
-        SELECT 1 FROM run_stages WHERE provider_config_id = ? AND status IN ('running','queued','created') LIMIT 1
+        SELECT 1 FROM agent_profiles WHERE provider_config_id = ? AND enabled = 1 LIMIT 1
       `).get(existing.id) as undefined | Record<string, unknown>;
       if (activeRef) {
         return res.status(409).json({

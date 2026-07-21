@@ -158,10 +158,12 @@ export class ProviderConfigurationRepository {
     return config;
   }
 
-  update(config: ProviderConfiguration): ProviderConfiguration {
+  update(config: ProviderConfiguration, expectedVersion?: number): ProviderConfiguration {
     inTransaction(this.db, () => {
-      const row = this.db.prepare('SELECT version FROM provider_configurations WHERE id = ?')
-        .get(config.id) as { version: number } | undefined;
+      const row = expectedVersion !== undefined
+        ? { version: expectedVersion }
+        : this.db.prepare('SELECT version FROM provider_configurations WHERE id = ?')
+            .get(config.id) as { version: number } | undefined;
       if (!row) throw new Error('Provider configuration not found');
 
       const result = this.db.prepare(`
@@ -191,12 +193,12 @@ export class ProviderConfigurationRepository {
     return config;
   }
 
-  archive(id: string): void {
+  archive(id: string, expectedVersion?: number): void {
     const config = this.findById(id);
     if (!config) throw new Error('Provider configuration not found');
     config.archivedAt = new Date().toISOString();
     config.updatedAt = new Date().toISOString();
-    this.update(config);
+    this.update(config, expectedVersion);
   }
 
   private toDomain(row: ProviderConfigurationRow): ProviderConfiguration {

@@ -364,8 +364,6 @@ export class SqliteStore implements Store {
   readonly workspaceRepo: WorkspaceRepository;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
-  /** Workspace IDs explicitly deleted from SQLite — prevents JSON fallback from re-adding them. */
-  private readonly deletedWorkspaceIds = new Set<string>();
 
   constructor(projectRoot: string) {
     this.legacy = new JsonFileStore(projectRoot);
@@ -375,6 +373,10 @@ export class SqliteStore implements Store {
     this.workspaceRepo = new WorkspaceRepository(this.database as any);
     this.database.exec('PRAGMA foreign_keys = ON');
     this.runMigrations();
+    // Ensure workspace tombstone table exists (internal, not a versioned migration).
+    this.database.exec(`CREATE TABLE IF NOT EXISTS _workspace_tombstones (
+      workspace_id TEXT PRIMARY KEY, deleted_at TEXT NOT NULL
+    )`);
     this.migrateAgentEventSequences();
     this.migrateLegacyExecutionRuns();
     this.migrateLegacyKimiWorkspaceConfigs();
@@ -385,21 +387,20 @@ export class SqliteStore implements Store {
   loadWorkspaces(): Workspace[] {
     const sqlite = this.workspaceRepo.findAll();
     const sqliteIds = new Set(sqlite.map(w => w.id));
-    // Merge any JSON workspaces not already present in SQLite (one-time fallback)
-    // Explicitly deleted workspace IDs are excluded from the fallback.
+    // Load tombstones: workspace IDs explicitly deleted from SQLite must not
+    // be re-imported from JSON on restart.
+    const tombstoneRows = this.database.prepare(
+      "SELECT workspace_id FROM _workspace_tombstones"
+    ).all() as Array<{ workspace_id: string }>;
+    const tombstonedIds = new Set(tombstoneRows.map(r => r.workspace_id));
+    // JSON fallback: include only entries not in SQLite and not tombstoned.
     const json = this.legacy.loadWorkspaces();
-    for (const ws of json) {
-      if (!sqliteIds.has(ws.id) && !this.deletedWorkspaceIds.has(ws.id)) {
-        sqlite.push(ws);
-      }
-    }
-    if (sqlite.length > 0) return sqlite;
-    return json;
+    const fallback = json.filter(ws => !sqliteIds.has(ws.id) && !tombstonedIds.has(ws.id));
+    return [...sqlite, ...fallback];
   }
 
   saveWorkspaces(workspaces: Workspace[]): void {
     const nextWorkspaces = structuredClone(workspaces);
-    migrateLegacyKimiAgents(nextWorkspaces);
     // Sync to SQLite: upsert each workspace into the workspaces table
     for (const ws of nextWorkspaces) {
       if (this.workspaceRepo.exists(ws.id)) {
@@ -445,8 +446,9 @@ export class SqliteStore implements Store {
       `).run(workspaceId);
       this.database.prepare('DELETE FROM conversations WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM agent_profiles WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare('DELETE FROM provider_configurations WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId);
-      this.deletedWorkspaceIds.add(workspaceId);
+      this.database.prepare('INSERT OR IGNORE INTO _workspace_tombstones (workspace_id, deleted_at) VALUES (?, ?)').run(workspaceId, new Date().toISOString());
     });
   }
 
@@ -2443,21 +2445,24 @@ export class SqliteStore implements Store {
   }
 
   private migrateLegacyWorkspaces(): void {
-    if (this.workspaceRepo.count() > 0) return;
     const workspaces = this.legacy.loadWorkspaces();
     for (const ws of workspaces) {
+      if (this.workspaceRepo.exists(ws.id)) continue;
       try {
         this.workspaceRepo.insert(ws);
       } catch {
-        // workspace already exists (canonical path conflict) — skip
+        // canonical_path conflict with another workspace — skip silently.
+        // This is normal in test fixtures where multiple workspaces share a rootPath.
       }
     }
   }
 
   private migrateLegacyKimiWorkspaceConfigs(): void {
     // One-time historical data fix: migrate old Kimi+OpenCode hybrid config to pure Kimi.
-    // This writes back to JSON because the fix corrects legacy data in place;
-    // the mutated data flows to SQLite via migrateLegacyWorkspaces / saveWorkspaces.
+    // The mutation is written to JSON so that downstream one-time migrations
+    // (migrateLegacyAgentProfiles, migrateLegacyWorkspaces) read the corrected data.
+    // This is NOT a runtime write path — it runs once at first construction after
+    // the schema migration sequence.
     const workspaces = this.legacy.loadWorkspaces();
     if (migrateLegacyKimiAgents(workspaces)) {
       this.legacy.saveWorkspaces(workspaces);
@@ -2773,6 +2778,8 @@ function isCollaborationRole(value: unknown): value is CollaborationRole {
 function providerFromLegacyRole(role: AgentProfile['role']): AgentProvider {
   return role === 'codex' || role === 'kimi' || role === 'opencode' || role === 'mimo' ? role : 'custom';
 }
+
+export { providerFromLegacyRole, defaultRoleTitle, defaultSystemPrompt, defaultPermissions };
 
 function legacyRunStatus(status: AgentExecution['status']): AgentRun['status'] {
   if (status === 'completed') return 'completed';
