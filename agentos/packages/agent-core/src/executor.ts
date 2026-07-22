@@ -158,7 +158,6 @@ export interface ExecuteContext {
   onRuntimeEvent?: RuntimeEventCallback;
   /** Read-only executions must not mutate tracked agent-memory files in the workspace. */
   persistWorkspaceLog?: boolean;
-  forceMock?: boolean;
 }
 
 export interface CommandInvocation {
@@ -308,7 +307,7 @@ export class CLIExecutor {
     diagLog(`EXECUTION_START executionId=${executionId} taskId=${taskId} stage=${stage} agent=${agentName} serverInstanceId=${serverInstanceId}`);
     diagLog(`TIMEOUT_CONFIG executionId=${executionId} taskId=${taskId} inactivityTimeoutMs=${inactivityTimeoutMs ?? 'disabled'} maxExecutionTimeoutMs=${maxExecutionTimeoutMs} lastActivityAt=${new Date(lastActivityAt).toISOString()}`);
 
-    if (ctx.forceMock ?? process.env.AGENTOS_FORCE_MOCK === 'true') {
+    if (process.env.AGENTOS_FORCE_MOCK === 'true') {
       ctx.onInvocationStarted?.({
         invocationId, cliKind, commandLabel,
         ...(config.model ? { model: config.model } : {}),

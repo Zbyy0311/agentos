@@ -7,7 +7,7 @@
     "dev": "pnpm --filter @agentos/agent-core build && tsx watch --exclude \"../../workspace/**\" --exclude \"../../.agentos/**\" --exclude \"../../agent-memory/**\" src/index.ts",
     "dev:stable": "pnpm --filter @agentos/agent-core build && tsx src/index.ts",
     "build": "pnpm --filter @agentos/agent-core build && tsc",
-    "test": "pnpm --filter @agentos/agent-core build && node --import tsx --test src/**/*.test.ts",
+    "test": "pnpm --filter @agentos/agent-core build && node --import tsx --test --test-concurrency=1 src/**/*.test.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist"
   },
