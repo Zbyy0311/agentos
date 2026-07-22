@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,9 +8,130 @@ import { createRequire } from 'node:module';
 import { SqliteStore } from './SqliteStore.js';
 import { EventBus } from '../events/EventBus.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { createEntityId } from './Identity.js';
+import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
+import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
+import type { MigrationContext } from '../migrations/types.js';
 import type { PreferenceEvidence, PreferenceProjection, TaskItem } from '@agentos/shared';
 
+test('tombstoned workspace rejected by assertWorkspaceExists for new Conversation', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.deleteWorkspace('workspace-a');
+    store.close();
+    store = new SqliteStore(root);
+    assert.throws(() => {
+      store!.createConversation({
+        id: createEntityId('conversation'),
+        workspaceId: 'workspace-a',
+        type: 'direct',
+        title: 'should fail',
+        agentId: 'codex',
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }, /Workspace not found/);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('new Workspace assigns kimicode provider type to Kimi agent', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('KimiWS', join(root, 'kimi-ws'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const db = store.getDatabase();
+    const pcRows = db.prepare(
+      'SELECT provider_type FROM provider_configurations WHERE workspace_id = ?',
+    ).all(created.id) as Array<{ provider_type: string }>;
+    const kimiConfig = pcRows.find(pc => pc.provider_type === 'kimicode');
+    assert.ok(kimiConfig, 'Kimi agent should get provider_type kimicode, not custom-cli');
+    const legacyConfig = pcRows.find(pc => pc.provider_type === 'custom-cli');
+    assert.equal(legacyConfig, undefined, 'No agent should fall through to custom-cli for known roles');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Workspace.agents projected fields match Provider Configuration after update', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('ProjectedWS', join(root, 'projected-ws'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const profiles = store.listAgentProfiles(created.id);
+    const codexProfile = profiles.find(a => a.id === 'codex')!;
+    const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
+    const config = repo.findById(codexProfile.providerConfigId!)!;
+    repo.update({
+      ...config,
+      providerType: 'opencode',
+      executable: 'ws-projected-cli',
+      argsTemplate: ['--from-provider'],
+      model: 'ws-projected-model',
+      updatedAt: new Date().toISOString(),
+    }, config.version);
+
+    const ws = manager.get(created.id)!;
+    const codexAgent = ws.agents.find(a => a.id === 'codex')!;
+    assert.equal(codexAgent.providerConfigId, config.id);
+    assert.equal(codexAgent.provider, 'opencode');
+    assert.equal(codexAgent.cliCommand, 'ws-projected-cli');
+    assert.deepEqual(codexAgent.cliArgs, ['--from-provider']);
+    assert.equal(codexAgent.model, 'ws-projected-model');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('Workspace.agents does not fall back to legacy model when Provider model is cleared', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('ClearedModelWS', join(root, 'cleared-model-ws'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const profile = store.listAgentProfiles(created.id).find(a => a.id === 'codex')!;
+    const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
+    const config = repo.findById(profile.providerConfigId!)!;
+    store.getDatabase().prepare(
+      'UPDATE agent_profiles SET model = ? WHERE workspace_id = ? AND id = ?',
+    ).run('legacy-agent-model', created.id, 'codex');
+    repo.update({
+      ...config,
+      model: undefined,
+      updatedAt: new Date().toISOString(),
+    }, config.version);
+
+    const agent = manager.get(created.id)!.agents.find(a => a.id === 'codex')!;
+    assert.equal(agent.model, undefined);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as { DatabaseSync: new (path: string) => { exec(sql: string): void; prepare(sql: string): { get(...parameters: unknown[]): unknown }; close(): void } };
+
+/** Apply the full baseline schema to an in-memory or file-based database. */
+function applyBaseline(db: { exec(sql: string): void }): void {
+  baselineMigration.apply({ db } as MigrationContext);
+}
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-sqlite-store-'));
@@ -102,6 +224,26 @@ test('migrates legacy workspace agents into SQLite exactly once', () => {
   }
 });
 
+test('legacy Agent migration creates and binds a Provider Configuration', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const db = store.getDatabase();
+    const row = db.prepare(`
+      SELECT ap.provider_config_id, pc.workspace_id
+      FROM agent_profiles ap
+      LEFT JOIN provider_configurations pc ON pc.id = ap.provider_config_id
+      WHERE ap.workspace_id = ? AND ap.id = ?
+    `).get('workspace-a', 'codex') as { provider_config_id: string | null; workspace_id: string | null } | undefined;
+    assert.ok(row?.provider_config_id);
+    assert.equal(row?.workspace_id, 'workspace-a');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('migrates a legacy role into provider without rewriting a custom command', () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
@@ -119,7 +261,7 @@ test('migrates a legacy role into provider without rewriting a custom command', 
   }
 });
 
-test('migrates legacy Kimi CLI configuration in JSON and SQLite', () => {
+test('migrates legacy Kimi CLI configuration without rewriting JSON', () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
@@ -129,11 +271,12 @@ test('migrates legacy Kimi CLI configuration in JSON and SQLite', () => {
     kimi.cliArgs = ['--pure', 'run'];
     writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify(workspaces), 'utf-8');
 
+    const jsonPath = join(root, 'workspace', 'workspaces.json');
+    const beforeHash = createHash('sha256').update(readFileSync(jsonPath)).digest('hex');
     store = new SqliteStore(root);
 
-    const workspaceAgent = store.loadWorkspaces()[1].agents[0];
-    assert.equal(workspaceAgent.cliCommand, 'kimi');
-    assert.deepEqual(workspaceAgent.cliArgs, ['-m', 'kimi-code/kimi-for-coding', '-p']);
+    const afterHash = createHash('sha256').update(readFileSync(jsonPath)).digest('hex');
+    assert.equal(afterHash, beforeHash);
     const profile = store.listAgentProfiles('workspace-b')[0];
     assert.equal(profile?.cliCommand, 'kimi');
     assert.deepEqual(profile?.cliArgs, ['-m', 'kimi-code/kimi-for-coding', '-p']);
@@ -143,7 +286,180 @@ test('migrates legacy Kimi CLI configuration in JSON and SQLite', () => {
   }
 });
 
-test('synchronizes existing SQLite CLI configuration from workspace JSON', () => {
+test('new SQLite-only Workspace can create a Conversation and reload default Agents', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('SQLite Only', join(root, 'sqlite-only'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    assert.equal(store.workspaceRepo.exists(created.id), true);
+
+    store.close();
+    store = new SqliteStore(root);
+    assert.equal(store.listAgentProfiles(created.id).length, 3);
+    assert.doesNotThrow(() => store!.createConversation({
+      id: 'sqlite-only-conversation', workspaceId: created.id, type: 'direct',
+      title: 'SQLite only', agentId: 'codex',
+      createdAt: '2026-07-21T00:00:00.000Z', updatedAt: '2026-07-21T00:00:00.000Z',
+    }));
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rolls back the whole Workspace aggregate when a Provider insert fails', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const db = store.getDatabase();
+    const before = {
+      workspaces: (db.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count,
+      agents: (db.prepare('SELECT COUNT(*) AS count FROM agent_profiles').get() as { count: number }).count,
+      providers: (db.prepare('SELECT COUNT(*) AS count FROM provider_configurations').get() as { count: number }).count,
+    };
+    db.exec(`CREATE TRIGGER fail_workspace_provider_insert
+      BEFORE INSERT ON provider_configurations
+      BEGIN SELECT RAISE(ABORT, 'intentional provider insert failure'); END`);
+
+    const manager = new WorkspaceManager(store);
+    assert.throws(() => manager.create('Broken', join(root, 'broken'), {
+      git: false, memory: false, readme: false, docs: false,
+    }), /intentional provider insert failure/);
+    assert.deepEqual({
+      workspaces: (db.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count,
+      agents: (db.prepare('SELECT COUNT(*) AS count FROM agent_profiles').get() as { count: number }).count,
+      providers: (db.prepare('SELECT COUNT(*) AS count FROM provider_configurations').get() as { count: number }).count,
+    }, before);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('rolls back one legacy Workspace aggregate when its Provider import fails', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const db = store.getDatabase();
+    db.prepare('DELETE FROM agent_profiles WHERE workspace_id = ?').run('workspace-b');
+    db.prepare('DELETE FROM provider_configurations WHERE workspace_id = ?').run('workspace-b');
+    db.prepare('DELETE FROM workspaces WHERE id = ?').run('workspace-b');
+    store.close();
+    store = undefined;
+
+    const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
+    database.exec(`
+      CREATE TRIGGER fail_legacy_workspace_b_provider_insert
+      BEFORE INSERT ON provider_configurations
+      WHEN NEW.workspace_id = 'workspace-b'
+      BEGIN SELECT RAISE(ABORT, 'intentional legacy provider import failure'); END
+    `);
+    database.close();
+
+    assert.throws(() => new SqliteStore(root), /intentional legacy provider import failure/);
+
+    const reopened = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
+    assert.equal((reopened.prepare('SELECT COUNT(*) AS count FROM workspaces WHERE id = ?').get('workspace-b') as { count: number }).count, 0);
+    assert.equal((reopened.prepare('SELECT COUNT(*) AS count FROM agent_profiles WHERE workspace_id = ?').get('workspace-b') as { count: number }).count, 0);
+    assert.equal((reopened.prepare('SELECT COUNT(*) AS count FROM provider_configurations WHERE workspace_id = ?').get('workspace-b') as { count: number }).count, 0);
+    reopened.close();
+  } finally {
+    store?.close();
+    try { rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }); } catch { /* failed startup may briefly retain a SQLite handle on Windows */ }
+  }
+});
+
+test('Agent compatibility fields follow its Provider Configuration', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('Projected', join(root, 'projected'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const initial = store.listAgentProfiles(created.id).find(agent => agent.id === 'codex')!;
+    const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
+    const config = repo.findById(initial.providerConfigId!)!;
+    repo.update({
+      ...config,
+      providerType: 'opencode',
+      executable: 'updated-provider-cli',
+      argsTemplate: ['--projected'],
+      model: 'updated-provider-model',
+      updatedAt: new Date().toISOString(),
+    }, config.version);
+
+    const projected = store.listAgentProfiles(created.id).find(agent => agent.id === 'codex')!;
+    assert.equal(projected.provider, 'opencode');
+    assert.equal(projected.cliCommand, 'updated-provider-cli');
+    assert.deepEqual(projected.cliArgs, ['--projected']);
+    assert.equal(projected.model, 'updated-provider-model');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('records the tombstone schema through MigrationRunner and keeps it after restart', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const migrations = store.getDatabase().prepare(
+      'SELECT migration_id FROM _schema_migrations ORDER BY migration_id',
+    ).all() as Array<{ migration_id: string }>;
+    assert.deepEqual(migrations.map(row => row.migration_id), ['001', '002', '003', '004']);
+    store.deleteWorkspace('workspace-a');
+    store.close();
+    store = new SqliteStore(root);
+    assert.equal(store.loadWorkspaces().some(workspace => workspace.id === 'workspace-a'), false);
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('legacy workspace migration rethrows unknown database errors', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  let candidate: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    store.close();
+    store = undefined;
+
+    const jsonPath = join(root, 'workspace', 'workspaces.json');
+    const legacy = JSON.parse(readFileSync(jsonPath, 'utf-8')) as { workspaces: Array<Record<string, unknown>> };
+    legacy.workspaces.push({
+      id: 'workspace-c', name: 'Workspace C', rootPath: 'C:\\workspace-c',
+      gitEnabled: true, memoryEnabled: true,
+      agents: [{ id: 'codex-c', name: 'Codex C', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: [] }],
+      lastOpenedAt: '2026-07-12T00:00:00.000Z', createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    });
+    writeFileSync(jsonPath, JSON.stringify(legacy), 'utf-8');
+
+    const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
+    database.exec(`CREATE TRIGGER fail_legacy_workspace_insert
+      BEFORE INSERT ON workspaces WHEN NEW.id = 'workspace-c'
+      BEGIN SELECT RAISE(ABORT, 'unknown legacy migration failure'); END`);
+    database.close();
+
+    assert.throws(() => { candidate = new SqliteStore(root); }, /unknown legacy migration failure|workspace-c/);
+  } finally {
+    candidate?.close();
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('keeps existing SQLite CLI configuration authoritative over later JSON edits', () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
   try {
@@ -151,6 +467,7 @@ test('synchronizes existing SQLite CLI configuration from workspace JSON', () =>
     initialWorkspaces.workspaces[0].agents[0].name = 'OpenCode (Codex fallback)';
     writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify(initialWorkspaces), 'utf-8');
     store = new SqliteStore(root);
+    const initial = store.listAgentProfiles('workspace-a')[0]!;
     store.close();
     store = undefined;
 
@@ -164,10 +481,10 @@ test('synchronizes existing SQLite CLI configuration from workspace JSON', () =>
 
     store = new SqliteStore(root);
     const profile = store.listAgentProfiles('workspace-a')[0];
-    assert.equal(profile?.name, codex.name);
-    assert.equal(profile?.cliCommand, codex.cliCommand);
-    assert.deepEqual(profile?.cliArgs, codex.cliArgs);
-    assert.equal(profile?.model, codex.model);
+    assert.equal(profile?.name, initial.name);
+    assert.equal(profile?.cliCommand, initial.cliCommand);
+    assert.deepEqual(profile?.cliArgs, initial.cliArgs);
+    assert.equal(profile?.model, initial.model);
   } finally {
     store?.close();
     rmSync(root, { recursive: true, force: true });
@@ -231,16 +548,8 @@ test('adds the thinking effort column when opening a legacy SQLite database', ()
   try {
     mkdirSync(join(root, '.agentos'), { recursive: true });
     const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
-    database.exec(`
-      CREATE TABLE agent_profiles (
-        workspace_id TEXT NOT NULL, id TEXT NOT NULL, name TEXT NOT NULL,
-        agent_role TEXT NOT NULL, role_title TEXT NOT NULL, system_prompt TEXT NOT NULL,
-        permissions_json TEXT NOT NULL, enabled INTEGER NOT NULL,
-        cli_command TEXT NOT NULL, cli_args_json TEXT NOT NULL, model TEXT,
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
-        PRIMARY KEY (workspace_id, id)
-      )
-    `);
+    // Create full baseline (already includes thinking_effort with default 'auto')
+    applyBaseline(database);
     database.close();
 
     store = new SqliteStore(root);
@@ -336,19 +645,10 @@ test('adds conversation settings columns to a legacy SQLite database', () => {
   try {
     mkdirSync(join(root, '.agentos'), { recursive: true });
     const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
-    database.exec(`
-      CREATE TABLE conversations (
-        id TEXT PRIMARY KEY,
-        workspace_id TEXT NOT NULL,
-        conversation_type TEXT NOT NULL,
-        title TEXT NOT NULL,
-        agent_id TEXT,
-        created_at TEXT NOT NULL,
-        updated_at TEXT NOT NULL
-      );
-      INSERT INTO conversations (id, workspace_id, conversation_type, title, agent_id, created_at, updated_at)
-      VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z');
-    `);
+    // Baseline already includes model, thinking_effort, dispatch_mode on conversations
+    applyBaseline(database);
+    database.exec(`INSERT INTO conversations (id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, created_at, updated_at)
+      VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', NULL, NULL, NULL, '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z')`);
     database.close();
 
     store = new SqliteStore(root);
@@ -477,33 +777,35 @@ test('migrates legacy executions without reducing historical row counts', () => 
   let store: SqliteStore | undefined;
   try {
     mkdirSync(join(root, '.agentos'), { recursive: true });
+    // Create a fully-migrated database, then downgrade agent_runs to test legacy migration
+    store = new SqliteStore(root);
+    store.close();
     const database = new DatabaseSync(join(root, '.agentos', 'agentos.sqlite'));
-    database.exec(`
-      CREATE TABLE conversations (
-        id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, conversation_type TEXT NOT NULL,
-        title TEXT NOT NULL, agent_id TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-      );
-      CREATE TABLE messages (
-        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
-        sender_type TEXT NOT NULL, sender_agent_id TEXT, content TEXT NOT NULL, created_at TEXT NOT NULL
-      );
-      CREATE TABLE executions (
-        id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, workspace_id TEXT NOT NULL,
-        source_message_id TEXT NOT NULL, agent_id TEXT NOT NULL, status TEXT NOT NULL,
-        mode TEXT NOT NULL, error TEXT, started_at TEXT, completed_at TEXT,
-        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
-      );
-      CREATE TABLE execution_events (
-        id TEXT PRIMARY KEY, execution_id TEXT NOT NULL, status TEXT NOT NULL,
-        activity TEXT NOT NULL, content TEXT, created_at TEXT NOT NULL
-      );
-      INSERT INTO conversations VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z');
-      INSERT INTO messages VALUES ('legacy-message', 'legacy-conversation', 'workspace-a', 'user', NULL, '历史任务', '2026-07-12T06:00:01.000Z');
-      INSERT INTO executions VALUES ('legacy-execution', 'legacy-conversation', 'workspace-a', 'legacy-message', 'codex', 'completed', 'mock', NULL, NULL, '2026-07-12T06:00:02.000Z', '2026-07-12T06:00:01.000Z', '2026-07-12T06:00:02.000Z');
-      INSERT INTO execution_events VALUES ('legacy-event', 'legacy-execution', 'completed', '历史完成', NULL, '2026-07-12T06:00:02.000Z');
-    `);
+    database.exec('PRAGMA foreign_keys = OFF');
+    database.exec('DELETE FROM run_steps');
+    database.exec('DELETE FROM agent_runs');
+    database.exec('DROP TABLE run_steps');
+    database.exec('DROP TABLE agent_runs');
+    database.exec(`CREATE TABLE agent_runs (
+      id TEXT PRIMARY KEY, workspace_id TEXT NOT NULL, conversation_id TEXT NOT NULL,
+      source_message_id TEXT NOT NULL, objective TEXT NOT NULL, status TEXT NOT NULL,
+      result_summary TEXT, failure_reason TEXT, started_at TEXT, completed_at TEXT,
+      waiting_question TEXT, waiting_execution_id TEXT, waiting_agent_id TEXT,
+      intent TEXT NOT NULL DEFAULT 'execute', runtime_policy_json TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    )`);
+    database.exec(`INSERT INTO conversations (id, workspace_id, conversation_type, title, agent_id, model, thinking_effort, dispatch_mode, created_at, updated_at)
+      VALUES ('legacy-conversation', 'workspace-a', 'direct', 'Legacy', 'codex', NULL, NULL, NULL, '2026-07-12T06:00:00.000Z', '2026-07-12T06:00:00.000Z')`);
+    database.exec(`INSERT INTO messages (id, conversation_id, workspace_id, sender_type, sender_agent_id, run_id, content, created_at)
+      VALUES ('legacy-message', 'legacy-conversation', 'workspace-a', 'user', NULL, NULL, '历史任务', '2026-07-12T06:00:01.000Z')`);
+    database.exec(`INSERT INTO executions (id, run_id, conversation_id, workspace_id, source_message_id, agent_id, status, mode, error, started_at, completed_at, created_at, updated_at)
+      VALUES ('legacy-execution', NULL, 'legacy-conversation', 'workspace-a', 'legacy-message', 'codex', 'completed', 'mock', NULL, NULL, '2026-07-12T06:00:02.000Z', '2026-07-12T06:00:01.000Z', '2026-07-12T06:00:02.000Z')`);
+    database.exec(`INSERT INTO execution_events (id, execution_id, status, activity, content, created_at)
+      VALUES ('legacy-event', 'legacy-execution', 'completed', '历史完成', NULL, '2026-07-12T06:00:02.000Z')`);
+    database.exec('PRAGMA foreign_keys = ON');
     const before = { workspaces: 2, agents: 1, conversations: 1, messages: 1, executions: 1, executionEvents: 1 };
     database.close();
+    store = undefined;
 
     store = new SqliteStore(root);
     const execution = store.listExecutions('workspace-a', 'legacy-conversation')[0];

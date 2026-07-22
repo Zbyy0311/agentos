@@ -250,6 +250,7 @@ test('persists model and thinking effort per conversation and rejects invalid co
 
 test('rejects a direct message when the requested model is not in the discovered capability', async () => {
   const root = createProjectRoot();
+  const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
   const store = new SqliteStore(root);
   const app = express();
   const server = app.listen(0);
@@ -298,7 +299,8 @@ test('rejects a direct message when the requested model is not in the discovered
     assert.equal(store.listExecutions('workspace-a', created.conversation.id).length, 1);
     assert.equal(store.listAgentProfiles('workspace-a').find(agent => agent.id === 'codex')?.model, 'profile-only-model');
   } finally {
-    delete process.env.AGENTOS_FORCE_MOCK;
+    if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
+    else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
     await new Promise<void>(resolve => server.close(() => resolve()));
     store.close();
     rmSync(root, { recursive: true, force: true });

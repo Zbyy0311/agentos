@@ -30,6 +30,7 @@ import { createWorktreeRoutes } from './routes/worktrees.js';
 import { WorktreeManager } from './services/WorktreeManager.js';
 import { createStorageRoutes } from './routes/storage.js';
 import { createApprovalRoutes } from './routes/approvals.js';
+import { createProviderConfigRoutes } from './routes/providerConfigs.js';
 import { createLocalCorsOptions, createLocalWriteGuard, resolveLocalApiSecurityConfig } from './localApiSecurity.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -102,6 +103,7 @@ app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspa
 app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store));
 app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, PROJECT_ROOT, store, artifactService));
 app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, workspaceManager));
 app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));

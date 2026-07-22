@@ -1,11 +1,24 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** PLANNED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED — READY FOR MERGE AUTHORIZATION; M2.4 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
-> **Branch:** `runtime/m2-1-migration-foundation` (active), then `runtime/m2-2-*` etc. per work package
+> **Branch:** `runtime/m2-3-workspace-agent-provider` (active M2.3 work), based on merged main@`0075d36e`
 > **Reference:** docs/Runtime-Specification/10-Data-Model.md, 01-Core-Concepts.md
+
+---
+
+## Current Implementation Status (2026-07-22)
+
+| Package | Status | Evidence / active branch |
+|---|---|---|
+| M2.1 | VERIFIED & MERGED | `b4613b2a` |
+| M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
+| M2.3 | VERIFIED — READY FOR MERGE AUTHORIZATION | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 OPEN, merge not yet authorized |
+| M2.4 | NOT STARTED | No active implementation branch |
+
+M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and awaits merge authorization on PR #2 (OPEN). Merge to `main` still requires explicit authorization.
 
 ---
 
@@ -120,7 +133,7 @@ CREATE TABLE _schema_migrations (
 - `PRAGMA integrity_check` and `PRAGMA foreign_key_check` pass after migration
 
 #### Recommended Branch
-- `runtime/m2-1-migration-foundation` (already created, based on main@5e2cd396)
+- `runtime/m2-1-migration-foundation` (historical implementation; merged as `b4613b2a`)
 
 #### Recommended Worktree
 - Required — dedicated worktree at `E:\workspace\Multi-Agent-worktrees\agentos-m2-1`
@@ -184,7 +197,7 @@ CREATE TABLE _schema_migrations (
 - Transaction helper is tested and used in at least one write path
 
 #### Recommended Branch
-- `m2/identity-version-repository`
+- `runtime/m2-2-identity-version-repository` (historical implementation; merged as `0075d36e`)
 
 #### Integration Order
 - 2/8 — foundational for all subsequent work
@@ -194,6 +207,11 @@ CREATE TABLE _schema_migrations (
 ### M2.3 — Workspace, Agent Profile and Provider Configuration
 
 **Goal:** Move workspace metadata from JSON to SQLite, separate Agent Profile from Provider Configuration.
+
+**Current status:** VERIFIED — READY FOR MERGE AUTHORIZATION. Active branch:
+`runtime/m2-3-workspace-agent-provider`. Original reviewed head `5dc0e47e`; Provider API
+remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 OPEN,
+merge not yet authorized. Final scope cleanup is recorded in `236fcc79`.
 
 #### Domain Types (new or modified in shared)
 - `Workspace` — add SQLite-backed fields, remove `agents` array

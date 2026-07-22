@@ -92,6 +92,8 @@ export interface WorkspaceAgent {
   cliArgs: string[];
   model?: string;
   thinkingEffort?: ThinkingEffort;
+  /** Reference to a ProviderConfiguration in the provider_configurations table. */
+  providerConfigId?: string;
 }
 
 export interface AgentCapability {

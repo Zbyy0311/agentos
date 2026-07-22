@@ -614,9 +614,9 @@
 |---|---|---|
 | workspaces | Workspace[] | Array of workspace objects |
 
-**Writer:** `JsonFileStore.saveWorkspaces()`  
-**Reader:** `JsonFileStore.loadWorkspaces()`  
-**Current Purpose:** Primary store for workspace metadata  
+**Writer:** No active SQLite Workspace/Agent/Provider path writes this file. `JsonFileStore.saveWorkspaces()` remains available only to the standalone legacy store.
+**Reader:** `JsonFileStore.loadWorkspaces()` for legacy fallback and one-time migration input
+**Current Purpose:** Legacy import/fallback source; SQLite is authoritative once migrated
 **Target:** retire — migrate to SQLite  
 **Migration Risk:** Medium — workspace data must be migrated, agents moved to agent_profiles
 
@@ -661,13 +661,15 @@ interface Store {
 
 | Migration | Trigger | Description |
 |---|---|---|
-| `migrateSchema()` | Constructor/reopening | Creates all tables with IF NOT EXISTS |
+| `MigrationRunner` | Constructor/reopening | Applies registered, versioned migrations and records checksums |
 | `ensureColumn()` | Constructor | Adds columns that didn't exist in original schema |
-| `migrateLegacyKimiWorkspaceConfigs()` | Constructor | Migrates legacy Kimi agent configs in JSON |
-| `migrateLegacyAgentProfiles()` | Constructor + saveWorkspaces | Syncs JSON workspace agents → SQLite agent_profiles |
+| `migrateLegacyWorkspaceAggregates()` | Constructor | Imports each legacy Workspace, its Provider Configurations, and Agent Profiles in one transaction without JSON write-back; skips only known canonical-path conflicts |
+| `migrateLegacyAgentsWithinTransaction()` | Within each Workspace migration transaction | Creates and binds Provider Configurations for legacy agents; unknown database errors fail closed |
 | `migrateAgentEventSequences()` | Constructor | Backfills sequence numbers and creates run_event_sequences |
 | `migrateLegacyExecutionRuns()` | Constructor | Creates agent_runs for executions without run_id |
 | `migrateConversationCollaboration()` | Constructor | Normalizes role_kind and sequence in conversation_members |
+
+M2.3 correction: Workspace migration and Agent Profile projection are SQLite-first. Legacy JSON is read as migration/fallback input; Kimi normalization operates on an in-memory deep copy, and no active SqliteStore Workspace/Agent/Provider path writes `workspace/workspaces.json`. Tombstones are created by registered Migration 004.
 
 **Key issues with current migrations:**
 1. No version detection — all migrations run on every `migrateSchema()` call

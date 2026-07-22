@@ -1,12 +1,15 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
-import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import type { Workspace } from '@agentos/shared';
 import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
-import type { Store } from '../store/Store.js';
+import { createEntityId } from '../store/Identity.js';
+import { toCanonicalRootPath } from '../store/WorkspacePath.js';
+import { providerFromLegacyRole, defaultRoleTitle, defaultSystemPrompt, defaultPermissions } from '../store/SqliteStore.js';
+import { inTransaction } from '../store/Transaction.js';
+import type { SqliteStore } from '../store/SqliteStore.js';
 
 export class WorkspaceManager {
-  constructor(private store: Store) {}
+  constructor(private store: SqliteStore) {}
 
   list(): Workspace[] {
     return this.store.loadWorkspaces().sort((a, b) =>
@@ -15,17 +18,24 @@ export class WorkspaceManager {
   }
 
   get(id: string): Workspace | undefined {
+    // SQLite-first: check repository
+    const ws = this.store.workspaceRepo.findById(id);
+    if (ws) return ws;
+    // Fallback: JSON dual-read (legacy workspaces not yet migrated to SQLite)
     return this.store.loadWorkspaces().find(w => w.id === id);
   }
 
   create(name: string, rootPath: string, options: { git?: boolean; memory?: boolean; readme?: boolean; docs?: boolean } = {}): Workspace {
-    if (this.store.loadWorkspaces().some(w => w.rootPath === rootPath)) {
+    const canonicalPath = toCanonicalRootPath(rootPath);
+    const existing = this.store.workspaceRepo.findByCanonicalPath(canonicalPath);
+    if (existing) {
       throw new Error('Workspace already exists at this path');
     }
 
     const now = new Date().toISOString();
+    const wsId = createEntityId('workspace');
     const workspace: Workspace = {
-      id: randomUUID().slice(0, 8),
+      id: wsId,
       name,
       rootPath,
       gitEnabled: options.git ?? true,
@@ -37,13 +47,61 @@ export class WorkspaceManager {
     };
 
     this.initializeWorkspaceDirectory(workspace, options);
-    const workspaces = [...this.store.loadWorkspaces(), workspace];
-    this.store.saveWorkspaces(workspaces);
+    const db = this.store.getDatabase();
+    inTransaction(db, () => {
+      this.store.workspaceRepo.insertWithinTransaction(workspace);
+      for (const agent of workspace.agents) {
+        const providerConfigId = createEntityId('provider');
+        db.prepare(`
+          INSERT INTO provider_configurations (
+            id, workspace_id, name, provider_type, adapter_id, runtime_mode,
+            executable, args_template_json, model,
+            capabilities_json, timeout_policy_json,
+            approval_mode, output_mode, enabled, version, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+        `).run(
+          providerConfigId, wsId, `${agent.name} Provider`,
+          agent.role === 'codex' ? 'codex' : agent.role === 'opencode' ? 'opencode' : agent.role === 'kimi' ? 'kimicode' : 'custom-cli',
+          `builtin.${agent.role}`,
+          'cli',
+          agent.cliCommand, JSON.stringify(agent.cliArgs), agent.model ?? null,
+          JSON.stringify({
+            sessionResume: false, structuredEvents: false, nativeApprovals: false,
+            subagents: false, toolEvents: false, fileEvents: false, usageEvents: false,
+            reasoningStream: false, interactiveInput: false, pause: false,
+            cancellation: false, modelSelection: false, workspaceAwareness: false,
+            nativeSandbox: false, outputContracts: false,
+          }),
+          JSON.stringify({
+            discoveryTimeoutMs: 10_000, validationTimeoutMs: 30_000,
+            startupTimeoutMs: 60_000, idleTimeoutMs: 600_000,
+            totalTimeoutMs: null, cancelGracePeriodMs: 5_000, approvalTimeoutMs: null,
+          }),
+          'agentos', 'parsed-text', 1, now, now,
+        );
+        const provider = providerFromLegacyRole(agent.role as any);
+        db.prepare(`
+          INSERT INTO agent_profiles (
+            workspace_id, id, name, agent_role, provider, role_title, system_prompt,
+            permissions_json, enabled, cli_command, cli_args_json, model,
+            thinking_effort, provider_config_id, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          wsId, agent.id, agent.name, agent.role, provider,
+          defaultRoleTitle(agent.role as any), defaultSystemPrompt(agent.role as any),
+          JSON.stringify(defaultPermissions(agent.role as any)),
+          agent.enabled ? 1 : 0,
+          agent.cliCommand, JSON.stringify(agent.cliArgs), agent.model ?? null,
+          agent.thinkingEffort ?? 'auto', providerConfigId, now, now,
+        );
+      }
+    });
     return workspace;
   }
 
   importExisting(rootPath: string): Workspace {
-    const existing = this.store.loadWorkspaces().find(w => w.rootPath === rootPath);
+    const canonicalPath = toCanonicalRootPath(rootPath);
+    const existing = this.store.workspaceRepo.findByCanonicalPath(canonicalPath);
     if (existing) return this.touch(existing.id);
 
     const name = rootPath.split(/[\\/]/).pop() || 'imported';
@@ -56,25 +114,19 @@ export class WorkspaceManager {
   }
 
   remove(id: string): void {
-    const currentWorkspaces = this.store.loadWorkspaces();
-    const workspaces = currentWorkspaces.filter(w => w.id !== id);
-    this.store.saveWorkspaces(workspaces);
-    try {
-      this.store.deleteWorkspace?.(id);
-    } catch (error) {
-      try { this.store.saveWorkspaces(currentWorkspaces); } catch {}
-      throw error;
-    }
+    this.store.deleteWorkspace(id);
   }
 
   touch(id: string): Workspace {
-    const workspaces = this.store.loadWorkspaces();
-    const workspace = workspaces.find(w => w.id === id);
-    if (!workspace) throw new Error('Workspace not found');
-    workspace.lastOpenedAt = new Date().toISOString();
-    workspace.updatedAt = new Date().toISOString();
-    this.store.saveWorkspaces(workspaces);
-    return workspace;
+    const existing = this.store.workspaceRepo.findById(id);
+    if (!existing) throw new Error('Workspace not found');
+    const now = new Date().toISOString();
+    const updated = this.store.workspaceRepo.update({
+      ...existing,
+      lastOpenedAt: now,
+      updatedAt: now,
+    });
+    return updated;
   }
 
   recent(limit = 5): Workspace[] {

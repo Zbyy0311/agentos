@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** PLANNED — Ready for implementation
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED — READY FOR MERGE AUTHORIZATION; M2.4 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -73,7 +73,7 @@ Both corrections were committed in `12207fb8`.
 |---|---|---|---|---|---|
 | M2.1 | Migration Runner and SQLite Foundation | Medium | Medium | None | `runtime/m2-1-migration-foundation` |
 | M2.2 | Canonical Identity, Version and Repository | Medium | Medium | M2.1 | `runtime/m2-2-identity-version-repository` |
-| M2.3 | Workspace, Agent Profile and Provider Configuration | High | Medium | M2.1, M2.2 | `m2/workspace-agent-provider` |
+| M2.3 | Workspace, Agent Profile and Provider Configuration | High | Medium | M2.1, M2.2 | `runtime/m2-3-workspace-agent-provider` |
 | M2.4 | Task and Run Separation | High | High | M2.3 | `m2/task-run-separation` |
 | M2.5 | Stage, Workflow Snapshot and Runtime Snapshot | Medium | Medium | M2.4 | `m2/snapshots` |
 | M2.6 | Idempotency and Optimistic Concurrency | Medium | Medium | M2.2 | `m2/idempotency-concurrency` |
@@ -188,9 +188,10 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 
 ---
 
-## 10. M2 Readiness
+## 10. M2 Readiness and Current Status
 
-**✅ M2 is Ready for implementation.**
+M2 is in implementation. M2.1 and M2.2 are verified and merged; M2.3 is verified
+and ready for merge authorization; M2.4 has not started.
 
 | Check | Status |
 |---|---|
@@ -201,9 +202,11 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 | Branch naming convention defined | ✅ `runtime/m2-{N}-{name}` |
 | Worktree isolation | ✅ `E:\workspace\Multi-Agent-worktrees\agentos-m2-1` for M2.1 |
 | Clean git state confirmed | ✅ (worktree clean) |
-| No code written yet | ✅ (planning only) |
+| M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
+| M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
+| M2.3 | ✅ VERIFIED — READY FOR MERGE AUTHORIZATION (`runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
+| M2.4 | ⏳ NOT STARTED |
 
 ### Next Step
-M2.1 is VERIFIED on `runtime/m2-1-migration-foundation` (implementation `a804005f`).
-M2.2 is VERIFIED on `runtime/m2-2-identity-version-repository` (implementation `bc9ff13d`).
-Next: M2.2 PR review and merge, then M2.3 (Workspace, Agent Profile, Provider Configuration).
+M2.3 has passed the final remediation review on PR #2. Do not merge main until explicit
+authorization is given; auto-merge stays disabled and M2.4 has not started.
