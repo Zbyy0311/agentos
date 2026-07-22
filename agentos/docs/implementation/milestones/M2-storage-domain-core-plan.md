@@ -190,8 +190,8 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 
 ## 10. M2 Readiness and Current Status
 
-M2 is in implementation. M2.1 and M2.2 are verified and merged; M2.3 is verified
-and ready for PR review; M2.4 has not started.
+M2 is in implementation. M2.1 and M2.2 are verified and merged; M2.3 is implemented
+and pending final remediation review; M2.4 has not started.
 
 | Check | Status |
 |---|---|
@@ -208,5 +208,5 @@ and ready for PR review; M2.4 has not started.
 | M2.4 | ⏳ NOT STARTED |
 
 ### Next Step
-M2.3 has passed final remote review and is ready for PR review. Do not merge main without
-explicit authorization.
+Review the Provider API remediation at 9def4f15 on PR #2. Do not merge main until the
+remediation review passes and explicit authorization is given.
