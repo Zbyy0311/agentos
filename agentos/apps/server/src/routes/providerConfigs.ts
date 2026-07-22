@@ -6,6 +6,94 @@ import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
 
 const VALID_PROVIDER_TYPES = ['codex','claude-code','kimicode','opencode','gemini-cli','custom-cli','remote'] as const;
+const VALID_RUNTIME_MODES = ['cli','api','ssh','container'] as const;
+const VALID_WORKING_DIRECTORY_MODES = ['workspace','worktree','custom'] as const;
+const VALID_APPROVAL_MODES = ['agentos','native','hybrid','disabled'] as const;
+const VALID_OUTPUT_MODES = ['structured','parsed-text','raw-stream'] as const;
+
+const FORBIDDEN_SECRET_VALUE_FIELDS = [
+  'apiKey',
+  'password',
+  'token',
+  'accessToken',
+  'refreshToken',
+  'secret',
+  'secretValue',
+  'credential',
+  'credentialValue',
+];
+
+function sendValidationError(res: Response, message: string): void {
+  res.status(400).json({ error: message, code: 'VALIDATION_ERROR' });
+}
+
+function sendInternalError(res: Response, logContext: string, error: unknown): void {
+  console.error(`[provider-configs] ${logContext}`, error);
+  res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+}
+
+function findForbiddenSecretField(body: Record<string, unknown>): string | undefined {
+  return FORBIDDEN_SECRET_VALUE_FIELDS.find(field => field in body);
+}
+
+function validateEnumField(body: Record<string, unknown>, field: string, allowed: readonly string[]): string | undefined {
+  if (body[field] === undefined) return undefined;
+  const value = body[field];
+  if (typeof value !== 'string') return `${field} must be a string`;
+  if (!allowed.includes(value)) return `Invalid ${field}: ${value}`;
+  return undefined;
+}
+
+/** Validates all optional enum fields shared by POST and PUT. Returns the first error message. */
+function validateEnumFields(body: Record<string, unknown>): string | undefined {
+  return validateEnumField(body, 'providerType', VALID_PROVIDER_TYPES)
+    ?? validateEnumField(body, 'runtimeMode', VALID_RUNTIME_MODES)
+    ?? validateEnumField(body, 'workingDirectoryMode', VALID_WORKING_DIRECTORY_MODES)
+    ?? validateEnumField(body, 'approvalMode', VALID_APPROVAL_MODES)
+    ?? validateEnumField(body, 'outputMode', VALID_OUTPUT_MODES);
+}
+
+/** Validates the optional structured fields shared by POST and PUT. Returns the first error message. */
+function validateStructuredFields(body: Record<string, unknown>): string | undefined {
+  if (body.enabled !== undefined && typeof body.enabled !== 'boolean') {
+    return 'enabled must be a boolean';
+  }
+  if (body.argsTemplate !== undefined) {
+    if (!Array.isArray(body.argsTemplate) || !body.argsTemplate.every(item => typeof item === 'string')) {
+      return 'argsTemplate must be an array of strings';
+    }
+  }
+  for (const field of ['capabilities', 'timeoutPolicy'] as const) {
+    if (body[field] !== undefined) {
+      const value = body[field];
+      if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+        return `${field} must be an object`;
+      }
+    }
+  }
+  return undefined;
+}
+
+/** Returns the trimmed name, or undefined when absent. Sends a 400 when present but invalid. */
+function readValidName(body: Record<string, unknown>, res: Response, required: boolean): string | undefined {
+  if (body.name === undefined) {
+    if (required) {
+      sendValidationError(res, 'Provider name is required');
+    }
+    return undefined;
+  }
+  if (typeof body.name !== 'string' || body.name.trim().length === 0) {
+    sendValidationError(res, 'Provider name must be a non-empty string');
+    return undefined;
+  }
+  return body.name.trim();
+}
+
+/** Matches only the provider_configurations UNIQUE(workspace_id, name) constraint, for race-condition fallback mapping. */
+function isProviderNameUniqueViolation(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /unique constraint failed:\s*provider_configurations\.workspace_id,\s*provider_configurations\.name/i.test(message);
+}
 
 export function createProviderConfigRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
   const router = Router({ mergeParams: true });
@@ -18,7 +106,7 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       const configs = repo.findByWorkspace(workspace.id);
       res.json({ providerConfigs: configs, workspaceId: workspace.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
+      sendInternalError(res, 'list provider configurations failed', error);
     }
   });
 
@@ -32,7 +120,7 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       }
       res.json({ providerConfig: config, workspaceId: workspace.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
+      sendInternalError(res, 'get provider configuration failed', error);
     }
   });
 
@@ -40,11 +128,22 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
     const workspace = workspaceManager.get(req.params.workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
     try {
-      const name = typeof req.body.name === 'string' && req.body.name.trim().length > 0 ? req.body.name.trim() : undefined;
-      if (!name) return res.status(400).json({ error: 'Provider name is required', code: 'VALIDATION_ERROR' });
-      const providerType = req.body.providerType;
-      if (providerType && !VALID_PROVIDER_TYPES.includes(providerType)) {
-        return res.status(400).json({ error: `Invalid provider type: ${providerType}`, code: 'VALIDATION_ERROR' });
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (findForbiddenSecretField(body)) {
+        return res.status(400).json({ error: 'Raw secret values are not accepted; use secretProfileId', code: 'SECRET_VALUE_NOT_ALLOWED' });
+      }
+      const name = readValidName(body, res, true);
+      if (name === undefined) return;
+      const enumError = validateEnumFields(body);
+      if (enumError) return sendValidationError(res, enumError);
+      const structuredError = validateStructuredFields(body);
+      if (structuredError) return sendValidationError(res, structuredError);
+
+      if (repo.findByWorkspaceAndName(workspace.id, name)) {
+        return res.status(409).json({
+          error: 'A provider configuration with this name already exists',
+          code: 'PROVIDER_CONFIG_NAME_CONFLICT',
+        });
       }
 
       const now = new Date().toISOString();
@@ -52,21 +151,21 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
         id: createEntityId('provider'),
         workspaceId: workspace.id,
         name,
-        providerType: providerType || 'custom-cli',
-        adapterId: req.body.adapterId || 'builtin.custom-cli',
-        runtimeMode: req.body.runtimeMode || 'cli',
-        executable: req.body.executable,
-        argsTemplate: req.body.argsTemplate,
-        model: req.body.model,
-        environmentProfileId: req.body.environmentProfileId,
-        secretProfileId: req.body.secretProfileId,
-        workingDirectoryMode: req.body.workingDirectoryMode || 'workspace',
-        customWorkingDirectory: req.body.customWorkingDirectory,
-        capabilities: req.body.capabilities || { ...DEFAULT_CAPABILITIES },
-        timeoutPolicy: req.body.timeoutPolicy || { ...DEFAULT_TIMEOUT_POLICY },
-        approvalMode: req.body.approvalMode || 'agentos',
-        outputMode: req.body.outputMode || 'parsed-text',
-        enabled: req.body.enabled !== false,
+        providerType: (body.providerType as ProviderConfiguration['providerType'] | undefined) || 'custom-cli',
+        adapterId: (body.adapterId as string | undefined) || 'builtin.custom-cli',
+        runtimeMode: (body.runtimeMode as ProviderConfiguration['runtimeMode'] | undefined) || 'cli',
+        executable: body.executable as string | undefined,
+        argsTemplate: body.argsTemplate as string[] | undefined,
+        model: body.model as string | undefined,
+        environmentProfileId: body.environmentProfileId as string | undefined,
+        secretProfileId: body.secretProfileId as string | undefined,
+        workingDirectoryMode: (body.workingDirectoryMode as ProviderConfiguration['workingDirectoryMode'] | undefined) || 'workspace',
+        customWorkingDirectory: body.customWorkingDirectory as string | undefined,
+        capabilities: (body.capabilities as ProviderConfiguration['capabilities'] | undefined) || { ...DEFAULT_CAPABILITIES },
+        timeoutPolicy: (body.timeoutPolicy as ProviderConfiguration['timeoutPolicy'] | undefined) || { ...DEFAULT_TIMEOUT_POLICY },
+        approvalMode: (body.approvalMode as ProviderConfiguration['approvalMode'] | undefined) || 'agentos',
+        outputMode: (body.outputMode as ProviderConfiguration['outputMode'] | undefined) || 'parsed-text',
+        enabled: body.enabled !== false,
         version: 1,
         createdAt: now,
         updatedAt: now,
@@ -74,7 +173,13 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       const created = repo.insert(config);
       res.status(201).json({ providerConfig: created, workspaceId: workspace.id });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
+      if (isProviderNameUniqueViolation(error)) {
+        return res.status(409).json({
+          error: 'A provider configuration with this name already exists',
+          code: 'PROVIDER_CONFIG_NAME_CONFLICT',
+        });
+      }
+      sendInternalError(res, 'create provider configuration failed', error);
     }
   });
 
@@ -86,11 +191,15 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       if (!existing || existing.workspaceId !== workspace.id) {
         return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
       }
-      const expectedVersion = typeof req.body.expectedVersion === 'number' && Number.isInteger(req.body.expectedVersion)
-        ? req.body.expectedVersion
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (findForbiddenSecretField(body)) {
+        return res.status(400).json({ error: 'Raw secret values are not accepted; use secretProfileId', code: 'SECRET_VALUE_NOT_ALLOWED' });
+      }
+      const expectedVersion = typeof body.expectedVersion === 'number' && Number.isInteger(body.expectedVersion)
+        ? body.expectedVersion
         : undefined;
       if (expectedVersion === undefined) {
-        return res.status(400).json({ error: 'expectedVersion is required for updates', code: 'VALIDATION_ERROR' });
+        return sendValidationError(res, 'expectedVersion is required for updates');
       }
       if (existing.version !== expectedVersion) {
         return res.status(409).json({
@@ -98,24 +207,41 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
           code: 'VERSION_CONFLICT',
         });
       }
+      const name = readValidName(body, res, false);
+      if (name === undefined && body.name !== undefined) return;
+      const enumError = validateEnumFields(body);
+      if (enumError) return sendValidationError(res, enumError);
+      const structuredError = validateStructuredFields(body);
+      if (structuredError) return sendValidationError(res, structuredError);
+
+      if (name !== undefined) {
+        const nameConflict = repo.findByWorkspaceAndName(workspace.id, name);
+        if (nameConflict && nameConflict.id !== existing.id) {
+          return res.status(409).json({
+            error: 'A provider configuration with this name already exists',
+            code: 'PROVIDER_CONFIG_NAME_CONFLICT',
+          });
+        }
+      }
+
       const updated: ProviderConfiguration = {
         ...existing,
-        name: req.body.name ?? existing.name,
-        providerType: req.body.providerType ?? existing.providerType,
-        adapterId: req.body.adapterId ?? existing.adapterId,
-        runtimeMode: req.body.runtimeMode ?? existing.runtimeMode,
-        executable: req.body.executable !== undefined ? req.body.executable : existing.executable,
-        argsTemplate: req.body.argsTemplate ?? existing.argsTemplate,
-        model: req.body.model !== undefined ? req.body.model : existing.model,
-        environmentProfileId: req.body.environmentProfileId !== undefined ? req.body.environmentProfileId : existing.environmentProfileId,
-        secretProfileId: req.body.secretProfileId !== undefined ? req.body.secretProfileId : existing.secretProfileId,
-        workingDirectoryMode: req.body.workingDirectoryMode ?? existing.workingDirectoryMode,
-        customWorkingDirectory: req.body.customWorkingDirectory !== undefined ? req.body.customWorkingDirectory : existing.customWorkingDirectory,
-        capabilities: req.body.capabilities ?? existing.capabilities,
-        timeoutPolicy: req.body.timeoutPolicy ?? existing.timeoutPolicy,
-        approvalMode: req.body.approvalMode ?? existing.approvalMode,
-        outputMode: req.body.outputMode ?? existing.outputMode,
-        enabled: req.body.enabled !== undefined ? req.body.enabled : existing.enabled,
+        name: name ?? existing.name,
+        providerType: (body.providerType as ProviderConfiguration['providerType'] | undefined) ?? existing.providerType,
+        adapterId: (body.adapterId as string | undefined) ?? existing.adapterId,
+        runtimeMode: (body.runtimeMode as ProviderConfiguration['runtimeMode'] | undefined) ?? existing.runtimeMode,
+        executable: body.executable !== undefined ? body.executable as string | undefined : existing.executable,
+        argsTemplate: (body.argsTemplate as string[] | undefined) ?? existing.argsTemplate,
+        model: body.model !== undefined ? body.model as string | undefined : existing.model,
+        environmentProfileId: body.environmentProfileId !== undefined ? body.environmentProfileId as string | undefined : existing.environmentProfileId,
+        secretProfileId: body.secretProfileId !== undefined ? body.secretProfileId as string | undefined : existing.secretProfileId,
+        workingDirectoryMode: (body.workingDirectoryMode as ProviderConfiguration['workingDirectoryMode'] | undefined) ?? existing.workingDirectoryMode,
+        customWorkingDirectory: body.customWorkingDirectory !== undefined ? body.customWorkingDirectory as string | undefined : existing.customWorkingDirectory,
+        capabilities: (body.capabilities as ProviderConfiguration['capabilities'] | undefined) ?? existing.capabilities,
+        timeoutPolicy: (body.timeoutPolicy as ProviderConfiguration['timeoutPolicy'] | undefined) ?? existing.timeoutPolicy,
+        approvalMode: (body.approvalMode as ProviderConfiguration['approvalMode'] | undefined) ?? existing.approvalMode,
+        outputMode: (body.outputMode as ProviderConfiguration['outputMode'] | undefined) ?? existing.outputMode,
+        enabled: body.enabled !== undefined ? body.enabled as boolean : existing.enabled,
         updatedAt: new Date().toISOString(),
       };
       // Pass the client-provided version directly; repository uses it in the WHERE clause
@@ -123,10 +249,16 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       const saved = repo.update(updated, expectedVersion);
       res.json({ providerConfig: saved, workspaceId: workspace.id });
     } catch (error) {
+      if (isProviderNameUniqueViolation(error)) {
+        return res.status(409).json({
+          error: 'A provider configuration with this name already exists',
+          code: 'PROVIDER_CONFIG_NAME_CONFLICT',
+        });
+      }
       if (error instanceof Error && error.message.includes('version conflict')) {
         return res.status(409).json({ error: error.message, code: 'VERSION_CONFLICT' });
       }
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
+      sendInternalError(res, 'update provider configuration failed', error);
     }
   });
 
@@ -164,7 +296,7 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       repo.archive(existing.id, expectedVersion);
       res.json({ ok: true });
     } catch (error) {
-      res.status(500).json({ error: error instanceof Error ? error.message : String(error), code: 'INTERNAL_ERROR' });
+      sendInternalError(res, 'archive provider configuration failed', error);
     }
   });
 

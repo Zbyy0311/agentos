@@ -18,6 +18,20 @@ test('update returns incremented version', () => {
   assert.equal(found!.version, 2);
 });
 
+test('findByWorkspaceAndName is workspace-scoped and exact', () => {
+  const db = createDb();
+  const repo = new ProviderConfigurationRepository(db as any);
+  const config = makeConfig();
+  repo.insert(config);
+
+  const found = repo.findByWorkspaceAndName('ws-test1', config.name);
+  assert.ok(found);
+  assert.equal(found!.id, config.id);
+
+  assert.equal(repo.findByWorkspaceAndName('ws-1', config.name), undefined);
+  assert.equal(repo.findByWorkspaceAndName('ws-test1', 'Some Other Name'), undefined);
+});
+
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string, opts?: { open?: boolean }) => {
     exec(sql: string): void;

@@ -133,6 +133,15 @@ export class ProviderConfigurationRepository {
     return row ? this.toDomain(row) : undefined;
   }
 
+  /** Exact-name lookup within a workspace. Includes archived rows so results match the UNIQUE(workspace_id, name) index semantics. */
+  findByWorkspaceAndName(workspaceId: string, name: string): ProviderConfiguration | undefined {
+    const row = this.db.prepare(`
+      SELECT * FROM provider_configurations
+      WHERE workspace_id = ? AND name = ?
+    `).get(workspaceId, name) as ProviderConfigurationRow | undefined;
+    return row ? this.toDomain(row) : undefined;
+  }
+
   insert(config: ProviderConfiguration): ProviderConfiguration {
     inTransaction(this.db, () => {
       this.db.prepare(`
