@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 IMPLEMENTED — PENDING FINAL REVIEW; M2.4 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED — READY FOR PR REVIEW; M2.4 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -190,8 +190,8 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 
 ## 10. M2 Readiness and Current Status
 
-M2 is in implementation. M2.1 and M2.2 are verified and merged; M2.3 is implemented
-and pending final remote review; M2.4 has not started.
+M2 is in implementation. M2.1 and M2.2 are verified and merged; M2.3 is verified
+and ready for PR review; M2.4 has not started.
 
 | Check | Status |
 |---|---|
@@ -204,9 +204,9 @@ and pending final remote review; M2.4 has not started.
 | Clean git state confirmed | ✅ (worktree clean) |
 | M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
-| M2.3 | ⚠️ IMPLEMENTED — PENDING FINAL REVIEW (`runtime/m2-3-workspace-agent-provider`) |
+| M2.3 | ✅ VERIFIED — READY FOR PR REVIEW (`runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, head `5dc0e47e`) |
 | M2.4 | ⏳ NOT STARTED |
 
 ### Next Step
-M2.3 scope cleanup is complete. Next: final remote review, then a PR when explicitly authorized;
-do not open a Ready-for-review PR or merge main yet.
+M2.3 has passed final remote review and is ready for PR review. Do not merge main without
+explicit authorization.

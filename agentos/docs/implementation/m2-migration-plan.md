@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 IMPLEMENTED — PENDING FINAL REVIEW; M2.4 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED — READY FOR PR REVIEW; M2.4 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-3-workspace-agent-provider` (active M2.3 work), based on merged main@`0075d36e`
@@ -15,10 +15,10 @@
 |---|---|---|
 | M2.1 | VERIFIED & MERGED | `b4613b2a` |
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
-| M2.3 | IMPLEMENTED — PENDING FINAL REVIEW | `runtime/m2-3-workspace-agent-provider`, scope cleanup `236fcc79` |
+| M2.3 | VERIFIED — READY FOR PR REVIEW | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, branch head `5dc0e47e` |
 | M2.4 | NOT STARTED | No active implementation branch |
 
-M2.3 is not yet authorized for a Ready-for-review PR or merge to `main`.
+M2.3 is ready for PR review. Merge to `main` still requires explicit authorization.
 
 ---
 
@@ -208,7 +208,7 @@ CREATE TABLE _schema_migrations (
 
 **Goal:** Move workspace metadata from JSON to SQLite, separate Agent Profile from Provider Configuration.
 
-**Current status:** IMPLEMENTED — PENDING FINAL REVIEW. Active branch:
+**Current status:** VERIFIED — READY FOR PR REVIEW. Active branch:
 `runtime/m2-3-workspace-agent-provider`. Final scope cleanup is recorded in `236fcc79`.
 
 #### Domain Types (new or modified in shared)
