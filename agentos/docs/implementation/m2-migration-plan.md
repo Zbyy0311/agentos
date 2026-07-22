@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW; M2.4 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED — READY FOR MERGE AUTHORIZATION; M2.4 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-3-workspace-agent-provider` (active M2.3 work), based on merged main@`0075d36e`
@@ -15,10 +15,10 @@
 |---|---|---|
 | M2.1 | VERIFIED & MERGED | `b4613b2a` |
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
-| M2.3 | IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, prior reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), current branch head `b17ba0fc`, PR #2 OPEN |
+| M2.3 | VERIFIED — READY FOR MERGE AUTHORIZATION | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 OPEN, merge not yet authorized |
 | M2.4 | NOT STARTED | No active implementation branch |
 
-M2.3 is implemented and pending final remediation review on PR #2 (OPEN). Merge to `main` still requires explicit authorization.
+M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and awaits merge authorization on PR #2 (OPEN). Merge to `main` still requires explicit authorization.
 
 ---
 
@@ -208,10 +208,10 @@ CREATE TABLE _schema_migrations (
 
 **Goal:** Move workspace metadata from JSON to SQLite, separate Agent Profile from Provider Configuration.
 
-**Current status:** IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW. Active branch:
-`runtime/m2-3-workspace-agent-provider` (current head `b17ba0fc`). Prior reviewed head
-`5dc0e47e`; Provider API remediation code `9def4f15`; PR #2 OPEN, pending final
-remediation review. Final scope cleanup is recorded in `236fcc79`.
+**Current status:** VERIFIED — READY FOR MERGE AUTHORIZATION. Active branch:
+`runtime/m2-3-workspace-agent-provider`. Original reviewed head `5dc0e47e`; Provider API
+remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 OPEN,
+merge not yet authorized. Final scope cleanup is recorded in `236fcc79`.
 
 #### Domain Types (new or modified in shared)
 - `Workspace` — add SQLite-backed fields, remove `agents` array

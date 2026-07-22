@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW; M2.4 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED — READY FOR MERGE AUTHORIZATION; M2.4 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -190,8 +190,8 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 
 ## 10. M2 Readiness and Current Status
 
-M2 is in implementation. M2.1 and M2.2 are verified and merged; M2.3 is implemented
-and pending final remediation review; M2.4 has not started.
+M2 is in implementation. M2.1 and M2.2 are verified and merged; M2.3 is verified
+and ready for merge authorization; M2.4 has not started.
 
 | Check | Status |
 |---|---|
@@ -204,9 +204,9 @@ and pending final remediation review; M2.4 has not started.
 | Clean git state confirmed | ✅ (worktree clean) |
 | M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
-| M2.3 | ⚠️ IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW (`runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, prior reviewed head `5dc0e47e`, remediation commit `9def4f15`) |
+| M2.3 | ✅ VERIFIED — READY FOR MERGE AUTHORIZATION (`runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
 | M2.4 | ⏳ NOT STARTED |
 
 ### Next Step
-Review the Provider API remediation at 9def4f15 on PR #2. Do not merge main until the
-remediation review passes and explicit authorization is given.
+M2.3 has passed the final remediation review on PR #2. Do not merge main until explicit
+authorization is given; auto-merge stays disabled and M2.4 has not started.
