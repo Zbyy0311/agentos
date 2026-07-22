@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED — READY FOR PR REVIEW; M2.4 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW; M2.4 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -204,7 +204,7 @@ and ready for PR review; M2.4 has not started.
 | Clean git state confirmed | ✅ (worktree clean) |
 | M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
-| M2.3 | ✅ VERIFIED — READY FOR PR REVIEW (`runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, head `5dc0e47e`) |
+| M2.3 | ⚠️ IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW (`runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, prior reviewed head `5dc0e47e`, remediation commit `9def4f15`) |
 | M2.4 | ⏳ NOT STARTED |
 
 ### Next Step
