@@ -1,11 +1,10 @@
 import { Router, type Request, type Response } from 'express';
-import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import { TaskRunService } from '../services/TaskRunService.js';
+import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { RunNotFoundError } from '../store/RunRepository.js';
 import { requireV2Workspace, respondV2 } from './v2Tasks.js';
 
-export function createV2RunRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
+export function createV2RunRoutes(store: TaskRunServiceDeps, workspaceManager: WorkspaceManager): Router {
   const router = Router({ mergeParams: true });
   const service = new TaskRunService(store);
 

@@ -1,8 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import type { V2RunReason, V2TaskPriority, V2TaskStatus } from '@agentos/shared';
-import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import { TaskRunService } from '../services/TaskRunService.js';
+import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { TaskNotFoundError } from '../store/TaskRepository.js';
 
 const V2_TASK_PRIORITIES: readonly V2TaskPriority[] = ['low', 'normal', 'high', 'critical'];
@@ -72,7 +71,7 @@ function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
-export function createV2TaskRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
+export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: WorkspaceManager): Router {
   const router = Router({ mergeParams: true });
   const service = new TaskRunService(store);
 

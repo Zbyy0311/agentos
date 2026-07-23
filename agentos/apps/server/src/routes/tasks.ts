@@ -8,6 +8,40 @@ import { AgentRunner, AGENT_CONFIGS, STAGE_ROLE_MAP } from '@agentos/agent-core'
 import type { AgentStage, TaskItem, TaskLog, Workspace } from '@agentos/shared';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
 import { applyFinalReviewDecision, getWorkerEvidenceFailure } from './taskPipeline.js';
+import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
+
+/** Minimal structural surface a Store must expose for Bridge persistence (SqliteStore satisfies it). */
+export type PipelineRunner = Pick<AgentRunner, 'runCodexManager' | 'runKimiWorker' | 'runOpenCodeReviewer' | 'runCodexFinalReview'>;
+
+export type RunnerFactory = (
+  workspace: Workspace,
+  taskId: string,
+  taskTitle: string,
+  onChunk: (text: string, done: boolean) => void,
+  opts: { signal: AbortSignal; onActivity: () => void },
+) => PipelineRunner;
+
+export interface TaskRoutesDeps {
+  /** Test-only seam; production default constructs the real AgentRunner. */
+  createRunner?: RunnerFactory;
+  /** Bridge persistence; defaults to a TaskRunService over the given Store when capable. */
+  taskRunService?: TaskRunService;
+}
+
+const defaultRunnerFactory: RunnerFactory = (workspace, taskId, taskTitle, onChunk, opts) =>
+  new AgentRunner(workspace, taskId, taskTitle, onChunk, opts);
+
+function asTaskRunStore(store: Store): TaskRunServiceDeps | undefined {
+  const candidate = store as unknown as Partial<TaskRunServiceDeps>;
+  if (
+    typeof candidate.taskRepository === 'function'
+    && typeof candidate.runRepository === 'function'
+    && typeof candidate.runInTransaction === 'function'
+  ) {
+    return candidate as TaskRunServiceDeps;
+  }
+  return undefined;
+}
 
 export function applyStageFailure(task: TaskItem, err: unknown): TaskLog | null {
   const failedLog = err instanceof Error && 'log' in err ? (err.log as TaskLog | undefined) : undefined;
@@ -38,8 +72,10 @@ export function getStageAgentName(workspace: Pick<Workspace, 'agents'>, stage: A
     ?? stage;
 }
 
-export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManager): Router {
+export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManager, deps: TaskRoutesDeps = {}): Router {
   const router = Router({ mergeParams: true });
+  const bridgeStore = asTaskRunStore(store);
+  const taskRunService = deps.taskRunService ?? (bridgeStore ? new TaskRunService(bridgeStore) : undefined);
 
   router.get('/', (req: Request, res: Response) => {
     const { workspaceId } = req.params as { workspaceId: string };
@@ -89,12 +125,58 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       return res.status(409).json({ error: 'Task is already running' });
     }
 
+    // M2.4 Bridge step 3: find-or-create v2 Task + queued Run in one SQLite transaction.
+    let bridgeRunId: string | undefined;
+    if (taskRunService) {
+      const bridge = taskRunService.createLegacyRunForBridge({
+        workspaceId,
+        legacyTaskId: taskId,
+        title: task.title,
+        createdBy: 'legacy_pipeline',
+        objective: task.title,
+      });
+      bridgeRunId = bridge.run.id;
+    }
+    let bridgeTerminalSynced = false;
+    const syncBridgeTerminalSaveFailure = (jsonErr: unknown): never => {
+      bridgeTerminalSynced = true;
+      if (taskRunService && bridgeRunId) {
+        try {
+          taskRunService.compensateTerminalSaveFailure(workspaceId, bridgeRunId, jsonErr);
+        } catch (compensationErr) {
+          const wrapped = new Error('BRIDGE_COMPENSATION_FAILED: bridge terminal compensation failed') as Error & { code: string; originalError: unknown; compensationError: unknown };
+          wrapped.code = 'BRIDGE_COMPENSATION_FAILED';
+          wrapped.originalError = jsonErr;
+          wrapped.compensationError = compensationErr;
+          throw wrapped;
+        }
+      }
+      const stable = new Error('BRIDGE_TERMINAL_SAVE_FAILED: legacy terminal JSON save failed') as Error & { code: string; cause?: unknown };
+      stable.code = 'BRIDGE_TERMINAL_SAVE_FAILED';
+      stable.cause = jsonErr;
+      throw stable;
+    };
+
     task.outputs = [];
     task.error = undefined;
     task.reviewDecision = 'unknown';
     task.reviewBlocked = false;
     touchTaskActivity(task);
-    store.saveTask(workspaceId, task);
+    try {
+      store.saveTask(workspaceId, task);
+    } catch (jsonErr) {
+      // M2.4 Bridge claim compensation (step 4 failure): fail the queued Run via the
+      // dedicated channel, reconcile the Task, then re-throw the original JSON error.
+      if (taskRunService && bridgeRunId) {
+        taskRunService.compensateLegacyClaimFailure(workspaceId, bridgeRunId, jsonErr);
+      }
+      throw jsonErr;
+    }
+
+    // M2.4 Bridge step 5: JSON claim succeeded → Run queued→running, Task open→in_progress.
+    if (taskRunService && bridgeRunId) {
+      taskRunService.startRunForBridge(workspaceId, bridgeRunId);
+    }
 
     res.writeHead(200, {
       'Content-Type': 'text/event-stream; charset=utf-8',
@@ -112,7 +194,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     const signal = abortController.signal;
     let responseClosed = false;
 
-    let runner: AgentRunner;
+    let runner: PipelineRunner;
     const runStage = async (stage: AgentStage, fn: () => Promise<TaskLog>) => {
       if (signal.aborted) return;
       task.currentAgent = stage;
@@ -129,7 +211,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     };
 
     (async () => {
-      runner = new AgentRunner(workspace, taskId, task.title, (text, done) => {
+      runner = (deps.createRunner ?? defaultRunnerFactory)(workspace, taskId, task.title, (text, done) => {
         const stage = task.currentAgent;
         sendEvent('thinking', {
           stage: stage ?? 'unknown',
@@ -172,7 +254,17 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
         if (signal.aborted) throw new Error('Pipeline cancelled');
 
         applyFinalReviewDecision(task, task.outputs[task.outputs.length - 1]!);
-        store.saveTask(workspaceId, task);
+        try {
+          store.saveTask(workspaceId, task);
+        } catch (jsonErr) {
+          syncBridgeTerminalSaveFailure(jsonErr);
+        }
+        // M2.4 Bridge step 8 (success): Run running→completed, Task keeps
+        // in_progress and gains pending_result_run_id; never auto-done.
+        if (taskRunService && bridgeRunId && !bridgeTerminalSynced) {
+          taskRunService.completeRunForBridge(workspaceId, bridgeRunId);
+          bridgeTerminalSynced = true;
+        }
 
         sendEvent('status', {
           taskId,
@@ -192,7 +284,20 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           task.currentAgent = null;
           task.error = '任务的实时连接已关闭，执行已取消。';
           task.updatedAt = new Date().toISOString();
-          store.saveTask(workspaceId, task);
+          try {
+            store.saveTask(workspaceId, task);
+          } catch (jsonErr) {
+            syncBridgeTerminalSaveFailure(jsonErr);
+          }
+          // M2.4 Bridge step 8 (disconnect cancel): faithfully record the cancelled Run.
+          if (taskRunService && bridgeRunId && !bridgeTerminalSynced) {
+            try {
+              taskRunService.cancelRunForBridge(workspaceId, bridgeRunId);
+            } catch (bridgeErr) {
+              console.error(`[AgentOS Server] Bridge cancel sync failed: ${bridgeErr instanceof Error ? bridgeErr.message : String(bridgeErr)}`);
+            }
+            bridgeTerminalSynced = true;
+          }
           sendEvent('status', {
             taskId,
             status: 'cancelled',
@@ -209,8 +314,21 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           });
         } else {
           applyStageFailure(task, err);
-          store.saveTask(workspaceId, task);
           const message = err instanceof Error ? err.message : String(err);
+          try {
+            store.saveTask(workspaceId, task);
+          } catch (jsonErr) {
+            syncBridgeTerminalSaveFailure(jsonErr);
+          }
+          // M2.4 Bridge step 8 (pipeline failure): Run failed with stable failure code.
+          if (taskRunService && bridgeRunId && !bridgeTerminalSynced) {
+            try {
+              taskRunService.failRunForBridge(workspaceId, bridgeRunId, message);
+            } catch (bridgeErr) {
+              console.error(`[AgentOS Server] Bridge fail sync failed: ${bridgeErr instanceof Error ? bridgeErr.message : String(bridgeErr)}`);
+            }
+            bridgeTerminalSynced = true;
+          }
           sendEvent('status', {
             taskId,
             status: 'failed',
