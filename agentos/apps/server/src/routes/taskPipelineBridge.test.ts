@@ -285,6 +285,21 @@ async function waitFor(condition: () => boolean, timeoutMs = 4000): Promise<void
   }
 }
 
+function failTerminalSyncOn(fx: Fixture, terminal: 'completed' | 'failed' | 'cancelled'): void {
+  fx.db.exec(`
+    CREATE TRIGGER fail_terminal_sync
+    BEFORE UPDATE OF status ON runs
+    WHEN NEW.status = '${terminal}'
+    BEGIN
+      SELECT RAISE(ABORT, 'injected terminal sync failure');
+    END;
+  `);
+}
+
+function removeTerminalSyncFailure(fx: Fixture): void {
+  fx.db.exec('DROP TRIGGER fail_terminal_sync');
+}
+
 test('resolveBridgeRunReason derives initial or retry from the latest Run', () => {
   assert.deepEqual(resolveBridgeRunReason(undefined), { reason: 'initial' });
   assert.deepEqual(
@@ -792,5 +807,166 @@ test('R08 cancellation terminal sync failure terminates SSE without sending a no
     }
   } finally {
     console.error = originalConsoleError;
+  }
+});
+
+test('R10 completed terminal sync is repaired before the next Legacy retry', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    failTerminalSyncOn(fx, 'completed');
+    const first = await runToCompletion(fx, 'legacy01');
+    assert.equal(first.httpStatus, 200);
+    assert.match(first.body, /Bridge persistence failed/);
+    assert.doesNotMatch(first.body, /event: done/);
+    assert.equal(fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!.status, 'completed');
+    const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+    const firstRun = fx.runRepo.listByTask(fx.workspaceId, canonical.id)[0]!;
+    assert.equal(firstRun.status, 'running');
+
+    removeTerminalSyncFailure(fx);
+    const second = await runToCompletion(fx, 'legacy01');
+    assert.equal(second.httpStatus, 200);
+    assert.match(second.body, /event: done/);
+    const runs = fx.runRepo.listByTask(fx.workspaceId, canonical.id);
+    assert.equal(runs.length, 2);
+    assert.equal(runs[0].status, 'completed');
+    assert.equal(runs[1].status, 'completed');
+    assert.equal(runs[1].parentRunId, runs[0].id);
+    assert.equal(runs[1].rootRunId, runs[0].rootRunId);
+    const repairedTask = fx.taskRepo.findById(fx.workspaceId, canonical.id)!;
+    assert.equal(repairedTask.status, 'in_progress');
+    assert.equal(repairedTask.pendingResultRunId, runs[1].id);
+    assert.equal(fx.runRepo.findActiveByTask(fx.workspaceId, canonical.id), undefined);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R11 failed terminal sync is repaired with the Legacy failure code before retry', async () => {
+  const fx = await createFixture(failingRunner);
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    failTerminalSyncOn(fx, 'failed');
+    const first = await runToCompletion(fx, 'legacy01');
+    assert.equal(first.httpStatus, 200);
+    assert.match(first.body, /Bridge persistence failed/);
+    assert.doesNotMatch(first.body, /event: done/);
+    assert.equal(fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!.status, 'failed');
+    assert.equal(fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!.error, 'worker exploded');
+    const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+    const firstRun = fx.runRepo.listByTask(fx.workspaceId, canonical.id)[0]!;
+    assert.equal(firstRun.status, 'running');
+
+    removeTerminalSyncFailure(fx);
+    const second = await runToCompletion(fx, 'legacy01');
+    assert.equal(second.httpStatus, 200);
+    assert.match(second.body, /event: done/);
+    const runs = fx.runRepo.listByTask(fx.workspaceId, canonical.id);
+    assert.equal(runs.length, 2);
+    assert.equal(runs[0].status, 'failed');
+    assert.equal(runs[0].failureCode, 'LEGACY_PIPELINE_FAILED');
+    assert.equal(runs[0].failureMessage, 'worker exploded');
+    assert.equal(runs[1].status, 'failed');
+    assert.equal(runs[1].failureCode, 'LEGACY_PIPELINE_FAILED');
+    assert.equal(fx.taskRepo.findById(fx.workspaceId, canonical.id)!.status, 'open');
+    assert.equal(fx.runRepo.findActiveByTask(fx.workspaceId, canonical.id), undefined);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R12 cancelled terminal sync is repaired before the next Legacy retry', async () => {
+  const fx = await createFixture(slowRunner);
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    failTerminalSyncOn(fx, 'cancelled');
+    const controller = new AbortController();
+    const response = await fetch(`${fx.base}/tasks/legacy01/run`, { method: 'POST', signal: controller.signal });
+    const reader = response.body!.getReader();
+    await reader.read();
+    controller.abort();
+    await reader.cancel().catch(() => {});
+    await waitFor(() => fx.fakeStore.getTask(fx.workspaceId, 'legacy01')?.status === 'cancelled');
+    const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+    assert.equal(fx.runRepo.listByTask(fx.workspaceId, canonical.id)[0]!.status, 'running');
+
+    removeTerminalSyncFailure(fx);
+    const second = await runToCompletion(fx, 'legacy01');
+    assert.equal(second.httpStatus, 200);
+    assert.match(second.body, /event: done/);
+    const runs = fx.runRepo.listByTask(fx.workspaceId, canonical.id);
+    assert.equal(runs.length, 2);
+    assert.equal(runs[0].status, 'cancelled');
+    assert.equal(runs[0].failureCode, 'LEGACY_PIPELINE_CANCELLED');
+    assert.equal(runs[1].status, 'completed');
+    assert.equal(runs[1].parentRunId, runs[0].id);
+    assert.equal(fx.runRepo.findActiveByTask(fx.workspaceId, canonical.id), undefined);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R15 non-terminal Legacy JSON statuses do not trigger terminal reconciliation', async () => {
+  for (const status of ['pending', 'running', 'reviewing'] as const) {
+    const fx = await createFixture();
+    try {
+      seedTask(fx.fakeStore, fx.workspaceId);
+      const created = fx.service.createLegacyRunForBridge({
+        workspaceId: fx.workspaceId,
+        legacyTaskId: 'legacy01',
+        title: 'demo task',
+        createdBy: 'legacy_pipeline',
+        objective: 'demo task',
+      });
+      fx.service.startRunForBridge(fx.workspaceId, created.run.id);
+      const legacy = fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!;
+      legacy.status = status;
+      const before = JSON.stringify(legacy);
+      const beforeRun = fx.runRepo.findById(fx.workspaceId, created.run.id)!;
+      const response = await fetch(`${fx.base}/tasks/legacy01/run`, { method: 'POST' });
+      assert.equal(response.status, 409);
+      await response.text();
+      assert.equal(JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01')), before);
+      const afterRun = fx.runRepo.findById(fx.workspaceId, created.run.id)!;
+      assert.equal(afterRun.status, beforeRun.status);
+      assert.equal(afterRun.version, beforeRun.version);
+      assert.equal(fx.runRepo.listByTask(fx.workspaceId, created.task.id).length, 1);
+    } finally {
+      await closeFixture(fx);
+    }
+  }
+});
+
+test('R16 reconciliation failure is sanitized and does not mutate JSON or create a Run', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspaceId,
+      legacyTaskId: 'legacy01',
+      title: 'demo task',
+      createdBy: 'legacy_pipeline',
+      objective: 'demo task',
+    });
+    fx.service.startRunForBridge(fx.workspaceId, created.run.id);
+    const legacy = fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!;
+    legacy.status = 'completed';
+    const beforeJson = JSON.stringify(legacy);
+    const beforeRun = fx.runRepo.findById(fx.workspaceId, created.run.id)!;
+    failTerminalSyncOn(fx, 'completed');
+
+    const response = await fetch(`${fx.base}/tasks/legacy01/run`, { method: 'POST' });
+    assert.equal(response.status, 500);
+    const body = await response.text();
+    assert.deepEqual(JSON.parse(body), { error: 'Bridge persistence failed' });
+    assert.doesNotMatch(body, /SQLITE|SQL|fail_terminal_sync|stack|agentos\.sqlite/i);
+    assert.equal(JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01')), beforeJson);
+    assert.equal(fx.runRepo.listByTask(fx.workspaceId, created.task.id).length, 1);
+    const afterRun = fx.runRepo.findById(fx.workspaceId, created.run.id)!;
+    assert.equal(afterRun.status, 'running');
+    assert.equal(afterRun.version, beforeRun.version);
+  } finally {
+    await closeFixture(fx);
   }
 });

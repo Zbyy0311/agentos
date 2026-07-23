@@ -620,4 +620,61 @@ describe('TaskRunService', () => {
       env.db.close();
     }
   });
+
+  it('R13 terminal reconciliation is idempotent and does not create Runs or rewrite versions twice', () => {
+    const env = createMemoryEnv();
+    try {
+      const created = bridgeCreate(env, 'L1');
+      env.service.startRunForBridge('ws1', created.run.id);
+
+      const first = env.service.reconcileLegacyTerminalBeforeRetry({
+        workspaceId: 'ws1',
+        legacyTaskId: 'L1',
+        legacyStatus: 'completed',
+      });
+      assert.equal(first.reconciled, true);
+      assert.equal(first.run?.status, 'completed');
+      assert.equal(first.task?.pendingResultRunId, created.run.id);
+
+      const repairedRun = env.runRepo.findById('ws1', created.run.id)!;
+      const repairedTask = env.taskRepo.findById('ws1', created.task.id)!;
+      const second = env.service.reconcileLegacyTerminalBeforeRetry({
+        workspaceId: 'ws1',
+        legacyTaskId: 'L1',
+        legacyStatus: 'completed',
+      });
+      assert.equal(second.reconciled, false);
+      assert.equal(second.run, undefined);
+      assert.equal(second.task, undefined);
+      assert.equal(env.runRepo.findById('ws1', created.run.id)!.version, repairedRun.version);
+      assert.equal(env.taskRepo.findById('ws1', created.task.id)!.version, repairedTask.version);
+      assert.equal(env.taskRepo.findById('ws1', created.task.id)!.pendingResultRunId, created.run.id);
+      assert.equal(env.runRepo.listByTask('ws1', created.task.id).length, 1);
+    } finally {
+      env.db.close();
+    }
+  });
+
+  it('R14 terminal reconciliation never repairs an active v2_api Run', () => {
+    const env = createMemoryEnv();
+    try {
+      const task = env.taskRepo.insert({ workspaceId: 'ws1', legacyTaskId: 'v2-legacy', title: 'v2 task', createdBy: 'tester' });
+      const run = env.service.createRun('ws1', { taskId: task.id, createdBy: 'tester' });
+      const running = env.runRepo.transitionStatus('ws1', run.id, run.version, 'running');
+      const result = env.service.reconcileLegacyTerminalBeforeRetry({
+        workspaceId: 'ws1',
+        legacyTaskId: 'v2-legacy',
+        legacyStatus: 'completed',
+      });
+      assert.equal(result.reconciled, false);
+      assert.equal(env.runRepo.findById('ws1', run.id)!.status, 'running');
+      assert.equal(env.runRepo.findById('ws1', run.id)!.version, running.version);
+      assert.throws(
+        () => bridgeCreate(env, 'v2-legacy'),
+        (err: unknown) => codeOf(err) === 'RUN_ACTIVE_EXISTS',
+      );
+    } finally {
+      env.db.close();
+    }
+  });
 });

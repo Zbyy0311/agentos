@@ -155,6 +155,23 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     const task = tasks.find(t => t.id === taskId);
     if (!task) return res.status(404).json({ error: 'Task not found' });
 
+    if (
+      taskRunService
+      && (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled')
+    ) {
+      try {
+        taskRunService.reconcileLegacyTerminalBeforeRetry({
+          workspaceId,
+          legacyTaskId: taskId,
+          legacyStatus: task.status,
+          legacyError: task.error,
+        });
+      } catch (err) {
+        console.error(`[AgentOS Server] Legacy terminal reconciliation failed: ${diagnosticText(err)}`);
+        return res.status(500).json({ error: 'Bridge persistence failed' });
+      }
+    }
+
     if (!claimTaskRun(task)) {
       return res.status(409).json({ error: 'Task is already running' });
     }

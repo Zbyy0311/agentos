@@ -28,6 +28,19 @@ export interface CreateLegacyRunForBridgeResult {
   taskCreated: boolean;
 }
 
+export interface ReconcileLegacyTerminalBeforeRetryInput {
+  workspaceId: string;
+  legacyTaskId: string;
+  legacyStatus: 'completed' | 'failed' | 'cancelled';
+  legacyError?: string;
+}
+
+export interface ReconcileLegacyTerminalBeforeRetryResult {
+  reconciled: boolean;
+  task?: Task;
+  run?: Run;
+}
+
 function domainError(code: string, message: string): Error & { code: string } {
   const err = new Error(message) as Error & { code: string };
   err.code = code;
@@ -112,6 +125,39 @@ export class TaskRunService {
     });
   }
 
+  reconcileLegacyTerminalBeforeRetry(
+    input: ReconcileLegacyTerminalBeforeRetryInput,
+  ): ReconcileLegacyTerminalBeforeRetryResult {
+    return this.deps.runInTransaction(() => {
+      const task = this.deps.taskRepository().findByLegacyTaskId(input.workspaceId, input.legacyTaskId);
+      if (!task) return { reconciled: false };
+
+      const active = this.deps.runRepository().findActiveByTask(input.workspaceId, task.id);
+      if (!active || active.origin !== 'legacy_pipeline' || active.status !== 'running') {
+        return { reconciled: false };
+      }
+
+      switch (input.legacyStatus) {
+        case 'completed': {
+          const repaired = this.completeRunForBridgeInTransaction(input.workspaceId, active.id, true);
+          return { reconciled: true, task: repaired.task, run: repaired.run };
+        }
+        case 'failed': {
+          const repaired = this.failRunForBridgeInTransaction(
+            input.workspaceId,
+            active.id,
+            input.legacyError ?? 'Legacy pipeline failed',
+          );
+          return { reconciled: true, task: repaired.task, run: repaired.run };
+        }
+        case 'cancelled': {
+          const repaired = this.cancelRunForBridgeInTransaction(input.workspaceId, active.id);
+          return { reconciled: true, task: repaired.task, run: repaired.run };
+        }
+      }
+    });
+  }
+
   cancelQueuedRun(workspaceId: string, runId: string): Run {
     return this.deps.runInTransaction(() => {
       const run = this.deps.runRepository().findById(workspaceId, runId);
@@ -144,16 +190,7 @@ export class TaskRunService {
   }
 
   completeRunForBridge(workspaceId: string, runId: string): { run: Run; task: Task } {
-    return this.deps.runInTransaction(() => {
-      const run = this.deps.runRepository().findById(workspaceId, runId);
-      if (!run) throw new RunNotFoundError(runId);
-      const completed = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'completed');
-      const task = this.requireTask(workspaceId, run.taskId);
-      const updated = task.status === 'in_progress'
-        ? this.deps.taskRepository().transitionStatus(workspaceId, task.id, task.version, 'in_progress', { pendingResultRunId: completed.id })
-        : task;
-      return { run: completed, task: updated };
-    });
+    return this.deps.runInTransaction(() => this.completeRunForBridgeInTransaction(workspaceId, runId, false));
   }
 
   failRunForBridge(
@@ -162,25 +199,11 @@ export class TaskRunService {
     failureMessage: string,
     failureCode: string = LEGACY_PIPELINE_FAILED,
   ): { run: Run; task: Task } {
-    return this.deps.runInTransaction(() => {
-      const run = this.deps.runRepository().findById(workspaceId, runId);
-      if (!run) throw new RunNotFoundError(runId);
-      const failed = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'failed', { failureCode, failureMessage });
-      const task = this.requireTask(workspaceId, run.taskId);
-      const updated = this.resolveTaskAfterRunTerminal(task, failed);
-      return { run: failed, task: updated };
-    });
+    return this.deps.runInTransaction(() => this.failRunForBridgeInTransaction(workspaceId, runId, failureMessage, failureCode));
   }
 
   cancelRunForBridge(workspaceId: string, runId: string): { run: Run; task: Task } {
-    return this.deps.runInTransaction(() => {
-      const run = this.deps.runRepository().findById(workspaceId, runId);
-      if (!run) throw new RunNotFoundError(runId);
-      const cancelled = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'cancelled', { failureCode: LEGACY_PIPELINE_CANCELLED });
-      const task = this.requireTask(workspaceId, run.taskId);
-      const updated = this.resolveTaskAfterRunTerminal(task, cancelled);
-      return { run: cancelled, task: updated };
-    });
+    return this.deps.runInTransaction(() => this.cancelRunForBridgeInTransaction(workspaceId, runId));
   }
 
   acceptRun(workspaceId: string, taskId: string, runId: string): Task {
@@ -268,6 +291,45 @@ export class TaskRunService {
       return this.deps.taskRepository().transitionStatus(task.workspaceId, task.id, task.version, 'open');
     }
     return task;
+  }
+
+  private completeRunForBridgeInTransaction(
+    workspaceId: string,
+    runId: string,
+    promoteOpenTask: boolean,
+  ): { run: Run; task: Task } {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    const completed = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'completed');
+    const task = this.requireTask(workspaceId, run.taskId);
+    const shouldPromote = task.status === 'in_progress' || (promoteOpenTask && task.status === 'open');
+    const updated = shouldPromote
+      ? this.deps.taskRepository().transitionStatus(workspaceId, task.id, task.version, 'in_progress', { pendingResultRunId: completed.id })
+      : task;
+    return { run: completed, task: updated };
+  }
+
+  private failRunForBridgeInTransaction(
+    workspaceId: string,
+    runId: string,
+    failureMessage: string,
+    failureCode: string = LEGACY_PIPELINE_FAILED,
+  ): { run: Run; task: Task } {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    const failed = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'failed', { failureCode, failureMessage });
+    const task = this.requireTask(workspaceId, run.taskId);
+    const updated = this.resolveTaskAfterRunTerminal(task, failed);
+    return { run: failed, task: updated };
+  }
+
+  private cancelRunForBridgeInTransaction(workspaceId: string, runId: string): { run: Run; task: Task } {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    const cancelled = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'cancelled', { failureCode: LEGACY_PIPELINE_CANCELLED });
+    const task = this.requireTask(workspaceId, run.taskId);
+    const updated = this.resolveTaskAfterRunTerminal(task, cancelled);
+    return { run: cancelled, task: updated };
   }
 
   private requireTask(workspaceId: string, taskId: string): Task {
