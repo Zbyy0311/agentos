@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 PLANNING — PENDING FINAL PLAN REVIEW; M2.5 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 PLAN APPROVED — IMPLEMENTATION IN PROGRESS; M2.5 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -194,9 +194,11 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 ## 10. M2 Readiness and Current Status
 
 M2 is in implementation. M2.1, M2.2 and M2.3 are verified and merged
-(M2.3 merge commit `ab1fa905`); M2.4 is in planning — revised plan
-`docs/implementation/milestones/M2.4-task-run-separation-plan.md` is pending final Plan
-Review on branch `runtime/m2-4-task-run-separation`; no production code has been written.
+(M2.3 merge commit `ab1fa905`); M2.4 plan is approved and implementation is in progress —
+plan `docs/implementation/milestones/M2.4-task-run-separation-plan.md` passed final Plan
+Review on branch `runtime/m2-4-task-run-separation` (final approved planning head
+`0b403ff5`; Owner Decisions OD-1 to OD-5 frozen; Baseline 298 / 123 / Build PASS;
+PR NOT CREATED).
 
 | Check | Status |
 |---|---|
@@ -210,11 +212,11 @@ Review on branch `runtime/m2-4-task-run-separation`; no production code has been
 | M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
 | M2.3 | ✅ VERIFIED & MERGED — `ab1fa905` (PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a`; `runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
-| M2.4 | 📝 PLANNING — PENDING FINAL PLAN REVIEW (revised plan on `runtime/m2-4-task-run-separation`) |
+| M2.4 | 🚧 PLAN APPROVED — IMPLEMENTATION IN PROGRESS (approved plan on `runtime/m2-4-task-run-separation`, planning head `0b403ff5`) |
 
 ### Next Step
 M2.3 passed the final remediation review on PR #2 and was merged to main via merge
 commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`); auto-merge stayed
-disabled. M2.4 is in planning — the revised plan has recorded Owner Decisions OD-1 to
-OD-5 but still requires independent final Plan Review before any implementation starts;
-M2.5 has not started.
+disabled. M2.4 plan has recorded Owner Decisions OD-1 to OD-5 and passed independent
+final Plan Review; implementation is in progress on branch
+`runtime/m2-4-task-run-separation`; M2.5 has not started.
