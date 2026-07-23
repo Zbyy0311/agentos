@@ -345,20 +345,20 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - v1 `TaskItem` continues to work via JSON store
 - v2 Task/Run and v1 TaskItem coexist with explicit ownership boundaries
 - Legacy pipeline execution appends a v2 Bridge record without changing the Legacy URL, mount, request/response, SSE payload or JSON data contract; queued→running is the only point that advances Task to `in_progress`
-- Completed Run writes `pendingResultRunId`; retry failure/cancellation preserves `in_progress` while pending exists; reopen clears pending/accepted/completedAt and historical completed Runs do not reopen the window.
+- Completed Run writes `pendingResultRunId`; `resolveTaskAfterRunTerminal(task, terminalRun)` is the single terminal reconciliation rule for queued cancel、claim failure、Bridge failure/cancellation and terminal JSON-save compensation: pending preserves `in_progress`/pointer/accepted/completed fields, while no pending and no active Run returns Task to `open`; `cancelTask` clears pending without touching historical Runs and, for its non-done target, writes accepted/completed fields as null; reopen clears all three fields and historical completed Runs never reopen the window.
 - `agent_runs` and `runs` are not merged; existing `/api/workspaces/:id/runs/:runId` remains read-only against `agent_runs`
 - `apps/web` is unchanged
 
 #### Tests
-- Revised plan matrix: **117** explicit new tests; Existing Server baseline **298**, planned total `298 + 117 = 415`, with final implementation report required to use actual counts.
+- Revised plan matrix: **121** explicit new tests; Existing Server baseline **298**, planned total `298 + 121 = 419`, with final implementation report required to use actual counts.
 - Schema: workspace/task cascades, composite FK rejection, parent/root same-Task rejection, initial self-root INSERT and `foreign_key_check` in real `node:sqlite`.
 - Migration rollback, all schema columns/CHECKs, `integrity_check`, and partial unique indexes are separate assertions.
-- TaskRepository: ID/roundtrip, Legacy mapping, workspace uniqueness, list filters, stable `updated_at DESC, id ASC`, version guards, illegal transitions, acceptance and reopen cleanup.
+- TaskRepository: ID/roundtrip, Legacy mapping, workspace uniqueness, list filters, stable `updated_at DESC, id ASC`, version guards, illegal transitions, pure Task-only `accept` write and reopen cleanup; it never reads or validates Run.
 - RunRepository: ID/parent/root/retry/review-fix, active uniqueness, transitions, failure/cancel fields, terminal guards, version/concurrency and stable `created_at ASC, id ASC` ordering.
-- Service: queued semantics, Bridge start/terminal transitions, acceptance, blocked/done guards, active Run guard, cross-workspace rejection and persisted pending acceptance window.
-- `createLegacyRunForBridge`: single-transaction find-or-create/latest-run/retry contract and concurrent duplicate protection; claim compensation uses dedicated `failQueuedBridgeClaim`, while generic queued→failed is rejected.
-- State closure: completed→pending, retry failed/cancelled preservation, earlier completed acceptance, reopen cleanup and post-reopen running re-entry.
-- T109-T110 prove dedicated queued claim failure versus generic rejection; T111-T117 prove persisted acceptance-window/reopen semantics.
+- Service: queued semantics, Bridge start/terminal transitions, acceptance, blocked/done guards, active Run guard, cross-workspace rejection and persisted pending acceptance window; `TaskRunService.acceptRun` owns all Run completion/ownership/active/window checks before calling TaskRepository.accept.
+- `createLegacyRunForBridge`: single-transaction find-or-create/latest-run/retry contract and concurrent duplicate protection; `compensateLegacyClaimFailure` reads Task → invokes dedicated `failQueuedBridgeClaim` → invokes unified terminal reconciliation → commits and rethrows the original JSON error; generic queued→failed is rejected.
+- State closure: completed→pending, retry failure/cancellation and queued cancellation preservation, earlier completed acceptance, cancelTask/reopen cleanup and post-reopen running re-entry; no historical completed Run scan may restore pending.
+- T109-T110 prove dedicated queued claim failure versus generic rejection; T111-T121 prove persisted acceptance-window, terminal reconciliation and cancel cleanup semantics.
 - Bridge/API/persistence: JSON compensation, original Legacy URLs, `/v2` prefix, queued cancel, `RUN_NOT_CANCELLABLE`, unchanged legacy `runs.ts`, reopen persistence and deterministic `findLatestByTask` ordering.
 
 #### Dependencies
@@ -368,7 +368,7 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - HIGH — Task/Run separation is the most impactful change to the core data model
 - All existing pipeline code reads and writes TaskItem.outputs — must add compatibility layer
 - Composite self-FK behavior must be proved by real SQLite before implementation; if invalid, keep the plan pending and propose an explicit alternative
-- JSON/SQLite Bridge compensation must not leave an active queued Run or in-progress Task
+- JSON/SQLite Bridge compensation must not leave an active Run or a Task state that disagrees with its pending acceptance window
 
 #### Out of Scope
 - Pipeline refactoring (AgentRunner stays unchanged)
@@ -381,9 +381,9 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - All OD-1~OD-5 decisions recorded and final Plan Review passed before implementation
 - Database proves Workspace/Task cascade and composite FK scope invariants in real SQLite
 - TaskRunService owns all cross-Repository transactions and state guards
-- v2 queued Run semantics/cancel and Legacy Bridge compensation match the revised plan
+- v2 queued Run cancel and Legacy Bridge compensation all use unified terminal reconciliation; no-pending and pending outcomes match the revised plan
 - Legacy URLs, `runs.ts`, `apps/web` and existing tests remain unchanged
-- Final report records actual `298 + N` Server test count; plan value is `298 + 117 = 415`, but no fixed implementation result is assumed
+- Final report records actual `298 + N` Server test count; plan value is `298 + 121 = 419`, but no fixed implementation result is assumed
 
 #### Recommended Branch
 - `runtime/m2-4-task-run-separation`
