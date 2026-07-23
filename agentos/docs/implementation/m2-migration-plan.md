@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 PLANNING — PENDING PLAN REVIEW; M2.5 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 PLANNING — PENDING FINAL PLAN REVIEW; M2.5 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-3-workspace-agent-provider` (active M2.3 work), based on merged main@`0075d36e`
@@ -16,7 +16,7 @@
 | M2.1 | VERIFIED & MERGED | `b4613b2a` |
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
-| M2.4 | PLANNING — PENDING PLAN REVIEW | `runtime/m2-4-task-run-separation`, draft plan `docs/implementation/milestones/M2.4-task-run-separation-plan.md`, based on merged main@`6f414389`; no production code |
+| M2.4 | PLANNING — PENDING FINAL PLAN REVIEW | `runtime/m2-4-task-run-separation`, revised plan `docs/implementation/milestones/M2.4-task-run-separation-plan.md`, based on merged main@`6f414389`; no production code |
 
 M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and was merged to `main` via PR #2 merge commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`).
 
@@ -284,53 +284,68 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 
 ### M2.4 — Task and Run Separation
 
-**Goal:** Separate Task (intent) from Run (execution attempt) at data model level.
+**Goal:** Separate Task (intent) from Run (execution attempt) at data model level while preserving the Legacy API and keeping Conversation Runs separate.
 
 #### Domain Types
 - `Task` — v2 type: `id`, `workspaceId`, `title`, `description`, `status: open|in_progress|blocked|done|cancelled`, `priority`, `createdBy`, `assignedAgentId`, sourceConversationId, sourceMessageId, timestamps, version
-- `Run` — enhanced from `AgentRun`: add `taskId`, `parentRunId`, `rootRunId`, `errorCode`, `errorMessage`, `reason`, `version`
+- `Run` — canonical Task Run with `taskId`, `parentRunId`, `rootRunId`, `failureCode`, `failureMessage`, `reason`, `origin`, lifecycle status and version. TypeScript uses `failureCode`/`failureMessage`; DDL uses `failure_code`/`failure_message`.
 
 #### Schema Changes
-- Create `tasks` table (new, v2-aligned)
-- Add to `agent_runs`: `task_id TEXT`, `parent_run_id TEXT`, `root_run_id TEXT`, `error_code TEXT`, `error_message TEXT`, `reason TEXT`, `version`
-- Add `run_event_sequences.next_sequence` remains
-- Keep existing `TaskItem` in JSON until full migration
+- Create `tasks` table in Migration 005 and `runs` table in Migration 006; do not extend `agent_runs`.
+- `tasks.workspace_id` cascades on Workspace deletion and has `UNIQUE(id, workspace_id)` for the composite FK.
+- `runs` cascades on Workspace/Task deletion and uses `(task_id, workspace_id)`, `(parent_run_id, task_id)` and `(root_run_id, task_id)` FKs; real `node:sqlite` tests must prove cross-scope rejection, self-root INSERT, cascades and `foreign_key_check`.
+- Keep existing `TaskItem` in JSON until full migration; keep `agent_runs` as the Conversation Run table.
 
 #### Existing Files
 - `packages/shared/src/types/index.ts` — TaskItem, AgentRun, TaskStatus
 - `apps/server/src/store/SqliteStore.ts` — agent_runs CRUD
 - `apps/server/src/store/JsonFileStore.ts` — tasks.json storage (retain during transition)
-- `apps/server/src/routes/tasks.ts` — REST endpoints
+- `apps/server/src/routes/tasks.ts` — Legacy REST/SSE endpoints; original paths and payloads remain unchanged, with Bridge persistence appended
 - `apps/server/src/routes/taskPipeline.ts` — pipeline logic
+- `apps/server/src/routes/runs.ts` — existing Conversation Run reader; no M2.4 change
 
 #### New Files
-- `apps/server/src/migrations/v004-tasks-table.sql`
-- `apps/server/src/migrations/v005-agent-runs-add-task-fields.sql`
+- `apps/server/src/migrations/migrations/005-tasks-table.ts`
+- `apps/server/src/migrations/migrations/006-runs-table.ts`
+- `apps/server/src/store/TaskRepository.ts`
+- `apps/server/src/store/RunRepository.ts`
+- `apps/server/src/services/TaskRunService.ts`
+- `apps/server/src/routes/v2Tasks.ts`
+- `apps/server/src/routes/v2Runs.ts`
+- `apps/server/src/services/__tests__/TaskRunService.test.ts`
+- `apps/server/src/routes/v2Runs.test.ts`
 
 #### Files Modified
-- `apps/server/src/store/SqliteStore.ts` — add tasks CRUD, modify agent_runs CRUD
-- `apps/server/src/routes/tasks.ts` — add v2 endpoint alongside v1
-- `apps/server/src/store/Store.ts` — may extend if Store interface is updated
+- `packages/shared/src/types/index.ts` — append v2 Task/Run types; existing TaskItem/AgentRun unchanged
+- `apps/server/src/migrations/default-registry.ts` — register 005/006
+- `apps/server/src/store/SqliteStore.ts` — expose the two repositories; existing legacy and Conversation methods unchanged
+- `apps/server/src/routes/tasks.ts` — append Legacy Bridge only
+- `apps/server/src/index.ts` — mount v2 routes under `/api/workspaces/:workspaceId/v2`; Legacy mount unchanged
+- `apps/server/src/routes/runs.ts` — **not modified**
 
 #### API Impact
-- New `POST /api/tasks` creates v2 Task (intent only)
-- New `POST /api/tasks/:taskId/runs` creates durable Run
-- Legacy `POST /tasks/:taskId/run` internally creates Task + Run + triggers pipeline
-- `GET /api/runs/:runId` returns enhanced Run with parentRunId, rootRunId
+- Legacy paths remain exactly:
+  - `/api/workspaces/:workspaceId/tasks`
+  - `/api/workspaces/:workspaceId/tasks/:taskId/run`
+  - `/api/workspaces/:workspaceId/tasks/:taskId/status`
+  - `/api/workspaces/:workspaceId/tasks/:taskId/logs`
+- v2 paths all use `/api/workspaces/:workspaceId/v2`:
+  - `/tasks`, `/tasks/:taskId`, `/tasks/:taskId/runs`, `/tasks/:taskId/accept`, `/tasks/:taskId/cancel`, `/tasks/:taskId/reopen`
+  - `/runs/:runId`, `/runs/:runId/cancel`
+- v2 POST runs creates durable `queued` Run only; it does not trigger AgentRunner, background execution or recovery.
 
 #### Compatibility Impact
 - v1 `TaskItem` continues to work via JSON store
-- v2 Task and v1 TaskItem coexist at read level
-- Legacy pipeline execution: POST /tasks/:id/run creates v2 Run internally
-- Frontend `useTask.ts` reads from both stores during transition
+- v2 Task/Run and v1 TaskItem coexist with explicit ownership boundaries
+- Legacy pipeline execution appends a v2 Bridge record without changing JSON/SSE behavior; queued→running is the only point that advances Task to `in_progress`
+- `agent_runs` and `runs` are not merged; existing `/api/workspaces/:id/runs/:runId` remains read-only against `agent_runs`
+- `apps/web` is unchanged
 
 #### Tests
-- Create v2 Task (no outputs)
-- Create Run linked to Task
-- Run retry creates new Run with parentRunId
-- Run cancellation
-- Legacy v1 TaskItem still readable
-- Task status independent of Run status
+- Revised plan matrix: 30 explicit new tests; Existing Server baseline 98, planned total `98 + 30 = 128`, with final implementation report required to use actual counts.
+- Schema: workspace/task cascades, composite FK rejection, parent/root same-Task rejection, initial self-root INSERT and `foreign_key_check` in real `node:sqlite`.
+- Service: queued semantics, Bridge start/terminal transitions, acceptance, blocked/done guards, active Run guard and cross-workspace rejection.
+- Bridge/API/persistence: JSON compensation, original Legacy URLs, `/v2` prefix, queued cancel, `RUN_NOT_CANCELLABLE`, unchanged legacy `runs.ts`, reopen persistence and deterministic retry ordering.
 
 #### Dependencies
 - M2.3 (workspace SQLite needed for task workspace reference)
@@ -338,21 +353,26 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 #### Risks
 - HIGH — Task/Run separation is the most impactful change to the core data model
 - All existing pipeline code reads and writes TaskItem.outputs — must add compatibility layer
-- Frontend components reading TaskItem must be updated or given compatibility data
+- Composite self-FK behavior must be proved by real SQLite before implementation; if invalid, keep the plan pending and propose an explicit alternative
+- JSON/SQLite Bridge compensation must not leave an active queued Run or in-progress Task
 
 #### Out of Scope
 - Pipeline refactoring (AgentRunner stays unchanged)
 - Workflow Definition integration
 - Snapshot creation
+- Legacy URL/mount changes, `apps/web`, existing `runs.ts`, ConversationService, RunStepService, existing tests, and M2.5
+- v2 background execution, recovery scanning and ProcessManager integration
 
 #### Exit Gate
-- v2 Task can be created, read, linked to Runs
-- Run records have parentRunId, rootRunId, taskId
-- Legacy pipeline still works end-to-end
-- All existing tests pass (no behavioral change for legacy path)
+- All OD-1~OD-5 decisions recorded and final Plan Review passed before implementation
+- Database proves Workspace/Task cascade and composite FK scope invariants in real SQLite
+- TaskRunService owns all cross-Repository transactions and state guards
+- v2 queued Run semantics/cancel and Legacy Bridge compensation match the revised plan
+- Legacy URLs, `runs.ts`, `apps/web` and existing tests remain unchanged
+- Final report records actual `98 + N` Server test count; no fixed total is assumed
 
 #### Recommended Branch
-- `m2/task-run-separation`
+- `runtime/m2-4-task-run-separation`
 
 #### Integration Order
 - 4/8 — core domain change
