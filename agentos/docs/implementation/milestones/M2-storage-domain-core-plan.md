@@ -148,13 +148,14 @@ apps/server/src/services/IdempotencyService.ts
 apps/server/src/store/SqliteStore.ts     — multiple schema + CRUD changes
 apps/server/src/store/Store.ts            — may extend interface
 apps/server/src/index.ts                  — initialize MigrationRunner
-apps/server/src/routes/tasks.ts           — add v2 endpoints
-apps/server/src/routes/runs.ts            — expand run details
+apps/server/src/routes/tasks.ts           — append only the frozen Legacy Bridge persistence logic; Legacy URL/mount/request/response/SSE/JSON contracts remain unchanged
+apps/server/src/routes/runs.ts            — historical M2 inventory only; denylisted for M2.4
 apps/server/src/routes/approvals.ts       — add idempotency key
 packages/shared/src/types/index.ts        — add v2 types alongside v1
 ```
 
-> **M2.4 override:** The historical M2-wide inventory above is not an authorization to change those files in M2.4. For the current M2.4 plan, `apps/server/src/routes/runs.ts`, `apps/web/**`, existing tests, ConversationService and RunStepService are denylisted; v2 routes are new `/v2` files and Legacy routes remain at their original URLs.
+> **M2.4 override:** The historical M2-wide inventory above is not an authorization to change those files in M2.4. For the current M2.4 plan, `apps/server/src/routes/runs.ts`, `apps/web/**`, existing tests, ConversationService and RunStepService are denylisted; v2 routes are new `/v2` files and Legacy routes remain at their original URLs. Repository ordering is deterministic (`Task: updated_at DESC, id ASC`; `Run: created_at ASC, id ASC`; latest Run: `created_at DESC, id DESC LIMIT 1`).
+> Legacy Bridge must use `createLegacyRunForBridge` for its single-transaction find-or-create path; Route code must not compose the repositories itself.
 
 ---
 

@@ -300,7 +300,7 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - `packages/shared/src/types/index.ts` — TaskItem, AgentRun, TaskStatus
 - `apps/server/src/store/SqliteStore.ts` — agent_runs CRUD
 - `apps/server/src/store/JsonFileStore.ts` — tasks.json storage (retain during transition)
-- `apps/server/src/routes/tasks.ts` — Legacy REST/SSE endpoints; original paths and payloads remain unchanged, with Bridge persistence appended
+- `apps/server/src/routes/tasks.ts` — Legacy REST/SSE endpoints; Legacy URL、挂载点、请求响应、SSE payload 和 JSON 数据契约不变，内部只追加计划冻结的 Bridge 持久化逻辑
 - `apps/server/src/routes/taskPipeline.ts` — pipeline logic
 - `apps/server/src/routes/runs.ts` — existing Conversation Run reader; no M2.4 change
 
@@ -312,14 +312,20 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - `apps/server/src/services/TaskRunService.ts`
 - `apps/server/src/routes/v2Tasks.ts`
 - `apps/server/src/routes/v2Runs.ts`
+- `apps/server/src/routes/taskRunBridge.ts`
+- `apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts`
+- `apps/server/src/store/__tests__/TaskRepository.test.ts`
+- `apps/server/src/store/__tests__/RunRepository.test.ts`
 - `apps/server/src/services/__tests__/TaskRunService.test.ts`
+- `apps/server/src/routes/v2Tasks.test.ts`
 - `apps/server/src/routes/v2Runs.test.ts`
+- `apps/server/src/routes/taskPipelineBridge.test.ts`
 
 #### Files Modified
 - `packages/shared/src/types/index.ts` — append v2 Task/Run types; existing TaskItem/AgentRun unchanged
 - `apps/server/src/migrations/default-registry.ts` — register 005/006
 - `apps/server/src/store/SqliteStore.ts` — expose the two repositories; existing legacy and Conversation methods unchanged
-- `apps/server/src/routes/tasks.ts` — append Legacy Bridge only
+- `apps/server/src/routes/tasks.ts` — Legacy contract unchanged; append only the frozen Bridge persistence logic
 - `apps/server/src/index.ts` — mount v2 routes under `/api/workspaces/:workspaceId/v2`; Legacy mount unchanged
 - `apps/server/src/routes/runs.ts` — **not modified**
 
@@ -337,15 +343,19 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 #### Compatibility Impact
 - v1 `TaskItem` continues to work via JSON store
 - v2 Task/Run and v1 TaskItem coexist with explicit ownership boundaries
-- Legacy pipeline execution appends a v2 Bridge record without changing JSON/SSE behavior; queued→running is the only point that advances Task to `in_progress`
+- Legacy pipeline execution appends a v2 Bridge record without changing the Legacy URL, mount, request/response, SSE payload or JSON data contract; queued→running is the only point that advances Task to `in_progress`
 - `agent_runs` and `runs` are not merged; existing `/api/workspaces/:id/runs/:runId` remains read-only against `agent_runs`
 - `apps/web` is unchanged
 
 #### Tests
-- Revised plan matrix: 30 explicit new tests; Existing Server baseline 98, planned total `98 + 30 = 128`, with final implementation report required to use actual counts.
+- Revised plan matrix: **108** explicit new tests; Existing Server baseline **298**, planned total `298 + 108 = 406`, with final implementation report required to use actual counts.
 - Schema: workspace/task cascades, composite FK rejection, parent/root same-Task rejection, initial self-root INSERT and `foreign_key_check` in real `node:sqlite`.
+- Migration rollback, all schema columns/CHECKs, `integrity_check`, and partial unique indexes are separate assertions.
+- TaskRepository: ID/roundtrip, Legacy mapping, workspace uniqueness, list filters, stable `updated_at DESC, id ASC`, version guards, illegal transitions, acceptance and reopen cleanup.
+- RunRepository: ID/parent/root/retry/review-fix, active uniqueness, transitions, failure/cancel fields, terminal guards, version/concurrency and stable `created_at ASC, id ASC` ordering.
 - Service: queued semantics, Bridge start/terminal transitions, acceptance, blocked/done guards, active Run guard and cross-workspace rejection.
-- Bridge/API/persistence: JSON compensation, original Legacy URLs, `/v2` prefix, queued cancel, `RUN_NOT_CANCELLABLE`, unchanged legacy `runs.ts`, reopen persistence and deterministic retry ordering.
+- `createLegacyRunForBridge`: single-transaction find-or-create/latest-run/retry contract and concurrent duplicate protection.
+- Bridge/API/persistence: JSON compensation, original Legacy URLs, `/v2` prefix, queued cancel, `RUN_NOT_CANCELLABLE`, unchanged legacy `runs.ts`, reopen persistence and deterministic `findLatestByTask` ordering.
 
 #### Dependencies
 - M2.3 (workspace SQLite needed for task workspace reference)
@@ -369,7 +379,7 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - TaskRunService owns all cross-Repository transactions and state guards
 - v2 queued Run semantics/cancel and Legacy Bridge compensation match the revised plan
 - Legacy URLs, `runs.ts`, `apps/web` and existing tests remain unchanged
-- Final report records actual `98 + N` Server test count; no fixed total is assumed
+- Final report records actual `298 + N` Server test count; plan value is `298 + 108 = 406`, but no fixed implementation result is assumed
 
 #### Recommended Branch
 - `runtime/m2-4-task-run-separation`
