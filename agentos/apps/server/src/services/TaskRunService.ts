@@ -91,6 +91,13 @@ export class TaskRunService {
         });
         taskCreated = true;
       }
+      if (task.archivedAt) throw domainError('TASK_ARCHIVED', `Task is archived: ${task.id}`);
+      if (task.status === 'blocked') throw domainError('TASK_BLOCKED', `Task is blocked: ${task.id}`);
+      if (task.status === 'done') throw domainError('TASK_DONE', `Task is done; reopen before creating a run: ${task.id}`);
+      if (task.status === 'cancelled') throw domainError('TASK_CANCELLED', `Task is cancelled; reopen before creating a run: ${task.id}`);
+      if (this.deps.runRepository().findActiveByTask(input.workspaceId, task.id)) {
+        throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
+      }
       const latest = this.deps.runRepository().findLatestByTask(input.workspaceId, task.id);
       const run = this.deps.runRepository().insert({
         workspaceId: input.workspaceId,

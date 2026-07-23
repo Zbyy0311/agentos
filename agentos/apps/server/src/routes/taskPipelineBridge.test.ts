@@ -115,6 +115,52 @@ class FakeJsonStore implements Store {
   }
 }
 
+type TerminalSyncPoint = 'complete' | 'fail' | 'cancel';
+
+interface BridgeServiceProbe {
+  service: TaskRunService;
+  calls: {
+    create: number;
+    start: number;
+    complete: number;
+    fail: number;
+    cancel: number;
+  };
+}
+
+function createBridgeServiceProbe(service: TaskRunService, failureAt?: TerminalSyncPoint): BridgeServiceProbe {
+  const calls = { create: 0, start: 0, complete: 0, fail: 0, cancel: 0 };
+  const fail = (point: TerminalSyncPoint): never => {
+    throw new Error(`injected ${point} terminal sync failure`);
+  };
+  const injected = {
+    createLegacyRunForBridge: (...args: Parameters<TaskRunService['createLegacyRunForBridge']>) => {
+      calls.create += 1;
+      return service.createLegacyRunForBridge(...args);
+    },
+    startRunForBridge: (...args: Parameters<TaskRunService['startRunForBridge']>) => {
+      calls.start += 1;
+      return service.startRunForBridge(...args);
+    },
+    completeRunForBridge: (...args: Parameters<TaskRunService['completeRunForBridge']>) => {
+      calls.complete += 1;
+      if (failureAt === 'complete') return fail('complete');
+      return service.completeRunForBridge(...args);
+    },
+    failRunForBridge: (...args: Parameters<TaskRunService['failRunForBridge']>) => {
+      calls.fail += 1;
+      if (failureAt === 'fail') return fail('fail');
+      return service.failRunForBridge(...args);
+    },
+    cancelRunForBridge: (...args: Parameters<TaskRunService['cancelRunForBridge']>) => {
+      calls.cancel += 1;
+      if (failureAt === 'cancel') return fail('cancel');
+      return service.cancelRunForBridge(...args);
+    },
+  } as unknown as TaskRunService;
+  return { service: injected, calls };
+}
+
 interface Fixture {
   db: Db;
   storeDeps: TaskRunServiceDeps;
@@ -125,6 +171,8 @@ interface Fixture {
   server: ReturnType<express.Express['listen']>;
   base: string;
   workspaceId: string;
+  responseCloseCount: { value: number };
+  sseWrites: string[];
 }
 
 function seedTask(fakeStore: FakeJsonStore, workspaceId: string, taskId = 'legacy01', title = 'demo task'): TaskItem {
@@ -145,7 +193,10 @@ function seedTask(fakeStore: FakeJsonStore, workspaceId: string, taskId = 'legac
   return task;
 }
 
-async function createFixture(createRunner: RunnerFactory = instantRunner): Promise<Fixture> {
+async function createFixture(
+  createRunner: RunnerFactory = instantRunner,
+  bridgeServiceFactory: (service: TaskRunService) => TaskRunService = service => service,
+): Promise<Fixture> {
   const workspaceId = 'ws1';
   const db = new DatabaseSync(':memory:');
   db.exec('PRAGMA foreign_keys = ON');
@@ -177,7 +228,22 @@ async function createFixture(createRunner: RunnerFactory = instantRunner): Promi
   const manager = { get: (id: string) => (id === workspaceId ? workspace : undefined) } as unknown as WorkspaceManager;
   const app = express();
   app.use(express.json());
-  app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(fakeStore, manager, { createRunner, taskRunService: service }));
+  const responseCloseCount = { value: 0 };
+  const sseWrites: string[] = [];
+  app.use((_req, res, next) => {
+    res.on('close', () => { responseCloseCount.value += 1; });
+    const response = res as unknown as { write: (chunk: unknown, ...args: unknown[]) => boolean };
+    const originalWrite = response.write.bind(res);
+    response.write = (chunk: unknown, ...args: unknown[]) => {
+      sseWrites.push(Buffer.isBuffer(chunk) ? chunk.toString('utf8') : String(chunk));
+      return originalWrite(chunk, ...args);
+    };
+    next();
+  });
+  app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(fakeStore, manager, {
+    createRunner,
+    taskRunService: bridgeServiceFactory(service),
+  }));
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(storeDeps as never, manager));
   app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(storeDeps as never, manager));
   app.use(createJsonErrorHandler());
@@ -195,6 +261,8 @@ async function createFixture(createRunner: RunnerFactory = instantRunner): Promi
     server,
     base: `http://127.0.0.1:${address.port}/api/workspaces/${workspaceId}`,
     workspaceId,
+    responseCloseCount,
+    sseWrites,
   };
 }
 
@@ -541,5 +609,188 @@ test('T105 Bridge-created Task and Runs are readable through the v2 GET APIs', a
     assert.equal((await getRun.json() as { run: { status: string } }).run.status, 'completed');
   } finally {
     await closeFixture(fx);
+  }
+});
+
+async function assertLegacyGuardResponse(fx: Fixture, expectedTaskJson: string, expectedRunCount: number): Promise<string> {
+  const response = await fetch(`${fx.base}/tasks/legacy01/run`, { method: 'POST' });
+  const body = await response.text();
+  assert.equal(response.status, 409);
+  const payload = JSON.parse(body) as { error?: unknown };
+  assert.equal(typeof payload.error, 'string');
+  assert.doesNotMatch(String(payload.error), /SQLITE|constraint failed|\bSQL\b|stack/i);
+  assert.equal(JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01')), expectedTaskJson);
+  assert.equal(fx.runRepo.listByTask(fx.workspaceId, fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!.id).length, expectedRunCount);
+  return body;
+}
+
+test('R01 legacy bridge rejects a canonical done Task without changing legacy JSON or Runs', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    await runToCompletion(fx, 'legacy01');
+    const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+    const firstRun = fx.runRepo.listByTask(fx.workspaceId, canonical.id)[0]!;
+    fx.service.acceptRun(fx.workspaceId, canonical.id, firstRun.id);
+    const legacyBefore = JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01'));
+    await assertLegacyGuardResponse(fx, legacyBefore, 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R02 legacy bridge rejects a canonical cancelled Task without changing legacy JSON or Runs', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    await runToCompletion(fx, 'legacy01');
+    const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+    fx.service.cancelTask(fx.workspaceId, canonical.id);
+    const legacyBefore = JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01'));
+    await assertLegacyGuardResponse(fx, legacyBefore, 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R03 legacy bridge rejects a blocked canonical Task without changing legacy JSON or Runs', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    await runToCompletion(fx, 'legacy01');
+    const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+    fx.db.prepare("UPDATE tasks SET status = 'blocked' WHERE workspace_id = ? AND id = ?").run(fx.workspaceId, canonical.id);
+    const legacyBefore = JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01'));
+    await assertLegacyGuardResponse(fx, legacyBefore, 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R04 legacy bridge rejects an archived canonical Task without changing legacy JSON or Runs', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    await runToCompletion(fx, 'legacy01');
+    const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+    fx.db.prepare("UPDATE tasks SET archived_at = '2026-07-24T00:00:00.000Z' WHERE workspace_id = ? AND id = ?").run(fx.workspaceId, canonical.id);
+    const legacyBefore = JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01'));
+    await assertLegacyGuardResponse(fx, legacyBefore, 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R05 legacy bridge rejects a stale active queued Run without leaking SQLite text or mutating JSON', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    await runToCompletion(fx, 'legacy01');
+    const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+    const active = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspaceId,
+      legacyTaskId: 'legacy01',
+      title: 'demo task',
+      createdBy: 'legacy_pipeline',
+      objective: 'demo task',
+    });
+    assert.equal(active.run.status, 'queued');
+    const legacyBefore = JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01'));
+    const body = await assertLegacyGuardResponse(fx, legacyBefore, 2);
+    assert.equal(fx.runRepo.findActiveByTask(fx.workspaceId, canonical.id)?.id, active.run.id);
+    assert.doesNotMatch(body, /SQLITE|constraint failed|\bSQL\b/i);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R06 complete terminal sync failure enters the boundary without sending a normal done event', async () => {
+  const errors: string[] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args.map(String).join(' ')); };
+  try {
+    let probe!: BridgeServiceProbe;
+    const fx = await createFixture(instantRunner, service => {
+      probe = createBridgeServiceProbe(service, 'complete');
+      return probe.service;
+    });
+    try {
+      seedTask(fx.fakeStore, fx.workspaceId);
+      const result = await runToCompletion(fx, 'legacy01');
+      assert.match(result.body, /Bridge persistence failed/);
+      assert.match(result.body, /event: error/);
+      assert.doesNotMatch(result.body, /event: done/);
+      assert.equal(probe.calls.complete, 1);
+      assert.equal(probe.calls.fail, 0);
+      const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+      assert.equal(fx.runRepo.listByTask(fx.workspaceId, canonical.id)[0]!.status, 'running');
+      assert.ok(errors.some(message => message.includes('injected complete terminal sync failure')));
+    } finally {
+      await closeFixture(fx);
+    }
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test('R07 failure terminal sync failure is not converted into a second normal failed terminal event', async () => {
+  const errors: string[] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args.map(String).join(' ')); };
+  try {
+    let probe!: BridgeServiceProbe;
+    const fx = await createFixture(failingRunner, service => {
+      probe = createBridgeServiceProbe(service, 'fail');
+      return probe.service;
+    });
+    try {
+      seedTask(fx.fakeStore, fx.workspaceId);
+      const result = await runToCompletion(fx, 'legacy01');
+      assert.match(result.body, /Bridge persistence failed/);
+      assert.match(result.body, /event: error/);
+      assert.doesNotMatch(result.body, /event: done/);
+      assert.equal(probe.calls.fail, 1);
+      assert.equal(probe.calls.complete, 0);
+      const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+      assert.equal(fx.runRepo.listByTask(fx.workspaceId, canonical.id)[0]!.status, 'running');
+      assert.ok(errors.some(message => message.includes('injected fail terminal sync failure')));
+    } finally {
+      await closeFixture(fx);
+    }
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test('R08 cancellation terminal sync failure terminates SSE without sending a normal cancelled done event', async () => {
+  const errors: string[] = [];
+  const originalConsoleError = console.error;
+  console.error = (...args: unknown[]) => { errors.push(args.map(String).join(' ')); };
+  try {
+    let probe!: BridgeServiceProbe;
+    const fx = await createFixture(slowRunner, service => {
+      probe = createBridgeServiceProbe(service, 'cancel');
+      return probe.service;
+    });
+    try {
+      seedTask(fx.fakeStore, fx.workspaceId);
+      const controller = new AbortController();
+      const response = await fetch(`${fx.base}/tasks/legacy01/run`, { method: 'POST', signal: controller.signal });
+      const reader = response.body!.getReader();
+      await reader.read();
+      controller.abort();
+      await reader.cancel().catch(() => {});
+      await waitFor(() => probe.calls.cancel === 1);
+      await waitFor(() => fx.responseCloseCount.value > 0);
+      assert.equal(probe.calls.fail, 0);
+      assert.doesNotMatch(fx.sseWrites.join(''), /event: done/);
+      const canonical = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01')!;
+      assert.equal(fx.runRepo.listByTask(fx.workspaceId, canonical.id)[0]!.status, 'running');
+      assert.ok(errors.some(message => message.includes('injected cancel terminal sync failure')));
+    } finally {
+      await closeFixture(fx);
+    }
+  } finally {
+    console.error = originalConsoleError;
   }
 });

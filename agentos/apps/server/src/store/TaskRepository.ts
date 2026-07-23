@@ -32,6 +32,14 @@ export class TaskLegacyIdConflictError extends Error {
   }
 }
 
+function isLegacyIdConflictError(err: unknown): boolean {
+  if (!(err instanceof Error)) return false;
+  const sqliteError = err as Error & { code?: unknown; errcode?: unknown };
+  return sqliteError.code === 'ERR_SQLITE_ERROR'
+    && Number(sqliteError.errcode) === 2067
+    && sqliteError.message === 'UNIQUE constraint failed: tasks.workspace_id, tasks.legacy_task_id';
+}
+
 interface TaskRow {
   id: string;
   workspace_id: string;
@@ -111,7 +119,7 @@ export class TaskRepository {
         now,
       );
     } catch (err) {
-      if (err instanceof Error && err.message.includes('idx_tasks_workspace_legacy_id')) {
+      if (isLegacyIdConflictError(err)) {
         throw new TaskLegacyIdConflictError(input.workspaceId, input.legacyTaskId ?? '');
       }
       throw err;

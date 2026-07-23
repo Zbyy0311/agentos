@@ -16,7 +16,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 
 type Db = InstanceType<typeof DatabaseSync>;
 
-import { TaskRepository } from '../TaskRepository.js';
+import { TaskLegacyIdConflictError, TaskRepository } from '../TaskRepository.js';
 import { isValidEntityId } from '../Identity.js';
 import { VersionConflictError } from '../Version.js';
 import { migration005 } from '../../migrations/migrations/005-tasks-table.js';
@@ -98,14 +98,43 @@ describe('TaskRepository', () => {
     }
   });
 
-  it('T19 duplicate legacy_task_id within one workspace is rejected', () => {
+  it('T19 duplicate legacy_task_id within one workspace is rejected with a stable code', () => {
     const { db, repo } = createDb();
     try {
       repo.insert({ workspaceId: 'ws1', legacyTaskId: 'dup', title: 'first', createdBy: 'tester' });
-      assert.throws(() => repo.insert({ workspaceId: 'ws1', legacyTaskId: 'dup', title: 'second', createdBy: 'tester' }));
+      assert.throws(
+        () => repo.insert({ workspaceId: 'ws1', legacyTaskId: 'dup', title: 'second', createdBy: 'tester' }),
+        (err: unknown) => {
+          assert.ok(err instanceof TaskLegacyIdConflictError);
+          assert.equal((err as { code: string }).code, 'TASK_LEGACY_ID_CONFLICT');
+          return true;
+        },
+      );
     } finally {
       db.close();
     }
+  });
+
+  it('R09 maps the node:sqlite legacy-id constraint shape without relying on an index name', () => {
+    const sqliteError = Object.assign(
+      new Error('UNIQUE constraint failed: tasks.workspace_id, tasks.legacy_task_id'),
+      { code: 'ERR_SQLITE_ERROR', errcode: 2067, errstr: 'constraint failed' },
+    );
+    const db = {
+      prepare: () => ({
+        run: () => { throw sqliteError; },
+      }),
+    } as never;
+    const repo = new TaskRepository(db);
+
+    assert.throws(
+      () => repo.insert({ workspaceId: 'ws1', legacyTaskId: 'dup', title: 'second', createdBy: 'tester' }),
+      (err: unknown) => {
+        assert.ok(err instanceof TaskLegacyIdConflictError);
+        assert.equal((err as { code: string }).code, 'TASK_LEGACY_ID_CONFLICT');
+        return true;
+      },
+    );
   });
 
   it('T20 different workspaces may reuse the same legacy_task_id', () => {
