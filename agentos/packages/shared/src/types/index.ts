@@ -666,3 +666,72 @@ export interface ThinkingChunk {
   text: string;
   done: boolean;
 }
+
+// ---- M2.4 canonical Task / Run types (OD-1..OD-5; pure append, legacy types untouched) ----
+
+export type V2TaskStatus = 'open' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
+export type V2TaskPriority = 'low' | 'normal' | 'high' | 'critical';
+export type V2RunStatus =
+  | 'queued' | 'starting' | 'running' | 'waiting_approval'
+  | 'paused' | 'completed' | 'failed' | 'cancelled';
+export type V2RunReason = 'initial' | 'retry' | 'resume-fallback' | 'review-fix' | 'provider-comparison' | 'manual';
+export type V2RunOrigin = 'v2_api' | 'legacy_pipeline';
+
+export interface Task {
+  id: string;                            // task_<ulid>
+  workspaceId: string;
+  legacyTaskId?: string;
+  title: string;
+  description?: string;
+  status: V2TaskStatus;
+  priority: V2TaskPriority;
+  sourceConversationId?: string;
+  sourceMessageId?: string;
+  acceptedRunId?: string;
+  pendingResultRunId?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  completedAt?: string;
+  archivedAt?: string;
+  version: number;
+}
+
+export interface Run {
+  id: string;                            // run_<ulid>
+  workspaceId: string;
+  taskId: string;
+  parentRunId?: string;
+  rootRunId: string;
+  status: V2RunStatus;
+  reason: V2RunReason;
+  origin: V2RunOrigin;
+  objective?: string;
+  failureCode?: string;
+  failureMessage?: string;
+  cancellationRequestedAt?: string;
+  nextEventSequence: number;
+  startedAt?: string;
+  completedAt?: string;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export interface CreateV2TaskInput {
+  title: string;
+  description?: string;
+  priority?: V2TaskPriority;
+  sourceConversationId?: string;
+  sourceMessageId?: string;
+  createdBy: string;
+}
+
+export interface CreateV2RunInput {
+  taskId: string;
+  reason?: V2RunReason;
+  parentRunId?: string;
+  objective?: string;
+  createdBy: string;
+}

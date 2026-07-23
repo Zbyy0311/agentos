@@ -18,6 +18,8 @@
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
 | M2.4 | PLAN APPROVED — IMPLEMENTATION IN PROGRESS | `runtime/m2-4-task-run-separation`, approved plan `docs/implementation/milestones/M2.4-task-run-separation-plan.md`, based on merged main@`6f414389`; final approved planning head `0b403ff5`; Owner Decisions OD-1~OD-5 frozen; Baseline 298 / 123 / Build PASS; PR NOT CREATED |
 
+> **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
+
 M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and was merged to `main` via PR #2 merge commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`).
 
 ---
