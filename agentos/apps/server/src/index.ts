@@ -8,6 +8,8 @@ import { SqliteStore } from './store/SqliteStore.js';
 import { WorkspaceManager } from './managers/WorkspaceManager.js';
 import { createWorkspaceRoutes } from './routes/workspaces.js';
 import { createTaskRoutes } from './routes/tasks.js';
+import { createV2TaskRoutes } from './routes/v2Tasks.js';
+import { createV2RunRoutes } from './routes/v2Runs.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
 import { createConversationRoutes } from './routes/conversations.js';
@@ -106,6 +108,8 @@ app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceMan
 app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, workspaceManager));
 app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
 app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
 app.use('/api/agents', createAgentRoutes(workspaceManager));
 app.use(createJsonErrorHandler());
