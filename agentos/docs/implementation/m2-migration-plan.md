@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED — READY FOR PR REVIEW; M2.5 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW; M2.5 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-3-workspace-agent-provider` (active M2.3 work), based on merged main@`0075d36e`
@@ -16,11 +16,11 @@
 | M2.1 | VERIFIED & MERGED | `b4613b2a` |
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
-| M2.4 | VERIFIED — READY FOR PR REVIEW | `runtime/m2-4-task-run-separation`, report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; Original Implementation Head `13ee0ed2`; Remediation Code `615a53a9`; Remediation Documentation Commit `cd3696b6`; Final Remediation Head `38448dd6`; targeted 132/132 in 7 files (`3917.0811ms`); Server 430/430 in each of 3 independent runs (`41513.6509ms` / `41879.3947ms` / `40540.8702ms`); Agent Core 123/123; Build PASS; Scope Audit PASS; final remediation review APPROVED; Remote CI unavailable; PR not created at verification commit time; merge not authorized; M2.5 not started |
+| M2.4 | IMPLEMENTED — PENDING PR REMEDIATION REVIEW | `runtime/m2-4-task-run-separation`, report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; Reviewed Head `efcf7b8c`; Remediation Code `8b2ff01f`; targeted 139/139 in 7 files (`3787.9554ms`); Server 437/437 (`41043.7068ms`); Agent Core 123/123; Build PASS; Scope Audit PASS; Remote CI unavailable; PR #3 OPEN; merge not authorized; M2.5 not started |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
 
-> **M2.4 Verification Closure（2026-07-24）：** canonical Task guard、terminal sync rejection boundary、稳定 legacy ID conflict 映射与 R01–R09 已完成并经独立 remediation review APPROVED（BLOCKER/HIGH/MEDIUM/LOW 均为 0）；代码提交 `615a53a9`、remediation documentation `cd3696b6`、Final Remediation Head `38448dd6`。定向 132/132、Server 三次 430/430、Agent Core 123/123、Build、diff check 与 Scope Audit 均通过；Remote CI unavailable；M2.4 VERIFIED — READY FOR PR REVIEW；PR 在验证提交时尚未创建；不得合并；M2.5 未启动。
+> **M2.4 PR Review Remediation（2026-07-24）：** Owner Decision 采用 explicit retry reconciliation；代码提交 `8b2ff01f`；恢复依据为持久化 Legacy JSON terminal status；新增 R10–R16；定向 139/139、Server 437/437、Agent Core 123/123、Build、diff check 与 Scope Audit 均通过。无 Migration 007、startup recovery 或 v2 running cancel API；Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 OPEN；不得合并；M2.5 未启动。
 
 M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and was merged to `main` via PR #2 merge commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`).
 
@@ -387,16 +387,16 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - TaskRunService owns all cross-Repository transactions and state guards
 - v2 queued Run cancel and Legacy Bridge compensation all use unified terminal reconciliation; no-pending and pending outcomes match the revised plan
 - Legacy URLs, `runs.ts`, `apps/web` and existing tests remain unchanged
-- Final report records actual Server evidence: three independent runs each 430/430, targeted 132/132, Agent Core 123/123, Build PASS and `git diff --check` PASS; Remote CI unavailable
+- Final report records current remediation evidence: Server 437/437, targeted 139/139, Agent Core 123/123, Build PASS and `git diff --check` PASS; Remote CI unavailable
 
 #### Verification Closure (2026-07-24)
 
 - Final remediation review: **APPROVED**；BLOCKER 0 / HIGH 0 / MEDIUM 0 / LOW 0。
 - Final remediation head: `38448dd6`；remediation code: `615a53a9`；remediation documentation: `cd3696b6`。
-- M2.4 targeted tests: 7 files, 132/132 passed, `3917.0811ms`。
-- Server full suite: three independent runs, each 430/430 passed; durations `41513.6509ms`, `41879.3947ms`, `40540.8702ms`。
+- M2.4 targeted tests: 7 files, 139/139 passed, `3787.9554ms`（R10–R16 included）。
+- Server full suite: one remediation run, 437/437 passed, `41043.7068ms`。
 - Agent Core: 123/123；Build: PASS；diff check: PASS；Scope Audit: PASS。
-- Remote CI unavailable；M2.4 VERIFIED — READY FOR PR REVIEW；PR not created at verification commit time；merge not authorized；M2.5 not started。
+- Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 open；merge not authorized；M2.5 not started。
 
 #### Recommended Branch
 - `runtime/m2-4-task-run-separation`

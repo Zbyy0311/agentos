@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED — READY FOR PR REVIEW; M2.5 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW; M2.5 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -194,15 +194,12 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 ## 10. M2 Readiness and Current Status
 
 M2 is in implementation. M2.1, M2.2 and M2.3 are verified and merged
-(M2.3 merge commit `ab1fa905`); M2.4 is verified on branch
-`runtime/m2-4-task-run-separation` (P1 `0a4039cf` / P2 `1a793457` / P3 `7465f4d1`;
-targeted 132/132, three independent Server runs each 430/430, Agent Core 123/123,
-Build PASS, diff check PASS and Scope Audit PASS — see
-`docs/implementation/milestones/M2.4-task-run-separation-report.md`). Final remediation
-review is APPROVED with BLOCKER/HIGH/MEDIUM/LOW all 0; Original Implementation Head
-`13ee0ed2`; Remediation Code `615a53a9`; Remediation Documentation `cd3696b6`; Final
-Remediation Head `38448dd6`; Remote CI unavailable; PR not created at verification
-commit time; merge not authorized.
+(M2.3 merge commit `ab1fa905`); M2.4 remediation is implemented on branch
+`runtime/m2-4-task-run-separation` (PR review remediation `8b2ff01f`;
+targeted 139/139, Server 437/437, Agent Core 123/123, Build PASS, diff check PASS
+and Scope Audit PASS — see `docs/implementation/milestones/M2.4-task-run-separation-report.md`).
+PR remediation re-review is pending; Reviewed Head `efcf7b8c`; Remote CI unavailable;
+PR #3 remains open; merge not authorized.
 
 | Check | Status |
 |---|---|
@@ -216,15 +213,16 @@ commit time; merge not authorized.
 | M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
 | M2.3 | ✅ VERIFIED & MERGED — `ab1fa905` (PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a`; `runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
-| M2.4 | ✅ VERIFIED — READY FOR PR REVIEW (`runtime/m2-4-task-run-separation`, P1 `0a4039cf` / P2 `1a793457` / P3 `7465f4d1`, Remediation `615a53a9`, Final Remediation Head `38448dd6`, report `M2.4-task-run-separation-report.md`) |
+| M2.4 | 🚧 IMPLEMENTED — PENDING PR REMEDIATION REVIEW (`runtime/m2-4-task-run-separation`, PR remediation `8b2ff01f`, Reviewed Head `efcf7b8c`, report `M2.4-task-run-separation-report.md`) |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（Migration 005/006 注册后的必要预期同步）; 其他既有测试零修改；测试语义与验证强度不变。
 
-> **M2.4 Verification Closure（2026-07-24）：** R01–R09 已加入并通过；定向 132/132（`3917.0811ms`）；Server 三次独立运行均 430/430（`41513.6509ms` / `41879.3947ms` / `40540.8702ms`）；Agent Core 123/123；Build、diff check、Scope Audit PASS；最终 remediation review APPROVED（BLOCKER/HIGH/MEDIUM/LOW 均为 0）。Remote CI unavailable；M2.4 VERIFIED — READY FOR PR REVIEW；PR 在验证提交时尚未创建；不得合并；M2.5 未启动。
+> **M2.4 PR Review Remediation（2026-07-24）：** Owner Decision 采用 explicit retry reconciliation；R10–R16 已加入并通过；定向 139/139（`3787.9554ms`）；Server 437/437（`41043.7068ms`）；Agent Core 123/123；Build、diff check、Scope Audit PASS。恢复依据为持久化 Legacy JSON terminal status；无 Migration 007、startup recovery 或 v2 running cancel API。Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 OPEN；不得合并；M2.5 未启动。
 
 ### Next Step
 M2.3 passed the final remediation review on PR #2 and was merged to main via merge
 commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`); auto-merge stayed
-disabled. M2.4 is verified (Owner Decisions OD-1 to OD-5 frozen; actual test and scope
-evidence in the M2.4 report) on branch `runtime/m2-4-task-run-separation`; PR is to be
-opened for review, merge is not authorized, and M2.5 has not started.
+disabled. M2.4 PR review remediation is implemented (Owner Decisions OD-1 to OD-5
+remain frozen; actual test and scope evidence in the M2.4 report) on branch
+`runtime/m2-4-task-run-separation`; PR remediation re-review is pending, merge is not
+authorized, and M2.5 has not started.
