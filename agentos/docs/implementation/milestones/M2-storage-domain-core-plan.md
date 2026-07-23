@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 PLAN APPROVED — IMPLEMENTATION IN PROGRESS; M2.5 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING FINAL REVIEW; M2.5 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -194,11 +194,11 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 ## 10. M2 Readiness and Current Status
 
 M2 is in implementation. M2.1, M2.2 and M2.3 are verified and merged
-(M2.3 merge commit `ab1fa905`); M2.4 plan is approved and implementation is in progress —
-plan `docs/implementation/milestones/M2.4-task-run-separation-plan.md` passed final Plan
-Review on branch `runtime/m2-4-task-run-separation` (final approved planning head
-`0b403ff5`; Owner Decisions OD-1 to OD-5 frozen; Baseline 298 / 123 / Build PASS;
-PR NOT CREATED).
+(M2.3 merge commit `ab1fa905`); M2.4 is implemented on branch
+`runtime/m2-4-task-run-separation` (P1 `0a4039cf` / P2 `1a793457` / P3 `7465f4d1`;
+actual evidence Server 421/421, Agent Core 123/123, Build PASS — see
+`docs/implementation/milestones/M2.4-task-run-separation-report.md`) and is pending
+independent final review; Remote CI unavailable; PR not created; merge not authorized.
 
 | Check | Status |
 |---|---|
@@ -212,13 +212,13 @@ PR NOT CREATED).
 | M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
 | M2.3 | ✅ VERIFIED & MERGED — `ab1fa905` (PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a`; `runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
-| M2.4 | 🚧 PLAN APPROVED — IMPLEMENTATION IN PROGRESS (approved plan on `runtime/m2-4-task-run-separation`, planning head `0b403ff5`) |
+| M2.4 | 🚧 IMPLEMENTED — PENDING FINAL REVIEW (`runtime/m2-4-task-run-separation`, P1 `0a4039cf` / P2 `1a793457` / P3 `7465f4d1`, report `M2.4-task-run-separation-report.md`) |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（Migration 005/006 注册后的必要预期同步）; 其他既有测试零修改；测试语义与验证强度不变。
 
 ### Next Step
 M2.3 passed the final remediation review on PR #2 and was merged to main via merge
 commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`); auto-merge stayed
-disabled. M2.4 plan has recorded Owner Decisions OD-1 to OD-5 and passed independent
-final Plan Review; implementation is in progress on branch
+disabled. M2.4 is implemented (Owner Decisions OD-1 to OD-5 frozen; actual test
+evidence in the M2.4 report) and pending independent final review on branch
 `runtime/m2-4-task-run-separation`; M2.5 has not started.
