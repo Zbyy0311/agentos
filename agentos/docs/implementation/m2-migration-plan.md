@@ -287,12 +287,12 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 **Goal:** Separate Task (intent) from Run (execution attempt) at data model level while preserving the Legacy API and keeping Conversation Runs separate.
 
 #### Domain Types
-- `Task` — v2 type: `id`, `workspaceId`, `title`, `description`, `status: open|in_progress|blocked|done|cancelled`, `priority`, `createdBy`, `assignedAgentId`, sourceConversationId, sourceMessageId, timestamps, version
+- `Task` — v2 type: `id`, `workspaceId`, `title`, `description`, `status: open|in_progress|blocked|done|cancelled`, `priority`, `createdBy`, `assignedAgentId`, sourceConversationId, sourceMessageId, `acceptedRunId`, `pendingResultRunId`, timestamps, version
 - `Run` — canonical Task Run with `taskId`, `parentRunId`, `rootRunId`, `failureCode`, `failureMessage`, `reason`, `origin`, lifecycle status and version. TypeScript uses `failureCode`/`failureMessage`; DDL uses `failure_code`/`failure_message`.
 
 #### Schema Changes
 - Create `tasks` table in Migration 005 and `runs` table in Migration 006; do not extend `agent_runs`.
-- `tasks.workspace_id` cascades on Workspace deletion and has `UNIQUE(id, workspace_id)` for the composite FK.
+- `tasks.workspace_id` cascades on Workspace deletion and has `UNIQUE(id, workspace_id)` for the composite FK; nullable `pending_result_run_id` persists the current acceptance window and has no FK.
 - `runs` cascades on Workspace/Task deletion and uses `(task_id, workspace_id)`, `(parent_run_id, task_id)` and `(root_run_id, task_id)` FKs; real `node:sqlite` tests must prove cross-scope rejection, self-root INSERT, cascades and `foreign_key_check`.
 - Keep existing `TaskItem` in JSON until full migration; keep `agent_runs` as the Conversation Run table.
 
@@ -339,22 +339,26 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
   - `/tasks`, `/tasks/:taskId`, `/tasks/:taskId/runs`, `/tasks/:taskId/accept`, `/tasks/:taskId/cancel`, `/tasks/:taskId/reopen`
   - `/runs/:runId`, `/runs/:runId/cancel`
 - v2 POST runs creates durable `queued` Run only; it does not trigger AgentRunner, background execution or recovery.
+- GET/LIST v2 routes may call a single Repository after WorkspaceManager validation; all mutation, state transition, accept/cancel/reopen, Bridge and cross-Aggregate operations call TaskRunService, with no direct Repository composition or versioned UPDATE in routes.
 
 #### Compatibility Impact
 - v1 `TaskItem` continues to work via JSON store
 - v2 Task/Run and v1 TaskItem coexist with explicit ownership boundaries
 - Legacy pipeline execution appends a v2 Bridge record without changing the Legacy URL, mount, request/response, SSE payload or JSON data contract; queued→running is the only point that advances Task to `in_progress`
+- Completed Run writes `pendingResultRunId`; retry failure/cancellation preserves `in_progress` while pending exists; reopen clears pending/accepted/completedAt and historical completed Runs do not reopen the window.
 - `agent_runs` and `runs` are not merged; existing `/api/workspaces/:id/runs/:runId` remains read-only against `agent_runs`
 - `apps/web` is unchanged
 
 #### Tests
-- Revised plan matrix: **108** explicit new tests; Existing Server baseline **298**, planned total `298 + 108 = 406`, with final implementation report required to use actual counts.
+- Revised plan matrix: **117** explicit new tests; Existing Server baseline **298**, planned total `298 + 117 = 415`, with final implementation report required to use actual counts.
 - Schema: workspace/task cascades, composite FK rejection, parent/root same-Task rejection, initial self-root INSERT and `foreign_key_check` in real `node:sqlite`.
 - Migration rollback, all schema columns/CHECKs, `integrity_check`, and partial unique indexes are separate assertions.
 - TaskRepository: ID/roundtrip, Legacy mapping, workspace uniqueness, list filters, stable `updated_at DESC, id ASC`, version guards, illegal transitions, acceptance and reopen cleanup.
 - RunRepository: ID/parent/root/retry/review-fix, active uniqueness, transitions, failure/cancel fields, terminal guards, version/concurrency and stable `created_at ASC, id ASC` ordering.
-- Service: queued semantics, Bridge start/terminal transitions, acceptance, blocked/done guards, active Run guard and cross-workspace rejection.
-- `createLegacyRunForBridge`: single-transaction find-or-create/latest-run/retry contract and concurrent duplicate protection.
+- Service: queued semantics, Bridge start/terminal transitions, acceptance, blocked/done guards, active Run guard, cross-workspace rejection and persisted pending acceptance window.
+- `createLegacyRunForBridge`: single-transaction find-or-create/latest-run/retry contract and concurrent duplicate protection; claim compensation uses dedicated `failQueuedBridgeClaim`, while generic queued→failed is rejected.
+- State closure: completed→pending, retry failed/cancelled preservation, earlier completed acceptance, reopen cleanup and post-reopen running re-entry.
+- T109-T110 prove dedicated queued claim failure versus generic rejection; T111-T117 prove persisted acceptance-window/reopen semantics.
 - Bridge/API/persistence: JSON compensation, original Legacy URLs, `/v2` prefix, queued cancel, `RUN_NOT_CANCELLABLE`, unchanged legacy `runs.ts`, reopen persistence and deterministic `findLatestByTask` ordering.
 
 #### Dependencies
@@ -379,7 +383,7 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - TaskRunService owns all cross-Repository transactions and state guards
 - v2 queued Run semantics/cancel and Legacy Bridge compensation match the revised plan
 - Legacy URLs, `runs.ts`, `apps/web` and existing tests remain unchanged
-- Final report records actual `298 + N` Server test count; plan value is `298 + 108 = 406`, but no fixed implementation result is assumed
+- Final report records actual `298 + N` Server test count; plan value is `298 + 117 = 415`, but no fixed implementation result is assumed
 
 #### Recommended Branch
 - `runtime/m2-4-task-run-separation`

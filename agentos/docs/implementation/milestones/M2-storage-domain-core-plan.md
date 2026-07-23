@@ -155,7 +155,7 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 ```
 
 > **M2.4 override:** The historical M2-wide inventory above is not an authorization to change those files in M2.4. For the current M2.4 plan, `apps/server/src/routes/runs.ts`, `apps/web/**`, existing tests, ConversationService and RunStepService are denylisted; v2 routes are new `/v2` files and Legacy routes remain at their original URLs. Repository ordering is deterministic (`Task: updated_at DESC, id ASC`; `Run: created_at ASC, id ASC`; latest Run: `created_at DESC, id DESC LIMIT 1`).
-> Legacy Bridge must use `createLegacyRunForBridge` for its single-transaction find-or-create path; Route code must not compose the repositories itself.
+> Legacy Bridge must use `createLegacyRunForBridge` for its single-transaction find-or-create path; claim failure uses dedicated `failQueuedBridgeClaim`, while generic queued→failed is invalid. `pending_result_run_id` is the nullable persisted acceptance-window pointer; reopen clears it. GET/LIST routes may read a single Repository after WorkspaceManager validation, but all mutations and cross-Aggregate operations use TaskRunService. M2.4 currently plans 117 explicit new tests, with Server evidence value `298 + 117 = 415`; implementation reports must use actual results.
 
 ---
 
