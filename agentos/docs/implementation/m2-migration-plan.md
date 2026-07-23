@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING FINAL REVIEW; M2.5 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW; M2.5 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-3-workspace-agent-provider` (active M2.3 work), based on merged main@`0075d36e`
@@ -16,9 +16,11 @@
 | M2.1 | VERIFIED & MERGED | `b4613b2a` |
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
-| M2.4 | IMPLEMENTED — PENDING FINAL REVIEW | `runtime/m2-4-task-run-separation`, report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; P1 `0a4039cf` / P2 `1a793457` / P3 `7465f4d1`; actual evidence Server 421/421, Agent Core 123/123, Build PASS; Remote CI unavailable; PR not created; merge not authorized; M2.5 not started |
+| M2.4 | IMPLEMENTED — PENDING FINAL REMEDIATION REVIEW | `runtime/m2-4-task-run-separation`, report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; Original Implementation Head `13ee0ed2`; Remediation Code `615a53a9`; actual evidence Server 430/430, targeted 132/132, Agent Core 123/123, Build PASS; Remote CI unavailable; PR not created; merge not authorized; M2.5 not started |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
+
+> **M2.4 Remediation Update（2026-07-24）：** canonical Task guard、terminal sync rejection boundary、稳定 legacy ID conflict 映射与 R01–R09 已完成；代码提交 `615a53a9` 已推送到 `runtime/m2-4-task-run-separation`。PR/merge 仍未授权，M2.5 未启动。
 
 M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and was merged to `main` via PR #2 merge commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`).
 
