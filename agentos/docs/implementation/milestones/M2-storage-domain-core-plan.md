@@ -225,6 +225,10 @@ The remaining PR #3 MEDIUM queued-crash finding is implemented by startup orphan
 
 R17-R24 use real persistent JSON and real `node:sqlite`: taskRecovery 9/9 passed, seven-file M2.4 targeted 140/140 passed, final Server 446/446 passed, Agent Core 123/123 passed, Build PASS, and diff check PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
 
+The remaining PR #3 MEDIUM ownership and LOW startup-leak findings are implemented by the Project-Root IPC Ownership Lock in code commit `c2828aac` (previous head `4195403b`). Ownership is acquired before SQLite, startup recovery, Worktree reconcile, routes, and HTTP listen via a Windows Named Pipe / Unix Domain Socket keyed by a SHA-256 hash of the canonical Project Root; startup failures exit through a single sanitized boundary with stable codes only (`SERVER_ALREADY_RUNNING`, `STARTUP_RECOVERY_FAILED`, `SERVER_LISTEN_FAILED`, `SERVER_STARTUP_FAILED`).
+
+R25-R33 use real subprocesses, real `node:sqlite`, and a real SQLite Trigger: ownership/startup targeted 17 passed / 1 unix-only skip, taskRecovery 9/9, seven-file M2.4 targeted 140/140, Server 454 passed / 0 failed / 1 skipped, Agent Core 123/123, Build PASS, diff check PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
+
 ### Next Step
 M2.3 passed the final remediation review on PR #2 and was merged to main via merge
 commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`); auto-merge stayed

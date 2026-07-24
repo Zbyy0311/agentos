@@ -769,3 +769,7 @@ The following are explicitly out of scope for M2:
 - [ ] `PRAGMA integrity_check` and `PRAGMA foreign_key_check` pass after migration
 - [ ] `SqliteStore` delegates to MigrationRunner instead of raw `migrateSchema()`
 - [ ] All existing tests pass with MigrationRunner
+
+## M2.4 Project-Root Ownership Remediation Note (2026-07-25)
+
+M2.4 PR #3 ownership remediation (Project-Root IPC Ownership Lock; code commit `c2828aac` on `runtime/m2-4-task-run-separation`, previous head `4195403b`) added no migration and no schema change: ownership is enforced by an OS-level Named Pipe (Windows) / Unix Domain Socket keyed by a SHA-256 hash of the canonical Project Root, acquired before SQLite and startup recovery. R25-R33 pass (R30 unix-only, skipped on Windows); seven-file targeted 140/140; Server 454 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`; Remote CI unavailable; PR #3 OPEN and unmerged with Auto Merge disabled; merge not authorized; M2.5 not started.
