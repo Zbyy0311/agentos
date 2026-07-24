@@ -219,6 +219,12 @@ PR #3 remains open; merge not authorized.
 
 > **M2.4 PR Review Remediation（2026-07-24）：** Owner Decision 采用 explicit retry reconciliation；R10–R16 已加入并通过；定向 139/139（`3787.9554ms`）；Server 437/437（`41043.7068ms`）；Agent Core 123/123；Build、diff check、Scope Audit PASS。恢复依据为持久化 Legacy JSON terminal status；无 Migration 007、startup recovery 或 v2 running cancel API。Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 OPEN；不得合并；M2.5 未启动。
 
+### M2.4 Queued Recovery Update (2026-07-24)
+
+The remaining PR #3 MEDIUM queued-crash finding is implemented by startup orphan reconciliation in code commit `59f982d5`. A single `TaskRunService` is created before startup recovery; `recoverInterruptedTaskRuntime` first preserves existing Legacy running-task recovery, then fails only queued `legacy_pipeline` Runs with `BRIDGE_PRESTART_INTERRUPTED` in one transaction per workspace. `v2_api` queued Runs, running Legacy Runs, `agent_runs`, schema/migrations, and normal Retry behavior remain unchanged.
+
+R17-R24 use real persistent JSON and real `node:sqlite`: taskRecovery 9/9 passed, seven-file M2.4 targeted 140/140 passed, final Server 446/446 passed, Agent Core 123/123 passed, Build PASS, and diff check PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
+
 ### Next Step
 M2.3 passed the final remediation review on PR #2 and was merged to main via merge
 commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`); auto-merge stayed

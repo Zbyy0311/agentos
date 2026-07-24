@@ -24,6 +24,12 @@
 
 M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and was merged to `main` via PR #2 merge commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`).
 
+## Current M2.4 Queued Recovery Update (2026-07-24)
+
+PR #3 now contains queued Legacy Bridge startup recovery on code commit `59f982d5` (`fix(runtime): recover orphaned legacy queued runs on startup`). The Owner decision is startup orphan reconciliation: only `legacy_pipeline` queued Runs are recovered after a server restart; queued `v2_api` Runs and running Legacy Runs remain untouched. The implementation uses `BRIDGE_PRESTART_INTERRUPTED`, preserves Task pending acceptance windows, fails closed on transaction errors, and does not modify schema, `runRecovery.ts`, v2 APIs, or M2.5.
+
+Evidence after implementation: taskRecovery 9/9, M2.4 seven-file targeted 140/140, Server 446/446, Agent Core 123/123, Build PASS, diff check PASS. PR #3 remains OPEN and unmerged; Auto Merge is disabled, merge is unauthorized, Remote CI is unavailable, and M2.5 is NOT STARTED. The exit gate remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
+
 ---
 
 ## 1. M2 Objective
