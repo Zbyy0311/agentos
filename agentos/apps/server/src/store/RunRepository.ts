@@ -267,6 +267,26 @@ export class RunRepository {
     return this.findById(workspaceId, runId)!;
   }
 
+  /** Startup recovery only: an orphaned legacy_pipeline queued Run becomes failed. */
+  failQueuedBridgeRestart(workspaceId: string, runId: string, expectedVersion: number, failureMessage: string): Run {
+    const current = this.findById(workspaceId, runId);
+    if (!current) throw new RunNotFoundError(runId);
+    if (current.origin !== 'legacy_pipeline' || current.status !== 'queued') {
+      throw new InvalidRunTransitionError(current.status, 'failed', 'failQueuedBridgeRestart requires a queued legacy_pipeline run');
+    }
+    const now = new Date().toISOString();
+    const result = this.db.prepare(`
+      UPDATE runs
+      SET status = 'failed', failure_code = 'BRIDGE_PRESTART_INTERRUPTED', failure_message = ?,
+        completed_at = ?, updated_at = ?, version = version + 1
+      WHERE workspace_id = ? AND id = ? AND version = ?
+    `).run(failureMessage, now, now, workspaceId, runId, expectedVersion);
+    assertVersionedMutation(result as { changes: number }, {
+      entityType: 'runs', entityId: runId, expectedVersion,
+    });
+    return this.findById(workspaceId, runId)!;
+  }
+
   listByWorkspace(workspaceId: string, opts: { status?: V2RunStatus } = {}): Run[] {
     const conditions = ['workspace_id = ?'];
     const params: unknown[] = [workspaceId];

@@ -41,6 +41,14 @@ export interface ReconcileLegacyTerminalBeforeRetryResult {
   run?: Run;
 }
 
+export interface RecoveredLegacyQueuedRun {
+  workspaceId: string;
+  taskId: string;
+  runId: string;
+  previousStatus: 'queued';
+  recoveredStatus: 'failed';
+}
+
 function domainError(code: string, message: string): Error & { code: string } {
   const err = new Error(message) as Error & { code: string };
   err.code = code;
@@ -155,6 +163,32 @@ export class TaskRunService {
           return { reconciled: true, task: repaired.task, run: repaired.run };
         }
       }
+    });
+  }
+
+  recoverInterruptedLegacyQueuedRuns(workspaceId: string): RecoveredLegacyQueuedRun[] {
+    return this.deps.runInTransaction(() => {
+      const recovered: RecoveredLegacyQueuedRun[] = [];
+      const queuedRuns = this.deps.runRepository().listByWorkspace(workspaceId, { status: 'queued' });
+      for (const run of queuedRuns) {
+        if (run.origin !== 'legacy_pipeline') continue;
+        const task = this.requireTask(workspaceId, run.taskId);
+        const failed = this.deps.runRepository().failQueuedBridgeRestart(
+          workspaceId,
+          run.id,
+          run.version,
+          'Server restarted before Legacy bridge Run entered running',
+        );
+        this.resolveTaskAfterRunTerminal(task, failed);
+        recovered.push({
+          workspaceId,
+          taskId: task.id,
+          runId: run.id,
+          previousStatus: 'queued',
+          recoveredStatus: 'failed',
+        });
+      }
+      return recovered;
     });
   }
 

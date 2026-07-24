@@ -402,4 +402,40 @@ describe('RunRepository', () => {
       db.close();
     }
   });
+
+  it('T122 failQueuedBridgeRestart only fails legacy queued Runs with the restart code', () => {
+    const { db, runs, tasks } = createDb();
+    try {
+      const task = tasks.insert({ workspaceId: 'ws1', title: 'task', createdBy: 'tester' });
+      const legacyRun = runs.insert({ workspaceId: 'ws1', taskId: task.id, origin: 'legacy_pipeline', createdBy: 'tester' });
+      const failed = runs.failQueuedBridgeRestart(
+        'ws1',
+        legacyRun.id,
+        legacyRun.version,
+        'Server restarted before Legacy bridge Run entered running',
+      );
+      assert.equal(failed.status, 'failed');
+      assert.equal(failed.failureCode, 'BRIDGE_PRESTART_INTERRUPTED');
+      assert.equal(failed.failureMessage, 'Server restarted before Legacy bridge Run entered running');
+      assert.ok(failed.completedAt);
+      assert.equal(failed.version, legacyRun.version + 1);
+
+      const v2Task = tasks.insert({ workspaceId: 'ws1', title: 'v2', createdBy: 'tester' });
+      const v2Run = runs.insert({ workspaceId: 'ws1', taskId: v2Task.id, origin: 'v2_api', createdBy: 'tester' });
+      assert.throws(
+        () => runs.failQueuedBridgeRestart('ws1', v2Run.id, v2Run.version, 'nope'),
+        /INVALID_RUN_TRANSITION/i,
+      );
+
+      const runningTask = tasks.insert({ workspaceId: 'ws1', title: 'running', createdBy: 'tester' });
+      const runningRun = runs.insert({ workspaceId: 'ws1', taskId: runningTask.id, origin: 'legacy_pipeline', createdBy: 'tester' });
+      const running = runs.transitionStatus('ws1', runningRun.id, runningRun.version, 'running');
+      assert.throws(
+        () => runs.failQueuedBridgeRestart('ws1', runningRun.id, running.version, 'nope'),
+        /INVALID_RUN_TRANSITION/i,
+      );
+    } finally {
+      db.close();
+    }
+  });
 });

@@ -1,8 +1,14 @@
 import type { Store } from './store/Store.js';
+import type { RecoveredLegacyQueuedRun, TaskRunService } from './services/TaskRunService.js';
 
 export interface RecoveredTask {
   workspaceId: string;
   taskId: string;
+}
+
+export interface RecoveredTaskRuntime {
+  recoveredLegacyTasks: RecoveredTask[];
+  recoveredLegacyQueuedRuns: RecoveredLegacyQueuedRun[];
 }
 
 export function recoverInterruptedRunningTasks(
@@ -32,4 +38,15 @@ export function recoverInterruptedRunningTasks(
   }
 
   return recovered;
+}
+
+export function recoverInterruptedTaskRuntime(
+  store: Store,
+  taskRunService: TaskRunService,
+): RecoveredTaskRuntime {
+  const recoveredLegacyTasks = recoverInterruptedRunningTasks(store);
+  const recoveredLegacyQueuedRuns = store
+    .loadWorkspaces()
+    .flatMap(workspace => taskRunService.recoverInterruptedLegacyQueuedRuns(workspace.id));
+  return { recoveredLegacyTasks, recoveredLegacyQueuedRuns };
 }

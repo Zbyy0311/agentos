@@ -13,7 +13,7 @@ import { createV2RunRoutes } from './routes/v2Runs.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
 import { createConversationRoutes } from './routes/conversations.js';
-import { recoverInterruptedRunningTasks } from './taskRecovery.js';
+import { recoverInterruptedTaskRuntime } from './taskRecovery.js';
 import { recoverInterruptedRuns } from './runRecovery.js';
 import { EventBus } from './events/EventBus.js';
 import { createRunRoutes } from './routes/runs.js';
@@ -23,6 +23,7 @@ import { createMemoryCandidateRoutes } from './routes/memoryCandidates.js';
 import { createJsonErrorHandler } from './errorHandler.js';
 import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
+import { TaskRunService } from './services/TaskRunService.js';
 import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 import { PreferenceService } from './services/PreferenceService.js';
 import { RetentionService } from './services/RetentionService.js';
@@ -61,7 +62,8 @@ const store = new SqliteStore(PROJECT_ROOT);
 const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(PROJECT_ROOT, '.agentos', 'worktrees'));
 void worktreeManager.reconcile().catch(error => diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
 const workspaceManager = new WorkspaceManager(store);
-const recoveredTasks = recoverInterruptedRunningTasks(store);
+const taskRunService = new TaskRunService(store);
+const recoveredTaskRuntime = recoverInterruptedTaskRuntime(store, taskRunService);
 const recoveredRuns = recoverInterruptedRuns(store);
 const eventBus = new EventBus(
   draft => store.appendAgentEvent(draft),
@@ -107,7 +109,7 @@ app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, PR
 app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, workspaceManager));
 app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
-app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager));
+app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager, { taskRunService }));
 app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, workspaceManager));
 app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
@@ -119,9 +121,13 @@ app.listen(PORT, security.host, () => {
   console.log(`[AgentOS Server] running on http://${security.host}:${PORT}`);
   console.log(`[AgentOS Server] API base: http://${security.host}:${PORT}/api`);
   diagLog(msg);
-  if (recoveredTasks.length > 0) {
-    console.warn(`[AgentOS Server] recovered ${recoveredTasks.length} interrupted running task(s) as failed`);
-    diagLog(`RECOVERED_TASKS count=${recoveredTasks.length} tasks=${JSON.stringify(recoveredTasks)}`);
+  if (recoveredTaskRuntime.recoveredLegacyTasks.length > 0) {
+    console.warn(`[AgentOS Server] recovered ${recoveredTaskRuntime.recoveredLegacyTasks.length} interrupted running task(s) as failed`);
+    diagLog(`RECOVERED_TASKS count=${recoveredTaskRuntime.recoveredLegacyTasks.length} tasks=${JSON.stringify(recoveredTaskRuntime.recoveredLegacyTasks)}`);
+  }
+  if (recoveredTaskRuntime.recoveredLegacyQueuedRuns.length > 0) {
+    console.warn(`[AgentOS Server] recovered ${recoveredTaskRuntime.recoveredLegacyQueuedRuns.length} orphaned Legacy queued Run(s) as failed`);
+    diagLog(`RECOVERED_LEGACY_QUEUED_RUNS count=${recoveredTaskRuntime.recoveredLegacyQueuedRuns.length} runs=${JSON.stringify(recoveredTaskRuntime.recoveredLegacyQueuedRuns.map(item => ({ workspaceId: item.workspaceId, taskId: item.taskId, runId: item.runId })))}`);
   }
   if (recoveredRuns > 0) {
     console.warn(`[AgentOS Server] recovered ${recoveredRuns} interrupted run(s) as failed`);
