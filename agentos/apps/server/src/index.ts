@@ -63,6 +63,7 @@ type StartupPhase = 'ownership' | 'store' | 'recovery' | 'services' | 'routes' |
 
 type StableStartupCode =
   | 'SERVER_ALREADY_RUNNING'
+  | 'SERVER_OWNERSHIP_UNAVAILABLE'
   | 'STARTUP_RECOVERY_FAILED'
   | 'SERVER_LISTEN_FAILED'
   | 'SERVER_STARTUP_FAILED';
@@ -75,8 +76,9 @@ class StartupFailure extends Error {
 }
 
 function classifyStartupError(error: unknown): StableStartupCode {
-  if ((error as { code?: unknown } | null)?.code === 'SERVER_ALREADY_RUNNING') {
-    return 'SERVER_ALREADY_RUNNING';
+  const code = (error as { code?: unknown } | null)?.code;
+  if (code === 'SERVER_ALREADY_RUNNING' || code === 'SERVER_OWNERSHIP_UNAVAILABLE') {
+    return code;
   }
   if (error instanceof StartupFailure) {
     return error.stableCode;
@@ -218,7 +220,7 @@ async function bootstrap(): Promise<void> {
   } catch (error) {
     // Single sanitized startup boundary: only stable codes escape this catch.
     const code = classifyStartupError(error);
-    if (code === 'SERVER_ALREADY_RUNNING') {
+    if (code === 'SERVER_ALREADY_RUNNING' || code === 'SERVER_OWNERSHIP_UNAVAILABLE') {
       console.error(`[AgentOS Server] startup blocked: ${code}`);
     } else {
       console.error(`[AgentOS Server] startup failed: ${code}`);
