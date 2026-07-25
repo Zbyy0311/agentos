@@ -361,3 +361,228 @@ test('R40 platform ownership strategy selection keeps named pipe on Windows and 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+async function assertPortFree(port: number): Promise<void> {
+  const probe = net.createServer();
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    probe.once('error', rejectPromise);
+    probe.listen(port, '127.0.0.1', () => resolvePromise());
+  });
+  await closeServer(probe);
+}
+
+test('R41 fallback churn cannot create a duplicate owner for the same root', async () => {
+  const rootA = makeRoot('r41a');
+  const rootB = makeRoot('r41b');
+  const port1 = await freePort();
+  const port2 = await freePort();
+  const candidatePorts = [port1, port2];
+  let ownershipA: ServerOwnership | undefined;
+  let ownershipB: ServerOwnership | undefined;
+  try {
+    ownershipA = await acquireLoopbackServerOwnership(rootA, { candidatePorts });
+    assert.equal(ownershipA.endpoint, `tcp://127.0.0.1:${port1}`);
+
+    ownershipB = await acquireLoopbackServerOwnership(rootB, { candidatePorts });
+    assert.equal(ownershipB.endpoint, `tcp://127.0.0.1:${port2}`);
+
+    await ownershipA.release();
+    ownershipA = undefined;
+
+    // Root B already owns port2; a fresh acquire must not grab the freed port1.
+    await assert.rejects(
+      () => acquireLoopbackServerOwnership(rootB, { candidatePorts }),
+      assertAlreadyRunning,
+    );
+    await assertPortFree(port1);
+    assert.equal(ownershipB.endpoint, `tcp://127.0.0.1:${port2}`, 'original B ownership must stay valid');
+  } finally {
+    await ownershipA?.release().catch(() => {});
+    await ownershipB?.release().catch(() => {});
+    rmSync(rootA, { recursive: true, force: true });
+    rmSync(rootB, { recursive: true, force: true });
+  }
+});
+
+test('R42 an existing same-root owner on a later candidate blocks a fresh acquire before any bind', async () => {
+  const root = makeRoot('r42');
+  const port1 = await freePort();
+  const port2 = await freePort();
+  let existing: ServerOwnership | undefined;
+  try {
+    existing = await acquireLoopbackServerOwnership(root, { candidatePorts: [port2] });
+    assert.equal(existing.endpoint, `tcp://127.0.0.1:${port2}`);
+
+    await assert.rejects(
+      () => acquireLoopbackServerOwnership(root, { candidatePorts: [port1, port2] }),
+      assertAlreadyRunning,
+    );
+    await assertPortFree(port1);
+  } finally {
+    await existing?.release().catch(() => {});
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('R43 different-root collision stays supported and fallback churn is still blocked after release', async () => {
+  const rootA = makeRoot('r43a');
+  const rootB = makeRoot('r43b');
+  const port1 = await freePort();
+  const port2 = await freePort();
+  const candidatePorts = [port1, port2];
+  let ownershipA: ServerOwnership | undefined;
+  let ownershipB: ServerOwnership | undefined;
+  try {
+    ownershipA = await acquireLoopbackServerOwnership(rootA, { candidatePorts });
+    ownershipB = await acquireLoopbackServerOwnership(rootB, { candidatePorts });
+    assert.equal(ownershipA.endpoint, `tcp://127.0.0.1:${port1}`);
+    assert.equal(ownershipB.endpoint, `tcp://127.0.0.1:${port2}`);
+
+    await ownershipA.release();
+    ownershipA = undefined;
+
+    await assert.rejects(
+      () => acquireLoopbackServerOwnership(rootB, { candidatePorts }),
+      assertAlreadyRunning,
+    );
+    await assertPortFree(port1);
+  } finally {
+    await ownershipA?.release().catch(() => {});
+    await ownershipB?.release().catch(() => {});
+    rmSync(rootA, { recursive: true, force: true });
+    rmSync(rootB, { recursive: true, force: true });
+  }
+});
+
+test('R44 an unknown later candidate blocks binding an earlier free candidate', async (t) => {
+  const variants: Array<{
+    name: string;
+    handler: (socket: net.Socket) => void;
+  }> = [
+    { name: 'malformed token', handler: socket => { socket.end('AGENTOS_OWNER_V1 not-a-hash\n'); } },
+    { name: 'silent peer (timeout)', handler: () => { /* never responds */ } },
+    { name: 'connection reset', handler: socket => { socket.destroy(); } },
+  ];
+
+  for (const variant of variants) {
+    await t.test(variant.name, async () => {
+      const root = makeRoot('r44');
+      const port1 = await freePort();
+      const occupied = await occupyPort(variant.handler);
+      try {
+        await assert.rejects(
+          () => acquireLoopbackServerOwnership(root, {
+            candidatePorts: [port1, occupied.port],
+            probeTimeoutMs: 500,
+          }),
+          assertUnavailable,
+          `${variant.name} anywhere in the candidate set must fail closed`,
+        );
+        await assertPortFree(port1);
+      } finally {
+        await closeServer(occupied.server).catch(() => {});
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test('R45 post-bind verification detects a concurrent same-root owner and releases its own bind', async () => {
+  const root = makeRoot('r45');
+  const port1 = await freePort();
+  const port2 = await freePort();
+  let concurrentOwner: ServerOwnership | undefined;
+  try {
+    await assert.rejects(
+      () => acquireLoopbackServerOwnership(root, {
+        candidatePorts: [port1, port2],
+        afterPreSweep: async () => {
+          // Explicit barrier: another same-root owner appears between the
+          // pre-bind sweep and this process's bind, on a different candidate.
+          concurrentOwner = await acquireLoopbackServerOwnership(root, { candidatePorts: [port2] });
+        },
+      }),
+      assertAlreadyRunning,
+    );
+    assert.ok(concurrentOwner, 'the concurrent owner was established by the barrier hook');
+    assert.equal(concurrentOwner!.endpoint, `tcp://127.0.0.1:${port2}`);
+    // The failed acquire released its own bind: at most one owner remains.
+    await assertPortFree(port1);
+    await assert.rejects(
+      () => acquireLoopbackServerOwnership(root, { candidatePorts: [port1, port2] }),
+      assertAlreadyRunning,
+    );
+  } finally {
+    await concurrentOwner?.release().catch(() => {});
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('R46 non-EADDRINUSE bind failures fail closed without falling through to the next candidate', async (t) => {
+  for (const code of ['EACCES', 'EMFILE']) {
+    await t.test(code, async () => {
+      const root = makeRoot('r46');
+      const port1 = await freePort();
+      const port2 = await freePort();
+      try {
+        await assert.rejects(
+          () => acquireLoopbackServerOwnership(root, {
+            candidatePorts: [port1, port2],
+            bindErrorForTesting: { port: port1, code },
+          }),
+          assertUnavailable,
+        );
+        await assertPortFree(port1);
+        await assertPortFree(port2);
+      } finally {
+        rmSync(root, { recursive: true, force: true });
+      }
+    });
+  }
+});
+
+test('R47 a held client connection cannot block release on loopback or named pipe ownership', { timeout: 60_000 }, async () => {
+  const root = makeRoot('r47');
+  let ownership: ServerOwnership | undefined;
+  let heldClient: net.Socket | undefined;
+  try {
+    ownership = await acquireLoopbackServerOwnership(root);
+    const port = Number(ownership.endpoint.replace('tcp://127.0.0.1:', ''));
+    heldClient = net.connect({ host: '127.0.0.1', port });
+    await new Promise<void>((resolvePromise, rejectPromise) => {
+      heldClient!.once('connect', () => resolvePromise());
+      heldClient!.once('error', rejectPromise);
+    });
+    // Deliberately never close the client; release must still complete promptly.
+    await Promise.race([
+      ownership.release(),
+      new Promise<never>((_resolvePromise, rejectPromise) => {
+        setTimeout(() => rejectPromise(new Error('release blocked by held client')), 5_000);
+      }),
+    ]);
+    ownership = undefined;
+
+    const reacquired = await acquireLoopbackServerOwnership(root);
+    await reacquired.release();
+
+    if (process.platform === 'win32') {
+      const pipeOwnership = await acquireServerOwnership(root);
+      const pipeClient = net.connect(pipeOwnership.endpoint);
+      await new Promise<void>((resolvePromise, rejectPromise) => {
+        pipeClient.once('connect', () => resolvePromise());
+        pipeClient.once('error', rejectPromise);
+      });
+      await Promise.race([
+        pipeOwnership.release(),
+        new Promise<never>((_resolvePromise, rejectPromise) => {
+          setTimeout(() => rejectPromise(new Error('named pipe release blocked by held client')), 5_000);
+        }),
+      ]);
+      pipeClient.destroy();
+    }
+  } finally {
+    heldClient?.destroy();
+    await ownership?.release().catch(() => {});
+    rmSync(root, { recursive: true, force: true });
+  }
+});

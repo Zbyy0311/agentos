@@ -35,6 +35,7 @@ const CANDIDATE_PORT_MAX = 65535;
 const CANDIDATE_PORT_RANGE = CANDIDATE_PORT_MAX - CANDIDATE_PORT_MIN + 1;
 const CANDIDATE_PORT_COUNT = 16;
 const DEFAULT_PROBE_TIMEOUT_MS = 750;
+const ACCEPTED_SOCKET_TIMEOUT_MS = 5_000;
 
 function canonicalizeProjectRoot(projectRoot: string): string {
   const resolved = resolve(projectRoot);
@@ -98,7 +99,7 @@ function listenOnce(server: net.Server, target: string | { host: string; port: n
   });
 }
 
-type ProbeOutcome = 'same-owner' | 'other-owner' | 'unknown';
+type ProbeOutcome = 'free' | 'same-owner' | 'other-owner' | 'unknown';
 
 function probeCandidate(port: number, token: string, timeoutMs: number): Promise<ProbeOutcome> {
   return new Promise(resolvePromise => {
@@ -131,7 +132,10 @@ function probeCandidate(port: number, token: string, timeoutMs: number): Promise
         done('unknown');
       }
     });
-    socket.once('error', () => done('unknown'));
+    socket.once('error', (error: NodeJS.ErrnoException) => {
+      // ECONNREFUSED means there is currently no listener: the candidate is free.
+      done(error.code === 'ECONNREFUSED' ? 'free' : 'unknown');
+    });
     socket.once('end', () => done('unknown'));
   });
 }
@@ -141,6 +145,36 @@ export interface LoopbackOwnershipOptions {
   candidatePorts?: number[];
   /** Test seam: shorten the strict probe timeout. */
   probeTimeoutMs?: number;
+  /** Test seam: explicit barrier invoked after the pre-bind sweep, before binding. */
+  afterPreSweep?: () => Promise<void> | void;
+  /** Test seam: inject a stable non-EADDRINUSE bind failure for a candidate port. */
+  bindErrorForTesting?: { port: number; code: string };
+}
+
+function createOwnershipServer(token: string, acceptedSockets: Set<net.Socket>): net.Server {
+  const server = net.createServer(socket => {
+    acceptedSockets.add(socket);
+    socket.on('close', () => {
+      acceptedSockets.delete(socket);
+    });
+    socket.setTimeout(ACCEPTED_SOCKET_TIMEOUT_MS, () => {
+      socket.destroy();
+    });
+    socket.on('error', () => { /* peer vanished mid-handshake */ });
+    socket.end(`${OWNER_PROTOCOL_VERSION} ${token}\n`, () => {
+      socket.destroy();
+    });
+  });
+  return server;
+}
+
+function closeOwnershipServer(server: net.Server, acceptedSockets: Set<net.Socket>): Promise<void> {
+  for (const socket of acceptedSockets) {
+    socket.destroy();
+  }
+  return new Promise(resolvePromise => {
+    server.close(() => resolvePromise());
+  });
 }
 
 export async function acquireLoopbackServerOwnership(
@@ -151,34 +185,86 @@ export async function acquireLoopbackServerOwnership(
   const candidatePorts = options.candidatePorts ?? deriveOwnershipCandidatePorts(projectRoot);
   const probeTimeoutMs = options.probeTimeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
 
+  // Step 1: full pre-bind sweep of the whole candidate set. Ownership is only
+  // possible when no candidate holds a same-root owner, no candidate is
+  // unknown, and at least one candidate is free.
+  const freeCandidates: number[] = [];
   for (const port of candidatePorts) {
-    const server = net.createServer(socket => {
-      socket.on('error', () => { /* peer vanished mid-handshake */ });
-      socket.end(`${OWNER_PROTOCOL_VERSION} ${token}\n`);
-    });
+    const outcome = await probeCandidate(port, token, probeTimeoutMs);
+    if (outcome === 'same-owner') {
+      throw new ServerAlreadyRunningError();
+    }
+    if (outcome === 'unknown') {
+      throw new ServerOwnershipUnavailableError();
+    }
+    if (outcome === 'free') {
+      freeCandidates.push(port);
+    }
+    // other-owner: legitimately occupied by a different Project Root.
+  }
+  if (freeCandidates.length === 0) {
+    throw new ServerOwnershipUnavailableError();
+  }
+
+  await options.afterPreSweep?.();
+
+  // Step 2: bind the first candidate that was free during the sweep.
+  let boundServer: net.Server | undefined;
+  let boundPort: number | undefined;
+  let boundSockets: Set<net.Socket> | undefined;
+  for (const port of freeCandidates) {
+    const acceptedSockets = new Set<net.Socket>();
+    const server = createOwnershipServer(token, acceptedSockets);
     try {
+      if (options.bindErrorForTesting?.port === port) {
+        const fabricated = new Error('injected bind failure') as NodeJS.ErrnoException;
+        fabricated.code = options.bindErrorForTesting.code;
+        throw fabricated;
+      }
       await listenOnce(server, { host: LOOPBACK_HOST, port });
-      return createOwnershipHandle(server, `tcp://${LOOPBACK_HOST}:${port}`);
+      boundServer = server;
+      boundPort = port;
+      boundSockets = acceptedSockets;
+      break;
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code;
-      if (code !== 'EADDRINUSE') {
-        // Candidate unusable for a non-conflict reason; try the next candidate.
-        continue;
+      if (code === 'EADDRINUSE') {
+        // Contention after the sweep: re-probe this candidate before deciding.
+        const outcome = await probeCandidate(port, token, probeTimeoutMs);
+        if (outcome === 'same-owner') {
+          throw new ServerAlreadyRunningError();
+        }
+        if (outcome === 'other-owner') {
+          continue;
+        }
+        // unknown or a bind-then-vanish free race: fail closed.
+        throw new ServerOwnershipUnavailableError();
       }
-      const probe = await probeCandidate(port, token, probeTimeoutMs);
-      if (probe === 'same-owner') {
-        throw new ServerAlreadyRunningError();
-      }
-      if (probe === 'other-owner') {
-        // Explicit proof of a different Project Root: safe to try the next candidate.
-        continue;
-      }
-      // Unknown occupant, malformed/overlong token, timeout, or reset: fail closed.
+      // Non-EADDRINUSE bind failures fail closed; never fall through.
+      throw new ServerOwnershipUnavailableError();
+    }
+  }
+  if (boundServer === undefined || boundPort === undefined || boundSockets === undefined) {
+    throw new ServerOwnershipUnavailableError();
+  }
+
+  // Step 3: full post-bind verification sweep. A concurrent same-root owner
+  // that appeared between the pre-bind sweep and our bind must cancel this
+  // acquisition; both applicants may safely fail, never both succeed.
+  for (const port of candidatePorts) {
+    if (port === boundPort) continue;
+    const outcome = await probeCandidate(port, token, probeTimeoutMs);
+    if (outcome === 'same-owner') {
+      await closeOwnershipServer(boundServer, boundSockets);
+      throw new ServerAlreadyRunningError();
+    }
+    if (outcome === 'unknown') {
+      await closeOwnershipServer(boundServer, boundSockets);
       throw new ServerOwnershipUnavailableError();
     }
   }
 
-  throw new ServerOwnershipUnavailableError();
+  return createOwnershipHandle(boundServer, `tcp://${LOOPBACK_HOST}:${boundPort}`, boundSockets);
 }
 
 export async function acquireServerOwnership(projectRoot: string): Promise<ServerOwnership> {
@@ -189,12 +275,21 @@ export async function acquireServerOwnership(projectRoot: string): Promise<Serve
   // means a live owner holds this Project Root and the OS releases the pipe
   // when the owner process dies.
   const endpoint = namedPipeEndpoint(projectRoot);
+  const acceptedSockets = new Set<net.Socket>();
   const server = net.createServer(socket => {
+    acceptedSockets.add(socket);
+    socket.on('close', () => {
+      acceptedSockets.delete(socket);
+    });
+    socket.setTimeout(ACCEPTED_SOCKET_TIMEOUT_MS, () => {
+      socket.destroy();
+    });
+    socket.on('error', () => { /* peer vanished */ });
     socket.destroy();
   });
   try {
     await listenOnce(server, endpoint);
-    return createOwnershipHandle(server, endpoint);
+    return createOwnershipHandle(server, endpoint, acceptedSockets);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'EADDRINUSE') {
       throw new ServerAlreadyRunningError();
@@ -203,16 +298,14 @@ export async function acquireServerOwnership(projectRoot: string): Promise<Serve
   }
 }
 
-function createOwnershipHandle(server: net.Server, endpoint: string): ServerOwnership {
+function createOwnershipHandle(server: net.Server, endpoint: string, acceptedSockets: Set<net.Socket>): ServerOwnership {
   let released = false;
   return {
     endpoint,
     release(): Promise<void> {
       if (released) return Promise.resolve();
       released = true;
-      return new Promise(resolvePromise => {
-        server.close(() => resolvePromise());
-      });
+      return closeOwnershipServer(server, acceptedSockets);
     },
   };
 }
