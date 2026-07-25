@@ -47,6 +47,8 @@ import type {
 import { JsonFileStore } from './JsonFileStore.js';
 import type { Store } from './Store.js';
 import { WorkspaceRepository } from './WorkspaceRepository.js';
+import { TaskRepository } from './TaskRepository.js';
+import { RunRepository } from './RunRepository.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
@@ -369,6 +371,8 @@ interface PreferenceProjectionRow {
 
 export class SqliteStore implements Store {
   readonly workspaceRepo: WorkspaceRepository;
+  private readonly taskRepo: TaskRepository;
+  private readonly runRepo: RunRepository;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -378,6 +382,8 @@ export class SqliteStore implements Store {
     mkdirSync(dataDir, { recursive: true });
     this.database = new DatabaseSync(join(dataDir, 'agentos.sqlite'));
     this.workspaceRepo = new WorkspaceRepository(this.database as any);
+    this.taskRepo = new TaskRepository(this.database as any);
+    this.runRepo = new RunRepository(this.database as any);
     try {
       this.database.exec('PRAGMA foreign_keys = ON');
       this.runMigrations();
@@ -388,6 +394,21 @@ export class SqliteStore implements Store {
       try { this.database.close(); } catch { /* preserve the migration error */ }
       throw error;
     }
+  }
+
+  /** M2.4 canonical v2 Task repository (shares this store's SQLite handle). */
+  taskRepository(): TaskRepository {
+    return this.taskRepo;
+  }
+
+  /** M2.4 canonical v2 Run repository (shares this store's SQLite handle). */
+  runRepository(): RunRepository {
+    return this.runRepo;
+  }
+
+  /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */
+  runInTransaction<T>(fn: () => T): T {
+    return inTransaction(this.database as any, fn);
   }
 
   loadWorkspaces(): Workspace[] {

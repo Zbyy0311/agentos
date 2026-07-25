@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW; M2.5 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-3-workspace-agent-provider` (active M2.3 work), based on merged main@`0075d36e`
@@ -16,9 +16,19 @@
 | M2.1 | VERIFIED & MERGED | `b4613b2a` |
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
-| M2.4 | NOT STARTED | No active implementation branch |
+| M2.4 | IMPLEMENTED — PENDING PR REMEDIATION REVIEW | `runtime/m2-4-task-run-separation`, report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; Reviewed Head `efcf7b8c`; Remediation Code `8b2ff01f`; targeted 139/139 in 7 files (`3787.9554ms`); Server 437/437 (`41043.7068ms`); Agent Core 123/123; Build PASS; Scope Audit PASS; Remote CI unavailable; PR #3 OPEN; merge not authorized; M2.5 not started |
+
+> **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
+
+> **M2.4 PR Review Remediation（2026-07-24）：** Owner Decision 采用 explicit retry reconciliation；代码提交 `8b2ff01f`；恢复依据为持久化 Legacy JSON terminal status；新增 R10–R16；定向 139/139、Server 437/437、Agent Core 123/123、Build、diff check 与 Scope Audit 均通过。无 Migration 007、startup recovery 或 v2 running cancel API；Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 OPEN；不得合并；M2.5 未启动。
 
 M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and was merged to `main` via PR #2 merge commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`).
+
+## Current M2.4 Queued Recovery Update (2026-07-24)
+
+PR #3 now contains queued Legacy Bridge startup recovery on code commit `59f982d5` (`fix(runtime): recover orphaned legacy queued runs on startup`). The Owner decision is startup orphan reconciliation: only `legacy_pipeline` queued Runs are recovered after a server restart; queued `v2_api` Runs and running Legacy Runs remain untouched. The implementation uses `BRIDGE_PRESTART_INTERRUPTED`, preserves Task pending acceptance windows, fails closed on transaction errors, and does not modify schema, `runRecovery.ts`, v2 APIs, or M2.5.
+
+Evidence after implementation: taskRecovery 9/9, M2.4 seven-file targeted 140/140, Server 446/446, Agent Core 123/123, Build PASS, diff check PASS. PR #3 remains OPEN and unmerged; Auto Merge is disabled, merge is unauthorized, Remote CI is unavailable, and M2.5 is NOT STARTED. The exit gate remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
 
 ---
 
@@ -284,53 +294,82 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 
 ### M2.4 — Task and Run Separation
 
-**Goal:** Separate Task (intent) from Run (execution attempt) at data model level.
+**Goal:** Separate Task (intent) from Run (execution attempt) at data model level while preserving the Legacy API and keeping Conversation Runs separate.
 
 #### Domain Types
-- `Task` — v2 type: `id`, `workspaceId`, `title`, `description`, `status: open|in_progress|blocked|done|cancelled`, `priority`, `createdBy`, `assignedAgentId`, sourceConversationId, sourceMessageId, timestamps, version
-- `Run` — enhanced from `AgentRun`: add `taskId`, `parentRunId`, `rootRunId`, `errorCode`, `errorMessage`, `reason`, `version`
+- `Task` — v2 type: `id`, `workspaceId`, `title`, `description`, `status: open|in_progress|blocked|done|cancelled`, `priority`, `createdBy`, `assignedAgentId`, sourceConversationId, sourceMessageId, `acceptedRunId`, `pendingResultRunId`, timestamps, version
+- `Run` — canonical Task Run with `taskId`, `parentRunId`, `rootRunId`, `failureCode`, `failureMessage`, `reason`, `origin`, lifecycle status and version. TypeScript uses `failureCode`/`failureMessage`; DDL uses `failure_code`/`failure_message`.
 
 #### Schema Changes
-- Create `tasks` table (new, v2-aligned)
-- Add to `agent_runs`: `task_id TEXT`, `parent_run_id TEXT`, `root_run_id TEXT`, `error_code TEXT`, `error_message TEXT`, `reason TEXT`, `version`
-- Add `run_event_sequences.next_sequence` remains
-- Keep existing `TaskItem` in JSON until full migration
+- Create `tasks` table in Migration 005 and `runs` table in Migration 006; do not extend `agent_runs`.
+- `tasks.workspace_id` cascades on Workspace deletion and has `UNIQUE(id, workspace_id)` for the composite FK; nullable `pending_result_run_id` persists the current acceptance window and has no FK.
+- `runs` cascades on Workspace/Task deletion and uses `(task_id, workspace_id)`, `(parent_run_id, task_id)` and `(root_run_id, task_id)` FKs; real `node:sqlite` tests must prove cross-scope rejection, self-root INSERT, cascades and `foreign_key_check`.
+- Keep existing `TaskItem` in JSON until full migration; keep `agent_runs` as the Conversation Run table.
 
 #### Existing Files
 - `packages/shared/src/types/index.ts` — TaskItem, AgentRun, TaskStatus
 - `apps/server/src/store/SqliteStore.ts` — agent_runs CRUD
 - `apps/server/src/store/JsonFileStore.ts` — tasks.json storage (retain during transition)
-- `apps/server/src/routes/tasks.ts` — REST endpoints
+- `apps/server/src/routes/tasks.ts` — Legacy REST/SSE endpoints; Legacy URL、挂载点、请求响应、SSE payload 和 JSON 数据契约不变，内部只追加计划冻结的 Bridge 持久化逻辑
 - `apps/server/src/routes/taskPipeline.ts` — pipeline logic
+- `apps/server/src/routes/runs.ts` — existing Conversation Run reader; no M2.4 change
 
 #### New Files
-- `apps/server/src/migrations/v004-tasks-table.sql`
-- `apps/server/src/migrations/v005-agent-runs-add-task-fields.sql`
+- `apps/server/src/migrations/migrations/005-tasks-table.ts`
+- `apps/server/src/migrations/migrations/006-runs-table.ts`
+- `apps/server/src/store/TaskRepository.ts`
+- `apps/server/src/store/RunRepository.ts`
+- `apps/server/src/services/TaskRunService.ts`
+- `apps/server/src/routes/v2Tasks.ts`
+- `apps/server/src/routes/v2Runs.ts`
+- `apps/server/src/routes/taskRunBridge.ts`
+- `apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts`
+- `apps/server/src/store/__tests__/TaskRepository.test.ts`
+- `apps/server/src/store/__tests__/RunRepository.test.ts`
+- `apps/server/src/services/__tests__/TaskRunService.test.ts`
+- `apps/server/src/routes/v2Tasks.test.ts`
+- `apps/server/src/routes/v2Runs.test.ts`
+- `apps/server/src/routes/taskPipelineBridge.test.ts`
 
 #### Files Modified
-- `apps/server/src/store/SqliteStore.ts` — add tasks CRUD, modify agent_runs CRUD
-- `apps/server/src/routes/tasks.ts` — add v2 endpoint alongside v1
-- `apps/server/src/store/Store.ts` — may extend if Store interface is updated
+- `packages/shared/src/types/index.ts` — append v2 Task/Run types; existing TaskItem/AgentRun unchanged
+- `apps/server/src/migrations/default-registry.ts` — register 005/006
+- `apps/server/src/store/SqliteStore.ts` — expose the two repositories; existing legacy and Conversation methods unchanged
+- `apps/server/src/routes/tasks.ts` — Legacy contract unchanged; append only the frozen Bridge persistence logic
+- `apps/server/src/index.ts` — mount v2 routes under `/api/workspaces/:workspaceId/v2`; Legacy mount unchanged
+- `apps/server/src/routes/runs.ts` — **not modified**
 
 #### API Impact
-- New `POST /api/tasks` creates v2 Task (intent only)
-- New `POST /api/tasks/:taskId/runs` creates durable Run
-- Legacy `POST /tasks/:taskId/run` internally creates Task + Run + triggers pipeline
-- `GET /api/runs/:runId` returns enhanced Run with parentRunId, rootRunId
+- Legacy paths remain exactly:
+  - `/api/workspaces/:workspaceId/tasks`
+  - `/api/workspaces/:workspaceId/tasks/:taskId/run`
+  - `/api/workspaces/:workspaceId/tasks/:taskId/status`
+  - `/api/workspaces/:workspaceId/tasks/:taskId/logs`
+- v2 paths all use `/api/workspaces/:workspaceId/v2`:
+  - `/tasks`, `/tasks/:taskId`, `/tasks/:taskId/runs`, `/tasks/:taskId/accept`, `/tasks/:taskId/cancel`, `/tasks/:taskId/reopen`
+  - `/runs/:runId`, `/runs/:runId/cancel`
+- v2 POST runs creates durable `queued` Run only; it does not trigger AgentRunner, background execution or recovery.
+- GET/LIST v2 routes may call a single Repository after WorkspaceManager validation; all mutation, state transition, accept/cancel/reopen, Bridge and cross-Aggregate operations call TaskRunService, with no direct Repository composition or versioned UPDATE in routes.
 
 #### Compatibility Impact
 - v1 `TaskItem` continues to work via JSON store
-- v2 Task and v1 TaskItem coexist at read level
-- Legacy pipeline execution: POST /tasks/:id/run creates v2 Run internally
-- Frontend `useTask.ts` reads from both stores during transition
+- v2 Task/Run and v1 TaskItem coexist with explicit ownership boundaries
+- Legacy pipeline execution appends a v2 Bridge record without changing the Legacy URL, mount, request/response, SSE payload or JSON data contract; queued→running is the only point that advances Task to `in_progress`
+- Completed Run writes `pendingResultRunId`; `resolveTaskAfterRunTerminal(task, terminalRun)` is the single terminal reconciliation rule for queued cancel、claim failure、Bridge failure/cancellation and terminal JSON-save compensation: pending preserves `in_progress`/pointer/accepted/completed fields, while no pending and no active Run returns Task to `open`; `cancelTask` clears pending without touching historical Runs and, for its non-done target, writes accepted/completed fields as null; reopen clears all three fields and historical completed Runs never reopen the window.
+- `agent_runs` and `runs` are not merged; existing `/api/workspaces/:id/runs/:runId` remains read-only against `agent_runs`
+- `apps/web` is unchanged
 
 #### Tests
-- Create v2 Task (no outputs)
-- Create Run linked to Task
-- Run retry creates new Run with parentRunId
-- Run cancellation
-- Legacy v1 TaskItem still readable
-- Task status independent of Run status
+- Revised plan matrix: **121** explicit new tests; Existing Server baseline **298**, planned total `298 + 121 = 419`, with final implementation report required to use actual counts.
+- Schema: workspace/task cascades, composite FK rejection, parent/root same-Task rejection, initial self-root INSERT and `foreign_key_check` in real `node:sqlite`.
+- Migration rollback, all schema columns/CHECKs, `integrity_check`, and partial unique indexes are separate assertions.
+- TaskRepository: ID/roundtrip, Legacy mapping, workspace uniqueness, list filters, stable `updated_at DESC, id ASC`, version guards, illegal transitions, pure Task-only `accept` write and reopen cleanup; it never reads or validates Run.
+- RunRepository: ID/parent/root/retry/review-fix, active uniqueness, transitions, failure/cancel fields, terminal guards, version/concurrency and stable `created_at ASC, id ASC` ordering.
+- Service: queued semantics, Bridge start/terminal transitions, acceptance, blocked/done guards, active Run guard, cross-workspace rejection and persisted pending acceptance window; `TaskRunService.acceptRun` owns all Run completion/ownership/active/window checks before calling TaskRepository.accept.
+- `createLegacyRunForBridge`: single-transaction find-or-create/latest-run/retry contract and concurrent duplicate protection; `compensateLegacyClaimFailure` reads Task → invokes dedicated `failQueuedBridgeClaim` → invokes unified terminal reconciliation → commits and rethrows the original JSON error; generic queued→failed is rejected.
+- State closure: completed→pending, retry failure/cancellation and queued cancellation preservation, earlier completed acceptance, cancelTask/reopen cleanup and post-reopen running re-entry; no historical completed Run scan may restore pending.
+- T109-T110 prove dedicated queued claim failure versus generic rejection; T111-T121 prove persisted acceptance-window, terminal reconciliation and cancel cleanup semantics.
+- Bridge/API/persistence: JSON compensation, original Legacy URLs, `/v2` prefix, queued cancel, `RUN_NOT_CANCELLABLE`, unchanged legacy `runs.ts`, reopen persistence and deterministic `findLatestByTask` ordering.
 
 #### Dependencies
 - M2.3 (workspace SQLite needed for task workspace reference)
@@ -338,21 +377,35 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 #### Risks
 - HIGH — Task/Run separation is the most impactful change to the core data model
 - All existing pipeline code reads and writes TaskItem.outputs — must add compatibility layer
-- Frontend components reading TaskItem must be updated or given compatibility data
+- Composite self-FK behavior must be proved by real SQLite before implementation; if invalid, keep the plan pending and propose an explicit alternative
+- JSON/SQLite Bridge compensation must not leave an active Run or a Task state that disagrees with its pending acceptance window
 
 #### Out of Scope
 - Pipeline refactoring (AgentRunner stays unchanged)
 - Workflow Definition integration
 - Snapshot creation
+- Legacy URL/mount changes, `apps/web`, existing `runs.ts`, ConversationService, RunStepService, existing tests, and M2.5
+- v2 background execution, recovery scanning and ProcessManager integration
 
 #### Exit Gate
-- v2 Task can be created, read, linked to Runs
-- Run records have parentRunId, rootRunId, taskId
-- Legacy pipeline still works end-to-end
-- All existing tests pass (no behavioral change for legacy path)
+- All OD-1~OD-5 decisions recorded and final Plan Review passed before implementation
+- Database proves Workspace/Task cascade and composite FK scope invariants in real SQLite
+- TaskRunService owns all cross-Repository transactions and state guards
+- v2 queued Run cancel and Legacy Bridge compensation all use unified terminal reconciliation; no-pending and pending outcomes match the revised plan
+- Legacy URLs, `runs.ts`, `apps/web` and existing tests remain unchanged
+- Final report records current remediation evidence: Server 437/437, targeted 139/139, Agent Core 123/123, Build PASS and `git diff --check` PASS; Remote CI unavailable
+
+#### Verification Closure (2026-07-24)
+
+- Final remediation review: **APPROVED**；BLOCKER 0 / HIGH 0 / MEDIUM 0 / LOW 0。
+- Final remediation head: `38448dd6`；remediation code: `615a53a9`；remediation documentation: `cd3696b6`。
+- M2.4 targeted tests: 7 files, 139/139 passed, `3787.9554ms`（R10–R16 included）。
+- Server full suite: one remediation run, 437/437 passed, `41043.7068ms`。
+- Agent Core: 123/123；Build: PASS；diff check: PASS；Scope Audit: PASS。
+- Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 open；merge not authorized；M2.5 not started。
 
 #### Recommended Branch
-- `m2/task-run-separation`
+- `runtime/m2-4-task-run-separation`
 
 #### Integration Order
 - 4/8 — core domain change
@@ -716,3 +769,13 @@ The following are explicitly out of scope for M2:
 - [ ] `PRAGMA integrity_check` and `PRAGMA foreign_key_check` pass after migration
 - [ ] `SqliteStore` delegates to MigrationRunner instead of raw `migrateSchema()`
 - [ ] All existing tests pass with MigrationRunner
+
+## M2.4 Project-Root Ownership Remediation Note (2026-07-25)
+
+M2.4 PR #3 ownership remediation (Project-Root IPC Ownership Lock; code commit `c2828aac` on `runtime/m2-4-task-run-separation`, previous head `4195403b`) added no migration and no schema change: ownership is enforced by an OS-level Named Pipe (Windows) / Unix Domain Socket keyed by a SHA-256 hash of the canonical Project Root, acquired before SQLite and startup recovery. R25-R33 pass (R30 unix-only, skipped on Windows); seven-file targeted 140/140; Server 454 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`; Remote CI unavailable; PR #3 OPEN and unmerged with Auto Merge disabled; merge not authorized; M2.5 not started.
+
+Update (2026-07-25, cross-platform ownership remediation): the filesystem Unix Domain Socket approach was withdrawn — a clean `server.close` removes Node-created sockets (invalidating the old R30 stale-socket test) and the probe-then-unlink stale cleanup had a TOCTOU race. Non-Windows ownership now uses a collision-aware loopback ownership socket on `127.0.0.1` (SHA-256-derived candidate ports, `AGENTOS_OWNER_V1` hash handshake, fail-closed unknown occupants); Windows Named Pipe ownership is unchanged. Still no migration and no schema change. Code commit `7d233386d0287a5976cfe8ec275aa8dec64d15a2`; R34-R40 pass (R34 unix-only, skipped on Windows); seven-file targeted 140/140; Server 466 tests / 465 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`; Remote CI unavailable; PR #3 OPEN and unmerged with Auto Merge disabled; merge not authorized; M2.5 not started.
+
+Update (2026-07-25, candidate-set ownership remediation): fixed a HIGH fallback-churn defect where one Project Root could hold two loopback ownership endpoints after another root freed an earlier candidate. Ownership now sweeps the full candidate set before binding, verifies the full set again after binding, fails closed on non-EADDRINUSE bind errors, and destroys accepted handshake connections on release. Still no migration and no schema change. Code commit `091b41b288661a8a92f59a129a10f2e5a1b7dfe7`; R41-R47 pass; R25-R40 regression passes; seven-file targeted 140/140; Server 478 tests / 477 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`; Remote CI unavailable; PR #3 OPEN and unmerged with Auto Merge disabled; merge not authorized; M2.5 not started.
+
+Update (2026-07-25, final verification closure): final technical review `4779120698` (GitHub event `COMMENTED`, technical verdict `APPROVE`, formal non-author approval `NOT PRESENT`) approved the production Head `88e9b328` with BLOCKER/HIGH/MEDIUM 0 and 4 LOW residual risks. Closure gates all passed on first execution: ownership targeted 24/1 skip, startup 7/7, taskRecovery 9/9, RunRepository 23/23, TaskRunService 34/34, seven-file 140/140, three independent full Server runs each 477 passed / 0 failed / 1 skipped, Agent Core 123/123, Build PASS, diff check PASS. An earlier same-day closure attempt that stopped at an environmental R39 port conflict is disclosed in the M2.4 report (§42.3) and was not covered by rerun. No production code or test changed after the reviewed Head. Status is now `M2.4 VERIFIED — READY FOR MERGE REVIEW`; Remote CI unavailable; PR #3 OPEN and unmerged with Auto Merge disabled; merge not authorized; M2.5 not started.

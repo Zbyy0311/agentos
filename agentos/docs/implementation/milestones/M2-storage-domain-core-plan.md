@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW; M2.5 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -148,11 +148,14 @@ apps/server/src/services/IdempotencyService.ts
 apps/server/src/store/SqliteStore.ts     — multiple schema + CRUD changes
 apps/server/src/store/Store.ts            — may extend interface
 apps/server/src/index.ts                  — initialize MigrationRunner
-apps/server/src/routes/tasks.ts           — add v2 endpoints
-apps/server/src/routes/runs.ts            — expand run details
+apps/server/src/routes/tasks.ts           — append only the frozen Legacy Bridge persistence logic; Legacy URL/mount/request/response/SSE/JSON contracts remain unchanged
+apps/server/src/routes/runs.ts            — historical M2 inventory only; denylisted for M2.4
 apps/server/src/routes/approvals.ts       — add idempotency key
 packages/shared/src/types/index.ts        — add v2 types alongside v1
 ```
+
+> **M2.4 override:** The historical M2-wide inventory above is not an authorization to change those files in M2.4. For the current M2.4 plan, `apps/server/src/routes/runs.ts`, `apps/web/**`, existing tests, ConversationService and RunStepService are denylisted; v2 routes are new `/v2` files and Legacy routes remain at their original URLs. Repository ordering is deterministic (`Task: updated_at DESC, id ASC`; `Run: created_at ASC, id ASC`; latest Run: `created_at DESC, id DESC LIMIT 1`).
+> Legacy Bridge must use `createLegacyRunForBridge` for its single-transaction find-or-create path; claim failure uses dedicated `failQueuedBridgeClaim`, then `resolveTaskAfterRunTerminal(task, terminalRun)`, while generic queued→failed is invalid. The same unified terminal reconciliation is mandatory for queued cancel, Bridge failure/cancellation and terminal JSON-save compensation: pending preserves Task `in_progress` and its pointer; no pending plus no active Run returns Task to `open`; no historical completed Run scan may restore the pointer. `pending_result_run_id` is the nullable persisted acceptance-window pointer; `cancelTask` clears it without modifying historical Runs and, for the non-done target, clears accepted/completed fields; reopen clears all three fields. GET/LIST routes may read a single Repository after WorkspaceManager validation, but all mutations and cross-Aggregate operations use TaskRunService; `TaskRepository.accept` writes only the Task transition and `TaskRunService.acceptRun` performs all Run checks. M2.4 currently plans 121 explicit new tests, with Server evidence value `298 + 121 = 419`; implementation reports must use actual results.
 
 ---
 
@@ -191,7 +194,12 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 ## 10. M2 Readiness and Current Status
 
 M2 is in implementation. M2.1, M2.2 and M2.3 are verified and merged
-(M2.3 merge commit `ab1fa905`); M2.4 has not started.
+(M2.3 merge commit `ab1fa905`); M2.4 remediation is implemented on branch
+`runtime/m2-4-task-run-separation` (PR review remediation `8b2ff01f`;
+targeted 139/139, Server 437/437, Agent Core 123/123, Build PASS, diff check PASS
+and Scope Audit PASS — see `docs/implementation/milestones/M2.4-task-run-separation-report.md`).
+PR remediation re-review is pending; Reviewed Head `efcf7b8c`; Remote CI unavailable;
+PR #3 remains open; merge not authorized.
 
 | Check | Status |
 |---|---|
@@ -205,9 +213,32 @@ M2 is in implementation. M2.1, M2.2 and M2.3 are verified and merged
 | M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
 | M2.3 | ✅ VERIFIED & MERGED — `ab1fa905` (PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a`; `runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
-| M2.4 | ⏳ NOT STARTED |
+| M2.4 | 🚧 IMPLEMENTED — PENDING PR REMEDIATION REVIEW (`runtime/m2-4-task-run-separation`, PR remediation `8b2ff01f`, Reviewed Head `efcf7b8c`, report `M2.4-task-run-separation-report.md`) |
+
+> **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（Migration 005/006 注册后的必要预期同步）; 其他既有测试零修改；测试语义与验证强度不变。
+
+> **M2.4 PR Review Remediation（2026-07-24）：** Owner Decision 采用 explicit retry reconciliation；R10–R16 已加入并通过；定向 139/139（`3787.9554ms`）；Server 437/437（`41043.7068ms`）；Agent Core 123/123；Build、diff check、Scope Audit PASS。恢复依据为持久化 Legacy JSON terminal status；无 Migration 007、startup recovery 或 v2 running cancel API。Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 OPEN；不得合并；M2.5 未启动。
+
+### M2.4 Queued Recovery Update (2026-07-24)
+
+The remaining PR #3 MEDIUM queued-crash finding is implemented by startup orphan reconciliation in code commit `59f982d5`. A single `TaskRunService` is created before startup recovery; `recoverInterruptedTaskRuntime` first preserves existing Legacy running-task recovery, then fails only queued `legacy_pipeline` Runs with `BRIDGE_PRESTART_INTERRUPTED` in one transaction per workspace. `v2_api` queued Runs, running Legacy Runs, `agent_runs`, schema/migrations, and normal Retry behavior remain unchanged.
+
+R17-R24 use real persistent JSON and real `node:sqlite`: taskRecovery 9/9 passed, seven-file M2.4 targeted 140/140 passed, final Server 446/446 passed, Agent Core 123/123 passed, Build PASS, and diff check PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
+
+The remaining PR #3 MEDIUM ownership and LOW startup-leak findings are implemented by the Project-Root IPC Ownership Lock in code commit `c2828aac` (previous head `4195403b`). Ownership is acquired before SQLite, startup recovery, Worktree reconcile, routes, and HTTP listen via a Windows Named Pipe / Unix Domain Socket keyed by a SHA-256 hash of the canonical Project Root; startup failures exit through a single sanitized boundary with stable codes only (`SERVER_ALREADY_RUNNING`, `STARTUP_RECOVERY_FAILED`, `SERVER_LISTEN_FAILED`, `SERVER_STARTUP_FAILED`).
+
+R25-R33 use real subprocesses, real `node:sqlite`, and a real SQLite Trigger: ownership/startup targeted 17 passed / 1 unix-only skip, taskRecovery 9/9, seven-file M2.4 targeted 140/140, Server 454 passed / 0 failed / 1 skipped, Agent Core 123/123, Build PASS, diff check PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
+
+Follow-up ownership safety remediation (code commit `7d233386`, previous head `04877811`): the filesystem Unix Domain Socket design was withdrawn because a clean `server.close` removes Node-created sockets (old R30 stale-socket construction was invalid) and the probe-then-unlink stale cleanup had a TOCTOU race. Non-Windows ownership now uses a collision-aware loopback ownership socket on `127.0.0.1` with SHA-256-derived candidate ports and an `AGENTOS_OWNER_V1` hash handshake; unknown occupants fail closed with `SERVER_OWNERSHIP_UNAVAILABLE`; Windows Named Pipe ownership remains unchanged. R34-R40 pass (R34 unix-only, skipped on Windows); R25-R33 regression passes; seven-file targeted 140/140; Server 466 tests / 465 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
+
+Candidate-set ownership remediation (code commit `091b41b2`, previous head `55591a25`): fixed a HIGH fallback-churn defect where one Project Root could hold two loopback ownership endpoints after another root freed an earlier candidate. Ownership now performs a full pre-bind sweep of the candidate set (any same-root token or unknown occupant anywhere blocks acquisition), binds only sweep-free candidates, fails closed on non-EADDRINUSE bind errors, and runs a full post-bind verification sweep before returning ownership (concurrent same-root owners cancel the acquisition, releasing the fresh bind). Accepted handshake connections are tracked and destroyed on release, so held clients cannot block release. R41-R47 pass (all RED or hung before); R25-R40 regression passes; seven-file targeted 140/140; Server 478 tests / 477 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
+
+Final verification closure (2026-07-25): final technical review `4779120698` (`COMMENTED`, technical verdict `APPROVE`, formal non-author approval `NOT PRESENT`) approved production Head `88e9b328` with BLOCKER/HIGH/MEDIUM 0 and LOW risks L1-L4 (active SSE shutdown delay, loopback candidate availability trade-off, Unix dispatch coverage residue, pre-existing conversations flake). All closure gates passed on first execution: ownership targeted 24 passed / 1 skipped (R34 unix-only), startup 7/7, taskRecovery 9/9, RunRepository 23/23, TaskRunService 34/34, seven-file 140/140, three independent full Server runs each 477 passed / 0 failed / 1 skipped / exit 0, Agent Core 123/123, Build PASS, diff check PASS. An earlier same-day attempt stopped at an environmental R39 port conflict and is disclosed, not covered. No production code or test changed after the reviewed Head; only the four M2.4 docs and the PR body record follow it. Status is now `M2.4 VERIFIED — READY FOR MERGE REVIEW`. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started; branch and worktree retained.
 
 ### Next Step
 M2.3 passed the final remediation review on PR #2 and was merged to main via merge
 commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`); auto-merge stayed
-disabled and M2.4 has not started.
+disabled. M2.4 PR review remediation is implemented (Owner Decisions OD-1 to OD-5
+remain frozen; actual test and scope evidence in the M2.4 report) on branch
+`runtime/m2-4-task-run-separation`; PR remediation re-review is pending, merge is not
+authorized, and M2.5 has not started.
