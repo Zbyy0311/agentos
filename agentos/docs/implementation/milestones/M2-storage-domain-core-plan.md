@@ -229,6 +229,8 @@ The remaining PR #3 MEDIUM ownership and LOW startup-leak findings are implement
 
 R25-R33 use real subprocesses, real `node:sqlite`, and a real SQLite Trigger: ownership/startup targeted 17 passed / 1 unix-only skip, taskRecovery 9/9, seven-file M2.4 targeted 140/140, Server 454 passed / 0 failed / 1 skipped, Agent Core 123/123, Build PASS, diff check PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
 
+Follow-up ownership safety remediation (code commit `7d233386`, previous head `04877811`): the filesystem Unix Domain Socket design was withdrawn because a clean `server.close` removes Node-created sockets (old R30 stale-socket construction was invalid) and the probe-then-unlink stale cleanup had a TOCTOU race. Non-Windows ownership now uses a collision-aware loopback ownership socket on `127.0.0.1` with SHA-256-derived candidate ports and an `AGENTOS_OWNER_V1` hash handshake; unknown occupants fail closed with `SERVER_OWNERSHIP_UNAVAILABLE`; Windows Named Pipe ownership remains unchanged. R34-R40 pass (R34 unix-only, skipped on Windows); R25-R33 regression passes; seven-file targeted 140/140; Server 466 tests / 465 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`.
+
 ### Next Step
 M2.3 passed the final remediation review on PR #2 and was merged to main via merge
 commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`); auto-merge stayed
