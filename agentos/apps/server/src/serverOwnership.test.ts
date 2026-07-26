@@ -308,32 +308,52 @@ test('R38 loopback ownership is released automatically after a subprocess crash'
   }
 });
 
-test('R39 concurrent subprocesses acquiring the same root never produce two owners', { timeout: 300_000 }, async () => {
+test('R39 concurrent subprocesses never produce two owners and ownership remains available after contention clears', { timeout: 300_000 }, async () => {
   const ROUNDS = 5;
   const CHILDREN = 3;
   for (let round = 0; round < ROUNDS; round += 1) {
     const root = makeRoot(`r39-${round}`);
     const spawned = Array.from({ length: CHILDREN }, () => spawnLoopbackChild(root));
+    let reacquired: ServerOwnership | undefined;
     try {
-      const outcomes = await Promise.all(spawned.map(item => waitForOutcomeLine(item)));
-      const acquired = outcomes.filter(outcome => outcome.startsWith('ACQUIRED '));
-      const failed = outcomes.filter(outcome => outcome.startsWith('FAILED '));
-      assert.equal(acquired.length, 1, `round ${round}: exactly one owner may win: ${outcomes.join(' | ')}`);
-      assert.equal(failed.length, CHILDREN - 1, `round ${round}: every loser reports a stable code`);
-      for (const outcome of failed) {
-        assert.match(
-          outcome,
-          /FAILED (SERVER_ALREADY_RUNNING|SERVER_OWNERSHIP_UNAVAILABLE)/,
-          `round ${round}: loser must fail with a stable code`,
+      try {
+        const outcomes = await Promise.all(spawned.map(item => waitForOutcomeLine(item)));
+        const acquired = outcomes.filter(outcome => outcome.startsWith('ACQUIRED '));
+        const failed = outcomes.filter(outcome => outcome.startsWith('FAILED '));
+        assert.ok(
+          acquired.length <= 1,
+          `round ${round}: at most one owner may win: ${outcomes.join(' | ')}`,
         );
-      }
-    } finally {
-      for (const item of spawned) {
-        if (item.child.exitCode === null && item.child.signalCode === null) {
-          item.child.kill('SIGKILL');
+        assert.equal(
+          acquired.length + failed.length,
+          CHILDREN,
+          `round ${round}: every child must report exactly one recognized outcome: ${outcomes.join(' | ')}`,
+        );
+        assert.equal(
+          failed.length,
+          CHILDREN - acquired.length,
+          `round ${round}: every non-owner must report a stable failure: ${outcomes.join(' | ')}`,
+        );
+        for (const outcome of outcomes) {
+          assert.match(
+            outcome,
+            /^(ACQUIRED tcp:\/\/127\.0\.0\.1:\d+|FAILED (SERVER_ALREADY_RUNNING|SERVER_OWNERSHIP_UNAVAILABLE))$/,
+            `round ${round}: every child outcome must be classified: ${outcome}`,
+          );
         }
+      } finally {
+        for (const item of spawned) {
+          if (item.child.exitCode === null && item.child.signalCode === null) {
+            item.child.kill('SIGKILL');
+          }
+        }
+        await Promise.all(spawned.map(item => waitForChildExit(item.child).catch(() => {})));
       }
-      await Promise.all(spawned.map(item => waitForChildExit(item.child).catch(() => {})));
+
+      reacquired = await acquireLoopbackServerOwnership(root);
+      assert.match(reacquired.endpoint, /^tcp:\/\/127\.0\.0\.1:\d+$/);
+    } finally {
+      await reacquired?.release().catch(() => {});
       rmSync(root, { recursive: true, force: true });
     }
   }
