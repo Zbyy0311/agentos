@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 OWNER DECISIONS FROZEN — PENDING PLAN REVIEW (implementation not started)
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION (implementation not started)
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-5-stage-workflow-snapshots` (active M2.5 planning), current main/baseline `3e86464bbbc6f4ab80fadd800d873853de7697e0`
@@ -17,7 +17,7 @@
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
 | M2.4 | VERIFIED & MERGED — `e02db3b0` | PR #3 merged and archived; report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; no further remediation |
-| M2.5 | OWNER DECISIONS FROZEN — PENDING PLAN REVIEW; implementation not started | Branch `runtime/m2-5-stage-workflow-snapshots`; OD-1–OD-12 APPROVED 2026-07-26; baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED at `3e86464b`; see `docs/implementation/milestones/M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md` |
+| M2.5 | PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION; implementation not started | Branch `runtime/m2-5-stage-workflow-snapshots`; OD-1–OD-12 APPROVED 2026-07-26; plan review closed 2026-07-27 (BLOCKER 0 / HIGH 1 / MEDIUM 9 / LOW 2, all resolved); baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED at `3e86464b`; see `docs/implementation/milestones/M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md`, `M2.5-plan-review.md` |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
 
@@ -415,7 +415,7 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 
 ### M2.5 — Stage, Workflow Snapshot and Runtime Snapshot
 
-**Status:** OWNER DECISIONS FROZEN — PENDING PLAN REVIEW; implementation not started.
+**Status:** PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION; implementation not started.
 
 **Historical draft notice:** the detailed M2.5 proposal previously recorded in this section (snapshot columns on `agent_runs`, extending `run_steps`, returning snapshots from `routes/runs.ts`, migration filenames `v006-workflow-definitions.sql` / `v007-snapshot-columns.sql`, branch `m2/snapshots`) was written before M2.4 Task/Run separation. It is retained here only as history and is **superseded** — it is not implementation authorization. Post-M2.4 facts: canonical Task-domain `tasks`/`runs` exist (migrations 005/006); Conversation `agent_runs`/`run_steps`/`routes/runs.ts` are a separate, frozen domain; the migration registry is TS-based 001–006 and the actual next ID is 007 with naming to be decided after owner decisions.
 
@@ -423,13 +423,14 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 
 - Current-State Audit: `docs/implementation/milestones/M2.5-current-state-audit.md` (evidence-bound inventory of schema, Run creation paths, stage gap, snapshot data classification, documentation drift)
 - Owner Decisions: `docs/implementation/milestones/M2.5-owner-decisions.md` (OD-1 through OD-12, APPROVED 2026-07-26)
-- Architecture Plan: `docs/implementation/milestones/M2.5-stage-workflow-snapshot-plan.md` (P1–P4 packages, proposed migrations 007–009, test plan; revised to the approved decisions, pending independent plan review)
+- Architecture Plan: `docs/implementation/milestones/M2.5-stage-workflow-snapshot-plan.md` (P1–P4 packages, frozen migrations 007–009 DDL, test matrix; plan review closed)
+- Independent Plan Review: `docs/implementation/milestones/M2.5-plan-review.md` (BLOCKER 0 / HIGH 1 / MEDIUM 9 / LOW 2, all RESOLVED, 2026-07-27)
 
 **Current M2.5 facts (2026-07-26):**
 
 - Branch `runtime/m2-5-stage-workflow-snapshots` at `3e86464bbbc6f4ab80fadd800d873853de7697e0`; baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED (Server 478/477/0/1, Agent Core 123/123, Root Build PASS).
 - No M2.5 code, migration, schema, API, test, package, or lockfile change has been made or authorized.
-- Approved architecture summary: Task-domain `runs` only; `workflow_definitions` (built-ins `legacy-pipeline-v1` / `unbound-task-run-v1`); one-to-one `run_snapshots`; dedicated `run_stages`; atomic Run+Snapshot+Stage capture; latest-config retry; include-based v2 Run GET API; no synthesis or backfill; no Conversation changes. Final DDL/API field structure awaits the Step 3 independent plan review.
+- Frozen architecture summary: Task-domain `runs` only; proposed Migrations `007-workflow-definitions`, `008-run-snapshots`, `009-run-stages`; ID prefixes `workflow_<ulid>` / `stage_<ulid>` / `snapshot_<ulid>`; global built-in Workflow definitions (`legacy-pipeline-v1`, `unbound-task-run-v1`, seeded by Migration 007); composite `(run_id, workspace_id)` and `(run_snapshot_id, run_id)` FKs; stage-level Agent/Provider bindings inside Snapshot JSON; the same resolved configuration drives Snapshot, initial Stages, and the Legacy Runner projection; all six v2 Run reasons (incl. `resume-fallback`) use the unbound Workflow; include-based v2 Run GET API; no down migration (apply-failure atomic rollback only); no synthesis or backfill; no Conversation changes; P1 not started.
 
 ---
 

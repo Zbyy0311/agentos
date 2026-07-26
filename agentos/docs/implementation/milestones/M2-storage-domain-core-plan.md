@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 OWNER DECISIONS FROZEN — PENDING PLAN REVIEW (implementation not started)
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION (implementation not started)
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -75,7 +75,7 @@ Both corrections were committed in `12207fb8`.
 | M2.2 | Canonical Identity, Version and Repository | Medium | Medium | M2.1 | `runtime/m2-2-identity-version-repository` |
 | M2.3 | Workspace, Agent Profile and Provider Configuration | High | Medium | M2.1, M2.2 | `runtime/m2-3-workspace-agent-provider` |
 | M2.4 | Task and Run Separation — VERIFIED & MERGED `e02db3b0` | High | High | M2.3 | `runtime/m2-4-task-run-separation` |
-| M2.5 | Stage, Workflow Snapshot and Runtime Snapshot — OWNER DECISIONS FROZEN, PENDING PLAN REVIEW | Medium | Medium | M2.4 | `runtime/m2-5-stage-workflow-snapshots` |
+| M2.5 | Stage, Workflow Snapshot and Runtime Snapshot — PLAN REVIEW CLOSED, READY FOR P1 AUTHORIZATION | Medium | Medium | M2.4 | `runtime/m2-5-stage-workflow-snapshots` |
 | M2.6 | Idempotency and Optimistic Concurrency | Medium | Medium | M2.2 | `m2/idempotency-concurrency` |
 | M2.7 | v1 Compatibility Read and Data Migration | Medium | Medium | M2.3, M2.4 | `m2/v1-migration` |
 | M2.8 | Verification and Cutover Readiness | Medium | Low | All above | `m2/verification` |
@@ -215,7 +215,7 @@ PR #3 remains open; merge not authorized.
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
 | M2.3 | ✅ VERIFIED & MERGED — `ab1fa905` (PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a`; `runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
 | M2.4 | ✅ VERIFIED & MERGED — `e02db3b0` (PR #3 MERGED; `runtime/m2-4-task-run-separation`, report `M2.4-task-run-separation-report.md`) |
-| M2.5 | 🚧 OWNER DECISIONS FROZEN — PENDING PLAN REVIEW; implementation not started (branch `runtime/m2-5-stage-workflow-snapshots`; OD-1–OD-12 APPROVED 2026-07-26; baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED at `3e86464b`; see `M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md`) |
+| M2.5 | 🚧 PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION; implementation not started (branch `runtime/m2-5-stage-workflow-snapshots`; OD-1–OD-12 APPROVED 2026-07-26; plan review closed 2026-07-27, BLOCKER 0 / HIGH 1 / MEDIUM 9 / LOW 2 all resolved; baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED at `3e86464b`; see `M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md`, `M2.5-plan-review.md`) |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（Migration 005/006 注册后的必要预期同步）; 其他既有测试零修改；测试语义与验证强度不变。
 
@@ -241,12 +241,16 @@ Final verification closure (2026-07-25): final technical review `4779120698` (`C
 M2.4 has merged (`e02db3b0`, PR #3) and is archived. Build-order remediation (`bee118ed`),
 Runtime Specification 13/14 (`a1514d6e`), and R39 remediation (`3e86464b`) are merged.
 M2.5 owner decisions OD-1 through OD-12 were frozen on 2026-07-26 (see
-`M2.5-owner-decisions.md`); the current-state audit and the revised architecture plan are
-`M2.5-current-state-audit.md` and `M2.5-stage-workflow-snapshot-plan.md`. The approved
-direction: Task-domain `runs` only; `workflow_definitions`; one-to-one `run_snapshots`;
-dedicated `run_stages`; atomic capture; latest-config retry; include-based API; no
-backfill; no Conversation changes. The historical M2.5 draft in `m2-migration-plan.md`
-(agent_runs/run_steps/runs.ts targeting, v006/v007 filenames, branch `m2/snapshots`) is
-superseded and retained only as history. M2.5 is OWNER DECISIONS FROZEN — PENDING PLAN
-REVIEW; no implementation has started and none is authorized before the Step 3
-independent plan review.
+`M2.5-owner-decisions.md`), and the independent plan review closed on 2026-07-27 with
+BLOCKER 0 / HIGH 1 / MEDIUM 9 / LOW 2, all resolved (see `M2.5-plan-review.md`). The
+current-state audit and the frozen architecture plan are `M2.5-current-state-audit.md` and
+`M2.5-stage-workflow-snapshot-plan.md`. Frozen direction: Task-domain `runs` only;
+proposed Migrations 007–009; ID prefixes `workflow_`/`stage_`/`snapshot_`; global built-in
+Workflow definitions; composite workspace/run and snapshot/run FKs; stage-level bindings
+in Snapshot JSON; one resolved configuration drives Snapshot, initial Stages, and the
+Legacy Runner projection; all v2 Run reasons use the unbound Workflow; include-based API;
+no down migration; no backfill; no Conversation changes. The historical M2.5 draft in
+`m2-migration-plan.md` (agent_runs/run_steps/runs.ts targeting, v006/v007 filenames,
+branch `m2/snapshots`) is superseded and retained only as history. M2.5 is PLAN REVIEW
+CLOSED — READY FOR P1 AUTHORIZATION; implementation has not started; P1 requires separate
+Owner authorization.
