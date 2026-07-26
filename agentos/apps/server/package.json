@@ -4,10 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "pnpm --filter @agentos/agent-core build && tsx watch --exclude \"../../workspace/**\" --exclude \"../../.agentos/**\" --exclude \"../../agent-memory/**\" src/index.ts",
-    "dev:stable": "pnpm --filter @agentos/agent-core build && tsx src/index.ts",
-    "build": "pnpm --filter @agentos/agent-core build && tsc",
-    "test": "pnpm --filter @agentos/agent-core build && node --import tsx --test --test-concurrency=1 src/**/*.test.ts",
+    "build:workspace-deps": "pnpm --filter @agentos/shared build && pnpm --filter @agentos/agent-core build",
+    "dev": "pnpm run build:workspace-deps && tsx watch --exclude \"../../workspace/**\" --exclude \"../../.agentos/**\" --exclude \"../../agent-memory/**\" src/index.ts",
+    "dev:stable": "pnpm run build:workspace-deps && tsx src/index.ts",
+    "build": "pnpm run build:workspace-deps && tsc",
+    "test": "pnpm run build:workspace-deps && node --import tsx --test --test-concurrency=1 src/**/*.test.ts",
     "start": "node dist/index.js",
     "clean": "rm -rf dist"
   },
