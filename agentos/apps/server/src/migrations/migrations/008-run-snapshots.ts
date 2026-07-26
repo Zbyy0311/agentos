@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import type { Migration, MigrationContext } from '../types.js';
 
-const DDL_STATEMENTS = [
+/** @internal exported for atomic rollback verification only. */
+export const M25_008_DDL_STATEMENTS = Object.freeze([
   `CREATE UNIQUE INDEX idx_runs_id_workspace
     ON runs(id, workspace_id)`,
 
@@ -32,11 +33,11 @@ const DDL_STATEMENTS = [
     BEGIN
       SELECT RAISE(ABORT, 'RUN_SNAPSHOT_IMMUTABLE');
     END`,
-];
+]);
 
 // Checksum covers the supporting unique index, the table DDL, and the trigger DDL.
 // The UPDATE-only trigger preserves Run -> Snapshot cascade delete (no DELETE trigger).
-const CANONICAL_SOURCE = DDL_STATEMENTS.join('\n');
+const CANONICAL_SOURCE = M25_008_DDL_STATEMENTS.join('\n');
 
 export const migration008Checksum = createHash('sha256')
   .update(CANONICAL_SOURCE)
@@ -48,7 +49,7 @@ export const migration008: Migration = {
   name: 'run-snapshots',
   checksum: migration008Checksum,
   apply(ctx: MigrationContext): void {
-    for (const stmt of DDL_STATEMENTS) {
+    for (const stmt of M25_008_DDL_STATEMENTS) {
       ctx.db.exec(stmt);
     }
   },

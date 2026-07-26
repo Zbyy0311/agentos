@@ -39,7 +39,11 @@ import {
   M25_UNBOUND_DEFINITION_JSON,
   M25_UNBOUND_DEFINITION_HASH,
 } from '../migrations/007-workflow-definitions.js';
-import { migration008, migration008Checksum } from '../migrations/008-run-snapshots.js';
+import {
+  migration008,
+  migration008Checksum,
+  M25_008_DDL_STATEMENTS,
+} from '../migrations/008-run-snapshots.js';
 import { migration009, migration009Checksum } from '../migrations/009-run-stages.js';
 import { hashCanonicalJson } from '../../snapshots/canonicalJson.js';
 import type { Migration } from '../types.js';
@@ -414,6 +418,31 @@ describe('M2.5 — Migration 007 workflow_definitions', () => {
       db.close();
     }
   });
+
+  it('007-21 DDL and seed sources are frozen and reject mutation', () => {
+    const ddlLength = M25_007_DDL_STATEMENTS.length;
+    const seedLength = M25_007_SEED_STATEMENTS.length;
+    const checksumBefore = migration007Checksum;
+
+    assert.equal(Object.isFrozen(M25_007_DDL_STATEMENTS), true);
+    assert.equal(Object.isFrozen(M25_007_SEED_STATEMENTS), true);
+    assert.throws(() => (M25_007_DDL_STATEMENTS as string[]).push('SELECT 1'));
+    assert.throws(() => (M25_007_SEED_STATEMENTS as string[]).push('SELECT 1'));
+    assert.equal(M25_007_DDL_STATEMENTS.length, ddlLength);
+    assert.equal(M25_007_SEED_STATEMENTS.length, seedLength);
+    assert.equal(migration007Checksum, checksumBefore);
+
+    const db = migratedDb();
+    try {
+      assert.equal(countRows(db, 'workflow_definitions'), 2);
+      const record = db.prepare(
+        "SELECT COUNT(*) AS c FROM _schema_migrations WHERE migration_id = '007'",
+      ).get() as { c: number };
+      assert.equal(record.c, 1);
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe('M2.5 — Migration 008 run_snapshots', () => {
@@ -443,6 +472,12 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
         "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_runs_id_workspace'",
       ).all();
       assert.equal(idx.length, 1);
+      const indexRows = db.prepare(
+        "PRAGMA index_list('runs')",
+      ).all() as Array<{ name: string; unique: number }>;
+      const index = indexRows.find((row) => row.name === 'idx_runs_id_workspace');
+      assert.ok(index);
+      assert.equal(index.unique, 1);
       const cols = db.prepare('PRAGMA index_info(idx_runs_id_workspace)').all() as Array<{ name: string }>;
       assert.deepEqual(cols.map((c) => c.name), ['id', 'workspace_id']);
     } finally {
@@ -628,8 +663,10 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
         name: 'run-snapshots',
         checksum: 'failing008',
         apply(ctx) {
-          ctx.db.exec('CREATE UNIQUE INDEX idx_runs_id_workspace ON runs(id, workspace_id)');
-          throw new Error('simulated 008 failure');
+          for (const stmt of M25_008_DDL_STATEMENTS) {
+            ctx.db.exec(stmt);
+          }
+          throw new Error('simulated failure after complete 008 DDL');
         },
       };
       assert.throws(() => runMigrations(db, [...REGISTRY_FIRST_SEVEN, failing008]));
@@ -664,6 +701,27 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
       const record = db.prepare("SELECT checksum FROM _schema_migrations WHERE migration_id = '008'").get() as { checksum: string };
       assert.equal(record.checksum, migration008Checksum);
       assert.equal(migration008.checksum, migration008Checksum);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('008-19 DDL source is frozen and rejects mutation', () => {
+    const ddlLength = M25_008_DDL_STATEMENTS.length;
+    const checksumBefore = migration008Checksum;
+
+    assert.equal(Object.isFrozen(M25_008_DDL_STATEMENTS), true);
+    assert.throws(() => (M25_008_DDL_STATEMENTS as string[]).push('SELECT 1'));
+    assert.equal(M25_008_DDL_STATEMENTS.length, ddlLength);
+    assert.equal(migration008Checksum, checksumBefore);
+
+    const db = migratedDb();
+    try {
+      assert.ok(tableNames(db).includes('run_snapshots'));
+      const trigger = db.prepare(
+        "SELECT name FROM sqlite_master WHERE type='trigger' AND name='run_snapshots_reject_update'",
+      ).all();
+      assert.equal(trigger.length, 1);
     } finally {
       db.close();
     }

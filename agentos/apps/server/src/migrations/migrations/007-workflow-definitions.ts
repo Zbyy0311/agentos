@@ -24,7 +24,7 @@ export const M25_UNBOUND_DEFINITION_HASH =
   '015ca32ad5bf123bc720668e4de639f22143bafc883868e2c92b0fe3b87871f3';
 
 /** @internal exported for test verification only (seed-conflict harness reuses the frozen DDL). */
-export const M25_007_DDL_STATEMENTS = [
+export const M25_007_DDL_STATEMENTS = Object.freeze([
   `CREATE TABLE workflow_definitions (
     id TEXT PRIMARY KEY,
     definition_key TEXT NOT NULL,
@@ -50,10 +50,10 @@ export const M25_007_DDL_STATEMENTS = [
     BEGIN
       SELECT RAISE(ABORT, 'WORKFLOW_DEFINITION_IMMUTABLE');
     END`,
-];
+]);
 
 /** @internal exported for test verification only (seed-conflict harness reuses the frozen seed). */
-export const M25_007_SEED_STATEMENTS = [
+export const M25_007_SEED_STATEMENTS = Object.freeze([
   `INSERT INTO workflow_definitions (
     id, definition_key, version, name, definition_json, definition_hash,
     enabled, archived_at, created_at, updated_at
@@ -85,7 +85,7 @@ export const M25_007_SEED_STATEMENTS = [
     '${M25_SEED_TIMESTAMP}',
     '${M25_SEED_TIMESTAMP}'
   )`,
-];
+]);
 
 // Checksum covers DDL, trigger, and the full seed (IDs, keys/versions/names,
 // frozen JSON, frozen hashes, enabled/archive flags, seed timestamps).

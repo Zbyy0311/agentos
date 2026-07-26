@@ -71,13 +71,14 @@ function serialize(value: unknown, path: string, stack: Set<object>): string {
     if (Object.getOwnPropertySymbols(value).length > 0) {
       throw new TypeError(`canonicalJson: symbol-keyed property at ${path}`);
     }
-    const keys = Object.keys(value);
-    for (const key of keys) {
+    const ownPropertyNames = Object.getOwnPropertyNames(value);
+    for (const key of ownPropertyNames) {
       const descriptor = Object.getOwnPropertyDescriptor(value, key)!;
       if (descriptor.get !== undefined || descriptor.set !== undefined) {
         throw new TypeError(`canonicalJson: accessor property "${key}" at ${path}`);
       }
     }
+    const keys = Object.keys(value);
     keys.sort(compareByCodePoint);
     const parts = keys.map(
       (key) => `${JSON.stringify(key)}:${serialize(value[key], `${path}.${key}`, stack)}`,

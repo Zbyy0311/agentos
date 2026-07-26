@@ -122,6 +122,26 @@ describe('canonicalJson — canonicalization', () => {
     };
     assert.throws(() => canonicalizeJson(withGetter));
   });
+
+  it('canonicalJson rejects non-enumerable accessor properties without invoking them', () => {
+    let getterCalls = 0;
+    const value = { visible: 1 };
+
+    Object.defineProperty(value, 'hidden', {
+      enumerable: false,
+      configurable: true,
+      get() {
+        getterCalls += 1;
+        return 'must-not-be-read';
+      },
+    });
+
+    assert.throws(
+      () => canonicalizeJson(value),
+      /accessor property/,
+    );
+    assert.equal(getterCalls, 0);
+  });
 });
 
 describe('canonicalJson — hashing', () => {
