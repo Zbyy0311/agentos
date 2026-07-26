@@ -369,9 +369,9 @@ describe('M2.4 migration 005/006 schema', () => {
     }
   });
 
-  it('migrations 005/006 are registered after 004 in the default registry', () => {
+  it('migrations 005/006 remain registered after 004 as later migrations are appended', () => {
     const ids = DEFAULT_REGISTRY_MIGRATIONS.map(m => m.id);
-    assert.deepEqual(ids.slice(-2), ['005', '006']);
+    assert.deepEqual(ids.slice(4), ['005', '006', '007', '008', '009']);
     assert.equal(DEFAULT_REGISTRY_MIGRATIONS[4], migration005);
     assert.equal(DEFAULT_REGISTRY_MIGRATIONS[5], migration006);
   });
