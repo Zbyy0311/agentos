@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW; M2.5 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 PLANNING IN PROGRESS (implementation not started)
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -74,8 +74,9 @@ Both corrections were committed in `12207fb8`.
 | M2.1 | Migration Runner and SQLite Foundation | Medium | Medium | None | `runtime/m2-1-migration-foundation` |
 | M2.2 | Canonical Identity, Version and Repository | Medium | Medium | M2.1 | `runtime/m2-2-identity-version-repository` |
 | M2.3 | Workspace, Agent Profile and Provider Configuration | High | Medium | M2.1, M2.2 | `runtime/m2-3-workspace-agent-provider` |
-| M2.4 | Task and Run Separation | High | High | M2.3 | `m2/task-run-separation` |
-| M2.5 | Stage, Workflow Snapshot and Runtime Snapshot | Medium | Medium | M2.4 | `m2/snapshots` |
+| M2.4 | VERIFIED & MERGED — `e02db3b0` (PR #3 merged and archived; report `M2.4-task-run-separation-report.md`) |
+| M2.5 | PLANNING IN PROGRESS — implementation not started (branch `runtime/m2-5-stage-workflow-snapshots`; Current-State Audit drafted; Owner Decisions open; baseline Attempt 3 PASSED at `3e86464b`; see `M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md`) |
+| M2.5 | Stage, Workflow Snapshot and Runtime Snapshot | Medium | Medium | M2.4 | `runtime/m2-5-stage-workflow-snapshots` |
 | M2.6 | Idempotency and Optimistic Concurrency | Medium | Medium | M2.2 | `m2/idempotency-concurrency` |
 | M2.7 | v1 Compatibility Read and Data Migration | Medium | Medium | M2.3, M2.4 | `m2/v1-migration` |
 | M2.8 | Verification and Cutover Readiness | Medium | Low | All above | `m2/verification` |
@@ -155,6 +156,7 @@ packages/shared/src/types/index.ts        — add v2 types alongside v1
 ```
 
 > **M2.4 override:** The historical M2-wide inventory above is not an authorization to change those files in M2.4. For the current M2.4 plan, `apps/server/src/routes/runs.ts`, `apps/web/**`, existing tests, ConversationService and RunStepService are denylisted; v2 routes are new `/v2` files and Legacy routes remain at their original URLs. Repository ordering is deterministic (`Task: updated_at DESC, id ASC`; `Run: created_at ASC, id ASC`; latest Run: `created_at DESC, id DESC LIMIT 1`).
+> **M2.5 override (2026-07-26):** The same historical inventory is also not an authorization for M2.5. Entries such as `007-snapshot-columns.sql`, `SnapshotService.ts`, snapshot CRUD in `SqliteStore.ts`, and snapshot responses in `routes/runs.ts` reflect the pre-M2.4 draft and are superseded by the M2.5 current-state audit; the actual next migration ID is 007 with naming and contents subject to Owner Decisions OD-1 through OD-12 (see `M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md`).
 > Legacy Bridge must use `createLegacyRunForBridge` for its single-transaction find-or-create path; claim failure uses dedicated `failQueuedBridgeClaim`, then `resolveTaskAfterRunTerminal(task, terminalRun)`, while generic queued→failed is invalid. The same unified terminal reconciliation is mandatory for queued cancel, Bridge failure/cancellation and terminal JSON-save compensation: pending preserves Task `in_progress` and its pointer; no pending plus no active Run returns Task to `open`; no historical completed Run scan may restore the pointer. `pending_result_run_id` is the nullable persisted acceptance-window pointer; `cancelTask` clears it without modifying historical Runs and, for the non-done target, clears accepted/completed fields; reopen clears all three fields. GET/LIST routes may read a single Repository after WorkspaceManager validation, but all mutations and cross-Aggregate operations use TaskRunService; `TaskRepository.accept` writes only the Task transition and `TaskRunService.acceptRun` performs all Run checks. M2.4 currently plans 121 explicit new tests, with Server evidence value `298 + 121 = 419`; implementation reports must use actual results.
 
 ---
@@ -213,7 +215,8 @@ PR #3 remains open; merge not authorized.
 | M2.1 | ✅ VERIFIED & MERGED — `b4613b2a` |
 | M2.2 | ✅ VERIFIED & MERGED — `0075d36e` |
 | M2.3 | ✅ VERIFIED & MERGED — `ab1fa905` (PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a`; `runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
-| M2.4 | 🚧 IMPLEMENTED — PENDING PR REMEDIATION REVIEW (`runtime/m2-4-task-run-separation`, PR remediation `8b2ff01f`, Reviewed Head `efcf7b8c`, report `M2.4-task-run-separation-report.md`) |
+| M2.4 | ✅ VERIFIED & MERGED — `e02db3b0` (PR #3 MERGED; `runtime/m2-4-task-run-separation`, report `M2.4-task-run-separation-report.md`) |
+| M2.5 | 🚧 PLANNING IN PROGRESS — implementation not started (branch `runtime/m2-5-stage-workflow-snapshots`; Current-State Audit drafted; Owner Decisions OD-1–OD-12 open; baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED at `3e86464b`; see `M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md`) |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（Migration 005/006 注册后的必要预期同步）; 其他既有测试零修改；测试语义与验证强度不变。
 
@@ -236,9 +239,12 @@ Candidate-set ownership remediation (code commit `091b41b2`, previous head `5559
 Final verification closure (2026-07-25): final technical review `4779120698` (`COMMENTED`, technical verdict `APPROVE`, formal non-author approval `NOT PRESENT`) approved production Head `88e9b328` with BLOCKER/HIGH/MEDIUM 0 and LOW risks L1-L4 (active SSE shutdown delay, loopback candidate availability trade-off, Unix dispatch coverage residue, pre-existing conversations flake). All closure gates passed on first execution: ownership targeted 24 passed / 1 skipped (R34 unix-only), startup 7/7, taskRecovery 9/9, RunRepository 23/23, TaskRunService 34/34, seven-file 140/140, three independent full Server runs each 477 passed / 0 failed / 1 skipped / exit 0, Agent Core 123/123, Build PASS, diff check PASS. An earlier same-day attempt stopped at an environmental R39 port conflict and is disclosed, not covered. No production code or test changed after the reviewed Head; only the four M2.4 docs and the PR body record follow it. Status is now `M2.4 VERIFIED — READY FOR MERGE REVIEW`. PR #3 remains OPEN, Auto Merge disabled, merge unauthorized, Remote CI unavailable, and M2.5 not started; branch and worktree retained.
 
 ### Next Step
-M2.3 passed the final remediation review on PR #2 and was merged to main via merge
-commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`); auto-merge stayed
-disabled. M2.4 PR review remediation is implemented (Owner Decisions OD-1 to OD-5
-remain frozen; actual test and scope evidence in the M2.4 report) on branch
-`runtime/m2-4-task-run-separation`; PR remediation re-review is pending, merge is not
-authorized, and M2.5 has not started.
+M2.4 has merged (`e02db3b0`, PR #3) and is archived. Build-order remediation (`bee118ed`),
+Runtime Specification 13/14 (`a1514d6e`), and R39 remediation (`3e86464b`) are merged.
+M2.5 is in planning on branch `runtime/m2-5-stage-workflow-snapshots`: the current-state
+audit, owner decision register (OD-1 to OD-12, all OPEN), and architecture plan draft are
+complete (see `M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`,
+`M2.5-stage-workflow-snapshot-plan.md`). The historical M2.5 draft in
+`m2-migration-plan.md` (agent_runs/run_steps/runs.ts targeting, v006/v007 filenames,
+branch `m2/snapshots`) is superseded and retained only as history. No M2.5 implementation
+has started; implementation requires Owner decisions on OD-1 through OD-12.
