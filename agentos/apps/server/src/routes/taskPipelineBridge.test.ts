@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { createRequire } from 'node:module';
+import type { AddressInfo } from 'node:net';
 import type { AgentStage, TaskItem, TaskLog, Workspace } from '@agentos/shared';
 import { createTaskRoutes, type RunnerFactory } from './tasks.js';
 import { createV2TaskRoutes } from './v2Tasks.js';
@@ -230,6 +231,10 @@ async function createFixture(
   app.use(express.json());
   const responseCloseCount = { value: 0 };
   const sseWrites: string[] = [];
+  app.head('/__test_fetch_port_probe', (_req, res) => {
+    res.setHeader('Connection', 'close');
+    res.status(204).end();
+  });
   app.use((_req, res, next) => {
     res.on('close', () => { responseCloseCount.value += 1; });
     const response = res as unknown as { write: (chunk: unknown, ...args: unknown[]) => boolean };
@@ -247,10 +252,7 @@ async function createFixture(
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(storeDeps as never, manager));
   app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(storeDeps as never, manager));
   app.use(createJsonErrorHandler());
-  const server = app.listen(0);
-  await new Promise<void>(resolve => server.once('listening', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('test server did not bind');
+  const { server, port } = await listenOnFetchSafePort(app);
   return {
     db,
     storeDeps,
@@ -259,16 +261,83 @@ async function createFixture(
     service,
     fakeStore,
     server,
-    base: `http://127.0.0.1:${address.port}/api/workspaces/${workspaceId}`,
+    base: `http://127.0.0.1:${port}/api/workspaces/${workspaceId}`,
     workspaceId,
     responseCloseCount,
     sseWrites,
   };
 }
 
+async function closeTestServer(
+  server: ReturnType<express.Express['listen']>,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close(error => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function isFetchBadPortError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { message?: unknown; cause?: unknown };
+  if (!(error instanceof TypeError) && candidate.message !== 'fetch failed') return false;
+  if (typeof candidate.cause !== 'object' || candidate.cause === null) return false;
+  return (candidate.cause as { message?: unknown }).message === 'bad port';
+}
+
+async function listenOnFetchSafePort(
+  app: express.Express,
+): Promise<{
+  server: ReturnType<express.Express['listen']>;
+  port: number;
+}> {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    let server: ReturnType<express.Express['listen']> | undefined;
+    try {
+      server = app.listen(0, '127.0.0.1');
+      await new Promise<void>((resolve, reject) => {
+        const onListening = () => {
+          server?.off('error', onError);
+          resolve();
+        };
+        const onError = (error: Error) => {
+          server?.off('listening', onListening);
+          reject(error);
+        };
+        server.once('listening', onListening);
+        server.once('error', onError);
+      });
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
+      }
+      const port = (address as AddressInfo).port;
+      const probe = await fetch(`http://127.0.0.1:${port}/__test_fetch_port_probe`, {
+        method: 'HEAD',
+      });
+      if (probe.status !== 204) {
+        throw new Error(`TEST_FETCH_SAFE_PORT_PROBE_FAILED: ${probe.status}`);
+      }
+      return { server, port };
+    } catch (error) {
+      if (server) {
+        try { await closeTestServer(server); } catch { /* preserve the diagnostic error */ }
+      }
+      if (isFetchBadPortError(error)) continue;
+      throw error;
+    }
+  }
+  throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
+}
+
 async function closeFixture(fx: Fixture): Promise<void> {
-  fx.server.close();
-  fx.db.close();
+  try {
+    await closeTestServer(fx.server);
+  } finally {
+    fx.db.close();
+  }
 }
 
 async function runToCompletion(fx: Fixture, taskId: string): Promise<{ httpStatus: number; body: string }> {
