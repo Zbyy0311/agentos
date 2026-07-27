@@ -296,19 +296,23 @@ async function listenOnFetchSafePort(
   for (let attempt = 0; attempt < 32; attempt += 1) {
     let server: ReturnType<express.Express['listen']> | undefined;
     try {
-      server = app.listen(0, '127.0.0.1');
+      const listenerServer = app.listen(0, '127.0.0.1');
+      server = listenerServer;
       await new Promise<void>((resolve, reject) => {
         const onListening = () => {
-          server?.off('error', onError);
+          listenerServer.off('error', onError);
           resolve();
         };
         const onError = (error: Error) => {
-          server?.off('listening', onListening);
+          listenerServer.off('listening', onListening);
           reject(error);
         };
-        server.once('listening', onListening);
-        server.once('error', onError);
+        listenerServer.once('listening', onListening);
+        listenerServer.once('error', onError);
       });
+      if (!server) {
+        throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
+      }
       const address = server.address();
       if (!address || typeof address === 'string') {
         throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
