@@ -100,6 +100,20 @@ function rejectUnsafeValue(value: string): void {
   }
 }
 
+const SENSITIVE_ARGUMENT_FLAG = /^--(api-key|token|access-token|password|secret|client-secret)(?:\s*=\s*(.*))?$/i;
+
+function scanSensitiveArguments(argsTemplate: readonly string[]): void {
+  for (let index = 0; index < argsTemplate.length; index += 1) {
+    const token = argsTemplate[index]!.trim();
+    const match = SENSITIVE_ARGUMENT_FLAG.exec(token);
+    if (!match) continue;
+
+    let value = match[2]?.trim() ?? '';
+    if (value.length === 0) value = argsTemplate[index + 1]?.trim() ?? '';
+    if (!isApprovedPlaceholder(value)) throw new RunSnapshotFailedError();
+  }
+}
+
 function scanSnapshotText(values: readonly string[]): void {
   for (const value of values) rejectUnsafeValue(value);
 }
@@ -131,6 +145,7 @@ function providerSnapshot(
   if (!Array.isArray(argsTemplate) || argsTemplate.some(argument => typeof argument !== 'string')) {
     throw new RunSnapshotFailedError();
   }
+  scanSensitiveArguments(argsTemplate);
   scanSnapshotText([
     provider.name,
     provider.adapterId,
@@ -245,6 +260,13 @@ export class SnapshotService {
 
   resolveLegacy(workspace: Workspace): ResolvedRunConfiguration {
     try {
+      const workspaceAgentIds = new Set<string>();
+      for (const agent of workspace.agents) {
+        if (typeof agent.id !== 'string' || !agent.id.trim() || workspaceAgentIds.has(agent.id)) {
+          throw new AgentNotAvailableError();
+        }
+        workspaceAgentIds.add(agent.id);
+      }
       const workflow = this.deps.workflowDefinitionResolver.resolveLegacyPipeline();
       const agents = new Map<string, {
         snapshot: AgentSnapshotV1;
@@ -287,6 +309,14 @@ export class SnapshotService {
             runner: runnerAgent(source, providerSnapshotValue, selected),
           };
           agents.set(selected.id, binding);
+        }
+        if (
+          binding.snapshot.agentId !== selected.id
+          || binding.snapshot.role !== workflowStage.agentRole
+          || binding.runner.id !== selected.id
+          || binding.runner.role !== workflowStage.agentRole
+        ) {
+          throw new AgentNotAvailableError();
         }
         stages.push({
           workflowStageKey: workflowStage.key,

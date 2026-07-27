@@ -93,6 +93,9 @@ async function bridgeCompleteTask(fx: Fixture, legacyTaskId: string): Promise<{ 
     objective: 'bridge task',
     workspace: fx.workspaceA,
   });
+  assert.ok(created.snapshot);
+  assert.equal(created.stages.length, 4);
+  assert.equal(fx.store.runStageRepository().listByRun(fx.workspaceAId, created.run.id).length, 4);
   fx.service.startRunForBridge(fx.workspaceAId, created.run.id);
   fx.service.completeRunForBridge(fx.workspaceAId, created.run.id);
   return { taskId: created.task.id, runId: created.run.id };

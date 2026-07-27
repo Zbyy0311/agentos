@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import { TaskRunService } from './TaskRunService.js';
+import { TaskRunService, type TaskRunServiceDeps } from './TaskRunService.js';
 import type { Workspace } from '@agentos/shared';
 
 interface Fixture {
@@ -188,6 +188,68 @@ test('TaskRunService rolls back the Run, Snapshot, and all previously inserted s
     }
   } finally {
     stageRepository.insertInitial = originalInsert;
+    close(fx);
+  }
+});
+
+test('M2.5 P3 RED 1-A: incomplete runtime dependencies fail closed before any persistence', () => {
+  const fx = fixture();
+  try {
+    assert.throws(
+      () => new TaskRunService({
+        taskRepository: () => fx.store.taskRepository(),
+        runRepository: () => fx.store.runRepository(),
+        runInTransaction: <T>(fn: () => T): T => fn(),
+      } as unknown as TaskRunServiceDeps),
+      (error: unknown) => (error as { code?: string } | null)?.code === 'RUN_SNAPSHOT_FAILED',
+    );
+    assert.equal(fx.store.taskRepository().listByWorkspace(fx.workspace.id).length, 0);
+    assert.equal(fx.store.runRepository().listByWorkspace(fx.workspace.id).length, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM run_snapshots').get() as { count: number }).count, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM run_stages').get() as { count: number }).count, 0);
+  } finally {
+    close(fx);
+  }
+});
+
+test('M2.5 P3 RED 1-B: missing Legacy workspace fails closed without Task/Run/Snapshot/Stage writes', () => {
+  const fx = fixture();
+  try {
+    assert.throws(
+      () => fx.service.createLegacyRunForBridge({
+        workspaceId: fx.workspace.id,
+        legacyTaskId: 'missing-workspace',
+        title: 'missing workspace',
+        createdBy: 'legacy_pipeline',
+        objective: 'missing workspace',
+      } as never),
+      (error: unknown) => (error as { code?: string } | null)?.code === 'RUN_SNAPSHOT_FAILED',
+    );
+    assert.equal(fx.store.taskRepository().listByWorkspace(fx.workspace.id).length, 0);
+    assert.equal(fx.store.runRepository().listByWorkspace(fx.workspace.id).length, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM run_snapshots').get() as { count: number }).count, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM run_stages').get() as { count: number }).count, 0);
+  } finally {
+    close(fx);
+  }
+});
+
+test('M2.5 P3 RED 1-C MANDATORY_CAPTURE_BYPASS_RED_CONFIRMED: Legacy capture result is complete', () => {
+  const fx = fixture();
+  try {
+    const result = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspace.id,
+      legacyTaskId: 'mandatory-result',
+      title: 'mandatory result',
+      createdBy: 'legacy_pipeline',
+      objective: 'mandatory result',
+      workspace: fx.workspace,
+    });
+    assert.ok(result.resolvedConfiguration);
+    assert.ok(result.runnerWorkspace);
+    assert.ok(result.snapshot);
+    assert.ok(result.stages);
+  } finally {
     close(fx);
   }
 });

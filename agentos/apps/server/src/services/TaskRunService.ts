@@ -29,11 +29,11 @@ import {
 export interface TaskRunServiceDeps {
   taskRepository(): TaskRepository;
   runRepository(): RunRepository;
-  workflowDefinitionRepository?: () => WorkflowDefinitionRepository;
-  runSnapshotRepository?: () => RunSnapshotRepository;
-  runStageRepository?: () => RunStageRepository;
-  providerConfigurationRepository?: () => ProviderConfigurationRepository;
-  findAgentSnapshotSource?: (workspaceId: string, agentId: string) => AgentSnapshotSourceRecord | undefined;
+  workflowDefinitionRepository(): WorkflowDefinitionRepository;
+  runSnapshotRepository(): RunSnapshotRepository;
+  runStageRepository(): RunStageRepository;
+  providerConfigurationRepository(): ProviderConfigurationRepository;
+  findAgentSnapshotSource(workspaceId: string, agentId: string): AgentSnapshotSourceRecord | undefined;
   runInTransaction<T>(fn: () => T): T;
 }
 
@@ -43,17 +43,17 @@ export interface CreateLegacyRunForBridgeInput {
   title: string;
   createdBy: string;
   objective: string;
-  workspace?: Workspace;
+  workspace: Workspace;
 }
 
 export interface CreateLegacyRunForBridgeResult {
   task: Task;
   run: Run;
   taskCreated: boolean;
-  resolvedConfiguration?: ResolvedRunConfiguration;
-  runnerWorkspace?: Workspace;
-  snapshot?: RunSnapshot;
-  stages?: RunStage[];
+  resolvedConfiguration: ResolvedRunConfiguration;
+  runnerWorkspace: Workspace;
+  snapshot: RunSnapshot;
+  stages: RunStage[];
 }
 
 export interface TaskRunServiceOptions {
@@ -110,32 +110,36 @@ function errorMessage(err: unknown): string {
 }
 
 export class TaskRunService {
-  private readonly snapshotService?: SnapshotService;
+  private readonly snapshotService: SnapshotService;
 
   constructor(
     private readonly deps: TaskRunServiceDeps,
     options: TaskRunServiceOptions = {},
   ) {
-    const hasSnapshotDependencies = Boolean(
-      deps.workflowDefinitionRepository
-      && deps.runSnapshotRepository
-      && deps.runStageRepository
-      && deps.providerConfigurationRepository
-      && deps.findAgentSnapshotSource,
-    );
+    if (
+      !deps
+      || typeof deps !== 'object'
+      || typeof deps.workflowDefinitionRepository !== 'function'
+      || typeof deps.runSnapshotRepository !== 'function'
+      || typeof deps.runStageRepository !== 'function'
+      || typeof deps.providerConfigurationRepository !== 'function'
+      || typeof deps.findAgentSnapshotSource !== 'function'
+    ) {
+      throw domainError('RUN_SNAPSHOT_FAILED', 'RUN_SNAPSHOT_FAILED');
+    }
     if (options.snapshotService) {
       this.snapshotService = options.snapshotService;
-    } else if (hasSnapshotDependencies) {
-      const resolver = options.resolver ?? new WorkflowDefinitionResolver(deps.workflowDefinitionRepository!());
-      this.snapshotService = new SnapshotService({
-        workflowDefinitionResolver: resolver,
-        runSnapshotRepository: () => deps.runSnapshotRepository!(),
-        runStageRepository: () => deps.runStageRepository!(),
-        providerConfigurationRepository: () => deps.providerConfigurationRepository!(),
-        findAgentSnapshotSource: (workspaceId, agentId) => deps.findAgentSnapshotSource!(workspaceId, agentId),
-        ...(options.clock ? { now: options.clock } : {}),
-      });
+      return;
     }
+    const resolver = options.resolver ?? new WorkflowDefinitionResolver(deps.workflowDefinitionRepository());
+    this.snapshotService = new SnapshotService({
+      workflowDefinitionResolver: resolver,
+      runSnapshotRepository: () => deps.runSnapshotRepository(),
+      runStageRepository: () => deps.runStageRepository(),
+      providerConfigurationRepository: () => deps.providerConfigurationRepository(),
+      findAgentSnapshotSource: (workspaceId, agentId) => deps.findAgentSnapshotSource(workspaceId, agentId),
+      ...(options.clock ? { now: options.clock } : {}),
+    });
   }
 
   createTask(workspaceId: string, input: CreateV2TaskInput): Task {
@@ -155,9 +159,9 @@ export class TaskRunService {
       if (this.deps.runRepository().findActiveByTask(workspaceId, input.taskId)) {
         throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
       }
-      const resolved = this.snapshotService?.resolveUnbound(workspaceId);
+      const resolved = this.snapshotService.resolveUnbound(workspaceId);
       const run = this.deps.runRepository().insert({ ...input, workspaceId, origin: 'v2_api' });
-      if (resolved && this.snapshotService) this.snapshotService.persistResolvedRun(run, resolved);
+      this.snapshotService.persistResolvedRun(run, resolved);
       return run;
     });
   }
@@ -183,12 +187,7 @@ export class TaskRunService {
         throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
       }
       const latest = this.deps.runRepository().findLatestByTask(input.workspaceId, task.id);
-      // The Workspace is required for the production Legacy route. Older recovery
-      // and repository-only test seams intentionally exercise Run persistence without
-      // a runtime Workspace and therefore retain the pre-P3 bridge behavior.
-      const resolved = this.snapshotService && input.workspace
-        ? this.requireLegacyResolution(input)
-        : undefined;
+      const resolved = this.requireLegacyResolution(input);
       const run = this.deps.runRepository().insert({
         workspaceId: input.workspaceId,
         taskId: task.id,
@@ -198,7 +197,6 @@ export class TaskRunService {
         objective: input.objective,
         createdBy: input.createdBy,
       });
-      if (!resolved || !this.snapshotService || !input.workspace) return { task, run, taskCreated };
       const persisted = this.snapshotService.persistResolvedRun(run, resolved);
       return {
         task,
@@ -216,7 +214,7 @@ export class TaskRunService {
     if (!input.workspace || input.workspace.id !== input.workspaceId) {
       throw domainError('RUN_SNAPSHOT_FAILED', 'RUN_SNAPSHOT_FAILED');
     }
-    return this.snapshotService!.resolveLegacy(input.workspace);
+    return this.snapshotService.resolveLegacy(input.workspace);
   }
 
   reconcileLegacyTerminalBeforeRetry(

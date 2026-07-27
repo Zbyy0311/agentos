@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { join, resolve } from 'node:path';
 import type {
   AgentSnapshotV1,
   ProviderConfigurationSnapshotV1,
@@ -61,10 +62,11 @@ const unboundWorkflow: WorkflowDefinition = {
 };
 
 function workspace(overrides: Partial<Workspace> = {}): Workspace {
+  const workspaceRoot = resolve('snapshot-workspace-root');
   return {
     id: 'ws-1',
     name: 'Workspace',
-    rootPath: 'C:\\agentos\\workspace',
+    rootPath: workspaceRoot,
     gitEnabled: false,
     memoryEnabled: false,
     agents: [
@@ -268,7 +270,98 @@ test('SnapshotService fails closed for agent/provider availability and secret-li
   assert.doesNotThrow(() => allowed.resolveLegacy(workspace()));
 });
 
+test('M2.5 P3 RED: split-equals secret arguments fail closed before Snapshot/Stage insertion', () => {
+  for (const flag of ['token', 'api-key', 'password', 'client-secret']) {
+    const literal = `split-${flag}-literal`;
+    let snapshotInserts = 0;
+    let stageInserts = 0;
+    const service = new SnapshotService(makeDeps({
+      providers: {
+        ...legacyProviders(),
+        'provider-codex': provider('provider-codex', { argsTemplate: [`--${flag}=`, literal] }),
+      },
+      sources: legacySources(),
+      onSnapshot: () => { snapshotInserts += 1; },
+      onStage: () => { stageInserts += 1; },
+    }));
+    assert.throws(
+      () => service.resolveLegacy(workspace()),
+      (error: unknown) => error instanceof RunSnapshotFailedError && !(error as Error).message.includes(literal),
+    );
+    assert.equal(snapshotInserts, 0);
+    assert.equal(stageInserts, 0);
+  }
+});
+
+test('SnapshotService rejects secret-like text and every sensitive flag form while allowing references', () => {
+  const rejectedText = [
+    ['Authorization: Basic literal', 'authorization-literal'],
+    ['Cookie: session=literal', 'cookie-literal'],
+    ['-----BEGIN PRIVATE KEY-----', 'private-key-literal'],
+    ['Bearer literal', 'bearer-literal'],
+    ['api_key=literal', 'api-key-assignment'],
+    ['api-key:literal', 'api-key-colon'],
+    ['token=literal', 'token-assignment'],
+    ['password=literal', 'password-assignment'],
+    ['secret=literal', 'secret-assignment'],
+    ['client_secret=literal', 'client-secret-assignment'],
+  ] as const;
+  for (const [value, literal] of rejectedText) {
+    let snapshotInserts = 0;
+    let stageInserts = 0;
+    const service = new SnapshotService(makeDeps({
+      sources: { ...legacySources(), 'agent-codex': { ...legacySources()['agent-codex']!, name: value } },
+      providers: legacyProviders(),
+      onSnapshot: () => { snapshotInserts += 1; },
+      onStage: () => { stageInserts += 1; },
+    }));
+    assert.throws(
+      () => service.resolveLegacy(workspace()),
+      (error: unknown) => error instanceof RunSnapshotFailedError && !(error as Error).message.includes(literal),
+    );
+    assert.equal(snapshotInserts, 0);
+    assert.equal(stageInserts, 0);
+  }
+
+  for (const argsTemplate of [
+    ['--api-key', 'literal'], ['--token', 'literal'], ['--access-token', 'literal'],
+    ['--password', 'literal'], ['--secret', 'literal'], ['--client-secret', 'literal'],
+    ['--api-key=literal'], ['--token=literal'], ['--access-token=literal'],
+    ['--password=literal'], ['--secret=literal'], ['--client-secret=literal'],
+    ['--api-key=', 'next-array-literal'], ['--token=', 'next-array-literal'],
+    ['--access-token=', 'next-array-literal'], ['--password=', 'next-array-literal'],
+    ['--secret=', 'next-array-literal'], ['--client-secret=', 'next-array-literal'],
+  ]) {
+    const service = new SnapshotService(makeDeps({
+      providers: { ...legacyProviders(), 'provider-codex': provider('provider-codex', { argsTemplate }) },
+      sources: legacySources(),
+    }));
+    assert.throws(() => service.resolveLegacy(workspace()), (error: unknown) => error instanceof RunSnapshotFailedError);
+  }
+
+  for (const argsTemplate of [
+    ['--token', '${TOKEN}'], ['--token=${TOKEN}'], ['--token=', '${TOKEN}'],
+  ]) {
+    const service = new SnapshotService(makeDeps({
+      providers: { ...legacyProviders(), 'provider-codex': provider('provider-codex', { argsTemplate }) },
+      sources: legacySources(),
+    }));
+    assert.doesNotThrow(() => service.resolveLegacy(workspace()));
+  }
+  assert.doesNotThrow(() => new SnapshotService(makeDeps({ providers: legacyProviders(), sources: legacySources() })).resolveLegacy(workspace()));
+  assert.doesNotThrow(() => new SnapshotService(makeDeps({
+    providers: { ...legacyProviders(), 'provider-kimi': provider('provider-kimi', { argsTemplate: ['-p', 'kimi-profile'] }) },
+    sources: legacySources(),
+  })).resolveLegacy(workspace()));
+});
+
 test('SnapshotService rejects disabled/mismatched Agent sources and disabled/archived/cross-workspace Providers', () => {
+  const duplicateAgent = workspace();
+  duplicateAgent.agents[1] = { ...duplicateAgent.agents[1]!, id: duplicateAgent.agents[0]!.id };
+  assert.throws(
+    () => new SnapshotService(makeDeps({ providers: legacyProviders(), sources: legacySources() })).resolveLegacy(duplicateAgent),
+    (error: unknown) => error instanceof AgentNotAvailableError,
+  );
   const disabledAgent = { ...legacySources(), 'agent-codex': { ...legacySources()['agent-codex']!, enabled: false } };
   assert.throws(
     () => new SnapshotService(makeDeps({ providers: legacyProviders(), sources: disabledAgent })).resolveLegacy(workspace()),
@@ -299,10 +392,11 @@ test('SnapshotService rejects disabled/mismatched Agent sources and disabled/arc
 });
 
 test('SnapshotService projects only workspace-contained custom directories', () => {
+  const workspaceRoot = resolve('snapshot-workspace-root');
   const inside = new SnapshotService(makeDeps({
     providers: {
       ...legacyProviders(),
-      'provider-codex': provider('provider-codex', { workingDirectoryMode: 'custom', customWorkingDirectory: 'C:\\agentos\\workspace\\nested' }),
+      'provider-codex': provider('provider-codex', { workingDirectoryMode: 'custom', customWorkingDirectory: join(workspaceRoot, 'nested') }),
     },
     sources: legacySources(),
   }));
@@ -311,7 +405,7 @@ test('SnapshotService projects only workspace-contained custom directories', () 
   const outside = new SnapshotService(makeDeps({
     providers: {
       ...legacyProviders(),
-      'provider-codex': provider('provider-codex', { workingDirectoryMode: 'custom', customWorkingDirectory: 'C:\\outside' }),
+      'provider-codex': provider('provider-codex', { workingDirectoryMode: 'custom', customWorkingDirectory: resolve(workspaceRoot, '..', 'outside') }),
     },
     sources: legacySources(),
   }));

@@ -184,7 +184,7 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
 
     // M2.4 Bridge step 3: find-or-create v2 Task + queued Run in one SQLite transaction.
     let bridgeRunId: string | undefined;
-    let bridgeRunnerWorkspace: Workspace | undefined;
+    let runnerWorkspace = workspace;
     if (taskRunService) {
       try {
         const bridge = taskRunService.createLegacyRunForBridge({
@@ -195,8 +195,19 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           objective: task.title,
           workspace,
         });
+        if (
+          !bridge.task
+          || !bridge.run
+          || !bridge.resolvedConfiguration
+          || !bridge.runnerWorkspace
+          || !bridge.snapshot
+          || !bridge.stages
+        ) {
+          Object.assign(task, taskBeforeClaim);
+          return res.status(500).json({ error: 'Bridge persistence failed' });
+        }
         bridgeRunId = bridge.run.id;
-        bridgeRunnerWorkspace = bridge.runnerWorkspace;
+        runnerWorkspace = bridge.runnerWorkspace;
       } catch (err) {
         Object.assign(task, taskBeforeClaim);
         const message = legacyBridgeGuardMessage(err);
@@ -274,7 +285,6 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     let responseClosed = false;
 
     let runner: PipelineRunner;
-    const runnerWorkspace = bridgeRunnerWorkspace ?? workspace;
     const runStage = async (stage: AgentStage, fn: () => Promise<TaskLog>) => {
       if (signal.aborted) return;
       task.currentAgent = stage;

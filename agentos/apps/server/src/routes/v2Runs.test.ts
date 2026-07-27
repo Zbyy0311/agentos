@@ -9,6 +9,7 @@ import { createV2TaskRoutes } from './v2Tasks.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { TaskRunService } from '../services/TaskRunService.js';
+import type { Workspace } from '@agentos/shared';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-v2-run-routes-'));
@@ -33,6 +34,7 @@ interface Fixture {
   baseA: string;
   baseB: string;
   workspaceAId: string;
+  workspaceA: Workspace;
 }
 
 async function createFixture(): Promise<Fixture> {
@@ -54,6 +56,7 @@ async function createFixture(): Promise<Fixture> {
     baseA: `${base}/${workspaceA.id}`,
     baseB: `${base}/${workspaceB.id}`,
     workspaceAId: workspaceA.id,
+    workspaceA,
   };
 }
 
@@ -92,6 +95,7 @@ test('T76 GET v2 Run returns failureCode/failureMessage and the full Run', async
       title: 'bridge task',
       createdBy: 'legacy_pipeline',
       objective: 'bridge objective',
+      workspace: fx.workspaceA,
     });
     fx.service.startRunForBridge(fx.workspaceAId, created.run.id);
     fx.service.failRunForBridge(fx.workspaceAId, created.run.id, 'worker exploded');
@@ -150,7 +154,7 @@ test('T84 cancelling a running Run returns 409 RUN_NOT_CANCELLABLE', async () =>
   const fx = await createFixture();
   try {
     const created = fx.service.createLegacyRunForBridge({
-      workspaceId: fx.workspaceAId, legacyTaskId: 'L1', title: 'bridge', createdBy: 'legacy_pipeline', objective: 'bridge',
+      workspaceId: fx.workspaceAId, legacyTaskId: 'L1', title: 'bridge', createdBy: 'legacy_pipeline', objective: 'bridge', workspace: fx.workspaceA,
     });
     fx.service.startRunForBridge(fx.workspaceAId, created.run.id);
     const response = await fetch(`${fx.baseA}/v2/runs/${created.run.id}/cancel`, { method: 'POST' });
@@ -165,7 +169,7 @@ test('T85 cancelling a terminal Run returns 409 RUN_NOT_CANCELLABLE', async () =
   const fx = await createFixture();
   try {
     const created = fx.service.createLegacyRunForBridge({
-      workspaceId: fx.workspaceAId, legacyTaskId: 'L1', title: 'bridge', createdBy: 'legacy_pipeline', objective: 'bridge',
+      workspaceId: fx.workspaceAId, legacyTaskId: 'L1', title: 'bridge', createdBy: 'legacy_pipeline', objective: 'bridge', workspace: fx.workspaceA,
     });
     fx.service.startRunForBridge(fx.workspaceAId, created.run.id);
     fx.service.completeRunForBridge(fx.workspaceAId, created.run.id);

@@ -25,12 +25,137 @@ import { RunRepository } from '../../store/RunRepository.js';
 import { inTransaction } from '../../store/Transaction.js';
 import { migration005 } from '../../migrations/migrations/005-tasks-table.js';
 import { migration006 } from '../../migrations/migrations/006-runs-table.js';
+import type { Run, RunSnapshot, RunStage, WorkflowDefinition, Workspace } from '@agentos/shared';
+import type { ResolvedRunConfiguration, SnapshotService } from '../SnapshotService.js';
 
 interface Env {
   db: Db;
   taskRepo: TaskRepository;
   runRepo: RunRepository;
   service: TaskRunService;
+  workspace: Workspace;
+}
+
+const TEST_WORKSPACE: Workspace = {
+  id: 'ws1',
+  name: 'Lifecycle Workspace',
+  rootPath: '/tmp/agentos-lifecycle-workspace',
+  gitEnabled: false,
+  memoryEnabled: false,
+  agents: [
+    { id: 'agent-codex', name: 'Codex', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: [] },
+    { id: 'agent-kimi', name: 'Kimi', role: 'kimi', enabled: true, cliCommand: 'kimi', cliArgs: [] },
+    { id: 'agent-opencode', name: 'OpenCode', role: 'opencode', enabled: true, cliCommand: 'opencode', cliArgs: [] },
+  ],
+  lastOpenedAt: '2026-01-01T00:00:00.000Z',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
+const TEST_WORKFLOW = (definitionKey: 'legacy-pipeline' | 'unbound-task-run'): WorkflowDefinition => ({
+  id: `workflow-${definitionKey}`,
+  definitionKey,
+  version: 1,
+  name: definitionKey,
+  definitionHash: 'a'.repeat(64),
+  enabled: true,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  payload: {
+    schemaVersion: 1,
+    definitionKey,
+    version: 1,
+    name: definitionKey,
+    executionMode: definitionKey === 'legacy-pipeline' ? 'legacy_pipeline' : 'unbound',
+    retryPolicy: null,
+    stages: definitionKey === 'legacy-pipeline'
+      ? [
+        { key: 'codex_manager', sequence: 1, agentRole: 'codex' },
+        { key: 'kimi_worker', sequence: 2, agentRole: 'kimi' },
+        { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode' },
+        { key: 'codex_final_review', sequence: 4, agentRole: 'codex' },
+      ]
+      : [],
+  },
+});
+
+function makeLifecycleSnapshotService(): SnapshotService {
+  const unboundWorkflow = TEST_WORKFLOW('unbound-task-run');
+  const legacyWorkflow = TEST_WORKFLOW('legacy-pipeline');
+  const legacyStages = legacyWorkflow.payload.stages.map(stage => ({
+    workflowStageKey: stage.key,
+    name: stage.key,
+    sequence: stage.sequence,
+    agent: null,
+    provider: null,
+    runnerAgent: null,
+  }));
+  return {
+    resolveUnbound: (): ResolvedRunConfiguration => ({ workflow: unboundWorkflow, stages: [], redactionApplied: false }),
+    resolveLegacy: (): ResolvedRunConfiguration => ({ workflow: legacyWorkflow, stages: legacyStages, redactionApplied: false }),
+    persistResolvedRun: (run: Run, resolved: ResolvedRunConfiguration): { snapshot: RunSnapshot; stages: RunStage[] } => {
+      const capturedAt = '2026-01-01T00:00:00.000Z';
+      const snapshot: RunSnapshot = {
+        id: `snapshot-${run.id}`,
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        workflowDefinitionId: resolved.workflow.id,
+        snapshotSchemaVersion: 1,
+        payload: {
+          schemaVersion: 1,
+          capturedAt,
+          run: {
+            workspaceId: run.workspaceId,
+            taskId: run.taskId,
+            origin: run.origin,
+            reason: run.reason,
+            parentRunId: run.parentRunId ?? null,
+            rootRunId: run.rootRunId,
+          },
+          workflow: {
+            definitionId: resolved.workflow.id,
+            definitionKey: resolved.workflow.definitionKey,
+            definitionVersion: resolved.workflow.version,
+            name: resolved.workflow.name,
+            definitionHash: resolved.workflow.definitionHash,
+            stages: resolved.stages.map(stage => ({
+              workflowStageKey: stage.workflowStageKey,
+              name: stage.name,
+              sequence: stage.sequence,
+              agent: stage.agent,
+              provider: stage.provider,
+            })),
+          },
+          security: { redactionApplied: false },
+        },
+        contentHash: 'b'.repeat(64),
+        redactionApplied: false,
+        capturedAt,
+      };
+      return {
+        snapshot,
+        stages: resolved.stages.map(stage => ({
+          id: `stage-${run.id}-${stage.sequence}`,
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          runSnapshotId: snapshot.id,
+          workflowStageKey: stage.workflowStageKey,
+          name: stage.name,
+          sequence: stage.sequence,
+          attempt: 1,
+          status: 'pending',
+          createdAt: capturedAt,
+          updatedAt: capturedAt,
+          version: 1,
+        })),
+      };
+    },
+    buildLegacyRunnerWorkspace: (workspace: Workspace): Workspace => structuredClone(workspace),
+  } as unknown as SnapshotService;
+}
+
+function unexpectedRealCaptureDependency(): never {
+  throw new Error('UNEXPECTED_REAL_CAPTURE_DEPENDENCY');
 }
 
 function createEnv(db: Db): Env {
@@ -39,9 +164,20 @@ function createEnv(db: Db): Env {
   const deps: TaskRunServiceDeps = {
     taskRepository: () => taskRepo,
     runRepository: () => runRepo,
+    workflowDefinitionRepository: unexpectedRealCaptureDependency as never,
+    runSnapshotRepository: unexpectedRealCaptureDependency as never,
+    runStageRepository: unexpectedRealCaptureDependency as never,
+    providerConfigurationRepository: unexpectedRealCaptureDependency as never,
+    findAgentSnapshotSource: unexpectedRealCaptureDependency as never,
     runInTransaction: <T>(fn: () => T): T => inTransaction(db as never, fn),
   };
-  return { db, taskRepo, runRepo, service: new TaskRunService(deps) };
+  return {
+    db,
+    taskRepo,
+    runRepo,
+    service: new TaskRunService(deps, { snapshotService: makeLifecycleSnapshotService() }),
+    workspace: TEST_WORKSPACE,
+  };
 }
 
 function createMemoryEnv(): Env {
@@ -62,6 +198,7 @@ function bridgeCreate(env: Env, legacyTaskId: string, title = 'legacy task') {
     title,
     createdBy: 'legacy_pipeline',
     objective: title,
+    workspace: env.workspace,
   });
 }
 
@@ -235,7 +372,7 @@ describe('TaskRunService', () => {
     try {
       const created = bridgeComplete(env, 'L1');
       const retry = env.service.createLegacyRunForBridge({
-        workspaceId: 'ws1', legacyTaskId: 'L1', title: 'legacy task', createdBy: 'legacy_pipeline', objective: 'legacy task',
+        workspaceId: 'ws1', legacyTaskId: 'L1', title: 'legacy task', createdBy: 'legacy_pipeline', objective: 'legacy task', workspace: env.workspace,
       });
       assert.throws(
         () => env.service.acceptRun('ws1', created.task.id, retry.run.id),
@@ -251,7 +388,7 @@ describe('TaskRunService', () => {
     try {
       const created = bridgeComplete(env, 'L1');
       env.service.createLegacyRunForBridge({
-        workspaceId: 'ws1', legacyTaskId: 'L1', title: 'legacy task', createdBy: 'legacy_pipeline', objective: 'legacy task',
+        workspaceId: 'ws1', legacyTaskId: 'L1', title: 'legacy task', createdBy: 'legacy_pipeline', objective: 'legacy task', workspace: env.workspace,
       });
       assert.throws(
         () => env.service.acceptRun('ws1', created.task.id, created.run.id),

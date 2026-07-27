@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { mkdtempSync, rmSync } from 'node:fs';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentStage, TaskItem, TaskLog, Workspace } from '@agentos/shared';
@@ -37,12 +38,35 @@ const runnerFactory: RunnerFactory = (workspace, _taskId, _title, _onChunk, _opt
 
 let observedRunnerWorkspaces: Workspace[] = [];
 
-async function listen(app: express.Express): Promise<{ server: ReturnType<typeof app.listen>; base: string }> {
-  const server = app.listen(0);
-  await new Promise<void>(resolve => server.once('listening', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('integration server did not bind');
-  return { server, base: `http://127.0.0.1:${address.port}/api/workspaces` };
+function isFetchBadPortError(error: unknown): boolean {
+  return (error as { cause?: { message?: unknown } } | null)?.cause?.message === 'bad port';
+}
+
+async function closeTestServer(server: ReturnType<express.Express['listen']>): Promise<void> {
+  if (!server.listening) return;
+  await new Promise<void>(resolve => server.close(() => resolve()));
+}
+
+async function listenOnFetchSafePort(app: express.Express): Promise<{ server: ReturnType<typeof app.listen>; base: string }> {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const server = app.listen(0, '127.0.0.1');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('listening', resolve);
+        server.once('error', reject);
+      });
+      const address = server.address() as AddressInfo | null;
+      if (!address || typeof address === 'string') throw new Error('integration server did not bind');
+      const base = `http://127.0.0.1:${address.port}/api/workspaces`;
+      const probe = await fetch(`http://127.0.0.1:${address.port}/__test_fetch_port_probe`, { method: 'HEAD' });
+      if (probe.status !== 204) throw new Error(`integration fetch probe returned ${probe.status}`);
+      return { server, base };
+    } catch (error) {
+      await closeTestServer(server);
+      if (!isFetchBadPortError(error)) throw error;
+    }
+  }
+  throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
 }
 
 function task(workspaceId: string, id = 'legacy-p3-task'): TaskItem {
@@ -71,10 +95,14 @@ test('production v2 and Legacy routes capture before runtime and use the same re
   });
   const app = express();
   app.use(express.json());
+  app.head('/__test_fetch_port_probe', (_req, res) => {
+    res.setHeader('Connection', 'close');
+    res.status(204).end();
+  });
   app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, manager, { createRunner: runnerFactory }));
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, manager));
   app.use(createJsonErrorHandler());
-  const { server, base } = await listen(app);
+  const { server, base } = await listenOnFetchSafePort(app);
   try {
     const taskResponse = await fetch(`${base}/${workspace.id}/v2/tasks`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ title: 'v2 task' }),
@@ -110,7 +138,7 @@ test('production v2 and Legacy routes capture before runtime and use the same re
     assert.deepEqual(runnerWorkspace.agents[0]!.cliArgs, firstSnapshotStage.provider!.argsTemplate);
     assert.equal(runnerWorkspace.agents[0]!.model, firstSnapshotStage.provider!.model ?? undefined);
   } finally {
-    await new Promise<void>(resolve => server.close(() => resolve()));
+    await closeTestServer(server);
     store.close();
     rmSync(root, { recursive: true, force: true });
   }
@@ -135,9 +163,13 @@ test('Legacy capture failure returns the fixed Bridge error and leaves JSON/Task
   });
   const app = express();
   app.use(express.json());
+  app.head('/__test_fetch_port_probe', (_req, res) => {
+    res.setHeader('Connection', 'close');
+    res.status(204).end();
+  });
   app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, manager, { taskRunService: failingService }));
   app.use(createJsonErrorHandler());
-  const { server, base } = await listen(app);
+  const { server, base } = await listenOnFetchSafePort(app);
   try {
     const response = await fetch(`${base}/${workspace.id}/tasks/legacy-failure/run`, { method: 'POST' });
     assert.equal(response.status, 500);
@@ -146,7 +178,7 @@ test('Legacy capture failure returns the fixed Bridge error and leaves JSON/Task
     assert.equal(store.taskRepository().findByLegacyTaskId(workspace.id, 'legacy-failure'), undefined);
     assert.equal(store.runRepository().listByWorkspace(workspace.id).length, 0);
   } finally {
-    await new Promise<void>(resolve => server.close(() => resolve()));
+    await closeTestServer(server);
     store.close();
     rmSync(root, { recursive: true, force: true });
   }

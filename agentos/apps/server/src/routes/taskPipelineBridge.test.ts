@@ -36,6 +36,57 @@ const WORKER_STDOUT = '## Checks Run\n- unit tests\n## Findings by Severity\n- n
 const REVIEWER_STDOUT = 'Decision: pass\n';
 const FINAL_STDOUT = 'Final Decision: approve\n';
 
+function makeCaptureTestDouble(): never {
+  return {
+    resolveUnbound: () => ({ workflow: { id: 'test-unbound' }, stages: [], redactionApplied: false }),
+    resolveLegacy: () => ({ workflow: { id: 'test-legacy' }, stages: [], redactionApplied: false }),
+    persistResolvedRun: (run: { id: string; workspaceId: string }) => ({
+      snapshot: {
+        id: `snapshot-${run.id}`,
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        workflowDefinitionId: 'test-legacy',
+        snapshotSchemaVersion: 1,
+        payload: {},
+        contentHash: 'b'.repeat(64),
+        redactionApplied: false,
+        capturedAt: '2026-01-01T00:00:00.000Z',
+      },
+      stages: [],
+    }),
+    buildLegacyRunnerWorkspace: (workspace: Workspace) => structuredClone(workspace),
+  } as never;
+}
+
+function makeTestWorkflow(definitionKey: 'legacy-pipeline' | 'unbound-task-run') {
+  return {
+    id: `workflow-${definitionKey}`,
+    definitionKey,
+    version: 1,
+    name: definitionKey,
+    definitionHash: 'a'.repeat(64),
+    enabled: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    payload: {
+      schemaVersion: 1,
+      definitionKey,
+      version: 1,
+      name: definitionKey,
+      executionMode: definitionKey === 'legacy-pipeline' ? 'legacy_pipeline' : 'unbound',
+      retryPolicy: null,
+      stages: definitionKey === 'legacy-pipeline'
+        ? [
+          { key: 'codex_manager', sequence: 1, agentRole: 'codex' },
+          { key: 'kimi_worker', sequence: 2, agentRole: 'kimi' },
+          { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode' },
+          { key: 'codex_final_review', sequence: 4, agentRole: 'codex' },
+        ]
+        : [],
+    },
+  };
+}
+
 function makeLog(stage: AgentStage, stdout = 'ok'): TaskLog {
   return {
     stage,
@@ -211,9 +262,41 @@ async function createFixture(
   const storeDeps: TaskRunServiceDeps = {
     taskRepository: () => taskRepo,
     runRepository: () => runRepo,
+    workflowDefinitionRepository: () => ({
+      findLatestAvailableByKey: (definitionKey: string) => definitionKey === 'legacy-pipeline'
+        ? makeTestWorkflow('legacy-pipeline')
+        : definitionKey === 'unbound-task-run' ? makeTestWorkflow('unbound-task-run') : undefined,
+    } as never),
+    runSnapshotRepository: () => ({
+      insert: (input: { workspaceId: string; runId: string; workflowDefinitionId: string; payload: unknown }) => ({
+        id: `snapshot-${input.runId}`,
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        workflowDefinitionId: input.workflowDefinitionId,
+        snapshotSchemaVersion: 1,
+        payload: input.payload,
+        contentHash: 'b'.repeat(64),
+        redactionApplied: false,
+        capturedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    } as never),
+    runStageRepository: () => ({
+      insertInitial: (input: { workspaceId: string; runId: string; runSnapshotId: string; workflowStageKey: string; sequence: number }) => ({
+        id: `stage-${input.runId}-${input.sequence}`,
+        ...input,
+        name: input.workflowStageKey,
+        attempt: 1,
+        status: 'pending',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        version: 1,
+      }),
+    } as never),
+    providerConfigurationRepository: () => ({ findById: () => undefined } as never),
+    findAgentSnapshotSource: () => undefined,
     runInTransaction: <T>(fn: () => T): T => inTransaction(db as never, fn),
   };
-  const service = new TaskRunService(storeDeps);
+  const service = new TaskRunService(storeDeps, { snapshotService: makeCaptureTestDouble() });
   const fakeStore = new FakeJsonStore();
   const now = new Date().toISOString();
   const workspace: Workspace = {
