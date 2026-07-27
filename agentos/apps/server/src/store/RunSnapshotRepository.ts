@@ -38,7 +38,13 @@ interface SnapshotRow {
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
 }
 
 function validationFailure(reason: string): RunSnapshotValidationError {
@@ -51,43 +57,297 @@ function integrityFailure(runId: string, reason: string): RunSnapshotIntegrityEr
   );
 }
 
+function assertExactKeys(
+  value: Record<string, unknown>,
+  path: string,
+  keys: readonly string[],
+): void {
+  const allowed = new Set(keys);
+  let ownKeys: (string | symbol)[];
+  try {
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    throw validationFailure(`${path} keys are invalid`);
+  }
+  for (const key of ownKeys) {
+    if (typeof key !== 'string' || !allowed.has(key)) {
+      throw validationFailure(`${path} contains an unsupported field`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || descriptor.get || descriptor.set) {
+      throw validationFailure(`${path}.${key} property descriptor is invalid`);
+    }
+  }
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || descriptor.get || descriptor.set) {
+      throw validationFailure(`${path}.${key} is missing or invalid`);
+    }
+  }
+}
+
+function assertExactObject(
+  value: unknown,
+  path: string,
+  keys: readonly string[],
+): Record<string, unknown> {
+  if (!isRecord(value)) throw validationFailure(`${path} must be a plain object`);
+  assertExactKeys(value, path, keys);
+  return value;
+}
+
+function assertDenseArray(value: unknown, path: string): unknown[] {
+  if (!Array.isArray(value)) throw validationFailure(`${path} must be an array`);
+  let ownKeys: (string | symbol)[];
+  try {
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    throw validationFailure(`${path} is invalid`);
+  }
+  for (const key of ownKeys) {
+    if (typeof key === 'symbol' || (key !== 'length' && !/^(0|[1-9][0-9]*)$/.test(key))) {
+      throw validationFailure(`${path} contains an unsupported property`);
+    }
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !descriptor.enumerable || descriptor.get || descriptor.set) {
+      throw validationFailure(`${path} must be dense`);
+    }
+  }
+  return value;
+}
+
+function assertString(value: unknown, path: string, nonEmpty = false): string {
+  if (typeof value !== 'string' || (nonEmpty && value.length === 0)) {
+    throw validationFailure(`${path} must be a${nonEmpty ? ' non-empty' : ''} string`);
+  }
+  return value;
+}
+
+function assertNullableString(value: unknown, path: string, nonEmpty = false): string | null {
+  if (value === null) return null;
+  return assertString(value, path, nonEmpty);
+}
+
+function assertPositiveInteger(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw validationFailure(`${path} must be a positive integer`);
+  }
+  return value;
+}
+
+function assertNonNegativeInteger(value: unknown, path: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 0) {
+    throw validationFailure(`${path} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function assertEnum<T extends string>(value: unknown, path: string, allowed: readonly T[]): T {
+  if (typeof value !== 'string' || !allowed.includes(value as T)) {
+    throw validationFailure(`${path} is invalid`);
+  }
+  return value as T;
+}
+
+function assertBoolean(value: unknown, path: string): boolean {
+  if (typeof value !== 'boolean') throw validationFailure(`${path} must be boolean`);
+  return value;
+}
+
+function validatePermissions(value: unknown, path: string): void {
+  const permissions = assertDenseArray(value, path);
+  for (const [index, permission] of permissions.entries()) {
+    assertEnum(permission, `${path}[${index}]`, ['read', 'write', 'review'] as const);
+  }
+}
+
+const CAPABILITY_KEYS = [
+  'sessionResume',
+  'structuredEvents',
+  'nativeApprovals',
+  'subagents',
+  'toolEvents',
+  'fileEvents',
+  'usageEvents',
+  'reasoningStream',
+  'interactiveInput',
+  'pause',
+  'cancellation',
+  'modelSelection',
+  'workspaceAwareness',
+  'nativeSandbox',
+  'outputContracts',
+] as const;
+
+const TIMEOUT_KEYS = [
+  'discoveryTimeoutMs',
+  'validationTimeoutMs',
+  'startupTimeoutMs',
+  'idleTimeoutMs',
+  'totalTimeoutMs',
+  'cancelGracePeriodMs',
+  'approvalTimeoutMs',
+] as const;
+
+function validateCapabilities(value: unknown, path: string): void {
+  const capabilities = assertExactObject(value, path, CAPABILITY_KEYS);
+  for (const key of CAPABILITY_KEYS) assertBoolean(capabilities[key], `${path}.${key}`);
+}
+
+function validateTimeoutPolicy(value: unknown, path: string): void {
+  const timeoutPolicy = assertExactObject(value, path, TIMEOUT_KEYS);
+  for (const key of TIMEOUT_KEYS) {
+    const nullable = key === 'idleTimeoutMs' || key === 'totalTimeoutMs' || key === 'approvalTimeoutMs';
+    if (nullable && timeoutPolicy[key] === null) continue;
+    assertNonNegativeInteger(timeoutPolicy[key], `${path}.${key}`);
+  }
+}
+
+function validateWorkspaceRelativePath(value: unknown, path: string): void {
+  const directory = assertNullableString(value, path, true);
+  if (directory === null) return;
+  if (
+    directory.startsWith('/')
+    || directory.startsWith('\\\\')
+    || directory.startsWith('//')
+    || /^[A-Za-z]:[\\/]/.test(directory)
+    || directory.split(/[\\/]+/).includes('..')
+  ) {
+    throw validationFailure(`${path} must be a workspace-relative path`);
+  }
+}
+
+function validateAgent(value: unknown, path: string): void {
+  const agent = assertExactObject(value, path, [
+    'agentId',
+    'name',
+    'role',
+    'roleTitle',
+    'systemPrompt',
+    'permissions',
+    'providerConfigId',
+    'enabled',
+    'version',
+  ]);
+  assertString(agent.agentId, `${path}.agentId`, true);
+  assertString(agent.name, `${path}.name`, true);
+  assertEnum(agent.role, `${path}.role`, ['codex', 'kimi', 'opencode', 'mimo'] as const);
+  assertString(agent.roleTitle, `${path}.roleTitle`);
+  assertString(agent.systemPrompt, `${path}.systemPrompt`);
+  validatePermissions(agent.permissions, `${path}.permissions`);
+  assertString(agent.providerConfigId, `${path}.providerConfigId`, true);
+  assertBoolean(agent.enabled, `${path}.enabled`);
+  assertPositiveInteger(agent.version, `${path}.version`);
+}
+
+function validateProvider(value: unknown, path: string): void {
+  const provider = assertExactObject(value, path, [
+    'providerConfigId',
+    'name',
+    'providerType',
+    'adapterId',
+    'runtimeMode',
+    'executable',
+    'argsTemplate',
+    'model',
+    'environmentProfileId',
+    'secretProfileId',
+    'workingDirectoryMode',
+    'workspaceRelativeWorkingDirectory',
+    'capabilities',
+    'timeoutPolicy',
+    'approvalMode',
+    'outputMode',
+    'enabled',
+    'version',
+  ]);
+  assertString(provider.providerConfigId, `${path}.providerConfigId`, true);
+  assertString(provider.name, `${path}.name`, true);
+  assertEnum(provider.providerType, `${path}.providerType`, [
+    'codex', 'claude-code', 'kimicode', 'opencode', 'gemini-cli', 'custom-cli', 'remote',
+  ] as const);
+  assertString(provider.adapterId, `${path}.adapterId`, true);
+  assertEnum(provider.runtimeMode, `${path}.runtimeMode`, ['cli', 'api', 'ssh', 'container'] as const);
+  assertNullableString(provider.executable, `${path}.executable`);
+  const argsTemplate = assertDenseArray(provider.argsTemplate, `${path}.argsTemplate`);
+  for (const [index, argument] of argsTemplate.entries()) assertString(argument, `${path}.argsTemplate[${index}]`);
+  assertNullableString(provider.model, `${path}.model`);
+  assertNullableString(provider.environmentProfileId, `${path}.environmentProfileId`);
+  assertNullableString(provider.secretProfileId, `${path}.secretProfileId`);
+  assertEnum(provider.workingDirectoryMode, `${path}.workingDirectoryMode`, ['workspace', 'worktree', 'custom'] as const);
+  validateWorkspaceRelativePath(provider.workspaceRelativeWorkingDirectory, `${path}.workspaceRelativeWorkingDirectory`);
+  validateCapabilities(provider.capabilities, `${path}.capabilities`);
+  validateTimeoutPolicy(provider.timeoutPolicy, `${path}.timeoutPolicy`);
+  assertEnum(provider.approvalMode, `${path}.approvalMode`, ['agentos', 'native', 'hybrid', 'disabled'] as const);
+  assertEnum(provider.outputMode, `${path}.outputMode`, ['structured', 'parsed-text', 'raw-stream'] as const);
+  assertBoolean(provider.enabled, `${path}.enabled`);
+  assertPositiveInteger(provider.version, `${path}.version`);
+}
+
+function validateStage(value: unknown, path: string): void {
+  const stage = assertExactObject(value, path, ['workflowStageKey', 'name', 'sequence', 'agent', 'provider']);
+  const key = assertString(stage.workflowStageKey, `${path}.workflowStageKey`, true);
+  if (key !== key.trim()) throw validationFailure(`${path}.workflowStageKey must not be trimmed`);
+  if (assertString(stage.name, `${path}.name`) !== key) throw validationFailure(`${path}.name must match key`);
+  assertPositiveInteger(stage.sequence, `${path}.sequence`);
+  const agentIsNull = stage.agent === null;
+  const providerIsNull = stage.provider === null;
+  if (agentIsNull !== providerIsNull) throw validationFailure(`${path} agent/provider binding is invalid`);
+  if (!agentIsNull && !providerIsNull) {
+    validateAgent(stage.agent, `${path}.agent`);
+    validateProvider(stage.provider, `${path}.provider`);
+    const agent = stage.agent as Record<string, unknown>;
+    const provider = stage.provider as Record<string, unknown>;
+    if (agent.providerConfigId !== provider.providerConfigId) {
+      throw validationFailure(`${path} agent/provider ids do not match`);
+    }
+  }
+}
+
 function validatePayloadEnvelope(payload: unknown): asserts payload is RunSnapshotPayloadV1 {
-  if (!isRecord(payload) || payload.schemaVersion !== 1) {
-    throw validationFailure('schemaVersion is invalid');
+  const root = assertExactObject(payload, 'payload', ['schemaVersion', 'capturedAt', 'run', 'workflow', 'security']);
+  if (root.schemaVersion !== 1) throw validationFailure('schemaVersion is invalid');
+  assertString(root.capturedAt, 'capturedAt', true);
+
+  const run = assertExactObject(root.run, 'run', [
+    'workspaceId', 'taskId', 'origin', 'reason', 'parentRunId', 'rootRunId',
+  ]);
+  assertString(run.workspaceId, 'run.workspaceId', true);
+  assertString(run.taskId, 'run.taskId', true);
+  assertEnum(run.origin, 'run.origin', ['v2_api', 'legacy_pipeline'] as const);
+  assertEnum(run.reason, 'run.reason', [
+    'initial', 'retry', 'resume-fallback', 'review-fix', 'provider-comparison', 'manual',
+  ] as const);
+  assertNullableString(run.parentRunId, 'run.parentRunId', true);
+  assertString(run.rootRunId, 'run.rootRunId', true);
+
+  const workflow = assertExactObject(root.workflow, 'workflow', [
+    'definitionId', 'definitionKey', 'definitionVersion', 'name', 'definitionHash', 'stages',
+  ]);
+  assertString(workflow.definitionId, 'workflow.definitionId', true);
+  assertString(workflow.definitionKey, 'workflow.definitionKey', true);
+  assertPositiveInteger(workflow.definitionVersion, 'workflow.definitionVersion');
+  assertString(workflow.name, 'workflow.name', true);
+  const definitionHash = assertString(workflow.definitionHash, 'workflow.definitionHash', true);
+  if (!/^[0-9a-f]{64}$/.test(definitionHash)) throw validationFailure('workflow.definitionHash is invalid');
+  const stages = assertDenseArray(workflow.stages, 'workflow.stages');
+  const stageKeys = new Set<string>();
+  const stageSequences = new Set<number>();
+  for (const [index, stage] of stages.entries()) {
+    validateStage(stage, `workflow.stages[${index}]`);
+    const typedStage = stage as Record<string, unknown>;
+    const key = typedStage.workflowStageKey as string;
+    const sequence = typedStage.sequence as number;
+    if (stageKeys.has(key)) throw validationFailure('workflow stage key is duplicated');
+    if (stageSequences.has(sequence)) throw validationFailure('workflow stage sequence is duplicated');
+    stageKeys.add(key);
+    stageSequences.add(sequence);
   }
-  if (typeof payload.capturedAt !== 'string') throw validationFailure('capturedAt is invalid');
-  if (!isRecord(payload.run) || !isRecord(payload.workflow) || !isRecord(payload.security)) {
-    throw validationFailure('payload envelope is invalid');
-  }
-  const run = payload.run;
-  if (
-    typeof run.workspaceId !== 'string'
-    || typeof run.taskId !== 'string'
-    || (run.parentRunId !== null && typeof run.parentRunId !== 'string')
-    || typeof run.rootRunId !== 'string'
-  ) {
-    throw validationFailure('run metadata is invalid');
-  }
-  if (!['v2_api', 'legacy_pipeline'].includes(String(run.origin))) {
-    throw validationFailure('run origin is invalid');
-  }
-  if (!['initial', 'retry', 'resume-fallback', 'review-fix', 'provider-comparison', 'manual'].includes(String(run.reason))) {
-    throw validationFailure('run reason is invalid');
-  }
-  const workflow = payload.workflow;
-  if (
-    typeof workflow.definitionId !== 'string'
-    || typeof workflow.definitionKey !== 'string'
-    || typeof workflow.definitionVersion !== 'number'
-    || typeof workflow.name !== 'string'
-    || typeof workflow.definitionHash !== 'string'
-    || !Array.isArray(workflow.stages)
-  ) {
-    throw validationFailure('workflow metadata is invalid');
-  }
-  if (typeof payload.security.redactionApplied !== 'boolean') {
-    throw validationFailure('security metadata is invalid');
-  }
+
+  const security = assertExactObject(root.security, 'security', ['redactionApplied']);
+  assertBoolean(security.redactionApplied, 'security.redactionApplied');
 }
 
 function mapRow(row: SnapshotRow, payload: RunSnapshotPayloadV1): RunSnapshot {
@@ -236,11 +496,43 @@ export class RunSnapshotRepository {
     ) {
       throw integrityFailure(runId, 'stored snapshot metadata or hash mismatch');
     }
+    const run = this.db.prepare(`
+      SELECT workspace_id, task_id, origin, reason, parent_run_id, root_run_id
+      FROM runs
+      WHERE workspace_id = ? AND id = ?
+    `).get(row.workspace_id, row.run_id) as RunRow | undefined;
+    if (!run) throw integrityFailure(runId, 'referenced run is missing');
+    if (
+      payload.run.workspaceId !== run.workspace_id
+      || payload.run.taskId !== run.task_id
+      || payload.run.origin !== run.origin
+      || payload.run.reason !== run.reason
+      || payload.run.parentRunId !== run.parent_run_id
+      || payload.run.rootRunId !== run.root_run_id
+    ) {
+      throw integrityFailure(runId, 'referenced run metadata mismatch');
+    }
+    const workflow = this.db.prepare(`
+      SELECT id, definition_key, version, name, definition_hash
+      FROM workflow_definitions
+      WHERE id = ?
+    `).get(row.workflow_definition_id) as WorkflowRow | undefined;
+    if (!workflow) throw integrityFailure(runId, 'referenced workflow definition is missing');
+    if (
+      payload.workflow.definitionId !== workflow.id
+      || payload.workflow.definitionKey !== workflow.definition_key
+      || payload.workflow.definitionVersion !== workflow.version
+      || payload.workflow.name !== workflow.name
+      || payload.workflow.definitionHash !== workflow.definition_hash
+    ) {
+      throw integrityFailure(runId, 'referenced workflow metadata mismatch');
+    }
     return mapRow(row, payload);
   }
 
   verifyHash(snapshot: RunSnapshot): boolean {
     try {
+      validatePayloadEnvelope(snapshot.payload);
       return hashCanonicalJson(snapshot.payload) === snapshot.contentHash;
     } catch {
       return false;

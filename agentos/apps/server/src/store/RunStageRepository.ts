@@ -17,7 +17,49 @@ interface RunStageRow {
   version: number;
 }
 
+function integrityFailure(reason: string): RunStageIntegrityError {
+  return new RunStageIntegrityError(`RUN_STAGE_INTEGRITY_FAILED: ${reason}`);
+}
+
+function assertNonEmptyString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || value.length === 0) {
+    throw integrityFailure(`${field} is invalid`);
+  }
+  return value;
+}
+
+function assertPositiveInteger(value: unknown, field: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw integrityFailure(`${field} is invalid`);
+  }
+  return value;
+}
+
+function validateRunStageRow(row: unknown): asserts row is RunStageRow {
+  if (typeof row !== 'object' || row === null || Array.isArray(row)) {
+    throw integrityFailure('row is invalid');
+  }
+  const value = row as Record<string, unknown>;
+  const workflowStageKey = assertNonEmptyString(value.workflow_stage_key, 'workflow_stage_key');
+  if (workflowStageKey !== workflowStageKey.trim()) {
+    throw integrityFailure('workflow_stage_key is not trimmed');
+  }
+  const name = assertNonEmptyString(value.name, 'name');
+  if (name !== workflowStageKey) throw integrityFailure('name does not match workflow_stage_key');
+  assertNonEmptyString(value.id, 'id');
+  assertNonEmptyString(value.workspace_id, 'workspace_id');
+  assertNonEmptyString(value.run_id, 'run_id');
+  assertNonEmptyString(value.run_snapshot_id, 'run_snapshot_id');
+  assertPositiveInteger(value.sequence, 'sequence');
+  assertPositiveInteger(value.attempt, 'attempt');
+  if (value.status !== 'pending') throw integrityFailure('status is invalid');
+  assertNonEmptyString(value.created_at, 'created_at');
+  assertNonEmptyString(value.updated_at, 'updated_at');
+  assertPositiveInteger(value.version, 'version');
+}
+
 function mapRow(row: RunStageRow): RunStage {
+  validateRunStageRow(row);
   return {
     id: row.id,
     workspaceId: row.workspace_id,
@@ -48,6 +90,15 @@ export class RunStageValidationError extends Error {
   constructor(message = 'RUN_STAGE_VALIDATION_FAILED') {
     super(message);
     this.name = 'RunStageValidationError';
+  }
+}
+
+export class RunStageIntegrityError extends Error {
+  readonly code = 'RUN_STAGE_INTEGRITY_FAILED' as const;
+
+  constructor(message = 'RUN_STAGE_INTEGRITY_FAILED') {
+    super(message);
+    this.name = 'RunStageIntegrityError';
   }
 }
 
@@ -84,8 +135,8 @@ export class RunStageRepository {
       now,
     );
     const row = this.db.prepare(
-      'SELECT * FROM run_stages WHERE id = ? AND run_id = ?',
-    ).get(id, input.runId) as RunStageRow | undefined;
+      'SELECT * FROM run_stages WHERE id = ? AND workspace_id = ? AND run_id = ?',
+    ).get(id, input.workspaceId, input.runId) as RunStageRow | undefined;
     if (!row) throw new RunStageValidationError('RUN_STAGE_VALIDATION_FAILED: inserted stage not found');
     return mapRow(row);
   }

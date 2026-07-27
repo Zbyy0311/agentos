@@ -4,7 +4,7 @@ import type {
   WorkflowDefinitionPayloadV1,
 } from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
-import { hashCanonicalJson } from '../snapshots/canonicalJson.js';
+import { canonicalizeJson, hashCanonicalJson } from '../snapshots/canonicalJson.js';
 
 interface WorkflowDefinitionRow {
   id: string;
@@ -23,8 +23,12 @@ const AGENT_ROLES = new Set<AgentRole>(['codex', 'kimi', 'opencode', 'mimo']);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
 }
 
 function integrityFailure(id: string, reason: string): WorkflowDefinitionIntegrityError {
@@ -33,48 +37,131 @@ function integrityFailure(id: string, reason: string): WorkflowDefinitionIntegri
   );
 }
 
+function assertExactKeys(
+  value: Record<string, unknown>,
+  rowId: string,
+  path: string,
+  keys: readonly string[],
+): void {
+  const allowed = new Set(keys);
+  let ownKeys: (string | symbol)[];
+  try {
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    throw integrityFailure(rowId, `${path} keys are invalid`);
+  }
+  for (const key of ownKeys) {
+    if (typeof key !== 'string' || !allowed.has(key)) {
+      throw integrityFailure(rowId, `${path} contains an unsupported field`);
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || descriptor.get || descriptor.set) {
+      throw integrityFailure(rowId, `${path}.${key} property descriptor is invalid`);
+    }
+  }
+  for (const key of keys) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !descriptor.enumerable || descriptor.get || descriptor.set) {
+      throw integrityFailure(rowId, `${path}.${key} is missing or invalid`);
+    }
+  }
+}
+
+function assertExactObject(
+  value: unknown,
+  rowId: string,
+  path: string,
+  keys: readonly string[],
+): Record<string, unknown> {
+  if (!isRecord(value)) throw integrityFailure(rowId, `${path} is not a plain object`);
+  assertExactKeys(value, rowId, path, keys);
+  return value;
+}
+
+function assertDenseArray(value: unknown, rowId: string, path: string): unknown[] {
+  if (!Array.isArray(value)) throw integrityFailure(rowId, `${path} is invalid`);
+  let ownKeys: (string | symbol)[];
+  try {
+    ownKeys = Reflect.ownKeys(value);
+  } catch {
+    throw integrityFailure(rowId, `${path} is invalid`);
+  }
+  for (const key of ownKeys) {
+    if (typeof key === 'symbol' || (key !== 'length' && !/^(0|[1-9][0-9]*)$/.test(key))) {
+      throw integrityFailure(rowId, `${path} contains an unsupported property`);
+    }
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor || !descriptor.enumerable || descriptor.get || descriptor.set) {
+      throw integrityFailure(rowId, `${path} must be dense`);
+    }
+  }
+  return value;
+}
+
+function assertString(value: unknown, rowId: string, path: string, nonEmpty = false): string {
+  if (typeof value !== 'string' || (nonEmpty && value.length === 0)) {
+    throw integrityFailure(rowId, `${path} is invalid`);
+  }
+  return value;
+}
+
+function assertPositiveInteger(value: unknown, rowId: string, path: string): number {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
+    throw integrityFailure(rowId, `${path} is invalid`);
+  }
+  return value;
+}
+
 function validatePayload(
   row: WorkflowDefinitionRow,
   payload: unknown,
 ): asserts payload is WorkflowDefinitionPayloadV1 {
-  if (!isRecord(payload)) throw integrityFailure(row.id, 'payload is not a plain object');
-  if (payload.schemaVersion !== 1) throw integrityFailure(row.id, 'schemaVersion mismatch');
-  if (typeof payload.definitionKey !== 'string' || payload.definitionKey !== row.definition_key) {
+  const root = assertExactObject(payload, row.id, 'payload', [
+    'schemaVersion', 'definitionKey', 'version', 'name', 'executionMode', 'retryPolicy', 'stages',
+  ]);
+  if (root.schemaVersion !== 1) throw integrityFailure(row.id, 'schemaVersion mismatch');
+  if (assertString(root.definitionKey, row.id, 'definitionKey', true) !== row.definition_key) {
     throw integrityFailure(row.id, 'definitionKey mismatch');
   }
-  if (payload.version !== row.version) throw integrityFailure(row.id, 'version mismatch');
-  if (typeof payload.name !== 'string' || payload.name !== row.name) {
+  if (assertPositiveInteger(root.version, row.id, 'version') !== row.version) {
+    throw integrityFailure(row.id, 'version mismatch');
+  }
+  if (assertString(root.name, row.id, 'name', true) !== row.name) {
     throw integrityFailure(row.id, 'name mismatch');
   }
-  if (payload.executionMode !== 'legacy_pipeline' && payload.executionMode !== 'unbound') {
+  if (root.executionMode !== 'legacy_pipeline' && root.executionMode !== 'unbound') {
     throw integrityFailure(row.id, 'executionMode is invalid');
   }
-  if (payload.retryPolicy !== null) throw integrityFailure(row.id, 'retryPolicy is invalid');
-  if (!Array.isArray(payload.stages)) throw integrityFailure(row.id, 'stages is invalid');
+  if (root.retryPolicy !== null) throw integrityFailure(row.id, 'retryPolicy is invalid');
 
+  const stages = assertDenseArray(root.stages, row.id, 'stages');
   const keys = new Set<string>();
   const sequences = new Set<number>();
-  for (const stage of payload.stages) {
-    if (!isRecord(stage)) throw integrityFailure(row.id, 'stage is invalid');
-    if (typeof stage.key !== 'string' || stage.key.length === 0) {
-      throw integrityFailure(row.id, 'stage key is invalid');
-    }
-    if (keys.has(stage.key)) throw integrityFailure(row.id, 'duplicate stage key');
-    keys.add(stage.key);
-    if (typeof stage.sequence !== 'number' || !Number.isInteger(stage.sequence) || stage.sequence < 1) {
-      throw integrityFailure(row.id, 'stage sequence is invalid');
-    }
-    if (sequences.has(stage.sequence)) throw integrityFailure(row.id, 'duplicate stage sequence');
-    sequences.add(stage.sequence);
-    if (stage.agentRole !== null && (typeof stage.agentRole !== 'string' || !AGENT_ROLES.has(stage.agentRole as AgentRole))) {
+  for (const stage of stages) {
+    const stageRecord = assertExactObject(stage, row.id, 'stage', ['key', 'sequence', 'agentRole']);
+    const key = assertString(stageRecord.key, row.id, 'stage.key', true);
+    if (key !== key.trim()) throw integrityFailure(row.id, 'stage key must not be trimmed');
+    if (keys.has(key)) throw integrityFailure(row.id, 'duplicate stage key');
+    keys.add(key);
+    const sequence = assertPositiveInteger(stageRecord.sequence, row.id, 'stage.sequence');
+    if (sequences.has(sequence)) throw integrityFailure(row.id, 'duplicate stage sequence');
+    sequences.add(sequence);
+    if (stageRecord.agentRole !== null && (typeof stageRecord.agentRole !== 'string' || !AGENT_ROLES.has(stageRecord.agentRole as AgentRole))) {
       throw integrityFailure(row.id, 'stage agentRole is invalid');
     }
   }
-  if (!/^[0-9a-f]{64}$/.test(row.definition_hash)) {
+  const definitionHash = assertString(row.definition_hash, row.id, 'definition_hash', true);
+  if (!/^[0-9a-f]{64}$/.test(definitionHash)) {
     throw integrityFailure(row.id, 'definition_hash is invalid');
   }
   try {
-    if (hashCanonicalJson(payload) !== row.definition_hash) {
+    const canonical = canonicalizeJson(payload);
+    if (row.definition_json !== canonical) {
+      throw integrityFailure(row.id, 'definition_json is not canonical');
+    }
+    if (hashCanonicalJson(payload) !== definitionHash) {
       throw integrityFailure(row.id, 'definition_hash mismatch');
     }
   } catch (error) {

@@ -71,12 +71,13 @@ function insertDefinition(
     version?: number;
     name?: string;
     definitionHash?: string;
+    definitionJson?: string;
     enabled?: number;
     archivedAt?: string | null;
   },
 ): void {
   const definition = options.payload as Record<string, unknown>;
-  const definitionJson = canonicalizeJson(options.payload);
+  const definitionJson = options.definitionJson ?? canonicalizeJson(options.payload);
   db.prepare(`
     INSERT INTO workflow_definitions (
       id, definition_key, version, name, definition_json, definition_hash,
@@ -224,6 +225,63 @@ describe('WorkflowDefinitionRepository', () => {
       } finally {
         db.close();
       }
+    }
+  });
+
+  it('rejects non-exact payload and stage shapes', () => {
+    const cases: Array<{ id: string; payload: unknown }> = [
+      {
+        id: 'workflow_extra_payload_field',
+        payload: { ...payload('extra-payload', 1, 'extra-payload'), secret: 'must-not-persist' },
+      },
+      {
+        id: 'workflow_extra_stage_field',
+        payload: payload('extra-stage', 1, 'extra-stage', [
+          { key: 'stage', sequence: 1, agentRole: null, extra: true } as unknown as WorkflowDefinitionPayloadV1['stages'][number],
+        ]),
+      },
+      {
+        id: 'workflow_blank_stage_key',
+        payload: payload('blank-stage', 1, 'blank-stage', [{ key: '   ', sequence: 1, agentRole: null }]),
+      },
+      {
+        id: 'workflow_padded_stage_key',
+        payload: payload('padded-stage', 1, 'padded-stage', [{ key: ' stage', sequence: 1, agentRole: null }]),
+      },
+    ];
+    for (const testCase of cases) {
+      const db = migratedDb();
+      try {
+        insertDefinition(db, testCase);
+        assertIntegrity(() => new WorkflowDefinitionRepository(db).findById(testCase.id));
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  it('rejects non-canonical stored JSON even when the canonical hash is correct', () => {
+    const db = migratedDb();
+    try {
+      const definition = payload('non-canonical-json', 1, 'non-canonical-json');
+      const nonCanonicalJson = JSON.stringify({
+        stages: [],
+        retryPolicy: null,
+        executionMode: 'unbound',
+        name: definition.name,
+        version: definition.version,
+        definitionKey: definition.definitionKey,
+        schemaVersion: definition.schemaVersion,
+      });
+      insertDefinition(db, {
+        id: 'workflow_non_canonical_json',
+        payload: definition,
+        definitionJson: nonCanonicalJson,
+        definitionHash: hashCanonicalJson(definition),
+      });
+      assertIntegrity(() => new WorkflowDefinitionRepository(db).findById('workflow_non_canonical_json'));
+    } finally {
+      db.close();
     }
   });
 

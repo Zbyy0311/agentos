@@ -104,6 +104,75 @@ function clonePayload(payload: RunSnapshotPayloadV1): RunSnapshotPayloadV1 {
   return JSON.parse(JSON.stringify(payload)) as RunSnapshotPayloadV1;
 }
 
+function sampleStage(): RunSnapshotPayloadV1['workflow']['stages'][number] {
+  return {
+    workflowStageKey: 'codex_manager',
+    name: 'codex_manager',
+    sequence: 1,
+    agent: {
+      agentId: 'agent_snapshot',
+      name: 'Snapshot Agent',
+      role: 'codex',
+      roleTitle: 'Manager',
+      systemPrompt: 'Use the snapshot fixture.',
+      permissions: ['read', 'write', 'review'],
+      providerConfigId: 'provider_snapshot',
+      enabled: true,
+      version: 1,
+    },
+    provider: {
+      providerConfigId: 'provider_snapshot',
+      name: 'Snapshot Provider',
+      providerType: 'codex',
+      adapterId: 'codex-cli',
+      runtimeMode: 'cli',
+      executable: 'codex',
+      argsTemplate: [],
+      model: null,
+      environmentProfileId: null,
+      secretProfileId: null,
+      workingDirectoryMode: 'workspace',
+      workspaceRelativeWorkingDirectory: null,
+      capabilities: {
+        sessionResume: true,
+        structuredEvents: true,
+        nativeApprovals: true,
+        subagents: true,
+        toolEvents: true,
+        fileEvents: true,
+        usageEvents: true,
+        reasoningStream: true,
+        interactiveInput: true,
+        pause: true,
+        cancellation: true,
+        modelSelection: true,
+        workspaceAwareness: true,
+        nativeSandbox: true,
+        outputContracts: true,
+      },
+      timeoutPolicy: {
+        discoveryTimeoutMs: 1,
+        validationTimeoutMs: 2,
+        startupTimeoutMs: 3,
+        idleTimeoutMs: null,
+        totalTimeoutMs: null,
+        cancelGracePeriodMs: 4,
+        approvalTimeoutMs: null,
+      },
+      approvalMode: 'agentos',
+      outputMode: 'structured',
+      enabled: true,
+      version: 1,
+    },
+  };
+}
+
+function samplePayloadWithStage(): RunSnapshotPayloadV1 {
+  const payload = samplePayload();
+  payload.workflow.stages = [sampleStage()];
+  return payload;
+}
+
 function insertSnapshot(repository: RunSnapshotRepository, payload = samplePayload()) {
   return repository.insert({
     workspaceId: 'ws_snapshot',
@@ -121,6 +190,180 @@ function assertValidation(fn: () => unknown): void {
 }
 
 describe('RunSnapshotRepository', () => {
+  it('rejects extra top-level, stage, agent, provider and security fields', () => {
+    const topLevel = samplePayloadWithStage();
+    (topLevel as unknown as Record<string, unknown>).secret = 'must-not-persist';
+    const cases: Array<() => RunSnapshotPayloadV1> = [
+      () => topLevel,
+      () => {
+        const payload = samplePayloadWithStage();
+        (payload.workflow.stages[0] as unknown as Record<string, unknown>).secret = 'must-not-persist';
+        return payload;
+      },
+      () => {
+        const payload = samplePayloadWithStage();
+        (payload.workflow.stages[0].agent as unknown as Record<string, unknown>).token = 'must-not-persist';
+        return payload;
+      },
+      () => {
+        const payload = samplePayloadWithStage();
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).token = 'must-not-persist';
+        return payload;
+      },
+      () => {
+        const payload = samplePayloadWithStage();
+        (payload.security as unknown as Record<string, unknown>).secret = 'must-not-persist';
+        return payload;
+      },
+    ];
+    for (const makePayload of cases) {
+      const db = migratedDb();
+      try {
+        assertValidation(() => insertSnapshot(new RunSnapshotRepository(db), makePayload()));
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  it('rejects forbidden provider fields', () => {
+    for (const field of [
+      'customWorkingDirectory',
+      'environment',
+      'authorization',
+      'cookie',
+      'apiKey',
+      'resolvedCommand',
+    ]) {
+      const db = migratedDb();
+      try {
+        const payload = samplePayloadWithStage();
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>)[field] = 'must-not-persist';
+        assertValidation(() => insertSnapshot(new RunSnapshotRepository(db), payload));
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  it('rejects invalid nested V1 shape and bindings', () => {
+    const mutations: Array<(payload: RunSnapshotPayloadV1) => void> = [
+      (payload) => { payload.workflow.stages[0].workflowStageKey = ''; },
+      (payload) => { payload.workflow.stages[0].workflowStageKey = ' codex_manager'; },
+      (payload) => { payload.workflow.stages[0].name = 'different-name'; },
+      (payload) => {
+        payload.workflow.stages.push({ ...sampleStage(), sequence: 2 });
+      },
+      (payload) => {
+        payload.workflow.stages.push({ ...sampleStage(), workflowStageKey: 'other', name: 'other' });
+      },
+      (payload) => { payload.workflow.stages[0].sequence = 0; },
+      (payload) => { payload.workflow.stages[0].sequence = 1.5; },
+      (payload) => { payload.workflow.stages[0].agent = null; },
+      (payload) => { payload.workflow.stages[0].provider = null; },
+      (payload) => {
+        (payload.workflow.stages[0].agent as { providerConfigId: string }).providerConfigId = 'other-provider';
+      },
+      (payload) => {
+        (payload.workflow.stages[0].agent as { role: string }).role = 'invalid-role';
+      },
+      (payload) => {
+        (payload.workflow.stages[0].agent as { permissions: string[] }).permissions = ['execute'];
+      },
+      (payload) => {
+        delete (payload.workflow.stages[0].provider?.capabilities as unknown as Record<string, unknown>).pause;
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider?.capabilities as unknown as Record<string, unknown>).unexpected = true;
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider?.capabilities as unknown as Record<string, unknown>).pause = 'yes';
+      },
+      (payload) => {
+        delete (payload.workflow.stages[0].provider?.timeoutPolicy as unknown as Record<string, unknown>).startupTimeoutMs;
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider?.timeoutPolicy as unknown as Record<string, unknown>).unexpected = 1;
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider?.timeoutPolicy as unknown as Record<string, unknown>).startupTimeoutMs = -1;
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).providerType = 'unknown';
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).argsTemplate = [null];
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory = '/absolute/path';
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory = 'C:\\absolute\\path';
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory = '\\\\server\\share';
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory = 'nested/../../escape';
+      },
+      (payload) => {
+        delete (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).model;
+      },
+      (payload) => { payload.workflow.definitionVersion = 0; },
+      (payload) => { payload.workflow.definitionHash = 'A'.repeat(64); },
+    ];
+    for (const mutate of mutations) {
+      const db = migratedDb();
+      try {
+        const payload = samplePayloadWithStage();
+        mutate(payload);
+        assertValidation(() => insertSnapshot(new RunSnapshotRepository(db), payload));
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  it('rejects symbol, accessor, non-enumerable and sparse runtime values', () => {
+    const mutations: Array<(payload: RunSnapshotPayloadV1) => void> = [
+      (payload) => {
+        Object.defineProperty(payload, Symbol('secret'), { value: 'must-not-persist', enumerable: true });
+      },
+      (payload) => {
+        Object.defineProperty(payload, 'capturedAt', {
+          configurable: true,
+          enumerable: true,
+          get: () => '2026-01-01T00:00:00.000Z',
+        });
+      },
+      (payload) => {
+        Object.defineProperty(payload.workflow.stages[0].provider, 'model', {
+          configurable: true,
+          enumerable: false,
+          value: null,
+        });
+      },
+      (payload) => {
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).argsTemplate = new Array(1);
+      },
+      (payload) => {
+        const stages = [sampleStage()] as RunSnapshotPayloadV1['workflow']['stages'] & { extra?: unknown };
+        stages.extra = true;
+        payload.workflow.stages = stages;
+      },
+    ];
+    for (const mutate of mutations) {
+      const db = migratedDb();
+      try {
+        const payload = samplePayloadWithStage();
+        mutate(payload);
+        assertValidation(() => insertSnapshot(new RunSnapshotRepository(db), payload));
+      } finally {
+        db.close();
+      }
+    }
+  });
+
   it('insert/read round-trip stores canonical JSON and the correct hash', () => {
     const db = migratedDb();
     try {
@@ -255,17 +498,19 @@ describe('RunSnapshotRepository', () => {
     const db = migratedDb();
     try {
       const payload = samplePayload();
-      (payload as unknown as Record<string, unknown>).secret = 'sensitive-snapshot-json';
       const repository = new RunSnapshotRepository(db);
       const snapshot = insertSnapshot(repository, payload);
-      const snapshotJson = canonicalizeJson(payload);
+      const extraPayload = clonePayload(payload) as unknown as Record<string, unknown>;
+      extraPayload.secret = 'sensitive-snapshot-json';
+      const snapshotJson = canonicalizeJson(extraPayload);
+      const snapshotHash = hashCanonicalJson(extraPayload);
       db.prepare('DELETE FROM run_snapshots WHERE id = ?').run(snapshot.id);
       db.prepare(`
         INSERT INTO run_snapshots (
           id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version,
           snapshot_json, content_hash, redaction_applied, captured_at
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(snapshot.id, 'ws_snapshot', 'run_snapshot', M25_UNBOUND_WORKFLOW_ID, 1, snapshotJson, HASH64, 0, payload.capturedAt);
+      `).run(snapshot.id, 'ws_snapshot', 'run_snapshot', M25_UNBOUND_WORKFLOW_ID, 1, snapshotJson, snapshotHash, 0, payload.capturedAt);
       assert.throws(
         () => repository.findByRunId('ws_snapshot', 'run_snapshot'),
         (error: unknown) => error instanceof RunSnapshotIntegrityError
@@ -281,6 +526,30 @@ describe('RunSnapshotRepository', () => {
       assert.throws(() => repository.findByRunId('ws_snapshot', 'run_snapshot'), RunSnapshotIntegrityError);
     } finally {
       db.close();
+    }
+  });
+
+  it('fails closed when the source Run changes but keeps historical Workflow availability readable', () => {
+    const db = migratedDb();
+    try {
+      const repository = new RunSnapshotRepository(db);
+      insertSnapshot(repository);
+      db.prepare('UPDATE runs SET reason = ? WHERE id = ?').run('manual', 'run_snapshot');
+      assert.throws(() => repository.findByRunId('ws_snapshot', 'run_snapshot'), RunSnapshotIntegrityError);
+    } finally {
+      db.close();
+    }
+
+    const archivedDb = migratedDb();
+    try {
+      const repository = new RunSnapshotRepository(archivedDb);
+      insertSnapshot(repository);
+      archivedDb.prepare(
+        "UPDATE workflow_definitions SET enabled = 0, archived_at = '2026-01-02T00:00:00.000Z' WHERE id = ?",
+      ).run(M25_UNBOUND_WORKFLOW_ID);
+      assert.equal(repository.findByRunId('ws_snapshot', 'run_snapshot')?.workflowDefinitionId, M25_UNBOUND_WORKFLOW_ID);
+    } finally {
+      archivedDb.close();
     }
   });
 

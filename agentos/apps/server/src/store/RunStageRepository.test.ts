@@ -19,7 +19,11 @@ import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { M25_UNBOUND_WORKFLOW_ID } from '../migrations/migrations/007-workflow-definitions.js';
 import { inTransaction } from './Transaction.js';
-import { RunStageRepository, RunStageValidationError } from './RunStageRepository.js';
+import {
+  RunStageIntegrityError,
+  RunStageRepository,
+  RunStageValidationError,
+} from './RunStageRepository.js';
 
 type Db = InstanceType<typeof DatabaseSync>;
 
@@ -83,6 +87,13 @@ function assertValidation(fn: () => unknown): void {
   assert.throws(fn, (error: unknown) => (
     error instanceof RunStageValidationError
     && error.code === 'RUN_STAGE_VALIDATION_FAILED'
+  ));
+}
+
+function assertIntegrity(fn: () => unknown): void {
+  assert.throws(fn, (error: unknown) => (
+    error instanceof RunStageIntegrityError
+    && error.code === 'RUN_STAGE_INTEGRITY_FAILED'
   ));
 }
 
@@ -198,6 +209,29 @@ describe('RunStageRepository', () => {
       assert.deepEqual(repository.listByRun('ws_stage', 'run_stage'), []);
     } finally {
       db.close();
+    }
+  });
+
+  it('fails closed when stored stage rows are tampered', () => {
+    const mutations: Array<[string, unknown]> = [
+      ['name', 'different-name'],
+      ['workflow_stage_key', '   '],
+      ['sequence', 1.5],
+      ['attempt', 1.5],
+      ['version', 1.5],
+      ['created_at', ''],
+      ['updated_at', ''],
+    ];
+    for (const [column, value] of mutations) {
+      const db = migratedDb();
+      try {
+        const repository = new RunStageRepository(db);
+        const stage = insertStage(repository);
+        db.prepare(`UPDATE run_stages SET ${column} = ? WHERE id = ?`).run(value, stage.id);
+        assertIntegrity(() => repository.listByRun('ws_stage', 'run_stage'));
+      } finally {
+        db.close();
+      }
     }
   });
 });
