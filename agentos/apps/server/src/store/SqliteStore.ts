@@ -49,6 +49,9 @@ import type { Store } from './Store.js';
 import { WorkspaceRepository } from './WorkspaceRepository.js';
 import { TaskRepository } from './TaskRepository.js';
 import { RunRepository } from './RunRepository.js';
+import { WorkflowDefinitionRepository } from './WorkflowDefinitionRepository.js';
+import { RunSnapshotRepository } from './RunSnapshotRepository.js';
+import { RunStageRepository } from './RunStageRepository.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
@@ -373,6 +376,9 @@ export class SqliteStore implements Store {
   readonly workspaceRepo: WorkspaceRepository;
   private readonly taskRepo: TaskRepository;
   private readonly runRepo: RunRepository;
+  private readonly workflowDefinitionRepo: WorkflowDefinitionRepository;
+  private readonly runSnapshotRepo: RunSnapshotRepository;
+  private readonly runStageRepo: RunStageRepository;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -384,6 +390,9 @@ export class SqliteStore implements Store {
     this.workspaceRepo = new WorkspaceRepository(this.database as any);
     this.taskRepo = new TaskRepository(this.database as any);
     this.runRepo = new RunRepository(this.database as any);
+    this.workflowDefinitionRepo = new WorkflowDefinitionRepository(this.database as any);
+    this.runSnapshotRepo = new RunSnapshotRepository(this.database as any);
+    this.runStageRepo = new RunStageRepository(this.database as any);
     try {
       this.database.exec('PRAGMA foreign_keys = ON');
       this.runMigrations();
@@ -404,6 +413,18 @@ export class SqliteStore implements Store {
   /** M2.4 canonical v2 Run repository (shares this store's SQLite handle). */
   runRepository(): RunRepository {
     return this.runRepo;
+  }
+
+  workflowDefinitionRepository(): WorkflowDefinitionRepository {
+    return this.workflowDefinitionRepo;
+  }
+
+  runSnapshotRepository(): RunSnapshotRepository {
+    return this.runSnapshotRepo;
+  }
+
+  runStageRepository(): RunStageRepository {
+    return this.runStageRepo;
   }
 
   /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */
