@@ -10,6 +10,7 @@ import { createTaskRoutes } from './tasks.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { TaskRunService } from '../services/TaskRunService.js';
+import type { Workspace } from '@agentos/shared';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-v2-task-routes-'));
@@ -35,6 +36,7 @@ interface Fixture {
   baseB: string;
   workspaceAId: string;
   workspaceBId: string;
+  workspaceA: Workspace;
 }
 
 async function createFixture(): Promise<Fixture> {
@@ -58,6 +60,7 @@ async function createFixture(): Promise<Fixture> {
     baseB: `${base}/${workspaceB.id}`,
     workspaceAId: workspaceA.id,
     workspaceBId: workspaceB.id,
+    workspaceA,
   };
 }
 
@@ -88,6 +91,7 @@ async function bridgeCompleteTask(fx: Fixture, legacyTaskId: string): Promise<{ 
     title: 'bridge task',
     createdBy: 'legacy_pipeline',
     objective: 'bridge task',
+    workspace: fx.workspaceA,
   });
   fx.service.startRunForBridge(fx.workspaceAId, created.run.id);
   fx.service.completeRunForBridge(fx.workspaceAId, created.run.id);
@@ -318,6 +322,7 @@ test('T87 accepting a non-completed Run returns RUN_NOT_COMPLETED', async () => 
     const { taskId } = await bridgeCompleteTask(fx, 'L1');
     const retry = fx.service.createLegacyRunForBridge({
       workspaceId: fx.workspaceAId, legacyTaskId: 'L1', title: 'bridge task', createdBy: 'legacy_pipeline', objective: 'bridge task',
+      workspace: fx.workspaceA,
     });
     const response = await postJson(`${fx.baseA}/v2/tasks/${taskId}/accept`, { runId: retry.run.id });
     assert.equal(response.status, 409);

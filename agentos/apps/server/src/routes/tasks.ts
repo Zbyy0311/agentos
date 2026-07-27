@@ -36,6 +36,11 @@ function asTaskRunStore(store: Store): TaskRunServiceDeps | undefined {
   if (
     typeof candidate.taskRepository === 'function'
     && typeof candidate.runRepository === 'function'
+    && typeof candidate.workflowDefinitionRepository === 'function'
+    && typeof candidate.runSnapshotRepository === 'function'
+    && typeof candidate.runStageRepository === 'function'
+    && typeof candidate.providerConfigurationRepository === 'function'
+    && typeof candidate.findAgentSnapshotSource === 'function'
     && typeof candidate.runInTransaction === 'function'
   ) {
     return candidate as TaskRunServiceDeps;
@@ -172,12 +177,14 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       }
     }
 
+    const taskBeforeClaim = structuredClone(task);
     if (!claimTaskRun(task)) {
       return res.status(409).json({ error: 'Task is already running' });
     }
 
     // M2.4 Bridge step 3: find-or-create v2 Task + queued Run in one SQLite transaction.
     let bridgeRunId: string | undefined;
+    let bridgeRunnerWorkspace: Workspace | undefined;
     if (taskRunService) {
       try {
         const bridge = taskRunService.createLegacyRunForBridge({
@@ -186,12 +193,16 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           title: task.title,
           createdBy: 'legacy_pipeline',
           objective: task.title,
+          workspace,
         });
         bridgeRunId = bridge.run.id;
+        bridgeRunnerWorkspace = bridge.runnerWorkspace;
       } catch (err) {
+        Object.assign(task, taskBeforeClaim);
         const message = legacyBridgeGuardMessage(err);
         if (message) return res.status(409).json({ error: message });
-        throw err;
+        console.error(`[AgentOS Server] Legacy Run capture failed: ${errorCode(err) ?? 'RUN_SNAPSHOT_FAILED'}`);
+        return res.status(500).json({ error: 'Bridge persistence failed' });
       }
     }
     let bridgeTerminalSynced = false;
@@ -263,12 +274,13 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     let responseClosed = false;
 
     let runner: PipelineRunner;
+    const runnerWorkspace = bridgeRunnerWorkspace ?? workspace;
     const runStage = async (stage: AgentStage, fn: () => Promise<TaskLog>) => {
       if (signal.aborted) return;
       task.currentAgent = stage;
       touchTaskActivity(task);
       store.saveTask(workspaceId, task);
-      const agentName = getStageAgentName(workspace, stage);
+      const agentName = getStageAgentName(runnerWorkspace, stage);
       sendEvent('stage', { stage, agent: agentName, status: 'running' });
       const log = await fn();
       if (signal.aborted) return;
@@ -279,11 +291,11 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     };
 
     void (async () => {
-      runner = (deps.createRunner ?? defaultRunnerFactory)(workspace, taskId, task.title, (text, done) => {
+      runner = (deps.createRunner ?? defaultRunnerFactory)(runnerWorkspace, taskId, task.title, (text, done) => {
         const stage = task.currentAgent;
         sendEvent('thinking', {
           stage: stage ?? 'unknown',
-          agentName: stage ? getStageAgentName(workspace, stage) : 'unknown',
+          agentName: stage ? getStageAgentName(runnerWorkspace, stage) : 'unknown',
           text,
           done,
         });

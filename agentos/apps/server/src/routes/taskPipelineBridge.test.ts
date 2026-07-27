@@ -172,6 +172,7 @@ interface Fixture {
   server: ReturnType<express.Express['listen']>;
   base: string;
   workspaceId: string;
+  workspace: Workspace;
   responseCloseCount: { value: number };
   sseWrites: string[];
 }
@@ -263,6 +264,7 @@ async function createFixture(
     server,
     base: `http://127.0.0.1:${port}/api/workspaces/${workspaceId}`,
     workspaceId,
+    workspace,
     responseCloseCount,
     sseWrites,
   };
@@ -781,6 +783,7 @@ test('R05 legacy bridge rejects a stale active queued Run without leaking SQLite
       title: 'demo task',
       createdBy: 'legacy_pipeline',
       objective: 'demo task',
+      workspace: fx.workspace,
     });
     assert.equal(active.run.status, 'queued');
     const legacyBefore = JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01'));
@@ -991,6 +994,7 @@ test('R15 non-terminal Legacy JSON statuses do not trigger terminal reconciliati
         title: 'demo task',
         createdBy: 'legacy_pipeline',
         objective: 'demo task',
+        workspace: fx.workspace,
       });
       fx.service.startRunForBridge(fx.workspaceId, created.run.id);
       const legacy = fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!;
@@ -1021,6 +1025,7 @@ test('R16 reconciliation failure is sanitized and does not mutate JSON or create
       title: 'demo task',
       createdBy: 'legacy_pipeline',
       objective: 'demo task',
+      workspace: fx.workspace,
     });
     fx.service.startRunForBridge(fx.workspaceId, created.run.id);
     const legacy = fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!;

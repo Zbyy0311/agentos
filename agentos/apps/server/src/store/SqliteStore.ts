@@ -3,6 +3,7 @@ import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type {
   AgentPermission,
+  AgentRole,
   AgentProvider,
   AgentRuntimeStatus,
   AgentEvent,
@@ -52,6 +53,7 @@ import { RunRepository } from './RunRepository.js';
 import { WorkflowDefinitionRepository } from './WorkflowDefinitionRepository.js';
 import { RunSnapshotRepository } from './RunSnapshotRepository.js';
 import { RunStageRepository } from './RunStageRepository.js';
+import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
@@ -100,6 +102,32 @@ interface AgentProfileRow {
   provider_config_executable: string | null;
   provider_config_args_template_json: string | null;
   provider_config_model: string | null;
+}
+
+export interface AgentSnapshotSourceRecord {
+  workspaceId: string;
+  id: string;
+  name: string;
+  role: AgentRole;
+  roleTitle: string;
+  systemPrompt: string;
+  permissions: AgentPermission[];
+  enabled: boolean;
+  providerConfigId: string | null;
+  version: number;
+}
+
+interface AgentSnapshotSourceRow {
+  workspace_id: string;
+  id: string;
+  name: string;
+  agent_role: AgentRole;
+  role_title: string;
+  system_prompt: string;
+  permissions_json: string;
+  enabled: number;
+  provider_config_id: string | null;
+  version: number;
 }
 
 interface ConversationRow {
@@ -379,6 +407,7 @@ export class SqliteStore implements Store {
   private readonly workflowDefinitionRepo: WorkflowDefinitionRepository;
   private readonly runSnapshotRepo: RunSnapshotRepository;
   private readonly runStageRepo: RunStageRepository;
+  private readonly providerConfigRepo: ProviderConfigurationRepository;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -393,6 +422,7 @@ export class SqliteStore implements Store {
     this.workflowDefinitionRepo = new WorkflowDefinitionRepository(this.database as any);
     this.runSnapshotRepo = new RunSnapshotRepository(this.database as any);
     this.runStageRepo = new RunStageRepository(this.database as any);
+    this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
     try {
       this.database.exec('PRAGMA foreign_keys = ON');
       this.runMigrations();
@@ -425,6 +455,10 @@ export class SqliteStore implements Store {
 
   runStageRepository(): RunStageRepository {
     return this.runStageRepo;
+  }
+
+  providerConfigurationRepository(): ProviderConfigurationRepository {
+    return this.providerConfigRepo;
   }
 
   /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */
@@ -534,6 +568,35 @@ export class SqliteStore implements Store {
       ORDER BY ap.name COLLATE NOCASE
     `).all(workspaceId) as AgentProfileRow[];
     return rows.map(row => this.toAgentProfile(row, this.latestAgentRuntime(workspaceId, row.id)));
+  }
+
+  findAgentSnapshotSource(workspaceId: string, agentId: string): AgentSnapshotSourceRecord | undefined {
+    const row = this.database.prepare(`
+      SELECT workspace_id, id, name, agent_role, role_title, system_prompt,
+        permissions_json, enabled, provider_config_id, version
+      FROM agent_profiles
+      WHERE workspace_id = ? AND id = ?
+    `).get(workspaceId, agentId) as AgentSnapshotSourceRow | undefined;
+    if (!row) return undefined;
+
+    let permissions: AgentPermission[];
+    try {
+      permissions = JSON.parse(row.permissions_json) as AgentPermission[];
+    } catch {
+      permissions = [];
+    }
+    return {
+      workspaceId: row.workspace_id,
+      id: row.id,
+      name: row.name,
+      role: row.agent_role,
+      roleTitle: row.role_title,
+      systemPrompt: row.system_prompt,
+      permissions: Array.isArray(permissions) ? permissions : [],
+      enabled: row.enabled === 1,
+      providerConfigId: row.provider_config_id,
+      version: row.version,
+    };
   }
 
   updateAgentProfile(
