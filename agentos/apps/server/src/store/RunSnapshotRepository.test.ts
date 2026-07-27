@@ -324,6 +324,83 @@ describe('RunSnapshotRepository', () => {
     }
   });
 
+  it('rejects Windows root-relative and drive-relative working directories', () => {
+    const invalidPaths = [
+      String.raw`\Windows\Temp`,
+      'C:outside-workspace',
+      String.raw`D:folder\file`,
+      'C:',
+    ];
+    for (const directory of invalidPaths) {
+      const db = migratedDb();
+      try {
+        const payload = samplePayloadWithStage();
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory = directory;
+        assertValidation(() => insertSnapshot(new RunSnapshotRepository(db), payload));
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  it('accepts valid workspace-relative working directories', () => {
+    const validPaths = [
+      'nested/subdirectory',
+      String.raw`nested\subdirectory`,
+      '.',
+      'config',
+      'config/file.txt',
+    ];
+    for (const directory of validPaths) {
+      const db = migratedDb();
+      try {
+        const payload = samplePayloadWithStage();
+        (payload.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory = directory;
+        const snapshot = insertSnapshot(new RunSnapshotRepository(db), payload);
+        assert.equal(
+          (snapshot.payload.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory,
+          directory,
+        );
+        assert.equal(
+          (new RunSnapshotRepository(db).findByRunId('ws_snapshot', 'run_snapshot')?.payload.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory,
+          directory,
+        );
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  it('fails closed on read for root-relative and drive-relative working directories', () => {
+    const invalidPaths = [String.raw`\Windows\Temp`, 'C:outside-workspace'];
+    for (const directory of invalidPaths) {
+      const db = migratedDb();
+      try {
+        const repository = new RunSnapshotRepository(db);
+        const payload = samplePayloadWithStage();
+        const snapshot = insertSnapshot(repository, payload);
+        const tampered = clonePayload(payload);
+        (tampered.workflow.stages[0].provider as unknown as Record<string, unknown>).workspaceRelativeWorkingDirectory = directory;
+        const snapshotJson = canonicalizeJson(tampered);
+        const snapshotHash = hashCanonicalJson(tampered);
+        db.prepare('DELETE FROM run_snapshots WHERE id = ?').run(snapshot.id);
+        db.prepare(`
+          INSERT INTO run_snapshots (
+            id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version,
+            snapshot_json, content_hash, redaction_applied, captured_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(snapshot.id, 'ws_snapshot', 'run_snapshot', M25_UNBOUND_WORKFLOW_ID, 1, snapshotJson, snapshotHash, 0, payload.capturedAt);
+        assert.throws(
+          () => repository.findByRunId('ws_snapshot', 'run_snapshot'),
+          (error: unknown) => error instanceof RunSnapshotIntegrityError
+            && !error.message.includes(directory),
+        );
+      } finally {
+        db.close();
+      }
+    }
+  });
+
   it('rejects symbol, accessor, non-enumerable and sparse runtime values', () => {
     const mutations: Array<(payload: RunSnapshotPayloadV1) => void> = [
       (payload) => {

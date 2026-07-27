@@ -4,6 +4,7 @@ import type {
   V2RunOrigin,
   V2RunReason,
 } from '@agentos/shared';
+import { posix, win32 } from 'node:path';
 import type { TransactionDatabase } from './Transaction.js';
 import { canonicalizeJson, hashCanonicalJson } from '../snapshots/canonicalJson.js';
 import { createEntityId } from './Identity.js';
@@ -209,10 +210,11 @@ function validateWorkspaceRelativePath(value: unknown, path: string): void {
   const directory = assertNullableString(value, path, true);
   if (directory === null) return;
   if (
-    directory.startsWith('/')
-    || directory.startsWith('\\\\')
-    || directory.startsWith('//')
-    || /^[A-Za-z]:[\\/]/.test(directory)
+    posix.isAbsolute(directory)
+    || win32.isAbsolute(directory)
+    || /^[A-Za-z]:/.test(directory)
+    || directory.startsWith('/')
+    || directory.startsWith('\\')
     || directory.split(/[\\/]+/).includes('..')
   ) {
     throw validationFailure(`${path} must be a workspace-relative path`);
