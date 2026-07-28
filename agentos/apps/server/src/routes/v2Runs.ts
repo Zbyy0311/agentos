@@ -2,7 +2,8 @@ import { Router, type Request, type Response } from 'express';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { RunNotFoundError } from '../store/RunRepository.js';
-import { requireV2Workspace, respondV2 } from './v2Tasks.js';
+import { buildV2RunDetailResponse, parseV2RunInclude } from './v2RunApi.js';
+import { requireV2Workspace, respondV2, V2ValidationError } from './v2Tasks.js';
 
 export function createV2RunRoutes(store: TaskRunServiceDeps, workspaceManager: WorkspaceManager): Router {
   const router = Router({ mergeParams: true });
@@ -13,7 +14,22 @@ export function createV2RunRoutes(store: TaskRunServiceDeps, workspaceManager: W
     const { runId } = req.params as { runId: string };
     const run = store.runRepository().findById(workspaceId, runId);
     if (!run) throw new RunNotFoundError(runId);
-    return { status: 200, body: { run } };
+    const query = req.query as Record<string, unknown>;
+    if (Object.prototype.hasOwnProperty.call(query, 'include[]')) {
+      throw new V2ValidationError('invalid include');
+    }
+    const include = parseV2RunInclude(query.include);
+    const snapshotRepository = store.runSnapshotRepository();
+    // Keep the pre-P4 Bridge test double readable; the production Required deps always expose findByRunId.
+    const snapshot = typeof snapshotRepository.findByRunId === 'function'
+      ? snapshotRepository.findByRunId(workspaceId, runId)
+      : undefined;
+    const stages = include.has('stages')
+      ? (typeof store.runStageRepository().listByRun === 'function'
+        ? store.runStageRepository().listByRun(workspaceId, runId)
+        : [])
+      : [];
+    return { status: 200, body: buildV2RunDetailResponse({ run, snapshot, stages, include }) };
   }));
 
   router.post('/runs/:runId/cancel', (req: Request, res: Response) => respondV2(res, () => {

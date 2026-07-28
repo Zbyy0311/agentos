@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createV2RunRoutes } from './v2Runs.js';
@@ -18,12 +19,35 @@ function createProjectRoot(): string {
   return root;
 }
 
-async function listen(app: express.Express): Promise<{ server: ReturnType<typeof app.listen>; base: string }> {
-  const server = app.listen(0);
-  await new Promise<void>(resolve => server.once('listening', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('test server did not bind to a TCP port');
-  return { server, base: `http://127.0.0.1:${address.port}/api/workspaces` };
+function isFetchBadPortError(error: unknown): boolean {
+  return (error as { cause?: { message?: unknown } } | null)?.cause?.message === 'bad port';
+}
+
+async function closeTestServer(server: ReturnType<express.Express['listen']>): Promise<void> {
+  if (!server.listening) return;
+  await new Promise<void>(resolve => server.close(() => resolve()));
+}
+
+async function listenOnFetchSafePort(app: express.Express): Promise<{ server: ReturnType<typeof app.listen>; base: string }> {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const server = app.listen(0, '127.0.0.1');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('listening', resolve);
+        server.once('error', reject);
+      });
+      const address = server.address() as AddressInfo | null;
+      if (!address || typeof address === 'string') throw new Error('test server did not bind to a TCP port');
+      const base = `http://127.0.0.1:${address.port}/api/workspaces`;
+      const probe = await fetch(`http://127.0.0.1:${address.port}/__test_fetch_port_probe`, { method: 'HEAD' });
+      if (probe.status !== 204) throw new Error(`test fetch probe returned ${probe.status}`);
+      return { server, base };
+    } catch (error) {
+      await closeTestServer(server);
+      if (!isFetchBadPortError(error)) throw error;
+    }
+  }
+  throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
 }
 
 interface Fixture {
@@ -45,9 +69,13 @@ async function createFixture(): Promise<Fixture> {
   const workspaceB = manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
   const app = express();
   app.use(express.json());
+  app.head('/__test_fetch_port_probe', (_req, res) => {
+    res.setHeader('Connection', 'close');
+    res.status(204).end();
+  });
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, manager));
   app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, manager));
-  const { server, base } = await listen(app);
+  const { server, base } = await listenOnFetchSafePort(app);
   return {
     root,
     store,
@@ -61,7 +89,7 @@ async function createFixture(): Promise<Fixture> {
 }
 
 async function closeFixture(fx: Fixture): Promise<void> {
-  fx.server.close();
+  await closeTestServer(fx.server);
   fx.store.close();
   rmSync(fx.root, { recursive: true, force: true });
 }
@@ -114,6 +142,139 @@ test('T76 GET v2 Run returns failureCode/failureMessage and the full Run', async
     assert.ok(run.createdAt);
     assert.ok(run.completedAt);
     assert.equal(run.version, 3);
+    const body = (await fetch(`${fx.baseA}/v2/runs/${created.run.id}`)).json() as Promise<Record<string, unknown>>;
+    const defaultBody = await body;
+    assert.equal(defaultBody.snapshotAvailable, true);
+    assert.equal(defaultBody.snapshotSchemaVersion, 1);
+    assert.equal('snapshot' in defaultBody, false);
+    assert.equal('stages' in defaultBody, false);
+    assert.equal('contentHash' in defaultBody, false);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4 GET v2 Run includes snapshot payload and content hash without row metadata', async () => {
+  const fx = await createFixture();
+  try {
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspaceAId,
+      legacyTaskId: 'p4-snapshot',
+      title: 'p4 snapshot',
+      createdBy: 'legacy_pipeline',
+      objective: 'p4 snapshot',
+      workspace: fx.workspaceA,
+    });
+    const response = await fetch(`${fx.baseA}/v2/runs/${created.run.id}?include=snapshot`);
+    assert.equal(response.status, 200);
+    const body = await response.json() as Record<string, unknown>;
+    assert.equal(body.snapshotAvailable, true);
+    assert.equal(body.snapshotSchemaVersion, 1);
+    assert.equal((body.snapshot as { workflow: { definitionKey: string } }).workflow.definitionKey, 'legacy-pipeline');
+    assert.match(body.contentHash as string, /^[0-9a-f]{64}$/);
+    assert.equal('snapshotId' in body, false);
+    assert.equal('workflowDefinitionId' in body, false);
+    assert.equal('id' in (body.snapshot as Record<string, unknown>), false);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4 GET v2 Run includes ordered stages and both include orders', async () => {
+  const fx = await createFixture();
+  try {
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspaceAId,
+      legacyTaskId: 'p4-stages',
+      title: 'p4 stages',
+      createdBy: 'legacy_pipeline',
+      objective: 'p4 stages',
+      workspace: fx.workspaceA,
+    });
+    for (const include of ['stages', 'snapshot,stages', 'stages,snapshot']) {
+      const response = await fetch(`${fx.baseA}/v2/runs/${created.run.id}?include=${encodeURIComponent(include)}`);
+      assert.equal(response.status, 200);
+      const body = await response.json() as Record<string, unknown>;
+      assert.deepEqual((body.stages as Array<{ sequence: number }>).map(stage => stage.sequence), [1, 2, 3, 4]);
+      if (include !== 'stages') {
+        assert.ok(body.snapshot);
+        assert.match(body.contentHash as string, /^[0-9a-f]{64}$/);
+      }
+    }
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4 GET v2 Run returns stages=[] for an unbound Run and exposes snapshot metadata', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'unbound p4');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    const stagesResponse = await fetch(`${fx.baseA}/v2/runs/${runId}?include=stages`);
+    assert.equal(stagesResponse.status, 200);
+    const stagesBody = await stagesResponse.json() as Record<string, unknown>;
+    assert.equal(stagesBody.snapshotAvailable, true);
+    assert.equal(stagesBody.snapshotSchemaVersion, 1);
+    assert.deepEqual(stagesBody.stages, []);
+    const snapshotResponse = await fetch(`${fx.baseA}/v2/runs/${runId}?include=snapshot`);
+    const snapshotBody = await snapshotResponse.json() as Record<string, unknown>;
+    assert.equal((snapshotBody.snapshot as { workflow: { definitionKey: string } }).workflow.definitionKey, 'unbound-task-run');
+    assert.equal((snapshotBody.snapshot as { workflow: { stages: unknown[] } }).workflow.stages.length, 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4 GET v2 Run rejects malformed include values with VALIDATION_FAILED', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'include validation');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    for (const query of [
+      'include=', 'include=snapshot,', 'include=,snapshot', 'include=snapshot,,stages',
+      'include=unknown', 'include=Snapshot', 'include[]=snapshot', 'include=snapshot&include=stages',
+    ]) {
+      const response = await fetch(`${fx.baseA}/v2/runs/${runId}?${query}`);
+      assert.equal(response.status, 400, query);
+      assert.equal((await response.json() as { code: string }).code, 'VALIDATION_FAILED');
+    }
+    const duplicate = await fetch(`${fx.baseA}/v2/runs/${runId}?include=snapshot,snapshot`);
+    assert.equal(duplicate.status, 200);
+    const duplicateBody = await duplicate.json() as Record<string, unknown>;
+    assert.ok(duplicateBody.snapshot);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4 GET v2 Run preserves pre-M2.5 false/null/empty compatibility', async () => {
+  const fx = await createFixture();
+  try {
+    const task = fx.store.taskRepository().insert({ workspaceId: fx.workspaceAId, title: 'pre-m25', createdBy: 'test' });
+    const legacyRun = fx.store.runRepository().insert({
+      workspaceId: fx.workspaceAId,
+      taskId: task.id,
+      origin: 'v2_api',
+      createdBy: 'test',
+    });
+    const defaultResponse = await fetch(`${fx.baseA}/v2/runs/${legacyRun.id}`);
+    const jsonRun = JSON.parse(JSON.stringify(legacyRun));
+    assert.deepEqual(await defaultResponse.json(), {
+      run: jsonRun,
+      snapshotAvailable: false,
+      snapshotSchemaVersion: null,
+    });
+    const snapshotResponse = await fetch(`${fx.baseA}/v2/runs/${legacyRun.id}?include=snapshot`);
+    assert.deepEqual(await snapshotResponse.json(), {
+      run: jsonRun,
+      snapshotAvailable: false,
+      snapshotSchemaVersion: null,
+      snapshot: null,
+      contentHash: null,
+    });
+    const stagesResponse = await fetch(`${fx.baseA}/v2/runs/${legacyRun.id}?include=stages`);
+    assert.deepEqual((await stagesResponse.json() as { stages: unknown[] }).stages, []);
   } finally {
     await closeFixture(fx);
   }

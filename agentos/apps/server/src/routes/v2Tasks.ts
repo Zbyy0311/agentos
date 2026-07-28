@@ -27,6 +27,17 @@ const V2_ERROR_STATUS: Record<string, number> = {
   INVALID_TASK_TRANSITION: 409,
   INVALID_RUN_TRANSITION: 409,
   VERSION_CONFLICT: 409,
+  AGENT_NOT_AVAILABLE: 409,
+  PROVIDER_CONFIG_NOT_AVAILABLE: 409,
+  WORKFLOW_NOT_AVAILABLE: 409,
+  RUN_SNAPSHOT_FAILED: 500,
+};
+
+const V2_SAFE_ERROR_MESSAGE: Record<string, string> = {
+  AGENT_NOT_AVAILABLE: 'Agent is not available',
+  PROVIDER_CONFIG_NOT_AVAILABLE: 'Provider configuration is not available',
+  WORKFLOW_NOT_AVAILABLE: 'Workflow is not available',
+  RUN_SNAPSHOT_FAILED: 'Run snapshot creation failed',
 };
 
 export class WorkspaceNotFoundError extends Error {
@@ -60,7 +71,7 @@ export function respondV2(res: Response, fn: () => { status: number; body: unkno
   } catch (err) {
     const code = (err as { code?: unknown } | null)?.code;
     if (typeof code === 'string' && code in V2_ERROR_STATUS) {
-      res.status(V2_ERROR_STATUS[code]).json({ error: (err as Error).message, code });
+      res.status(V2_ERROR_STATUS[code]).json({ error: V2_SAFE_ERROR_MESSAGE[code] ?? (err as Error).message, code });
       return;
     }
     res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
