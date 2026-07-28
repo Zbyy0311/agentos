@@ -128,6 +128,7 @@ function scanPayload(payload: RunSnapshotPayloadV1): void {
         stage.provider.outputMode,
       );
       scanSensitiveArguments(stage.provider.argsTemplate);
+      rejectUnsafeText(stage.provider.argsTemplate.join(' '));
       scanWorkspaceRelativePath(stage.provider.workspaceRelativeWorkingDirectory);
       values.push(...stage.provider.argsTemplate);
     }

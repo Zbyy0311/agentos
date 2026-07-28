@@ -258,6 +258,47 @@ test('API scanner rejects secret-like strings without leaking literals', () => {
   }
 });
 
+test('P4 cross-token argsTemplate no-leak boundary rejects literals and allows placeholders', () => {
+  const rejectedArgs = [
+    ['Bearer', 'actual-secret-value'],
+    ['token=', 'actual-secret-value'],
+    ['api_key=', 'actual-secret-value'],
+    ['api-key=', 'actual-secret-value'],
+    ['password=', 'actual-secret-value'],
+    ['secret=', 'actual-secret-value'],
+    ['client_secret=', 'actual-secret-value'],
+    ['Authorization:', 'Basic actual-secret-value'],
+    ['Cookie:', 'session=actual-secret-value'],
+  ] as const;
+  for (const argsTemplate of rejectedArgs) {
+    const unsafeProvider = { ...provider, argsTemplate: [...argsTemplate] };
+    const unsafeSnapshot = snapshot({
+      payload: payload({ stages: [{ ...payload().workflow.stages[0]!, provider: unsafeProvider }] }),
+    });
+    assert.throws(
+      () => detail({ snapshot: unsafeSnapshot, include: ['snapshot'] }),
+      (error: unknown) => error instanceof RunSnapshotApiSafetyError
+        && error.code === 'RUN_SNAPSHOT_FAILED'
+        && !error.message.includes('actual-secret-value'),
+    );
+  }
+
+  const allowedArgs = [
+    ['Bearer', '${TOKEN}'],
+    ['token=', '${TOKEN}'],
+    ['api_key=', '${OPENAI_API_KEY}'],
+    ['--token=', '${TOKEN}'],
+    ['-p', 'actual-safe-value'],
+  ] as const;
+  for (const argsTemplate of allowedArgs) {
+    const allowedProvider = { ...provider, argsTemplate: [...argsTemplate] };
+    const allowedSnapshot = snapshot({
+      payload: payload({ stages: [{ ...payload().workflow.stages[0]!, provider: allowedProvider }] }),
+    });
+    assert.doesNotThrow(() => detail({ snapshot: allowedSnapshot, include: ['snapshot'] }));
+  }
+});
+
 test('API scanner accepts placeholders and secret/environment references', () => {
   const allowed = detail({ include: ['snapshot'] });
   assert.equal((allowed.snapshot as { security: { redactionApplied: boolean } }).security.redactionApplied, false);

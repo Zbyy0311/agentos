@@ -114,6 +114,47 @@ async function createRunViaApi(baseA: string, taskId: string): Promise<string> {
   return (await response.json() as { run: { id: string } }).run.id;
 }
 
+test('P4 malformed repository read surfaces fail closed instead of synthesizing compatibility', async () => {
+  const fx = await createFixture();
+  try {
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspaceAId,
+      legacyTaskId: 'malformed-read-surface',
+      title: 'malformed read surface',
+      createdBy: 'legacy_pipeline',
+      objective: 'malformed read surface',
+      workspace: fx.workspaceA,
+    });
+    const validSnapshotRepository = fx.store.runSnapshotRepository();
+    const validStageRepository = fx.store.runStageRepository();
+    const malformedStore = fx.store as unknown as {
+      runSnapshotRepository: () => unknown;
+      runStageRepository: () => unknown;
+    };
+
+    malformedStore.runSnapshotRepository = () => ({});
+    const missingSnapshotRead = await fetch(`${fx.baseA}/v2/runs/${created.run.id}`);
+    assert.equal(missingSnapshotRead.status, 500);
+    assert.deepEqual(await missingSnapshotRead.json(), {
+      error: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+    });
+
+    malformedStore.runSnapshotRepository = () => validSnapshotRepository;
+    malformedStore.runStageRepository = () => ({});
+    const missingStageRead = await fetch(`${fx.baseA}/v2/runs/${created.run.id}?include=stages`);
+    assert.equal(missingStageRead.status, 500);
+    assert.deepEqual(await missingStageRead.json(), {
+      error: 'Internal server error',
+      code: 'INTERNAL_ERROR',
+    });
+
+    malformedStore.runStageRepository = () => validStageRepository;
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
 test('T76 GET v2 Run returns failureCode/failureMessage and the full Run', async () => {
   const fx = await createFixture();
   try {

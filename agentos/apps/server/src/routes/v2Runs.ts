@@ -19,15 +19,9 @@ export function createV2RunRoutes(store: TaskRunServiceDeps, workspaceManager: W
       throw new V2ValidationError('invalid include');
     }
     const include = parseV2RunInclude(query.include);
-    const snapshotRepository = store.runSnapshotRepository();
-    // Keep the pre-P4 Bridge test double readable; the production Required deps always expose findByRunId.
-    const snapshot = typeof snapshotRepository.findByRunId === 'function'
-      ? snapshotRepository.findByRunId(workspaceId, runId)
-      : undefined;
+    const snapshot = store.runSnapshotRepository().findByRunId(workspaceId, runId);
     const stages = include.has('stages')
-      ? (typeof store.runStageRepository().listByRun === 'function'
-        ? store.runStageRepository().listByRun(workspaceId, runId)
-        : [])
+      ? store.runStageRepository().listByRun(workspaceId, runId)
       : [];
     return { status: 200, body: buildV2RunDetailResponse({ run, snapshot, stages, include }) };
   }));

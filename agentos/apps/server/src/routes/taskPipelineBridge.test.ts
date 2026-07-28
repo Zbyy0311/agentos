@@ -279,6 +279,7 @@ async function createFixture(
         redactionApplied: false,
         capturedAt: '2026-01-01T00:00:00.000Z',
       }),
+      findByRunId: () => undefined,
     } as never),
     runStageRepository: () => ({
       insertInitial: (input: { workspaceId: string; runId: string; runSnapshotId: string; workflowStageKey: string; sequence: number }) => ({
@@ -291,6 +292,7 @@ async function createFixture(
         updatedAt: '2026-01-01T00:00:00.000Z',
         version: 1,
       }),
+      listByRun: () => [],
     } as never),
     providerConfigurationRepository: () => ({ findById: () => undefined } as never),
     findAgentSnapshotSource: () => undefined,
@@ -779,7 +781,20 @@ test('T105 Bridge-created Task and Runs are readable through the v2 GET APIs', a
 
     const getRun = await fetch(`${fx.base}/v2/runs/${run.id}`);
     assert.equal(getRun.status, 200);
-    assert.equal((await getRun.json() as { run: { status: string } }).run.status, 'completed');
+    const getRunBody = await getRun.json() as {
+      run: { status: string };
+      snapshotAvailable: boolean;
+      snapshotSchemaVersion: number | null;
+      snapshot?: unknown;
+      stages?: unknown;
+      contentHash?: unknown;
+    };
+    assert.equal(getRunBody.run.status, 'completed');
+    assert.equal(getRunBody.snapshotAvailable, false);
+    assert.equal(getRunBody.snapshotSchemaVersion, null);
+    assert.equal('snapshot' in getRunBody, false);
+    assert.equal('stages' in getRunBody, false);
+    assert.equal('contentHash' in getRunBody, false);
   } finally {
     await closeFixture(fx);
   }
