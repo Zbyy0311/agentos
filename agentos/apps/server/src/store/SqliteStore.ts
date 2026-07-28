@@ -53,6 +53,7 @@ import { RunRepository } from './RunRepository.js';
 import { WorkflowDefinitionRepository } from './WorkflowDefinitionRepository.js';
 import { RunSnapshotRepository } from './RunSnapshotRepository.js';
 import { RunStageRepository } from './RunStageRepository.js';
+import { IdempotencyRepository } from './IdempotencyRepository.js';
 import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
@@ -407,6 +408,7 @@ export class SqliteStore implements Store {
   private readonly workflowDefinitionRepo: WorkflowDefinitionRepository;
   private readonly runSnapshotRepo: RunSnapshotRepository;
   private readonly runStageRepo: RunStageRepository;
+  private readonly idempotencyRepo: IdempotencyRepository;
   private readonly providerConfigRepo: ProviderConfigurationRepository;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
@@ -422,6 +424,7 @@ export class SqliteStore implements Store {
     this.workflowDefinitionRepo = new WorkflowDefinitionRepository(this.database as any);
     this.runSnapshotRepo = new RunSnapshotRepository(this.database as any);
     this.runStageRepo = new RunStageRepository(this.database as any);
+    this.idempotencyRepo = new IdempotencyRepository(this.database as any);
     this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
     try {
       this.database.exec('PRAGMA foreign_keys = ON');
@@ -455,6 +458,11 @@ export class SqliteStore implements Store {
 
   runStageRepository(): RunStageRepository {
     return this.runStageRepo;
+  }
+
+  /** M2.6 idempotency record repository (shares this store's SQLite handle). */
+  idempotencyRepository(): IdempotencyRepository {
+    return this.idempotencyRepo;
   }
 
   providerConfigurationRepository(): ProviderConfigurationRepository {

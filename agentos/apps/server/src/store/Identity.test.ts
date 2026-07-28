@@ -17,7 +17,7 @@ describe('Identity — canonical entity IDs', () => {
   // ---- production singleton tests ----
 
   it('all prefix constants map to valid EntityIdKind', () => {
-    assert.equal(kinds.length, 26);
+    assert.equal(kinds.length, 27);
     for (const kind of kinds) {
       assert.ok(ENTITY_ID_PREFIXES[kind].length >= 2);
     }
@@ -238,5 +238,47 @@ describe('Identity — M2.5 snapshot kind', () => {
     assert.ok(!isValidEntityId(stageId, 'snapshot'));
     const runId = createEntityId('run');
     assert.ok(!isValidEntityId(runId, 'snapshot'));
+  });
+});
+
+describe('Identity — M2.6 idempotency kind', () => {
+  it('idempotency kind exists with idem prefix', () => {
+    assert.equal(ENTITY_ID_PREFIXES.idempotency, 'idem');
+  });
+
+  it('createEntityId idempotency starts with idem_ and validates', () => {
+    const id = createEntityId('idempotency');
+    assert.ok(id.startsWith('idem_'));
+    assert.ok(isValidEntityId(id, 'idempotency'));
+  });
+
+  it('idempotency ULID body is 26 Crockford Base32 characters', () => {
+    const id = createEntityId('idempotency');
+    const body = id.slice('idem_'.length);
+    assert.equal(body.length, 26);
+    assert.ok(/^[0-9A-HJKM-NP-TV-Z]{26}$/.test(body));
+  });
+
+  it('idempotency ID is not recognized as snapshot/run/task', () => {
+    const idemId = createEntityId('idempotency');
+    assert.ok(!isValidEntityId(idemId, 'snapshot'));
+    assert.ok(!isValidEntityId(idemId, 'run'));
+    assert.ok(!isValidEntityId(idemId, 'task'));
+    const snapshotId = createEntityId('snapshot');
+    assert.ok(!isValidEntityId(snapshotId, 'idempotency'));
+    const runId = createEntityId('run');
+    assert.ok(!isValidEntityId(runId, 'idempotency'));
+    const taskId = createEntityId('task');
+    assert.ok(!isValidEntityId(taskId, 'idempotency'));
+  });
+
+  it('all 26 prior kinds remain valid alongside idempotency', () => {
+    const priorKinds = kinds.filter((kind) => kind !== 'idempotency');
+    assert.equal(priorKinds.length, 26);
+    for (const kind of priorKinds) {
+      const id = createEntityId(kind);
+      assert.ok(isValidEntityId(id, kind));
+      assert.ok(!isValidEntityId(id, 'idempotency'));
+    }
   });
 });
