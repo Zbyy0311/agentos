@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { createRequire } from 'node:module';
+import type { AddressInfo } from 'node:net';
 import type { AgentStage, TaskItem, TaskLog, Workspace } from '@agentos/shared';
 import { createTaskRoutes, type RunnerFactory } from './tasks.js';
 import { createV2TaskRoutes } from './v2Tasks.js';
@@ -34,6 +35,57 @@ type Db = InstanceType<typeof DatabaseSync>;
 const WORKER_STDOUT = '## Checks Run\n- unit tests\n## Findings by Severity\n- none\n## Evidence\n- proof\n';
 const REVIEWER_STDOUT = 'Decision: pass\n';
 const FINAL_STDOUT = 'Final Decision: approve\n';
+
+function makeCaptureTestDouble(): never {
+  return {
+    resolveUnbound: () => ({ workflow: { id: 'test-unbound' }, stages: [], redactionApplied: false }),
+    resolveLegacy: () => ({ workflow: { id: 'test-legacy' }, stages: [], redactionApplied: false }),
+    persistResolvedRun: (run: { id: string; workspaceId: string }) => ({
+      snapshot: {
+        id: `snapshot-${run.id}`,
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        workflowDefinitionId: 'test-legacy',
+        snapshotSchemaVersion: 1,
+        payload: {},
+        contentHash: 'b'.repeat(64),
+        redactionApplied: false,
+        capturedAt: '2026-01-01T00:00:00.000Z',
+      },
+      stages: [],
+    }),
+    buildLegacyRunnerWorkspace: (workspace: Workspace) => structuredClone(workspace),
+  } as never;
+}
+
+function makeTestWorkflow(definitionKey: 'legacy-pipeline' | 'unbound-task-run') {
+  return {
+    id: `workflow-${definitionKey}`,
+    definitionKey,
+    version: 1,
+    name: definitionKey,
+    definitionHash: 'a'.repeat(64),
+    enabled: true,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    payload: {
+      schemaVersion: 1,
+      definitionKey,
+      version: 1,
+      name: definitionKey,
+      executionMode: definitionKey === 'legacy-pipeline' ? 'legacy_pipeline' : 'unbound',
+      retryPolicy: null,
+      stages: definitionKey === 'legacy-pipeline'
+        ? [
+          { key: 'codex_manager', sequence: 1, agentRole: 'codex' },
+          { key: 'kimi_worker', sequence: 2, agentRole: 'kimi' },
+          { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode' },
+          { key: 'codex_final_review', sequence: 4, agentRole: 'codex' },
+        ]
+        : [],
+    },
+  };
+}
 
 function makeLog(stage: AgentStage, stdout = 'ok'): TaskLog {
   return {
@@ -171,6 +223,7 @@ interface Fixture {
   server: ReturnType<express.Express['listen']>;
   base: string;
   workspaceId: string;
+  workspace: Workspace;
   responseCloseCount: { value: number };
   sseWrites: string[];
 }
@@ -209,9 +262,43 @@ async function createFixture(
   const storeDeps: TaskRunServiceDeps = {
     taskRepository: () => taskRepo,
     runRepository: () => runRepo,
+    workflowDefinitionRepository: () => ({
+      findLatestAvailableByKey: (definitionKey: string) => definitionKey === 'legacy-pipeline'
+        ? makeTestWorkflow('legacy-pipeline')
+        : definitionKey === 'unbound-task-run' ? makeTestWorkflow('unbound-task-run') : undefined,
+    } as never),
+    runSnapshotRepository: () => ({
+      insert: (input: { workspaceId: string; runId: string; workflowDefinitionId: string; payload: unknown }) => ({
+        id: `snapshot-${input.runId}`,
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        workflowDefinitionId: input.workflowDefinitionId,
+        snapshotSchemaVersion: 1,
+        payload: input.payload,
+        contentHash: 'b'.repeat(64),
+        redactionApplied: false,
+        capturedAt: '2026-01-01T00:00:00.000Z',
+      }),
+      findByRunId: () => undefined,
+    } as never),
+    runStageRepository: () => ({
+      insertInitial: (input: { workspaceId: string; runId: string; runSnapshotId: string; workflowStageKey: string; sequence: number }) => ({
+        id: `stage-${input.runId}-${input.sequence}`,
+        ...input,
+        name: input.workflowStageKey,
+        attempt: 1,
+        status: 'pending',
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+        version: 1,
+      }),
+      listByRun: () => [],
+    } as never),
+    providerConfigurationRepository: () => ({ findById: () => undefined } as never),
+    findAgentSnapshotSource: () => undefined,
     runInTransaction: <T>(fn: () => T): T => inTransaction(db as never, fn),
   };
-  const service = new TaskRunService(storeDeps);
+  const service = new TaskRunService(storeDeps, { snapshotService: makeCaptureTestDouble() });
   const fakeStore = new FakeJsonStore();
   const now = new Date().toISOString();
   const workspace: Workspace = {
@@ -230,6 +317,10 @@ async function createFixture(
   app.use(express.json());
   const responseCloseCount = { value: 0 };
   const sseWrites: string[] = [];
+  app.head('/__test_fetch_port_probe', (_req, res) => {
+    res.setHeader('Connection', 'close');
+    res.status(204).end();
+  });
   app.use((_req, res, next) => {
     res.on('close', () => { responseCloseCount.value += 1; });
     const response = res as unknown as { write: (chunk: unknown, ...args: unknown[]) => boolean };
@@ -247,10 +338,7 @@ async function createFixture(
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(storeDeps as never, manager));
   app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(storeDeps as never, manager));
   app.use(createJsonErrorHandler());
-  const server = app.listen(0);
-  await new Promise<void>(resolve => server.once('listening', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('test server did not bind');
+  const { server, port } = await listenOnFetchSafePort(app);
   return {
     db,
     storeDeps,
@@ -259,16 +347,88 @@ async function createFixture(
     service,
     fakeStore,
     server,
-    base: `http://127.0.0.1:${address.port}/api/workspaces/${workspaceId}`,
+    base: `http://127.0.0.1:${port}/api/workspaces/${workspaceId}`,
     workspaceId,
+    workspace,
     responseCloseCount,
     sseWrites,
   };
 }
 
+async function closeTestServer(
+  server: ReturnType<express.Express['listen']>,
+): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    server.close(error => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
+}
+
+function isFetchBadPortError(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as { message?: unknown; cause?: unknown };
+  if (!(error instanceof TypeError) && candidate.message !== 'fetch failed') return false;
+  if (typeof candidate.cause !== 'object' || candidate.cause === null) return false;
+  return (candidate.cause as { message?: unknown }).message === 'bad port';
+}
+
+async function listenOnFetchSafePort(
+  app: express.Express,
+): Promise<{
+  server: ReturnType<express.Express['listen']>;
+  port: number;
+}> {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    let server: ReturnType<express.Express['listen']> | undefined;
+    try {
+      const listenerServer = app.listen(0, '127.0.0.1');
+      server = listenerServer;
+      await new Promise<void>((resolve, reject) => {
+        const onListening = () => {
+          listenerServer.off('error', onError);
+          resolve();
+        };
+        const onError = (error: Error) => {
+          listenerServer.off('listening', onListening);
+          reject(error);
+        };
+        listenerServer.once('listening', onListening);
+        listenerServer.once('error', onError);
+      });
+      if (!server) {
+        throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
+      }
+      const address = server.address();
+      if (!address || typeof address === 'string') {
+        throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
+      }
+      const port = (address as AddressInfo).port;
+      const probe = await fetch(`http://127.0.0.1:${port}/__test_fetch_port_probe`, {
+        method: 'HEAD',
+      });
+      if (probe.status !== 204) {
+        throw new Error(`TEST_FETCH_SAFE_PORT_PROBE_FAILED: ${probe.status}`);
+      }
+      return { server, port };
+    } catch (error) {
+      if (server) {
+        try { await closeTestServer(server); } catch { /* preserve the diagnostic error */ }
+      }
+      if (isFetchBadPortError(error)) continue;
+      throw error;
+    }
+  }
+  throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
+}
+
 async function closeFixture(fx: Fixture): Promise<void> {
-  fx.server.close();
-  fx.db.close();
+  try {
+    await closeTestServer(fx.server);
+  } finally {
+    fx.db.close();
+  }
 }
 
 async function runToCompletion(fx: Fixture, taskId: string): Promise<{ httpStatus: number; body: string }> {
@@ -621,7 +781,20 @@ test('T105 Bridge-created Task and Runs are readable through the v2 GET APIs', a
 
     const getRun = await fetch(`${fx.base}/v2/runs/${run.id}`);
     assert.equal(getRun.status, 200);
-    assert.equal((await getRun.json() as { run: { status: string } }).run.status, 'completed');
+    const getRunBody = await getRun.json() as {
+      run: { status: string };
+      snapshotAvailable: boolean;
+      snapshotSchemaVersion: number | null;
+      snapshot?: unknown;
+      stages?: unknown;
+      contentHash?: unknown;
+    };
+    assert.equal(getRunBody.run.status, 'completed');
+    assert.equal(getRunBody.snapshotAvailable, false);
+    assert.equal(getRunBody.snapshotSchemaVersion, null);
+    assert.equal('snapshot' in getRunBody, false);
+    assert.equal('stages' in getRunBody, false);
+    assert.equal('contentHash' in getRunBody, false);
   } finally {
     await closeFixture(fx);
   }
@@ -708,6 +881,7 @@ test('R05 legacy bridge rejects a stale active queued Run without leaking SQLite
       title: 'demo task',
       createdBy: 'legacy_pipeline',
       objective: 'demo task',
+      workspace: fx.workspace,
     });
     assert.equal(active.run.status, 'queued');
     const legacyBefore = JSON.stringify(fx.fakeStore.getTask(fx.workspaceId, 'legacy01'));
@@ -918,6 +1092,7 @@ test('R15 non-terminal Legacy JSON statuses do not trigger terminal reconciliati
         title: 'demo task',
         createdBy: 'legacy_pipeline',
         objective: 'demo task',
+        workspace: fx.workspace,
       });
       fx.service.startRunForBridge(fx.workspaceId, created.run.id);
       const legacy = fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!;
@@ -948,6 +1123,7 @@ test('R16 reconciliation failure is sanitized and does not mutate JSON or create
       title: 'demo task',
       createdBy: 'legacy_pipeline',
       objective: 'demo task',
+      workspace: fx.workspace,
     });
     fx.service.startRunForBridge(fx.workspaceId, created.run.id);
     const legacy = fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!;

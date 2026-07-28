@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Store } from './store/Store.js';
 import type { TaskItem, Workspace } from '@agentos/shared';
+import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import { SqliteStore } from './store/SqliteStore.js';
 import { TaskRunService } from './services/TaskRunService.js';
 import { recoverInterruptedRunningTasks, recoverInterruptedTaskRuntime } from './taskRecovery.js';
@@ -93,7 +94,7 @@ function makeRealWorkspace(id: string, root: string): Workspace {
     rootPath: join(root, id),
     gitEnabled: false,
     memoryEnabled: false,
-    agents: [],
+    agents: structuredClone(DEFAULT_WORKSPACE_AGENTS),
     lastOpenedAt: now,
     createdAt: now,
     updatedAt: now,
@@ -132,13 +133,16 @@ function seedRealLegacyTask(store: SqliteStore, workspaceId: string, status: Tas
   return task;
 }
 
-function createLegacyQueuedRun(service: TaskRunService, workspaceId: string, legacyTaskId: string) {
+function createLegacyQueuedRun(store: SqliteStore, service: TaskRunService, workspaceId: string, legacyTaskId: string) {
+  const workspace = store.loadWorkspaces().find(candidate => candidate.id === workspaceId);
+  assert.ok(workspace);
   return service.createLegacyRunForBridge({
     workspaceId,
     legacyTaskId,
     title: `Legacy ${workspaceId}`,
     createdBy: 'legacy_pipeline',
     objective: `Legacy ${workspaceId}`,
+    workspace,
   });
 }
 
@@ -147,12 +151,26 @@ function finishRetry(service: TaskRunService, workspaceId: string, runId: string
   service.failRunForBridge(workspaceId, runId, 'retry finished');
 }
 
+function snapshotCount(store: SqliteStore): number {
+  return (store.getDatabase().prepare('SELECT COUNT(*) AS count FROM run_snapshots').get() as { count: number }).count;
+}
+
+function assertLegacyCapture(store: SqliteStore, created: ReturnType<typeof createLegacyQueuedRun>): void {
+  assert.ok(created.snapshot);
+  assert.equal(created.stages.length, 4);
+  assert.ok(store.runSnapshotRepository().findByRunId(created.run.workspaceId, created.run.id));
+  assert.equal(store.runStageRepository().listByRun(created.run.workspaceId, created.run.id).length, 4);
+}
+
 test('R17 Window A recovers a queued legacy orphan after a real store reopen and permits retry', () => {
   const env = createRealRecoveryEnv();
   let store = env.store;
   try {
     const legacy = seedRealLegacyTask(store, 'ws-a', 'completed');
-    const created = createLegacyQueuedRun(env.service, 'ws-a', legacy.id);
+    const created = createLegacyQueuedRun(store, env.service, 'ws-a', legacy.id);
+    assertLegacyCapture(store, created);
+    const parentSnapshotPayload = structuredClone(store.runSnapshotRepository().findByRunId('ws-a', created.run.id)!.payload);
+    const snapshotsBeforeRecovery = snapshotCount(store);
     const beforeJson = JSON.stringify(store.loadTasks('ws-a'));
     store.close();
 
@@ -172,11 +190,15 @@ test('R17 Window A recovers a queued legacy orphan after a real store reopen and
     assert.equal(recoveredTask.status, 'open');
     assert.equal(store.runRepository().findActiveByTask('ws-a', created.task.id), undefined);
     assert.equal(JSON.stringify(store.loadTasks('ws-a')), beforeJson);
+    assert.equal(snapshotCount(store), snapshotsBeforeRecovery, 'recovery must not add a Snapshot');
 
-    const retry = createLegacyQueuedRun(new TaskRunService(store), 'ws-a', legacy.id);
+    const retry = createLegacyQueuedRun(store, new TaskRunService(store), 'ws-a', legacy.id);
+    assertLegacyCapture(store, retry);
     assert.equal(retry.run.parentRunId, recovered.id);
     assert.equal(retry.run.rootRunId, recovered.rootRunId);
     assert.notEqual(retry.run.id, recovered.id);
+    assert.deepEqual(store.runSnapshotRepository().findByRunId('ws-a', created.run.id)!.payload, parentSnapshotPayload);
+    assert.equal(snapshotCount(store), snapshotsBeforeRecovery + 1);
     finishRetry(new TaskRunService(store), 'ws-a', retry.run.id);
     assert.equal(store.runRepository().findActiveByTask('ws-a', created.task.id), undefined);
   } finally {
@@ -190,7 +212,8 @@ test('R18 Window B recovers JSON running and queued Run after a real store reope
   let store = env.store;
   try {
     const legacy = seedRealLegacyTask(store, 'ws-a', 'running');
-    const created = createLegacyQueuedRun(env.service, 'ws-a', legacy.id);
+    const created = createLegacyQueuedRun(store, env.service, 'ws-a', legacy.id);
+    assertLegacyCapture(store, created);
     store.close();
 
     store = new SqliteStore(env.root);
@@ -202,7 +225,8 @@ test('R18 Window B recovers JSON running and queued Run after a real store reope
     assert.equal(recovered.failureCode, 'BRIDGE_PRESTART_INTERRUPTED');
     assert.equal(store.runRepository().findActiveByTask('ws-a', created.task.id), undefined);
 
-    const retry = createLegacyQueuedRun(new TaskRunService(store), 'ws-a', legacy.id);
+    const retry = createLegacyQueuedRun(store, new TaskRunService(store), 'ws-a', legacy.id);
+    assertLegacyCapture(store, retry);
     assert.equal(retry.run.parentRunId, recovered.id);
     assert.equal(retry.run.rootRunId, recovered.rootRunId);
     finishRetry(new TaskRunService(store), 'ws-a', retry.run.id);
@@ -216,7 +240,7 @@ test('R19 startup queued recovery is idempotent across repeated calls', () => {
   const env = createRealRecoveryEnv();
   try {
     const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
-    const created = createLegacyQueuedRun(env.service, 'ws-a', legacy.id);
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
     const first = recoverInterruptedTaskRuntime(env.store, env.service);
     const afterFirstRun = env.store.runRepository().findById('ws-a', created.run.id)!;
     const afterFirstTask = env.store.taskRepository().findById('ws-a', created.task.id)!;
@@ -260,10 +284,10 @@ test('R21 startup recovery preserves an existing pending acceptance window', () 
   const env = createRealRecoveryEnv();
   try {
     const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
-    const initial = createLegacyQueuedRun(env.service, 'ws-a', legacy.id);
+    const initial = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
     env.service.startRunForBridge('ws-a', initial.run.id);
     const completed = env.service.completeRunForBridge('ws-a', initial.run.id);
-    const orphan = createLegacyQueuedRun(env.service, 'ws-a', legacy.id);
+    const orphan = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
     const pendingBefore = env.store.taskRepository().findById('ws-a', initial.task.id)!;
 
     const result = recoverInterruptedTaskRuntime(env.store, env.service);
@@ -285,7 +309,7 @@ test('R22 startup recovery leaves a running legacy Run to explicit retry reconci
   const env = createRealRecoveryEnv();
   try {
     const legacy = seedRealLegacyTask(env.store, 'ws-a', 'running');
-    const created = createLegacyQueuedRun(env.service, 'ws-a', legacy.id);
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
     const running = env.service.startRunForBridge('ws-a', created.run.id);
     const result = recoverInterruptedTaskRuntime(env.store, env.service);
     const afterRun = env.store.runRepository().findById('ws-a', created.run.id)!;
@@ -306,7 +330,7 @@ test('R23 startup recovery fails closed and rolls back queued recovery errors', 
   const env = createRealRecoveryEnv();
   try {
     const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
-    const created = createLegacyQueuedRun(env.service, 'ws-a', legacy.id);
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
     const beforeRun = env.store.runRepository().findById('ws-a', created.run.id)!;
     const beforeTask = env.store.taskRepository().findById('ws-a', created.task.id)!;
     env.store.getDatabase().exec(`
@@ -339,7 +363,7 @@ test('R24 startup recovery is workspace-scoped and returns precise evidence', ()
   const env = createRealRecoveryEnv(['ws-a', 'ws-b', 'ws-c']);
   try {
     const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
-    const legacyRun = createLegacyQueuedRun(env.service, 'ws-a', legacy.id);
+    const legacyRun = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
     const v2Task = env.service.createTask('ws-b', { title: 'v2 task', createdBy: 'tester' });
     const v2Run = env.service.createRun('ws-b', { taskId: v2Task.id, createdBy: 'tester' });
     const result = recoverInterruptedTaskRuntime(env.store, env.service);

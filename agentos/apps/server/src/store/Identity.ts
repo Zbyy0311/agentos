@@ -11,6 +11,7 @@ export const ENTITY_ID_PREFIXES = {
   task: 'task',
   run: 'run',
   stage: 'stage',
+  snapshot: 'snapshot',
   event: 'evt',
   process: 'proc',
   worktree: 'wt',

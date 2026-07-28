@@ -2,14 +2,18 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createV2TaskRoutes } from './v2Tasks.js';
+import { createV2TaskRoutes, respondV2 } from './v2Tasks.js';
 import { createV2RunRoutes } from './v2Runs.js';
 import { createTaskRoutes } from './tasks.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { TaskRunService } from '../services/TaskRunService.js';
+import type { Workspace } from '@agentos/shared';
+import { AgentNotAvailableError, ProviderConfigNotAvailableError, RunSnapshotFailedError } from '../services/SnapshotService.js';
+import { WorkflowNotAvailableError } from '../services/WorkflowDefinitionResolver.js';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-v2-task-routes-'));
@@ -18,12 +22,35 @@ function createProjectRoot(): string {
   return root;
 }
 
-async function listen(app: express.Express): Promise<{ server: ReturnType<typeof app.listen>; base: string }> {
-  const server = app.listen(0);
-  await new Promise<void>(resolve => server.once('listening', resolve));
-  const address = server.address();
-  if (!address || typeof address === 'string') throw new Error('test server did not bind to a TCP port');
-  return { server, base: `http://127.0.0.1:${address.port}/api/workspaces` };
+function isFetchBadPortError(error: unknown): boolean {
+  return (error as { cause?: { message?: unknown } } | null)?.cause?.message === 'bad port';
+}
+
+async function closeTestServer(server: ReturnType<express.Express['listen']>): Promise<void> {
+  if (!server.listening) return;
+  await new Promise<void>(resolve => server.close(() => resolve()));
+}
+
+async function listenOnFetchSafePort(app: express.Express): Promise<{ server: ReturnType<typeof app.listen>; base: string }> {
+  for (let attempt = 0; attempt < 32; attempt += 1) {
+    const server = app.listen(0, '127.0.0.1');
+    try {
+      await new Promise<void>((resolve, reject) => {
+        server.once('listening', resolve);
+        server.once('error', reject);
+      });
+      const address = server.address() as AddressInfo | null;
+      if (!address || typeof address === 'string') throw new Error('test server did not bind to a TCP port');
+      const base = `http://127.0.0.1:${address.port}/api/workspaces`;
+      const probe = await fetch(`http://127.0.0.1:${address.port}/__test_fetch_port_probe`, { method: 'HEAD' });
+      if (probe.status !== 204) throw new Error(`test fetch probe returned ${probe.status}`);
+      return { server, base };
+    } catch (error) {
+      await closeTestServer(server);
+      if (!isFetchBadPortError(error)) throw error;
+    }
+  }
+  throw new Error('TEST_FETCH_SAFE_PORT_UNAVAILABLE');
 }
 
 interface Fixture {
@@ -35,6 +62,7 @@ interface Fixture {
   baseB: string;
   workspaceAId: string;
   workspaceBId: string;
+  workspaceA: Workspace;
 }
 
 async function createFixture(): Promise<Fixture> {
@@ -45,10 +73,14 @@ async function createFixture(): Promise<Fixture> {
   const workspaceB = manager.create('Workspace B', join(root, 'b'), { git: false, memory: false, readme: false, docs: false });
   const app = express();
   app.use(express.json());
+  app.head('/__test_fetch_port_probe', (_req, res) => {
+    res.setHeader('Connection', 'close');
+    res.status(204).end();
+  });
   app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, manager));
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, manager));
   app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, manager));
-  const { server, base } = await listen(app);
+  const { server, base } = await listenOnFetchSafePort(app);
   return {
     root,
     store,
@@ -58,11 +90,12 @@ async function createFixture(): Promise<Fixture> {
     baseB: `${base}/${workspaceB.id}`,
     workspaceAId: workspaceA.id,
     workspaceBId: workspaceB.id,
+    workspaceA,
   };
 }
 
 async function closeFixture(fx: Fixture): Promise<void> {
-  fx.server.close();
+  await closeTestServer(fx.server);
   fx.store.close();
   rmSync(fx.root, { recursive: true, force: true });
 }
@@ -73,6 +106,21 @@ async function postJson(url: string, body?: unknown): Promise<Response> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body ?? {}),
   });
+}
+
+function responseProbe(): { response: Response; state: { status: number; body: unknown } } {
+  const state = { status: 0, body: undefined as unknown };
+  const response = {
+    status(code: number) {
+      state.status = code;
+      return this;
+    },
+    json(body: unknown) {
+      state.body = body;
+      return this;
+    },
+  } as unknown as Response;
+  return { response, state };
 }
 
 async function createTask(baseA: string, title = 'task-one'): Promise<{ id: string; [k: string]: unknown }> {
@@ -88,7 +136,11 @@ async function bridgeCompleteTask(fx: Fixture, legacyTaskId: string): Promise<{ 
     title: 'bridge task',
     createdBy: 'legacy_pipeline',
     objective: 'bridge task',
+    workspace: fx.workspaceA,
   });
+  assert.ok(created.snapshot);
+  assert.equal(created.stages.length, 4);
+  assert.equal(fx.store.runStageRepository().listByRun(fx.workspaceAId, created.run.id).length, 4);
   fx.service.startRunForBridge(fx.workspaceAId, created.run.id);
   fx.service.completeRunForBridge(fx.workspaceAId, created.run.id);
   return { taskId: created.task.id, runId: created.run.id };
@@ -318,6 +370,7 @@ test('T87 accepting a non-completed Run returns RUN_NOT_COMPLETED', async () => 
     const { taskId } = await bridgeCompleteTask(fx, 'L1');
     const retry = fx.service.createLegacyRunForBridge({
       workspaceId: fx.workspaceAId, legacyTaskId: 'L1', title: 'bridge task', createdBy: 'legacy_pipeline', objective: 'bridge task',
+      workspace: fx.workspaceA,
     });
     const response = await postJson(`${fx.baseA}/v2/tasks/${taskId}/accept`, { runId: retry.run.id });
     assert.equal(response.status, 409);
@@ -386,7 +439,7 @@ test('T91 internal errors are sanitized and never leak SQLite, path or stack det
     }
     fx.store = undefined as unknown as SqliteStore;
   } finally {
-    fx.server.close();
+    await closeTestServer(fx.server);
     rmSync(fx.root, { recursive: true, force: true });
   }
 });
@@ -406,6 +459,37 @@ test('T92 v2 Task/Run endpoints exist only under /api/workspaces/:workspaceId/v2
     assert.equal(legacyTask.status, 'pending');
     const v2Run404 = await fetch(`${fx.baseA}/runs/${v2Task.id}`);
     assert.notEqual(v2Run404.status, 200);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4 v2 error boundary maps four snapshot-related codes to stable safe responses', () => {
+  const cases = [
+    [new AgentNotAvailableError(), 409, 'Agent is not available'],
+    [new ProviderConfigNotAvailableError(), 409, 'Provider configuration is not available'],
+    [new WorkflowNotAvailableError('secret-workflow-literal'), 409, 'Workflow is not available'],
+    [new RunSnapshotFailedError('secret-snapshot-literal'), 500, 'Run snapshot creation failed'],
+  ] as const;
+  for (const [error, expectedStatus, expectedMessage] of cases) {
+    const probe = responseProbe();
+    respondV2(probe.response as never, () => { throw error; });
+    assert.equal(probe.state.status, expectedStatus);
+    assert.deepEqual(probe.state.body, { error: expectedMessage, code: error.code });
+    assert.doesNotMatch(JSON.stringify(probe.state.body), /secret-(workflow|snapshot)-literal/);
+  }
+});
+
+test('P4 disabled unbound Workflow returns WORKFLOW_NOT_AVAILABLE without raw definition details', async () => {
+  const fx = await createFixture();
+  try {
+    fx.store.getDatabase().prepare("UPDATE workflow_definitions SET enabled = 0 WHERE definition_key = 'unbound-task-run'").run();
+    const task = await createTask(fx.baseA, 'disabled workflow');
+    const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/runs`, {});
+    assert.equal(response.status, 409);
+    const body = await response.json() as { error: string; code: string };
+    assert.deepEqual(body, { error: 'Workflow is not available', code: 'WORKFLOW_NOT_AVAILABLE' });
+    assert.doesNotMatch(JSON.stringify(body), /unbound-task-run|SQLITE|workspace/);
   } finally {
     await closeFixture(fx);
   }

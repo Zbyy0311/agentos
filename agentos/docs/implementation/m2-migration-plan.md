@@ -1,10 +1,10 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW; M2.5 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION (implementation not started)
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
-> **Branch:** `runtime/m2-3-workspace-agent-provider` (active M2.3 work), based on merged main@`0075d36e`
+> **Branch:** `runtime/m2-5-stage-workflow-snapshots` (active M2.5 planning), current main/baseline `3e86464bbbc6f4ab80fadd800d873853de7697e0`
 > **Reference:** docs/Runtime-Specification/10-Data-Model.md, 01-Core-Concepts.md
 
 ---
@@ -16,15 +16,16 @@
 | M2.1 | VERIFIED & MERGED | `b4613b2a` |
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
-| M2.4 | IMPLEMENTED — PENDING PR REMEDIATION REVIEW | `runtime/m2-4-task-run-separation`, report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; Reviewed Head `efcf7b8c`; Remediation Code `8b2ff01f`; targeted 139/139 in 7 files (`3787.9554ms`); Server 437/437 (`41043.7068ms`); Agent Core 123/123; Build PASS; Scope Audit PASS; Remote CI unavailable; PR #3 OPEN; merge not authorized; M2.5 not started |
+| M2.4 | VERIFIED & MERGED — `e02db3b0` | PR #3 merged and archived; report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; no further remediation |
+| M2.5 | PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION; implementation not started | Branch `runtime/m2-5-stage-workflow-snapshots`; OD-1–OD-12 APPROVED 2026-07-26; plan review closed 2026-07-27 (BLOCKER 0 / HIGH 1 / MEDIUM 9 / LOW 2, all resolved); baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED at `3e86464b`; see `docs/implementation/milestones/M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md`, `M2.5-plan-review.md` |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
 
-> **M2.4 PR Review Remediation（2026-07-24）：** Owner Decision 采用 explicit retry reconciliation；代码提交 `8b2ff01f`；恢复依据为持久化 Legacy JSON terminal status；新增 R10–R16；定向 139/139、Server 437/437、Agent Core 123/123、Build、diff check 与 Scope Audit 均通过。无 Migration 007、startup recovery 或 v2 running cancel API；Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 OPEN；不得合并；M2.5 未启动。
+> **M2.4 PR Review Remediation（2026-07-24，HISTORICAL 时点记录 — 当前状态以本文档顶部 Status 与状态表为准）：** Owner Decision 采用 explicit retry reconciliation；代码提交 `8b2ff01f`；恢复依据为持久化 Legacy JSON terminal status；新增 R10–R16；定向 139/139、Server 437/437、Agent Core 123/123、Build、diff check 与 Scope Audit 均通过。无 Migration 007、startup recovery 或 v2 running cancel API；Remote CI unavailable；M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW；PR #3 OPEN；不得合并；M2.5 未启动。
 
 M2.3 is verified (Server 298/298, Agent Core 123/123, local runs; Remote CI unavailable) and was merged to `main` via PR #2 merge commit `ab1fa905` at 2026-07-22T16:30:20Z (source head `ca541c8a`).
 
-## Current M2.4 Queued Recovery Update (2026-07-24)
+## M2.4 Queued Recovery Update (2026-07-24 — HISTORICAL 时点记录，当前状态以本文档顶部 Status 与状态表为准)
 
 PR #3 now contains queued Legacy Bridge startup recovery on code commit `59f982d5` (`fix(runtime): recover orphaned legacy queued runs on startup`). The Owner decision is startup orphan reconciliation: only `legacy_pipeline` queued Runs are recovered after a server restart; queued `v2_api` Runs and running Legacy Runs remain untouched. The implementation uses `BRIDGE_PRESTART_INTERRUPTED`, preserves Task pending acceptance windows, fails closed on transaction errors, and does not modify schema, `runRecovery.ts`, v2 APIs, or M2.5.
 
@@ -395,7 +396,7 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - Legacy URLs, `runs.ts`, `apps/web` and existing tests remain unchanged
 - Final report records current remediation evidence: Server 437/437, targeted 139/139, Agent Core 123/123, Build PASS and `git diff --check` PASS; Remote CI unavailable
 
-#### Verification Closure (2026-07-24)
+#### Verification Closure (2026-07-24 — HISTORICAL 时点记录)
 
 - Final remediation review: **APPROVED**；BLOCKER 0 / HIGH 0 / MEDIUM 0 / LOW 0。
 - Final remediation head: `38448dd6`；remediation code: `615a53a9`；remediation documentation: `cd3696b6`。
@@ -414,72 +415,22 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 
 ### M2.5 — Stage, Workflow Snapshot and Runtime Snapshot
 
-**Goal:** Begin freezing immutable snapshots at Run creation time, align stage model with v2.
+**Status:** PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION; implementation not started.
 
-#### Domain Types
-- `RunStage` — enhanced from `RunStep`: add `workflowStageKey`, `agentSnapshotJson`, `providerSnapshotJson`
-- `WorkflowDefinition` — new type: `id`, `name`, `version`, `stages[]`, timestamps
-- `AgentSnapshot` — `{ agentId, name, role, systemPrompt, capabilities, providerConfigId }`
-- `ProviderConfigurationSnapshot` — `{ providerConfigId, name, providerType, executable?, argsTemplate?, model?, capabilities }`
+**Historical draft notice:** the detailed M2.5 proposal previously recorded in this section (snapshot columns on `agent_runs`, extending `run_steps`, returning snapshots from `routes/runs.ts`, migration filenames `v006-workflow-definitions.sql` / `v007-snapshot-columns.sql`, branch `m2/snapshots`) was written before M2.4 Task/Run separation. It is retained here only as history and is **superseded** — it is not implementation authorization. Post-M2.4 facts: canonical Task-domain `tasks`/`runs` exist (migrations 005/006); Conversation `agent_runs`/`run_steps`/`routes/runs.ts` are a separate, frozen domain; the migration registry is TS-based 001–006 and the actual next ID is 007 with naming to be decided after owner decisions.
 
-#### Schema Changes
-- Create `workflow_definitions` table
-- Create `run_snapshots` table or add `snapshot_json` columns to agent_runs
-- Add to `run_steps`: `workflow_stage_key TEXT`, `agent_snapshot_json TEXT`, `provider_snapshot_json TEXT`
-- Add to `agent_runs`: `agent_snapshot_json TEXT`, `provider_snapshot_json TEXT`, `workflow_snapshot_json TEXT`, `workflow_definition_id TEXT`
+**Authoritative M2.5 documents:**
 
-#### Existing Files
-- `packages/shared/src/types/index.ts` — RunStep, AgentRun types
-- `apps/server/src/store/SqliteStore.ts` — run_steps CRUD, agent_runs CRUD
-- `apps/server/src/services/RunStepService.ts` — step lifecycle
+- Current-State Audit: `docs/implementation/milestones/M2.5-current-state-audit.md` (evidence-bound inventory of schema, Run creation paths, stage gap, snapshot data classification, documentation drift)
+- Owner Decisions: `docs/implementation/milestones/M2.5-owner-decisions.md` (OD-1 through OD-12, APPROVED 2026-07-26)
+- Architecture Plan: `docs/implementation/milestones/M2.5-stage-workflow-snapshot-plan.md` (P1–P4 packages, frozen migrations 007–009 DDL, test matrix; plan review closed)
+- Independent Plan Review: `docs/implementation/milestones/M2.5-plan-review.md` (BLOCKER 0 / HIGH 1 / MEDIUM 9 / LOW 2, all RESOLVED, 2026-07-27)
 
-#### New Files
-- `apps/server/src/migrations/v006-workflow-definitions.sql`
-- `apps/server/src/migrations/v007-snapshot-columns.sql`
-- `apps/server/src/services/SnapshotService.ts` — snapshot creation utility
+**Current M2.5 facts (2026-07-26):**
 
-#### Files Modified
-- `apps/server/src/store/SqliteStore.ts` — snapshot CRUD, run_steps enhancement
-- `apps/server/src/routes/runs.ts` — return snapshots in run details
-- `apps/server/src/services/RunStepService.ts` — populate snapshot data
-
-#### API Impact
-- Run creation stores snapshot automatically
-- Run detail response includes snapshot data
-
-#### Compatibility Impact
-- Snapshot columns are nullable — existing runs get null snapshots
-- New runs automatically get snapshot at creation time (before execution)
-- `run_steps.workflow_stage_key` is a string, not fixed union — progressive adoption
-
-#### Tests
-- Snapshot is created at Run creation time
-- Snapshot is immutable after creation
-- Agent profile change after Run creation does not affect snapshot
-- Provider config change after Run creation does not affect snapshot
-- Existing runs return null for snapshot fields
-
-#### Dependencies
-- M2.4 (needs Task/Run separation)
-
-#### Risks
-- Medium — snapshots are additive; hardest part is deciding WHAT to snapshot
-- Must avoid circular dependencies (snapshot references ProviderConfiguration which references...)
-
-#### Out of Scope
-- Workflow Definition execution — just the data model and snapshot
-- Policy snapshot — wait for Policy Runtime
-
-#### Exit Gate
-- Run snapshots stored and returnable via API
-- Snapshot tests pass
-- Existing runs backward compatible
-
-#### Recommended Branch
-- `m2/snapshots`
-
-#### Integration Order
-- 5/8 — depends on Task/Run separation
+- Branch `runtime/m2-5-stage-workflow-snapshots` at `3e86464bbbc6f4ab80fadd800d873853de7697e0`; baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED (Server 478/477/0/1, Agent Core 123/123, Root Build PASS).
+- No M2.5 code, migration, schema, API, test, package, or lockfile change has been made or authorized.
+- Frozen architecture summary: Task-domain `runs` only; proposed Migrations `007-workflow-definitions`, `008-run-snapshots`, `009-run-stages`; ID prefixes `workflow_<ulid>` / `stage_<ulid>` / `snapshot_<ulid>`; global built-in Workflow definitions (`legacy-pipeline-v1`, `unbound-task-run-v1`, seeded by Migration 007); composite `(run_id, workspace_id)` and `(run_snapshot_id, run_id)` FKs; stage-level Agent/Provider bindings inside Snapshot JSON; the same resolved configuration drives Snapshot, initial Stages, and the Legacy Runner projection; all six v2 Run reasons (incl. `resume-fallback`) use the unbound Workflow; include-based v2 Run GET API; no down migration (apply-failure atomic rollback only); no synthesis or backfill; no Conversation changes; P1 not started.
 
 ---
 
@@ -770,7 +721,7 @@ The following are explicitly out of scope for M2:
 - [ ] `SqliteStore` delegates to MigrationRunner instead of raw `migrateSchema()`
 - [ ] All existing tests pass with MigrationRunner
 
-## M2.4 Project-Root Ownership Remediation Note (2026-07-25)
+## M2.4 Project-Root Ownership Remediation Note (2026-07-25 — HISTORICAL 时点记录，当前状态以本文档顶部 Status 与状态表为准)
 
 M2.4 PR #3 ownership remediation (Project-Root IPC Ownership Lock; code commit `c2828aac` on `runtime/m2-4-task-run-separation`, previous head `4195403b`) added no migration and no schema change: ownership is enforced by an OS-level Named Pipe (Windows) / Unix Domain Socket keyed by a SHA-256 hash of the canonical Project Root, acquired before SQLite and startup recovery. R25-R33 pass (R30 unix-only, skipped on Windows); seven-file targeted 140/140; Server 454 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`; Remote CI unavailable; PR #3 OPEN and unmerged with Auto Merge disabled; merge not authorized; M2.5 not started.
 

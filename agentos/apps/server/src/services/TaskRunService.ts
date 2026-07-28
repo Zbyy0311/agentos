@@ -1,4 +1,12 @@
-import type { CreateV2RunInput, CreateV2TaskInput, Run, Task } from '@agentos/shared';
+import type {
+  CreateV2RunInput,
+  CreateV2TaskInput,
+  Run,
+  RunSnapshot,
+  RunStage,
+  Task,
+  Workspace,
+} from '@agentos/shared';
 import type { TaskRepository } from '../store/TaskRepository.js';
 import {
   TaskNotFoundError,
@@ -6,11 +14,26 @@ import {
 } from '../store/TaskRepository.js';
 import type { RunRepository } from '../store/RunRepository.js';
 import { RunNotFoundError } from '../store/RunRepository.js';
+import type { WorkflowDefinitionRepository } from '../store/WorkflowDefinitionRepository.js';
+import type { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
+import type { RunStageRepository } from '../store/RunStageRepository.js';
+import type { ProviderConfigurationRepository } from '../store/ProviderConfigurationRepository.js';
+import type { AgentSnapshotSourceRecord } from '../store/SqliteStore.js';
+import { WorkflowDefinitionResolver } from './WorkflowDefinitionResolver.js';
+import {
+  SnapshotService,
+  type ResolvedRunConfiguration,
+} from './SnapshotService.js';
 
 /** Minimal store surface required by TaskRunService (structurally satisfied by SqliteStore). */
 export interface TaskRunServiceDeps {
   taskRepository(): TaskRepository;
   runRepository(): RunRepository;
+  workflowDefinitionRepository(): WorkflowDefinitionRepository;
+  runSnapshotRepository(): RunSnapshotRepository;
+  runStageRepository(): RunStageRepository;
+  providerConfigurationRepository(): ProviderConfigurationRepository;
+  findAgentSnapshotSource(workspaceId: string, agentId: string): AgentSnapshotSourceRecord | undefined;
   runInTransaction<T>(fn: () => T): T;
 }
 
@@ -20,12 +43,23 @@ export interface CreateLegacyRunForBridgeInput {
   title: string;
   createdBy: string;
   objective: string;
+  workspace: Workspace;
 }
 
 export interface CreateLegacyRunForBridgeResult {
   task: Task;
   run: Run;
   taskCreated: boolean;
+  resolvedConfiguration: ResolvedRunConfiguration;
+  runnerWorkspace: Workspace;
+  snapshot: RunSnapshot;
+  stages: RunStage[];
+}
+
+export interface TaskRunServiceOptions {
+  resolver?: WorkflowDefinitionResolver;
+  snapshotService?: SnapshotService;
+  clock?: () => string;
 }
 
 export interface ReconcileLegacyTerminalBeforeRetryInput {
@@ -76,7 +110,37 @@ function errorMessage(err: unknown): string {
 }
 
 export class TaskRunService {
-  constructor(private readonly deps: TaskRunServiceDeps) {}
+  private readonly snapshotService: SnapshotService;
+
+  constructor(
+    private readonly deps: TaskRunServiceDeps,
+    options: TaskRunServiceOptions = {},
+  ) {
+    if (
+      !deps
+      || typeof deps !== 'object'
+      || typeof deps.workflowDefinitionRepository !== 'function'
+      || typeof deps.runSnapshotRepository !== 'function'
+      || typeof deps.runStageRepository !== 'function'
+      || typeof deps.providerConfigurationRepository !== 'function'
+      || typeof deps.findAgentSnapshotSource !== 'function'
+    ) {
+      throw domainError('RUN_SNAPSHOT_FAILED', 'RUN_SNAPSHOT_FAILED');
+    }
+    if (options.snapshotService) {
+      this.snapshotService = options.snapshotService;
+      return;
+    }
+    const resolver = options.resolver ?? new WorkflowDefinitionResolver(deps.workflowDefinitionRepository());
+    this.snapshotService = new SnapshotService({
+      workflowDefinitionResolver: resolver,
+      runSnapshotRepository: () => deps.runSnapshotRepository(),
+      runStageRepository: () => deps.runStageRepository(),
+      providerConfigurationRepository: () => deps.providerConfigurationRepository(),
+      findAgentSnapshotSource: (workspaceId, agentId) => deps.findAgentSnapshotSource(workspaceId, agentId),
+      ...(options.clock ? { now: options.clock } : {}),
+    });
+  }
 
   createTask(workspaceId: string, input: CreateV2TaskInput): Task {
     return this.deps.runInTransaction(() =>
@@ -95,7 +159,10 @@ export class TaskRunService {
       if (this.deps.runRepository().findActiveByTask(workspaceId, input.taskId)) {
         throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
       }
-      return this.deps.runRepository().insert({ ...input, workspaceId, origin: 'v2_api' });
+      const resolved = this.snapshotService.resolveUnbound(workspaceId);
+      const run = this.deps.runRepository().insert({ ...input, workspaceId, origin: 'v2_api' });
+      this.snapshotService.persistResolvedRun(run, resolved);
+      return run;
     });
   }
 
@@ -120,6 +187,7 @@ export class TaskRunService {
         throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
       }
       const latest = this.deps.runRepository().findLatestByTask(input.workspaceId, task.id);
+      const resolved = this.requireLegacyResolution(input);
       const run = this.deps.runRepository().insert({
         workspaceId: input.workspaceId,
         taskId: task.id,
@@ -129,8 +197,24 @@ export class TaskRunService {
         objective: input.objective,
         createdBy: input.createdBy,
       });
-      return { task, run, taskCreated };
+      const persisted = this.snapshotService.persistResolvedRun(run, resolved);
+      return {
+        task,
+        run,
+        taskCreated,
+        resolvedConfiguration: resolved,
+        runnerWorkspace: this.snapshotService.buildLegacyRunnerWorkspace(input.workspace, resolved),
+        snapshot: persisted.snapshot,
+        stages: persisted.stages,
+      };
     });
+  }
+
+  private requireLegacyResolution(input: CreateLegacyRunForBridgeInput): ResolvedRunConfiguration {
+    if (!input.workspace || input.workspace.id !== input.workspaceId) {
+      throw domainError('RUN_SNAPSHOT_FAILED', 'RUN_SNAPSHOT_FAILED');
+    }
+    return this.snapshotService.resolveLegacy(input.workspace);
   }
 
   reconcileLegacyTerminalBeforeRetry(

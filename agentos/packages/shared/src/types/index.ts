@@ -735,3 +735,183 @@ export interface CreateV2RunInput {
   objective?: string;
   createdBy: string;
 }
+
+// ---------------------------------------------------------------------------
+// M2.5 — Workflow Definition / Run Snapshot / RunStage shared types (V1)
+// Append-only: no existing Run, RunStep, AgentRun, Task, CreateV2RunInput,
+// V2RunReason or Conversation types are modified. Nullable snapshot fields use
+// explicit null (never undefined). No secret values, no resolved tokens, no
+// custom absolute working directories are representable here.
+// ---------------------------------------------------------------------------
+
+export type WorkflowExecutionModeV1 = 'legacy_pipeline' | 'unbound';
+
+export interface WorkflowStageDefinitionV1 {
+  key: string;
+  sequence: number;
+  agentRole: AgentRole | null;
+}
+
+export interface WorkflowDefinitionPayloadV1 {
+  schemaVersion: 1;
+  definitionKey: string;
+  version: number;
+  name: string;
+  executionMode: WorkflowExecutionModeV1;
+  retryPolicy: null;
+  stages: WorkflowStageDefinitionV1[];
+}
+
+export interface WorkflowDefinition {
+  id: string;
+  definitionKey: string;
+  version: number;
+  name: string;
+  payload: WorkflowDefinitionPayloadV1;
+  definitionHash: string;
+  enabled: boolean;
+  archivedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentSnapshotV1 {
+  agentId: string;
+  name: string;
+  role: AgentRole;
+  roleTitle: string;
+  systemPrompt: string;
+  permissions: AgentPermission[];
+  providerConfigId: string;
+  enabled: boolean;
+  version: number;
+}
+
+// Provider snapshot supporting types mirror the current ProviderConfiguration
+// structure (apps/server/src/store/ProviderConfigurationRepository.ts).
+export type ProviderTypeV1 =
+  | 'codex'
+  | 'claude-code'
+  | 'kimicode'
+  | 'opencode'
+  | 'gemini-cli'
+  | 'custom-cli'
+  | 'remote';
+
+export type RuntimeModeV1 = 'cli' | 'api' | 'ssh' | 'container';
+
+export type WorkingDirectoryModeV1 = 'workspace' | 'worktree' | 'custom';
+
+export type ApprovalModeV1 = 'agentos' | 'native' | 'hybrid' | 'disabled';
+
+export type OutputModeV1 = 'structured' | 'parsed-text' | 'raw-stream';
+
+export interface ProviderCapabilitiesV1 {
+  sessionResume: boolean;
+  structuredEvents: boolean;
+  nativeApprovals: boolean;
+  subagents: boolean;
+  toolEvents: boolean;
+  fileEvents: boolean;
+  usageEvents: boolean;
+  reasoningStream: boolean;
+  interactiveInput: boolean;
+  pause: boolean;
+  cancellation: boolean;
+  modelSelection: boolean;
+  workspaceAwareness: boolean;
+  nativeSandbox: boolean;
+  outputContracts: boolean;
+}
+
+export interface ProviderTimeoutPolicyV1 {
+  discoveryTimeoutMs: number;
+  validationTimeoutMs: number;
+  startupTimeoutMs: number;
+  idleTimeoutMs: number | null;
+  totalTimeoutMs: number | null;
+  cancelGracePeriodMs: number;
+  approvalTimeoutMs: number | null;
+}
+
+export interface ProviderConfigurationSnapshotV1 {
+  providerConfigId: string;
+  name: string;
+  providerType: ProviderTypeV1;
+  adapterId: string;
+  runtimeMode: RuntimeModeV1;
+  executable: string | null;
+  argsTemplate: string[];
+  model: string | null;
+  environmentProfileId: string | null;
+  secretProfileId: string | null;
+  workingDirectoryMode: WorkingDirectoryModeV1;
+  workspaceRelativeWorkingDirectory: string | null;
+  capabilities: ProviderCapabilitiesV1;
+  timeoutPolicy: ProviderTimeoutPolicyV1;
+  approvalMode: ApprovalModeV1;
+  outputMode: OutputModeV1;
+  enabled: boolean;
+  version: number;
+}
+
+export interface WorkflowStageSnapshotV1 {
+  workflowStageKey: string;
+  /** Must equal workflowStageKey (M2.5 V1 has no separate display name). */
+  name: string;
+  sequence: number;
+  agent: AgentSnapshotV1 | null;
+  provider: ProviderConfigurationSnapshotV1 | null;
+}
+
+export interface RunSnapshotPayloadV1 {
+  schemaVersion: 1;
+  capturedAt: string;
+  run: {
+    workspaceId: string;
+    taskId: string;
+    origin: V2RunOrigin;
+    reason: V2RunReason;
+    parentRunId: string | null;
+    rootRunId: string;
+  };
+  workflow: {
+    definitionId: string;
+    definitionKey: string;
+    definitionVersion: number;
+    name: string;
+    definitionHash: string;
+    stages: WorkflowStageSnapshotV1[];
+  };
+  security: {
+    redactionApplied: boolean;
+  };
+}
+
+export interface RunSnapshot {
+  id: string;
+  workspaceId: string;
+  runId: string;
+  workflowDefinitionId: string;
+  snapshotSchemaVersion: number;
+  payload: RunSnapshotPayloadV1;
+  contentHash: string;
+  redactionApplied: boolean;
+  capturedAt: string;
+}
+
+export interface RunStage {
+  id: string;
+  workspaceId: string;
+  runId: string;
+  runSnapshotId: string;
+  workflowStageKey: string;
+  /** Must equal workflowStageKey (M2.5 V1 has no separate display name). */
+  name: string;
+  sequence: number;
+  attempt: number;
+  status: 'pending';
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}

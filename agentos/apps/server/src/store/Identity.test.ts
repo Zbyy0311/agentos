@@ -17,7 +17,7 @@ describe('Identity — canonical entity IDs', () => {
   // ---- production singleton tests ----
 
   it('all prefix constants map to valid EntityIdKind', () => {
-    assert.equal(kinds.length, 25);
+    assert.equal(kinds.length, 26);
     for (const kind of kinds) {
       assert.ok(ENTITY_ID_PREFIXES[kind].length >= 2);
     }
@@ -209,5 +209,34 @@ describe('Identity — canonical entity IDs', () => {
     assert.ok(b1 < b2);
     assert.ok(b1 < a1);
     assert.ok(b2 < a1);
+  });
+});
+
+describe('Identity — M2.5 snapshot kind', () => {
+  it('snapshot kind exists with snapshot prefix', () => {
+    assert.equal(ENTITY_ID_PREFIXES.snapshot, 'snapshot');
+  });
+
+  it('createEntityId snapshot starts with snapshot_ and validates', () => {
+    const id = createEntityId('snapshot');
+    assert.ok(id.startsWith('snapshot_'));
+    assert.ok(isValidEntityId(id, 'snapshot'));
+  });
+
+  it('snapshot ULID body is 26 Crockford Base32 characters', () => {
+    const id = createEntityId('snapshot');
+    const body = id.slice('snapshot_'.length);
+    assert.equal(body.length, 26);
+    assert.ok(/^[0-9A-HJKM-NP-TV-Z]{26}$/.test(body));
+  });
+
+  it('snapshot prefix is not confused with other kinds', () => {
+    const snapshotId = createEntityId('snapshot');
+    assert.ok(!isValidEntityId(snapshotId, 'stage'));
+    assert.ok(!isValidEntityId(snapshotId, 'run'));
+    const stageId = createEntityId('stage');
+    assert.ok(!isValidEntityId(stageId, 'snapshot'));
+    const runId = createEntityId('run');
+    assert.ok(!isValidEntityId(runId, 'snapshot'));
   });
 });

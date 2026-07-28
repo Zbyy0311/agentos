@@ -15,6 +15,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import net, { type AddressInfo } from 'node:net';
 import type { TaskItem, Workspace } from '@agentos/shared';
+import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import { SqliteStore } from './store/SqliteStore.js';
 import { TaskRunService } from './services/TaskRunService.js';
 
@@ -128,7 +129,7 @@ function makeWorkspace(id: string, root: string): Workspace {
     rootPath: join(root, id),
     gitEnabled: false,
     memoryEnabled: false,
-    agents: [],
+    agents: structuredClone(DEFAULT_WORKSPACE_AGENTS),
     lastOpenedAt: now,
     createdAt: now,
     updatedAt: now,
@@ -193,7 +194,8 @@ function readRunState(
 function seedQueuedLegacyRun(root: string, workspaceId: string): SeededQueuedRun {
   const store = new SqliteStore(root);
   try {
-    store.saveWorkspaces([makeWorkspace(workspaceId, root)]);
+    const workspace = makeWorkspace(workspaceId, root);
+    store.saveWorkspaces([workspace]);
     const legacyTask = makeLegacyTask(workspaceId, 'completed');
     store.saveTask(workspaceId, legacyTask);
     const service = new TaskRunService(store);
@@ -203,7 +205,12 @@ function seedQueuedLegacyRun(root: string, workspaceId: string): SeededQueuedRun
       title: `Legacy ${workspaceId}`,
       createdBy: 'legacy_pipeline',
       objective: `Legacy ${workspaceId}`,
+      workspace,
     });
+    assert.ok(created.snapshot);
+    assert.equal(created.stages.length, 4);
+    assert.equal(store.runSnapshotRepository().findByRunId(workspaceId, created.run.id)?.id, created.snapshot.id);
+    assert.equal(store.runStageRepository().listByRun(workspaceId, created.run.id).length, 4);
     const initial = readRunState(root, workspaceId, created.run.id, created.task.id);
     assert.equal(initial.runStatus, 'queued');
     return {
@@ -363,12 +370,15 @@ test('R28 crash releases ownership and the next instance completes orphan recove
     const store = new SqliteStore(root);
     try {
       const service = new TaskRunService(store);
+      const workspace = store.loadWorkspaces().find(candidate => candidate.id === seeded.workspaceId);
+      assert.ok(workspace);
       const retry = service.createLegacyRunForBridge({
         workspaceId: seeded.workspaceId,
         legacyTaskId: seeded.legacyTaskId,
         title: `Legacy ${seeded.workspaceId}`,
         createdBy: 'legacy_pipeline',
         objective: `Legacy ${seeded.workspaceId}`,
+        workspace,
       });
       assert.equal(retry.run.parentRunId, seeded.runId);
       assert.notEqual(retry.run.id, seeded.runId);
