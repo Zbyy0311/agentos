@@ -21,7 +21,11 @@ import { MigrationRegistry } from '../migrations/registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { IdempotencyRepository } from '../store/IdempotencyRepository.js';
-import { buildTaskResultEnvelopeV1, type FingerprintInput } from '../idempotency/types.js';
+import {
+  buildRunResultEnvelopeV1,
+  buildTaskResultEnvelopeV1,
+  type FingerprintInput,
+} from '../idempotency/types.js';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import {
   IdempotencyKeyReusedError,
@@ -30,6 +34,7 @@ import {
 } from './IdempotencyService.js';
 import { IdempotencyKeyValidationError } from '../idempotency/fingerprint.js';
 import { IdempotencyRecordInvalidError } from '../idempotency/types.js';
+import type { Run } from '@agentos/shared';
 
 const NOW = '2026-01-01T00:00:00.000Z';
 const KEY = 'p2-service-key-1';
@@ -55,6 +60,24 @@ function makeTask(overrides: Partial<Task> = {}): Task {
     title: 'task title',
     status: 'open',
     priority: 'normal',
+    createdBy: 'tester',
+    createdAt: NOW,
+    updatedAt: NOW,
+    version: 1,
+    ...overrides,
+  };
+}
+
+function makeRun(overrides: Partial<Run> = {}): Run {
+  return {
+    id: 'run_00000000000000000000000001',
+    workspaceId: 'ws-1',
+    taskId: 'task_00000000000000000000000001',
+    rootRunId: 'run_00000000000000000000000001',
+    status: 'queued',
+    reason: 'initial',
+    origin: 'v2_api',
+    nextEventSequence: 1,
     createdBy: 'tester',
     createdAt: NOW,
     updatedAt: NOW,
@@ -383,6 +406,138 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
       });
       assert.ok(foreign);
       assert.deepEqual(service.resolve(foreign), { kind: 'miss' });
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-15 prepare rejects operation mismatch between scope and fingerprint', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      try {
+        service.prepare({
+          operation: 'task.create',
+          workspaceId: 'ws-1',
+          normalizedKey: KEY,
+          fingerprintInput: makeFingerprint({ operation: 'run.create' }),
+        });
+        assert.fail('expected rejection');
+      } catch (error) {
+        assert.ok(error instanceof IdempotencyRecordInvalidError);
+        const message = (error as Error).message;
+        assert.equal(message, 'Idempotency record is invalid');
+        assert.ok(!message.includes('task.create'));
+        assert.ok(!message.includes('run.create'));
+        assert.ok(!message.includes('ws-1'));
+        assert.ok(!message.includes(KEY));
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-16 prepare rejects workspace mismatch between scope and fingerprint', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      try {
+        service.prepare({
+          operation: 'task.create',
+          workspaceId: 'ws-1',
+          normalizedKey: KEY,
+          fingerprintInput: makeFingerprint({ workspaceId: 'ws-2' }),
+        });
+        assert.fail('expected rejection');
+      } catch (error) {
+        assert.ok(error instanceof IdempotencyRecordInvalidError);
+        const message = (error as Error).message;
+        assert.equal(message, 'Idempotency record is invalid');
+        assert.ok(!message.includes('ws-1'));
+        assert.ok(!message.includes('ws-2'));
+        assert.ok(!message.includes(KEY));
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-17 storeSuccess rejects a task envelope bound to a different workspace', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      const prepared = makePrepared(service);
+      const envelope = buildTaskResultEnvelopeV1('task.create', makeTask({ workspaceId: 'ws-2' }));
+      assert.throws(
+        () => service.storeSuccess({ prepared, httpStatus: 201, envelope }),
+        IdempotencyRecordInvalidError,
+      );
+      const count = db.prepare('SELECT COUNT(*) AS c FROM idempotency_records').get() as { c: number };
+      assert.equal(count.c, 0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-18 storeSuccess rejects a run envelope bound to a different workspace', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      const prepared = service.prepare({
+        operation: 'run.create',
+        workspaceId: 'ws-1',
+        normalizedKey: KEY,
+        fingerprintInput: makeFingerprint({ operation: 'run.create' }),
+      });
+      assert.ok(prepared);
+      const envelope = buildRunResultEnvelopeV1('run.create', makeRun({ workspaceId: 'ws-2' }));
+      assert.throws(
+        () => service.storeSuccess({ prepared, httpStatus: 201, envelope }),
+        IdempotencyRecordInvalidError,
+      );
+      const count = db.prepare('SELECT COUNT(*) AS c FROM idempotency_records').get() as { c: number };
+      assert.equal(count.c, 0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-19 same-workspace task and run envelopes persist and replay', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      const taskPrepared = makePrepared(service);
+      const taskEnvelope = buildTaskResultEnvelopeV1('task.create', makeTask());
+      service.storeSuccess({ prepared: taskPrepared, httpStatus: 201, envelope: taskEnvelope });
+      const taskResolution = service.resolve(taskPrepared);
+      assert.equal(taskResolution.kind, 'replay');
+      if (taskResolution.kind === 'replay') {
+        assert.equal(taskResolution.httpStatus, 201);
+        assert.deepEqual(taskResolution.envelope, taskEnvelope);
+      }
+      const runPrepared = service.prepare({
+        operation: 'run.create',
+        workspaceId: 'ws-1',
+        normalizedKey: `${KEY}-run`,
+        fingerprintInput: makeFingerprint({
+          operation: 'run.create',
+          domainInput: { objective: 'objective' },
+        }),
+      });
+      assert.ok(runPrepared);
+      const runEnvelope = buildRunResultEnvelopeV1('run.create', makeRun());
+      service.storeSuccess({ prepared: runPrepared, httpStatus: 201, envelope: runEnvelope });
+      const runResolution = service.resolve(runPrepared);
+      assert.equal(runResolution.kind, 'replay');
+      if (runResolution.kind === 'replay') {
+        assert.equal(runResolution.httpStatus, 201);
+        assert.deepEqual(runResolution.envelope, runEnvelope);
+      }
     } finally {
       db.close();
     }

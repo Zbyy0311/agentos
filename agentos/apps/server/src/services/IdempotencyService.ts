@@ -59,6 +59,12 @@ export class IdempotencyService {
 
   prepare(input: PrepareIdempotencyInput): PreparedIdempotency | undefined {
     if (input.normalizedKey === undefined) return undefined;
+    if (
+      input.operation !== input.fingerprintInput.operation
+      || input.workspaceId !== input.fingerprintInput.workspaceId
+    ) {
+      throw new IdempotencyRecordInvalidError();
+    }
     const keyHash = hashNormalizedIdempotencyKey(input.normalizedKey);
     const requestHash = hashIdempotencyRequest(input.fingerprintInput);
     return {
@@ -76,6 +82,13 @@ export class IdempotencyService {
       prepared.keyHash,
     );
     if (!record) return { kind: 'miss' };
+    if (
+      record.workspaceId !== prepared.workspaceId
+      || record.operation !== prepared.operation
+      || record.keyHash !== prepared.keyHash
+    ) {
+      throw new IdempotencyRecordInvalidError();
+    }
     if (record.requestHash !== prepared.requestHash) {
       throw new IdempotencyKeyReusedError();
     }
@@ -91,6 +104,12 @@ export class IdempotencyService {
       throw new IdempotencyRecordInvalidError();
     }
     if (input.envelope.operation !== input.prepared.operation) {
+      throw new IdempotencyRecordInvalidError();
+    }
+    const envelopeWorkspaceId = 'task' in input.envelope.body
+      ? input.envelope.body.task.workspaceId
+      : input.envelope.body.run.workspaceId;
+    if (envelopeWorkspaceId !== input.prepared.workspaceId) {
       throw new IdempotencyRecordInvalidError();
     }
     return this.repository.insertCompleted({
