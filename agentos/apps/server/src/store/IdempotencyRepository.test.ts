@@ -618,6 +618,49 @@ describe('M2.6 — IdempotencyRepository insert and read', () => {
       db.close();
     }
   });
+
+  it('R32 insert-side envelope operation mismatch is rejected in isolation (same-status operations)', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const repo = new IdempotencyRepository(db);
+      // task.accept and task.cancel both map to HTTP 200, so the operation/status
+      // pair check passes and the envelope-operation-mismatch branch itself must fire.
+      const envelope = buildTaskResultEnvelopeV1('task.cancel', makeTask());
+      assert.throws(
+        () => repo.insertCompleted(makeInput({ operation: 'task.accept', envelope, httpStatus: 200 })),
+        IdempotencyRecordInvalidError,
+      );
+      const count = db.prepare('SELECT COUNT(*) AS c FROM idempotency_records').get() as { c: number };
+      assert.equal(count.c, 0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('R33 read-side row/envelope operation mismatch fails closed in isolation', () => {
+    const db = rawDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      // Row operation is task.accept while the stored envelope says task.cancel;
+      // every other field (hashes, status pair, JSON, canonical form) is valid,
+      // so only the operation-mismatch integrity branch can reject the read.
+      const mismatchedEnvelope = buildTaskResultEnvelopeV1('task.cancel', makeTask());
+      insertRawRow(db, {
+        operation: 'task.accept',
+        resultJson: canonicalizeJson(mismatchedEnvelope),
+        resultHash: hashCanonicalJson(mismatchedEnvelope),
+        httpStatus: 200,
+      });
+      const repo = new IdempotencyRepository(db);
+      assert.throws(
+        () => repo.findVerifiedByScope('ws-1', 'task.accept', HASH64),
+        IdempotencyRecordInvalidError,
+      );
+    } finally {
+      db.close();
+    }
+  });
 });
 
 describe('M2.6 — SqliteStore idempotency wiring', () => {
