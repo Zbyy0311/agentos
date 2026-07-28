@@ -411,6 +411,81 @@ test('R08 run cancel replay is evaluated before RUN_NOT_CANCELLABLE', async () =
   }
 });
 
+// ---------------------------------------------------------------------------
+// M2.6 P4 — run.cancel optional expectedVersion (route coverage)
+// ---------------------------------------------------------------------------
+
+async function postRunCancel(baseA: string, runId: string, body: unknown, key?: string): Promise<Response> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (key !== undefined) headers['Idempotency-Key'] = key;
+  return fetch(`${baseA}/v2/runs/${runId}/cancel`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+test('P401/P402 route run.cancel honors matching and stale expectedVersion', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'p401-route');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    const stale = await postRunCancel(fx.baseA, runId, { expectedVersion: 2 });
+    assert.equal(stale.status, 409);
+    assert.deepEqual(await stale.json(), { error: 'Version conflict', code: 'VERSION_CONFLICT' });
+    const untouched = fx.store.runRepository().findById(fx.workspaceAId, runId)!;
+    assert.equal(untouched.status, 'queued');
+    assert.equal(untouched.version, 1);
+    const matching = await postRunCancel(fx.baseA, runId, { expectedVersion: 1 });
+    assert.equal(matching.status, 200);
+    const body = await matching.json() as { run: { status: string; version: number } };
+    assert.equal(body.run.status, 'cancelled');
+    assert.equal(body.run.version, 2);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P425/P427 route run.cancel invalid expectedVersion returns 400, no mutation, no record', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'p425-run');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    for (const value of [null, 0, -1, 1.5, '1', [1], { v: 1 }]) {
+      const response = await postRunCancel(fx.baseA, runId, { expectedVersion: value }, 'p425-run-key');
+      assert.equal(response.status, 400, `expectedVersion=${JSON.stringify(value)} must be rejected`);
+      assert.deepEqual(await response.json(), {
+        error: 'expectedVersion must be a positive safe integer',
+        code: 'VALIDATION_FAILED',
+      });
+    }
+    const untouched = fx.store.runRepository().findById(fx.workspaceAId, runId)!;
+    assert.equal(untouched.status, 'queued');
+    const recordCount = fx.store.getDatabase()
+      .prepare('SELECT COUNT(*) AS count FROM idempotency_records')
+      .get() as { count: number };
+    assert.equal(recordCount.count, 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P414-run route a successful keyed replay precedes the stale run version guard', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'p414-run');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    const first = await postRunCancel(fx.baseA, runId, { expectedVersion: 1 }, 'p414-run-001');
+    assert.equal(first.status, 200);
+    const replay = await postRunCancel(fx.baseA, runId, { expectedVersion: 1 }, 'p414-run-001');
+    assert.equal(replay.status, 200);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    assert.deepEqual(await replay.json(), await first.json());
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
 test('T85 cancelling a terminal Run returns 409 RUN_NOT_CANCELLABLE', async () => {
   const fx = await createFixture();
   try {

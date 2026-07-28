@@ -43,6 +43,7 @@ const V2_SAFE_ERROR_MESSAGE: Record<string, string> = {
   RUN_SNAPSHOT_FAILED: 'Run snapshot creation failed',
   IDEMPOTENCY_KEY_REUSED: 'Idempotency key was already used with a different request',
   IDEMPOTENCY_RECORD_INVALID: 'Idempotency record is invalid',
+  VERSION_CONFLICT: 'Version conflict',
 };
 
 export class WorkspaceNotFoundError extends Error {
@@ -85,6 +86,19 @@ export function respondV2(res: Response, fn: () => { status: number; body: unkno
 
 function optionalString(value: unknown): string | undefined {
   return typeof value === 'string' && value.length > 0 ? value : undefined;
+}
+
+/**
+ * M2.6 P4 optional optimistic-concurrency body field. Absent stays
+ * `undefined`; anything present must be a positive safe integer. The error
+ * message never echoes the supplied value.
+ */
+export function parseOptionalExpectedVersion(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new V2ValidationError('expectedVersion must be a positive safe integer');
+  }
+  return value;
 }
 
 export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: WorkspaceManager): Router {
@@ -167,10 +181,12 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
   router.post('/tasks/:taskId/accept', (req: Request, res: Response) => respondV2(res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
-    const runId = optionalString((req.body ?? {}).runId);
+    const body = req.body ?? {};
+    const runId = optionalString(body.runId);
     if (!runId) throw new V2ValidationError('runId is required');
+    const expectedVersion = parseOptionalExpectedVersion(body.expectedVersion);
     const normalizedKey = parseIdempotencyKey(req);
-    const result = service.acceptRunForV2(workspaceId, taskId, runId, normalizedKey);
+    const result = service.acceptRunForV2(workspaceId, taskId, runId, normalizedKey, expectedVersion);
     if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
     return { status: result.httpStatus, body: result.body };
   }));
@@ -178,8 +194,9 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
   router.post('/tasks/:taskId/cancel', (req: Request, res: Response) => respondV2(res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
+    const expectedVersion = parseOptionalExpectedVersion((req.body ?? {}).expectedVersion);
     const normalizedKey = parseIdempotencyKey(req);
-    const result = service.cancelTaskForV2(workspaceId, taskId, normalizedKey);
+    const result = service.cancelTaskForV2(workspaceId, taskId, normalizedKey, expectedVersion);
     if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
     return { status: result.httpStatus, body: result.body };
   }));
@@ -187,8 +204,9 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
   router.post('/tasks/:taskId/reopen', (req: Request, res: Response) => respondV2(res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
+    const expectedVersion = parseOptionalExpectedVersion((req.body ?? {}).expectedVersion);
     const normalizedKey = parseIdempotencyKey(req);
-    const result = service.reopenTaskForV2(workspaceId, taskId, normalizedKey);
+    const result = service.reopenTaskForV2(workspaceId, taskId, normalizedKey, expectedVersion);
     if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
     return { status: result.httpStatus, body: result.body };
   }));

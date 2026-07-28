@@ -7,7 +7,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createV2TaskRoutes, respondV2 } from './v2Tasks.js';
+import { createV2TaskRoutes, parseOptionalExpectedVersion, respondV2 } from './v2Tasks.js';
 import { createV2RunRoutes } from './v2Runs.js';
 import { createTaskRoutes } from './tasks.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
@@ -1087,6 +1087,215 @@ test('C05 a real SqliteStore still creates the IdempotencyService and replays', 
     const replayTask = (await replay.json() as { task: { id: string } }).task;
     assert.equal(replayTask.id, firstTask.id);
     assert.equal(idempotencyRecordCount(fx.store), 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// M2.6 P4 — Optional expectedVersion parser (V01–V12) and route concurrency
+// ---------------------------------------------------------------------------
+
+function expectVersionValidationError(value: unknown): Error {
+  try {
+    parseOptionalExpectedVersion(value);
+  } catch (error) {
+    assert.equal((error as { code?: unknown } | null)?.code, 'VALIDATION_FAILED');
+    assert.equal((error as Error).message, 'expectedVersion must be a positive safe integer');
+    return error as Error;
+  }
+  assert.fail('expected V2ValidationError');
+}
+
+test('V01 absent expectedVersion parses to undefined', () => {
+  assert.equal(parseOptionalExpectedVersion(undefined), undefined);
+});
+
+test('V02 a positive integer is accepted', () => {
+  assert.equal(parseOptionalExpectedVersion(1), 1);
+  assert.equal(parseOptionalExpectedVersion(42), 42);
+});
+
+test('V03 MAX_SAFE_INTEGER is accepted', () => {
+  assert.equal(parseOptionalExpectedVersion(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
+});
+
+test('V04 null is rejected', () => {
+  expectVersionValidationError(null);
+});
+
+test('V05 zero is rejected', () => {
+  expectVersionValidationError(0);
+});
+
+test('V06 negative values are rejected', () => {
+  expectVersionValidationError(-1);
+  expectVersionValidationError(-Number.MAX_SAFE_INTEGER);
+});
+
+test('V07 fractional values are rejected', () => {
+  expectVersionValidationError(1.5);
+  expectVersionValidationError(0.1);
+});
+
+test('V08 strings are rejected', () => {
+  expectVersionValidationError('1');
+  expectVersionValidationError('version');
+});
+
+test('V09 arrays and objects are rejected', () => {
+  expectVersionValidationError([1]);
+  expectVersionValidationError({ version: 1 });
+});
+
+test('V10 unsafe integers are rejected', () => {
+  expectVersionValidationError(Number.MAX_SAFE_INTEGER + 1);
+  expectVersionValidationError(Number.POSITIVE_INFINITY);
+  expectVersionValidationError(Number.NaN);
+});
+
+test('V11 the error never echoes the supplied value', () => {
+  const error = expectVersionValidationError('super-secret-value-1');
+  assert.ok(!error.message.includes('super-secret-value-1'));
+});
+
+test('V12 a validation failure with a key leaves no idempotency record', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'v12');
+    const response = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 0 }, 'v12-key-0001');
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { code: string }).code, 'VALIDATION_FAILED');
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P425 route invalid expectedVersion values return 400 VALIDATION_FAILED', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p425');
+    for (const value of [null, 0, -1, 1.5, '1', [1], { v: 1 }]) {
+      const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: value });
+      assert.equal(response.status, 400, `expectedVersion=${JSON.stringify(value)} must be rejected`);
+      const body = await response.json() as { error: string; code: string };
+      assert.deepEqual(body, { error: 'expectedVersion must be a positive safe integer', code: 'VALIDATION_FAILED' });
+    }
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P426 route invalid expectedVersion performs no mutation', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p426');
+    const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 0 });
+    assert.equal(response.status, 400);
+    const current = fx.store.taskRepository().findById(fx.workspaceAId, task.id)!;
+    assert.equal(current.status, 'open');
+    assert.equal(current.version, 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P405/P406 route task.cancel honors matching and stale expectedVersion', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p405-route');
+    const stale = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 2 });
+    assert.equal(stale.status, 409);
+    const matching = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 });
+    assert.equal(matching.status, 200);
+    const body = await matching.json() as { task: { status: string; version: number } };
+    assert.equal(body.task.status, 'cancelled');
+    assert.equal(body.task.version, 2);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P403/P404 route task.accept honors matching and stale expectedVersion', async () => {
+  const fx = await createFixture();
+  try {
+    const { taskId, runId } = await bridgeCompleteTask(fx, 'p403-route');
+    const current = fx.store.taskRepository().findById(fx.workspaceAId, taskId)!;
+    const stale = await postJson(`${fx.baseA}/v2/tasks/${taskId}/accept`, { runId, expectedVersion: current.version + 1 });
+    assert.equal(stale.status, 409);
+    const matching = await postJson(`${fx.baseA}/v2/tasks/${taskId}/accept`, { runId, expectedVersion: current.version });
+    assert.equal(matching.status, 200);
+    assert.equal((await matching.json() as { task: { status: string } }).task.status, 'done');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P407/P408 route task.reopen honors matching and stale expectedVersion', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p407-route');
+    await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {});
+    const current = fx.store.taskRepository().findById(fx.workspaceAId, task.id)!;
+    const stale = await postJson(`${fx.baseA}/v2/tasks/${task.id}/reopen`, { expectedVersion: current.version + 1 });
+    assert.equal(stale.status, 409);
+    const matching = await postJson(`${fx.baseA}/v2/tasks/${task.id}/reopen`, { expectedVersion: current.version });
+    assert.equal(matching.status, 200);
+    assert.equal((await matching.json() as { task: { status: string } }).task.status, 'open');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P421–P424 the VERSION_CONFLICT response is an exact safe envelope', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p421');
+    const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 999 });
+    assert.equal(response.status, 409);
+    assert.equal(response.headers.get('idempotency-replayed'), null);
+    const raw = await response.text();
+    const body = JSON.parse(raw) as Record<string, unknown>;
+    assert.deepEqual(body, { error: 'Version conflict', code: 'VERSION_CONFLICT' });
+    assert.ok(!raw.includes('currentVersion'));
+    assert.ok(!raw.includes('expectedVersion'));
+    assert.ok(!raw.includes('999'));
+    assert.ok(!raw.includes(task.id));
+    assert.ok(!raw.includes(fx.workspaceAId));
+    assert.ok(!raw.includes('tasks'));
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P414-route a successful keyed replay precedes the stale version guard over HTTP', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p414-route');
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 }, 'p414-key-001');
+    assert.equal(first.status, 200);
+    // The stored fingerprint version is now stale; replay must return before the guard.
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 }, 'p414-key-001');
+    assert.equal(replay.status, 200);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    assert.deepEqual(await replay.json(), await first.json());
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P418-route the same key with a changed expectedVersion returns 409 KEY_REUSED', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p418-route');
+    await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 }, 'p418-key-001');
+    const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 2 }, 'p418-key-001');
+    assert.equal(conflict.status, 409);
+    assert.deepEqual(await conflict.json(), {
+      error: 'Idempotency key was already used with a different request',
+      code: 'IDEMPOTENCY_KEY_REUSED',
+    });
   } finally {
     await closeFixture(fx);
   }

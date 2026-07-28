@@ -14,6 +14,7 @@ import {
 } from '../store/TaskRepository.js';
 import type { RunRepository } from '../store/RunRepository.js';
 import { RunNotFoundError } from '../store/RunRepository.js';
+import { VersionConflictError } from '../store/Version.js';
 import type { WorkflowDefinitionRepository } from '../store/WorkflowDefinitionRepository.js';
 import type { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
 import type { RunStageRepository } from '../store/RunStageRepository.js';
@@ -127,6 +128,24 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
+/**
+ * M2.6 P4 defense-in-depth: the route parser is the primary validator, but
+ * the service re-validates before any transaction or mutation. Uses the
+ * existing domainError seam so no Route type is imported here.
+ */
+function assertValidExpectedVersion(expectedVersion?: number): void {
+  if (
+    expectedVersion !== undefined
+    && (
+      typeof expectedVersion !== 'number'
+      || !Number.isSafeInteger(expectedVersion)
+      || expectedVersion <= 0
+    )
+  ) {
+    throw domainError('VALIDATION_FAILED', 'expectedVersion must be a positive safe integer');
+  }
+}
+
 export class TaskRunService {
   private readonly snapshotService: SnapshotService;
   private readonly idempotencyService?: IdempotencyService;
@@ -235,7 +254,9 @@ export class TaskRunService {
     workspaceId: string,
     runId: string,
     normalizedKey?: string,
+    expectedVersion?: number,
   ): V2MutationExecutionResult<RunResultEnvelopeV1['body']> {
+    assertValidExpectedVersion(expectedVersion);
     return this.executeV2Mutation<RunResultEnvelopeV1>({
       operation: 'run.cancel',
       workspaceId,
@@ -246,9 +267,9 @@ export class TaskRunService {
         workspaceId,
         pathParams: { runId },
         domainInput: {},
-        expectedVersion: null,
+        expectedVersion: expectedVersion ?? null,
       },
-      mutate: () => buildRunResultEnvelopeV1('run.cancel', this.cancelQueuedRunInTransaction(workspaceId, runId)),
+      mutate: () => buildRunResultEnvelopeV1('run.cancel', this.cancelQueuedRunInTransaction(workspaceId, runId, expectedVersion)),
     });
   }
 
@@ -257,7 +278,9 @@ export class TaskRunService {
     taskId: string,
     runId: string,
     normalizedKey?: string,
+    expectedVersion?: number,
   ): V2MutationExecutionResult<TaskResultEnvelopeV1['body']> {
+    assertValidExpectedVersion(expectedVersion);
     return this.executeV2Mutation<TaskResultEnvelopeV1>({
       operation: 'task.accept',
       workspaceId,
@@ -268,9 +291,9 @@ export class TaskRunService {
         workspaceId,
         pathParams: { taskId },
         domainInput: { runId },
-        expectedVersion: null,
+        expectedVersion: expectedVersion ?? null,
       },
-      mutate: () => buildTaskResultEnvelopeV1('task.accept', this.acceptRunInTransaction(workspaceId, taskId, runId)),
+      mutate: () => buildTaskResultEnvelopeV1('task.accept', this.acceptRunInTransaction(workspaceId, taskId, runId, expectedVersion)),
     });
   }
 
@@ -278,7 +301,9 @@ export class TaskRunService {
     workspaceId: string,
     taskId: string,
     normalizedKey?: string,
+    expectedVersion?: number,
   ): V2MutationExecutionResult<TaskResultEnvelopeV1['body']> {
+    assertValidExpectedVersion(expectedVersion);
     return this.executeV2Mutation<TaskResultEnvelopeV1>({
       operation: 'task.cancel',
       workspaceId,
@@ -289,9 +314,9 @@ export class TaskRunService {
         workspaceId,
         pathParams: { taskId },
         domainInput: {},
-        expectedVersion: null,
+        expectedVersion: expectedVersion ?? null,
       },
-      mutate: () => buildTaskResultEnvelopeV1('task.cancel', this.cancelTaskInTransaction(workspaceId, taskId)),
+      mutate: () => buildTaskResultEnvelopeV1('task.cancel', this.cancelTaskInTransaction(workspaceId, taskId, expectedVersion)),
     });
   }
 
@@ -299,7 +324,9 @@ export class TaskRunService {
     workspaceId: string,
     taskId: string,
     normalizedKey?: string,
+    expectedVersion?: number,
   ): V2MutationExecutionResult<TaskResultEnvelopeV1['body']> {
+    assertValidExpectedVersion(expectedVersion);
     return this.executeV2Mutation<TaskResultEnvelopeV1>({
       operation: 'task.reopen',
       workspaceId,
@@ -310,9 +337,9 @@ export class TaskRunService {
         workspaceId,
         pathParams: { taskId },
         domainInput: {},
-        expectedVersion: null,
+        expectedVersion: expectedVersion ?? null,
       },
-      mutate: () => buildTaskResultEnvelopeV1('task.reopen', this.reopenTaskInTransaction(workspaceId, taskId)),
+      mutate: () => buildTaskResultEnvelopeV1('task.reopen', this.reopenTaskInTransaction(workspaceId, taskId, expectedVersion)),
     });
   }
 
@@ -547,21 +574,41 @@ export class TaskRunService {
     return run;
   }
 
-  private cancelQueuedRunInTransaction(workspaceId: string, runId: string): Run {
+  /**
+   * M2.6 P4 explicit version comparison. Runs inside the transaction, after
+   * the entity load and before every domain/state guard. Returns the version
+   * the repository mutation must use: the caller's expectation when given,
+   * otherwise the freshly read actual version (legacy behavior).
+   */
+  private mutationVersion(
+    entityType: 'tasks' | 'runs',
+    entityId: string,
+    actualVersion: number,
+    expectedVersion?: number,
+  ): number {
+    if (expectedVersion !== undefined && expectedVersion !== actualVersion) {
+      throw new VersionConflictError(entityType, entityId, expectedVersion);
+    }
+    return expectedVersion ?? actualVersion;
+  }
+
+  private cancelQueuedRunInTransaction(workspaceId: string, runId: string, expectedVersion?: number): Run {
     const run = this.deps.runRepository().findById(workspaceId, runId);
     if (!run) throw new RunNotFoundError(runId);
+    const version = this.mutationVersion('runs', runId, run.version, expectedVersion);
     if (run.status !== 'queued') {
       throw domainError('RUN_NOT_CANCELLABLE', `Run ${runId} is not cancellable in status '${run.status}'`);
     }
-    const cancelled = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'cancelled');
+    const cancelled = this.deps.runRepository().transitionStatus(workspaceId, runId, version, 'cancelled');
     const task = this.requireTask(workspaceId, run.taskId);
     this.resolveTaskAfterRunTerminal(task, cancelled);
     return cancelled;
   }
 
-  private acceptRunInTransaction(workspaceId: string, taskId: string, runId: string): Task {
+  private acceptRunInTransaction(workspaceId: string, taskId: string, runId: string, expectedVersion?: number): Task {
     const task = this.deps.taskRepository().findById(workspaceId, taskId);
     if (!task) throw new TaskNotFoundError(taskId);
+    const version = this.mutationVersion('tasks', taskId, task.version, expectedVersion);
     if (task.status !== 'in_progress' || !task.pendingResultRunId) {
       throw domainError('TASK_NO_ACCEPTANCE_WINDOW', `Task ${taskId} has no acceptance window`);
     }
@@ -573,23 +620,25 @@ export class TaskRunService {
     if (this.deps.runRepository().findActiveByTask(workspaceId, taskId)) {
       throw domainError('TASK_HAS_ACTIVE_RUN', `Task ${taskId} has an active run`);
     }
-    return this.deps.taskRepository().accept(workspaceId, taskId, task.version, runId);
+    return this.deps.taskRepository().accept(workspaceId, taskId, version, runId);
   }
 
-  private cancelTaskInTransaction(workspaceId: string, taskId: string): Task {
+  private cancelTaskInTransaction(workspaceId: string, taskId: string, expectedVersion?: number): Task {
     const task = this.deps.taskRepository().findById(workspaceId, taskId);
     if (!task) throw new TaskNotFoundError(taskId);
+    const version = this.mutationVersion('tasks', taskId, task.version, expectedVersion);
     if (task.archivedAt) throw domainError('TASK_ARCHIVED', `Task is archived: ${task.id}`);
     if (this.deps.runRepository().findActiveByTask(workspaceId, taskId)) {
       throw domainError('TASK_HAS_ACTIVE_RUN', `Task ${taskId} has an active run`);
     }
-    return this.deps.taskRepository().transitionStatus(workspaceId, taskId, task.version, 'cancelled');
+    return this.deps.taskRepository().transitionStatus(workspaceId, taskId, version, 'cancelled');
   }
 
-  private reopenTaskInTransaction(workspaceId: string, taskId: string): Task {
+  private reopenTaskInTransaction(workspaceId: string, taskId: string, expectedVersion?: number): Task {
     const task = this.deps.taskRepository().findById(workspaceId, taskId);
     if (!task) throw new TaskNotFoundError(taskId);
-    return this.deps.taskRepository().reopen(workspaceId, taskId, task.version);
+    const version = this.mutationVersion('tasks', taskId, task.version, expectedVersion);
+    return this.deps.taskRepository().reopen(workspaceId, taskId, version);
   }
 
   /**

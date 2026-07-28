@@ -828,3 +828,428 @@ test('M2.6 P3 contract: the six *ForV2 methods exist and return V2MutationExecut
     closeV2(fx);
   }
 });
+
+// ---------------------------------------------------------------------------
+// M2.6 P4 — Optional optimistic concurrency (P401–P432 service coverage)
+// ---------------------------------------------------------------------------
+
+test('P401 run.cancel with a matching expectedVersion succeeds', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p401', createdBy: 'test' });
+    const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    const result = fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, undefined, run.version);
+    assert.equal(result.httpStatus, 200);
+    assert.equal(result.body.run.status, 'cancelled');
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P402 run.cancel with a stale expectedVersion throws VERSION_CONFLICT', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p402', createdBy: 'test' });
+    const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    assert.throws(
+      () => fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, undefined, run.version + 1),
+      (error: unknown) => {
+        expectCode(error, 'VERSION_CONFLICT');
+        return true;
+      },
+    );
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P403 task.accept with a matching expectedVersion succeeds', () => {
+  const fx = v2Fixture();
+  try {
+    const { taskId, runId } = completedRunWindow(fx);
+    const task = fx.store.taskRepository().findById(fx.workspace.id, taskId)!;
+    const result = fx.service.acceptRunForV2(fx.workspace.id, taskId, runId, undefined, task.version);
+    assert.equal(result.httpStatus, 200);
+    assert.equal(result.body.task.status, 'done');
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P404 task.accept with a stale expectedVersion throws VERSION_CONFLICT', () => {
+  const fx = v2Fixture();
+  try {
+    const { taskId, runId } = completedRunWindow(fx);
+    const task = fx.store.taskRepository().findById(fx.workspace.id, taskId)!;
+    assert.throws(
+      () => fx.service.acceptRunForV2(fx.workspace.id, taskId, runId, undefined, task.version + 1),
+      (error: unknown) => {
+        expectCode(error, 'VERSION_CONFLICT');
+        return true;
+      },
+    );
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P405 task.cancel with a matching expectedVersion succeeds', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p405', createdBy: 'test' });
+    const result = fx.service.cancelTaskForV2(fx.workspace.id, task.id, undefined, task.version);
+    assert.equal(result.httpStatus, 200);
+    assert.equal(result.body.task.status, 'cancelled');
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P406 task.cancel with a stale expectedVersion throws VERSION_CONFLICT', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p406', createdBy: 'test' });
+    assert.throws(
+      () => fx.service.cancelTaskForV2(fx.workspace.id, task.id, undefined, task.version + 1),
+      (error: unknown) => {
+        expectCode(error, 'VERSION_CONFLICT');
+        return true;
+      },
+    );
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P407 task.reopen with a matching expectedVersion succeeds', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p407', createdBy: 'test' });
+    fx.service.cancelTask(fx.workspace.id, task.id);
+    const current = fx.store.taskRepository().findById(fx.workspace.id, task.id)!;
+    const result = fx.service.reopenTaskForV2(fx.workspace.id, task.id, undefined, current.version);
+    assert.equal(result.httpStatus, 200);
+    assert.equal(result.body.task.status, 'open');
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P408 task.reopen with a stale expectedVersion throws VERSION_CONFLICT', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p408', createdBy: 'test' });
+    fx.service.cancelTask(fx.workspace.id, task.id);
+    const current = fx.store.taskRepository().findById(fx.workspace.id, task.id)!;
+    assert.throws(
+      () => fx.service.reopenTaskForV2(fx.workspace.id, task.id, undefined, current.version + 1),
+      (error: unknown) => {
+        expectCode(error, 'VERSION_CONFLICT');
+        return true;
+      },
+    );
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P409 absent expectedVersion preserves all four current behaviors', () => {
+  const fx = v2Fixture();
+  try {
+    const { taskId, runId } = completedRunWindow(fx);
+    const accepted = fx.service.acceptRunForV2(fx.workspace.id, taskId, runId);
+    assert.equal(accepted.body.task.status, 'done');
+    const cancelRunTask = fx.service.createTask(fx.workspace.id, { title: 'p409-cr', createdBy: 'test' });
+    const run = fx.service.createRun(fx.workspace.id, { taskId: cancelRunTask.id, createdBy: 'test' });
+    assert.equal(fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id).body.run.status, 'cancelled');
+    const cancelTask = fx.service.createTask(fx.workspace.id, { title: 'p409-ct', createdBy: 'test' });
+    assert.equal(fx.service.cancelTaskForV2(fx.workspace.id, cancelTask.id).body.task.status, 'cancelled');
+    assert.equal(fx.service.reopenTaskForV2(fx.workspace.id, cancelTask.id).body.task.status, 'open');
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P410 a matching mutation increments the version exactly once', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p410', createdBy: 'test' });
+    const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    const before = run.version;
+    const result = fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, undefined, before);
+    assert.equal(result.body.run.version, before + 1);
+    assert.equal(fx.store.runRepository().findById(fx.workspace.id, run.id)!.version, before + 1);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P411 a stale conflict performs no mutation', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p411', createdBy: 'test' });
+    const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    assert.throws(() => fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, undefined, run.version + 5));
+    const after = fx.store.runRepository().findById(fx.workspace.id, run.id)!;
+    assert.equal(after.status, 'queued');
+    assert.equal(after.version, run.version);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P412 a stale conflict writes no idempotency record', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p412', createdBy: 'test' });
+    const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    assert.throws(
+      () => fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, 'p412-key-01', run.version + 1),
+    );
+    assert.equal(idempotencyRecordCount(fx), 0);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P413 a corrected expectedVersion can retry the same key after a failed conflict', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p413', createdBy: 'test' });
+    const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    assert.throws(
+      () => fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, 'p413-key-01', run.version + 1),
+      (error: unknown) => {
+        expectCode(error, 'VERSION_CONFLICT');
+        return true;
+      },
+    );
+    const retried = fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, 'p413-key-01', run.version);
+    assert.equal(retried.replayed, false);
+    assert.equal(retried.body.run.status, 'cancelled');
+    assert.equal(idempotencyRecordCount(fx), 1);
+    const replay = fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, 'p413-key-01', run.version);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.body, retried.body);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P414 a successful keyed replay precedes the stale Run version guard', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p414', createdBy: 'test' });
+    const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    const first = fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, 'p414-key-01', run.version);
+    assert.equal(first.body.run.version, run.version + 1);
+    // The stored version is now stale, but the replay returns before the guard.
+    const replay = fx.service.cancelQueuedRunForV2(fx.workspace.id, run.id, 'p414-key-01', run.version);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.body, first.body);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P415 a successful keyed replay precedes the stale Task accept guard', () => {
+  const fx = v2Fixture();
+  try {
+    const { taskId, runId } = completedRunWindow(fx);
+    const task = fx.store.taskRepository().findById(fx.workspace.id, taskId)!;
+    const first = fx.service.acceptRunForV2(fx.workspace.id, taskId, runId, 'p415-key-01', task.version);
+    const replay = fx.service.acceptRunForV2(fx.workspace.id, taskId, runId, 'p415-key-01', task.version);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.body, first.body);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P416 a successful keyed replay precedes the stale Task cancel guard', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p416', createdBy: 'test' });
+    const first = fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p416-key-01', task.version);
+    const replay = fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p416-key-01', task.version);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.body, first.body);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P417 a successful keyed replay precedes the stale Task reopen guard', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p417', createdBy: 'test' });
+    fx.service.cancelTask(fx.workspace.id, task.id);
+    const current = fx.store.taskRepository().findById(fx.workspace.id, task.id)!;
+    const first = fx.service.reopenTaskForV2(fx.workspace.id, task.id, 'p417-key-01', current.version);
+    const replay = fx.service.reopenTaskForV2(fx.workspace.id, task.id, 'p417-key-01', current.version);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.body, first.body);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P418 the same key with a changed expectedVersion throws IDEMPOTENCY_KEY_REUSED', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p418', createdBy: 'test' });
+    fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p418-key-01', task.version);
+    assert.throws(
+      () => fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p418-key-01', task.version + 1),
+      (error: unknown) => {
+        expectCode(error, 'IDEMPOTENCY_KEY_REUSED');
+        return true;
+      },
+    );
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P419 omitted versus integer expectedVersion under the same key throws IDEMPOTENCY_KEY_REUSED', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p419', createdBy: 'test' });
+    fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p419-key-01');
+    assert.throws(
+      () => fx.service.cancelTaskForV2(fx.workspace.id, task.id, 'p419-key-01', 2),
+      (error: unknown) => {
+        expectCode(error, 'IDEMPOTENCY_KEY_REUSED');
+        return true;
+      },
+    );
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P420 expectedVersion participates in the request fingerprint', () => {
+  const fx = v2Fixture();
+  try {
+    const seen: Array<number | null> = [];
+    const real = new IdempotencyService(fx.store.idempotencyRepository());
+    const spy = {
+      prepare(input: Parameters<IdempotencyService['prepare']>[0]) {
+        seen.push(input.fingerprintInput.expectedVersion);
+        return real.prepare(input);
+      },
+      resolve: real.resolve.bind(real),
+      storeSuccess: real.storeSuccess.bind(real),
+    } as IdempotencyService;
+    const service = new TaskRunService(fx.store, { idempotencyService: spy });
+    const task = service.createTask(fx.workspace.id, { title: 'p420', createdBy: 'test' });
+    service.cancelTaskForV2(fx.workspace.id, task.id, 'p420-key-01', task.version);
+    const second = service.createTask(fx.workspace.id, { title: 'p420-b', createdBy: 'test' });
+    service.cancelTaskForV2(fx.workspace.id, second.id, 'p420-key-02');
+    assert.deepEqual(seen, [task.version, null]);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P425 service defense rejects invalid expectedVersion before any transaction or mutation', () => {
+  const fx = v2Fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p425', createdBy: 'test' });
+    for (const invalid of [0, -1, 1.5, Number.NaN, '1', null] as const) {
+      assert.throws(
+        () => fx.service.cancelTaskForV2(fx.workspace.id, task.id, undefined, invalid as never),
+        (error: unknown) => {
+          expectCode(error, 'VALIDATION_FAILED');
+          assert.equal((error as Error).message, 'expectedVersion must be a positive safe integer');
+          return true;
+        },
+      );
+    }
+    const after = fx.store.taskRepository().findById(fx.workspace.id, task.id)!;
+    assert.equal(after.status, 'open');
+    assert.equal(after.version, task.version);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P428/P429 task.create and run.create keep a fixed null expectedVersion fingerprint', () => {
+  const fx = v2Fixture();
+  try {
+    const seen: Array<number | null> = [];
+    const real = new IdempotencyService(fx.store.idempotencyRepository());
+    const spy = {
+      prepare(input: Parameters<IdempotencyService['prepare']>[0]) {
+        seen.push(input.fingerprintInput.expectedVersion);
+        return real.prepare(input);
+      },
+      resolve: real.resolve.bind(real),
+      storeSuccess: real.storeSuccess.bind(real),
+    } as IdempotencyService;
+    const service = new TaskRunService(fx.store, { idempotencyService: spy });
+    assert.equal(service.createTaskForV2.length <= 3, true);
+    assert.equal(service.createRunForV2.length <= 3, true);
+    const task = service.createTaskForV2(fx.workspace.id, { title: 'p428', createdBy: 'test' }, 'p428-key-01');
+    service.createRunForV2(fx.workspace.id, { taskId: task.body.task.id, createdBy: 'test' }, 'p428-key-02');
+    assert.deepEqual(seen, [null, null]);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P430 Legacy, Bridge and Recovery paths ignore expectedVersion entirely', () => {
+  const fx = v2Fixture();
+  try {
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspace.id,
+      legacyTaskId: 'p430-legacy',
+      title: 'p430 legacy',
+      createdBy: 'legacy_pipeline',
+      objective: 'p430 legacy',
+      workspace: fx.workspace,
+    });
+    fx.service.startRunForBridge(fx.workspace.id, created.run.id);
+    fx.service.completeRunForBridge(fx.workspace.id, created.run.id);
+    fx.service.recoverInterruptedLegacyQueuedRuns(fx.workspace.id);
+    assert.equal(idempotencyRecordCount(fx), 0);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P431 existing non-v2 methods retain their signatures and behavior', () => {
+  const fx = v2Fixture();
+  try {
+    assert.equal(fx.service.cancelQueuedRun.length, 2);
+    assert.equal(fx.service.acceptRun.length, 3);
+    assert.equal(fx.service.cancelTask.length, 2);
+    assert.equal(fx.service.reopenTask.length, 2);
+    const task = fx.service.createTask(fx.workspace.id, { title: 'p431', createdBy: 'test' });
+    const cancelled = fx.service.cancelTask(fx.workspace.id, task.id);
+    assert.equal(cancelled.status, 'cancelled');
+    assert.equal(cancelled.version, task.version + 1);
+    const reopened = fx.service.reopenTask(fx.workspace.id, task.id);
+    assert.equal(reopened.status, 'open');
+    const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    assert.equal(fx.service.cancelQueuedRun(fx.workspace.id, run.id).status, 'cancelled');
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P432 cross-workspace version guards stay isolated', () => {
+  const fx = v2Fixture();
+  try {
+    const taskA = fx.service.createTask(fx.workspace.id, { title: 'p432-a', createdBy: 'test' });
+    const taskB = fx.service.createTask(fx.workspaceB.id, { title: 'p432-b', createdBy: 'test' });
+    assert.throws(
+      () => fx.service.cancelTaskForV2(fx.workspace.id, taskA.id, undefined, taskA.version + 1),
+    );
+    const resultB = fx.service.cancelTaskForV2(fx.workspaceB.id, taskB.id, undefined, taskB.version);
+    assert.equal(resultB.body.task.status, 'cancelled');
+    assert.equal(fx.store.taskRepository().findById(fx.workspace.id, taskA.id)!.status, 'open');
+  } finally {
+    closeV2(fx);
+  }
+});
