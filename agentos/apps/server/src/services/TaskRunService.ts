@@ -24,6 +24,16 @@ import {
   SnapshotService,
   type ResolvedRunConfiguration,
 } from './SnapshotService.js';
+import { IdempotencyService } from './IdempotencyService.js';
+import {
+  buildRunResultEnvelopeV1,
+  buildTaskResultEnvelopeV1,
+  IdempotencyRecordInvalidError,
+  type FingerprintInput,
+  type IdempotencyResultEnvelopeV1,
+  type RunResultEnvelopeV1,
+  type TaskResultEnvelopeV1,
+} from '../idempotency/types.js';
 
 /** Minimal store surface required by TaskRunService (structurally satisfied by SqliteStore). */
 export interface TaskRunServiceDeps {
@@ -60,6 +70,14 @@ export interface TaskRunServiceOptions {
   resolver?: WorkflowDefinitionResolver;
   snapshotService?: SnapshotService;
   clock?: () => string;
+  idempotencyService?: IdempotencyService;
+}
+
+/** Frozen M2.6 P3 v2 mutation result: live and replay share the typed envelope body. */
+export interface V2MutationExecutionResult<TBody> {
+  httpStatus: 200 | 201;
+  body: TBody;
+  replayed: boolean;
 }
 
 export interface ReconcileLegacyTerminalBeforeRetryInput {
@@ -111,6 +129,7 @@ function errorMessage(err: unknown): string {
 
 export class TaskRunService {
   private readonly snapshotService: SnapshotService;
+  private readonly idempotencyService?: IdempotencyService;
 
   constructor(
     private readonly deps: TaskRunServiceDeps,
@@ -127,6 +146,7 @@ export class TaskRunService {
     ) {
       throw domainError('RUN_SNAPSHOT_FAILED', 'RUN_SNAPSHOT_FAILED');
     }
+    this.idempotencyService = options.idempotencyService;
     if (options.snapshotService) {
       this.snapshotService = options.snapshotService;
       return;
@@ -143,26 +163,201 @@ export class TaskRunService {
   }
 
   createTask(workspaceId: string, input: CreateV2TaskInput): Task {
-    return this.deps.runInTransaction(() =>
-      this.deps.taskRepository().insert({ ...input, workspaceId }),
-    );
+    return this.deps.runInTransaction(() => this.createTaskInTransaction(workspaceId, input));
   }
 
   createRun(workspaceId: string, input: CreateV2RunInput): Run {
+    return this.deps.runInTransaction(() => this.createRunInTransaction(workspaceId, input));
+  }
+
+  // -------------------------------------------------------------------------
+  // M2.6 P3 — idempotent v2 mutations. TaskRunService owns the single
+  // transaction; IdempotencyService never opens one. Exact order:
+  // prepare (outside) → begin → resolve → replay | guard+mutation →
+  // typed envelope → storeSuccess → commit.
+  // -------------------------------------------------------------------------
+
+  createTaskForV2(
+    workspaceId: string,
+    input: CreateV2TaskInput,
+    normalizedKey?: string,
+  ): V2MutationExecutionResult<TaskResultEnvelopeV1['body']> {
+    return this.executeV2Mutation<TaskResultEnvelopeV1>({
+      operation: 'task.create',
+      workspaceId,
+      normalizedKey,
+      httpStatus: 201,
+      fingerprintInput: {
+        operation: 'task.create',
+        workspaceId,
+        pathParams: {},
+        domainInput: {
+          title: input.title,
+          description: input.description ?? null,
+          priority: input.priority ?? 'normal',
+          sourceConversationId: input.sourceConversationId ?? null,
+          sourceMessageId: input.sourceMessageId ?? null,
+          createdBy: input.createdBy,
+        },
+        expectedVersion: null,
+      },
+      mutate: () => buildTaskResultEnvelopeV1('task.create', this.createTaskInTransaction(workspaceId, input)),
+    });
+  }
+
+  createRunForV2(
+    workspaceId: string,
+    input: CreateV2RunInput,
+    normalizedKey?: string,
+  ): V2MutationExecutionResult<RunResultEnvelopeV1['body']> {
+    return this.executeV2Mutation<RunResultEnvelopeV1>({
+      operation: 'run.create',
+      workspaceId,
+      normalizedKey,
+      httpStatus: 201,
+      fingerprintInput: {
+        operation: 'run.create',
+        workspaceId,
+        pathParams: { taskId: input.taskId },
+        domainInput: {
+          reason: input.reason ?? 'initial',
+          parentRunId: input.parentRunId ?? null,
+          objective: input.objective ?? null,
+          createdBy: input.createdBy,
+        },
+        expectedVersion: null,
+      },
+      mutate: () => buildRunResultEnvelopeV1('run.create', this.createRunInTransaction(workspaceId, input)),
+    });
+  }
+
+  cancelQueuedRunForV2(
+    workspaceId: string,
+    runId: string,
+    normalizedKey?: string,
+  ): V2MutationExecutionResult<RunResultEnvelopeV1['body']> {
+    return this.executeV2Mutation<RunResultEnvelopeV1>({
+      operation: 'run.cancel',
+      workspaceId,
+      normalizedKey,
+      httpStatus: 200,
+      fingerprintInput: {
+        operation: 'run.cancel',
+        workspaceId,
+        pathParams: { runId },
+        domainInput: {},
+        expectedVersion: null,
+      },
+      mutate: () => buildRunResultEnvelopeV1('run.cancel', this.cancelQueuedRunInTransaction(workspaceId, runId)),
+    });
+  }
+
+  acceptRunForV2(
+    workspaceId: string,
+    taskId: string,
+    runId: string,
+    normalizedKey?: string,
+  ): V2MutationExecutionResult<TaskResultEnvelopeV1['body']> {
+    return this.executeV2Mutation<TaskResultEnvelopeV1>({
+      operation: 'task.accept',
+      workspaceId,
+      normalizedKey,
+      httpStatus: 200,
+      fingerprintInput: {
+        operation: 'task.accept',
+        workspaceId,
+        pathParams: { taskId },
+        domainInput: { runId },
+        expectedVersion: null,
+      },
+      mutate: () => buildTaskResultEnvelopeV1('task.accept', this.acceptRunInTransaction(workspaceId, taskId, runId)),
+    });
+  }
+
+  cancelTaskForV2(
+    workspaceId: string,
+    taskId: string,
+    normalizedKey?: string,
+  ): V2MutationExecutionResult<TaskResultEnvelopeV1['body']> {
+    return this.executeV2Mutation<TaskResultEnvelopeV1>({
+      operation: 'task.cancel',
+      workspaceId,
+      normalizedKey,
+      httpStatus: 200,
+      fingerprintInput: {
+        operation: 'task.cancel',
+        workspaceId,
+        pathParams: { taskId },
+        domainInput: {},
+        expectedVersion: null,
+      },
+      mutate: () => buildTaskResultEnvelopeV1('task.cancel', this.cancelTaskInTransaction(workspaceId, taskId)),
+    });
+  }
+
+  reopenTaskForV2(
+    workspaceId: string,
+    taskId: string,
+    normalizedKey?: string,
+  ): V2MutationExecutionResult<TaskResultEnvelopeV1['body']> {
+    return this.executeV2Mutation<TaskResultEnvelopeV1>({
+      operation: 'task.reopen',
+      workspaceId,
+      normalizedKey,
+      httpStatus: 200,
+      fingerprintInput: {
+        operation: 'task.reopen',
+        workspaceId,
+        pathParams: { taskId },
+        domainInput: {},
+        expectedVersion: null,
+      },
+      mutate: () => buildTaskResultEnvelopeV1('task.reopen', this.reopenTaskInTransaction(workspaceId, taskId)),
+    });
+  }
+
+  private executeV2Mutation<E extends IdempotencyResultEnvelopeV1>(args: {
+    operation: E['operation'];
+    workspaceId: string;
+    normalizedKey?: string;
+    httpStatus: 200 | 201;
+    fingerprintInput: FingerprintInput;
+    mutate: () => E;
+  }): V2MutationExecutionResult<E['body']> {
+    if (args.normalizedKey !== undefined) {
+      const idempotencyService = this.idempotencyService;
+      if (!idempotencyService) throw new IdempotencyRecordInvalidError();
+      // A defined key always yields a PreparedIdempotency; the guard is
+      // defense-in-depth against a diverging service implementation.
+      const prepared = idempotencyService.prepare({
+        operation: args.operation,
+        workspaceId: args.workspaceId,
+        normalizedKey: args.normalizedKey,
+        fingerprintInput: args.fingerprintInput,
+      });
+      if (!prepared) throw new IdempotencyRecordInvalidError();
+      return this.deps.runInTransaction(() => {
+        // Resolve is the first domain action inside the transaction, ahead of
+        // every domain/state guard (RUN_ACTIVE_EXISTS, RUN_NOT_CANCELLABLE,
+        // TASK_NO_ACCEPTANCE_WINDOW, INVALID_TASK_TRANSITION).
+        const resolution = idempotencyService.resolve(prepared);
+        if (resolution.kind === 'replay') {
+          // Repository verification binds the record to this operation, so the
+          // stored envelope body has exactly this operation's shape.
+          return {
+            httpStatus: resolution.httpStatus,
+            body: resolution.envelope.body as E['body'],
+            replayed: true,
+          };
+        }
+        const envelope = args.mutate();
+        idempotencyService.storeSuccess({ prepared, httpStatus: args.httpStatus, envelope });
+        return { httpStatus: args.httpStatus, body: envelope.body, replayed: false };
+      });
+    }
     return this.deps.runInTransaction(() => {
-      const task = this.deps.taskRepository().findById(workspaceId, input.taskId);
-      if (!task) throw new TaskNotFoundError(input.taskId);
-      if (task.archivedAt) throw domainError('TASK_ARCHIVED', `Task is archived: ${task.id}`);
-      if (task.status === 'blocked') throw domainError('TASK_BLOCKED', `Task is blocked: ${task.id}`);
-      if (task.status === 'done') throw domainError('TASK_DONE', `Task is done; reopen before creating a run: ${task.id}`);
-      if (task.status === 'cancelled') throw domainError('TASK_CANCELLED', `Task is cancelled; reopen before creating a run: ${task.id}`);
-      if (this.deps.runRepository().findActiveByTask(workspaceId, input.taskId)) {
-        throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
-      }
-      const resolved = this.snapshotService.resolveUnbound(workspaceId);
-      const run = this.deps.runRepository().insert({ ...input, workspaceId, origin: 'v2_api' });
-      this.snapshotService.persistResolvedRun(run, resolved);
-      return run;
+      const envelope = args.mutate();
+      return { httpStatus: args.httpStatus, body: envelope.body, replayed: false };
     });
   }
 
@@ -277,17 +472,7 @@ export class TaskRunService {
   }
 
   cancelQueuedRun(workspaceId: string, runId: string): Run {
-    return this.deps.runInTransaction(() => {
-      const run = this.deps.runRepository().findById(workspaceId, runId);
-      if (!run) throw new RunNotFoundError(runId);
-      if (run.status !== 'queued') {
-        throw domainError('RUN_NOT_CANCELLABLE', `Run ${runId} is not cancellable in status '${run.status}'`);
-      }
-      const cancelled = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'cancelled');
-      const task = this.requireTask(workspaceId, run.taskId);
-      this.resolveTaskAfterRunTerminal(task, cancelled);
-      return cancelled;
-    });
+    return this.deps.runInTransaction(() => this.cancelQueuedRunInTransaction(workspaceId, runId));
   }
 
   startRunForBridge(workspaceId: string, runId: string): { run: Run; task: Task } {
@@ -325,42 +510,86 @@ export class TaskRunService {
   }
 
   acceptRun(workspaceId: string, taskId: string, runId: string): Task {
-    return this.deps.runInTransaction(() => {
-      const task = this.deps.taskRepository().findById(workspaceId, taskId);
-      if (!task) throw new TaskNotFoundError(taskId);
-      if (task.status !== 'in_progress' || !task.pendingResultRunId) {
-        throw domainError('TASK_NO_ACCEPTANCE_WINDOW', `Task ${taskId} has no acceptance window`);
-      }
-      const run = this.deps.runRepository().findById(workspaceId, runId);
-      if (!run || run.taskId !== taskId) throw new RunNotFoundError(runId);
-      if (run.status !== 'completed') {
-        throw domainError('RUN_NOT_COMPLETED', `Run ${runId} is not completed`);
-      }
-      if (this.deps.runRepository().findActiveByTask(workspaceId, taskId)) {
-        throw domainError('TASK_HAS_ACTIVE_RUN', `Task ${taskId} has an active run`);
-      }
-      return this.deps.taskRepository().accept(workspaceId, taskId, task.version, runId);
-    });
+    return this.deps.runInTransaction(() => this.acceptRunInTransaction(workspaceId, taskId, runId));
   }
 
   cancelTask(workspaceId: string, taskId: string): Task {
-    return this.deps.runInTransaction(() => {
-      const task = this.deps.taskRepository().findById(workspaceId, taskId);
-      if (!task) throw new TaskNotFoundError(taskId);
-      if (task.archivedAt) throw domainError('TASK_ARCHIVED', `Task is archived: ${task.id}`);
-      if (this.deps.runRepository().findActiveByTask(workspaceId, taskId)) {
-        throw domainError('TASK_HAS_ACTIVE_RUN', `Task ${taskId} has an active run`);
-      }
-      return this.deps.taskRepository().transitionStatus(workspaceId, taskId, task.version, 'cancelled');
-    });
+    return this.deps.runInTransaction(() => this.cancelTaskInTransaction(workspaceId, taskId));
   }
 
   reopenTask(workspaceId: string, taskId: string): Task {
-    return this.deps.runInTransaction(() => {
-      const task = this.deps.taskRepository().findById(workspaceId, taskId);
-      if (!task) throw new TaskNotFoundError(taskId);
-      return this.deps.taskRepository().reopen(workspaceId, taskId, task.version);
-    });
+    return this.deps.runInTransaction(() => this.reopenTaskInTransaction(workspaceId, taskId));
+  }
+
+  // -------------------------------------------------------------------------
+  // Private in-transaction mutation bodies shared by the original public
+  // methods and the M2.6 P3 *ForV2 methods. They never open a transaction
+  // themselves; the caller always owns exactly one runInTransaction.
+  // -------------------------------------------------------------------------
+
+  private createTaskInTransaction(workspaceId: string, input: CreateV2TaskInput): Task {
+    return this.deps.taskRepository().insert({ ...input, workspaceId });
+  }
+
+  private createRunInTransaction(workspaceId: string, input: CreateV2RunInput): Run {
+    const task = this.deps.taskRepository().findById(workspaceId, input.taskId);
+    if (!task) throw new TaskNotFoundError(input.taskId);
+    if (task.archivedAt) throw domainError('TASK_ARCHIVED', `Task is archived: ${task.id}`);
+    if (task.status === 'blocked') throw domainError('TASK_BLOCKED', `Task is blocked: ${task.id}`);
+    if (task.status === 'done') throw domainError('TASK_DONE', `Task is done; reopen before creating a run: ${task.id}`);
+    if (task.status === 'cancelled') throw domainError('TASK_CANCELLED', `Task is cancelled; reopen before creating a run: ${task.id}`);
+    if (this.deps.runRepository().findActiveByTask(workspaceId, input.taskId)) {
+      throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
+    }
+    const resolved = this.snapshotService.resolveUnbound(workspaceId);
+    const run = this.deps.runRepository().insert({ ...input, workspaceId, origin: 'v2_api' });
+    this.snapshotService.persistResolvedRun(run, resolved);
+    return run;
+  }
+
+  private cancelQueuedRunInTransaction(workspaceId: string, runId: string): Run {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    if (run.status !== 'queued') {
+      throw domainError('RUN_NOT_CANCELLABLE', `Run ${runId} is not cancellable in status '${run.status}'`);
+    }
+    const cancelled = this.deps.runRepository().transitionStatus(workspaceId, runId, run.version, 'cancelled');
+    const task = this.requireTask(workspaceId, run.taskId);
+    this.resolveTaskAfterRunTerminal(task, cancelled);
+    return cancelled;
+  }
+
+  private acceptRunInTransaction(workspaceId: string, taskId: string, runId: string): Task {
+    const task = this.deps.taskRepository().findById(workspaceId, taskId);
+    if (!task) throw new TaskNotFoundError(taskId);
+    if (task.status !== 'in_progress' || !task.pendingResultRunId) {
+      throw domainError('TASK_NO_ACCEPTANCE_WINDOW', `Task ${taskId} has no acceptance window`);
+    }
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run || run.taskId !== taskId) throw new RunNotFoundError(runId);
+    if (run.status !== 'completed') {
+      throw domainError('RUN_NOT_COMPLETED', `Run ${runId} is not completed`);
+    }
+    if (this.deps.runRepository().findActiveByTask(workspaceId, taskId)) {
+      throw domainError('TASK_HAS_ACTIVE_RUN', `Task ${taskId} has an active run`);
+    }
+    return this.deps.taskRepository().accept(workspaceId, taskId, task.version, runId);
+  }
+
+  private cancelTaskInTransaction(workspaceId: string, taskId: string): Task {
+    const task = this.deps.taskRepository().findById(workspaceId, taskId);
+    if (!task) throw new TaskNotFoundError(taskId);
+    if (task.archivedAt) throw domainError('TASK_ARCHIVED', `Task is archived: ${task.id}`);
+    if (this.deps.runRepository().findActiveByTask(workspaceId, taskId)) {
+      throw domainError('TASK_HAS_ACTIVE_RUN', `Task ${taskId} has an active run`);
+    }
+    return this.deps.taskRepository().transitionStatus(workspaceId, taskId, task.version, 'cancelled');
+  }
+
+  private reopenTaskInTransaction(workspaceId: string, taskId: string): Task {
+    const task = this.deps.taskRepository().findById(workspaceId, taskId);
+    if (!task) throw new TaskNotFoundError(taskId);
+    return this.deps.taskRepository().reopen(workspaceId, taskId, task.version);
   }
 
   /**

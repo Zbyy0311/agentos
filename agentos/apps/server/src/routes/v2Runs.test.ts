@@ -367,6 +367,50 @@ test('T84 cancelling a running Run returns 409 RUN_NOT_CANCELLABLE', async () =>
   }
 });
 
+// ---------------------------------------------------------------------------
+// M2.6 P3 — Route idempotency integration (R08)
+// ---------------------------------------------------------------------------
+
+test('R08 run cancel replay is evaluated before RUN_NOT_CANCELLABLE', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'r08');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    const first = await fetch(`${fx.baseA}/v2/runs/${runId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'r08-key-0001' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(first.status, 200);
+    assert.equal(first.headers.get('idempotency-replayed'), null);
+    const firstRun = (await first.json() as { run: { id: string; status: string } }).run;
+    assert.equal(firstRun.status, 'cancelled');
+    // The run is already cancelled; without idempotency this would be a 409 RUN_NOT_CANCELLABLE.
+    const replay = await fetch(`${fx.baseA}/v2/runs/${runId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'r08-key-0001' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(replay.status, 200);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    const replayRun = (await replay.json() as { run: { id: string; status: string } }).run;
+    assert.deepEqual(replayRun, firstRun);
+    const conflict = await fetch(`${fx.baseA}/v2/runs/${runId}/cancel`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'r08-key-0002' },
+      body: JSON.stringify({}),
+    });
+    assert.equal(conflict.status, 409);
+    assert.equal((await conflict.json() as { code: string }).code, 'RUN_NOT_CANCELLABLE');
+    const recordCount = fx.store.getDatabase()
+      .prepare('SELECT COUNT(*) AS count FROM idempotency_records')
+      .get() as { count: number };
+    assert.equal(recordCount.count, 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
 test('T85 cancelling a terminal Run returns 409 RUN_NOT_CANCELLABLE', async () => {
   const fx = await createFixture();
   try {
