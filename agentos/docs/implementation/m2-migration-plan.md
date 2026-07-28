@@ -1,10 +1,10 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION (implementation not started)
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 CURRENT-STATE AUDIT AUTHORIZED — IMPLEMENTATION NOT STARTED; M2.7 NOT STARTED; M2.8 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
-> **Branch:** `runtime/m2-5-stage-workflow-snapshots` (active M2.5 planning), current main/baseline `3e86464bbbc6f4ab80fadd800d873853de7697e0`
+> **Branch:** `runtime/m2-6-idempotency-concurrency` (active M2.6 planning audit), current main/baseline `39eb1d5ae2238f9f65fe7475fa3271a93a946acd`
 > **Reference:** docs/Runtime-Specification/10-Data-Model.md, 01-Core-Concepts.md
 
 ---
@@ -17,7 +17,8 @@
 | M2.2 | VERIFIED & MERGED | `0075d36e` / merged main baseline |
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
 | M2.4 | VERIFIED & MERGED — `e02db3b0` | PR #3 merged and archived; report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; no further remediation |
-| M2.5 | PLAN REVIEW CLOSED — READY FOR P1 AUTHORIZATION; implementation not started | Branch `runtime/m2-5-stage-workflow-snapshots`; OD-1–OD-12 APPROVED 2026-07-26; plan review closed 2026-07-27 (BLOCKER 0 / HIGH 1 / MEDIUM 9 / LOW 2, all resolved); baseline `FORMAL POST-R39-MERGE BASELINE ATTEMPT 3` PASSED at `3e86464b`; see `docs/implementation/milestones/M2.5-current-state-audit.md`, `M2.5-owner-decisions.md`, `M2.5-stage-workflow-snapshot-plan.md`, `M2.5-plan-review.md` |
+| M2.5 | VERIFIED & MERGED — `39eb1d5ae2238f9f65fe7475fa3271a93a946acd` | PR #7 MERGED via Merge Commit at 2026-07-28T09:39:46Z (16 commits, 45 files); reviewed head `3c4dc5b8`; branch `runtime/m2-5-stage-workflow-snapshots` and worktree retained; report `docs/implementation/milestones/M2.5-stage-workflow-snapshot-report.md` |
+| M2.6 | CURRENT-STATE AUDIT AUTHORIZED — IMPLEMENTATION NOT STARTED | Branch `runtime/m2-6-idempotency-concurrency`; Owner Decisions pending; no production code, test, migration, or shared type change authorized; M2.7/M2.8 not started |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
 
@@ -506,6 +507,8 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 
 #### Integration Order
 - 6/8 — after core types settled
+
+> **M2.6 override (2026-07-28):** the detailed M2.6 draft above is pre-M2.5 history and is **not** implementation authorization. Current facts: the migration registry is TS-based 001–009 (M2.5 consumed 007–009), so `v008-idempotency-records.sql` is stale and the next migration candidate is **010** (final content requires Owner Decisions); `routes/tasks.ts`/`routes/runs.ts` are Legacy/Conversation surfaces and do not constitute implementation authority — the canonical Task-domain API is the workspace-scoped v2 routes; optimistic version infrastructure is partially implemented (Repository version guards); Approval is currently an in-memory Registry. Implementation must not begin before Owner Decisions. See `docs/implementation/milestones/M2.6-current-state-audit.md` and `M2.6-owner-decision-draft.md`.
 
 ---
 
