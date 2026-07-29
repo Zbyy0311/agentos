@@ -448,9 +448,9 @@ describe('M2.6 — Migration 010 idempotency_records schema', () => {
     }
   });
 
-  it('S26 registry order is exactly 001-010', () => {
+  it('S26 registry order is exactly 001-011', () => {
     const ids = DEFAULT_REGISTRY_MIGRATIONS.map((m) => m.id);
-    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010']);
+    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
     assert.equal(new Set(ids).size, ids.length);
   });
 
