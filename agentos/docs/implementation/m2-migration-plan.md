@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 VERIFIED & MERGED — POST-MERGE CLOSEOUT RECORDED; M2.7 NOT STARTED; M2.8 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 VERIFIED & MERGED — POST-MERGE CLOSEOUT RECORDED; M2.7 CURRENT-STATE AUDIT AND PLANNING IN PROGRESS — IMPLEMENTATION NOT AUTHORIZED; M2.8 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-6-idempotency-concurrency` (original M2.6 implementation and verification branch, retained after merge), current main `6727add8303b7d0ab659a427bfdd8299a98e5702`
@@ -19,6 +19,7 @@
 | M2.4 | VERIFIED & MERGED — `e02db3b0` | PR #3 merged and archived; report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; no further remediation |
 | M2.5 | VERIFIED & MERGED — `39eb1d5ae2238f9f65fe7475fa3271a93a946acd` | PR #7 MERGED via Merge Commit at 2026-07-28T09:39:46Z (16 commits, 45 files); reviewed head `3c4dc5b8`; branch `runtime/m2-5-stage-workflow-snapshots` and worktree retained; report `docs/implementation/milestones/M2.5-stage-workflow-snapshot-report.md` |
 | M2.6 | VERIFIED & MERGED — `6727add8303b7d0ab659a427bfdd8299a98e5702` | Branch `runtime/m2-6-idempotency-concurrency`; reviewed head `5416729f`; PR #8; 11 commits / 31 changed files (24 implementation/test, 7 documentation); 30 effective M2.6 files plus 1 retained M2.5 closeout; Merge Commit method; Migration 010 IMPLEMENTED, VERIFIED AND MERGED; no backfill; no destructive migration; Migration 001–009 unchanged; Remote CI none; M2.7/M2.8 not started |
+| M2.7 | CURRENT-STATE AUDIT AND PLANNING IN PROGRESS — IMPLEMENTATION NOT AUTHORIZED | Branch `runtime/m2-7-v1-compatibility-migration`; base `30b3b20c9c4239fdfc9d423497b04c94e9468dde`; audit, Owner Decision draft, and plan draft are authoritative; no PR; M2.8 not started |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
 
@@ -520,6 +521,8 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 
 ---
 
+> **M2.7 Historical Draft Notice (2026-07-29):** the following M2.7 section is retained for historical traceability only. It is a stale candidate and is superseded for current planning by the M2.7 audit, Owner Decision register, and plan draft named in the Override below.
+
 ### M2.7 — v1 Compatibility Read and Data Migration
 
 **Goal:** Ensure all existing v1 data is readable through the new schema during transition.
@@ -580,6 +583,8 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 - 7/8 — after domain schemas are stable
 
 ---
+
+> **M2.7 Current-State Audit Override (2026-07-29):** the M2.7 section immediately above is a Historical / Stale Candidate Draft. It is not implementation authority and must not be used to begin P1. Current facts are recorded in `docs/implementation/milestones/M2.7-current-state-audit.md`; Owner questions are in `docs/implementation/milestones/M2.7-owner-decisions.md`; the implementation plan draft is `docs/implementation/milestones/M2.7-v1-compatibility-migration-plan.md`. The current branch is `runtime/m2-7-v1-compatibility-migration` from Main `30b3b20c9c4239fdfc9d423497b04c94e9468dde`. M2.7 status is CURRENT-STATE AUDIT AND PLANNING IN PROGRESS — IMPLEMENTATION NOT AUTHORIZED. No Migration 011, JSON deletion, JSON fallback, historical Run synthesis, or Legacy API removal is assumed. M2.8 remains NOT STARTED.
 
 ### M2.8 — Verification and Cutover Readiness
 

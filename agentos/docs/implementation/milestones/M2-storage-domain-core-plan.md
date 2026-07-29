@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 VERIFIED & MERGED — POST-MERGE CLOSEOUT RECORDED; M2.7 NOT STARTED; M2.8 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 VERIFIED & MERGED — POST-MERGE CLOSEOUT RECORDED; M2.7 CURRENT-STATE AUDIT AND PLANNING IN PROGRESS — IMPLEMENTATION NOT AUTHORIZED; M2.8 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -77,7 +77,7 @@ Both corrections were committed in `12207fb8`.
 | M2.4 | Task and Run Separation — VERIFIED & MERGED `e02db3b0` | High | High | M2.3 | `runtime/m2-4-task-run-separation` |
 | M2.5 | Stage, Workflow Snapshot and Runtime Snapshot — PLAN REVIEW CLOSED, READY FOR P1 AUTHORIZATION | Medium | Medium | M2.4 | `runtime/m2-5-stage-workflow-snapshots` |
 | M2.6 | Idempotency and Optimistic Concurrency — VERIFIED & MERGED — `6727add8303b7d0ab659a427bfdd8299a98e5702` | Medium | Medium | M2.2 | `runtime/m2-6-idempotency-concurrency` |
-| M2.7 | v1 Compatibility Read and Data Migration | Medium | Medium | M2.3, M2.4 | `m2/v1-migration` |
+| M2.7 | v1 Compatibility Read and Data Migration — CURRENT-STATE AUDIT AND PLANNING IN PROGRESS; IMPLEMENTATION NOT AUTHORIZED | Medium | Medium | M2.3, M2.4 | `runtime/m2-7-v1-compatibility-migration` |
 | M2.8 | Verification and Cutover Readiness | Medium | Low | All above | `m2/verification` |
 
 ---
