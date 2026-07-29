@@ -1,19 +1,24 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
+import http from 'node:http';
+import net from 'node:net';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createV2TaskRoutes, respondV2 } from './v2Tasks.js';
+import { createV2TaskRoutes, parseOptionalExpectedVersion, respondV2 } from './v2Tasks.js';
 import { createV2RunRoutes } from './v2Runs.js';
 import { createTaskRoutes } from './tasks.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SqliteStore } from '../store/SqliteStore.js';
-import { TaskRunService } from '../services/TaskRunService.js';
+import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
+import { IdempotencyService } from '../services/IdempotencyService.js';
+import { createOptionalIdempotencyService } from './v2Idempotency.js';
 import type { Workspace } from '@agentos/shared';
 import { AgentNotAvailableError, ProviderConfigNotAvailableError, RunSnapshotFailedError } from '../services/SnapshotService.js';
 import { WorkflowNotAvailableError } from '../services/WorkflowDefinitionResolver.js';
+import { hashNormalizedIdempotencyKey } from '../idempotency/fingerprint.js';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-v2-task-routes-'));
@@ -56,6 +61,7 @@ async function listenOnFetchSafePort(app: express.Express): Promise<{ server: Re
 interface Fixture {
   root: string;
   store: SqliteStore;
+  manager: WorkspaceManager;
   service: TaskRunService;
   server: ReturnType<express.Express['listen']>;
   baseA: string;
@@ -84,6 +90,7 @@ async function createFixture(): Promise<Fixture> {
   return {
     root,
     store,
+    manager,
     service: new TaskRunService(store),
     server,
     baseA: `${base}/${workspaceA.id}`,
@@ -490,6 +497,805 @@ test('P4 disabled unbound Workflow returns WORKFLOW_NOT_AVAILABLE without raw de
     const body = await response.json() as { error: string; code: string };
     assert.deepEqual(body, { error: 'Workflow is not available', code: 'WORKFLOW_NOT_AVAILABLE' });
     assert.doesNotMatch(JSON.stringify(body), /unbound-task-run|SQLITE|workspace/);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// M2.6 P3 — Route idempotency integration (R01–R25; R08 lives in v2Runs.test.ts)
+// ---------------------------------------------------------------------------
+
+function idempotencyRecordCount(store: SqliteStore): number {
+  return (store.getDatabase().prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count;
+}
+
+function idempotencyRecordsDump(store: SqliteStore): string {
+  const rows = store.getDatabase().prepare('SELECT * FROM idempotency_records').all();
+  return JSON.stringify(rows);
+}
+
+async function postJsonWithKey(url: string, body: unknown, key?: string): Promise<Response> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (key !== undefined) headers['Idempotency-Key'] = key;
+  return fetch(url, { method: 'POST', headers, body: JSON.stringify(body ?? {}) });
+}
+
+interface RawHttpResult {
+  status: number;
+  body: string;
+}
+
+async function postRawHttp(urlString: string, payload: unknown, headers: Record<string, string | string[]>): Promise<RawHttpResult> {
+  const url = new URL(urlString);
+  const bodyText = JSON.stringify(payload ?? {});
+  return new Promise<RawHttpResult>((resolve, reject) => {
+    const request = http.request(
+      {
+        hostname: url.hostname,
+        port: url.port,
+        path: `${url.pathname}${url.search}`,
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(bodyText),
+          ...headers,
+        },
+      },
+      response => {
+        const chunks: Buffer[] = [];
+        response.on('data', (chunk: Buffer) => chunks.push(chunk));
+        response.on('end', () => resolve({
+          status: response.statusCode ?? 0,
+          body: Buffer.concat(chunks).toString('utf8'),
+        }));
+      },
+    );
+    request.on('error', reject);
+    request.write(bodyText);
+    request.end();
+  });
+}
+
+test('R01 POST task without a key keeps the existing 201 contract', async () => {
+  const fx = await createFixture();
+  try {
+    const response = await postJson(`${fx.baseA}/v2/tasks`, { title: 'r01' });
+    assert.equal(response.status, 201);
+    assert.equal(response.headers.get('idempotency-replayed'), null);
+    const { task } = await response.json() as { task: { id: string } };
+    assert.ok(task.id.startsWith('task_'));
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R02 POST task with the same key and body returns the same task id', async () => {
+  const fx = await createFixture();
+  try {
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r02' }, 'r02-key-0001');
+    assert.equal(first.status, 201);
+    const firstTask = (await first.json() as { task: { id: string } }).task;
+    const second = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r02' }, 'r02-key-0001');
+    const secondTask = (await second.json() as { task: { id: string } }).task;
+    assert.equal(secondTask.id, firstTask.id);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R03 a task replay sets the Idempotency-Replayed header to true', async () => {
+  const fx = await createFixture();
+  try {
+    await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r03' }, 'r03-key-0001');
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r03' }, 'r03-key-0001');
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R04 the first task response has no replay header', async () => {
+  const fx = await createFixture();
+  try {
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r04' }, 'r04-key-0001');
+    assert.equal(first.status, 201);
+    assert.equal(first.headers.get('idempotency-replayed'), null);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R05 the same key with a different task body returns 409 IDEMPOTENCY_KEY_REUSED', async () => {
+  const fx = await createFixture();
+  try {
+    await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r05-a' }, 'r05-key-0001');
+    const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r05-b' }, 'r05-key-0001');
+    assert.equal(conflict.status, 409);
+    assert.equal(conflict.headers.get('idempotency-replayed'), null);
+    const body = await conflict.json() as { error: string; code: string };
+    assert.deepEqual(body, {
+      error: 'Idempotency key was already used with a different request',
+      code: 'IDEMPOTENCY_KEY_REUSED',
+    });
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R06 POST run with the same key replays the same run id', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'r06');
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/runs`, {}, 'r06-key-0001');
+    assert.equal(first.status, 201);
+    const firstRun = (await first.json() as { run: { id: string } }).run;
+    const second = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/runs`, {}, 'r06-key-0001');
+    assert.equal(second.status, 201);
+    assert.equal(second.headers.get('idempotency-replayed'), 'true');
+    const secondRun = (await second.json() as { run: { id: string } }).run;
+    assert.equal(secondRun.id, firstRun.id);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R07 run create replay is evaluated before RUN_ACTIVE_EXISTS', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'r07');
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/runs`, {}, 'r07-key-0001');
+    assert.equal(first.status, 201);
+    const firstRun = (await first.json() as { run: { id: string } }).run;
+    // The first run is still active; without idempotency this would be a 409 RUN_ACTIVE_EXISTS.
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/runs`, {}, 'r07-key-0001');
+    assert.equal(replay.status, 201);
+    const replayRun = (await replay.json() as { run: { id: string } }).run;
+    assert.equal(replayRun.id, firstRun.id);
+    // A different key with the same task still hits the active-run guard.
+    const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/runs`, {}, 'r07-key-0002');
+    assert.equal(conflict.status, 409);
+    assert.equal((await conflict.json() as { code: string }).code, 'RUN_ACTIVE_EXISTS');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R09 task accept replay is evaluated before the acceptance guard', async () => {
+  const fx = await createFixture();
+  try {
+    const { taskId, runId } = await bridgeCompleteTask(fx, 'r09-legacy');
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks/${taskId}/accept`, { runId }, 'r09-key-0001');
+    assert.equal(first.status, 200);
+    // The acceptance window is consumed; without idempotency this would be a 409.
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks/${taskId}/accept`, { runId }, 'r09-key-0001');
+    assert.equal(replay.status, 200);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    const firstBody = await first.json() as { task: { id: string; status: string } };
+    const replayBody = await replay.json() as { task: { id: string; status: string } };
+    assert.deepEqual(replayBody, firstBody);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R10 task cancel replay is evaluated before the transition guard', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'r10');
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {}, 'r10-key-0001');
+    assert.equal(first.status, 200);
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {}, 'r10-key-0001');
+    assert.equal(replay.status, 200);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    // A different key still hits the transition guard.
+    const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {}, 'r10-key-0002');
+    assert.equal(conflict.status, 409);
+    assert.equal((await conflict.json() as { code: string }).code, 'INVALID_TASK_TRANSITION');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R11 task reopen replay is evaluated before the transition guard', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'r11');
+    await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {});
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/reopen`, {}, 'r11-key-0001');
+    assert.equal(first.status, 200);
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/reopen`, {}, 'r11-key-0001');
+    assert.equal(replay.status, 200);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/reopen`, {}, 'r11-key-0002');
+    assert.equal(conflict.status, 409);
+    assert.equal((await conflict.json() as { code: string }).code, 'INVALID_TASK_TRANSITION');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R12 the same key in different workspaces does not conflict', async () => {
+  const fx = await createFixture();
+  try {
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r12' }, 'r12-key-0001');
+    const second = await postJsonWithKey(`${fx.baseB}/v2/tasks`, { title: 'r12' }, 'r12-key-0001');
+    assert.equal(first.status, 201);
+    assert.equal(second.status, 201);
+    assert.equal(second.headers.get('idempotency-replayed'), null);
+    const firstTask = (await first.json() as { task: { id: string } }).task;
+    const secondTask = (await second.json() as { task: { id: string } }).task;
+    assert.notEqual(firstTask.id, secondTask.id);
+    assert.equal(idempotencyRecordCount(fx.store), 2);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R13 a failed request does not poison the key', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'r13');
+    const blocker = await postJson(`${fx.baseA}/v2/tasks/${task.id}/runs`, {});
+    assert.equal(blocker.status, 201);
+    const blockerRun = (await blocker.json() as { run: { id: string } }).run;
+    const failed = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/runs`, {}, 'r13-key-0001');
+    assert.equal(failed.status, 409);
+    assert.equal((await failed.json() as { code: string }).code, 'RUN_ACTIVE_EXISTS');
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+    const cancel = await postJson(`${fx.baseA}/v2/runs/${blockerRun.id}/cancel`, {});
+    assert.equal(cancel.status, 200);
+    const retry = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/runs`, {}, 'r13-key-0001');
+    assert.equal(retry.status, 201);
+    assert.equal(retry.headers.get('idempotency-replayed'), null);
+    assert.equal(idempotencyRecordCount(fx.store), 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R14 records survive router recreation and still replay', async () => {
+  const fx = await createFixture();
+  let secondServer: ReturnType<express.Express['listen']> | undefined;
+  try {
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r14' }, 'r14-key-0001');
+    assert.equal(first.status, 201);
+    const firstTask = (await first.json() as { task: { id: string } }).task;
+    const secondApp = express();
+    secondApp.use(express.json());
+    secondApp.head('/__test_fetch_port_probe', (_req, res) => {
+      res.setHeader('Connection', 'close');
+      res.status(204).end();
+    });
+    secondApp.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(fx.store, fx.manager));
+    const second = await listenOnFetchSafePort(secondApp);
+    secondServer = second.server;
+    const replay = await postJsonWithKey(`${second.base}/${fx.workspaceAId}/v2/tasks`, { title: 'r14' }, 'r14-key-0001');
+    assert.equal(replay.status, 201);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    const replayTask = (await replay.json() as { task: { id: string } }).task;
+    assert.equal(replayTask.id, firstTask.id);
+  } finally {
+    if (secondServer) await closeTestServer(secondServer);
+    await closeFixture(fx);
+  }
+});
+
+test('R15 live and replay response bodies are deep equal', async () => {
+  const fx = await createFixture();
+  try {
+    const live = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r15', priority: 'high' }, 'r15-key-0001');
+    const liveBody = await live.json();
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r15', priority: 'high' }, 'r15-key-0001');
+    const replayBody = await replay.json();
+    assert.deepEqual(replayBody, liveBody);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R16 a replay preserves the first-result http status', async () => {
+  const fx = await createFixture();
+  try {
+    const created = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r16' }, 'r16-key-0001');
+    assert.equal(created.status, 201);
+    const replayCreate = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r16' }, 'r16-key-0001');
+    assert.equal(replayCreate.status, 201);
+    const task = (await created.json() as { task: { id: string } }).task;
+    const cancelled = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {}, 'r16-key-0002');
+    assert.equal(cancelled.status, 200);
+    const replayCancel = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {}, 'r16-key-0002');
+    assert.equal(replayCancel.status, 200);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R17 repeated replays keep exactly one idempotency record', async () => {
+  const fx = await createFixture();
+  try {
+    await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r17' }, 'r17-key-0001');
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r17' }, 'r17-key-0001');
+      assert.equal(replay.status, 201);
+    }
+    assert.equal(idempotencyRecordCount(fx.store), 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R18 the raw idempotency key is never persisted', async () => {
+  const fx = await createFixture();
+  try {
+    const rawKey = 'r18-raw-secret-key-0001';
+    const response = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r18' }, rawKey);
+    assert.equal(response.status, 201);
+    const dump = idempotencyRecordsDump(fx.store);
+    assert.ok(dump.length > 2);
+    assert.ok(!dump.includes(rawKey));
+    assert.ok(dump.includes(hashNormalizedIdempotencyKey(rawKey)));
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R19 error bodies never leak the key, its hash or the workspace id', async () => {
+  const fx = await createFixture();
+  try {
+    const rawKey = 'r19-raw-secret-key-0001';
+    await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r19-a' }, rawKey);
+    const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r19-b' }, rawKey);
+    assert.equal(conflict.status, 409);
+    const text = JSON.stringify(await conflict.json());
+    assert.ok(!text.includes(rawKey));
+    assert.ok(!text.includes(hashNormalizedIdempotencyKey(rawKey)));
+    assert.ok(!text.includes(fx.workspaceAId));
+
+    const invalid = await postRawHttp(`${fx.baseA}/v2/tasks`, { title: 'r19-c' }, { 'Idempotency-Key': 'bad' });
+    assert.equal(invalid.status, 400);
+    assert.ok(!invalid.body.includes('bad'));
+    assert.ok(!invalid.body.includes(fx.workspaceAId));
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R20 the legacy task endpoint is unchanged and writes no idempotency records', async () => {
+  const fx = await createFixture();
+  try {
+    const response = await postJson(`${fx.baseA}/tasks`, { title: 'r20 legacy' });
+    assert.equal(response.status, 201);
+    const legacy = (await response.json() as { task: { id: string; status: string } }).task;
+    assert.equal(legacy.status, 'pending');
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R21 duplicate raw Idempotency-Key headers are rejected with 400 VALIDATION_FAILED', async () => {
+  const fx = await createFixture();
+  try {
+    const result = await postRawHttp(`${fx.baseA}/v2/tasks`, { title: 'r21' }, {
+      'Idempotency-Key': ['r21-key-0001', 'r21-key-0001'],
+    });
+    assert.equal(result.status, 400);
+    const body = JSON.parse(result.body) as { code: string; error: string };
+    assert.equal(body.code, 'VALIDATION_FAILED');
+    assert.equal(body.error, 'Idempotency key is invalid');
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R22 case-insensitive duplicate headers are rejected', async () => {
+  const fx = await createFixture();
+  try {
+    // Node's http client normalizes duplicate header names case-insensitively,
+    // so the two differently-cased header lines must be written on a raw socket.
+    const url = new URL(`${fx.baseA}/v2/tasks`);
+    const payload = JSON.stringify({ title: 'r22' });
+    const rawResponse = await new Promise<string>((resolve, reject) => {
+      const socket = net.createConnection({ host: url.hostname, port: Number(url.port) }, () => {
+        socket.write(
+          `POST ${url.pathname} HTTP/1.1\r\n`
+          + `Host: ${url.host}\r\n`
+          + 'Content-Type: application/json\r\n'
+          + `Content-Length: ${Buffer.byteLength(payload)}\r\n`
+          + 'Idempotency-Key: r22-key-0001\r\n'
+          + 'IDEMPOTENCY-KEY: r22-key-0001\r\n'
+          + 'Connection: close\r\n'
+          + '\r\n'
+          + payload,
+        );
+      });
+      const chunks: Buffer[] = [];
+      socket.on('data', (chunk: Buffer) => chunks.push(chunk));
+      socket.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
+      socket.on('error', reject);
+    });
+    const statusLine = rawResponse.split('\r\n', 1)[0] ?? '';
+    assert.ok(statusLine.includes('400'), `expected 400, got: ${statusLine}`);
+    const bodyText = rawResponse.slice(rawResponse.indexOf('\r\n\r\n') + 4);
+    assert.equal((JSON.parse(bodyText) as { code: string }).code, 'VALIDATION_FAILED');
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R23 a comma-joined header value is rejected', async () => {
+  const fx = await createFixture();
+  try {
+    const result = await postRawHttp(`${fx.baseA}/v2/tasks`, { title: 'r23' }, {
+      'Idempotency-Key': 'r23-key-0001, r23-key-0002',
+    });
+    assert.equal(result.status, 400);
+    assert.equal((JSON.parse(result.body) as { code: string }).code, 'VALIDATION_FAILED');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R24 an empty header value is rejected', async () => {
+  const fx = await createFixture();
+  try {
+    const result = await postRawHttp(`${fx.baseA}/v2/tasks`, { title: 'r24' }, {
+      'Idempotency-Key': '   ',
+    });
+    assert.equal(result.status, 400);
+    assert.equal((JSON.parse(result.body) as { code: string }).code, 'VALIDATION_FAILED');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('R25 an invalid-character header value is rejected', async () => {
+  const fx = await createFixture();
+  try {
+    const result = await postRawHttp(`${fx.baseA}/v2/tasks`, { title: 'r25' }, {
+      'Idempotency-Key': 'not a valid key!',
+    });
+    assert.equal(result.status, 400);
+    const body = JSON.parse(result.body) as { code: string; error: string };
+    assert.equal(body.code, 'VALIDATION_FAILED');
+    assert.equal(body.error, 'Idempotency key is invalid');
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// M2.6 P3 HIGH-1 remediation — optional capability behavior (C03–C05)
+// ---------------------------------------------------------------------------
+
+function withoutIdempotencyCapability(store: SqliteStore): TaskRunServiceDeps {
+  return {
+    taskRepository: () => store.taskRepository(),
+    runRepository: () => store.runRepository(),
+    workflowDefinitionRepository: () => store.workflowDefinitionRepository(),
+    runSnapshotRepository: () => store.runSnapshotRepository(),
+    runStageRepository: () => store.runStageRepository(),
+    providerConfigurationRepository: () => store.providerConfigurationRepository(),
+    findAgentSnapshotSource: (workspaceId, agentId) => store.findAgentSnapshotSource(workspaceId, agentId),
+    runInTransaction: <T>(fn: () => T): T => store.runInTransaction(fn),
+  };
+}
+
+interface NoCapabilityFixture {
+  root: string;
+  store: SqliteStore;
+  server: ReturnType<express.Express['listen']>;
+  baseA: string;
+  workspaceAId: string;
+}
+
+async function createNoCapabilityFixture(): Promise<NoCapabilityFixture> {
+  const root = createProjectRoot();
+  const store = new SqliteStore(root);
+  const manager = new WorkspaceManager(store);
+  const workspaceA = manager.create('No Capability Workspace', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+  const deps = withoutIdempotencyCapability(store);
+  const app = express();
+  app.use(express.json());
+  app.head('/__test_fetch_port_probe', (_req, res) => {
+    res.setHeader('Connection', 'close');
+    res.status(204).end();
+  });
+  app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(deps, manager));
+  app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(deps, manager));
+  const { server, base } = await listenOnFetchSafePort(app);
+  return { root, store, server, baseA: `${base}/${workspaceA.id}`, workspaceAId: workspaceA.id };
+}
+
+async function closeNoCapabilityFixture(fx: NoCapabilityFixture): Promise<void> {
+  await closeTestServer(fx.server);
+  fx.store.close();
+  rmSync(fx.root, { recursive: true, force: true });
+}
+
+test('C03 a capability-less store keeps the original no-key behavior', async () => {
+  const fx = await createNoCapabilityFixture();
+  try {
+    const created = await postJson(`${fx.baseA}/v2/tasks`, { title: 'c03' });
+    assert.equal(created.status, 201);
+    assert.equal(created.headers.get('idempotency-replayed'), null);
+    const task = (await created.json() as { task: { id: string } }).task;
+    assert.ok(task.id.startsWith('task_'));
+    const run = await postJson(`${fx.baseA}/v2/tasks/${task.id}/runs`, {});
+    assert.equal(run.status, 201);
+    const cancelled = await postJson(`${fx.baseA}/v2/runs/${(await run.json() as { run: { id: string } }).run.id}/cancel`, {});
+    assert.equal(cancelled.status, 200);
+    const cancelTask = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {});
+    assert.equal(cancelTask.status, 200);
+    const reopen = await postJson(`${fx.baseA}/v2/tasks/${task.id}/reopen`, {});
+    assert.equal(reopen.status, 200);
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeNoCapabilityFixture(fx);
+  }
+});
+
+test('C04 a keyed request without capability fails closed before any mutation', async () => {
+  const fx = await createNoCapabilityFixture();
+  try {
+    const rawKey = 'c04-raw-secret-key-0001';
+    const response = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'c04' }, rawKey);
+    assert.equal(response.status, 500);
+    assert.equal(response.headers.get('idempotency-replayed'), null);
+    const body = await response.json() as { error: string; code: string };
+    assert.deepEqual(body, {
+      error: 'Idempotency record is invalid',
+      code: 'IDEMPOTENCY_RECORD_INVALID',
+    });
+    const text = JSON.stringify(body);
+    assert.ok(!text.includes(rawKey));
+    assert.ok(!text.includes(hashNormalizedIdempotencyKey(rawKey)));
+    assert.ok(!text.includes(fx.workspaceAId));
+    assert.ok(!/TypeError|idempotencyRepository/i.test(text));
+    assert.equal(fx.store.taskRepository().listByWorkspace(fx.workspaceAId).length, 0);
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+
+    const plain = await postJson(`${fx.baseA}/v2/tasks`, { title: 'c04-plain' });
+    assert.equal(plain.status, 201);
+    const task = (await plain.json() as { task: { id: string } }).task;
+    const keyedRun = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/runs`, {}, rawKey);
+    assert.equal(keyedRun.status, 500);
+    assert.equal((await keyedRun.json() as { code: string }).code, 'IDEMPOTENCY_RECORD_INVALID');
+    assert.equal(fx.store.runRepository().listByTask(fx.workspaceAId, task.id).length, 0);
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeNoCapabilityFixture(fx);
+  }
+});
+
+test('C05 a real SqliteStore still creates the IdempotencyService and replays', async () => {
+  const fx = await createFixture();
+  try {
+    const capability = createOptionalIdempotencyService(fx.store);
+    assert.ok(capability instanceof IdempotencyService);
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'c05' }, 'c05-key-0001');
+    assert.equal(first.status, 201);
+    const firstTask = (await first.json() as { task: { id: string } }).task;
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'c05' }, 'c05-key-0001');
+    assert.equal(replay.status, 201);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    const replayTask = (await replay.json() as { task: { id: string } }).task;
+    assert.equal(replayTask.id, firstTask.id);
+    assert.equal(idempotencyRecordCount(fx.store), 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// M2.6 P4 — Optional expectedVersion parser (V01–V12) and route concurrency
+// ---------------------------------------------------------------------------
+
+function expectVersionValidationError(value: unknown): Error {
+  try {
+    parseOptionalExpectedVersion(value);
+  } catch (error) {
+    assert.equal((error as { code?: unknown } | null)?.code, 'VALIDATION_FAILED');
+    assert.equal((error as Error).message, 'expectedVersion must be a positive safe integer');
+    return error as Error;
+  }
+  assert.fail('expected V2ValidationError');
+}
+
+test('V01 absent expectedVersion parses to undefined', () => {
+  assert.equal(parseOptionalExpectedVersion(undefined), undefined);
+});
+
+test('V02 a positive integer is accepted', () => {
+  assert.equal(parseOptionalExpectedVersion(1), 1);
+  assert.equal(parseOptionalExpectedVersion(42), 42);
+});
+
+test('V03 MAX_SAFE_INTEGER is accepted', () => {
+  assert.equal(parseOptionalExpectedVersion(Number.MAX_SAFE_INTEGER), Number.MAX_SAFE_INTEGER);
+});
+
+test('V04 null is rejected', () => {
+  expectVersionValidationError(null);
+});
+
+test('V05 zero is rejected', () => {
+  expectVersionValidationError(0);
+});
+
+test('V06 negative values are rejected', () => {
+  expectVersionValidationError(-1);
+  expectVersionValidationError(-Number.MAX_SAFE_INTEGER);
+});
+
+test('V07 fractional values are rejected', () => {
+  expectVersionValidationError(1.5);
+  expectVersionValidationError(0.1);
+});
+
+test('V08 strings are rejected', () => {
+  expectVersionValidationError('1');
+  expectVersionValidationError('version');
+});
+
+test('V09 arrays and objects are rejected', () => {
+  expectVersionValidationError([1]);
+  expectVersionValidationError({ version: 1 });
+});
+
+test('V10 unsafe integers are rejected', () => {
+  expectVersionValidationError(Number.MAX_SAFE_INTEGER + 1);
+  expectVersionValidationError(Number.POSITIVE_INFINITY);
+  expectVersionValidationError(Number.NaN);
+});
+
+test('V11 the error never echoes the supplied value', () => {
+  const error = expectVersionValidationError('super-secret-value-1');
+  assert.ok(!error.message.includes('super-secret-value-1'));
+});
+
+test('V12 a validation failure with a key leaves no idempotency record', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'v12');
+    const response = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 0 }, 'v12-key-0001');
+    assert.equal(response.status, 400);
+    assert.equal((await response.json() as { code: string }).code, 'VALIDATION_FAILED');
+    assert.equal(idempotencyRecordCount(fx.store), 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P425 route invalid expectedVersion values return 400 VALIDATION_FAILED', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p425');
+    for (const value of [null, 0, -1, 1.5, '1', [1], { v: 1 }]) {
+      const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: value });
+      assert.equal(response.status, 400, `expectedVersion=${JSON.stringify(value)} must be rejected`);
+      const body = await response.json() as { error: string; code: string };
+      assert.deepEqual(body, { error: 'expectedVersion must be a positive safe integer', code: 'VALIDATION_FAILED' });
+    }
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P426 route invalid expectedVersion performs no mutation', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p426');
+    const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 0 });
+    assert.equal(response.status, 400);
+    const current = fx.store.taskRepository().findById(fx.workspaceAId, task.id)!;
+    assert.equal(current.status, 'open');
+    assert.equal(current.version, 1);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P405/P406 route task.cancel honors matching and stale expectedVersion', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p405-route');
+    const stale = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 2 });
+    assert.equal(stale.status, 409);
+    const matching = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 });
+    assert.equal(matching.status, 200);
+    const body = await matching.json() as { task: { status: string; version: number } };
+    assert.equal(body.task.status, 'cancelled');
+    assert.equal(body.task.version, 2);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P403/P404 route task.accept honors matching and stale expectedVersion', async () => {
+  const fx = await createFixture();
+  try {
+    const { taskId, runId } = await bridgeCompleteTask(fx, 'p403-route');
+    const current = fx.store.taskRepository().findById(fx.workspaceAId, taskId)!;
+    const stale = await postJson(`${fx.baseA}/v2/tasks/${taskId}/accept`, { runId, expectedVersion: current.version + 1 });
+    assert.equal(stale.status, 409);
+    const matching = await postJson(`${fx.baseA}/v2/tasks/${taskId}/accept`, { runId, expectedVersion: current.version });
+    assert.equal(matching.status, 200);
+    assert.equal((await matching.json() as { task: { status: string } }).task.status, 'done');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P407/P408 route task.reopen honors matching and stale expectedVersion', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p407-route');
+    await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, {});
+    const current = fx.store.taskRepository().findById(fx.workspaceAId, task.id)!;
+    const stale = await postJson(`${fx.baseA}/v2/tasks/${task.id}/reopen`, { expectedVersion: current.version + 1 });
+    assert.equal(stale.status, 409);
+    const matching = await postJson(`${fx.baseA}/v2/tasks/${task.id}/reopen`, { expectedVersion: current.version });
+    assert.equal(matching.status, 200);
+    assert.equal((await matching.json() as { task: { status: string } }).task.status, 'open');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P421–P424 the VERSION_CONFLICT response is an exact safe envelope', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p421');
+    const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 999 });
+    assert.equal(response.status, 409);
+    assert.equal(response.headers.get('idempotency-replayed'), null);
+    const raw = await response.text();
+    const body = JSON.parse(raw) as Record<string, unknown>;
+    assert.deepEqual(body, { error: 'Version conflict', code: 'VERSION_CONFLICT' });
+    assert.ok(!raw.includes('currentVersion'));
+    assert.ok(!raw.includes('expectedVersion'));
+    assert.ok(!raw.includes('999'));
+    assert.ok(!raw.includes(task.id));
+    assert.ok(!raw.includes(fx.workspaceAId));
+    assert.ok(!raw.includes('tasks'));
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P414-route a successful keyed replay precedes the stale version guard over HTTP', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p414-route');
+    const first = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 }, 'p414-key-001');
+    assert.equal(first.status, 200);
+    // The stored fingerprint version is now stale; replay must return before the guard.
+    const replay = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 }, 'p414-key-001');
+    assert.equal(replay.status, 200);
+    assert.equal(replay.headers.get('idempotency-replayed'), 'true');
+    assert.deepEqual(await replay.json(), await first.json());
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P418-route the same key with a changed expectedVersion returns 409 KEY_REUSED', async () => {
+  const fx = await createFixture();
+  try {
+    const task = await createTask(fx.baseA, 'p418-route');
+    await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 }, 'p418-key-001');
+    const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 2 }, 'p418-key-001');
+    assert.equal(conflict.status, 409);
+    assert.deepEqual(await conflict.json(), {
+      error: 'Idempotency key was already used with a different request',
+      code: 'IDEMPOTENCY_KEY_REUSED',
+    });
   } finally {
     await closeFixture(fx);
   }

@@ -7,6 +7,7 @@ import { migration006 } from './migrations/006-runs-table.js';
 import { migration007 } from './migrations/007-workflow-definitions.js';
 import { migration008 } from './migrations/008-run-snapshots.js';
 import { migration009 } from './migrations/009-run-stages.js';
+import { migration010 } from './migrations/010-idempotency-records.js';
 import type { Migration } from './types.js';
 
 /**
@@ -20,6 +21,7 @@ import type { Migration } from './types.js';
  * 007: global immutable built-in workflow definitions
  * 008: one-to-one Task Run snapshots
  * 009: Task-domain initial run stages
+ * 010: immutable idempotency records (M2.6)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -31,4 +33,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration007,
   migration008,
   migration009,
+  migration010,
 ];
