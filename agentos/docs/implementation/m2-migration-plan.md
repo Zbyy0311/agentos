@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 P5 SECURITY AND COMPATIBILITY VERIFICATION COMPLETE — PENDING FINAL INDEPENDENT REVIEW; M2.7 NOT STARTED; M2.8 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 IMPLEMENTATION COMPLETE — PENDING PR REVIEW AND MERGE; M2.7 NOT STARTED; M2.8 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Branch:** `runtime/m2-6-idempotency-concurrency` (M2.6 implementation and verification branch), current main/baseline `39eb1d5ae2238f9f65fe7475fa3271a93a946acd`
@@ -18,7 +18,7 @@
 | M2.3 | VERIFIED & MERGED — `ab1fa905` | `runtime/m2-3-workspace-agent-provider`, verified implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation code `9def4f15` (provider API input validation), final remediation review head `c9c851c8`, PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a` |
 | M2.4 | VERIFIED & MERGED — `e02db3b0` | PR #3 merged and archived; report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; no further remediation |
 | M2.5 | VERIFIED & MERGED — `39eb1d5ae2238f9f65fe7475fa3271a93a946acd` | PR #7 MERGED via Merge Commit at 2026-07-28T09:39:46Z (16 commits, 45 files); reviewed head `3c4dc5b8`; branch `runtime/m2-5-stage-workflow-snapshots` and worktree retained; report `docs/implementation/milestones/M2.5-stage-workflow-snapshot-report.md` |
-| M2.6 | P5 SECURITY AND COMPATIBILITY VERIFICATION COMPLETE — PENDING FINAL INDEPENDENT REVIEW | Branch `runtime/m2-6-idempotency-concurrency`; P4 head `8559d434`; P5 targeted and formal evidence recorded in `M2.6-idempotency-concurrency-report.md`; Migration 010 implemented and verified locally; P1–P4 complete; no PR or merge; M2.7/M2.8 not started |
+| M2.6 | IMPLEMENTATION COMPLETE — PENDING PR REVIEW AND MERGE | Branch `runtime/m2-6-idempotency-concurrency`; P4 head `8559d434`; P5 head `cefff26b`; final independent review of `cefff26b` PASSED (BLOCKER 0 / HIGH 0 / MEDIUM 0 / LOW 0); P5 targeted and formal evidence recorded in `M2.6-idempotency-concurrency-report.md`; Migration 010 implemented and verified locally, not yet in Main; P1–P5 complete; no PR or merge; M2.7/M2.8 not started |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
 
@@ -513,6 +513,8 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 > **M2.6 plan-review remediation (2026-07-28):** independent implementation plan review of `70d965b9` returned BLOCKER 2 / HIGH 2 / MEDIUM 3 / LOW 0. All seven findings are resolved in the remediation commit (OD-5 key normalization + rawHeaders parser freeze; OD-13 typed envelope V1 without `unknown`; OD-18 exact Migration 010 DDL + trigger + exports; OD-19 request-hash verifiability boundary; P1 test-scope audit covering `Identity.test.ts`, `m2-4-task-run-schema.test.ts`, `m2-5-workflow-snapshot-stage-schema.test.ts`; `findVerifiedByScope` repository contract; TaskRunService/Route result contract freeze; revised 43-case test matrix). Status: M2.6 IMPLEMENTATION PLAN REVIEW REMEDIATION COMPLETE — PENDING FINAL PLAN REVIEW; M2.6 P1 NOT authorized.
 
 > **M2.6 final verification closure (2026-07-29):** P1–P4 implementation completed on `runtime/m2-6-idempotency-concurrency`; P5 security and compatibility verification passed locally. P4 head is `8559d434fc60e176e9cfa32e6f81257be8b69e31`; P5 report is `docs/implementation/milestones/M2.6-idempotency-concurrency-report.md`; Migration 010 is implemented and verified locally; no backfill or destructive migration was performed. Final independent review remains pending; no PR or merge is claimed; M2.7 and M2.8 are not started.
+
+> **M2.6 final review closure (2026-07-29):** the final independent review of `cefff26b7fcbb4cd8915e9b5a2a780b847159b3b` PASSED with BLOCKER 0 / HIGH 0 / MEDIUM 0 / LOW 0; P1–P5 final reviews all passed; M2.6 IMPLEMENTATION FINAL REVIEW PASSED. Migration 010 is implemented and locally verified; M2.6 has not been merged and Migration 010 has not entered Main (`39eb1d5a` unchanged). No PR has been created; M2.7 and M2.8 are not started. Migration 001–009 history is unchanged.
 
 ---
 

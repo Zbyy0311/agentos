@@ -1,7 +1,7 @@
 # M2 — Storage and Domain Core — Milestone Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 P5 SECURITY AND COMPATIBILITY VERIFICATION COMPLETE — PENDING FINAL INDEPENDENT REVIEW; M2.7 NOT STARTED; M2.8 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 IMPLEMENTATION COMPLETE — PENDING PR REVIEW AND MERGE; M2.7 NOT STARTED; M2.8 NOT STARTED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
 > **Plan Documents:**
@@ -76,7 +76,7 @@ Both corrections were committed in `12207fb8`.
 | M2.3 | Workspace, Agent Profile and Provider Configuration | High | Medium | M2.1, M2.2 | `runtime/m2-3-workspace-agent-provider` |
 | M2.4 | Task and Run Separation — VERIFIED & MERGED `e02db3b0` | High | High | M2.3 | `runtime/m2-4-task-run-separation` |
 | M2.5 | Stage, Workflow Snapshot and Runtime Snapshot — PLAN REVIEW CLOSED, READY FOR P1 AUTHORIZATION | Medium | Medium | M2.4 | `runtime/m2-5-stage-workflow-snapshots` |
-| M2.6 | Idempotency and Optimistic Concurrency — P5 SECURITY AND COMPATIBILITY VERIFICATION COMPLETE; FINAL INDEPENDENT REVIEW PENDING | Medium | Medium | M2.2 | `runtime/m2-6-idempotency-concurrency` |
+| M2.6 | Idempotency and Optimistic Concurrency — IMPLEMENTATION COMPLETE, PENDING PR REVIEW AND MERGE | Medium | Medium | M2.2 | `runtime/m2-6-idempotency-concurrency` |
 | M2.7 | v1 Compatibility Read and Data Migration | Medium | Medium | M2.3, M2.4 | `m2/v1-migration` |
 | M2.8 | Verification and Cutover Readiness | Medium | Low | All above | `m2/verification` |
 
@@ -216,7 +216,7 @@ PR #3 remains open; merge not authorized.
 | M2.3 | ✅ VERIFIED & MERGED — `ab1fa905` (PR #2 MERGED at 2026-07-22T16:30:20Z, source head `ca541c8a`; `runtime/m2-3-workspace-agent-provider`, implementation `236fcc79`, original reviewed head `5dc0e47e`, remediation commit `9def4f15`, final remediation review head `c9c851c8`) |
 | M2.4 | ✅ VERIFIED & MERGED — `e02db3b0` (PR #3 MERGED; `runtime/m2-4-task-run-separation`, report `M2.4-task-run-separation-report.md`) |
 | M2.5 | ✅ VERIFIED & MERGED — `39eb1d5ae2238f9f65fe7475fa3271a93a946acd` (PR #7 MERGED via Merge Commit at 2026-07-28T09:39:46Z, 16 commits / 45 files, reviewed head `3c4dc5b8`; branch and worktree retained; report `M2.5-stage-workflow-snapshot-report.md`) |
-| M2.6 | ✅ IMPLEMENTATION PLAN REVIEW REMEDIATION COMPLETE — PENDING FINAL PLAN REVIEW; implementation not started (branch `runtime/m2-6-idempotency-concurrency`; OD-1–OD-20 APPROVED 2026-07-28, planning review BLOCKER 0 / HIGH 0 / MEDIUM 4 / LOW 1 all resolved; independent implementation plan review of `70d965b9` returned BLOCKER 2 / HIGH 2 / MEDIUM 3 / LOW 0, all seven findings resolved by the 2026-07-28 remediation; historical M2.6 draft `v008-idempotency-records.sql` is stale — registry tail is 001–009, Migration 010 exact DDL frozen in OD-18; see `M2.6-current-state-audit.md`, `M2.6-owner-decisions.md`, `M2.6-idempotency-concurrency-plan.md`; M2.6 P1 NOT authorized; no production code, test, migration, or shared type change authorized) |
+| M2.6 | ✅ IMPLEMENTATION COMPLETE — PENDING PR REVIEW AND MERGE (branch `runtime/m2-6-idempotency-concurrency`; P1–P5 complete; final independent review of `cefff26b` PASSED — BLOCKER 0 / HIGH 0 / MEDIUM 0 / LOW 0; OD-1–OD-20 APPROVED 2026-07-28, planning review BLOCKER 0 / HIGH 0 / MEDIUM 4 / LOW 1 all resolved; independent implementation plan review of `70d965b9` returned BLOCKER 2 / HIGH 2 / MEDIUM 3 / LOW 0, all seven findings resolved by the 2026-07-28 remediation; historical M2.6 draft `v008-idempotency-records.sql` is stale — Migration 010 exact DDL frozen in OD-18, implemented and locally verified, not yet in Main; PR review not started; merge not started; M2.7/M2.8 NOT STARTED; see `M2.6-current-state-audit.md`, `M2.6-owner-decisions.md`, `M2.6-idempotency-concurrency-plan.md`, `M2.6-idempotency-concurrency-report.md`) |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（Migration 005/006 注册后的必要预期同步）; 其他既有测试零修改；测试语义与验证强度不变。
 
@@ -258,4 +258,4 @@ Owner authorization.
 
 ### M2.6 Final Verification Closure (2026-07-29)
 
-M2.6 implementation is complete through P4 and P5 security/compatibility verification. P5 evidence is recorded in `M2.6-idempotency-concurrency-report.md`; final independent review remains pending. Main remains `39eb1d5a`; branch `runtime/m2-6-idempotency-concurrency` and its worktree are retained. M2.7 and M2.8 remain NOT STARTED.
+M2.6 implementation P1–P5 is complete and the final independent review of `cefff26b` PASSED with BLOCKER 0 / HIGH 0 / MEDIUM 0 / LOW 0. P5 evidence and the final review sign-off are recorded in `M2.6-idempotency-concurrency-report.md`. M2.6 status is IMPLEMENTATION COMPLETE — PENDING PR REVIEW AND MERGE: PR review has not started and merge has not started. Main remains `39eb1d5a`; branch `runtime/m2-6-idempotency-concurrency` and its worktree are retained. M2.7 and M2.8 remain NOT STARTED.
