@@ -20,7 +20,7 @@ export class LegacySourceParseError extends Error {
 export interface LegacySourceParseResult {
   /** Lowercase SHA-256 of the exact source bytes. */
   sourceHash: string;
-  /** Parsed semantic value (top-level array). */
+  /** Parsed semantic value (ordered entities extracted from the envelope). */
   value: unknown[];
   /** Canonical JSON: recursively sorted object keys, array order preserved. */
   canonicalJson: string;
@@ -28,13 +28,11 @@ export interface LegacySourceParseResult {
   payloadHash: string;
   /** v1 source envelope version accepted by this parser. */
   sourceSchemaVersion: number;
-  /** Number of top-level array entries. */
+  /** Number of extracted entity entries. */
   entityCount: number;
 }
 
 export const LEGACY_SOURCE_SCHEMA_VERSION = 1 as const;
-
-const MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
 
 function sha256Hex(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -116,7 +114,13 @@ class StrictJsonParser {
       }
       this.index += 1;
       this.skipWhitespace();
-      result[key] = this.parseValue();
+      const value = this.parseValue();
+      Object.defineProperty(result, key, {
+        value,
+        enumerable: true,
+        writable: true,
+        configurable: true,
+      });
       this.skipWhitespace();
       const next = this.peek();
       if (next === ',') {
@@ -250,7 +254,8 @@ class StrictJsonParser {
 
   private parseNumber(): number {
     const start = this.index;
-    if (this.peek() === '-') this.index += 1;
+    const negative = this.peek() === '-';
+    if (negative) this.index += 1;
     const intStart = this.index;
     if (this.peek() === '0') {
       this.index += 1;
@@ -260,69 +265,180 @@ class StrictJsonParser {
       throw new LegacySourceParseError('invalid number', start);
     }
     const intPart = this.text.slice(intStart, this.index);
-    let hasFracOrExp = false;
+    let fracPart = '';
+    let exponentPart = '0';
     if (this.peek() === '.') {
-      hasFracOrExp = true;
       this.index += 1;
+      const fracStart = this.index;
       if (!(this.peek() >= '0' && this.peek() <= '9')) {
         throw new LegacySourceParseError('invalid number', start);
       }
       while (this.peek() >= '0' && this.peek() <= '9') this.index += 1;
+      fracPart = this.text.slice(fracStart, this.index);
     }
     if (this.peek() === 'e' || this.peek() === 'E') {
-      hasFracOrExp = true;
       this.index += 1;
+      const exponentStart = this.index;
       if (this.peek() === '+' || this.peek() === '-') this.index += 1;
       if (!(this.peek() >= '0' && this.peek() <= '9')) {
         throw new LegacySourceParseError('invalid number', start);
       }
       while (this.peek() >= '0' && this.peek() <= '9') this.index += 1;
+      exponentPart = this.text.slice(exponentStart, this.index);
     }
     const literal = this.text.slice(start, this.index);
-    const negative = literal.startsWith('-');
-
-    if (!hasFracOrExp) {
-      // Integer literal: verify the exact mathematical value is a safe integer.
-      let magnitude: bigint;
-      try {
-        magnitude = BigInt(intPart);
-      } catch {
-        throw new LegacySourceParseError('invalid number', start);
-      }
-      if (magnitude > MAX_SAFE_INTEGER_BIGINT) {
-        throw new LegacySourceParseError('unsafe integer', start);
-      }
-      if (magnitude === 0n && negative) {
-        throw new LegacySourceParseError('negative zero', start);
-      }
-      return Number(literal);
-    }
 
     const value = Number(literal);
     if (!Number.isFinite(value)) {
       throw new LegacySourceParseError('non-finite number', start);
     }
-    if (value === 0 && negative) {
+    if (Object.is(value, -0)) {
       throw new LegacySourceParseError('negative zero', start);
     }
     if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
       throw new LegacySourceParseError('unsafe integer', start);
     }
-    // The canonical representation must round-trip to the identical value.
+
+    // Compare the original token with the canonical JavaScript Number token as
+    // exact decimal values. Comparing only Number(canonical) === value would
+    // accept decimal input whose low-order digits were silently rounded away.
+    const originalDecimal = normalizeDecimalParts(negative, intPart, fracPart, exponentPart);
     const canonical = canonicalNumber(value);
-    if (Number(canonical) !== value) {
+    const canonicalDecimal = normalizeDecimalToken(canonical);
+    if (!decimalEquals(originalDecimal, canonicalDecimal)) {
       throw new LegacySourceParseError('unstable number', start);
     }
     return value;
   }
 }
 
-function canonicalNumber(value: number): string {
-  if (Number.isInteger(value)) {
-    // Only safe integers reach this point, so String() is exact.
-    return String(value);
+interface SignedDecimalInteger {
+  negative: boolean;
+  digits: string;
+}
+
+interface NormalizedDecimal {
+  negative: boolean;
+  digits: string;
+  exponent: SignedDecimalInteger;
+}
+
+function normalizeSignedInteger(negative: boolean, digits: string): SignedDecimalInteger {
+  const normalized = digits.replace(/^0+/, '') || '0';
+  return {
+    negative: normalized !== '0' && negative,
+    digits: normalized,
+  };
+}
+
+function compareAbsoluteIntegers(left: string, right: string): number {
+  if (left.length !== right.length) return left.length < right.length ? -1 : 1;
+  if (left === right) return 0;
+  return left < right ? -1 : 1;
+}
+
+function addAbsoluteIntegers(left: string, right: string): string {
+  let i = left.length - 1;
+  let j = right.length - 1;
+  let carry = 0;
+  let output = '';
+  while (i >= 0 || j >= 0 || carry !== 0) {
+    const sum = (i >= 0 ? left.charCodeAt(i--) - 48 : 0)
+      + (j >= 0 ? right.charCodeAt(j--) - 48 : 0) + carry;
+    output = String(sum % 10) + output;
+    carry = Math.floor(sum / 10);
   }
-  return JSON.stringify(value);
+  return output;
+}
+
+/** `left` must be greater than or equal to `right`. */
+function subtractAbsoluteIntegers(left: string, right: string): string {
+  let i = left.length - 1;
+  let j = right.length - 1;
+  let borrow = 0;
+  let output = '';
+  while (i >= 0) {
+    let difference = left.charCodeAt(i--) - 48 - borrow - (j >= 0 ? right.charCodeAt(j--) - 48 : 0);
+    if (difference < 0) {
+      difference += 10;
+      borrow = 1;
+    } else {
+      borrow = 0;
+    }
+    output = String(difference) + output;
+  }
+  return output.replace(/^0+/, '') || '0';
+}
+
+function addSignedIntegers(left: SignedDecimalInteger, right: SignedDecimalInteger): SignedDecimalInteger {
+  if (left.negative === right.negative) {
+    return normalizeSignedInteger(left.negative, addAbsoluteIntegers(left.digits, right.digits));
+  }
+  const comparison = compareAbsoluteIntegers(left.digits, right.digits);
+  if (comparison === 0) return normalizeSignedInteger(false, '0');
+  if (comparison > 0) {
+    return normalizeSignedInteger(left.negative, subtractAbsoluteIntegers(left.digits, right.digits));
+  }
+  return normalizeSignedInteger(right.negative, subtractAbsoluteIntegers(right.digits, left.digits));
+}
+
+function signedIntegerFromNumber(value: number): SignedDecimalInteger {
+  if (!Number.isSafeInteger(value)) throw new LegacySourceParseError('number exponent overflow');
+  return normalizeSignedInteger(value < 0, String(Math.abs(value)));
+}
+
+function parseSignedIntegerToken(token: string): SignedDecimalInteger {
+  const negative = token.startsWith('-');
+  const unsigned = negative || token.startsWith('+') ? token.slice(1) : token;
+  if (!/^\d+$/.test(unsigned)) throw new LegacySourceParseError('invalid number exponent');
+  return normalizeSignedInteger(negative, unsigned);
+}
+
+function normalizeDecimalParts(
+  negative: boolean,
+  integerPart: string,
+  fractionPart: string,
+  exponentToken: string,
+): NormalizedDecimal {
+  const coefficient = `${integerPart}${fractionPart}`.replace(/^0+/, '');
+  if (coefficient.length === 0) {
+    return { negative: false, digits: '0', exponent: normalizeSignedInteger(false, '0') };
+  }
+  let digits = coefficient;
+  let trailingZeros = 0;
+  while (digits.endsWith('0')) {
+    digits = digits.slice(0, -1);
+    trailingZeros += 1;
+  }
+  let exponent = parseSignedIntegerToken(exponentToken);
+  exponent = addSignedIntegers(exponent, signedIntegerFromNumber(-fractionPart.length));
+  exponent = addSignedIntegers(exponent, signedIntegerFromNumber(trailingZeros));
+  return { negative, digits, exponent };
+}
+
+function normalizeDecimalToken(token: string): NormalizedDecimal {
+  const match = /^(-?)(\d+)(?:\.(\d+))?(?:[eE]([+-]?\d+))?$/.exec(token);
+  if (match === null) throw new LegacySourceParseError('invalid canonical number');
+  return normalizeDecimalParts(match[1] === '-', match[2], match[3] ?? '', match[4] ?? '0');
+}
+
+function decimalEquals(left: NormalizedDecimal, right: NormalizedDecimal): boolean {
+  return left.negative === right.negative
+    && left.digits === right.digits
+    && left.exponent.negative === right.exponent.negative
+    && left.exponent.digits === right.exponent.digits;
+}
+
+function canonicalNumber(value: number): string {
+  if (!Number.isFinite(value) || Object.is(value, -0)) {
+    throw new LegacySourceParseError('unserializable number');
+  }
+  if (Number.isInteger(value) && !Number.isSafeInteger(value)) {
+    throw new LegacySourceParseError('unsafe integer');
+  }
+  const serialized = Number.isInteger(value) ? String(value) : JSON.stringify(value);
+  if (typeof serialized !== 'string') throw new LegacySourceParseError('unserializable number');
+  return serialized;
 }
 
 /** Canonical JSON: object keys recursively sorted, array order preserved. */
@@ -333,9 +449,20 @@ export function canonicalizeLegacyJson(value: unknown): string {
   if (typeof value === 'number') return canonicalNumber(value);
   if (typeof value === 'string') return JSON.stringify(value);
   if (Array.isArray(value)) {
-    return `[${value.map(item => canonicalizeLegacyJson(item)).join(',')}]`;
+    const items: string[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.prototype.hasOwnProperty.call(value, index)) {
+        throw new LegacySourceParseError('unserializable array');
+      }
+      items.push(canonicalizeLegacyJson(value[index]));
+    }
+    return `[${items.join(',')}]`;
   }
   if (typeof value === 'object') {
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) {
+      throw new LegacySourceParseError('non-plain object');
+    }
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record).sort();
     const entries = keys.map(key => `${JSON.stringify(key)}:${canonicalizeLegacyJson(record[key])}`);
@@ -345,13 +472,17 @@ export function canonicalizeLegacyJson(value: unknown): string {
 }
 
 /**
- * Strictly parse a legacy v1 JSON source envelope (top-level array).
+ * Strictly parse a legacy v1 JSON source envelope and extract its ordered
+ * entity array. The envelope shape is selected by the explicit source key.
  *
  * This is not `JSON.parse`: it rejects duplicate object keys at every level,
  * malformed escapes, unpaired surrogates, trailing tokens/commas, non-finite
  * numbers, unsafe integers, negative zero, a UTF-8 BOM and invalid UTF-8.
  */
-export function parseLegacyJsonSource(bytes: Uint8Array): LegacySourceParseResult {
+export function parseLegacyJsonSource(
+  bytes: Uint8Array,
+  sourceKey: 'workspaces.json' | 'tasks.json',
+): LegacySourceParseResult {
   const sourceHash = sha256Hex(bytes);
   let text: string;
   try {
@@ -360,16 +491,27 @@ export function parseLegacyJsonSource(bytes: Uint8Array): LegacySourceParseResul
     throw new LegacySourceParseError('invalid utf-8');
   }
   const value = new StrictJsonParser(text).parseDocument();
-  if (!Array.isArray(value)) {
-    throw new LegacySourceParseError('top-level source must be an array');
+  if (sourceKey !== 'workspaces.json' && sourceKey !== 'tasks.json') {
+    throw new LegacySourceParseError('unsupported source key');
   }
-  const canonicalJson = canonicalizeLegacyJson(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new LegacySourceParseError('top-level source must be an object envelope');
+  }
+  const envelopeKey = sourceKey === 'workspaces.json' ? 'workspaces' : 'tasks';
+  if (!Object.prototype.hasOwnProperty.call(value, envelopeKey)) {
+    throw new LegacySourceParseError('missing source envelope');
+  }
+  const entities = (value as Record<string, unknown>)[envelopeKey];
+  if (!Array.isArray(entities)) {
+    throw new LegacySourceParseError('source envelope must be an array');
+  }
+  const canonicalJson = canonicalizeLegacyJson(entities);
   return {
     sourceHash,
-    value,
+    value: entities,
     canonicalJson,
     payloadHash: sha256Hex(canonicalJson),
     sourceSchemaVersion: LEGACY_SOURCE_SCHEMA_VERSION,
-    entityCount: value.length,
+    entityCount: entities.length,
   };
 }

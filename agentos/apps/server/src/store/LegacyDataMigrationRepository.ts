@@ -98,6 +98,7 @@ interface RepositoryDatabase extends TransactionDatabase {
 
 const HASH_PATTERN = /^[0-9a-f]{64}$/;
 const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const ERROR_CODE_PATTERN = /^[A-Z][A-Z0-9_]{2,127}$/;
 
 function invalidRecord(reason: string): LegacyDataMigrationError {
   return new LegacyDataMigrationError(LEGACY_DATA_MIGRATION_INVALID_RECORD, reason);
@@ -117,6 +118,10 @@ function isValidHash(value: unknown): value is string {
 
 function isValidTimestamp(value: unknown): value is string {
   return typeof value === 'string' && TIMESTAMP_PATTERN.test(value);
+}
+
+function isStableErrorCode(value: unknown): value is string {
+  return typeof value === 'string' && ERROR_CODE_PATTERN.test(value);
 }
 
 function isPositiveInt(value: unknown): value is number {
@@ -186,7 +191,7 @@ export function validateLegacyDataMigrationRow(row: unknown): LegacyDataMigratio
   if (!isPositiveInt(r.attempt)) throw invalidRecord('attempt');
   if (r.revision !== null && !isPositiveInt(r.revision)) throw invalidRecord('revision');
   if (!isNonNegativeInt(r.entity_count)) throw invalidRecord('entity_count');
-  if (r.error_code !== null && !isNonEmptyString(r.error_code)) throw invalidRecord('error_code');
+  if (r.error_code !== null && !isStableErrorCode(r.error_code)) throw invalidRecord('error_code');
   if (!isValidTimestamp(r.created_at)) throw invalidRecord('created_at');
   if (!isValidTimestamp(r.started_at)) throw invalidRecord('started_at');
   if (r.finished_at !== null && !isValidTimestamp(r.finished_at)) throw invalidRecord('finished_at');
@@ -387,7 +392,7 @@ export class LegacyDataMigrationRepository {
   }
 
   transitionRunningToFailed(id: string, input: FailAttemptInput): LegacyDataMigrationRecord {
-    if (!isNonEmptyString(input.errorCode)) throw invalidRecord('error_code');
+    if (!isStableErrorCode(input.errorCode)) throw invalidRecord('error_code');
     if (!isValidTimestamp(input.finishedAt)) throw invalidRecord('finished_at');
     if (!isValidTimestamp(input.updatedAt)) throw invalidRecord('updated_at');
     this.requireRunning(id);
@@ -402,7 +407,7 @@ export class LegacyDataMigrationRepository {
   }
 
   transitionRunningToQuarantined(id: string, input: QuarantineAttemptInput): LegacyDataMigrationRecord {
-    if (!isNonEmptyString(input.errorCode)) throw invalidRecord('error_code');
+    if (!isStableErrorCode(input.errorCode)) throw invalidRecord('error_code');
     if (!isValidTimestamp(input.finishedAt)) throw invalidRecord('finished_at');
     if (!isValidTimestamp(input.updatedAt)) throw invalidRecord('updated_at');
     if (input.payloadHash !== undefined && !isValidHash(input.payloadHash)) throw invalidRecord('payload_hash');

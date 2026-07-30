@@ -303,7 +303,7 @@ test('[M27-P1-T025] completed exact-source lookup is unique and reusable for no-
 });
 
 test('[M27-P1-T026] operational failure uses an independent failure-record transaction', async () => {
-  const { LegacyDataMigrationRepository } = await loadRepositoryModule();
+  const { LegacyDataMigrationRepository, LegacyDataMigrationError } = await loadRepositoryModule();
   const db = await createDb();
   try {
     const repo = new LegacyDataMigrationRepository(db);
@@ -320,8 +320,133 @@ test('[M27-P1-T026] operational failure uses an independent failure-record trans
     });
     assert.equal(failed.status, 'failed');
     assert.equal((db.prepare('SELECT COUNT(*) AS count FROM legacy_task_items').get() as { count: number }).count, 0);
+
+    // Stable error-code boundary: unstable codes never reach the Registry.
+    const badCodes = [
+      'bad code',
+      'c:\\private\\agentos.sqlite',
+      'SELECT * FROM messages',
+      '{"a":1}',
+      'Error: leaked\n at stack',
+      'lowercase',
+      'A'.repeat(200),
+      '',
+    ];
+    for (const [index, badCode] of badCodes.entries()) {
+      const failSeed = reserve(repo, `bad-f-${index}`, hash(`bad-f-${index}`));
+      assert.throws(
+        () => repo.transitionRunningToFailed(failSeed.id, { errorCode: badCode, finishedAt: LATER, updatedAt: LATER }),
+        (error: unknown) => error instanceof LegacyDataMigrationError
+          && (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_INVALID_RECORD',
+        `failed transition must reject unstable code ${index}`,
+      );
+      assert.equal(repo.findById(failSeed.id).status, 'running');
+      assert.equal(repo.findById(failSeed.id).errorCode, null);
+      const quarantineSeed = reserve(repo, `bad-q-${index}`, hash(`bad-q-${index}`));
+      assert.throws(
+        () => repo.transitionRunningToQuarantined(quarantineSeed.id, { errorCode: badCode, finishedAt: LATER, updatedAt: LATER }),
+        (error: unknown) => error instanceof LegacyDataMigrationError
+          && (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_INVALID_RECORD',
+        `quarantine transition must reject unstable code ${index}`,
+      );
+      assert.equal(repo.findById(quarantineSeed.id).status, 'running');
+      assert.equal(repo.findById(quarantineSeed.id).errorCode, null);
+    }
   } finally {
     db.close();
+  }
+
+  // Full Service failure-record contract: raw process errors are sanitized,
+  // invalid quarantine codes become operational failures, and the independent
+  // failure transaction always lands.
+  const { migration011 } = await loadMigration011();
+  const { LegacyDataMigrationService } = await import('../../services/LegacyDataMigrationService.js') as unknown as {
+    LegacyDataMigrationService: new () => { run(input: Record<string, unknown>): Promise<unknown> };
+  };
+  const root = mkdtempSync(join(tmpdir(), 'agentos-m27-t026-'));
+  const dataDir = join(root, '.agentos');
+  mkdirSync(dataDir, { recursive: true });
+  const databasePath = join(dataDir, 'agentos.sqlite');
+  const serviceDb = new DatabaseSync(databasePath);
+  try {
+    serviceDb.exec('PRAGMA foreign_keys = ON');
+    for (const migration of [baselineMigration, migration002, migration003]) migration.apply({ db: serviceDb });
+    migration011.apply({ db: serviceDb });
+    serviceDb.prepare(`
+      INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)
+      VALUES ('ws-1', 'Workspace', ?, ?, ?, ?, ?)
+    `).run(root, root.toLowerCase(), NOW, NOW, NOW);
+
+    const runService = (source: string, process: (context: Record<string, unknown>) => Promise<Record<string, unknown>>) =>
+      new LegacyDataMigrationService().run({
+        projectRoot: root,
+        databasePath,
+        migrationKind: 'legacy_task_item_import',
+        sourceKey: 'tasks.json',
+        scopeKind: 'workspace',
+        scopeKey: 'scope-1',
+        canonicalWorkspaceId: 'ws-1',
+        sourceBytesLoader: async () => Buffer.from(source, 'utf8'),
+        databaseFactory: () => new DatabaseSync(databasePath),
+        backupProvider: { createAndVerify: async () => ({}) },
+        process,
+      });
+
+    const secretError = new Error('SECRET_PAYLOAD at C:\\private\\agentos.sqlite: SELECT * FROM messages');
+    await assert.rejects(
+      () => runService('{"tasks":[{"id":"task-1"}]}', async () => { throw secretError; }),
+      (error: unknown) => {
+        const code = (error as { code?: string }).code;
+        const rendered = `${String((error as Error).message)} ${JSON.stringify(error)}`;
+        return code === 'LEGACY_DATA_MIGRATION_OPERATION_FAILED'
+          && !rendered.includes('SECRET_PAYLOAD')
+          && !rendered.includes('C:\\private')
+          && !rendered.includes('SELECT * FROM messages');
+      },
+    );
+    let rows = serviceDb.prepare('SELECT status, error_code FROM legacy_data_migrations ORDER BY attempt').all() as Array<{ status: string; error_code: string | null }>;
+    assert.deepEqual(rows.map(row => ({ status: row.status, error_code: row.error_code })), [
+      { status: 'failed', error_code: 'LEGACY_DATA_MIGRATION_OPERATION_FAILED' },
+    ]);
+
+    // Invalid quarantine error code is rejected and recorded as operational failure.
+    await assert.rejects(
+      () => runService('{"tasks":[{"id":"task-2"}]}', async () => ({ outcome: 'quarantined', errorCode: 'lowercase bad code' })),
+      (error: unknown) => (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_OPERATION_FAILED',
+    );
+    rows = serviceDb.prepare('SELECT status, error_code FROM legacy_data_migrations ORDER BY attempt').all() as Array<{ status: string; error_code: string | null }>;
+    assert.deepEqual(rows.map(row => ({ status: row.status, error_code: row.error_code })), [
+      { status: 'failed', error_code: 'LEGACY_DATA_MIGRATION_OPERATION_FAILED' },
+      { status: 'failed', error_code: 'LEGACY_DATA_MIGRATION_OPERATION_FAILED' },
+    ]);
+
+    // A pre-Attempt loader failure creates no Attempt and leaks nothing.
+    await assert.rejects(
+      () => new LegacyDataMigrationService().run({
+        projectRoot: root,
+        databasePath,
+        migrationKind: 'legacy_task_item_import',
+        sourceKey: 'tasks.json',
+        scopeKind: 'workspace',
+        scopeKey: 'scope-1',
+        canonicalWorkspaceId: 'ws-1',
+        sourceBytesLoader: async () => { throw new Error('SECRET_PAYLOAD C:\\private SELECT * FROM messages'); },
+        databaseFactory: () => new DatabaseSync(databasePath),
+        backupProvider: { createAndVerify: async () => ({}) },
+        process: async () => ({ outcome: 'completed' }),
+      }),
+      (error: unknown) => {
+        const rendered = `${String((error as Error).message)} ${JSON.stringify(error)}`;
+        return (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_OPERATION_FAILED'
+          && !rendered.includes('SECRET_PAYLOAD')
+          && !rendered.includes('SELECT * FROM messages');
+      },
+    );
+    rows = serviceDb.prepare('SELECT status, error_code FROM legacy_data_migrations ORDER BY attempt').all() as Array<{ status: string; error_code: string | null }>;
+    assert.equal(rows.length, 2, 'pre-Attempt loader failure must create no Attempt');
+  } finally {
+    serviceDb.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
 
@@ -406,7 +531,7 @@ test('[M27-P1-T046] an active Attempt is never marked Interrupted by a contender
         scopeKind: 'workspace',
         scopeKey: 'scope-1',
         canonicalWorkspaceId: 'ws-1',
-        sourceBytesLoader: async () => Buffer.from('[]', 'utf8'),
+        sourceBytesLoader: async () => Buffer.from('{"tasks":[]}', 'utf8'),
         databaseFactory: () => new DatabaseSync(databasePath),
         backupProvider: { createAndVerify: async () => ({ sqliteBackupFileName: 'sqlite', jsonBackupFileName: 'json' }) },
         process: async () => ({ outcome: 'completed' }),

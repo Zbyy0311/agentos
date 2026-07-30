@@ -69,7 +69,9 @@ function isPositiveInt(value: unknown): value is number {
 }
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
 }
 
 const ROW_COLUMNS = `
@@ -105,7 +107,12 @@ export function validateLegacyTaskItemRow(row: unknown): LegacyTaskItemRecord {
     throw invalidRecord('payload_json validity');
   }
   if (!isPlainObject(payload)) throw invalidRecord('payload shape');
-  const canonical = canonicalizeLegacyJson(payload);
+  let canonical: string;
+  try {
+    canonical = canonicalizeLegacyJson(payload);
+  } catch {
+    throw invalidRecord('payload canonical form');
+  }
   if (canonical !== r.payload_json) throw invalidRecord('payload canonical form');
   if (createHash(LEGACY_HASH_ALGORITHM).update(r.payload_json).digest('hex') !== r.payload_hash) {
     throw invalidRecord('payload hash mismatch');
@@ -162,7 +169,12 @@ export class LegacyTaskItemRepository {
     if (!isPlainObject(input.payload)) throw invalidRecord('payload shape');
     if (!isValidTimestamp(input.createdAt)) throw invalidRecord('created_at');
 
-    const canonical = canonicalizeLegacyJson(input.payload);
+    let canonical: string;
+    try {
+      canonical = canonicalizeLegacyJson(input.payload);
+    } catch {
+      throw invalidRecord('payload canonical form');
+    }
     if (createHash(LEGACY_HASH_ALGORITHM).update(canonical).digest('hex') !== input.payloadHash) {
       throw invalidRecord('payload hash mismatch');
     }

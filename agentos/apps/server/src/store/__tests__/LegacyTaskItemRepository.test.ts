@@ -119,6 +119,60 @@ test('[M27-P1-T008] rerun primitives preserve append-only scoped Task snapshots 
     assert.equal(repo.findByRevision('scope-1', 'legacy-task-1', 1)?.payload.title, 'first');
     assert.equal(repo.findCurrentHighestRevision('scope-1', 'legacy-task-1')?.payload.title, 'second');
     assert.equal((db.prepare('SELECT COUNT(*) AS count FROM legacy_task_items').get() as { count: number }).count, 2);
+
+    // `__proto__` survives the round-trip as an own enumerable data property.
+    const protoPayload = JSON.parse('{"id":"legacy-task-2","__proto__":{"origin":"v1"},"outputs":[]}') as Record<string, unknown>;
+    const protoCanonical = '{"__proto__":{"origin":"v1"},"id":"legacy-task-2","outputs":[]}';
+    const third = repo.insertAcceptedSnapshot({
+      workspaceScopeId: 'scope-1',
+      canonicalWorkspaceId: 'ws-1',
+      legacyTaskId: 'legacy-task-2',
+      revision: 1,
+      migrationId: 'migration-2',
+      sourceHash: hash('source-2'),
+      payloadHash: hash(protoCanonical),
+      sourceSchemaVersion: 1,
+      payload: protoPayload,
+      createdAt: NOW,
+    });
+    assert.equal(Object.prototype.hasOwnProperty.call(third.payload, '__proto__'), true);
+    assert.deepEqual(third.payload.__proto__, { origin: 'v1' });
+    assert.equal(Object.getPrototypeOf(third.payload), Object.prototype);
+    const protoRead = repo.findByRevision('scope-1', 'legacy-task-2', 1);
+    assert.deepEqual(protoRead?.payload.__proto__, { origin: 'v1' });
+    assert.equal(({} as Record<string, unknown>).origin, undefined);
+
+    // Canonicalization failures map to the stable Repository error code.
+    const invalidPayloads: Array<[string, unknown]> = [
+      ['custom prototype', Object.assign(Object.create({ custom: true }), { id: 'bad-0' })],
+      ['Date', new Date(0)],
+      ['Map', new Map()],
+      ['NaN', { id: 'bad-3', value: Number.NaN }],
+      ['Infinity', { id: 'bad-4', value: Number.POSITIVE_INFINITY }],
+      ['-Infinity', { id: 'bad-5', value: Number.NEGATIVE_INFINITY }],
+      ['-0', { id: 'bad-6', value: -0 }],
+      ['unsafe integer', { id: 'bad-7', value: 9007199254740993 }],
+    ];
+    for (const [index, [name, payload]] of invalidPayloads.entries()) {
+      assert.throws(
+        () => repo.insertAcceptedSnapshot({
+          workspaceScopeId: 'scope-1',
+          canonicalWorkspaceId: 'ws-1',
+          legacyTaskId: `bad-${index}`,
+          revision: 1,
+          migrationId: 'migration-2',
+          sourceHash: hash('source-2'),
+          payloadHash: hash(`bad-${index}`),
+          sourceSchemaVersion: 1,
+          payload: payload as Record<string, unknown>,
+          createdAt: NOW,
+        }),
+        (error: unknown) => error instanceof Error
+          && (error as { code?: string }).code === 'LEGACY_TASK_ITEM_INVALID_RECORD',
+        `${name} must fail closed with the stable Repository code`,
+      );
+    }
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM legacy_task_items').get() as { count: number }).count, 3);
   } finally {
     db.close();
   }

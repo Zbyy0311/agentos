@@ -47,7 +47,10 @@ export type LegacyMigrationIdFactory = () => string;
 
 export type LegacyMigrationClock = () => string;
 
-export type LegacySourceParserFn = (bytes: Uint8Array) => LegacySourceParseResult;
+export type LegacySourceParserFn = (
+  bytes: Uint8Array,
+  sourceKey: LegacySourceKey,
+) => LegacySourceParseResult;
 
 export interface LegacyBackupProviderPort {
   createAndVerify(input: Record<string, unknown>): Promise<LegacyBackupResult | Record<string, unknown>>;
@@ -103,6 +106,28 @@ export interface LegacyDataMigrationServiceOptions {
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.length > 0;
+}
+
+/** Verify the open write connection is bound to the path whose lock was held. */
+function assertDatabaseHandleBinding(
+  db: LegacyMigrationDatabase,
+  databasePath: string,
+): void {
+  let mainFile: string | undefined;
+  try {
+    const rows = db.prepare('PRAGMA database_list').all() as Array<{ name?: unknown; file?: unknown }>;
+    const main = rows.find(row => row.name === 'main');
+    if (main !== undefined && typeof main.file === 'string' && main.file.length > 0) {
+      mainFile = main.file;
+    }
+  } catch {
+    throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_PATH_MISMATCH);
+  }
+  if (mainFile === undefined
+    || canonicalizeLegacyMigrationDatabasePath(mainFile)
+      !== canonicalizeLegacyMigrationDatabasePath(databasePath)) {
+    throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_PATH_MISMATCH);
+  }
 }
 
 /**
@@ -171,15 +196,31 @@ export class LegacyDataMigrationService {
 
     let db: LegacyMigrationDatabase | undefined;
     try {
-      // Step 4: read-only source preflight.
-      const sourceBytes = await input.sourceBytesLoader();
+      // Step 4: read-only source preflight. Loader failures are operational
+      // failures, but happen before a database connection or Attempt exists.
+      let sourceBytes: Uint8Array;
+      try {
+        sourceBytes = await input.sourceBytesLoader();
+      } catch {
+        throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_OPERATION_FAILED);
+      }
       if (!(sourceBytes instanceof Uint8Array)) {
         throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_INVALID_INPUT);
       }
       const sourceHash = createHash('sha256').update(sourceBytes).digest('hex');
       scope.sourceHash = sourceHash;
 
-      db = input.databaseFactory();
+      try {
+        db = input.databaseFactory();
+      } catch {
+        throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_OPERATION_FAILED);
+      }
+      if (db === undefined || db === null || typeof db.close !== 'function') {
+        throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_INVALID_INPUT);
+      }
+      // This check is after the connection is opened and before any Registry
+      // query, Backup, Attempt, Parser, or processing callback.
+      assertDatabaseHandleBinding(db, input.databasePath);
       const repository = new LegacyDataMigrationRepository(db);
 
       // Steps 5+6: exact-source Completed no-op before any Backup.
@@ -189,21 +230,34 @@ export class LegacyDataMigrationService {
       }
 
       // Step 7: write-intent Backup creation and verification.
-      const migrationId = this.migrationIdFactory();
+      let migrationId: string;
+      try {
+        migrationId = this.migrationIdFactory();
+      } catch {
+        throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_OPERATION_FAILED);
+      }
       if (!isNonEmptyString(migrationId)) {
         throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_INVALID_INPUT);
       }
       const backupProvider = input.backupProvider ?? this.defaultBackupProvider(input);
-      await backupProvider.createAndVerify({
-        databasePath: input.databasePath,
-        database: db,
-        backupDirectory: input.backupDirectory,
-        migrationId,
-        sourceBytes,
-        sourceHash,
-        expectedTables: input.expectedTables,
-        expectedTableCounts: input.expectedTableCounts,
-      });
+      try {
+        await backupProvider.createAndVerify({
+          databasePath: input.databasePath,
+          database: db,
+          backupDirectory: input.backupDirectory,
+          migrationId,
+          sourceBytes,
+          sourceHash,
+          expectedTables: input.expectedTables,
+          expectedTableCounts: input.expectedTableCounts,
+        });
+      } catch (error) {
+        const code = (error as { code?: unknown })?.code;
+        if (code === 'LEGACY_DATA_MIGRATION_BACKUP_FAILED') {
+          throw new LegacyDataMigrationServiceError('LEGACY_DATA_MIGRATION_BACKUP_FAILED');
+        }
+        throw new LegacyDataMigrationServiceError('LEGACY_DATA_MIGRATION_BACKUP_FAILED');
+      }
 
       // Step 8: one BEGIN IMMEDIATE transaction reconciles the target Scope's
       // stale Running Attempt and reserves the next Attempt.
@@ -216,7 +270,7 @@ export class LegacyDataMigrationService {
       // Step 9: strict Parser after Reservation; rejection becomes Quarantined.
       let parsed: LegacySourceParseResult;
       try {
-        parsed = this.parser(sourceBytes);
+        parsed = this.parser(sourceBytes, input.sourceKey);
       } catch (error) {
         const code = (error as { code?: unknown })?.code;
         if (code === 'LEGACY_SOURCE_PARSE_FAILED') {
@@ -331,6 +385,6 @@ export class LegacyDataMigrationService {
     } catch {
       // Failure-record write failures never mask the original error.
     }
-    throw error;
+    throw new LegacyDataMigrationServiceError(LEGACY_DATA_MIGRATION_OPERATION_FAILED);
   }
 }

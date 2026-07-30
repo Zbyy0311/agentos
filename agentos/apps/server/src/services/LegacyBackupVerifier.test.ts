@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -30,7 +30,9 @@ function sha256(bytes: Uint8Array): string {
 
 async function loadModules() {
   const backupModule = await import('./LegacyBackupVerifier.js') as unknown as {
-    LegacyBackupVerifier: new () => {
+    LegacyBackupVerifier: new (options?: {
+      onlineBackup?: ((database: Db, targetPath: string) => Promise<void>) | null;
+    }) => {
       createAndVerify(input: Record<string, unknown>): Promise<Record<string, unknown>>;
     };
   };
@@ -106,6 +108,10 @@ test('[M27-P1-T006] Backup verification, SQLite-native snapshot, path binding an
     } finally {
       backupDb.close();
     }
+    rmSync(sqliteBackupPath, { force: true });
+    rmSync(jsonBackupPath, { force: true });
+    rmSync(`${sqliteBackupPath}-wal`, { force: true });
+    rmSync(`${sqliteBackupPath}-shm`, { force: true });
 
     let leaseCalls = 0;
     let databaseFactoryCalls = 0;
@@ -173,6 +179,189 @@ test('[M27-P1-T006] Backup verification, SQLite-native snapshot, path binding an
       (db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
       0,
       'Backup failure must leave zero Attempt rows',
+    );
+
+    // --- Verifier source-handle binding: the open handle must match databasePath ---
+    await assert.rejects(
+      () => new LegacyBackupVerifier().createAndVerify({
+        databasePath: join(root, 'somewhere-else.sqlite'),
+        database: db,
+        backupDirectory: backupDir,
+        migrationId: 'migration-binding',
+        sourceBytes: jsonBytes,
+        sourceHash: sha256(jsonBytes),
+      }),
+      (error: unknown) => error instanceof Error
+        && (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_BACKUP_FAILED',
+      'a handle bound to a different path must fail before any snapshot',
+    );
+    assert.deepEqual(readdirSync(backupDir), [], 'binding failure must create no Backup files');
+
+    // --- Online Backup seam: the injected module-level API is used when available ---
+    let onlineCalls = 0;
+    const onlineResult = await new LegacyBackupVerifier({
+      onlineBackup: async (database: Db, targetPath: string) => {
+        onlineCalls += 1;
+        database.exec(`VACUUM INTO '${targetPath.replace(/'/g, "''")}'`);
+      },
+    }).createAndVerify({
+      databasePath,
+      database: db,
+      backupDirectory: backupDir,
+      migrationId: 'migration-online',
+      sourceBytes: jsonBytes,
+      sourceHash: sha256(jsonBytes),
+      expectedTables: ['workspaces'],
+      expectedTableCounts: { workspaces: 1 },
+    });
+    assert.equal(onlineCalls, 1, 'Online Backup API must be used when available');
+    assert.match(String(onlineResult.sqliteBackupHash), /^[0-9a-f]{64}$/);
+    assert.equal(onlineResult.jsonBackupHash, sha256(jsonBytes));
+    rmSync(join(backupDir, String(onlineResult.sqliteBackupFileName)), { force: true });
+    rmSync(join(backupDir, String(onlineResult.jsonBackupFileName)), { force: true });
+
+    // --- Explicit null mode: only then is the VACUUM INTO fallback used ---
+    let fallbackOnlineCalls = 0;
+    const fallbackResult = await new LegacyBackupVerifier({
+      onlineBackup: null,
+    }).createAndVerify({
+      databasePath,
+      database: db,
+      backupDirectory: backupDir,
+      migrationId: 'migration-vacuum',
+      sourceBytes: jsonBytes,
+      sourceHash: sha256(jsonBytes),
+      expectedTables: ['workspaces'],
+      expectedTableCounts: { workspaces: 1 },
+    });
+    assert.equal(fallbackOnlineCalls, 0);
+    assert.equal(fallbackResult.jsonBackupHash, sha256(jsonBytes));
+    const fallbackDb = new DatabaseSync(join(backupDir, String(fallbackResult.sqliteBackupFileName)), { readOnly: true });
+    try {
+      const fallbackRow = fallbackDb.prepare('SELECT id FROM workspaces WHERE id = ?').get('ws-1') as { id: string } | undefined;
+      assert.equal(fallbackRow?.id, 'ws-1', 'VACUUM INTO fallback must produce a complete snapshot');
+    } finally {
+      fallbackDb.close();
+    }
+    rmSync(join(backupDir, String(fallbackResult.sqliteBackupFileName)), { force: true });
+    rmSync(join(backupDir, String(fallbackResult.jsonBackupFileName)), { force: true });
+    rmSync(`${join(backupDir, String(fallbackResult.sqliteBackupFileName))}-wal`, { force: true });
+    rmSync(`${join(backupDir, String(fallbackResult.sqliteBackupFileName))}-shm`, { force: true });
+
+    // --- Online Backup failure fails closed; no silent VACUUM fallback, no leftover files ---
+    await assert.rejects(
+      () => new LegacyBackupVerifier({
+        onlineBackup: async () => {
+          throw new Error('injected online failure');
+        },
+      }).createAndVerify({
+        databasePath,
+        database: db,
+        backupDirectory: backupDir,
+        migrationId: 'migration-online-failure',
+        sourceBytes: jsonBytes,
+        sourceHash: sha256(jsonBytes),
+      }),
+      (error: unknown) => error instanceof Error
+        && (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_BACKUP_FAILED',
+    );
+    assert.deepEqual(readdirSync(backupDir), [], 'Online Backup failure must clean up partial Backups');
+
+    // --- Verification failure also cleans up the partially created Backup pair ---
+    await assert.rejects(
+      () => new LegacyBackupVerifier({
+        onlineBackup: async (_database: Db, targetPath: string) => {
+          writeFileSync(targetPath, 'not a sqlite database');
+        },
+      }).createAndVerify({
+        databasePath,
+        database: db,
+        backupDirectory: backupDir,
+        migrationId: 'migration-garbage',
+        sourceBytes: jsonBytes,
+        sourceHash: sha256(jsonBytes),
+      }),
+      (error: unknown) => error instanceof Error
+        && (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_BACKUP_FAILED',
+    );
+    assert.deepEqual(readdirSync(backupDir), [], 'verification failure must clean up partial Backups');
+
+    // --- Service databaseFactory handle binding: a handle to database B is rejected ---
+    let mismatchRelease = 0;
+    let mismatchBackup = 0;
+    let mismatchParser = 0;
+    let mismatchProcess = 0;
+    const otherDatabasePath = join(root, 'other-copy.sqlite');
+    await assert.rejects(
+      () => new LegacyDataMigrationService({
+        leaseFactory: async () => ({ release: async () => { mismatchRelease += 1; } }),
+        parser: () => {
+          mismatchParser += 1;
+          throw new Error('parser must not run');
+        },
+      }).run({
+        projectRoot: root,
+        databasePath,
+        migrationKind: 'legacy_task_item_import',
+        sourceKey: 'tasks.json',
+        scopeKind: 'workspace',
+        scopeKey: 'scope-mismatch',
+        sourceBytesLoader: async () => jsonBytes,
+        databaseFactory: () => new DatabaseSync(otherDatabasePath),
+        backupProvider: {
+          createAndVerify: async () => {
+            mismatchBackup += 1;
+            return {};
+          },
+        },
+        process: async () => {
+          mismatchProcess += 1;
+          return { outcome: 'completed' };
+        },
+      }),
+      (error: unknown) => error instanceof Error
+        && (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_PATH_MISMATCH',
+      'a factory handle bound to another database must fail before Registry access',
+    );
+    assert.equal(mismatchRelease, 1, 'both Ownership layers are released after binding failure');
+    assert.equal(mismatchBackup, 0);
+    assert.equal(mismatchParser, 0);
+    assert.equal(mismatchProcess, 0);
+    assert.equal(
+      (db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
+      0,
+      'database A must have zero Attempt rows',
+    );
+    const otherDb = new DatabaseSync(otherDatabasePath);
+    try {
+      assert.equal(
+        otherDb.prepare("SELECT name FROM sqlite_master WHERE name = 'legacy_data_migrations'").all().length,
+        0,
+        'database B must never receive migration writes',
+      );
+    } finally {
+      otherDb.close();
+    }
+
+    // --- An in-memory factory handle cannot be bound to the locked path ---
+    await assert.rejects(
+      () => new LegacyDataMigrationService({
+        leaseFactory: async () => ({ release: async () => {} }),
+      }).run({
+        projectRoot: root,
+        databasePath,
+        migrationKind: 'legacy_task_item_import',
+        sourceKey: 'tasks.json',
+        scopeKind: 'workspace',
+        scopeKey: 'scope-memory',
+        sourceBytesLoader: async () => jsonBytes,
+        databaseFactory: () => new DatabaseSync(':memory:'),
+        backupProvider: { createAndVerify: async () => ({}) },
+        process: async () => ({ outcome: 'completed' }),
+      }),
+      (error: unknown) => error instanceof Error
+        && (error as { code?: string }).code === 'LEGACY_DATA_MIGRATION_PATH_MISMATCH',
+      'an in-memory handle must fail the binding check',
     );
   } finally {
     db?.close();
