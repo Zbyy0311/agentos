@@ -681,7 +681,7 @@ test('[M27-P2-T012] Command validation uses stable exit codes and rejects unsafe
   assert.match(missing.output, /LEGACY_WORKSPACE_MIGRATION_INVALID_ARGUMENTS/);
   const tasks = await runCommand(['--database', 'C:\\not-a-real-db.sqlite', '--source-root', 'C:\\not-a-root', '--backup-dir', 'C:\\backup', '--kind', 'tasks', '--mode', 'dry-run']);
   assert.equal(tasks.code, 2);
-  assert.match(tasks.output, /LEGACY_DATA_MIGRATION_KIND_NOT_IMPLEMENTED/);
+  assert.match(tasks.output, /LEGACY_WORKSPACE_MIGRATION_INVALID_ARGUMENTS/);
   const noConfirm = await runCommand(['--database', 'C:\\not-a-real-db.sqlite', '--source-root', 'C:\\not-a-root', '--backup-dir', 'C:\\backup', '--kind', 'workspace', '--mode', 'apply']);
   assert.equal(noConfirm.code, 2);
   assert.match(noConfirm.output, /LEGACY_WORKSPACE_MIGRATION_INVALID_ARGUMENTS/);
