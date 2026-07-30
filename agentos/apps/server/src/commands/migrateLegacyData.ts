@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { isAbsolute, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 import {
   LEGACY_WORKSPACE_BACKUP_FAILED,
@@ -62,7 +62,8 @@ function parseArguments(argv: string[]): ParsedArguments {
   if (workspaceId !== undefined && workspaceId.length === 0) fail(INVALID_ARGUMENTS);
   const canonicalBackup = canonicalizeLegacyMigrationDatabasePath(resolve(backupDirectory));
   if (canonicalBackup === canonicalizeLegacyMigrationDatabasePath(database)
-    || canonicalBackup === canonicalizeLegacyMigrationDatabasePath(sourceRoot)) fail(INVALID_ARGUMENTS);
+    || canonicalBackup === canonicalizeLegacyMigrationDatabasePath(sourceRoot)
+    || canonicalBackup === canonicalizeLegacyMigrationDatabasePath(join(resolve(sourceRoot), 'workspace', 'workspaces.json'))) fail(INVALID_ARGUMENTS);
   return { database, sourceRoot, backupDirectory, kind, mode, ...(workspaceId ? { workspaceId } : {}) };
 }
 

@@ -69,6 +69,7 @@ test('[M27-P2-T011] Batch Workspace scopes isolate completion, quarantine, and r
     const first = await run(fx, source);
     assert.equal(first.completedCount, 1);
     assert.equal(first.quarantinedCount, 1);
+    assert.equal((fx.db.prepare("SELECT canonical_workspace_id FROM legacy_data_migrations WHERE scope_key = 'batch-a'").get() as { canonical_workspace_id: string | null }).canonical_workspace_id, null);
     assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM legacy_data_migrations WHERE scope_kind = 'global' AND status = 'completed'").get() as { count: number }).count, 0);
     const second = await run(fx, source, 'batch-a');
     assert.equal(second.noopCount, 1);

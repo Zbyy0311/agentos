@@ -5,6 +5,7 @@ import { ProviderConfigurationRepository } from './ProviderConfigurationReposito
 import type { TransactionDatabase } from './Transaction.js';
 import { WorkspaceRepository } from './WorkspaceRepository.js';
 import { LegacyDataMigrationRepository, type LegacyMigrationScope } from './LegacyDataMigrationRepository.js';
+import { providerFromLegacyRole } from './SqliteStore.js';
 
 export interface WorkspaceTombstone {
   workspaceId: string;
@@ -17,6 +18,7 @@ export interface AgentCompatibilityProjection {
   name: string;
   role: AgentProfile['role'];
   provider: AgentProfile['provider'];
+  effectiveProvider: AgentProfile['provider'];
   enabled: boolean;
   cliCommand: string;
   cliArgs: string[];
@@ -85,12 +87,19 @@ export class WorkspaceCompatibilityRepository {
     const providerConfiguration = providerConfigId === null
       ? undefined
       : this.providers.findById(providerConfigId);
+    const rawProvider = typeof row.provider === 'string' && ['codex', 'kimi', 'opencode', 'mimo', 'custom'].includes(row.provider)
+      ? row.provider as AgentProfile['provider']
+      : undefined;
+    const effectiveProvider = providerConfiguration
+      ? providerTypeToAgentProvider(providerConfiguration.providerType)
+      : (rawProvider ?? providerFromLegacyRole(row.agent_role as AgentProfile['role']));
     return {
       id: row.id,
       workspaceId: row.workspace_id,
       name: row.name,
       role: row.agent_role as AgentProfile['role'],
-      provider: (row.provider ?? undefined) as AgentProfile['provider'],
+      provider: rawProvider,
+      effectiveProvider,
       enabled: row.enabled === 1,
       cliCommand: row.cli_command,
       cliArgs: parseStringArray(JSON.parse(row.cli_args_json)),
@@ -140,4 +149,11 @@ export class WorkspaceCompatibilityRepository {
       WHERE workspace_id = ? AND id = ? AND provider_config_id IS NULL
     `).run(providerConfigId, workspaceId, agentId);
   }
+}
+
+function providerTypeToAgentProvider(providerType: ProviderConfiguration['providerType']): AgentProfile['provider'] {
+  if (providerType === 'codex') return 'codex';
+  if (providerType === 'opencode') return 'opencode';
+  if (providerType === 'kimicode') return 'kimi';
+  return 'custom';
 }

@@ -86,6 +86,7 @@ interface WorkspaceServiceOptions {
   migrationIdFactory?: () => string;
   clock?: () => string;
   parser?: (bytes: Uint8Array) => LegacySourceParseResult;
+  beforeAggregateTransaction?: (input: { scope: LegacyMigrationScope; attemptId: string }) => void | Promise<void>;
 }
 
 interface ValidWorkspace {
@@ -96,7 +97,7 @@ interface ValidWorkspace {
 
 type Classification =
   | { kind: 'tombstone'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: null; errorCode?: undefined }
-  | { kind: 'adoptable'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: string; errorCode?: undefined }
+  | { kind: 'adoptable'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: null; errorCode?: undefined }
   | { kind: 'equal'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: string; errorCode?: undefined }
   | { kind: 'compatible-missing'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: string; errorCode?: undefined }
   | { kind: 'conflict'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: string | null; errorCode: string }
@@ -201,7 +202,7 @@ function sameAgent(source: WorkspaceAgent, existing: AgentCompatibilityProjectio
   return source.id === existing.id
     && source.name === existing.name
     && source.role === existing.role
-    && source.provider === existing.provider
+    && source.provider === existing.effectiveProvider
     && source.enabled === existing.enabled
     && source.cliCommand === existing.cliCommand
     && sameJson(source.cliArgs, existing.cliArgs)
@@ -283,6 +284,7 @@ export class WorkspaceCompatibilityMigrationService {
   private readonly migrationIdFactory: NonNullable<WorkspaceServiceOptions['migrationIdFactory']>;
   private readonly clock: NonNullable<WorkspaceServiceOptions['clock']>;
   private readonly parser: NonNullable<WorkspaceServiceOptions['parser']>;
+  private readonly beforeAggregateTransaction: NonNullable<WorkspaceServiceOptions['beforeAggregateTransaction']> | undefined;
 
   constructor(options: WorkspaceServiceOptions = {}) {
     this.leaseFactory = options.leaseFactory ?? ((projectRoot, databasePath) => new LegacyMigrationExecutionLock().acquire(projectRoot, databasePath));
@@ -295,6 +297,7 @@ export class WorkspaceCompatibilityMigrationService {
     this.migrationIdFactory = options.migrationIdFactory ?? (() => randomUUID());
     this.clock = options.clock ?? (() => new Date().toISOString());
     this.parser = options.parser ?? (bytes => parseLegacyJsonSource(bytes, 'workspaces.json'));
+    this.beforeAggregateTransaction = options.beforeAggregateTransaction;
   }
 
   async run(input: WorkspaceCompatibilityRunInput, _sourceOverride?: unknown[]): Promise<WorkspaceCompatibilitySummary> {
@@ -330,7 +333,12 @@ export class WorkspaceCompatibilityMigrationService {
       const classifications = selected.map((entry, index) => this.classify(entry, repository, input.workspaceId, index));
       const summary = this.createSummary(input.mode, parsed.entityCount, classifications.length);
       for (const item of classifications) this.countClassification(summary, item);
-      if (input.mode === 'dry-run') return summary;
+      if (input.mode === 'dry-run') {
+        for (const item of classifications) {
+          if (this.hasNoop(repository, item, sourceHash)) summary.noopCount += 1;
+        }
+        return summary;
+      }
 
       const pending = classifications.filter(item => !this.hasNoop(repository, item, sourceHash));
       if (pending.length === 0) {
@@ -396,12 +404,25 @@ export class WorkspaceCompatibilityMigrationService {
       for (const entry of entries) {
         if (isRecord(entry) && typeof entry.id === 'string') counts.set(entry.id, (counts.get(entry.id) ?? 0) + 1);
       }
-      return entries.map(entry => {
-        if (isRecord(entry) && typeof entry.id === 'string' && (counts.get(entry.id) ?? 0) > 1) {
-          return { ...entry, __duplicate: true };
+      const duplicateIds = new Set<string>();
+      const selected: unknown[] = [];
+      let invalidWithoutId = false;
+      for (const entry of entries) {
+        if (isRecord(entry) && typeof entry.id === 'string' && entry.id.length > 0) {
+          if ((counts.get(entry.id) ?? 0) > 1) {
+            if (!duplicateIds.has(entry.id)) {
+              duplicateIds.add(entry.id);
+              selected.push({ id: entry.id, __duplicate: true });
+            }
+          } else {
+            selected.push(entry);
+          }
+        } else {
+          invalidWithoutId = true;
         }
-        return entry;
-      });
+      }
+      if (invalidWithoutId) selected.push({ __invalidGlobal: true });
+      return selected;
     }
     const matches = entries.filter(entry => isRecord(entry) && entry.id === workspaceId);
     if (matches.length === 0) return [{ id: workspaceId, __missing: true }];
@@ -410,7 +431,7 @@ export class WorkspaceCompatibilityMigrationService {
   }
 
   private classify(entry: unknown, repository: WorkspaceCompatibilityRepository, workspaceId: string | undefined, _index: number): Classification {
-    if (!isRecord(entry) || entry.__missing === true) {
+    if (!isRecord(entry) || entry.__missing === true || entry.__invalidGlobal === true) {
       return { kind: 'invalid', source: isRecord(entry) ? entry : {}, workspace: null, canonicalWorkspaceId: null, errorCode: LEGACY_WORKSPACE_SOURCE_ENTRY_MISSING };
     }
     if (entry.__duplicate === true) {
@@ -430,7 +451,7 @@ export class WorkspaceCompatibilityMigrationService {
     if (existing === undefined && rootOwner !== undefined && rootOwner.id !== valid.workspace.id) {
       return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: null, errorCode: LEGACY_WORKSPACE_CANONICAL_ROOT_CONFLICT };
     }
-    if (existing === undefined) return { kind: 'adoptable', source: valid.source, workspace: valid, canonicalWorkspaceId: valid.workspace.id };
+    if (existing === undefined) return { kind: 'adoptable', source: valid.source, workspace: valid, canonicalWorkspaceId: null };
     if (!sameWorkspace(existing, valid.workspace)) {
       return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: existing.id, errorCode: LEGACY_WORKSPACE_CANONICAL_CONFLICT };
     }
@@ -487,7 +508,7 @@ export class WorkspaceCompatibilityMigrationService {
   }
 
   private hasNoop(repository: WorkspaceCompatibilityRepository, item: Classification, sourceHash: string): boolean {
-    if (item.workspace === null) return false;
+    if (item.workspace === null || item.kind === 'conflict' || item.kind === 'invalid') return false;
     const scope: LegacyMigrationScope = { migrationKind: 'workspace_adoption', sourceKey: 'workspaces.json', scopeKind: 'workspace', scopeKey: item.workspace.workspace.id, canonicalWorkspaceId: item.canonicalWorkspaceId, sourceHash };
     return repository.findCompletedByExactSource(scope) !== null;
   }
@@ -537,7 +558,10 @@ export class WorkspaceCompatibilityMigrationService {
     const attemptId = this.migrationIdFactory();
     if (item.kind === 'invalid' || item.kind === 'conflict') {
       const running = migrations.reconcileStaleRunningAndReserveAttempt({ ...scope, migrationId: attemptId, now: this.clock() });
-      migrations.transitionRunningToQuarantined(running.id, { errorCode: item.errorCode, finishedAt: this.clock(), updatedAt: this.clock() });
+      const conflictEvidence = item.kind === 'conflict'
+        ? { payloadHash: sha256(canonicalizeLegacyJson([item.source])), sourceSchemaVersion: parsed.sourceSchemaVersion, entityCount: 1 }
+        : {};
+      migrations.transitionRunningToQuarantined(running.id, { errorCode: item.errorCode, finishedAt: this.clock(), updatedAt: this.clock(), ...conflictEvidence });
       summary.quarantinedCount += 1;
       summary.dispositions[item.errorCode] = (summary.dispositions[item.errorCode] ?? 0) + 1;
       return;
@@ -547,44 +571,17 @@ export class WorkspaceCompatibilityMigrationService {
     const latest = migrations.findLatestAcceptedCompleted(scope);
     const revision = latest?.payloadHash === payloadHash ? (latest.revision ?? 1) : (latest?.revision ?? 0) + 1;
 
-    if (item.kind === 'adoptable') {
-      try {
-        db.exec('BEGIN IMMEDIATE');
-        repository.insertWorkspaceWithinTransaction(item.workspace.workspace);
-        const running = migrations.reconcileStaleRunningAndReserveAttempt({ ...scope, migrationId: attemptId, now: this.clock() });
-        this.insertChildren(repository, item.workspace, item.workspace.workspace.id);
-        migrations.transitionRunningToCompleted(running.id, {
-          payloadHash,
-          sourceSchemaVersion: parsed.sourceSchemaVersion,
-          revision,
-          entityCount: 1,
-          finishedAt: this.clock(),
-          updatedAt: this.clock(),
-        });
-        db.exec('COMMIT');
-        summary.completedCount += 1;
-        summary.dispositions.adopted = (summary.dispositions.adopted ?? 0) + 1;
-        return;
-      } catch {
-        try { db.exec('ROLLBACK'); } catch { /* best effort */ }
-        try {
-          const failure = migrations.reconcileStaleRunningAndReserveAttempt({
-            ...scope,
-            canonicalWorkspaceId: null,
-            migrationId: this.migrationIdFactory(),
-            now: this.clock(),
-          });
-          migrations.transitionRunningToFailed(failure.id, { errorCode: LEGACY_WORKSPACE_OPERATION_FAILED, finishedAt: this.clock(), updatedAt: this.clock() });
-        } catch { /* preserve primary failure */ }
-        summary.failedCount += 1;
-        throw new WorkspaceCompatibilityMigrationError(LEGACY_WORKSPACE_OPERATION_FAILED);
-      }
-    }
-
-    const running = migrations.reconcileStaleRunningAndReserveAttempt({ ...scope, migrationId: attemptId, now: this.clock() });
+    const reservationScope: LegacyMigrationScope = item.kind === 'adoptable'
+      ? { ...scope, canonicalWorkspaceId: null }
+      : scope;
+    const running = migrations.reconcileStaleRunningAndReserveAttempt({ ...reservationScope, migrationId: attemptId, now: this.clock() });
     try {
+      await this.beforeAggregateTransaction?.({ scope: reservationScope, attemptId: running.id });
       db.exec('BEGIN IMMEDIATE');
-      if (item.kind === 'equal' || item.kind === 'compatible-missing') {
+      if (item.kind === 'adoptable') {
+        repository.insertWorkspaceWithinTransaction(item.workspace.workspace);
+        this.insertChildren(repository, item.workspace, item.workspace.workspace.id);
+      } else if (item.kind === 'equal' || item.kind === 'compatible-missing') {
         this.insertMissingChildren(repository, item.workspace, item.workspace.workspace.id);
       }
       migrations.transitionRunningToCompleted(running.id, {
@@ -597,9 +594,11 @@ export class WorkspaceCompatibilityMigrationService {
       });
       db.exec('COMMIT');
       summary.completedCount += 1;
-      const disposition = item.kind === 'tombstone'
-        ? 'tombstone_preserved'
-        : item.kind === 'compatible-missing' ? 'compatible_missing' : 'equal_existing';
+      const disposition = item.kind === 'adoptable'
+        ? 'adopted'
+        : item.kind === 'tombstone'
+          ? 'tombstone_preserved'
+          : item.kind === 'compatible-missing' ? 'compatible_missing' : 'equal_existing';
       summary.dispositions[disposition] = (summary.dispositions[disposition] ?? 0) + 1;
     } catch {
       try { db.exec('ROLLBACK'); } catch { /* best effort */ }

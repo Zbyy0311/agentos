@@ -13,6 +13,7 @@ import { migration003 } from '../migrations/migrations/003-workspace-provider-co
 import { migration004 } from '../migrations/migrations/004-workspace-tombstones.js';
 import { migration011 } from '../migrations/migrations/011-legacy-data-migration-foundation.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import { canonicalizeLegacyJson } from './LegacySourceParser.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -177,6 +178,30 @@ function runCommand(args: string[]): Promise<{ code: number | null; output: stri
   });
 }
 
+function runCrashAfterReservationChild(fx: { root: string; databasePath: string }): Promise<{ code: number | null; output: string }> {
+  const input = JSON.stringify(runInput(fx));
+  const script = `
+    import { WorkspaceCompatibilityMigrationService } from './src/services/WorkspaceCompatibilityMigrationService.ts';
+    const input = JSON.parse(${JSON.stringify(input)});
+    const service = new WorkspaceCompatibilityMigrationService({
+      beforeAggregateTransaction: () => process.exit(90),
+    });
+    await service.run(input);
+  `;
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    child.stdout.on('data', chunk => { output += String(chunk); });
+    child.stderr.on('data', chunk => { output += String(chunk); });
+    child.once('error', reject);
+    child.once('close', code => resolve({ code, output }));
+  });
+}
+
 test('[M27-P2-T001] JSON-only adoption writes Workspace, Agent, Provider and Completed Registry atomically', async () => {
   const fx = await fixture();
   try {
@@ -201,6 +226,56 @@ test('[M27-P2-T001] JSON-only adoption writes Workspace, Agent, Provider and Com
     });
     assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM legacy_data_migrations WHERE status = 'completed'").get() as { count: number }).count, 1);
     assert.deepEqual(readFileSync(join(fx.root, 'workspace', 'workspaces.json')), source);
+
+    const crashFx = await fixture();
+    try {
+      writeSource(crashFx.root, [workspace('crash-adoption', join(crashFx.root, 'crash-adoption'), { agents: [] })]);
+      crashFx.db.close();
+      const crashed = await runCrashAfterReservationChild(crashFx);
+      assert.equal(crashed.code, 90, crashed.output);
+      const runningAfterCrash = new DatabaseSync(crashFx.databasePath);
+      try {
+        const row = runningAfterCrash.prepare(`
+          SELECT status, attempt, canonical_workspace_id, error_code
+          FROM legacy_data_migrations
+          WHERE scope_key = 'crash-adoption'
+          ORDER BY attempt
+        `).all() as Array<Record<string, unknown>>;
+        assert.deepEqual(row.map(value => ({
+          status: value.status,
+          attempt: value.attempt,
+          canonical_workspace_id: value.canonical_workspace_id,
+          error_code: value.error_code,
+        })), [{ status: 'running', attempt: 1, canonical_workspace_id: null, error_code: null }]);
+        assert.equal((runningAfterCrash.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count, 0);
+      } finally {
+        runningAfterCrash.close();
+      }
+      const resumed = await crashFx.service.run(runInput(crashFx));
+      assert.equal(resumed.completedCount, 1);
+      const evidence = new DatabaseSync(crashFx.databasePath);
+      try {
+        const rows = evidence.prepare(`
+          SELECT status, attempt, canonical_workspace_id, error_code
+          FROM legacy_data_migrations
+          WHERE scope_key = 'crash-adoption'
+          ORDER BY attempt
+        `).all() as Array<Record<string, unknown>>;
+        assert.deepEqual(rows.map(value => ({
+          status: value.status,
+          attempt: value.attempt,
+          canonical_workspace_id: value.canonical_workspace_id,
+          error_code: value.error_code,
+        })), [
+          { status: 'failed', attempt: 1, canonical_workspace_id: null, error_code: 'LEGACY_DATA_MIGRATION_INTERRUPTED' },
+          { status: 'completed', attempt: 2, canonical_workspace_id: null, error_code: null },
+        ]);
+      } finally {
+        evidence.close();
+      }
+    } finally {
+      crashFx.cleanup();
+    }
   } finally {
     fx.cleanup();
   }
@@ -234,6 +309,26 @@ test('[M27-P2-T003] Existing equal state is not overwritten and creates equal_ex
     assert.equal(compatibleResult.dispositions.compatible_missing, 1);
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM agent_profiles WHERE workspace_id = ?').get('compatible-missing') as { count: number }).count, 1);
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations WHERE workspace_id = ?').get('compatible-missing') as { count: number }).count, 1);
+
+    const providerProjectionFx = await fixture();
+    try {
+      const projectionWorkspace = workspace('provider-projection', join(providerProjectionFx.root, 'provider-projection'));
+      insertWorkspace(providerProjectionFx.db, projectionWorkspace);
+      insertEqualChildren(providerProjectionFx.db, projectionWorkspace);
+      providerProjectionFx.db.prepare('UPDATE agent_profiles SET provider = NULL WHERE workspace_id = ? AND id = ?').run('provider-projection', 'codex');
+      writeSource(providerProjectionFx.root, [projectionWorkspace]);
+      const nullRawResult = await providerProjectionFx.service.run(runInput(providerProjectionFx));
+      assert.equal(nullRawResult.equalCount, 1);
+      assert.equal(nullRawResult.conflictCount, 0);
+      providerProjectionFx.db.prepare('UPDATE agent_profiles SET provider = ? WHERE workspace_id = ? AND id = ?').run('legacy-provider', 'provider-projection', 'codex');
+      const rawChangedBytes = Buffer.from(`{ "workspaces" : [ ${JSON.stringify(projectionWorkspace)} ] }`, 'utf8');
+      writeFileSync(join(providerProjectionFx.root, 'workspace', 'workspaces.json'), rawChangedBytes);
+      const historicalRawResult = await providerProjectionFx.service.run(runInput(providerProjectionFx));
+      assert.equal(historicalRawResult.equalCount, 1);
+      assert.equal(historicalRawResult.conflictCount, 0);
+    } finally {
+      providerProjectionFx.cleanup();
+    }
   } finally {
     fx.cleanup();
   }
@@ -254,6 +349,10 @@ test('[M27-P2-T004] Same-ID conflict quarantines the whole Workspace without par
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM agent_profiles').get() as { count: number }).count, 0);
     const row = fx.db.prepare('SELECT status, error_code, revision, canonical_workspace_id FROM legacy_data_migrations').get() as Record<string, unknown>;
     assert.deepEqual({ status: row.status, error_code: row.error_code, revision: row.revision, canonical_workspace_id: row.canonical_workspace_id }, { status: 'quarantined', error_code: 'LEGACY_WORKSPACE_CANONICAL_CONFLICT', revision: null, canonical_workspace_id: 'conflict' });
+    const payloadEvidence = fx.db.prepare('SELECT payload_hash, source_schema_version, entity_count FROM legacy_data_migrations').get() as Record<string, unknown>;
+    assert.equal(payloadEvidence.payload_hash, hash(canonicalizeLegacyJson([source])));
+    assert.equal(payloadEvidence.source_schema_version, 1);
+    assert.equal(payloadEvidence.entity_count, 1);
 
     const agentConflictFx = await fixture();
     try {
@@ -284,6 +383,7 @@ test('[M27-P2-T004] Same-ID conflict quarantines the whole Workspace without par
     } finally {
       providerConflictFx.cleanup();
     }
+
   } finally {
     fx.cleanup();
   }
@@ -310,13 +410,19 @@ test('[M27-P2-T006] Canonical-root conflict quarantines without remapping or ins
   try {
     const existing = workspace('existing-root-owner', join(fx.root, 'shared-root'));
     insertWorkspace(fx.db, existing);
-    writeSource(fx.root, [workspace('new-id', join(fx.root, 'shared-root'))]);
+    const source = workspace('new-id', join(fx.root, 'shared-root'));
+    writeSource(fx.root, [source]);
     const result = await fx.service.run(runInput(fx));
     assert.equal(result.conflictCount, 1);
     assert.equal(result.quarantinedCount, 1);
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count, 1);
     const row = fx.db.prepare('SELECT error_code, canonical_workspace_id FROM legacy_data_migrations').get() as Record<string, unknown>;
     assert.deepEqual({ error_code: row.error_code, canonical_workspace_id: row.canonical_workspace_id }, { error_code: 'LEGACY_WORKSPACE_CANONICAL_ROOT_CONFLICT', canonical_workspace_id: null });
+    const payloadEvidence = fx.db.prepare('SELECT payload_hash, source_schema_version, entity_count, revision FROM legacy_data_migrations').get() as Record<string, unknown>;
+    assert.equal(payloadEvidence.payload_hash, hash(canonicalizeLegacyJson([source])));
+    assert.equal(payloadEvidence.source_schema_version, 1);
+    assert.equal(payloadEvidence.entity_count, 1);
+    assert.equal(payloadEvidence.revision, null);
   } finally {
     fx.cleanup();
   }
@@ -427,6 +533,20 @@ test('[M27-P2-T012] Command validation uses stable exit codes and rejects unsafe
   assert.equal(noConfirm.code, 2);
   assert.match(noConfirm.output, /LEGACY_WORKSPACE_MIGRATION_INVALID_ARGUMENTS/);
   assert.doesNotMatch(noConfirm.output, /C:\\not-a-real-db|C:\\not-a-root/);
+
+  const sourcePathFx = await fixture();
+  try {
+    writeSource(sourcePathFx.root, [workspace('source-backup-path', join(sourcePathFx.root, 'source-backup-path'), { agents: [] })]);
+    sourcePathFx.db.close();
+    const sourceFile = join(sourcePathFx.root, 'workspace', 'workspaces.json');
+    const sourceBackupPath = await runCommand(['--database', sourcePathFx.databasePath, '--source-root', sourcePathFx.root, '--backup-dir', sourceFile, '--kind', 'workspace', '--mode', 'apply', '--confirm', 'APPLY-M2.7']);
+    assert.equal(sourceBackupPath.code, 2);
+    assert.match(sourceBackupPath.output, /LEGACY_WORKSPACE_MIGRATION_INVALID_ARGUMENTS/);
+    assert.doesNotMatch(sourceBackupPath.output, new RegExp(sourcePathFx.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.equal(readFileSync(sourceFile).length > 0, true);
+  } finally {
+    sourcePathFx.cleanup();
+  }
 });
 
 test('[M27-P2-T013] Dry-run performs strict compare under ownership with zero Backup, Attempt, Registry, aggregate, JSON, or backup-directory writes', async () => {
@@ -450,13 +570,45 @@ test('[M27-P2-T013] Dry-run performs strict compare under ownership with zero Ba
     }
     assert.deepEqual(readFileSync(join(fx.root, 'workspace', 'workspaces.json')), source);
 
+    const applyResult = await runCommand(['--database', fx.databasePath, '--source-root', fx.root, '--backup-dir', join(fx.root, 'dry-backups'), '--kind', 'workspace', '--mode', 'apply', '--confirm', 'APPLY-M2.7']);
+    assert.equal(applyResult.code, 0, applyResult.output);
+    const backupCountAfterApply = readdirSync(join(fx.root, 'dry-backups')).length;
+    const appliedDb = new DatabaseSync(fx.databasePath);
+    const appliedVersion = (appliedDb.prepare('SELECT version FROM workspaces WHERE id = ?').get('dry-run') as { version: number }).version;
+    const appliedCounts = {
+      workspaces: (appliedDb.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count,
+      agents: (appliedDb.prepare('SELECT COUNT(*) AS count FROM agent_profiles').get() as { count: number }).count,
+      providers: (appliedDb.prepare('SELECT COUNT(*) AS count FROM provider_configurations').get() as { count: number }).count,
+      records: (appliedDb.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
+    };
+    appliedDb.close();
+    const exactNoopDryRun = await runCommand(['--database', fx.databasePath, '--source-root', fx.root, '--backup-dir', join(fx.root, 'dry-backups'), '--kind', 'workspace', '--mode', 'dry-run']);
+    assert.equal(exactNoopDryRun.code, 0, exactNoopDryRun.output);
+    assert.match(exactNoopDryRun.output, /"noopCount":1/);
+    assert.equal(readdirSync(join(fx.root, 'dry-backups')).length, backupCountAfterApply);
+    const noopDb = new DatabaseSync(fx.databasePath);
+    try {
+      assert.equal((noopDb.prepare('SELECT version FROM workspaces WHERE id = ?').get('dry-run') as { version: number }).version, appliedVersion);
+      assert.deepEqual({
+        workspaces: (noopDb.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count,
+        agents: (noopDb.prepare('SELECT COUNT(*) AS count FROM agent_profiles').get() as { count: number }).count,
+        providers: (noopDb.prepare('SELECT COUNT(*) AS count FROM provider_configurations').get() as { count: number }).count,
+        records: (noopDb.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
+      }, appliedCounts);
+    } finally {
+      noopDb.close();
+    }
+    assert.deepEqual(readFileSync(join(fx.root, 'workspace', 'workspaces.json')), source);
+
+    const backupCountBeforeInvalid = readdirSync(join(fx.root, 'dry-backups')).length;
     const invalidSource = writeSource(fx.root, [workspace('dry-invalid', join(fx.root, 'dry-invalid'), { name: '' })]);
     const invalidDryRun = await runCommand(['--database', fx.databasePath, '--source-root', fx.root, '--backup-dir', join(fx.root, 'dry-backups'), '--kind', 'workspace', '--mode', 'dry-run']);
     assert.equal(invalidDryRun.code, 4, invalidDryRun.output);
-    assert.equal(existsSync(join(fx.root, 'dry-backups')), false);
+    assert.equal(existsSync(join(fx.root, 'dry-backups')), true);
+    assert.equal(readdirSync(join(fx.root, 'dry-backups')).length, backupCountBeforeInvalid);
     const invalidCheck = new DatabaseSync(fx.databasePath);
     try {
-      assert.equal((invalidCheck.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count, 0);
+      assert.equal((invalidCheck.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count, appliedCounts.records);
     } finally {
       invalidCheck.close();
     }

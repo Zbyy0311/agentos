@@ -76,9 +76,21 @@ test('[M27-P2-T007] Source failures quarantine or fail closed without Empty Succ
     const duplicateWorkspace = { id: 'duplicate', name: 'Duplicate', rootPath: 'C:\\\\duplicate', gitEnabled: true, memoryEnabled: true, agents: [], lastOpenedAt: '2026-07-30T00:00:00.000Z', createdAt: '2026-07-30T00:00:00.000Z', updatedAt: '2026-07-30T00:00:00.000Z' };
     writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [duplicateWorkspace, duplicateWorkspace] }), 'utf8');
     const duplicateResult = await service.run(input('apply'));
-    assert.equal(duplicateResult.invalidCount, 2);
-    assert.equal(duplicateResult.quarantinedCount, 2);
-    assert.equal(duplicateResult.dispositions.LEGACY_WORKSPACE_DUPLICATE_SOURCE_ID, 2);
+    assert.equal(duplicateResult.sourceCount, 2);
+    assert.equal(duplicateResult.selectedCount, 1);
+    assert.equal(duplicateResult.invalidCount, 1);
+    assert.equal(duplicateResult.quarantinedCount, 1);
+    assert.equal(duplicateResult.dispositions.LEGACY_WORKSPACE_DUPLICATE_SOURCE_ID, 1);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM legacy_data_migrations WHERE scope_key = 'duplicate'").get() as { count: number }).count, 1);
+
+    const invalidWithoutId = { name: 'No ID', rootPath: 'C:\\\\no-id', gitEnabled: true, memoryEnabled: true, agents: [], lastOpenedAt: '2026-07-30T00:00:00.000Z', createdAt: '2026-07-30T00:00:00.000Z', updatedAt: '2026-07-30T00:00:00.000Z' };
+    writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [invalidWithoutId, invalidWithoutId] }), 'utf8');
+    const invalidGlobalResult = await service.run(input('apply'));
+    assert.equal(invalidGlobalResult.sourceCount, 2);
+    assert.equal(invalidGlobalResult.selectedCount, 1);
+    assert.equal(invalidGlobalResult.invalidCount, 1);
+    assert.equal(invalidGlobalResult.quarantinedCount, 1);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM legacy_data_migrations WHERE scope_kind = 'global'").get() as { count: number }).count, 1);
 
     const duplicateAgent = { id: 'agent-duplicate', name: 'Agent Duplicate', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: ['--task'] };
     const invalidAgentWorkspace = { id: 'invalid-agent-workspace', name: 'Invalid Agent Workspace', rootPath: 'C:\\\\invalid-agent-workspace', gitEnabled: true, memoryEnabled: true, agents: [duplicateAgent, duplicateAgent], lastOpenedAt: '2026-07-30T00:00:00.000Z', createdAt: '2026-07-30T00:00:00.000Z', updatedAt: '2026-07-30T00:00:00.000Z' };
