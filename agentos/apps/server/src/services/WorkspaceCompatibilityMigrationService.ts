@@ -23,6 +23,7 @@ import { LegacyBackupVerifier, type LegacyBackupInput, type LegacyBackupResult }
 import { canonicalizeLegacyJson, parseLegacyJsonSource, type LegacySourceParseResult } from './LegacySourceParser.js';
 import { createEntityId } from '../store/Identity.js';
 import { providerFromLegacyRole, defaultRoleTitle, defaultSystemPrompt, defaultPermissions } from '../store/SqliteStore.js';
+import { toCanonicalRootPath } from '../store/WorkspacePath.js';
 import { WorkspaceCompatibilityRepository, type AgentCompatibilityProjection } from '../store/WorkspaceCompatibilityRepository.js';
 
 export const LEGACY_WORKSPACE_SOURCE_NOT_READABLE = 'LEGACY_WORKSPACE_SOURCE_NOT_READABLE' as const;
@@ -137,6 +138,13 @@ function providerType(provider: WorkspaceAgent['provider']): ProviderType {
   return 'custom-cli';
 }
 
+function providerFromType(value: ProviderType): WorkspaceAgent['provider'] {
+  if (value === 'codex') return 'codex';
+  if (value === 'opencode') return 'opencode';
+  if (value === 'kimicode') return 'kimi';
+  return 'custom';
+}
+
 function normalizeAgent(value: Record<string, unknown>): WorkspaceAgent {
   const role = value.role as WorkspaceAgent['role'];
   const provider = value.provider === undefined
@@ -190,7 +198,7 @@ function sameJson(left: unknown, right: unknown): boolean {
 function sameWorkspace(left: Workspace, right: Workspace): boolean {
   return left.id === right.id
     && left.name === right.name
-    && canonicalizeLegacyMigrationDatabasePath(left.rootPath) === canonicalizeLegacyMigrationDatabasePath(right.rootPath)
+    && toCanonicalRootPath(left.rootPath) === toCanonicalRootPath(right.rootPath)
     && left.gitEnabled === right.gitEnabled
     && left.memoryEnabled === right.memoryEnabled
     && left.lastOpenedAt === right.lastOpenedAt
@@ -198,20 +206,37 @@ function sameWorkspace(left: Workspace, right: Workspace): boolean {
     && left.updatedAt === right.updatedAt;
 }
 
-function sameAgent(source: WorkspaceAgent, existing: AgentCompatibilityProjection): boolean {
+interface AgentRuntimeProjection {
+  effectiveProvider: WorkspaceAgent['provider'];
+  effectiveCliCommand: string;
+  effectiveCliArgs: string[];
+  effectiveModel?: string;
+}
+
+function projectProviderConfiguration(config: ProviderConfiguration, fallbackCliCommand: string): AgentRuntimeProjection {
+  return {
+    effectiveProvider: providerFromType(config.providerType),
+    effectiveCliCommand: config.executable ?? fallbackCliCommand,
+    effectiveCliArgs: [...(config.argsTemplate ?? [])],
+    ...(config.model !== undefined ? { effectiveModel: config.model } : {}),
+  };
+}
+
+function sameAgent(source: WorkspaceAgent, expected: AgentRuntimeProjection, existing: AgentCompatibilityProjection): boolean {
   return source.id === existing.id
     && source.name === existing.name
     && source.role === existing.role
-    && source.provider === existing.effectiveProvider
+    && expected.effectiveProvider === existing.effectiveProvider
     && source.enabled === existing.enabled
-    && source.cliCommand === existing.cliCommand
-    && sameJson(source.cliArgs, existing.cliArgs)
-    && (source.model ?? undefined) === (existing.model ?? undefined)
+    && expected.effectiveCliCommand === existing.effectiveCliCommand
+    && sameJson(expected.effectiveCliArgs, existing.effectiveCliArgs)
+    && (expected.effectiveModel ?? undefined) === (existing.effectiveModel ?? undefined)
     && (source.thinkingEffort ?? 'auto') === (existing.thinkingEffort ?? 'auto');
 }
 
 function sameProvider(expected: ProviderConfiguration, existing: ProviderConfiguration): boolean {
   return !existing.archivedAt
+    && expected.workspaceId === existing.workspaceId
     && expected.name === existing.name
     && expected.providerType === existing.providerType
     && expected.adapterId === existing.adapterId
@@ -478,8 +503,9 @@ export class WorkspaceCompatibilityMigrationService {
         hasMissingChildren = true;
         continue;
       }
-      if (!sameAgent(agent, current)) throw new Error('agent conflict');
       const expected = expectedProvider(existing.id, agent, existing.updatedAt, current.providerConfigId ?? createEntityId('provider'));
+      const expectedRuntime = projectProviderConfiguration(expected, agent.cliCommand);
+      if (!sameAgent(agent, expectedRuntime, current)) throw new Error('agent conflict');
       if (current.providerConfigId === null) {
         hasMissingChildren = true;
         const provider = repository.findProviderByWorkspaceAndName(existing.id, `${agent.name} Provider`);

@@ -17,12 +17,15 @@ export interface AgentCompatibilityProjection {
   workspaceId: string;
   name: string;
   role: AgentProfile['role'];
-  provider: AgentProfile['provider'];
+  rawProvider?: AgentProfile['provider'];
   effectiveProvider: AgentProfile['provider'];
   enabled: boolean;
-  cliCommand: string;
-  cliArgs: string[];
-  model?: string;
+  rawCliCommand: string;
+  effectiveCliCommand: string;
+  rawCliArgs: string[];
+  effectiveCliArgs: string[];
+  rawModel?: string;
+  effectiveModel?: string;
   thinkingEffort: AgentProfile['thinkingEffort'];
   providerConfigId: string | null;
   providerConfiguration?: ProviderConfiguration;
@@ -87,9 +90,16 @@ export class WorkspaceCompatibilityRepository {
     const providerConfiguration = providerConfigId === null
       ? undefined
       : this.providers.findById(providerConfigId);
+    if (providerConfigId !== null
+      && (providerConfiguration === undefined || providerConfiguration.workspaceId !== row.workspace_id)) {
+      throw new Error('invalid provider binding');
+    }
     const rawProvider = typeof row.provider === 'string' && ['codex', 'kimi', 'opencode', 'mimo', 'custom'].includes(row.provider)
       ? row.provider as AgentProfile['provider']
       : undefined;
+    const rawCliCommand = row.cli_command;
+    const rawCliArgs = parseStringArray(JSON.parse(row.cli_args_json));
+    const rawModel = typeof row.model === 'string' ? row.model : undefined;
     const effectiveProvider = providerConfiguration
       ? providerTypeToAgentProvider(providerConfiguration.providerType)
       : (rawProvider ?? providerFromLegacyRole(row.agent_role as AgentProfile['role']));
@@ -98,12 +108,19 @@ export class WorkspaceCompatibilityRepository {
       workspaceId: row.workspace_id,
       name: row.name,
       role: row.agent_role as AgentProfile['role'],
-      provider: rawProvider,
+      rawProvider,
       effectiveProvider,
       enabled: row.enabled === 1,
-      cliCommand: row.cli_command,
-      cliArgs: parseStringArray(JSON.parse(row.cli_args_json)),
-      ...(typeof row.model === 'string' ? { model: row.model } : {}),
+      rawCliCommand,
+      effectiveCliCommand: providerConfiguration?.executable ?? rawCliCommand,
+      rawCliArgs,
+      effectiveCliArgs: [...(providerConfiguration ? (providerConfiguration.argsTemplate ?? []) : rawCliArgs)],
+      ...(rawModel !== undefined ? { rawModel } : {}),
+      ...(providerConfiguration?.model !== undefined
+        ? { effectiveModel: providerConfiguration.model }
+        : providerConfiguration
+          ? {}
+          : rawModel !== undefined ? { effectiveModel: rawModel } : {}),
       thinkingEffort: row.thinking_effort as AgentProfile['thinkingEffort'],
       providerConfigId,
       ...(providerConfiguration ? { providerConfiguration } : {}),

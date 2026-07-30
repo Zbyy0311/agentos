@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -13,6 +13,7 @@ import { migration003 } from '../migrations/migrations/003-workspace-provider-co
 import { migration004 } from '../migrations/migrations/004-workspace-tombstones.js';
 import { migration011 } from '../migrations/migrations/011-legacy-data-migration-foundation.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
 import { canonicalizeLegacyJson } from './LegacySourceParser.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
@@ -315,7 +316,7 @@ test('[M27-P2-T003] Existing equal state is not overwritten and creates equal_ex
       const projectionWorkspace = workspace('provider-projection', join(providerProjectionFx.root, 'provider-projection'));
       insertWorkspace(providerProjectionFx.db, projectionWorkspace);
       insertEqualChildren(providerProjectionFx.db, projectionWorkspace);
-      providerProjectionFx.db.prepare('UPDATE agent_profiles SET provider = NULL WHERE workspace_id = ? AND id = ?').run('provider-projection', 'codex');
+      providerProjectionFx.db.prepare('UPDATE agent_profiles SET provider = NULL, cli_command = ?, cli_args_json = ?, model = ? WHERE workspace_id = ? AND id = ?').run('stale-codex', JSON.stringify(['stale']), 'stale-model', 'provider-projection', 'codex');
       writeSource(providerProjectionFx.root, [projectionWorkspace]);
       const nullRawResult = await providerProjectionFx.service.run(runInput(providerProjectionFx));
       assert.equal(nullRawResult.equalCount, 1);
@@ -384,6 +385,60 @@ test('[M27-P2-T004] Same-ID conflict quarantines the whole Workspace without par
       providerConflictFx.cleanup();
     }
 
+    const crossBindingFx = await fixture();
+    try {
+      const workspaceA = workspace('cross-binding-a', join(crossBindingFx.root, 'cross-binding-a'));
+      const workspaceB = workspace('cross-binding-b', join(crossBindingFx.root, 'cross-binding-b'), { agents: [] });
+      insertWorkspace(crossBindingFx.db, workspaceA);
+      insertWorkspace(crossBindingFx.db, workspaceB);
+      const sourceAgent = (workspaceA.agents as Array<Record<string, unknown>>)[0];
+      const capabilities = {
+        sessionResume: false, structuredEvents: false, nativeApprovals: false,
+        subagents: false, toolEvents: false, fileEvents: false, usageEvents: false,
+        reasoningStream: false, interactiveInput: false, pause: false,
+        cancellation: false, modelSelection: false, workspaceAwareness: false,
+        nativeSandbox: false, outputContracts: false,
+      };
+      const timeoutPolicy = {
+        discoveryTimeoutMs: 10_000, validationTimeoutMs: 30_000, startupTimeoutMs: 60_000,
+        idleTimeoutMs: 600_000, totalTimeoutMs: null, cancelGracePeriodMs: 5_000, approvalTimeoutMs: null,
+      };
+      crossBindingFx.db.prepare(`
+        INSERT INTO provider_configurations (
+          id, workspace_id, name, provider_type, adapter_id, runtime_mode,
+          executable, args_template_json, model, capabilities_json, timeout_policy_json,
+          approval_mode, output_mode, enabled, version, created_at, updated_at
+        ) VALUES ('cross-binding-provider', ?, ?, 'codex', 'builtin.codex', 'cli', ?, ?, NULL, ?, ?, 'agentos', 'parsed-text', 1, 1, ?, ?)
+      `).run(workspaceB.id, `${sourceAgent.name} Provider`, sourceAgent.cliCommand, JSON.stringify(sourceAgent.cliArgs), JSON.stringify(capabilities), JSON.stringify(timeoutPolicy), NOW, NOW);
+      crossBindingFx.db.prepare(`
+        INSERT INTO agent_profiles (
+          workspace_id, id, name, agent_role, provider, role_title, system_prompt,
+          permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort,
+          provider_config_id, created_at, updated_at
+        ) VALUES (?, ?, ?, 'codex', 'codex', 'Codex', 'system', '["read"]', 1, ?, ?, NULL, 'auto', 'cross-binding-provider', ?, ?)
+      `).run(workspaceA.id, sourceAgent.id, sourceAgent.name, sourceAgent.cliCommand, JSON.stringify(sourceAgent.cliArgs), NOW, NOW);
+      const sourceWorkspace = workspaceA;
+      writeSource(crossBindingFx.root, [sourceWorkspace]);
+      const before = {
+        workspaceA: (crossBindingFx.db.prepare('SELECT version FROM workspaces WHERE id = ?').get(workspaceA.id) as { version: number }).version,
+        workspaceB: (crossBindingFx.db.prepare('SELECT version FROM workspaces WHERE id = ?').get(workspaceB.id) as { version: number }).version,
+        providers: (crossBindingFx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations').get() as { count: number }).count,
+      };
+      const result = await crossBindingFx.service.run(runInput(crossBindingFx));
+      assert.equal(result.conflictCount, 1);
+      assert.equal(result.quarantinedCount, 1);
+      assert.equal(result.completedCount, 0);
+      const row = crossBindingFx.db.prepare('SELECT status, error_code, payload_hash, source_schema_version, entity_count, revision FROM legacy_data_migrations').get() as Record<string, unknown>;
+      assert.deepEqual({ status: row.status, error_code: row.error_code, payload_hash: row.payload_hash, source_schema_version: row.source_schema_version, entity_count: row.entity_count, revision: row.revision }, {
+        status: 'quarantined', error_code: 'LEGACY_WORKSPACE_CANONICAL_CONFLICT', payload_hash: hash(canonicalizeLegacyJson([sourceWorkspace])), source_schema_version: 1, entity_count: 1, revision: null,
+      });
+      assert.equal((crossBindingFx.db.prepare('SELECT version FROM workspaces WHERE id = ?').get(workspaceA.id) as { version: number }).version, before.workspaceA);
+      assert.equal((crossBindingFx.db.prepare('SELECT version FROM workspaces WHERE id = ?').get(workspaceB.id) as { version: number }).version, before.workspaceB);
+      assert.equal((crossBindingFx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations').get() as { count: number }).count, before.providers);
+    } finally {
+      crossBindingFx.cleanup();
+    }
+
   } finally {
     fx.cleanup();
   }
@@ -423,6 +478,29 @@ test('[M27-P2-T006] Canonical-root conflict quarantines without remapping or ins
     assert.equal(payloadEvidence.source_schema_version, 1);
     assert.equal(payloadEvidence.entity_count, 1);
     assert.equal(payloadEvidence.revision, null);
+
+    const aliasFx = await fixture();
+    try {
+      const physicalRoot = join(aliasFx.root, 'physical-root');
+      const aliasRoot = join(aliasFx.root, 'alias-root');
+      mkdirSync(physicalRoot);
+      symlinkSync(physicalRoot, aliasRoot, process.platform === 'win32' ? 'junction' : 'dir');
+      const existing = workspace('alias-root', physicalRoot);
+      const source = workspace('alias-root', aliasRoot);
+      insertWorkspace(aliasFx.db, existing);
+      writeSource(aliasFx.root, [source]);
+      const result = await aliasFx.service.run(runInput(aliasFx));
+      assert.equal(result.conflictCount, 1);
+      assert.equal(result.quarantinedCount, 1);
+      assert.equal(result.completedCount, 0);
+      const row = aliasFx.db.prepare('SELECT error_code, payload_hash, source_schema_version, entity_count, revision FROM legacy_data_migrations').get() as Record<string, unknown>;
+      assert.deepEqual({ error_code: row.error_code, payload_hash: row.payload_hash, source_schema_version: row.source_schema_version, entity_count: row.entity_count, revision: row.revision }, {
+        error_code: 'LEGACY_WORKSPACE_CANONICAL_CONFLICT', payload_hash: hash(canonicalizeLegacyJson([source])), source_schema_version: 1, entity_count: 1, revision: null,
+      });
+      assert.equal((aliasFx.db.prepare('SELECT root_path, version FROM workspaces WHERE id = ?').get('alias-root') as { root_path: string; version: number }).root_path, physicalRoot);
+    } finally {
+      aliasFx.cleanup();
+    }
   } finally {
     fx.cleanup();
   }
@@ -477,6 +555,53 @@ test('[M27-P2-T009] Restart after adoption is boot-compatible and does not dupli
       providers: (fx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations').get() as { count: number }).count,
       records: (fx.db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
     }, before);
+
+    const kimiFx = await fixture();
+    try {
+      const kimiSourceWorkspace = workspace('boot-kimi', join(kimiFx.root, 'boot-kimi'), { agents: [agent('kimi', { model: 'provider-model' })] });
+      insertWorkspace(kimiFx.db, kimiSourceWorkspace);
+      const sourceAgent = (kimiSourceWorkspace.agents as Array<Record<string, unknown>>)[0];
+      const kimiArgs = ['-m', 'kimi-code/kimi-for-coding', '-p'];
+      kimiFx.db.prepare(`
+        INSERT INTO provider_configurations (
+          id, workspace_id, name, provider_type, adapter_id, runtime_mode,
+          executable, args_template_json, model, capabilities_json, timeout_policy_json,
+          approval_mode, output_mode, enabled, version, created_at, updated_at
+        ) VALUES (?, ?, ?, 'kimicode', 'builtin.kimi', 'cli', 'kimi', ?, 'provider-model', ?, ?, 'agentos', 'parsed-text', 1, 1, ?, ?)
+      `).run('boot-kimi-provider', kimiSourceWorkspace.id, `${sourceAgent.name} Provider`, JSON.stringify(kimiArgs), JSON.stringify(DEFAULT_CAPABILITIES), JSON.stringify(DEFAULT_TIMEOUT_POLICY), NOW, NOW);
+      kimiFx.db.prepare(`
+        INSERT INTO agent_profiles (
+          workspace_id, id, name, agent_role, provider, role_title, system_prompt,
+          permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort,
+          provider_config_id, created_at, updated_at
+        ) VALUES (?, ?, ?, 'kimi', 'kimi', 'Kimi', 'system', '["read"]', 1, 'opencode', '["--legacy"]', 'legacy-model', 'auto', ?, ?, ?)
+      `).run(kimiSourceWorkspace.id, sourceAgent.id, sourceAgent.name, 'boot-kimi-provider', NOW, NOW);
+      const beforeRaw = kimiFx.db.prepare('SELECT provider, cli_command, cli_args_json, model FROM agent_profiles WHERE workspace_id = ? AND id = ?').get(kimiSourceWorkspace.id, sourceAgent.id) as Record<string, unknown>;
+      const beforeVersions = {
+        workspace: (kimiFx.db.prepare('SELECT version FROM workspaces WHERE id = ?').get(kimiSourceWorkspace.id) as { version: number }).version,
+        provider: (kimiFx.db.prepare('SELECT version FROM provider_configurations WHERE id = ?').get('boot-kimi-provider') as { version: number }).version,
+      };
+      writeSource(kimiFx.root, [kimiSourceWorkspace]);
+      const firstKimi = await kimiFx.service.run(runInput(kimiFx));
+      assert.equal(firstKimi.equalCount, 1);
+      assert.equal(firstKimi.conflictCount, 0);
+      assert.equal(firstKimi.dispositions.equal_existing, 1);
+      const afterRaw = kimiFx.db.prepare('SELECT provider, cli_command, cli_args_json, model FROM agent_profiles WHERE workspace_id = ? AND id = ?').get(kimiSourceWorkspace.id, sourceAgent.id) as Record<string, unknown>;
+      assert.deepEqual(afterRaw, beforeRaw);
+      assert.equal((kimiFx.db.prepare('SELECT version FROM workspaces WHERE id = ?').get(kimiSourceWorkspace.id) as { version: number }).version, beforeVersions.workspace);
+      assert.equal((kimiFx.db.prepare('SELECT version FROM provider_configurations WHERE id = ?').get('boot-kimi-provider') as { version: number }).version, beforeVersions.provider);
+      const whitespaceKimiBytes = Buffer.from(`{ "workspaces" : [ ${JSON.stringify(kimiSourceWorkspace)} ] }`, 'utf8');
+      writeFileSync(join(kimiFx.root, 'workspace', 'workspaces.json'), whitespaceKimiBytes);
+      const secondKimi = await kimiFx.service.run(runInput(kimiFx));
+      assert.equal(secondKimi.equalCount, 1);
+      assert.equal(secondKimi.conflictCount, 0);
+      assert.equal(secondKimi.completedCount, 1);
+      const kimiRows = kimiFx.db.prepare(`SELECT revision, payload_hash, status FROM legacy_data_migrations WHERE scope_key = ? ORDER BY attempt`).all(kimiSourceWorkspace.id) as Array<Record<string, unknown>>;
+      assert.deepEqual(kimiRows.map(row => ({ revision: row.revision, status: row.status })), [{ revision: 1, status: 'completed' }, { revision: 1, status: 'completed' }]);
+      assert.equal(kimiRows[0]?.payload_hash, kimiRows[1]?.payload_hash);
+    } finally {
+      kimiFx.cleanup();
+    }
   } finally {
     fx.cleanup();
   }
@@ -517,6 +642,34 @@ test('[M27-P2-T010] Accepted Payload Hash change allocates the next revision ins
       { revision: 2, status: 'completed' },
     ]);
     assert.equal(sourceOnlyRows[1]?.payload_hash, sourceOnlyRows[2]?.payload_hash);
+
+    const mimoFx = await fixture();
+    try {
+      const mimoAgent = { id: 'mimo', name: 'Mimo', role: 'mimo', enabled: true, cliCommand: 'mimo', cliArgs: ['--legacy'], model: 'mimo-model' };
+      const mimoWorkspace = workspace('mimo-round-trip', join(mimoFx.root, 'mimo-round-trip'), { agents: [mimoAgent] });
+      const mimoFirstSource = writeSource(mimoFx.root, [mimoWorkspace]);
+      const firstMimo = await mimoFx.service.run(runInput(mimoFx));
+      assert.equal(firstMimo.completedCount, 1);
+      assert.equal((mimoFx.db.prepare('SELECT provider_type FROM provider_configurations WHERE workspace_id = ?').get(mimoWorkspace.id) as { provider_type: string }).provider_type, 'custom-cli');
+      const beforeMimo = {
+        workspace: (mimoFx.db.prepare('SELECT version FROM workspaces WHERE id = ?').get(mimoWorkspace.id) as { version: number }).version,
+        provider: (mimoFx.db.prepare('SELECT version FROM provider_configurations WHERE workspace_id = ?').get(mimoWorkspace.id) as { version: number }).version,
+      };
+      const mimoWhitespaceSource = Buffer.from(`{ "workspaces" : [ ${JSON.stringify(mimoWorkspace)} ] }`, 'utf8');
+      writeFileSync(join(mimoFx.root, 'workspace', 'workspaces.json'), mimoWhitespaceSource);
+      const secondMimo = await mimoFx.service.run(runInput(mimoFx));
+      assert.notDeepEqual(mimoFirstSource, mimoWhitespaceSource);
+      assert.equal(secondMimo.equalCount, 1);
+      assert.equal(secondMimo.conflictCount, 0);
+      assert.equal(secondMimo.completedCount, 1);
+      assert.equal((mimoFx.db.prepare('SELECT version FROM workspaces WHERE id = ?').get(mimoWorkspace.id) as { version: number }).version, beforeMimo.workspace);
+      assert.equal((mimoFx.db.prepare('SELECT version FROM provider_configurations WHERE workspace_id = ?').get(mimoWorkspace.id) as { version: number }).version, beforeMimo.provider);
+      const mimoRows = mimoFx.db.prepare(`SELECT revision, payload_hash, status FROM legacy_data_migrations WHERE scope_key = ? ORDER BY attempt`).all(mimoWorkspace.id) as Array<Record<string, unknown>>;
+      assert.deepEqual(mimoRows.map(row => ({ revision: row.revision, status: row.status })), [{ revision: 1, status: 'completed' }, { revision: 1, status: 'completed' }]);
+      assert.equal(mimoRows[0]?.payload_hash, mimoRows[1]?.payload_hash);
+    } finally {
+      mimoFx.cleanup();
+    }
   } finally {
     fx.cleanup();
   }
