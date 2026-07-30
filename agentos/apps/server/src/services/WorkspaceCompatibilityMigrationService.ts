@@ -98,11 +98,13 @@ type Classification =
   | { kind: 'tombstone'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: null; errorCode?: undefined }
   | { kind: 'adoptable'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: string; errorCode?: undefined }
   | { kind: 'equal'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: string; errorCode?: undefined }
+  | { kind: 'compatible-missing'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: string; errorCode?: undefined }
   | { kind: 'conflict'; source: Record<string, unknown>; workspace: ValidWorkspace; canonicalWorkspaceId: string | null; errorCode: string }
   | { kind: 'invalid'; source: Record<string, unknown>; workspace: ValidWorkspace | null; canonicalWorkspaceId: null; errorCode: string };
 
-const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+const TIMESTAMP_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
 const ROLES = new Set(['codex', 'kimi', 'opencode', 'mimo']);
+const PROVIDERS = new Set(['codex', 'kimi', 'opencode', 'mimo', 'custom']);
 
 function sha256(bytes: Uint8Array | string): string {
   return createHash('sha256').update(bytes).digest('hex');
@@ -118,20 +120,27 @@ function requiredString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+function isUtcTimestamp(value: unknown): value is string {
+  return typeof value === 'string' && TIMESTAMP_PATTERN.test(value) && Number.isFinite(Date.parse(value));
+}
+
 function stableError(error: unknown, fallback: string): WorkspaceCompatibilityMigrationError {
   const code = error instanceof WorkspaceCompatibilityMigrationError ? error.code : fallback;
   return new WorkspaceCompatibilityMigrationError(code);
 }
 
-function providerType(role: WorkspaceAgent['role']): ProviderType {
-  if (role === 'codex') return 'codex';
-  if (role === 'opencode') return 'opencode';
-  if (role === 'kimi') return 'kimicode';
+function providerType(provider: WorkspaceAgent['provider']): ProviderType {
+  if (provider === 'codex') return 'codex';
+  if (provider === 'opencode') return 'opencode';
+  if (provider === 'kimi') return 'kimicode';
   return 'custom-cli';
 }
 
 function normalizeAgent(value: Record<string, unknown>): WorkspaceAgent {
   const role = value.role as WorkspaceAgent['role'];
+  const provider = value.provider === undefined
+    ? providerFromLegacyRole(role)
+    : value.provider as WorkspaceAgent['provider'];
   const normalized: WorkspaceAgent = {
     id: value.id as string,
     name: value.name as string,
@@ -141,7 +150,7 @@ function normalizeAgent(value: Record<string, unknown>): WorkspaceAgent {
     cliArgs: [...(value.cliArgs as string[])],
     ...(typeof value.model === 'string' ? { model: value.model } : {}),
     thinkingEffort: (value.thinkingEffort ?? 'auto') as WorkspaceAgent['thinkingEffort'],
-    provider: providerFromLegacyRole(role),
+    provider,
   };
   if (normalized.id === 'kimi' && normalized.role === 'kimi' && normalized.cliCommand === 'opencode') {
     normalized.cliCommand = 'kimi';
@@ -155,7 +164,7 @@ function expectedProvider(workspaceId: string, agent: WorkspaceAgent, now: strin
     id,
     workspaceId,
     name: `${agent.name} Provider`,
-    providerType: providerType(agent.role),
+    providerType: providerType(agent.provider),
     adapterId: `builtin.${agent.role}`,
     runtimeMode: 'cli',
     executable: agent.cliCommand,
@@ -231,9 +240,9 @@ function validateWorkspace(value: unknown): ValidWorkspace | null {
     || !requiredString(value.lastOpenedAt)
     || !requiredString(value.createdAt)
     || !requiredString(value.updatedAt)
-    || !TIMESTAMP_PATTERN.test(value.lastOpenedAt)
-    || !TIMESTAMP_PATTERN.test(value.createdAt)
-    || !TIMESTAMP_PATTERN.test(value.updatedAt)) return null;
+    || !isUtcTimestamp(value.lastOpenedAt)
+    || !isUtcTimestamp(value.createdAt)
+    || !isUtcTimestamp(value.updatedAt)) return null;
   const ids = new Set<string>();
   const agents: WorkspaceAgent[] = [];
   for (const raw of value.agents) {
@@ -243,6 +252,7 @@ function validateWorkspace(value: unknown): ValidWorkspace | null {
       || typeof raw.enabled !== 'boolean'
       || typeof raw.role !== 'string'
       || !ROLES.has(raw.role)
+      || (raw.provider !== undefined && (typeof raw.provider !== 'string' || !PROVIDERS.has(raw.provider)))
       || !requiredString(raw.cliCommand)
       || !Array.isArray(raw.cliArgs)
       || raw.cliArgs.some(item => typeof item !== 'string')
@@ -425,24 +435,32 @@ export class WorkspaceCompatibilityMigrationService {
       return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: existing.id, errorCode: LEGACY_WORKSPACE_CANONICAL_CONFLICT };
     }
     try {
-      this.assertChildrenCompatible(repository, existing, valid.agents);
+      const hasMissingChildren = this.assertChildrenCompatible(repository, existing, valid.agents);
+      if (hasMissingChildren) {
+        return { kind: 'compatible-missing', source: valid.source, workspace: valid, canonicalWorkspaceId: existing.id };
+      }
     } catch {
       return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: existing.id, errorCode: LEGACY_WORKSPACE_CANONICAL_CONFLICT };
     }
     return { kind: 'equal', source: valid.source, workspace: valid, canonicalWorkspaceId: existing.id };
   }
 
-  private assertChildrenCompatible(repository: WorkspaceCompatibilityRepository, existing: Workspace, agents: WorkspaceAgent[]): void {
+  private assertChildrenCompatible(repository: WorkspaceCompatibilityRepository, existing: Workspace, agents: WorkspaceAgent[]): boolean {
     const sourceIds = new Set(agents.map(agent => agent.id));
+    let hasMissingChildren = false;
     for (const existingAgent of existing.agents) {
       if (!sourceIds.has(existingAgent.id)) throw new Error('agent set conflict');
     }
     for (const agent of agents) {
       const current = repository.findAgent(existing.id, agent.id);
-      if (current === undefined) continue;
+      if (current === undefined) {
+        hasMissingChildren = true;
+        continue;
+      }
       if (!sameAgent(agent, current)) throw new Error('agent conflict');
       const expected = expectedProvider(existing.id, agent, existing.updatedAt, current.providerConfigId ?? createEntityId('provider'));
       if (current.providerConfigId === null) {
+        hasMissingChildren = true;
         const provider = repository.findProviderByWorkspaceAndName(existing.id, `${agent.name} Provider`);
         if (provider !== undefined && !sameProvider(expectedProvider(existing.id, agent, existing.updatedAt, provider.id), provider)) {
           throw new Error('provider conflict');
@@ -452,6 +470,7 @@ export class WorkspaceCompatibilityMigrationService {
       if (current.providerConfiguration === undefined) throw new Error('provider binding missing');
       if (!sameProvider(expected, current.providerConfiguration)) throw new Error('provider conflict');
     }
+    return hasMissingChildren;
   }
 
   private createSummary(mode: WorkspaceMigrationMode, sourceCount: number, selectedCount: number): WorkspaceCompatibilitySummary {
@@ -461,6 +480,7 @@ export class WorkspaceCompatibilityMigrationService {
   private countClassification(summary: WorkspaceCompatibilitySummary, item: Classification): void {
     if (item.kind === 'adoptable') summary.adoptableCount += 1;
     if (item.kind === 'equal') summary.equalCount += 1;
+    if (item.kind === 'compatible-missing') summary.compatibleMissingCount += 1;
     if (item.kind === 'tombstone') summary.tombstoneCount += 1;
     if (item.kind === 'conflict') summary.conflictCount += 1;
     if (item.kind === 'invalid') summary.invalidCount += 1;
@@ -564,7 +584,7 @@ export class WorkspaceCompatibilityMigrationService {
     const running = migrations.reconcileStaleRunningAndReserveAttempt({ ...scope, migrationId: attemptId, now: this.clock() });
     try {
       db.exec('BEGIN IMMEDIATE');
-      if (item.kind === 'equal') {
+      if (item.kind === 'equal' || item.kind === 'compatible-missing') {
         this.insertMissingChildren(repository, item.workspace, item.workspace.workspace.id);
       }
       migrations.transitionRunningToCompleted(running.id, {
@@ -577,7 +597,9 @@ export class WorkspaceCompatibilityMigrationService {
       });
       db.exec('COMMIT');
       summary.completedCount += 1;
-      const disposition = item.kind === 'tombstone' ? 'tombstone_preserved' : 'equal_existing';
+      const disposition = item.kind === 'tombstone'
+        ? 'tombstone_preserved'
+        : item.kind === 'compatible-missing' ? 'compatible_missing' : 'equal_existing';
       summary.dispositions[disposition] = (summary.dispositions[disposition] ?? 0) + 1;
     } catch {
       try { db.exec('ROLLBACK'); } catch { /* best effort */ }

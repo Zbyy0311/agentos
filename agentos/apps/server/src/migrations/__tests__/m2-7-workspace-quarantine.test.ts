@@ -31,10 +31,11 @@ test('[M27-P2-T007] Source failures quarantine or fail closed without Empty Succ
   const { WorkspaceCompatibilityMigrationService } = await import('../../services/WorkspaceCompatibilityMigrationService.js') as {
     WorkspaceCompatibilityMigrationService: new (options?: Record<string, unknown>) => any;
   };
+  let migrationSequence = 0;
   const service = new WorkspaceCompatibilityMigrationService({
     leaseFactory: async () => ({ release: async () => {} }),
     databaseFactory: () => new DatabaseSync(databasePath),
-    migrationIdFactory: () => 'p2-quarantine-migration',
+    migrationIdFactory: () => `p2-quarantine-migration-${++migrationSequence}`,
     clock: () => '2026-07-30T00:00:00.000Z',
     backupProvider: { createAndVerify: async () => ({ sqliteBackupFileName: 'backup.sqlite', jsonBackupFileName: 'backup.json', sqliteBackupHash: 'a'.repeat(64), jsonBackupHash: 'b'.repeat(64) }) },
   });
@@ -54,10 +55,38 @@ test('[M27-P2-T007] Source failures quarantine or fail closed without Empty Succ
     );
     assert.equal((db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count, 0);
 
+    rmSync(join(root, 'workspace', 'workspaces.json'), { force: true });
+    await assert.rejects(
+      () => service.run(input('dry-run')),
+      (error: unknown) => (error as { code?: string }).code === 'LEGACY_WORKSPACE_SOURCE_NOT_READABLE',
+    );
+    mkdirSync(join(root, 'workspace', 'workspaces.json'));
+    await assert.rejects(
+      () => service.run(input('dry-run')),
+      (error: unknown) => (error as { code?: string }).code === 'LEGACY_WORKSPACE_SOURCE_NOT_READABLE',
+    );
+    rmSync(join(root, 'workspace', 'workspaces.json'), { recursive: true, force: true });
+
     writeFileSync(join(root, 'workspace', 'workspaces.json'), '{"workspaces":[{"id":"invalid","name":"","rootPath":"C:\\\\invalid","gitEnabled":true,"memoryEnabled":true,"agents":[],"lastOpenedAt":"2026-07-30T00:00:00.000Z","createdAt":"2026-07-30T00:00:00.000Z","updatedAt":"2026-07-30T00:00:00.000Z"}]}', 'utf8');
     const result = await service.run(input('apply'));
     assert.equal(result.invalidCount, 1);
     assert.equal(result.quarantinedCount, 1);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count, 0);
+
+    const duplicateWorkspace = { id: 'duplicate', name: 'Duplicate', rootPath: 'C:\\\\duplicate', gitEnabled: true, memoryEnabled: true, agents: [], lastOpenedAt: '2026-07-30T00:00:00.000Z', createdAt: '2026-07-30T00:00:00.000Z', updatedAt: '2026-07-30T00:00:00.000Z' };
+    writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [duplicateWorkspace, duplicateWorkspace] }), 'utf8');
+    const duplicateResult = await service.run(input('apply'));
+    assert.equal(duplicateResult.invalidCount, 2);
+    assert.equal(duplicateResult.quarantinedCount, 2);
+    assert.equal(duplicateResult.dispositions.LEGACY_WORKSPACE_DUPLICATE_SOURCE_ID, 2);
+
+    const duplicateAgent = { id: 'agent-duplicate', name: 'Agent Duplicate', role: 'codex', enabled: true, cliCommand: 'codex', cliArgs: ['--task'] };
+    const invalidAgentWorkspace = { id: 'invalid-agent-workspace', name: 'Invalid Agent Workspace', rootPath: 'C:\\\\invalid-agent-workspace', gitEnabled: true, memoryEnabled: true, agents: [duplicateAgent, duplicateAgent], lastOpenedAt: '2026-07-30T00:00:00.000Z', createdAt: '2026-07-30T00:00:00.000Z', updatedAt: '2026-07-30T00:00:00.000Z' };
+    writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [invalidAgentWorkspace] }), 'utf8');
+    const duplicateAgentResult = await service.run(input('apply'));
+    assert.equal(duplicateAgentResult.invalidCount, 1);
+    assert.equal(duplicateAgentResult.quarantinedCount, 1);
+    assert.equal(duplicateAgentResult.dispositions.LEGACY_WORKSPACE_SOURCE_INVALID, 1);
     assert.equal((db.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count, 0);
   } finally {
     db.close();

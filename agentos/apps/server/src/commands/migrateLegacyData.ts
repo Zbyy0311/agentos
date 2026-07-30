@@ -90,7 +90,8 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
       ...(args.workspaceId ? { workspaceId: args.workspaceId } : {}),
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
-    return result.quarantinedCount > 0 || result.failedCount > 0 ? 5 : 0;
+    if (args.mode === 'dry-run' && result.invalidCount > 0) return 4;
+    return result.quarantinedCount > 0 || result.failedCount > 0 || result.conflictCount > 0 ? 5 : 0;
   } catch (error) {
     process.stderr.write(`${error instanceof WorkspaceCompatibilityMigrationError ? error.code : LEGACY_WORKSPACE_OPERATION_FAILED}\n`);
     return exitCode(error);
