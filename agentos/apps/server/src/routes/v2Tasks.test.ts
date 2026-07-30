@@ -186,6 +186,33 @@ test('T69 GET v2 Task returns the full Task', async () => {
   }
 });
 
+test('[M27-P4-T006] v2 Task write and read contracts remain stable beside Legacy compatibility', async () => {
+  const fx = await createFixture();
+  try {
+    const created = await createTask(fx.baseA, 'p4 v2 task');
+    const response = await fetch(`${fx.baseA}/v2/tasks/${created.id}`);
+    assert.equal(response.status, 200);
+    const body = await response.json() as { task: Record<string, unknown> };
+    assert.deepEqual({
+      id: body.task.id,
+      workspaceId: body.task.workspaceId,
+      title: body.task.title,
+      status: body.task.status,
+      priority: body.task.priority,
+      version: body.task.version,
+    }, {
+      id: created.id,
+      workspaceId: fx.workspaceAId,
+      title: 'p4 v2 task',
+      status: 'open',
+      priority: 'normal',
+      version: 1,
+    });
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
 test('T70 LIST v2 Tasks returns non-archived Tasks of the workspace only', async () => {
   const fx = await createFixture();
   try {

@@ -49,3 +49,33 @@ test('returns run list and aggregated details with workspace isolation and cappe
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('[M27-P4-T008] Task-domain Runs remain isolated from Conversation agent_runs and executions', async () => {
+  const root = createRoot();
+  const store = new SqliteStore(root);
+  const manager = new WorkspaceManager(store);
+  const app = express();
+  app.use('/api/workspaces/:workspaceId', createRunRoutes(store, manager));
+  const server = app.listen(0);
+  try {
+    store.createConversation({ id: 'conversation-p4', workspaceId: 'workspace-a', type: 'direct', title: 'P4', agentId: 'codex', createdAt: '2026-07-31T00:00:00.000Z', updatedAt: '2026-07-31T00:00:00.000Z' });
+    store.createMessage({ id: 'message-p4', conversationId: 'conversation-p4', workspaceId: 'workspace-a', senderType: 'user', content: 'synthetic', createdAt: '2026-07-31T00:00:01.000Z' });
+    const task = store.taskRepository().insert({ workspaceId: 'workspace-a', title: 'task-domain', createdBy: 'p4' });
+    const taskRun = store.runRepository().insert({ workspaceId: 'workspace-a', taskId: task.id, reason: 'initial', createdBy: 'p4', origin: 'legacy_pipeline' });
+    store.createRun({ id: 'conversation-run-p4', workspaceId: 'workspace-a', conversationId: 'conversation-p4', sourceMessageId: 'message-p4', objective: 'conversation', status: 'completed', createdAt: '2026-07-31T00:00:01.000Z', updatedAt: '2026-07-31T00:00:02.000Z' });
+
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address();
+    if (!address || typeof address === 'string') throw new Error('server did not bind');
+    const base = `http://127.0.0.1:${address.port}/api/workspaces/workspace-a`;
+    const list = await fetch(`${base}/runs?conversationId=conversation-p4`).then(response => response.json()) as { runs: Array<{ id: string }> };
+
+    assert.deepEqual(list.runs.map(run => run.id), ['conversation-run-p4']);
+    assert.deepEqual(store.listExecutions('workspace-a', 'conversation-p4'), []);
+    assert.equal(store.runRepository().findById('workspace-a', taskRun.id)?.taskId, task.id);
+  } finally {
+    server.close();
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});

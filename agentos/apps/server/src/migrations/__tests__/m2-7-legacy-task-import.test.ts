@@ -50,6 +50,7 @@ function writeTasks(root: string, workspaceId: string, tasks: unknown[]): void {
   writeFileSync(join(dir, 'tasks.json'), JSON.stringify({ tasks }));
 }
 
+
 interface Fixture {
   root: string;
   databasePath: string;
