@@ -195,6 +195,36 @@ test('T76 GET v2 Run returns failureCode/failureMessage and the full Run', async
   }
 });
 
+test('[M27-P4-T007] v2 Run create and read preserve initial lineage and origin', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'p4 v2 run task');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    const response = await fetch(`${fx.baseA}/v2/runs/${runId}`);
+    assert.equal(response.status, 200);
+    const body = await response.json() as { run: Record<string, unknown> };
+    assert.deepEqual({
+      id: body.run.id,
+      taskId: body.run.taskId,
+      status: body.run.status,
+      reason: body.run.reason,
+      origin: body.run.origin,
+      parentRunId: body.run.parentRunId,
+      rootRunId: body.run.rootRunId,
+    }, {
+      id: runId,
+      taskId,
+      status: 'queued',
+      reason: 'initial',
+      origin: 'v2_api',
+      parentRunId: undefined,
+      rootRunId: runId,
+    });
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
 test('P4 GET v2 Run includes snapshot payload and content hash without row metadata', async () => {
   const fx = await createFixture();
   try {

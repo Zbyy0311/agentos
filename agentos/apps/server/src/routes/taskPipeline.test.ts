@@ -70,3 +70,18 @@ test('keeps review blocked when worker evidence is missing after a reviewer pass
   assert.equal(task.reviewDecision, 'approve');
   assert.equal(task.reviewBlocked, true);
 });
+
+test('[M27-P4-T002] Legacy JSON status, outputs and review fields keep their runtime semantics', () => {
+  const task = makeTask();
+  const workerLog = makeLog('kimi_worker', '## Checks Run\n- unit tests\n## Findings by Severity\n- none\n## Evidence\n- synthetic proof');
+  task.outputs = [workerLog];
+
+  applyFinalReviewDecision(task, makeLog('codex_final_review', 'Final Decision: Approve'));
+
+  assert.equal(task.status, 'completed');
+  assert.equal(task.reviewDecision, 'approve');
+  assert.equal(task.reviewBlocked, false);
+  assert.equal(task.currentAgent, null);
+  assert.deepEqual(task.outputs, [workerLog]);
+  assert.deepEqual(JSON.parse(JSON.stringify(task)), task);
+});

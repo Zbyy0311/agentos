@@ -1,5 +1,6 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, existsSync, readFileSync, copyFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -22,7 +23,9 @@ import { MigrationRegistry } from '../registry.js';
 import { MigrationRunner } from '../MigrationRunner.js';
 import type { Migration, MigrationContext } from '../types.js';
 import { baselineMigration, BASELINE_CHECKSUM } from '../migrations/001-baseline-schema.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../default-registry.js';
 import { createFileBackupProvider } from '../backup.js';
+import { LegacyBackupVerifier } from '../../services/LegacyBackupVerifier.js';
 
 const CS = BASELINE_CHECKSUM;
 
@@ -389,3 +392,77 @@ function tableRowCounts(db: { prepare(sql: string): { all(): Array<unknown> } })
   }
   return counts;
 }
+
+it('[M27-P5-T003] Closing and reopening a fully migrated database keeps 001-011 idempotent', () => {
+  const ctx = tempDbPath();
+  try {
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+    const before = (ctx.db.prepare('SELECT migration_id, checksum FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string; checksum: string }>)
+      .map(row => ({ migration_id: row.migration_id, checksum: row.checksum }));
+    ctx.db.close();
+
+    const reopened = new DatabaseSync(ctx.path);
+    try {
+      reopened.exec('PRAGMA foreign_keys = ON');
+      new MigrationRunner(reopened, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+      const after = (reopened.prepare('SELECT migration_id, checksum FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string; checksum: string }>)
+        .map(row => ({ migration_id: row.migration_id, checksum: row.checksum }));
+      assert.deepEqual(after, before);
+      assert.deepEqual(
+        (reopened.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check: string }>).map(row => ({ integrity_check: row.integrity_check })),
+        [{ integrity_check: 'ok' }],
+      );
+    } finally {
+      reopened.close();
+    }
+  } finally {
+    cleanup(ctx);
+  }
+});
+
+it('[M27-P5-T010] Verified Backup and copy-only restore remove post-Backup writes without touching the source', async () => {
+  const ctx = tempDbPath();
+  try {
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+    const sourceBytes = Buffer.from('{"workspaces":[{"id":"synthetic-workspace"}]}', 'utf8');
+    const sourceHashBefore = createHash('sha256').update(readFileSync(ctx.path)).digest('hex');
+    const backupDirectory = join(ctx.dir, 'p5-backups');
+    const verifier = new LegacyBackupVerifier({ onlineBackup: null });
+    const backup = await verifier.createAndVerify({
+      databasePath: ctx.path,
+      database: ctx.db,
+      backupDirectory,
+      migrationId: 'p5-restore',
+      sourceBytes,
+      sourceHash: createHash('sha256').update(sourceBytes).digest('hex'),
+      expectedTables: ['_schema_migrations', 'legacy_data_migrations', 'legacy_task_items'],
+    });
+    assert.equal(createHash('sha256').update(readFileSync(ctx.path)).digest('hex'), sourceHashBefore);
+
+    const workingCopy = join(ctx.dir, 'working-copy.sqlite');
+    copyFileSync(ctx.path, workingCopy);
+    const mutated = new DatabaseSync(workingCopy);
+    mutated.exec('CREATE TABLE p5_after_backup (marker TEXT NOT NULL)');
+    mutated.prepare('INSERT INTO p5_after_backup (marker) VALUES (?)').run('synthetic-write');
+    mutated.close();
+
+    const verifiedBackup = join(backupDirectory, backup.sqliteBackupFileName);
+    rmSync(workingCopy, { force: true });
+    copyFileSync(verifiedBackup, workingCopy);
+    const restored = new DatabaseSync(workingCopy);
+    try {
+      assert.equal((restored.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name = 'p5_after_backup'").get() as { count: number }).count, 0);
+      assert.deepEqual(
+        (restored.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check: string }>).map(row => ({ integrity_check: row.integrity_check })),
+        [{ integrity_check: 'ok' }],
+      );
+      assert.deepEqual(restored.prepare('PRAGMA foreign_key_check').all(), []);
+    } finally {
+      restored.close();
+    }
+    assert.deepEqual(readFileSync(join(backupDirectory, backup.jsonBackupFileName)), sourceBytes);
+    assert.equal(createHash('sha256').update(readFileSync(ctx.path)).digest('hex'), sourceHashBefore);
+  } finally {
+    cleanup(ctx);
+  }
+});

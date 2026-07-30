@@ -83,3 +83,14 @@ test('uses custom workspace Agent names before default stage names', () => {
   assert.equal(getStageAgentName(workspace, 'codex_manager'), '我的架构师');
   assert.equal(getStageAgentName({ agents: [] }, 'opencode_reviewer'), 'OpenCode');
 });
+
+test('[M27-P4-T001] Legacy TaskItem JSON round-trip preserves the frozen field shape', () => {
+  const source = makeTask();
+  const roundTripped = JSON.parse(JSON.stringify(source)) as TaskItem;
+
+  assert.deepEqual(roundTripped, source);
+  assert.deepEqual(Object.keys(roundTripped).sort(), [
+    'createdAt', 'currentAgent', 'id', 'outputs', 'reviewBlocked',
+    'reviewDecision', 'status', 'title', 'updatedAt', 'workspaceId',
+  ].sort());
+});

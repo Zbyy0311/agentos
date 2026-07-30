@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { TaskRunService, type TaskRunServiceDeps } from './TaskRunService.js';
+import { LegacyTaskItemImportService } from './LegacyTaskItemImportService.js';
 import { IdempotencyService } from './IdempotencyService.js';
 import type { Workspace } from '@agentos/shared';
 
@@ -29,6 +30,38 @@ function fixture(): Fixture {
 function close(fx: Fixture): void {
   fx.store.close();
   rmSync(fx.root, { recursive: true, force: true });
+}
+
+function seedCompatibilityRow(fx: Fixture, legacyTaskId: string): void {
+  const db = fx.store.getDatabase();
+  const migrationId = `p4-migration-${legacyTaskId}`;
+  const sourceHash = 'a'.repeat(64);
+  const payloadHash = 'b'.repeat(64);
+  const now = '2026-07-31T00:00:00.000Z';
+  db.prepare(`
+    INSERT INTO legacy_data_migrations (
+      id, migration_kind, source_key, scope_kind, scope_key, canonical_workspace_id,
+      source_hash, payload_hash, hash_algorithm, source_schema_version,
+      compatibility_schema_version, status, attempt, revision, entity_count,
+      error_code, created_at, started_at, finished_at, updated_at
+    ) VALUES (?, 'legacy_task_item_import', 'tasks.json', 'workspace', ?, NULL,
+      ?, ?, 'sha256', 1, 1, 'completed', 1, 1, 1, NULL, ?, ?, ?, ?)
+  `).run(migrationId, fx.workspace.id, sourceHash, payloadHash, now, now, now, now);
+  db.prepare(`
+    INSERT INTO legacy_task_items (
+      workspace_scope_id, canonical_workspace_id, legacy_task_id, revision, migration_id,
+      source_hash, payload_hash, source_schema_version, compatibility_schema_version,
+      payload_json, created_at
+    ) VALUES (?, NULL, ?, 1, ?, ?, ?, 1, 1, ?, ?)
+  `).run(
+    fx.workspace.id,
+    legacyTaskId,
+    migrationId,
+    sourceHash,
+    payloadHash,
+    JSON.stringify({ id: legacyTaskId, title: 'compatibility-only', status: 'open' }),
+    now,
+  );
 }
 
 test('TaskRunService captures unbound Snapshots for all six v2 reasons without stages', () => {
@@ -131,6 +164,101 @@ test('Legacy retry resolves current Agent and Provider versions while preserving
     assert.equal(retryCodex.agent!.version, parentCodex.agent!.version + 1);
     assert.equal(retryCodex.provider!.version, parentCodex.provider!.version + 1);
     assert.deepEqual(fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, first.run.id)!.payload, parentPayload);
+  } finally {
+    close(fx);
+  }
+});
+
+test('[M27-P4-T005] Bridge retry and failure stay isolated from P3 compatibility rows and Registry evidence', () => {
+  const fx = fixture();
+  try {
+    seedCompatibilityRow(fx, 'p4-legacy');
+    const db = fx.store.getDatabase();
+    const before = {
+      migrations: (db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
+      items: (db.prepare('SELECT COUNT(*) AS count FROM legacy_task_items').get() as { count: number }).count,
+    };
+
+    const first = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspace.id,
+      legacyTaskId: 'p4-legacy',
+      title: 'bridge retry',
+      createdBy: 'legacy_pipeline',
+      objective: 'bridge retry',
+      workspace: fx.workspace,
+    });
+    fx.service.startRunForBridge(fx.workspace.id, first.run.id);
+    fx.service.completeRunForBridge(fx.workspace.id, first.run.id);
+
+    const retry = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspace.id,
+      legacyTaskId: 'p4-legacy',
+      title: 'bridge retry',
+      createdBy: 'legacy_pipeline',
+      objective: 'bridge retry',
+      workspace: fx.workspace,
+    });
+    assert.equal(retry.run.reason, 'retry');
+    assert.equal(retry.run.parentRunId, first.run.id);
+    fx.service.startRunForBridge(fx.workspace.id, retry.run.id);
+    fx.service.failRunForBridge(fx.workspace.id, retry.run.id, 'synthetic bridge failure');
+
+    const runs = fx.store.runRepository().listByTask(fx.workspace.id, first.task.id);
+    assert.deepEqual(runs.map(run => [run.reason, run.status]), [
+      ['initial', 'completed'],
+      ['retry', 'failed'],
+    ]);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count, before.migrations);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM legacy_task_items').get() as { count: number }).count, before.items);
+  } finally {
+    close(fx);
+  }
+});
+
+test('[M27-P4-T009] P3 compatibility rows never become canonical Task or Task-domain Run records', () => {
+  const fx = fixture();
+  try {
+    seedCompatibilityRow(fx, 'p4-compat-only');
+    const db = fx.store.getDatabase();
+
+    assert.equal(fx.store.taskRepository().findByLegacyTaskId(fx.workspace.id, 'p4-compat-only'), undefined);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM legacy_task_items').get() as { count: number }).count, 1);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM tasks').get() as { count: number }).count, 0);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM runs').get() as { count: number }).count, 0);
+  } finally {
+    close(fx);
+  }
+});
+
+test('[M27-P4-T010] Malformed Legacy source remains a stable quarantine and preserves source bytes', async () => {
+  const fx = fixture();
+  const workspaceId = fx.workspace.id;
+  const raw = '{"tasks":[{"id":"malformed","id":"duplicate"}]}';
+  const sourcePath = join(fx.root, 'workspace', workspaceId, '.agentos', 'tasks.json');
+  mkdirSync(join(fx.root, 'workspace', workspaceId, '.agentos'), { recursive: true });
+  writeFileSync(sourcePath, raw);
+  try {
+    const result = await new LegacyTaskItemImportService().run({
+      projectRoot: fx.root,
+      sourceRoot: fx.root,
+      databasePath: join(fx.root, '.agentos', 'agentos.sqlite'),
+      backupDirectory: join(fx.root, 'backups'),
+      kind: 'tasks',
+      mode: 'apply',
+      workspaceId,
+    });
+
+    const db = fx.store.getDatabase();
+    assert.equal(result.completedCount, 0);
+    assert.equal(result.quarantinedCount, 1);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM legacy_task_items').get() as { count: number }).count, 0);
+    const evidence = db.prepare('SELECT status, error_code FROM legacy_data_migrations WHERE scope_key = ?').all(workspaceId) as Array<{ status: string; error_code: string }>;
+    assert.deepEqual(evidence.map(row => [row.status, row.error_code]), [
+      ['quarantined', 'LEGACY_TASK_SOURCE_PARSE_FAILED'],
+    ]);
+    assert.equal(readFileSync(sourcePath, 'utf8'), raw);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM tasks').get() as { count: number }).count, 0);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM runs').get() as { count: number }).count, 0);
   } finally {
     close(fx);
   }

@@ -517,6 +517,33 @@ test('T93 legacy tasks/run/status/logs URLs and response contracts are preserved
   }
 });
 
+test('[M27-P4-T003] Legacy Task URLs, SSE output, and JSON read/write continuity remain unchanged', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    const listed = await (await fetch(`${fx.base}/tasks`)).json() as { tasks: TaskItem[] };
+    assert.equal(listed.tasks[0]?.id, 'legacy01');
+    assert.equal(listed.tasks[0]?.status, 'pending');
+    assert.deepEqual(listed.tasks[0]?.outputs, []);
+
+    assert.equal((await fetch(`${fx.base}/tasks/legacy01/status`)).status, 200);
+    assert.deepEqual(await (await fetch(`${fx.base}/tasks/legacy01/logs`)).json(), { logs: {} });
+
+    const run = await runToCompletion(fx, 'legacy01');
+    assert.equal(run.httpStatus, 200);
+    assert.ok(fx.sseWrites.some(chunk => chunk.includes('data:')));
+    const persisted = fx.fakeStore.getTask(fx.workspaceId, 'legacy01')!;
+    assert.equal(persisted.status, 'completed');
+    assert.equal(persisted.outputs.length, 4);
+
+    const after = await (await fetch(`${fx.base}/tasks`)).json() as { tasks: TaskItem[] };
+    assert.equal(after.tasks[0]?.status, 'completed');
+    assert.equal(after.tasks[0]?.outputs.length, 4);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
 test('T94 first successful legacy execution produces an initial v2 Task and Run', async () => {
   const fx = await createFixture();
   try {
@@ -536,6 +563,34 @@ test('T94 first successful legacy execution produces an initial v2 Task and Run'
     assert.equal(runs[0].parentRunId, undefined);
     assert.equal(runs[0].rootRunId, runs[0].id);
     assert.equal(task.pendingResultRunId, runs[0].id);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('[M27-P4-T004] A first Bridge execution still creates one canonical initial Task and Run', async () => {
+  const fx = await createFixture();
+  try {
+    seedTask(fx.fakeStore, fx.workspaceId);
+    const result = await runToCompletion(fx, 'legacy01');
+    assert.equal(result.httpStatus, 200);
+
+    const canonicalTask = fx.taskRepo.findByLegacyTaskId(fx.workspaceId, 'legacy01');
+    assert.ok(canonicalTask);
+    const runs = fx.runRepo.listByTask(fx.workspaceId, canonicalTask.id);
+    assert.deepEqual(runs.map(run => ({
+      reason: run.reason,
+      origin: run.origin,
+      status: run.status,
+      parentRunId: run.parentRunId,
+      rootRunId: run.rootRunId,
+    })), [{
+      reason: 'initial',
+      origin: 'legacy_pipeline',
+      status: 'completed',
+      parentRunId: undefined,
+      rootRunId: runs[0]?.id,
+    }]);
   } finally {
     await closeFixture(fx);
   }
