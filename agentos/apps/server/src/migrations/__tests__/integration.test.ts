@@ -22,6 +22,8 @@ import { MigrationRunner } from '../MigrationRunner.js';
 import { MigrationError } from '../errors.js';
 import type { Migration } from '../types.js';
 import { baselineMigration, BASELINE_DDL, computeBaselineChecksum } from '../migrations/001-baseline-schema.js';
+import { migration002 } from '../migrations/002-add-aggregate-versions.js';
+import { DEFAULT_REGISTRY_MIGRATIONS } from '../default-registry.js';
 import { inspectSchema, compareToBaseline, isSchemaCompatible } from '../schema-inspector.js';
 import { createFileBackupProvider } from '../backup.js';
 
@@ -406,4 +408,58 @@ describe('Baseline checksum stability', () => {
     const checksum = computeBaselineChecksum();
     assert.match(checksum, /^[0-9a-f]{16}$/);
   });
+});
+
+it('[M27-P5-T001] Fresh database applies the complete 001-011 registry exactly once', () => {
+  const ctx = tempDbPath();
+  try {
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+    const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
+    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+    const compatibilityTables = ctx.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('legacy_data_migrations', 'legacy_task_items') ORDER BY name").all() as Array<{ name: string }>;
+    assert.deepEqual(compatibilityTables.map(table => table.name), ['legacy_data_migrations', 'legacy_task_items']);
+  } finally {
+    cleanup(ctx);
+  }
+});
+
+it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 011 without losing its schema records', () => {
+  const ctx = tempDbPath();
+  try {
+    for (const stmt of BASELINE_DDL) ctx.db.exec(stmt);
+    ctx.db.exec(`CREATE TABLE _schema_migrations (
+      migration_id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      checksum TEXT NOT NULL,
+      applied_at TEXT NOT NULL,
+      execution_ms INTEGER NOT NULL,
+      app_version TEXT
+    )`);
+    ctx.db.prepare(`INSERT INTO _schema_migrations (migration_id, name, checksum, applied_at, execution_ms, app_version)
+      VALUES ('001', 'baseline-schema', ?, ?, 0, NULL)`).run(baselineMigration.checksum, '2026-07-30T00:00:00.000Z');
+    migration002.apply({ db: ctx.db });
+    ctx.db.prepare(`INSERT INTO _schema_migrations (migration_id, name, checksum, applied_at, execution_ms, app_version)
+      VALUES ('002', 'aggregate-versions', ?, ?, 0, NULL)`).run(migration002.checksum, '2026-07-30T00:00:01.000Z');
+
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+    const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
+    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+    assert.equal((ctx.db.prepare("SELECT COUNT(*) AS count FROM _schema_migrations WHERE migration_id = '001'").get() as { count: number }).count, 1);
+  } finally {
+    cleanup(ctx);
+  }
+});
+
+it('[M27-P5-T005] The complete 001-011 schema passes integrity and foreign-key checks', () => {
+  const ctx = tempDbPath();
+  try {
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+    assert.deepEqual(
+      (ctx.db.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check: string }>).map(row => ({ integrity_check: row.integrity_check })),
+      [{ integrity_check: 'ok' }],
+    );
+    assert.deepEqual(ctx.db.prepare('PRAGMA foreign_key_check').all(), []);
+  } finally {
+    cleanup(ctx);
+  }
 });

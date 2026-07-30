@@ -512,3 +512,35 @@ test('[M27-P1-T043] exact-source Completed uniqueness is database-enforced', asy
     db.close();
   }
 });
+
+test('[M27-P5-T004] Migration 011 checksum and all Registry compatibility schema objects are present', async () => {
+  const module = await loadMigration011();
+  const db = await createSchemaDb();
+  try {
+    assert.equal(module.migration011.checksum, module.migration011Checksum);
+    const objects = db.prepare(`
+      SELECT type, name FROM sqlite_master
+      WHERE name LIKE 'legacy_data_migrations%'
+         OR name LIKE 'legacy_task_items%'
+      ORDER BY type, name
+    `).all() as Array<{ type: string; name: string }>;
+    assert.deepEqual(objects.map(object => ({ type: object.type, name: object.name })), [
+      { type: 'index', name: 'legacy_data_migrations_completed_scope_source_hash' },
+      { type: 'index', name: 'legacy_data_migrations_one_running_per_scope' },
+      { type: 'index', name: 'legacy_task_items_current_lookup' },
+      { type: 'table', name: 'legacy_data_migrations' },
+      { type: 'table', name: 'legacy_task_items' },
+      { type: 'trigger', name: 'legacy_data_migrations_identity_immutable' },
+      { type: 'trigger', name: 'legacy_data_migrations_reject_delete' },
+      { type: 'trigger', name: 'legacy_data_migrations_terminal_immutable' },
+      { type: 'trigger', name: 'legacy_task_items_reject_delete' },
+      { type: 'trigger', name: 'legacy_task_items_reject_update' },
+    ]);
+    const columns = db.prepare('PRAGMA table_info(legacy_data_migrations)').all() as Array<{ name: string }>;
+    assert.ok(columns.some(column => column.name === 'source_hash'));
+    assert.ok(columns.some(column => column.name === 'payload_hash'));
+    assert.ok(columns.some(column => column.name === 'revision'));
+  } finally {
+    db.close();
+  }
+});

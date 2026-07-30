@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -11,9 +11,10 @@ import { migration002 } from '../migrations/002-add-aggregate-versions.js';
 import { migration003 } from '../migrations/003-workspace-provider-config.js';
 import { migration004 } from '../migrations/004-workspace-tombstones.js';
 import { migration011 } from '../migrations/011-legacy-data-migration-foundation.js';
-import type {
-  LegacyTaskImportRunInput,
-  LegacyTaskImportSummary,
+import {
+  LegacyTaskItemImportService,
+  type LegacyTaskImportRunInput,
+  type LegacyTaskImportSummary,
 } from '../../services/LegacyTaskItemImportService.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
@@ -106,6 +107,21 @@ function runCrashAfterReservationChild(
   `;
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', 'tsx', '--input-type=module', '-e', script], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    let output = '';
+    child.stdout.on('data', chunk => { output += String(chunk); });
+    child.stderr.on('data', chunk => { output += String(chunk); });
+    child.once('error', reject);
+    child.once('close', code => resolve({ code, output }));
+  });
+}
+
+function runCommand(args: string[]): Promise<{ code: number | null; output: string }> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--import', 'tsx', 'src/commands/migrateLegacyData.ts', ...args], {
       cwd: process.cwd(),
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -215,6 +231,109 @@ test('[M27-P3-T014] Any snapshot row INSERT failure rolls back the whole snapsho
       ['failed', 1],
       ['completed', 2],
     ]);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M27-P5-T007] Task migration keeps exact no-op, source-only, and new-revision branches distinct', async () => {
+  const fx = baseFixture();
+  const workspaceId = 'p5-task-branches';
+  const sourcePath = join(fx.root, 'workspace', workspaceId, '.agentos', 'tasks.json');
+  try {
+    const firstTask = task('p5-task', { body: 'synthetic-body' });
+    const firstBytes = Buffer.from(JSON.stringify({ tasks: [firstTask] }), 'utf8');
+    writeTasks(fx.root, workspaceId, [firstTask]);
+    const first = await new LegacyTaskItemImportService().run(runInput(fx, workspaceId));
+    assert.equal(first.completedCount, 1);
+    assert.equal(first.revision, 1);
+
+    const noOp = await new LegacyTaskItemImportService().run(runInput(fx, workspaceId));
+    assert.equal(noOp.noopCount, 1);
+
+    const sourceOnlyBytes = Buffer.from(` { "tasks" : [ ${JSON.stringify(firstTask)} ] } `, 'utf8');
+    writeFileSync(sourcePath, sourceOnlyBytes);
+    const sourceOnly = await new LegacyTaskItemImportService().run(runInput(fx, workspaceId));
+    assert.equal(sourceOnly.completedCount, 1);
+    assert.equal(sourceOnly.importedCount, 0);
+    assert.equal(sourceOnly.revision, 1);
+
+    const changedTask = task('p5-task', { body: 'synthetic-body', title: 'Changed synthetic title' });
+    writeTasks(fx.root, workspaceId, [changedTask]);
+    const changed = await new LegacyTaskItemImportService().run(runInput(fx, workspaceId));
+    assert.equal(changed.completedCount, 1);
+    assert.equal(changed.importedCount, 1);
+    assert.equal(changed.revision, 2);
+
+    assert.deepEqual(registryEvidence(fx.databasePath).map(row => ({ status: row.status, attempt: row.attempt, revision: row.revision })), [
+      { status: 'completed', attempt: 1, revision: 1 },
+      { status: 'completed', attempt: 2, revision: 1 },
+      { status: 'completed', attempt: 3, revision: 2 },
+    ]);
+    assert.equal(tableCount(fx.databasePath, 'legacy_task_items'), 2);
+    assert.deepEqual(readFileSync(sourcePath), Buffer.from(JSON.stringify({ tasks: [changedTask] }), 'utf8'));
+    assert.notDeepEqual(firstBytes, sourceOnlyBytes);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M27-P5-T008] Interrupted Task Attempt reconciliation resumes as a fresh committed Attempt', async () => {
+  const fx = baseFixture();
+  const workspaceId = 'p5-interrupted';
+  try {
+    writeTasks(fx.root, workspaceId, [task('p5-interrupted-task')]);
+    const crashed = await runCrashAfterReservationChild(fx, workspaceId);
+    assert.equal(crashed.code, 90, crashed.output);
+    assert.deepEqual(registryEvidence(fx.databasePath).map(row => ({ status: row.status, attempt: row.attempt })), [
+      { status: 'running', attempt: 1 },
+    ]);
+
+    const recovered = await new LegacyTaskItemImportService().run(runInput(fx, workspaceId));
+    assert.equal(recovered.completedCount, 1);
+    assert.equal(recovered.revision, 1);
+    assert.deepEqual(registryEvidence(fx.databasePath).map(row => ({ status: row.status, attempt: row.attempt, errorCode: row.error_code })), [
+      { status: 'failed', attempt: 1, errorCode: 'LEGACY_DATA_MIGRATION_INTERRUPTED' },
+      { status: 'completed', attempt: 2, errorCode: null },
+    ]);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M27-P5-T011] Task command output is leak-free and source bytes remain unchanged', async () => {
+  const fx = baseFixture();
+  const workspaceId = 'p5-no-leak-workspace';
+  const taskId = 'p5-no-leak-task';
+  const body = 'synthetic-body-not-for-output';
+  const sourcePath = join(fx.root, 'workspace', workspaceId, '.agentos', 'tasks.json');
+  try {
+    writeTasks(fx.root, workspaceId, [task(taskId, { workspaceId, body })]);
+    const before = readFileSync(sourcePath);
+    const result = await runCommand([
+      '--database', fx.databasePath,
+      '--source-root', fx.root,
+      '--backup-dir', join(fx.root, 'p5-backups'),
+      '--kind', 'tasks',
+      '--mode', 'apply',
+      '--workspace-id', workspaceId,
+      '--confirm', 'APPLY-M2.7',
+    ]);
+    assert.equal(result.code, 0, result.output);
+    assert.match(result.output, /"mode":"apply"/);
+    assert.match(result.output, /"kind":"tasks"/);
+    assert.doesNotMatch(result.output, new RegExp(workspaceId));
+    assert.doesNotMatch(result.output, new RegExp(taskId));
+    assert.doesNotMatch(result.output, new RegExp(body));
+    assert.doesNotMatch(result.output, new RegExp(fx.root.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.deepEqual(readFileSync(sourcePath), before);
+    assert.equal(tableCount(fx.databasePath, 'legacy_task_items'), 1);
+    const check = new DatabaseSync(fx.databasePath);
+    try {
+      assert.equal((check.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE type = 'table' AND name = 'tasks'").get() as { count: number }).count, 0);
+    } finally {
+      check.close();
+    }
   } finally {
     fx.cleanup();
   }

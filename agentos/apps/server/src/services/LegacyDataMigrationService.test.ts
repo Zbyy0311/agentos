@@ -8,6 +8,8 @@ import { createRequire } from 'node:module';
 import { baselineMigration } from '../migrations/migrations/001-baseline-schema.js';
 import { migration002 } from '../migrations/migrations/002-add-aggregate-versions.js';
 import { migration003 } from '../migrations/migrations/003-workspace-provider-config.js';
+import { acquireServerOwnership } from '../serverOwnership.js';
+import { LegacyMigrationExecutionLock } from './LegacyMigrationExecutionLock.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -256,5 +258,32 @@ test('[M27-P1-T045] an older Payload returning after a newer accepted Payload cr
     assert.deepEqual(fixture.records().map(record => record.revision), [1, 2, 3]);
   } finally {
     fixture.cleanup();
+  }
+});
+
+test('[M27-P5-T009] Database-wide migration ownership and Project Runtime quiescence block competing owners and release cleanly', async () => {
+  const rootA = mkdtempSync(join(tmpdir(), 'agentos-m27-p5-owner-a-'));
+  const rootB = mkdtempSync(join(tmpdir(), 'agentos-m27-p5-owner-b-'));
+  mkdirSync(join(rootA, '.agentos'), { recursive: true });
+  const databasePath = join(rootA, '.agentos', 'agentos.sqlite');
+  const lock = new LegacyMigrationExecutionLock();
+  const first = await lock.acquire(rootA, databasePath);
+  try {
+    await assert.rejects(
+      () => acquireServerOwnership(rootA),
+      (error: unknown) => (error as { code?: unknown }).code === 'SERVER_ALREADY_RUNNING',
+    );
+    await assert.rejects(
+      () => lock.acquire(rootB, databasePath),
+      (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_DATA_MIGRATION_ACTIVE',
+    );
+
+    // Database-lock failure must release the second Project Ownership layer.
+    const rootBAfterFailure = await acquireServerOwnership(rootB);
+    await rootBAfterFailure.release();
+  } finally {
+    await first.release();
+    rmSync(rootA, { recursive: true, force: true });
+    rmSync(rootB, { recursive: true, force: true });
   }
 });

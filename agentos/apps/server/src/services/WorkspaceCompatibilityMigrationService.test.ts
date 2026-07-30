@@ -796,3 +796,45 @@ test('[M27-P2-T014] Apply confirms before ownership, backs up once for a mixed b
     fx.cleanup();
   }
 });
+
+test('[M27-P5-T006] Workspace migration preserves no-op, revision, conflict, and tombstone branches', async () => {
+  const fx = await fixture();
+  const write = (entries: unknown[]): void => { writeSource(fx.root, entries); };
+  try {
+    const noOpWorkspace = workspace('p5-noop', join(fx.root, 'p5-noop'));
+    write([noOpWorkspace]);
+    assert.equal((await fx.service.run(runInput(fx, 'apply', 'p5-noop'))).completedCount, 1);
+    write([noOpWorkspace]);
+    assert.equal((await fx.service.run(runInput(fx, 'apply', 'p5-noop'))).noopCount, 1);
+
+    const revisionWorkspace = workspace('p5-revision', join(fx.root, 'p5-revision'));
+    write([revisionWorkspace]);
+    assert.equal((await fx.service.run(runInput(fx, 'apply', 'p5-revision'))).completedCount, 1);
+    const sourceOnlyChange = { ...revisionWorkspace, unknownField: 'synthetic-change' };
+    write([sourceOnlyChange]);
+    assert.equal((await fx.service.run(runInput(fx, 'apply', 'p5-revision'))).completedCount, 1);
+    assert.deepEqual((fx.db.prepare(`
+      SELECT revision, status FROM legacy_data_migrations
+      WHERE scope_key = 'p5-revision' ORDER BY attempt
+    `).all() as Array<{ revision: number; status: string }>).map(row => ({ revision: row.revision, status: row.status })), [{ revision: 1, status: 'completed' }, { revision: 2, status: 'completed' }]);
+
+    const conflictWorkspace = workspace('p5-conflict', join(fx.root, 'p5-conflict'), { name: 'Original' });
+    write([conflictWorkspace]);
+    assert.equal((await fx.service.run(runInput(fx, 'apply', 'p5-conflict'))).completedCount, 1);
+    const changedConflict = workspace('p5-conflict', join(fx.root, 'p5-conflict'), { name: 'Conflicting' });
+    write([changedConflict]);
+    const conflict = await fx.service.run(runInput(fx, 'apply', 'p5-conflict'));
+    assert.equal(conflict.quarantinedCount, 1);
+    assert.equal(conflict.conflictCount, 1);
+
+    const tombstoneWorkspace = workspace('p5-tombstone', join(fx.root, 'p5-tombstone'));
+    fx.db.prepare('INSERT INTO _workspace_tombstones (workspace_id, deleted_at) VALUES (?, ?)').run('p5-tombstone', NOW);
+    write([tombstoneWorkspace]);
+    const tombstone = await fx.service.run(runInput(fx, 'apply', 'p5-tombstone'));
+    assert.equal(tombstone.tombstoneCount, 1);
+    assert.equal(tombstone.completedCount, 1);
+    assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM workspaces WHERE id = 'p5-tombstone'").get() as { count: number }).count, 0);
+  } finally {
+    fx.cleanup();
+  }
+});

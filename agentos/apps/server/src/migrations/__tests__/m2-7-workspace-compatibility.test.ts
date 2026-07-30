@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -75,6 +75,23 @@ test('[M27-P2-T011] Batch Workspace scopes isolate completion, quarantine, and r
     assert.equal(second.noopCount, 1);
     assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM legacy_data_migrations WHERE scope_key = 'batch-a' AND status = 'completed'").get() as { count: number }).count, 1);
     assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM legacy_data_migrations WHERE scope_key = 'batch-b'").get() as { count: number }).count, 1);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M27-P5-T012] Workspace copy-only scope preserves source bytes and writes no Task-domain records', async () => {
+  const fx = createFixture();
+  try {
+    const source = [workspace('p5-scope', join(fx.root, 'p5-scope'))];
+    const sourceBytes = Buffer.from(JSON.stringify({ workspaces: source }), 'utf8');
+    writeFileSync(join(fx.root, 'workspace', 'workspaces.json'), sourceBytes);
+    const result = await run(fx, source, 'p5-scope');
+    assert.equal(result.completedCount, 1);
+    assert.deepEqual(readFileSync(join(fx.root, 'workspace', 'workspaces.json')), sourceBytes);
+    assert.deepEqual(readdirSync(join(fx.root, 'workspace')), ['workspaces.json']);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM legacy_task_items').get() as { count: number }).count, 0);
+    assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name IN ('tasks', 'runs')").get() as { count: number }).count, 0);
   } finally {
     fx.cleanup();
   }
