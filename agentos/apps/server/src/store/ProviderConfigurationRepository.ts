@@ -143,27 +143,31 @@ export class ProviderConfigurationRepository {
   }
 
   insert(config: ProviderConfiguration): ProviderConfiguration {
-    inTransaction(this.db, () => {
-      this.db.prepare(`
-        INSERT INTO provider_configurations (
-          id, workspace_id, name, provider_type, adapter_id, runtime_mode,
-          executable, args_template_json, model, environment_profile_id, secret_profile_id,
-          working_directory_mode, custom_working_directory, capabilities_json,
-          timeout_policy_json, approval_mode, output_mode, enabled, version,
-          created_at, updated_at, archived_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        config.id, config.workspaceId ?? null, config.name, config.providerType,
-        config.adapterId, config.runtimeMode,
-        config.executable ?? null, JSON.stringify(config.argsTemplate ?? []),
-        config.model ?? null, config.environmentProfileId ?? null,
-        config.secretProfileId ?? null,
-        config.workingDirectoryMode, config.customWorkingDirectory ?? null,
-        JSON.stringify(config.capabilities), JSON.stringify(config.timeoutPolicy),
-        config.approvalMode, config.outputMode, config.enabled ? 1 : 0,
-        config.version, config.createdAt, config.updatedAt, config.archivedAt ?? null,
-      );
-    });
+    inTransaction(this.db, () => this.insertWithinTransaction(config));
+    return config;
+  }
+
+  /** Insert only; the caller must already own the surrounding transaction. */
+  insertWithinTransaction(config: ProviderConfiguration): ProviderConfiguration {
+    this.db.prepare(`
+      INSERT INTO provider_configurations (
+        id, workspace_id, name, provider_type, adapter_id, runtime_mode,
+        executable, args_template_json, model, environment_profile_id, secret_profile_id,
+        working_directory_mode, custom_working_directory, capabilities_json,
+        timeout_policy_json, approval_mode, output_mode, enabled, version,
+        created_at, updated_at, archived_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      config.id, config.workspaceId ?? null, config.name, config.providerType,
+      config.adapterId, config.runtimeMode,
+      config.executable ?? null, JSON.stringify(config.argsTemplate ?? []),
+      config.model ?? null, config.environmentProfileId ?? null,
+      config.secretProfileId ?? null,
+      config.workingDirectoryMode, config.customWorkingDirectory ?? null,
+      JSON.stringify(config.capabilities), JSON.stringify(config.timeoutPolicy),
+      config.approvalMode, config.outputMode, config.enabled ? 1 : 0,
+      config.version, config.createdAt, config.updatedAt, config.archivedAt ?? null,
+    );
     return config;
   }
 

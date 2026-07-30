@@ -108,6 +108,11 @@ export class WorkspaceRepository {
     return this.assembleRows(rows)[0];
   }
 
+  /** Compatibility migrations accept a source root and canonicalize it once at the repository boundary. */
+  findByRootPath(rootPath: string): Workspace | undefined {
+    return this.findByCanonicalPath(toCanonicalRootPath(rootPath));
+  }
+
   insert(workspace: Workspace): Workspace {
     return inTransaction(this.db, () => this.insertWithinTransaction(workspace));
   }
