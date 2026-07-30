@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -71,6 +71,8 @@ interface Fixture {
   };
   backupCalls: { count: number };
   leaseCalls: { count: number };
+  releaseCalls: { count: number };
+  stages: string[];
   cleanup(): void;
 }
 
@@ -84,15 +86,24 @@ async function fixture(options: {
   applySchema(db);
   const backupCalls = { count: 0 };
   const leaseCalls = { count: 0 };
+  const releaseCalls = { count: 0 };
+  const stages: string[] = [];
   const { LegacyTaskItemImportService } = await import('./LegacyTaskItemImportService.js');
   const service = new LegacyTaskItemImportService({
     leaseFactory: async () => {
       leaseCalls.count += 1;
-      return { release: async () => {} };
+      return {
+        release: async () => {
+          releaseCalls.count += 1;
+        },
+      };
     },
     databaseFactory: () => new DatabaseSync(databasePath),
     migrationIdFactory: (() => { let n = 0; return () => `p3-migration-${++n}`; })(),
     clock: () => NOW,
+    stageProbe: (stage: string) => {
+      stages.push(stage);
+    },
     backupProvider: {
       createAndVerify: async () => {
         backupCalls.count += 1;
@@ -108,6 +119,8 @@ async function fixture(options: {
     service,
     backupCalls,
     leaseCalls,
+    releaseCalls,
+    stages,
     cleanup() {
       try { db.close(); } catch { /* best effort */ }
       rmSync(root, { recursive: true, force: true });
@@ -302,17 +315,22 @@ test('[M27-P3-T004] Non-finite and unsafe numbers fail closed instead of being n
   }
 });
 
-test('[M27-P3-T005] Missing or unreadable source fails before Ownership, Backup and Attempt', async () => {
+test('[M27-P3-T005] Source preflight runs under acquired-and-released Ownership with zero Backup and zero Attempt', async () => {
   const fx = await fixture();
   try {
     await assert.rejects(
       () => fx.service.run(runInput(fx, 'ws-missing')),
       (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_TASK_SOURCE_NOT_READABLE',
     );
-    assert.equal(fx.leaseCalls.count, 0);
+    // Ownership is always acquired and released even when the source is
+    // missing; no Backup and no Attempt are ever created.
+    assert.equal(fx.leaseCalls.count, 1);
+    assert.equal(fx.releaseCalls.count, 1);
     assert.equal(fx.backupCalls.count, 0);
     assert.equal(countRows(fx.db, 'legacy_data_migrations'), 0);
     assert.equal(countRows(fx.db, 'legacy_task_items'), 0);
+    // Ownership was acquired before the source read was attempted.
+    assert.deepEqual(fx.stages, ['ownership']);
 
     // tasks.json that is a directory is unreadable too.
     mkdirSync(join(fx.root, 'workspace', 'ws-dir', '.agentos', 'tasks.json'), { recursive: true });
@@ -320,7 +338,9 @@ test('[M27-P3-T005] Missing or unreadable source fails before Ownership, Backup 
       () => fx.service.run(runInput(fx, 'ws-dir')),
       (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_TASK_SOURCE_NOT_READABLE',
     );
-    assert.equal(fx.leaseCalls.count, 0);
+    assert.equal(fx.leaseCalls.count, 2);
+    assert.equal(fx.releaseCalls.count, 2);
+    assert.equal(fx.backupCalls.count, 0);
     assert.equal(countRows(fx.db, 'legacy_data_migrations'), 0);
 
     // dry-run follows the same preflight contract.
@@ -328,7 +348,67 @@ test('[M27-P3-T005] Missing or unreadable source fails before Ownership, Backup 
       () => fx.service.run(runInput(fx, 'ws-missing', 'dry-run')),
       (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_TASK_SOURCE_NOT_READABLE',
     );
-    assert.equal(fx.leaseCalls.count, 0);
+    assert.equal(fx.leaseCalls.count, 3);
+    assert.equal(fx.releaseCalls.count, 3);
+    assert.equal(fx.backupCalls.count, 0);
+
+    // Successful run ordering: ownership < source read/hash < no-op lookup < backup < attempt.
+    const fxOrder = await fixture();
+    try {
+      writeTasks(fxOrder.root, 'ws-order', [task('alpha')]);
+      const result = await fxOrder.service.run(runInput(fxOrder, 'ws-order'));
+      assert.equal(result.completedCount, 1);
+      assert.deepEqual(fxOrder.stages, ['ownership', 'source-read', 'noop-check', 'backup', 'attempt']);
+    } finally {
+      fxOrder.cleanup();
+    }
+
+    // A junctioned workspace directory escaping the source root is rejected.
+    const fxJunction = await fixture();
+    const outside = mkdtempSync(join(tmpdir(), 'agentos-m27-p3-outside-'));
+    try {
+      mkdirSync(join(outside, '.agentos'), { recursive: true });
+      writeFileSync(join(outside, '.agentos', 'tasks.json'), JSON.stringify({ tasks: [task('escaped')] }));
+      mkdirSync(join(fxJunction.root, 'workspace'), { recursive: true });
+      symlinkSync(outside, join(fxJunction.root, 'workspace', 'ws-junction'), 'junction');
+      await assert.rejects(
+        () => fxJunction.service.run(runInput(fxJunction, 'ws-junction')),
+        (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_TASK_SOURCE_NOT_READABLE',
+      );
+      assert.equal(fxJunction.backupCalls.count, 0);
+      assert.equal(countRows(fxJunction.db, 'legacy_data_migrations'), 0);
+      assert.equal(countRows(fxJunction.db, 'legacy_task_items'), 0);
+    } finally {
+      rmSync(outside, { recursive: true, force: true });
+      fxJunction.cleanup();
+    }
+
+    // Project A database + Project B source root is rejected before
+    // Ownership with zero writes.
+    const fxA = await fixture();
+    const fxB = await fixture();
+    try {
+      writeTasks(fxB.root, 'ws-cross', [task('alpha')]);
+      await assert.rejects(
+        () => fxA.service.run({
+          projectRoot: fxA.root,
+          sourceRoot: fxB.root,
+          databasePath: fxA.databasePath,
+          backupDirectory: join(fxA.root, 'backups'),
+          kind: 'tasks',
+          mode: 'apply',
+          workspaceId: 'ws-cross',
+        }),
+        (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_DATA_MIGRATION_PATH_MISMATCH',
+      );
+      assert.equal(fxA.leaseCalls.count, 0);
+      assert.equal(fxA.backupCalls.count, 0);
+      assert.equal(countRows(fxA.db, 'legacy_data_migrations'), 0);
+      assert.equal(countRows(fxA.db, 'legacy_task_items'), 0);
+    } finally {
+      fxA.cleanup();
+      fxB.cleanup();
+    }
   } finally {
     fx.cleanup();
   }

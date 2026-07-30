@@ -67,18 +67,19 @@ function cliFixture(workspaceId: string, tasks: unknown[], rawText?: string): {
   };
 }
 
-function runCommand(args: string[]): Promise<{ code: number | null; output: string }> {
+function runCommand(args: string[]): Promise<{ code: number | null; output: string; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = spawn(process.execPath, ['--import', 'tsx', 'src/commands/migrateLegacyData.ts', ...args], {
       cwd: process.cwd(),
       env: process.env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
-    let output = '';
-    child.stdout.on('data', chunk => { output += String(chunk); });
-    child.stderr.on('data', chunk => { output += String(chunk); });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', chunk => { stdout += String(chunk); });
+    child.stderr.on('data', chunk => { stderr += String(chunk); });
     child.once('error', reject);
-    child.once('close', code => resolve({ code, output }));
+    child.once('close', code => resolve({ code, output: stdout + stderr, stdout, stderr }));
   });
 }
 
@@ -110,6 +111,9 @@ test('[M27-P3-T015] tasks dry-run performs zero writes, CLI validation rejects m
     assert.equal(summary.sourceCount, 2);
     assert.equal(summary.validTaskCount, 2);
     assert.equal(summary.noopCount, 0);
+    // dry-run stdout carries a filtered summary: no Workspace ID field or value.
+    assert.equal('workspaceId' in summary, false);
+    assert.equal(dry.stdout.includes('ws-cli'), false);
     assert.equal(existsSync(join(fx.root, 'backups')), false);
     assert.equal(tableCount(fx.databasePath, 'legacy_data_migrations'), 0);
     assert.equal(tableCount(fx.databasePath, 'legacy_task_items'), 0);
@@ -148,6 +152,45 @@ test('[M27-P3-T015] tasks dry-run performs zero writes, CLI validation rejects m
       '--kind', 'workspace', '--mode', 'apply',
     ]);
     assert.equal(wsNoConfirm.code, 2, wsNoConfirm.output);
+
+    // Stable CLI errors: stderr carries only the stable code, never raw errors.
+    const missingSource = await runCommand([
+      '--database', fx.databasePath, '--source-root', fx.root, '--backup-dir', join(fx.root, 'backups'),
+      '--kind', 'tasks', '--workspace-id', 'ws-absent', '--mode', 'dry-run',
+    ]);
+    assert.equal(missingSource.code, 4, missingSource.output);
+    assert.match(missingSource.stderr, /LEGACY_TASK_SOURCE_NOT_READABLE/);
+    assert.doesNotMatch(missingSource.stderr, /ENOENT|no such file/i);
+
+    // A database outside the source project root is a stable path mismatch.
+    const otherRoot = mkdtempSync(join(tmpdir(), 'agentos-m27-p3-other-'));
+    try {
+      const mismatch = await runCommand([
+        '--database', fx.databasePath, '--source-root', otherRoot, '--backup-dir', join(otherRoot, 'backups'),
+        '--kind', 'tasks', '--workspace-id', 'ws-cli', '--mode', 'dry-run',
+      ]);
+      assert.equal(mismatch.code, 2, mismatch.output);
+      assert.match(mismatch.stderr, /LEGACY_DATA_MIGRATION_PATH_MISMATCH/);
+      assert.doesNotMatch(mismatch.stderr, /AssertionError|Error:/);
+    } finally {
+      rmSync(otherRoot, { recursive: true, force: true });
+    }
+
+    // Unknown operational failures surface only the stable operation-failed code.
+    const fxOp = cliFixture('ws-op', [task('alpha')]);
+    try {
+      rmSync(fxOp.databasePath, { force: true });
+      mkdirSync(fxOp.databasePath);
+      const operational = await runCommand([
+        '--database', fxOp.databasePath, '--source-root', fxOp.root, '--backup-dir', join(fxOp.root, 'backups'),
+        '--kind', 'tasks', '--workspace-id', 'ws-op', '--mode', 'apply', '--confirm', 'APPLY-M2.7',
+      ]);
+      assert.equal(operational.code, 6, operational.output);
+      assert.match(operational.stderr, /LEGACY_TASK_IMPORT_OPERATION_FAILED/);
+      assert.doesNotMatch(operational.stderr, /EISDIR|illegal operation/i);
+    } finally {
+      fxOp.cleanup();
+    }
   } finally {
     fx.cleanup();
   }
@@ -165,9 +208,12 @@ test('[M27-P3-T016] tasks apply writes only compatibility rows, synthesizes no c
     assert.equal(summary.completedCount, 1);
     assert.equal(summary.importedCount, 2);
     assert.equal(summary.revision, 1);
-    // CLI output never leaks Task IDs, bodies or payloads.
-    assert.equal(apply.output.includes('alpha'), false);
-    assert.equal(apply.output.includes('do not leak'), false);
+    // CLI stdout never leaks Task IDs, bodies, Workspace IDs or full paths.
+    assert.equal('workspaceId' in summary, false);
+    assert.equal(apply.stdout.includes('alpha'), false);
+    assert.equal(apply.stdout.includes('do not leak'), false);
+    assert.equal(apply.stdout.includes('ws-cli'), false);
+    assert.equal(apply.stdout.includes(fx.root), false);
 
     // No canonical Task/Run/Stage/Snapshot/Idempotency record was synthesized.
     for (const table of ['tasks', 'runs', 'run_stages', 'run_snapshots', 'idempotency_records']) {
@@ -188,6 +234,7 @@ test('[M27-P3-T016] tasks apply writes only compatibility rows, synthesizes no c
     ]);
     assert.equal(again.code, 0, again.output);
     assert.equal(parseSummary(again.output).noopCount, 1);
+    assert.equal(again.stdout.includes('ws-cli'), false);
     assert.equal(readdirSync(join(fx.root, 'backups')).length, backups.length);
 
     // Backup failure exits 3 and leaves no Attempt.

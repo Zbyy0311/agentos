@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
 import { createRequire } from 'node:module';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 
 import { inTransaction } from '../store/Transaction.js';
 import {
@@ -87,6 +87,7 @@ export interface LegacyTaskImportServiceOptions {
   parser?: (bytes: Uint8Array, sourceKey: 'tasks.json') => LegacySourceParseResult;
   beforeAggregateTransaction?: (input: { scope: LegacyMigrationScope; attemptId: string }) => void | Promise<void>;
   insertHook?: (task: Record<string, unknown>, index: number) => void;
+  stageProbe?: (stage: string) => void;
 }
 
 function sha256(bytes: Uint8Array | string): string {
@@ -140,6 +141,7 @@ export class LegacyTaskItemImportService {
   private readonly parser: NonNullable<LegacyTaskImportServiceOptions['parser']>;
   private readonly beforeAggregateTransaction: LegacyTaskImportServiceOptions['beforeAggregateTransaction'];
   private readonly insertHook: LegacyTaskImportServiceOptions['insertHook'];
+  private readonly stageProbe: LegacyTaskImportServiceOptions['stageProbe'];
 
   constructor(options: LegacyTaskImportServiceOptions = {}) {
     this.leaseFactory = options.leaseFactory
@@ -156,16 +158,12 @@ export class LegacyTaskItemImportService {
     this.parser = options.parser ?? ((bytes, sourceKey) => parseLegacyJsonSource(bytes, sourceKey));
     this.beforeAggregateTransaction = options.beforeAggregateTransaction;
     this.insertHook = options.insertHook;
+    this.stageProbe = options.stageProbe;
   }
 
   async run(input: LegacyTaskImportRunInput): Promise<LegacyTaskImportSummary> {
     this.validateInput(input);
-    assertCanonicalProjectDatabasePath(input.projectRoot, input.databasePath);
-    // Read-only source preflight happens before Ownership, Backup and any
-    // Attempt: a missing, unreadable or escaping source fails here.
-    const sourcePath = this.resolveSourcePath(input.sourceRoot, input.workspaceId);
-    const sourceBytes = this.readSource(sourcePath);
-    const sourceHash = sha256(sourceBytes);
+    this.assertProjectSourceDatabaseBinding(input);
 
     let lease: LegacyMigrationLease;
     try {
@@ -177,9 +175,17 @@ export class LegacyTaskItemImportService {
       }
       throw new LegacyTaskItemImportError(LEGACY_TASK_IMPORT_OPERATION_FAILED);
     }
+    this.stageProbe?.('ownership');
 
     let db: TaskImportDatabase | undefined;
     try {
+      // Source preflight is deliberately performed while both Ownership
+      // layers are held, but before Backup and any Attempt.
+      const sourcePath = this.resolveSourcePath(input.sourceRoot, input.workspaceId);
+      const sourceBytes = this.readSource(sourcePath);
+      const sourceHash = sha256(sourceBytes);
+      this.stageProbe?.('source-read');
+
       db = this.databaseFactory(input.databasePath);
       this.assertDatabaseBinding(db, input.databasePath);
       const migrations = new LegacyDataMigrationRepository(db);
@@ -193,6 +199,7 @@ export class LegacyTaskItemImportService {
       };
 
       // Exact-source no-op: no Parser, no Backup, no Attempt.
+      this.stageProbe?.('noop-check');
       const exact = migrations.findCompletedByExactSource(scope);
       if (exact !== null) {
         return {
@@ -232,6 +239,18 @@ export class LegacyTaskItemImportService {
     }
   }
 
+  private assertProjectSourceDatabaseBinding(input: LegacyTaskImportRunInput): void {
+    try {
+      assertCanonicalProjectDatabasePath(input.projectRoot, input.databasePath);
+    } catch {
+      throw new LegacyTaskItemImportError('LEGACY_DATA_MIGRATION_PATH_MISMATCH');
+    }
+    if (canonicalizeLegacyMigrationDatabasePath(input.projectRoot)
+      !== canonicalizeLegacyMigrationDatabasePath(input.sourceRoot)) {
+      throw new LegacyTaskItemImportError('LEGACY_DATA_MIGRATION_PATH_MISMATCH');
+    }
+  }
+
   private resolveSourcePath(sourceRoot: string, workspaceId: string): string {
     if (!isAbsolute(sourceRoot)) throw new LegacyTaskItemImportError(LEGACY_TASK_SOURCE_NOT_READABLE);
     const resolvedRoot = resolve(sourceRoot);
@@ -247,8 +266,8 @@ export class LegacyTaskItemImportService {
       const stat = lstatSync(sourcePath);
       if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('source file');
       const canonicalSource = realpathSync.native(sourcePath);
-      if (canonicalizeLegacyMigrationDatabasePath(canonicalSource)
-        !== canonicalizeLegacyMigrationDatabasePath(sourcePath)) {
+      const relativeSource = relative(canonicalRoot, canonicalSource);
+      if (isAbsolute(relativeSource) || relativeSource.startsWith('..')) {
         throw new Error('source escape');
       }
       return sourcePath;
@@ -324,6 +343,7 @@ export class LegacyTaskItemImportService {
       throw new LegacyTaskItemImportError(LEGACY_TASK_IMPORT_BACKUP_FAILED);
     }
     try {
+      this.stageProbe?.('backup');
       await this.backupProvider.createAndVerify({
         databasePath: input.databasePath,
         database: db,
@@ -343,6 +363,7 @@ export class LegacyTaskItemImportService {
       migrationId,
       now: this.clock(),
     });
+    this.stageProbe?.('attempt');
 
     // Strict Parser rejection becomes a Quarantine with revision NULL.
     let parsed: LegacySourceParseResult;

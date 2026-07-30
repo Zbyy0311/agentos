@@ -1,5 +1,5 @@
 import { fileURLToPath } from 'node:url';
-import { dirname, isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, resolve } from 'node:path';
 
 import {
   LEGACY_WORKSPACE_BACKUP_FAILED,
@@ -97,15 +97,19 @@ function exitCode(error: unknown): number {
   return 6;
 }
 
+function stableErrorCode(error: unknown): string {
+  if (error instanceof WorkspaceCompatibilityMigrationError || error instanceof LegacyTaskItemImportError) {
+    return error.code;
+  }
+  return LEGACY_WORKSPACE_OPERATION_FAILED;
+}
+
 export async function main(argv = process.argv.slice(2)): Promise<number> {
   try {
     const args = parseArguments(argv);
     if (args.kind === 'tasks') {
       const result = await new LegacyTaskItemImportService().run({
-        // The canonical Project Root is derived from the frozen database
-        // location (<projectRoot>/.agentos/agentos.sqlite); the Service
-        // re-validates the binding before any Ownership or write.
-        projectRoot: dirname(dirname(resolve(args.database))),
+        projectRoot: args.sourceRoot,
         sourceRoot: args.sourceRoot,
         databasePath: args.database,
         backupDirectory: args.backupDirectory,
@@ -113,7 +117,17 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
         mode: args.mode,
         workspaceId: args.workspaceId as string,
       });
-      process.stdout.write(`${JSON.stringify(result)}\n`);
+      process.stdout.write(`${JSON.stringify({
+        mode: result.mode,
+        kind: result.kind,
+        sourceCount: result.sourceCount,
+        validTaskCount: result.validTaskCount,
+        completedCount: result.completedCount,
+        noopCount: result.noopCount,
+        quarantinedCount: result.quarantinedCount,
+        importedCount: result.importedCount,
+        revision: result.revision,
+      })}\n`);
       return result.quarantinedCount > 0 ? 5 : 0;
     }
     const result = await new WorkspaceCompatibilityMigrationService().run({
@@ -129,7 +143,7 @@ export async function main(argv = process.argv.slice(2)): Promise<number> {
     if (args.mode === 'dry-run' && result.invalidCount > 0) return 4;
     return result.quarantinedCount > 0 || result.failedCount > 0 || result.conflictCount > 0 ? 5 : 0;
   } catch (error) {
-    process.stderr.write(`${error instanceof WorkspaceCompatibilityMigrationError ? error.code : LEGACY_WORKSPACE_OPERATION_FAILED}\n`);
+    process.stderr.write(`${stableErrorCode(error)}\n`);
     return exitCode(error);
   }
 }
