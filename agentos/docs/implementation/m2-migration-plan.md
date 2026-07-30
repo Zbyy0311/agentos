@@ -1,11 +1,11 @@
 # M2 — Storage and Domain Core — Implementation Plan
 
 > **Milestone:** M2
-> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 VERIFIED & MERGED — POST-MERGE CLOSEOUT RECORDED; M2.7 OWNER DECISIONS APPROVED — PLAN CONTRACT REMEDIATION 5 COMPLETE — IMPLEMENTATION NOT AUTHORIZED — PENDING GITHUB SECONDARY CONFIRMATION; M2.8 NOT STARTED
+> **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 VERIFIED & MERGED — POST-MERGE CLOSEOUT RECORDED; M2.7 VERIFIED & MERGED — `8dac2448d7a4608c3b2a2a8ca4e3f25c622e1d49`; M2.8 NOT STARTED / NOT AUTHORIZED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
-> **Branch:** `runtime/m2-7-v1-compatibility-migration`
-> **Current Main:** `30b3b20c9c4239fdfc9d423497b04c94e9468dde`
+> **Branch:** `docs/m2-7-post-merge-closeout`
+> **Current Main:** `8dac2448d7a4608c3b2a2a8ca4e3f25c622e1d49`
 > **Reference:** docs/Runtime-Specification/10-Data-Model.md, 01-Core-Concepts.md
 
 ---
@@ -20,7 +20,7 @@
 | M2.4 | VERIFIED & MERGED — `e02db3b0` | PR #3 merged and archived; report `docs/implementation/milestones/M2.4-task-run-separation-report.md`; no further remediation |
 | M2.5 | VERIFIED & MERGED — `39eb1d5ae2238f9f65fe7475fa3271a93a946acd` | PR #7 MERGED via Merge Commit at 2026-07-28T09:39:46Z (16 commits, 45 files); reviewed head `3c4dc5b8`; branch `runtime/m2-5-stage-workflow-snapshots` and worktree retained; report `docs/implementation/milestones/M2.5-stage-workflow-snapshot-report.md` |
 | M2.6 | VERIFIED & MERGED — `6727add8303b7d0ab659a427bfdd8299a98e5702` | Branch `runtime/m2-6-idempotency-concurrency`; reviewed head `5416729f`; PR #8; 11 commits / 31 changed files (24 implementation/test, 7 documentation); 30 effective M2.6 files plus 1 retained M2.5 closeout; Merge Commit method; Migration 010 IMPLEMENTED, VERIFIED AND MERGED; no backfill; no destructive migration; Migration 001–009 unchanged; Remote CI none; M2.7/M2.8 not started |
-| M2.7 | OWNER DECISIONS APPROVED — PLAN CONTRACT REMEDIATION 5 COMPLETE — IMPLEMENTATION NOT AUTHORIZED — PENDING GITHUB SECONDARY CONFIRMATION | Branch `runtime/m2-7-v1-compatibility-migration`; base `30b3b20c9c4239fdfc9d423497b04c94e9468dde`; remediated Owner Decision register and plan are authoritative; audit remains unchanged; no PR; M2.8 not started |
+| M2.7 | VERIFIED & MERGED — `8dac2448d7a4608c3b2a2a8ca4e3f25c622e1d49` | PR #10; reviewed head `7c7fa92f02316c229782cbd88e4997b4a78a0368`; Migration 011 and Registry 001–011 are present on Main; feature Branch and Worktree retained; Remote Checks unavailable / not claimed as PASS; M2.8 not started / not authorized |
 
 > **M2.4 Owner-approved scope exception（2026-07-23）:** `apps/server/src/store/SqliteStore.test.ts` — migration_id expected list `001–004` → `001–006` only（required expectation synchronization after registering Migration 005/006）; no other existing test modified; test semantics and verification strength unchanged.
 
@@ -585,7 +585,7 @@ remediation code `9def4f15`; final remediation review head `c9c851c8`; PR #2 MER
 
 ---
 
-> **M2.7 Contract Remediation 5 Override (2026-07-30):** the historical M2.7 section above is not implementation authority and must not be used to begin P1. Current facts remain in `docs/implementation/milestones/M2.7-current-state-audit.md`; approved Owner decisions and contract clarifications are in `docs/implementation/milestones/M2.7-owner-decisions.md`; the remediated implementation plan is `docs/implementation/milestones/M2.7-v1-compatibility-migration-plan.md`. The current branch is `runtime/m2-7-v1-compatibility-migration` from Main `30b3b20c9c4239fdfc9d423497b04c94e9468dde`. M2.7 status is OWNER DECISIONS APPROVED — PLAN CONTRACT REMEDIATION 5 COMPLETE — IMPLEMENTATION NOT AUTHORIZED — PENDING GITHUB SECONDARY CONFIRMATION. Migration 011 is required in the plan but is not implemented; no JSON deletion, automatic fallback, historical Run synthesis, Legacy API removal, or automatic Production Restore is authorized. M2.8 remains NOT STARTED.
+> **M2.7 Contract Remediation 5 Override (2026-07-30, Historical pre-merge status):** the historical M2.7 section above was not implementation authority and could not be used to begin P1. Current facts remain in `docs/implementation/milestones/M2.7-current-state-audit.md`; approved Owner decisions and contract clarifications remain in `docs/implementation/milestones/M2.7-owner-decisions.md`; the remediated implementation plan is `docs/implementation/milestones/M2.7-v1-compatibility-migration-plan.md`. At that historical point the branch was `runtime/m2-7-v1-compatibility-migration` from Main `30b3b20c9c4239fdfc9d423497b04c94e9468dde`; M2.7 implementation was not authorized and Migration 011 was not yet implemented. The current post-merge status is recorded above and below. M2.8 remains NOT STARTED / NOT AUTHORIZED.
 
 ### M2.8 — Verification and Cutover Readiness
 
@@ -747,3 +747,28 @@ Update (2026-07-25, cross-platform ownership remediation): the filesystem Unix D
 Update (2026-07-25, candidate-set ownership remediation): fixed a HIGH fallback-churn defect where one Project Root could hold two loopback ownership endpoints after another root freed an earlier candidate. Ownership now sweeps the full candidate set before binding, verifies the full set again after binding, fails closed on non-EADDRINUSE bind errors, and destroys accepted handshake connections on release. Still no migration and no schema change. Code commit `091b41b288661a8a92f59a129a10f2e5a1b7dfe7`; R41-R47 pass; R25-R40 regression passes; seven-file targeted 140/140; Server 478 tests / 477 passed / 0 failed / 1 skipped; Agent Core 123/123; Build PASS. Status remains `M2.4 IMPLEMENTED — PENDING PR REMEDIATION REVIEW`; Remote CI unavailable; PR #3 OPEN and unmerged with Auto Merge disabled; merge not authorized; M2.5 not started.
 
 Update (2026-07-25, final verification closure): final technical review `4779120698` (GitHub event `COMMENTED`, technical verdict `APPROVE`, formal non-author approval `NOT PRESENT`) approved the production Head `88e9b328` with BLOCKER/HIGH/MEDIUM 0 and 4 LOW residual risks. Closure gates all passed on first execution: ownership targeted 24/1 skip, startup 7/7, taskRecovery 9/9, RunRepository 23/23, TaskRunService 34/34, seven-file 140/140, three independent full Server runs each 477 passed / 0 failed / 1 skipped, Agent Core 123/123, Build PASS, diff check PASS. An earlier same-day closure attempt that stopped at an environmental R39 port conflict is disclosed in the M2.4 report (§42.3) and was not covered by rerun. No production code or test changed after the reviewed Head. Status is now `M2.4 VERIFIED — READY FOR MERGE REVIEW`; Remote CI unavailable; PR #3 OPEN and unmerged with Auto Merge disabled; merge not authorized; M2.5 not started.
+
+## M2.7 Post-Merge Closeout (2026-07-31)
+
+Status: **M2.7 VERIFIED & MERGED — 8dac2448d7a4608c3b2a2a8ca4e3f25c622e1d49**
+
+- PR #10 merged at `2026-07-30T18:43:05Z` through an ordinary Merge Commit. Previous Main: `30b3b20c9c4239fdfc9d423497b04c94e9468dde`; reviewed Head: `7c7fa92f02316c229782cbd88e4997b4a78a0368`; Merge Commit: `8dac2448d7a4608c3b2a2a8ca4e3f25c622e1d49`.
+- Head ancestor verification: PASS. Tree equivalence: PASS. The M2.7 Feature Branch and original Worktree are retained.
+- P1 independently re-reviewed: PASS. P2 independently re-reviewed: PASS. P3 independently re-reviewed: PASS. P4 independently reviewed: PASS. P5 final independent review: PASS. Local Formal Gate: PASS.
+- Migration 011 is IMPLEMENTED / VERIFIED / MERGED; Registry 001–011 are present on Main. Remote Checks are unavailable / not claimed as PASS.
+- Legacy Workspace/Task JSON remains readable and was not deleted or renamed. Legacy TaskItem was not bulk-mapped into canonical Task/Run history; compatibility rows remain isolated from canonical Task/Run records.
+- No Production Restore and no destructive migration were introduced. M2.8 owns JSON retirement, API/Web cutover, and final readiness. M2.8 is NOT STARTED / NOT AUTHORIZED.
+
+M2.7 VERIFIED & MERGED
+
+— PR #10 MERGED THROUGH MERGE COMMIT `8dac2448d7a4608c3b2a2a8ca4e3f25c622e1d49`
+
+— LOCAL FORMAL GATE PASSED
+
+— FINAL INDEPENDENT REVIEW PASSED
+
+— REMOTE CHECKS UNAVAILABLE / NOT CLAIMED AS PASS
+
+— MIGRATION 011 PRESENT ON MAIN
+
+— M2.8 NOT STARTED / NOT AUTHORIZED
