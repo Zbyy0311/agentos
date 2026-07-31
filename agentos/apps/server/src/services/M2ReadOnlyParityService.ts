@@ -112,6 +112,17 @@ function sha256(value: Uint8Array | string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function compareStableText(left: string, right: string): number {
+  if (left === right) return 0;
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    const leftCodeUnit = left.charCodeAt(index);
+    const rightCodeUnit = right.charCodeAt(index);
+    if (leftCodeUnit !== rightCodeUnit) return leftCodeUnit - rightCodeUnit;
+  }
+  return left.length - right.length;
+}
+
 function stableValue(value: unknown, seen = new Set<object>()): unknown {
   if (value === undefined) return { $undefined: true };
   if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
@@ -131,7 +142,7 @@ function stableValue(value: unknown, seen = new Set<object>()): unknown {
     }
     const objectValue = value as Record<string, unknown>;
     const result: Record<string, unknown> = {};
-    for (const key of Object.keys(objectValue).sort()) {
+    for (const key of Object.keys(objectValue).sort(compareStableText)) {
       result[key] = stableValue(objectValue[key], seen);
     }
     seen.delete(value);
@@ -145,7 +156,115 @@ function stableSerialize(value: unknown): string {
 }
 
 function digestValue(value: unknown, present: boolean): string {
-  return sha256(stableSerialize({ present, value: present ? value : null }));
+  try {
+    return sha256(stableSerialize({ present, value: present ? value : null }));
+  } catch {
+    return sha256(stableSerialize({ present: true, value: 'unsupported_value' }));
+  }
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value === null || typeof value !== 'object' || Array.isArray(value) || value instanceof Uint8Array) return false;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
+}
+
+function normalizedValueError(value: unknown, seen = new Set<object>()): string | undefined {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return undefined;
+  if (typeof value === 'number') return Number.isFinite(value) ? undefined : 'non_finite_number';
+  if (value instanceof Uint8Array) return undefined;
+  if (value === undefined) return 'undefined_value';
+  if (typeof value === 'function' || typeof value === 'symbol' || typeof value === 'bigint') return 'unsupported_primitive';
+  if (typeof value !== 'object') return 'unsupported_value_type';
+  if (seen.has(value)) return 'cyclic_value';
+  let prototype: object | null;
+  try {
+    prototype = Object.getPrototypeOf(value);
+  } catch {
+    return 'unsupported_object_type';
+  }
+  if (Array.isArray(value)) {
+    seen.add(value);
+    for (const key of Reflect.ownKeys(value)) {
+      if (typeof key !== 'string') {
+        seen.delete(value);
+        return 'symbol_keyed_property';
+      }
+      if (key === 'length') continue;
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        seen.delete(value);
+        return 'accessor_property';
+      }
+      const nestedError = normalizedValueError(descriptor.value, seen);
+      if (nestedError) {
+        seen.delete(value);
+        return nestedError;
+      }
+    }
+    seen.delete(value);
+    return undefined;
+  }
+  if (prototype !== Object.prototype && prototype !== null) return 'unsupported_object_type';
+  seen.add(value);
+  for (const key of Reflect.ownKeys(value)) {
+    if (typeof key !== 'string') {
+      seen.delete(value);
+      return 'symbol_keyed_property';
+    }
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+      seen.delete(value);
+      return 'accessor_property';
+    }
+    const nestedError = normalizedValueError(descriptor.value, seen);
+    if (nestedError) {
+      seen.delete(value);
+      return nestedError;
+    }
+  }
+  seen.delete(value);
+  return undefined;
+}
+
+function validDigest(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+}
+
+function normalizedValueEvidence(
+  records: readonly M2ParityRecord[],
+  fieldMap: M2ParityFieldMap,
+): M2ParityEvidence[] {
+  const allowedFields = new Set([...fieldMap.requiredLogicalFields, ...fieldMap.allowedOptionalFields]);
+  const evidence: M2ParityEvidence[] = [];
+  for (const record of [...records].sort((left, right) => compareStableText(left.recordKey, right.recordKey))) {
+    if (!isPlainObject(record.fields)) {
+      evidence.push(evidenceFor(record.recordKey, 'unknown_field', 'malformed', undefined, 'unsupported_fields_object', 'unsupported_fields_object'));
+      continue;
+    }
+    for (const key of Reflect.ownKeys(record.fields).sort((left, right) => compareStableText(String(left), String(right)))) {
+      if (typeof key !== 'string') {
+        evidence.push(evidenceFor(record.recordKey, 'unknown_field', 'malformed', undefined, 'symbol-keyed-property', 'symbol_keyed_property'));
+        continue;
+      }
+      if (!allowedFields.has(key)) {
+        evidence.push(evidenceFor(record.recordKey, 'unknown_field', 'malformed', undefined, key, 'unknown_field_name'));
+        continue;
+      }
+      const descriptor = Object.getOwnPropertyDescriptor(record.fields, key);
+      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
+        evidence.push(evidenceFor(record.recordKey, key, 'malformed', undefined, 'accessor-property', 'accessor_property'));
+        continue;
+      }
+      const reason = normalizedValueError(descriptor.value);
+      if (reason) evidence.push(evidenceFor(record.recordKey, key, 'malformed', undefined, reason, reason));
+    }
+  }
+  return evidence;
 }
 
 function redactIdentifier(value: string): string {
@@ -162,11 +281,11 @@ function fieldMapFor(domainId: AcceptanceDomainId): M2ParityFieldMap {
 }
 
 function sortedUnique(values: readonly string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+  return [...new Set(values)].sort(compareStableText);
 }
 
 function recordMap(records: readonly M2ParityRecord[]): Map<string, M2ParityRecord> {
-  return new Map([...records].sort((left, right) => left.recordKey.localeCompare(right.recordKey)).map(record => [record.recordKey, record]));
+  return new Map([...records].sort((left, right) => compareStableText(left.recordKey, right.recordKey)).map(record => [record.recordKey, record]));
 }
 
 function duplicateKeys(records: readonly M2ParityRecord[]): string[] {
@@ -218,9 +337,9 @@ function finish(
   evidence: readonly M2ParityEvidence[],
 ): M2ParityResult {
   const orderedEvidence = [...evidence].sort((left, right) => {
-    const keyOrder = left.recordKeyDigest.localeCompare(right.recordKeyDigest);
+    const keyOrder = compareStableText(left.recordKeyDigest, right.recordKeyDigest);
     if (keyOrder !== 0) return keyOrder;
-    return left.fieldName.localeCompare(right.fieldName);
+    return compareStableText(left.fieldName, right.fieldName);
   });
   const result: Omit<M2ParityResult, 'comparisonHash'> = {
     domainId: input.domainId,
@@ -281,7 +400,7 @@ export class M2ReadOnlyParityService {
         'input_aggregate_mismatch',
       ));
     }
-    for (const record of [...allRecords].sort((left, right) => left.recordKey.localeCompare(right.recordKey))) {
+    for (const record of [...allRecords].sort((left, right) => compareStableText(left.recordKey, right.recordKey))) {
       if (record.aggregate !== fieldMap.expectedAggregate) {
         aggregateEvidence.push(evidenceFor(
           record.recordKey,
@@ -305,8 +424,8 @@ export class M2ReadOnlyParityService {
       );
     }
 
-    const malformedEvidence: M2ParityEvidence[] = [];
-    for (const record of [...allRecords].sort((left, right) => left.recordKey.localeCompare(right.recordKey))) {
+    const malformedEvidence: M2ParityEvidence[] = normalizedValueEvidence(allRecords, fieldMap);
+    for (const record of [...allRecords].sort((left, right) => compareStableText(left.recordKey, right.recordKey))) {
       for (const fieldName of fieldMap.requiredLogicalFields) {
         if (!Object.prototype.hasOwnProperty.call(record.fields, fieldName) || record.fields[fieldName] === undefined) {
           malformedEvidence.push(evidenceFor(
@@ -329,6 +448,13 @@ export class M2ReadOnlyParityService {
         undefined,
         'required_behavior_digest_missing',
       ));
+    } else if (input.behavior !== undefined) {
+      if (!validDigest(input.behavior.legacyContractDigest)) {
+        malformedEvidence.push(evidenceFor('__behavior__', 'behavior_contract', 'malformed', undefined, 'invalid_legacy_digest', 'invalid_behavior_digest'));
+      }
+      if (!validDigest(input.behavior.canonicalContractDigest)) {
+        malformedEvidence.push(evidenceFor('__behavior__', 'behavior_contract', 'malformed', undefined, 'invalid_canonical_digest', 'invalid_behavior_digest'));
+      }
     }
     if (malformedEvidence.length > 0) {
       counts.malformed = malformedEvidence.length;
@@ -355,7 +481,7 @@ export class M2ReadOnlyParityService {
     for (const recordKey of tombstoneKeys) if (!issueByKey.has(recordKey)) issueByKey.set(recordKey, 'tombstone');
 
     const evidence: M2ParityEvidence[] = [];
-    for (const recordKey of [...issueByKey.keys()].sort((left, right) => left.localeCompare(right))) {
+    for (const recordKey of [...issueByKey.keys()].sort(compareStableText)) {
       const classification = issueByKey.get(recordKey) as 'duplicate' | 'conflict' | 'tombstone';
       counts[classification] += 1;
       evidence.push(evidenceFor(
@@ -374,7 +500,7 @@ export class M2ReadOnlyParityService {
 
     const legacy = recordMap(input.legacyRecords);
     const canonical = recordMap(input.canonicalRecords);
-    const keys = [...new Set([...legacy.keys(), ...canonical.keys()])].sort((left, right) => left.localeCompare(right));
+    const keys = [...new Set([...legacy.keys(), ...canonical.keys()])].sort(compareStableText);
     let fieldConsistent = true;
     for (const recordKey of keys) {
       const issue = issueByKey.get(recordKey);
@@ -402,7 +528,7 @@ export class M2ReadOnlyParityService {
       counts.mismatch += 1;
       fieldConsistent = false;
       const fieldNames = [...new Set([...Object.keys(legacyRecord.fields), ...Object.keys(canonicalRecord.fields)])]
-        .sort((left, right) => left.localeCompare(right));
+        .sort(compareStableText);
       for (const fieldName of fieldNames) {
         const legacyHas = Object.prototype.hasOwnProperty.call(legacyRecord.fields, fieldName);
         const canonicalHas = Object.prototype.hasOwnProperty.call(canonicalRecord.fields, fieldName);
@@ -415,7 +541,12 @@ export class M2ReadOnlyParityService {
     }
 
     const contractConsistent = !fieldMap.requiresBehaviorParity
-      || (input.behavior !== undefined && input.behavior.legacyContractDigest === input.behavior.canonicalContractDigest);
+      || (
+        input.behavior !== undefined
+        && validDigest(input.behavior.legacyContractDigest)
+        && validDigest(input.behavior.canonicalContractDigest)
+        && input.behavior.legacyContractDigest === input.behavior.canonicalContractDigest
+      );
     if (!contractConsistent) {
       counts.mismatch += 1;
       evidence.push(evidenceFor(

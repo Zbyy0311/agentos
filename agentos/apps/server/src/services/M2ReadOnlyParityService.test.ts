@@ -32,7 +32,18 @@ function taskRecord(
 ): M2ParityRecord {
   const requiredFields = M2_PARITY_FIELD_MAPS.task_domain_task_run.requiredLogicalFields;
   const defaults = Object.fromEntries(requiredFields.map(field => [field, `required-${field}`]));
-  return { recordKey, fields: { ...defaults, ...fields }, aggregate };
+  const normalizedFields = { ...fields };
+  if ('status' in normalizedFields && !('task_status' in normalizedFields)) normalizedFields.task_status = normalizedFields.status;
+  if ('content' in normalizedFields && !('description_digest' in normalizedFields)) normalizedFields.description_digest = normalizedFields.content;
+  if ('providerToken' in normalizedFields && !('run_error_digest' in normalizedFields)) normalizedFields.run_error_digest = normalizedFields.providerToken;
+  if ('commandArgs' in normalizedFields && !('task_metadata_digest' in normalizedFields)) normalizedFields.task_metadata_digest = normalizedFields.commandArgs;
+  if ('priority' in normalizedFields && !('task_metadata_digest' in normalizedFields)) normalizedFields.task_metadata_digest = normalizedFields.priority;
+  delete normalizedFields.status;
+  delete normalizedFields.content;
+  delete normalizedFields.providerToken;
+  delete normalizedFields.commandArgs;
+  delete normalizedFields.priority;
+  return { recordKey, fields: { ...defaults, ...normalizedFields }, aggregate };
 }
 
 function baseInput(overrides: Partial<M2ParityInput> = {}): M2ParityInput {
@@ -61,8 +72,8 @@ function baseInput(overrides: Partial<M2ParityInput> = {}): M2ParityInput {
     legacyRecords: [legacyRecord],
     canonicalRecords: [canonicalRecord],
     behavior: {
-      legacyContractDigest: 'behavior-v1',
-      canonicalContractDigest: 'behavior-v1',
+      legacyContractDigest: sha256('behavior-v1'),
+      canonicalContractDigest: sha256('behavior-v1'),
     },
     ...overrides,
   };
@@ -202,6 +213,216 @@ test('Inventory performs equal-strength symbol coverage for the remaining domain
   assert.ok(migration.routeServiceEntrypoints.includes('apps/server/src/services/LegacyBackupVerifier.ts:LegacyBackupVerifier'));
   assert.ok(operational.routeServiceEntrypoints.includes('apps/server/src/services/WorktreeManager.ts:WorktreeManager'));
   assert.ok(operational.storageOwners.includes('MemoryService:agent-memory/records/**/*.md'));
+});
+
+test('Conversation Inventory includes startup recovery readers, writers, and RunStep persistence', () => {
+  const conversation = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'conversation_runtime');
+  assert.ok(conversation);
+  assert.ok(conversation.startupEntrypoints.includes('apps/server/src/index.ts:recoverInterruptedRuns'));
+  assert.ok(conversation.startupEntrypoints.includes('apps/server/src/runRecovery.ts:recoverInterruptedRuns'));
+  assert.ok(conversation.startupEntrypoints.includes('apps/server/src/services/RunStepService.ts:RunStepService.reconcileInterruptedRun'));
+  assert.ok(conversation.productionReaders.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.listRunsForRecovery'));
+  assert.ok(conversation.productionReaders.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.listExecutions'));
+  assert.ok(conversation.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.updateExecution'));
+  assert.ok(conversation.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.updateRun'));
+  assert.ok(conversation.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.persistRunStepMutation'));
+  assert.ok(conversation.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.appendAgentEvent'));
+});
+
+test('Legacy Task and Task-domain Inventory separates startup recovery ownership', () => {
+  const legacy = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'legacy_task_item');
+  const task = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'task_domain_task_run');
+  assert.ok(legacy && task);
+  assert.ok(legacy.startupEntrypoints.includes('apps/server/src/taskRecovery.ts:recoverInterruptedRunningTasks'));
+  assert.ok(legacy.productionWriters.includes('apps/server/src/store/JsonFileStore.ts:JsonFileStore.saveTasks'));
+  assert.ok(task.startupEntrypoints.includes('apps/server/src/services/TaskRunService.ts:TaskRunService.recoverInterruptedLegacyQueuedRuns'));
+  assert.ok(task.startupEntrypoints.includes('apps/server/src/store/RunRepository.ts:RunRepository.listByWorkspace'));
+  assert.ok(task.startupEntrypoints.includes('apps/server/src/store/RunRepository.ts:RunRepository.failQueuedBridgeRestart'));
+  assert.ok(task.productionWriters.includes('apps/server/src/services/TaskRunService.ts:TaskRunService.resolveTaskAfterRunTerminal'));
+  assert.ok(task.crossDomainWriters.includes('TaskRunService.recoverInterruptedLegacyQueuedRuns: tasks.json recovery + queued Bridge Run failure'));
+});
+
+test('Workspace delete Inventory records explicit cross-domain cleanup and verified Task/Run cascade', () => {
+  const workspace = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'workspace_aggregate');
+  assert.ok(workspace);
+  for (const table of ['conversations', 'executions', 'execution_events', 'agent_events', 'agent_profiles', 'provider_configurations', 'messages']) {
+    assert.ok(workspace.crossDomainWriters.includes(`SqliteStore.deleteWorkspace: ${table} cleanup`), table);
+  }
+  assert.ok(workspace.crossDomainWriters.includes('SqliteStore.deleteWorkspace: _workspace_tombstones write'));
+  assert.ok(workspace.crossDomainWriters.includes('SqliteStore.deleteWorkspace: tasks/runs cascade verified by migration FK'));
+});
+
+test('Conversation Inventory exposes direct route-to-Store CRUD symbols', () => {
+  const conversation = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'conversation_runtime');
+  assert.ok(conversation);
+  for (const symbol of [
+    'SqliteStore.createConversation', 'SqliteStore.createGroupConversation', 'SqliteStore.updateConversationTitle',
+    'SqliteStore.updateConversationSettings', 'SqliteStore.updateGroupConversation', 'SqliteStore.deleteConversation',
+    'SqliteStore.getRun', 'SqliteStore.listRuns', 'SqliteStore.listExecutions', 'SqliteStore.listExecutionEvents',
+    'SqliteStore.listMessages', 'SqliteStore.updateRun',
+  ]) {
+    assert.ok(conversation.repositoryServiceRouteSymbols.includes(symbol), symbol);
+  }
+});
+
+test('Every domain declares a startupEntrypoints array and recovery-capable domains are populated', () => {
+  const domains = M2_ACCEPTANCE_INVENTORY.domains;
+  assert.equal(domains.length, 8);
+  for (const domain of domains) assert.ok(Array.isArray(domain.startupEntrypoints), domain.domainId);
+  assert.ok(domains.find(domain => domain.domainId === 'workspace_aggregate')?.startupEntrypoints.length === 0);
+  assert.ok(domains.find(domain => domain.domainId === 'conversation_runtime')!.startupEntrypoints.length > 0);
+  assert.ok(domains.find(domain => domain.domainId === 'legacy_task_item')!.startupEntrypoints.length > 0);
+  assert.ok(domains.find(domain => domain.domainId === 'task_domain_task_run')!.startupEntrypoints.length > 0);
+  const readerCount = domains.reduce((count, domain) => count + domain.productionReaders.length, 0);
+  const writerCount = domains.reduce((count, domain) => count + domain.productionWriters.length, 0);
+  assert.equal(readerCount, 40);
+  assert.equal(writerCount, 39);
+});
+
+test('different Date values are malformed and never equal', () => {
+  const result = new M2ReadOnlyParityService().compare({
+    ...baseInput(),
+    legacyRecords: [taskRecord('task-1', { priority: new Date('2026-01-01T00:00:00.000Z') })],
+    canonicalRecords: [taskRecord('task-1', { priority: new Date('2026-01-02T00:00:00.000Z') })],
+  });
+  assert.equal(result.classification, 'malformed');
+});
+
+test('Map, Set, and class instances are malformed rather than equal', () => {
+  class UnsupportedValue {
+    constructor(readonly value: string) {}
+  }
+  for (const [legacyValue, canonicalValue] of [
+    [new Map([['a', 1]]), new Map([['b', 2]])],
+    [new Set(['a']), new Set(['b'])],
+    [new UnsupportedValue('a'), new UnsupportedValue('b')],
+  ] as const) {
+    const result = new M2ReadOnlyParityService().compare({
+      ...baseInput(),
+      legacyRecords: [taskRecord('task-1', { priority: legacyValue })],
+      canonicalRecords: [taskRecord('task-1', { priority: canonicalValue })],
+    });
+    assert.equal(result.classification, 'malformed');
+  }
+});
+
+test('cyclic values return stable malformed evidence instead of throwing', () => {
+  const cyclic: Record<string, unknown> = {};
+  cyclic.self = cyclic;
+  let result: ReturnType<M2ReadOnlyParityService['compare']> | undefined;
+  assert.doesNotThrow(() => {
+    result = new M2ReadOnlyParityService().compare({
+      ...baseInput(),
+      legacyRecords: [taskRecord('task-1', { priority: cyclic })],
+      canonicalRecords: [taskRecord('task-1', { priority: cyclic })],
+    });
+  });
+  assert.equal(result?.classification, 'malformed');
+});
+
+test('NaN and infinities return malformed classifications', () => {
+  for (const invalid of [Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+    const result = new M2ReadOnlyParityService().compare({
+      ...baseInput(),
+      legacyRecords: [taskRecord('task-1', { priority: invalid })],
+      canonicalRecords: [taskRecord('task-1', { priority: invalid })],
+    });
+    assert.equal(result.classification, 'malformed');
+  }
+});
+
+test('undefined, function, symbol, RegExp, Error, symbol-keyed, and accessor values are malformed', () => {
+  const unsupportedValues: unknown[] = [undefined, () => 'private', Symbol('private'), /private/, new Error('private')];
+  for (const invalid of unsupportedValues) {
+    const result = new M2ReadOnlyParityService().compare({
+      ...baseInput(),
+      legacyRecords: [taskRecord('task-1', { priority: invalid })],
+      canonicalRecords: [taskRecord('task-1', { priority: invalid })],
+    });
+    assert.equal(result.classification, 'malformed');
+  }
+
+  const symbolKey = Symbol('private-field');
+  const symbolFields = taskRecord('task-1', {}).fields as Record<string | symbol, unknown>;
+  symbolFields[symbolKey] = 'private';
+  const symbolResult = new M2ReadOnlyParityService().compare({
+    ...baseInput(),
+    legacyRecords: [{ recordKey: 'task-1', fields: symbolFields, aggregate: 'task-domain' }],
+    canonicalRecords: [{ recordKey: 'task-1', fields: symbolFields, aggregate: 'task-domain' }],
+  });
+  assert.equal(symbolResult.classification, 'malformed');
+
+  const accessorFields = { ...taskRecord('task-1', {}).fields } as Record<string, unknown>;
+  Object.defineProperty(accessorFields, 'task_metadata_digest', { get: () => 'private', enumerable: true });
+  const accessorResult = new M2ReadOnlyParityService().compare({
+    ...baseInput(),
+    legacyRecords: [{ recordKey: 'task-1', fields: accessorFields, aggregate: 'task-domain' }],
+    canonicalRecords: [{ recordKey: 'task-1', fields: accessorFields, aggregate: 'task-domain' }],
+  });
+  assert.equal(accessorResult.classification, 'malformed');
+});
+
+test('unknown field names return safe malformed evidence without the raw name', () => {
+  const result = new M2ReadOnlyParityService().compare({
+    ...baseInput(),
+    legacyRecords: [taskRecord('task-1', { 'C:\\Users\\secret\\task.json': 'private' })],
+    canonicalRecords: [taskRecord('task-1', { 'C:\\Users\\secret\\task.json': 'private' })],
+  });
+  assert.equal(result.classification, 'malformed');
+  assert.ok(result.evidence.every(item => item.fieldName !== 'C:\\Users\\secret\\task.json'));
+  assert.equal(JSON.stringify(result).includes('C:\\Users\\secret\\task.json'), false);
+  assert.ok(result.evidence.some(item => item.fieldName === 'unknown_field'));
+});
+
+test('unknown credential field names do not leak into evidence', () => {
+  const result = new M2ReadOnlyParityService().compare({
+    ...baseInput(),
+    legacyRecords: [taskRecord('task-1', { apiKey: 'private-api-key' })],
+    canonicalRecords: [taskRecord('task-1', { apiKey: 'private-api-key' })],
+  });
+  assert.equal(result.classification, 'malformed');
+  assert.equal(JSON.stringify(result).includes('apiKey'), false);
+  assert.equal(JSON.stringify(result).includes('private-api-key'), false);
+});
+
+test('required and allowed optional normalized fields can still produce equal', () => {
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    legacyRecords: [taskRecord('task-1', { priority: 'high' })],
+    canonicalRecords: [taskRecord('task-1', { priority: 'high' })],
+  }));
+  assert.equal(result.classification, 'equal');
+});
+
+test('empty or invalid behavior digests are malformed', () => {
+  for (const behavior of [
+    { legacyContractDigest: '', canonicalContractDigest: '' },
+    { legacyContractDigest: 'not-a-digest', canonicalContractDigest: 'not-a-digest' },
+  ]) {
+    const result = new M2ReadOnlyParityService().compare(baseInput({ behavior }));
+    assert.equal(result.classification, 'malformed');
+  }
+});
+
+test('complete normalized input with valid behavior digest remains equal', () => {
+  const result = new M2ReadOnlyParityService().compare(baseInput());
+  assert.equal(result.classification, 'equal');
+});
+
+test('Unicode keys use deterministic ordering independent of input order', () => {
+  const first = baseInput({
+    legacyRecords: [taskRecord('é', { priority: { 'é': '1', a: '2' } }), taskRecord('a', { priority: { a: '2', 'é': '1' } })],
+    canonicalRecords: [taskRecord('a', { priority: { 'é': '1', a: '2' } }), taskRecord('é', { priority: { a: '2', 'é': '1' } })],
+  });
+  const second = baseInput({
+    legacyRecords: [...first.legacyRecords].reverse(),
+    canonicalRecords: [...first.canonicalRecords].reverse(),
+  });
+  assert.deepEqual(new M2ReadOnlyParityService().compare(first), new M2ReadOnlyParityService().compare(second));
+});
+
+test('Comparator source contains no localeCompare ordering dependency', () => {
+  const source = readFileSync(new URL('./M2ReadOnlyParityService.ts', import.meta.url), 'utf8');
+  assert.doesNotMatch(source, /\.localeCompare\(/);
 });
 
 test('Parity field maps cover all eight domains with frozen, normalized contracts', () => {
@@ -374,7 +595,7 @@ test('mismatch includes only field names and value digests', () => {
   }));
   assert.equal(result.classification, 'mismatch');
   assert.equal(result.behavior.fieldConsistent, false);
-  assert.ok(result.evidence.some(item => item.fieldName === 'status'));
+  assert.ok(result.evidence.some(item => item.fieldName === 'task_status'));
   const serialized = JSON.stringify(result);
   for (const secret of ['private-provider-token', 'different-private-token', 'private task content', 'different private content', '--secret', '--different-secret']) {
     assert.equal(serialized.includes(secret), false, 'raw secret leaked: ' + secret);
@@ -388,8 +609,8 @@ test('mismatch includes only field names and value digests', () => {
 test('behavior mismatch is non-equal even when fields match', () => {
   const result = new M2ReadOnlyParityService().compare(baseInput({
     behavior: {
-      legacyContractDigest: 'behavior-v1',
-      canonicalContractDigest: 'behavior-v2',
+      legacyContractDigest: sha256('behavior-v1'),
+      canonicalContractDigest: sha256('behavior-v2'),
     },
   }));
   assert.equal(result.classification, 'mismatch');

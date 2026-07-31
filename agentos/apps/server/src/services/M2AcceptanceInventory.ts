@@ -36,6 +36,7 @@ export interface AcceptanceDomain {
   readonly productionWriters: readonly string[];
   readonly repositoryServiceRouteSymbols: readonly string[];
   readonly routeServiceEntrypoints: readonly string[];
+  readonly startupEntrypoints: readonly string[];
   readonly storageOwners: readonly string[];
   readonly crossDomainWriters: readonly string[];
   readonly productionCapableUnmounted: readonly string[];
@@ -103,6 +104,7 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/routes/workspaces.ts:createWorkspaceRoutes POST /',
       'apps/server/src/routes/workspaces.ts:createWorkspaceRoutes DELETE /:id',
     ],
+    startupEntrypoints: [],
     storageOwners: [
       'apps/server/src/store/SqliteStore.ts:SqliteStore.loadWorkspaces',
       'apps/server/src/store/SqliteStore.ts:SqliteStore.deleteWorkspace',
@@ -111,9 +113,18 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     crossDomainWriters: [
       'WorkspaceManager.create: agent_profiles + provider_configurations initial write',
       'SqliteStore.deleteWorkspace: workspace tombstone write',
+      'SqliteStore.deleteWorkspace: conversations cleanup',
+      'SqliteStore.deleteWorkspace: executions cleanup',
+      'SqliteStore.deleteWorkspace: execution_events cleanup',
+      'SqliteStore.deleteWorkspace: agent_events cleanup',
+      'SqliteStore.deleteWorkspace: agent_profiles cleanup',
+      'SqliteStore.deleteWorkspace: provider_configurations cleanup',
+      'SqliteStore.deleteWorkspace: messages cleanup',
+      'SqliteStore.deleteWorkspace: _workspace_tombstones write',
+      'SqliteStore.deleteWorkspace: tasks/runs cascade verified by migration FK',
     ],
     productionCapableUnmounted: [],
-    testOnlySymbols: [],
+    testOnlySymbols: ['apps/server/src/store/__tests__/WorkspaceRepository.test.ts:WorkspaceRepository'],
     aggregateBoundary: 'Workspace aggregate with Agent Profile and Provider Configuration child rows; excludes Legacy TaskItem, Task-domain Run, and Conversation runtime.',
     currentRetirementStatus: 'SQLite is the production write authority; workspace/workspaces.json remains a JSON fallback read and evidence source.',
     p1ComparisonResponsibility: [
@@ -169,6 +180,7 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/routes/conversations.ts:createConversationRoutes PATCH /agents/:agentId',
       'apps/server/src/routes/agents.ts:createAgentRoutes',
     ],
+    startupEntrypoints: [],
     storageOwners: [
       'apps/server/src/store/SqliteStore.ts:agent_profiles',
       'apps/server/src/store/SqliteStore.ts:SqliteStore.listAgentProfiles',
@@ -241,6 +253,7 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes PUT',
       'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes DELETE',
     ],
+    startupEntrypoints: [],
     storageOwners: [
       'apps/server/src/store/ProviderConfigurationRepository.ts:provider_configurations',
       'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository',
@@ -272,11 +285,13 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/store/JsonFileStore.ts:JsonFileStore.loadTasks',
       'apps/server/src/routes/tasks.ts:createTaskRoutes',
       'apps/server/src/taskRecovery.ts:recoverInterruptedRunningTasks',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime',
     ],
     authoritativeWriteSource: [
       'apps/server/src/store/JsonFileStore.ts:JsonFileStore.saveTask/saveTasks',
       'apps/server/src/routes/tasks.ts:createTaskRoutes',
       'apps/server/src/taskRecovery.ts:recoverInterruptedRunningTasks',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime',
     ],
     legacyFallbackSource: [
       'None; tasks.json is the current Legacy TaskItem authority in M2.8.',
@@ -285,12 +300,15 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/store/JsonFileStore.ts:JsonFileStore.loadTasks',
       'apps/server/src/routes/tasks.ts:createTaskRoutes',
       'apps/server/src/taskRecovery.ts:recoverInterruptedRunningTasks',
+      'apps/server/src/index.ts:recoverInterruptedTaskRuntime',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime',
     ],
     productionWriters: [
       'apps/server/src/store/JsonFileStore.ts:JsonFileStore.saveTask',
       'apps/server/src/store/JsonFileStore.ts:JsonFileStore.saveTasks',
       'apps/server/src/routes/tasks.ts:createTaskRoutes',
       'apps/server/src/taskRecovery.ts:recoverInterruptedRunningTasks',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime',
     ],
     repositoryServiceRouteSymbols: [
       'JsonFileStore.loadTasks',
@@ -303,15 +321,21 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/routes/tasks.ts:createTaskRoutes',
       'apps/server/src/taskRecovery.ts:recoverInterruptedRunningTasks',
     ],
+    startupEntrypoints: [
+      'apps/server/src/index.ts:recoverInterruptedTaskRuntime',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedRunningTasks',
+    ],
     storageOwners: [
       'apps/server/src/store/JsonFileStore.ts:workspace/<workspaceId>/.agentos/tasks.json',
       'apps/server/src/store/JsonFileStore.ts:JsonFileStore.loadTasks/saveTasks',
     ],
     crossDomainWriters: [
       'createTaskRoutes Legacy Bridge: tasks.json + TaskRunService per execution',
+      'TaskRunService.recoverInterruptedLegacyQueuedRuns: tasks.json recovery + queued Bridge Run failure',
     ],
     productionCapableUnmounted: [],
-    testOnlySymbols: [],
+    testOnlySymbols: ['apps/server/src/services/LegacyTaskItemImportService.test.ts:LegacyTaskItemImportService'],
     aggregateBoundary: 'Legacy TaskItem JSON aggregate; excludes canonical Task-domain Run history and Conversation AgentRun history.',
     currentRetirementStatus: 'tasks.json read/write authority remains active in M2.8; bulk conversion and physical retirement are prohibited.',
     p1ComparisonResponsibility: [
@@ -351,12 +375,17 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/services/TaskRunService.ts:TaskRunService',
       'apps/server/src/routes/v2Tasks.ts',
       'apps/server/src/routes/v2Runs.ts',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime',
+      'apps/server/src/services/TaskRunService.ts:TaskRunService.recoverInterruptedLegacyQueuedRuns',
+      'apps/server/src/store/RunRepository.ts:RunRepository.listByWorkspace',
     ],
     productionWriters: [
       'apps/server/src/services/TaskRunService.ts:TaskRunService',
       'apps/server/src/routes/v2Tasks.ts',
       'apps/server/src/routes/v2Runs.ts',
       'apps/server/src/routes/tasks.ts:createTaskRoutes (Legacy Bridge)',
+      'apps/server/src/store/RunRepository.ts:RunRepository.failQueuedBridgeRestart',
+      'apps/server/src/services/TaskRunService.ts:TaskRunService.resolveTaskAfterRunTerminal',
     ],
     repositoryServiceRouteSymbols: [
       'TaskRepository',
@@ -371,6 +400,13 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/routes/v2Runs.ts:createV2RunRoutes',
       'apps/server/src/routes/tasks.ts:createTaskRoutes Legacy Bridge',
     ],
+    startupEntrypoints: [
+      'apps/server/src/index.ts:recoverInterruptedTaskRuntime',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime',
+      'apps/server/src/services/TaskRunService.ts:TaskRunService.recoverInterruptedLegacyQueuedRuns',
+      'apps/server/src/store/RunRepository.ts:RunRepository.listByWorkspace',
+      'apps/server/src/store/RunRepository.ts:RunRepository.failQueuedBridgeRestart',
+    ],
     storageOwners: [
       'apps/server/src/store/TaskRepository.ts:tasks',
       'apps/server/src/store/RunRepository.ts:runs',
@@ -378,9 +414,10 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     ],
     crossDomainWriters: [
       'createTaskRoutes Legacy Bridge: tasks.json + TaskRunService',
+      'TaskRunService.recoverInterruptedLegacyQueuedRuns: tasks.json recovery + queued Bridge Run failure',
     ],
     productionCapableUnmounted: [],
-    testOnlySymbols: [],
+    testOnlySymbols: ['apps/server/src/store/__tests__/TaskRepository.test.ts:TaskRepository', 'apps/server/src/store/__tests__/RunRepository.test.ts:RunRepository'],
     aggregateBoundary: 'Task-domain canonical Task and Run aggregate: runs != agent_runs; bound to canonical task_id; Legacy bridge Run is not a Conversation AgentRun.',
     currentRetirementStatus: 'SQLite canonical for v2 and Bridge participation; Legacy Task JSON remains separate and is not bulk-converted.',
     p1ComparisonResponsibility: [
@@ -401,10 +438,14 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     authoritativeReadSource: [
       'apps/server/src/services/ConversationService.ts:ConversationService',
       'apps/server/src/routes/conversations.ts',
+      'apps/server/src/runRecovery.ts:recoverInterruptedRuns',
+      'apps/server/src/services/RunStepService.ts:RunStepService.reconcileInterruptedRun',
     ],
     authoritativeWriteSource: [
       'apps/server/src/services/ConversationService.ts:ConversationService.sendDirectMessage/sendGroupMessage',
       'apps/server/src/routes/conversations.ts',
+      'apps/server/src/runRecovery.ts:recoverInterruptedRuns',
+      'apps/server/src/services/RunStepService.ts:RunStepService.reconcileInterruptedRun',
     ],
     legacyFallbackSource: [
       'None; Conversation runtime is not a Legacy Task JSON fallback.',
@@ -413,27 +454,64 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/services/ConversationService.ts:ConversationService',
       'apps/server/src/routes/conversations.ts',
       'apps/server/src/routes/sse.ts',
+      'apps/server/src/index.ts:recoverInterruptedRuns',
+      'apps/server/src/runRecovery.ts:recoverInterruptedRuns',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.listRunsForRecovery',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.listExecutions',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.listRunSteps',
     ],
     productionWriters: [
       'apps/server/src/services/ConversationService.ts:ConversationService',
       'apps/server/src/routes/conversations.ts',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateExecution',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateRun',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.persistRunStepMutation',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.appendAgentEvent',
     ],
     repositoryServiceRouteSymbols: [
       'ConversationService',
       'createConversationRoutes',
       'createSseWriter',
+      'SqliteStore.createConversation',
+      'SqliteStore.createGroupConversation',
+      'SqliteStore.updateConversationTitle',
+      'SqliteStore.updateConversationSettings',
+      'SqliteStore.updateGroupConversation',
+      'SqliteStore.deleteConversation',
+      'SqliteStore.getRun',
+      'SqliteStore.listRuns',
+      'SqliteStore.listExecutions',
+      'SqliteStore.listExecutionEvents',
+      'SqliteStore.listMessages',
+      'SqliteStore.updateRun',
+      'SqliteStore.listConversationMembers',
+      'SqliteStore.listConversationAttachments',
+      'SqliteStore.getAttachment',
     ],
     routeServiceEntrypoints: [
       'apps/server/src/routes/conversations.ts:createConversationRoutes',
       'apps/server/src/routes/sse.ts:createSseWriter',
     ],
+    startupEntrypoints: [
+      'apps/server/src/index.ts:recoverInterruptedRuns',
+      'apps/server/src/runRecovery.ts:recoverInterruptedRuns',
+      'apps/server/src/services/RunStepService.ts:RunStepService.reconcileInterruptedRun',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.listRunsForRecovery',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.listExecutions',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateExecution',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateRun',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.listRunSteps',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.persistRunStepMutation',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.appendAgentEvent',
+    ],
     storageOwners: [
       'apps/server/src/store/SqliteStore.ts:agent_runs + executions + events',
       'apps/server/src/services/ConversationService.ts:ConversationService',
+      'apps/server/src/store/SqliteStore.ts:run_steps + run_event_sequences',
     ],
-    crossDomainWriters: [],
-    productionCapableUnmounted: [],
-    testOnlySymbols: [],
+    crossDomainWriters: ['RunStepService: agent_events + run_steps persistence'],
+    productionCapableUnmounted: ['apps/server/src/store/SqliteStore.ts:SqliteStore.listRunsForWorkspace'],
+    testOnlySymbols: ['apps/server/src/routes/conversations.test.ts:createConversationRoutes'],
     aggregateBoundary: 'Conversation/message/execution lifecycle aggregate using agent_runs; independent from Task-domain runs.',
     currentRetirementStatus: 'Separate SQLite runtime retained; no Task/Conversation aggregate unification in M2.8.',
     p1ComparisonResponsibility: [
@@ -488,6 +566,7 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/services/LegacyTaskItemImportService.ts:LegacyTaskItemImportService',
       'apps/server/src/services/LegacyBackupVerifier.ts:LegacyBackupVerifier',
     ],
+    startupEntrypoints: [],
     storageOwners: [
       'apps/server/src/store/LegacyDataMigrationRepository.ts:legacy_data_migrations',
       'apps/server/src/store/LegacyTaskItemRepository.ts:legacy_task_items',
@@ -498,7 +577,7 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'LegacyTaskItemImportService: Legacy TaskItem evidence rows',
     ],
     productionCapableUnmounted: [],
-    testOnlySymbols: [],
+    testOnlySymbols: ['apps/server/src/services/WorkspaceCompatibilityMigrationService.test.ts:WorkspaceCompatibilityMigrationService'],
     aggregateBoundary: 'Append-only compatibility and audit evidence; not an authoritative Task, Run, Agent Profile, Provider, or Conversation aggregate.',
     currentRetirementStatus: 'Long-term evidence retained; no Migration 012 or physical Legacy JSON retirement in M2.8.',
     p1ComparisonResponsibility: [
@@ -551,14 +630,15 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/services/MemoryService.ts:MemoryService',
       'apps/server/src/services/RuntimeArtifactService.ts:RuntimeArtifactService',
     ],
+    startupEntrypoints: [],
     storageOwners: [
       'WorktreeManager:.agentos/worktrees/leases.json',
       'MemoryService:agent-memory/records/**/*.md',
       'RuntimeArtifactService:.agentos/artifacts/*',
     ],
     crossDomainWriters: [],
-    productionCapableUnmounted: [],
-    testOnlySymbols: [],
+    productionCapableUnmounted: ['apps/server/src/services/RuntimeArtifactCollector.ts:RuntimeArtifactCollector'],
+    testOnlySymbols: ['apps/server/src/services/RuntimeArtifactService.test.ts:RuntimeArtifactService', 'apps/server/src/services/WorktreeManager.test.ts:WorktreeManager'],
     aggregateBoundary: 'Operational state and file-backed subsystems; not part of Legacy Product JSON retirement or Task/Conversation runtime aggregates.',
     currentRetirementStatus: 'Explicitly excluded from Legacy Product JSON retirement; retained under their own contracts.',
     p1ComparisonResponsibility: [
@@ -613,7 +693,7 @@ const FIELD_MAP_DEFINITIONS: Record<AcceptanceDomainId, M2ParityFieldMap> = {
     ],
     requiresBehaviorParity: true,
     behaviorContracts: ['Task/Run lifecycle, snapshots, stages, idempotency, concurrency, and Legacy bridge separation'],
-    allowedOptionalFields: ['task_metadata_digest', 'run_error_digest', 'created_at', 'updated_at'],
+    allowedOptionalFields: ['description_digest', 'task_metadata_digest', 'run_error_digest', 'created_at', 'updated_at'],
   },
   conversation_runtime: {
     expectedAggregate: 'conversation',
@@ -664,6 +744,7 @@ function cloneDomain(domain: AcceptanceDomain): AcceptanceDomain {
     productionWriters: [...domain.productionWriters],
     repositoryServiceRouteSymbols: [...domain.repositoryServiceRouteSymbols],
     routeServiceEntrypoints: [...domain.routeServiceEntrypoints],
+    startupEntrypoints: [...domain.startupEntrypoints],
     storageOwners: [...domain.storageOwners],
     crossDomainWriters: [...domain.crossDomainWriters],
     productionCapableUnmounted: [...domain.productionCapableUnmounted],
