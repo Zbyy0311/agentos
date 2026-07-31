@@ -123,36 +123,156 @@ function compareStableText(left: string, right: string): number {
   return left.length - right.length;
 }
 
-function stableValue(value: unknown, seen = new Set<object>()): unknown {
-  if (value === undefined) return { $undefined: true };
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return value;
-  if (typeof value === 'number') {
-    if (Number.isFinite(value)) return value;
-    return { $number: String(value) };
+type NormalizedProperty = Readonly<{ key: string; value: unknown }>;
+
+type NormalizedInspection =
+  | Readonly<{ ok: true; value: unknown }>
+  | Readonly<{ ok: false; reason: string }>;
+
+type NormalizedProperties =
+  | Readonly<{ kind: 'array' | 'object'; properties: readonly NormalizedProperty[] }>
+  | Readonly<{ reason: string }>;
+
+function invalidInspection(reason: string): NormalizedInspection {
+  return { ok: false, reason };
+}
+
+function dataEnumerableValue(descriptor: PropertyDescriptor | undefined):
+  | Readonly<{ ok: true; value: unknown }>
+  | Readonly<{ ok: false; reason: string }> {
+  if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) return { ok: false, reason: 'accessor_property' };
+  if (descriptor.enumerable !== true) return { ok: false, reason: 'non_enumerable_property' };
+  return { ok: true, value: descriptor.value };
+}
+
+function isCanonicalArrayIndexKey(key: string, length: number): boolean {
+  if (key === '0') return length > 0;
+  if (!/^[1-9][0-9]*$/.test(key)) return false;
+  const index = Number(key);
+  return Number.isSafeInteger(index) && index >= 0 && index < length && String(index) === key;
+}
+
+function normalizedProperties(value: object): NormalizedProperties {
+  let prototype: object | null;
+  let keys: readonly PropertyKey[];
+  try {
+    prototype = Object.getPrototypeOf(value);
+    keys = Reflect.ownKeys(value);
+  } catch {
+    return { reason: 'unsupported_object_type' };
   }
-  if (typeof value === 'bigint') return { $bigint: String(value) };
-  if (value instanceof Uint8Array) return { $bytesSha256: sha256(value) };
-  if (typeof value === 'object') {
-    if (seen.has(value)) throw new Error('M2_PARITY_INPUT_CYCLE');
-    seen.add(value);
+
+  try {
     if (Array.isArray(value)) {
-      const result = value.map(item => stableValue(item, seen));
-      seen.delete(value);
-      return result;
+    if (prototype !== Array.prototype) return { reason: 'unsupported_object_type' };
+    const lengthDescriptor = Object.getOwnPropertyDescriptor(value, 'length');
+    if (!lengthDescriptor || !Object.prototype.hasOwnProperty.call(lengthDescriptor, 'value') || lengthDescriptor.enumerable !== false) {
+      return { reason: 'invalid_array_length' };
     }
-    const objectValue = value as Record<string, unknown>;
-    const result: Record<string, unknown> = {};
-    for (const key of Object.keys(objectValue).sort(compareStableText)) {
-      result[key] = stableValue(objectValue[key], seen);
+    const length = lengthDescriptor.value;
+    if (!Number.isSafeInteger(length) || length < 0 || length > 0xffffffff) return { reason: 'invalid_array_length' };
+    const values = new Map<string, unknown>();
+    for (const key of keys) {
+      if (typeof key !== 'string') return { reason: 'symbol_keyed_property' };
+      if (key === 'length') continue;
+      if (!isCanonicalArrayIndexKey(key, length)) return { reason: 'array_custom_property' };
+      const property = dataEnumerableValue(Object.getOwnPropertyDescriptor(value, key));
+      if (!property.ok) return property;
+      values.set(key, property.value);
     }
-    seen.delete(value);
-    return result;
+    const properties: NormalizedProperty[] = [];
+    for (let index = 0; index < length; index += 1) {
+      const key = String(index);
+      if (!values.has(key)) return { reason: 'sparse_array' };
+      properties.push({ key, value: values.get(key) });
+    }
+      return { kind: 'array', properties };
+    }
+
+    if (prototype !== Object.prototype && prototype !== null) return { reason: 'unsupported_object_type' };
+    const properties: NormalizedProperty[] = [];
+    for (const key of keys) {
+      if (typeof key !== 'string') return { reason: 'symbol_keyed_property' };
+      const property = dataEnumerableValue(Object.getOwnPropertyDescriptor(value, key));
+      if (!property.ok) return property;
+      properties.push({ key, value: property.value });
+    }
+    properties.sort((left, right) => compareStableText(left.key, right.key));
+    return { kind: 'object', properties };
+  } catch {
+    return { reason: 'unsupported_object_type' };
   }
-  return { $type: typeof value };
+}
+
+function validateUint8ArrayProperties(value: Uint8Array): string | undefined {
+  let keys: readonly PropertyKey[];
+  try {
+    keys = Reflect.ownKeys(value);
+  } catch {
+    return 'unsupported_object_type';
+  }
+  for (const key of keys) {
+    if (typeof key !== 'string') return 'symbol_keyed_property';
+    if (!isCanonicalArrayIndexKey(key, value.length)) return 'array_custom_property';
+    const property = dataEnumerableValue(Object.getOwnPropertyDescriptor(value, key));
+    if (!property.ok) return property.reason;
+  }
+  return keys.length === value.length ? undefined : 'sparse_array';
+}
+
+function inspectNormalizedValue(value: unknown, seen = new Set<object>()): NormalizedInspection {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return { ok: true, value };
+  if (typeof value === 'number') return Number.isFinite(value) ? { ok: true, value } : invalidInspection('non_finite_number');
+  if (value === undefined) return invalidInspection('undefined_value');
+  if (typeof value === 'function' || typeof value === 'symbol' || typeof value === 'bigint') return invalidInspection('unsupported_primitive');
+  if (typeof value !== 'object') return invalidInspection('unsupported_value_type');
+  if (value instanceof Uint8Array) {
+    try {
+      const reason = validateUint8ArrayProperties(value);
+      return reason ? invalidInspection(reason) : { ok: true, value: { $bytesSha256: sha256(value) } };
+    } catch {
+      return invalidInspection('unsupported_object_type');
+    }
+  }
+  if (seen.has(value)) return invalidInspection('cyclic_value');
+  seen.add(value);
+  try {
+    const properties = normalizedProperties(value);
+    if ('reason' in properties) return invalidInspection(properties.reason);
+    if (properties.kind === 'array') {
+      const arrayValue: unknown[] = [];
+      for (const property of properties.properties) {
+        const nested = inspectNormalizedValue(property.value, seen);
+        if (!nested.ok) return nested;
+        arrayValue.push(nested.value);
+      }
+      return { ok: true, value: arrayValue };
+    }
+    const objectValue: Record<string, unknown> = Object.create(null) as Record<string, unknown>;
+    for (const property of properties.properties) {
+      const nested = inspectNormalizedValue(property.value, seen);
+      if (!nested.ok) return nested;
+      objectValue[property.key] = nested.value;
+    }
+    return { ok: true, value: objectValue };
+  } catch {
+    return invalidInspection('unsupported_object_type');
+  } finally {
+    seen.delete(value);
+  }
+}
+
+function stableValue(value: unknown): unknown {
+  const inspection = inspectNormalizedValue(value);
+  return inspection.ok ? inspection.value : { $malformed: inspection.reason };
 }
 
 function stableSerialize(value: unknown): string {
-  return JSON.stringify(stableValue(value));
+  try {
+    return JSON.stringify(stableValue(value));
+  } catch {
+    return JSON.stringify({ $malformed: 'serialization_error' });
+  }
 }
 
 function digestValue(value: unknown, present: boolean): string {
@@ -163,76 +283,32 @@ function digestValue(value: unknown, present: boolean): string {
   }
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== 'object' || Array.isArray(value) || value instanceof Uint8Array) return false;
-  try {
-    const prototype = Object.getPrototypeOf(value);
-    return prototype === Object.prototype || prototype === null;
-  } catch {
-    return false;
-  }
+function normalizedValueError(value: unknown): string | undefined {
+  const inspection = inspectNormalizedValue(value);
+  return inspection.ok ? undefined : inspection.reason;
 }
 
-function normalizedValueError(value: unknown, seen = new Set<object>()): string | undefined {
-  if (value === null || typeof value === 'string' || typeof value === 'boolean') return undefined;
-  if (typeof value === 'number') return Number.isFinite(value) ? undefined : 'non_finite_number';
-  if (value instanceof Uint8Array) return undefined;
-  if (value === undefined) return 'undefined_value';
-  if (typeof value === 'function' || typeof value === 'symbol' || typeof value === 'bigint') return 'unsupported_primitive';
-  if (typeof value !== 'object') return 'unsupported_value_type';
-  if (seen.has(value)) return 'cyclic_value';
-  let prototype: object | null;
+function ownField(value: unknown, fieldName: string): Readonly<{ present: boolean; value?: unknown }> {
+  if ((typeof value !== 'object' && typeof value !== 'function') || value === null) return { present: false };
   try {
-    prototype = Object.getPrototypeOf(value);
+    const descriptor = Object.getOwnPropertyDescriptor(value, fieldName);
+    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) return { present: false };
+    return { present: true, value: descriptor.value };
   } catch {
-    return 'unsupported_object_type';
+    return { present: false };
   }
-  if (Array.isArray(value)) {
-    seen.add(value);
-    for (const key of Reflect.ownKeys(value)) {
-      if (typeof key !== 'string') {
-        seen.delete(value);
-        return 'symbol_keyed_property';
-      }
-      if (key === 'length') continue;
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-        seen.delete(value);
-        return 'accessor_property';
-      }
-      const nestedError = normalizedValueError(descriptor.value, seen);
-      if (nestedError) {
-        seen.delete(value);
-        return nestedError;
-      }
-    }
-    seen.delete(value);
-    return undefined;
-  }
-  if (prototype !== Object.prototype && prototype !== null) return 'unsupported_object_type';
-  seen.add(value);
-  for (const key of Reflect.ownKeys(value)) {
-    if (typeof key !== 'string') {
-      seen.delete(value);
-      return 'symbol_keyed_property';
-    }
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-      seen.delete(value);
-      return 'accessor_property';
-    }
-    const nestedError = normalizedValueError(descriptor.value, seen);
-    if (nestedError) {
-      seen.delete(value);
-      return nestedError;
-    }
-  }
-  seen.delete(value);
-  return undefined;
 }
 
 function validDigest(value: unknown): value is string {
   return typeof value === 'string' && /^[0-9a-f]{64}$/.test(value);
+}
+
+const SAFE_SOURCE_KIND = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+function sourceIdentityError(source: M2ParitySourceInput): string | undefined {
+  if (source.previousSourceHash !== undefined && !validDigest(source.previousSourceHash)) return 'invalid_previous_source_hash';
+  if (typeof source.sourceKind !== 'string' || !SAFE_SOURCE_KIND.test(source.sourceKind)) return 'invalid_source_kind';
+  return undefined;
 }
 
 function normalizedValueEvidence(
@@ -242,33 +318,34 @@ function normalizedValueEvidence(
   const allowedFields = new Set([...fieldMap.requiredLogicalFields, ...fieldMap.allowedOptionalFields]);
   const evidence: M2ParityEvidence[] = [];
   for (const record of [...records].sort((left, right) => compareStableText(left.recordKey, right.recordKey))) {
-    if (!isPlainObject(record.fields)) {
-      evidence.push(evidenceFor(record.recordKey, 'unknown_field', 'malformed', undefined, 'unsupported_fields_object', 'unsupported_fields_object'));
+    const properties = typeof record.fields === 'object' && record.fields !== null
+      ? normalizedProperties(record.fields)
+      : { reason: 'unsupported_fields_object' };
+    if ('reason' in properties || properties.kind !== 'object') {
+      evidence.push(evidenceFor(record.recordKey, 'unknown_field', 'malformed', undefined, undefined, 'unsupported_fields_object'));
       continue;
     }
-    for (const key of Reflect.ownKeys(record.fields).sort((left, right) => compareStableText(String(left), String(right)))) {
-      if (typeof key !== 'string') {
-        evidence.push(evidenceFor(record.recordKey, 'unknown_field', 'malformed', undefined, 'symbol-keyed-property', 'symbol_keyed_property'));
-        continue;
-      }
+    const structuralError = normalizedValueError(record.fields);
+    if (structuralError) {
+      evidence.push(evidenceFor(record.recordKey, 'unknown_field', 'malformed', undefined, undefined, structuralError));
+      continue;
+    }
+    for (const property of properties.properties) {
+      const key = property.key;
       if (!allowedFields.has(key)) {
         evidence.push(evidenceFor(record.recordKey, 'unknown_field', 'malformed', undefined, key, 'unknown_field_name'));
         continue;
       }
-      const descriptor = Object.getOwnPropertyDescriptor(record.fields, key);
-      if (!descriptor || !Object.prototype.hasOwnProperty.call(descriptor, 'value')) {
-        evidence.push(evidenceFor(record.recordKey, key, 'malformed', undefined, 'accessor-property', 'accessor_property'));
-        continue;
-      }
-      const reason = normalizedValueError(descriptor.value);
+      const reason = normalizedValueError(property.value);
       if (reason) evidence.push(evidenceFor(record.recordKey, key, 'malformed', undefined, reason, reason));
     }
   }
   return evidence;
 }
 
-function redactIdentifier(value: string): string {
-  if (/[\\/:]/.test(value) || value.length > 128) return sha256(value);
+function redactIdentifier(value: unknown): string {
+  if (typeof value !== 'string') return sha256(stableSerialize(value));
+  if (/[\\/:]/.test(value) || value.length > 128 || /(^|[\\/])\.\.?([\\/]|$)/.test(value)) return sha256(value);
   return value;
 }
 
@@ -318,12 +395,17 @@ function evidenceFor(
 }
 
 function makeSource(input: M2ParityInput, sourceHash: string): M2ParityResult['source'] {
+  const sourceKind = typeof input.source.sourceKind === 'string' && SAFE_SOURCE_KIND.test(input.source.sourceKind)
+    ? input.source.sourceKind
+    : typeof input.source.sourceKind === 'string'
+      ? sha256(input.source.sourceKind)
+      : sha256(stableSerialize(input.source.sourceKind));
   return {
     sourceKey: redactIdentifier(input.source.sourceKey),
-    sourceKind: input.source.sourceKind,
+    sourceKind,
     scope: redactIdentifier(input.source.scope),
     sourceHash,
-    ...(input.source.previousSourceHash === undefined ? {} : { previousSourceHash: input.source.previousSourceHash }),
+    ...(validDigest(input.source.previousSourceHash) ? { previousSourceHash: input.source.previousSourceHash } : {}),
     canonicalDatabaseOpaqueId: redactIdentifier(input.source.canonicalDatabaseOpaqueId),
   };
 }
@@ -362,6 +444,19 @@ export class M2ReadOnlyParityService {
   compare(input: M2ParityInput): M2ParityResult {
     const sourceHash = sha256(input.source.sourceBytes);
     const counts = emptyCounts();
+
+    const sourceError = sourceIdentityError(input.source);
+    if (sourceError) {
+      counts.malformed = 1;
+      return finish(
+        input,
+        sourceHash,
+        'malformed',
+        counts,
+        { fieldConsistent: false, contractConsistent: false },
+        [evidenceFor('__source__', 'source_identity', 'malformed', undefined, sourceError, 'malformed_source_identity')],
+      );
+    }
 
     if (input.source.previousSourceHash !== undefined && input.source.previousSourceHash !== sourceHash) {
       counts.changed_source = 1;
@@ -427,7 +522,8 @@ export class M2ReadOnlyParityService {
     const malformedEvidence: M2ParityEvidence[] = normalizedValueEvidence(allRecords, fieldMap);
     for (const record of [...allRecords].sort((left, right) => compareStableText(left.recordKey, right.recordKey))) {
       for (const fieldName of fieldMap.requiredLogicalFields) {
-        if (!Object.prototype.hasOwnProperty.call(record.fields, fieldName) || record.fields[fieldName] === undefined) {
+        const field = ownField(record.fields, fieldName);
+        if (!field.present || field.value === undefined) {
           malformedEvidence.push(evidenceFor(
             record.recordKey,
             fieldName,
@@ -530,10 +626,12 @@ export class M2ReadOnlyParityService {
       const fieldNames = [...new Set([...Object.keys(legacyRecord.fields), ...Object.keys(canonicalRecord.fields)])]
         .sort(compareStableText);
       for (const fieldName of fieldNames) {
-        const legacyHas = Object.prototype.hasOwnProperty.call(legacyRecord.fields, fieldName);
-        const canonicalHas = Object.prototype.hasOwnProperty.call(canonicalRecord.fields, fieldName);
-        const legacyValue = legacyHas ? legacyRecord.fields[fieldName] : undefined;
-        const canonicalValue = canonicalHas ? canonicalRecord.fields[fieldName] : undefined;
+        const legacyField = ownField(legacyRecord.fields, fieldName);
+        const canonicalField = ownField(canonicalRecord.fields, fieldName);
+        const legacyHas = legacyField.present;
+        const canonicalHas = canonicalField.present;
+        const legacyValue = legacyField.value;
+        const canonicalValue = canonicalField.value;
         if (!legacyHas || !canonicalHas || stableSerialize(legacyValue) !== stableSerialize(canonicalValue)) {
           evidence.push(evidenceFor(recordKey, fieldName, 'mismatch', legacyValue, canonicalValue, 'field_mismatch'));
         }

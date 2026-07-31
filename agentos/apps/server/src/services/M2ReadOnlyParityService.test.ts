@@ -223,6 +223,9 @@ test('Conversation Inventory includes startup recovery readers, writers, and Run
   assert.ok(conversation.startupEntrypoints.includes('apps/server/src/services/RunStepService.ts:RunStepService.reconcileInterruptedRun'));
   assert.ok(conversation.productionReaders.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.listRunsForRecovery'));
   assert.ok(conversation.productionReaders.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.listExecutions'));
+  assert.ok(conversation.productionReaders.includes('apps/server/src/services/RunStepService.ts:RunStepService.reconcileInterruptedRun'));
+  assert.ok(conversation.productionWriters.includes('apps/server/src/runRecovery.ts:recoverInterruptedRuns'));
+  assert.ok(conversation.productionWriters.includes('apps/server/src/services/RunStepService.ts:RunStepService.reconcileInterruptedRun'));
   assert.ok(conversation.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.updateExecution'));
   assert.ok(conversation.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.updateRun'));
   assert.ok(conversation.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.persistRunStepMutation'));
@@ -238,14 +241,23 @@ test('Legacy Task and Task-domain Inventory separates startup recovery ownership
   assert.ok(task.startupEntrypoints.includes('apps/server/src/services/TaskRunService.ts:TaskRunService.recoverInterruptedLegacyQueuedRuns'));
   assert.ok(task.startupEntrypoints.includes('apps/server/src/store/RunRepository.ts:RunRepository.listByWorkspace'));
   assert.ok(task.startupEntrypoints.includes('apps/server/src/store/RunRepository.ts:RunRepository.failQueuedBridgeRestart'));
+  assert.ok(task.productionReaders.includes('apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime'));
+  assert.ok(task.productionReaders.includes('apps/server/src/services/TaskRunService.ts:TaskRunService.recoverInterruptedLegacyQueuedRuns'));
+  assert.ok(task.productionWriters.includes('apps/server/src/taskRecovery.ts:recoverInterruptedTaskRuntime'));
+  assert.ok(task.productionWriters.includes('apps/server/src/services/TaskRunService.ts:TaskRunService.recoverInterruptedLegacyQueuedRuns'));
+  assert.ok(task.productionWriters.includes('apps/server/src/store/RunRepository.ts:RunRepository.failQueuedBridgeRestart'));
   assert.ok(task.productionWriters.includes('apps/server/src/services/TaskRunService.ts:TaskRunService.resolveTaskAfterRunTerminal'));
+  assert.ok(task.crossDomainWriters.includes('taskRecovery.recoverInterruptedTaskRuntime: Legacy TaskItem + Task-domain startup orchestration'));
   assert.ok(task.crossDomainWriters.includes('TaskRunService.recoverInterruptedLegacyQueuedRuns: tasks.json recovery + queued Bridge Run failure'));
 });
 
 test('Workspace delete Inventory records explicit cross-domain cleanup and verified Task/Run cascade', () => {
   const workspace = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'workspace_aggregate');
   assert.ok(workspace);
-  for (const table of ['conversations', 'executions', 'execution_events', 'agent_events', 'agent_profiles', 'provider_configurations', 'messages']) {
+  for (const table of [
+    'agent_events', 'memory_fts', 'memories', 'execution_events', 'executions', 'run_event_sequences',
+    'agent_runs', 'messages', 'conversation_members', 'conversations', 'agent_profiles', 'provider_configurations', 'workspaces',
+  ]) {
     assert.ok(workspace.crossDomainWriters.includes(`SqliteStore.deleteWorkspace: ${table} cleanup`), table);
   }
   assert.ok(workspace.crossDomainWriters.includes('SqliteStore.deleteWorkspace: _workspace_tombstones write'));
@@ -275,8 +287,82 @@ test('Every domain declares a startupEntrypoints array and recovery-capable doma
   assert.ok(domains.find(domain => domain.domainId === 'task_domain_task_run')!.startupEntrypoints.length > 0);
   const readerCount = domains.reduce((count, domain) => count + domain.productionReaders.length, 0);
   const writerCount = domains.reduce((count, domain) => count + domain.productionWriters.length, 0);
-  assert.equal(readerCount, 40);
-  assert.equal(writerCount, 39);
+  assert.equal(readerCount, 41);
+  assert.equal(writerCount, 43);
+  const evidenceDoc = readFileSync(new URL('../../../../docs/implementation/milestones/M2.8-p1-read-only-parity-inventory.md', import.meta.url), 'utf8');
+  const counts = evidenceDoc.match(/Totals: 8 domains, (\d+) production reader entries, (\d+) production writer entries/);
+  assert.ok(counts, 'evidence document must declare computed reader/writer totals');
+  assert.equal(Number(counts[1]), readerCount);
+  assert.equal(Number(counts[2]), writerCount);
+});
+
+test('plain object non-enumerable values are not accepted or silently ignored by serialization', () => {
+  const legacy = taskRecord('task-1', {});
+  const canonical = taskRecord('task-1', {});
+  Object.defineProperty(legacy.fields, 'description_digest', { value: 'legacy-hidden', enumerable: false });
+  Object.defineProperty(canonical.fields, 'description_digest', { value: 'canonical-hidden', enumerable: false });
+  const result = new M2ReadOnlyParityService().compare(baseInput({ legacyRecords: [legacy], canonicalRecords: [canonical] }));
+  assert.equal(result.classification, 'malformed');
+  assert.notEqual(result.classification, 'equal');
+});
+
+test('nested object non-enumerable values are malformed rather than omitted', () => {
+  const legacyMetadata: Record<string, unknown> = { visible: 'same' };
+  const canonicalMetadata: Record<string, unknown> = { visible: 'same' };
+  Object.defineProperty(legacyMetadata, 'hidden', { value: 'legacy-hidden', enumerable: false });
+  Object.defineProperty(canonicalMetadata, 'hidden', { value: 'canonical-hidden', enumerable: false });
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    legacyRecords: [taskRecord('task-1', { task_metadata_digest: legacyMetadata })],
+    canonicalRecords: [taskRecord('task-1', { task_metadata_digest: canonicalMetadata })],
+  }));
+  assert.equal(result.classification, 'malformed');
+});
+
+test('array custom properties are malformed rather than omitted', () => {
+  const legacyArgs = ['same'] as string[] & { custom?: string };
+  const canonicalArgs = ['same'] as string[] & { custom?: string };
+  legacyArgs.custom = 'legacy-custom';
+  canonicalArgs.custom = 'canonical-custom';
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    legacyRecords: [taskRecord('task-1', { task_metadata_digest: legacyArgs })],
+    canonicalRecords: [taskRecord('task-1', { task_metadata_digest: canonicalArgs })],
+  }));
+  assert.equal(result.classification, 'malformed');
+});
+
+test('sparse arrays are malformed', () => {
+  const legacySparse = new Array<string>(2);
+  const canonicalSparse = new Array<string>(2);
+  legacySparse[0] = 'same';
+  canonicalSparse[0] = 'same';
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    legacyRecords: [taskRecord('task-1', { task_metadata_digest: legacySparse })],
+    canonicalRecords: [taskRecord('task-1', { task_metadata_digest: canonicalSparse })],
+  }));
+  assert.equal(result.classification, 'malformed');
+});
+
+test('array accessor indexes are malformed without invoking the accessor', () => {
+  const legacyAccessor: unknown[] = [];
+  const canonicalAccessor: unknown[] = [];
+  Object.defineProperty(legacyAccessor, '0', { get: () => 'private', enumerable: true });
+  Object.defineProperty(canonicalAccessor, '0', { get: () => 'private', enumerable: true });
+  Object.defineProperty(legacyAccessor, 'length', { value: 1 });
+  Object.defineProperty(canonicalAccessor, 'length', { value: 1 });
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    legacyRecords: [taskRecord('task-1', { task_metadata_digest: legacyAccessor })],
+    canonicalRecords: [taskRecord('task-1', { task_metadata_digest: canonicalAccessor })],
+  }));
+  assert.equal(result.classification, 'malformed');
+});
+
+test('every accepted enumerable normalized property changes the comparison when its value changes', () => {
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    legacyRecords: [taskRecord('task-1', { task_metadata_digest: { visible: 'legacy' } })],
+    canonicalRecords: [taskRecord('task-1', { task_metadata_digest: { visible: 'canonical' } })],
+  }));
+  assert.equal(result.classification, 'mismatch');
+  assert.ok(result.evidence.some(item => item.fieldName === 'task_metadata_digest'));
 });
 
 test('different Date values are malformed and never equal', () => {
@@ -637,15 +723,45 @@ test('malformed, duplicate, tombstone, and conflict classifications are explicit
 
 test('changed source hash invalidates the old result', () => {
   const input = baseInput();
+  const previousSourceHash = sha256('old-source-bytes');
   const result = new M2ReadOnlyParityService().compare({
     ...input,
     source: {
       ...input.source,
-      previousSourceHash: 'old-source-hash',
+      previousSourceHash,
     },
   });
   assert.equal(result.classification, 'changed_source');
-  assert.equal(result.source.previousSourceHash, 'old-source-hash');
+  assert.equal(result.source.previousSourceHash, previousSourceHash);
+});
+
+test('invalid previousSourceHash is malformed and never appears in result JSON', () => {
+  const invalidPreviousHash = 'C:\\Users\\Administrator\\secrets\\old-source.sha256';
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    source: { ...baseInput().source, previousSourceHash: invalidPreviousHash },
+  }));
+  assert.equal(result.classification, 'malformed');
+  assert.equal(JSON.stringify(result).includes(invalidPreviousHash), false);
+  assert.equal('previousSourceHash' in result.source, false);
+});
+
+test('path-like sourceKind is malformed and only its digest may be exposed', () => {
+  const pathLikeSourceKind = 'C:\\Users\\Administrator\\workspace\\tasks.json';
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    source: { ...baseInput().source, sourceKind: pathLikeSourceKind },
+  }));
+  assert.equal(result.classification, 'malformed');
+  assert.equal(JSON.stringify(result).includes(pathLikeSourceKind), false);
+  assert.equal(result.source.sourceKind, sha256(pathLikeSourceKind));
+});
+
+test('valid previousSourceHash is the only source hash accepted for changed_source', () => {
+  const previousSourceHash = sha256('previous-source-bytes');
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    source: { ...baseInput().source, previousSourceHash },
+  }));
+  assert.equal(result.classification, 'changed_source');
+  assert.equal(result.source.previousSourceHash, previousSourceHash);
 });
 
 test('source identity redacts full local paths and database paths', () => {
