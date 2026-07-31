@@ -476,7 +476,14 @@ export class WorkspaceCompatibilityMigrationService {
     if (existing === undefined && rootOwner !== undefined && rootOwner.id !== valid.workspace.id) {
       return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: null, errorCode: LEGACY_WORKSPACE_CANONICAL_ROOT_CONFLICT };
     }
-    if (existing === undefined) return { kind: 'adoptable', source: valid.source, workspace: valid, canonicalWorkspaceId: null };
+    if (existing === undefined) {
+      try {
+        this.assertAgentSetCompatible(repository, valid.workspace.id, valid.workspace.updatedAt, valid.agents);
+      } catch {
+        return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: null, errorCode: LEGACY_WORKSPACE_CANONICAL_CONFLICT };
+      }
+      return { kind: 'adoptable', source: valid.source, workspace: valid, canonicalWorkspaceId: null };
+    }
     if (!sameWorkspace(existing, valid.workspace)) {
       return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: existing.id, errorCode: LEGACY_WORKSPACE_CANONICAL_CONFLICT };
     }
@@ -492,24 +499,34 @@ export class WorkspaceCompatibilityMigrationService {
   }
 
   private assertChildrenCompatible(repository: WorkspaceCompatibilityRepository, existing: Workspace, agents: WorkspaceAgent[]): boolean {
+    return this.assertAgentSetCompatible(repository, existing.id, existing.updatedAt, agents);
+  }
+
+  private assertAgentSetCompatible(
+    repository: WorkspaceCompatibilityRepository,
+    workspaceId: string,
+    updatedAt: string,
+    agents: WorkspaceAgent[],
+  ): boolean {
     const sourceIds = new Set(agents.map(agent => agent.id));
+    const existingIds = repository.listAgentProfileIds(workspaceId);
     let hasMissingChildren = false;
-    for (const existingAgent of existing.agents) {
-      if (!sourceIds.has(existingAgent.id)) throw new Error('agent set conflict');
+    for (const existingAgentId of existingIds) {
+      if (!sourceIds.has(existingAgentId)) throw new Error('agent set conflict');
     }
     for (const agent of agents) {
-      const current = repository.findAgent(existing.id, agent.id);
+      const current = repository.findAgent(workspaceId, agent.id);
       if (current === undefined) {
         hasMissingChildren = true;
         continue;
       }
-      const expected = expectedProvider(existing.id, agent, existing.updatedAt, current.providerConfigId ?? createEntityId('provider'));
+      const expected = expectedProvider(workspaceId, agent, updatedAt, current.providerConfigId ?? createEntityId('provider'));
       const expectedRuntime = projectProviderConfiguration(expected, agent.cliCommand);
       if (!sameAgent(agent, expectedRuntime, current)) throw new Error('agent conflict');
       if (current.providerConfigId === null) {
         hasMissingChildren = true;
-        const provider = repository.findProviderByWorkspaceAndName(existing.id, `${agent.name} Provider`);
-        if (provider !== undefined && !sameProvider(expectedProvider(existing.id, agent, existing.updatedAt, provider.id), provider)) {
+        const provider = repository.findProviderByWorkspaceAndName(workspaceId, `${agent.name} Provider`);
+        if (provider !== undefined && !sameProvider(expectedProvider(workspaceId, agent, updatedAt, provider.id), provider)) {
           throw new Error('provider conflict');
         }
         continue;
@@ -606,7 +623,7 @@ export class WorkspaceCompatibilityMigrationService {
       db.exec('BEGIN IMMEDIATE');
       if (item.kind === 'adoptable') {
         repository.insertWorkspaceWithinTransaction(item.workspace.workspace);
-        this.insertChildren(repository, item.workspace, item.workspace.workspace.id);
+        this.insertMissingChildren(repository, item.workspace, item.workspace.workspace.id);
       } else if (item.kind === 'equal' || item.kind === 'compatible-missing') {
         this.insertMissingChildren(repository, item.workspace, item.workspace.workspace.id);
       }
@@ -632,10 +649,6 @@ export class WorkspaceCompatibilityMigrationService {
       summary.failedCount += 1;
       throw new WorkspaceCompatibilityMigrationError(LEGACY_WORKSPACE_OPERATION_FAILED);
     }
-  }
-
-  private insertChildren(repository: WorkspaceCompatibilityRepository, workspace: ValidWorkspace, workspaceId: string): void {
-    for (const agent of workspace.agents) this.insertAgentWithProvider(repository, workspace, workspaceId, agent);
   }
 
   private insertMissingChildren(repository: WorkspaceCompatibilityRepository, workspace: ValidWorkspace, workspaceId: string): void {

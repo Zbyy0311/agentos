@@ -127,6 +127,19 @@ export class WorkspaceCompatibilityRepository {
     };
   }
 
+  listAgentProfileIds(workspaceId: string): string[] {
+    const rows = this.db.prepare(`
+      SELECT id
+      FROM agent_profiles
+      WHERE workspace_id = ?
+      ORDER BY id COLLATE BINARY
+    `).all(workspaceId) as Array<{ id?: unknown }>;
+    return rows.map(row => {
+      if (typeof row.id !== 'string') throw new Error('invalid agent profile id');
+      return row.id;
+    });
+  }
+
   findProviderByWorkspaceAndName(workspaceId: string, name: string): ProviderConfiguration | undefined {
     return this.providers.findByWorkspaceAndName(workspaceId, name);
   }
