@@ -295,6 +295,26 @@ export class LegacyDataMigrationRepository {
     );
   }
 
+  /**
+   * Quarantined no-op row for the Scope plus exact source identity. An
+   * unchanged source that was already quarantined must not produce another
+   * Attempt or Backup; only a changed source hash reclassifies. Failed rows
+   * deliberately miss this lookup so they stay retryable.
+   */
+  findQuarantinedByExactSource(scope: LegacyMigrationScope): LegacyDataMigrationRecord | null {
+    assertScope(scope);
+    return this.selectOne(
+      `SELECT ${ROW_COLUMNS} FROM legacy_data_migrations
+       WHERE migration_kind = ? AND source_key = ? AND scope_kind = ? AND scope_key = ?
+         AND source_hash = ? AND hash_algorithm = ? AND compatibility_schema_version = ?
+         AND status = 'quarantined'
+       ORDER BY attempt DESC
+       LIMIT 1`,
+      scope.migrationKind, scope.sourceKey, scope.scopeKind, scope.scopeKey,
+      scope.sourceHash, LEGACY_HASH_ALGORITHM, LEGACY_COMPATIBILITY_SCHEMA_VERSION,
+    );
+  }
+
   /** Latest accepted Completed state: revision DESC, then attempt DESC. */
   findLatestAcceptedCompleted(scope: LegacyMigrationScope): LegacyDataMigrationRecord | null {
     assertScope(scope);

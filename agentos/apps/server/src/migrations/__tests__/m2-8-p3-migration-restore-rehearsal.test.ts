@@ -451,11 +451,12 @@ test('P3 isolated classification and recovery fixtures quarantine unsafe records
     assert.equal(firstWorkspace.quarantinedCount, 3);
     assert.equal(firstWorkspace.tombstoneCount, 1);
     assert.equal(firstWorkspace.completedCount, 2);
-    assert.equal(secondWorkspace.quarantinedCount, 3);
-    assert.equal(secondWorkspace.noopCount, 2);
+    assert.equal(secondWorkspace.quarantinedCount, 0);
+    assert.equal(secondWorkspace.noopCount, 5);
     const classifiedDb = openDb(workspaceDatabasePath, true);
     assert.equal(tableCount(classifiedDb, 'workspaces'), 2);
     assert.equal(tableCount(classifiedDb, 'legacy_task_items'), 0);
+    assert.equal(tableCount(classifiedDb, 'legacy_data_migrations'), 5, 'quarantine reruns must not add new Attempts');
     const quarantineCodes = classifiedDb.prepare("SELECT error_code AS code, COUNT(*) AS count FROM legacy_data_migrations WHERE status = 'quarantined' GROUP BY error_code ORDER BY error_code").all();
     classifiedDb.close();
 

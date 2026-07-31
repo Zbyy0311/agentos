@@ -548,3 +548,47 @@ test('[M27-P1-T046] an active Attempt is never marked Interrupted by a contender
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('[M2.8-P3-R1-T101] quarantined exact-source lookup is no-op evidence; failed stays retryable and a changed hash requires a fresh classification', async () => {
+  const { LegacyDataMigrationRepository } = await loadRepositoryModule();
+  const db = await createDb();
+  try {
+    const repo = new LegacyDataMigrationRepository(db);
+    assert.equal(repo.findQuarantinedByExactSource(scope()), null);
+
+    const completedSeed = reserve(repo, 'migration-completed');
+    repo.transitionRunningToCompleted(completedSeed.id, {
+      payloadHash: hash('payload-1'),
+      sourceSchemaVersion: 1,
+      revision: 1,
+      entityCount: 1,
+      finishedAt: LATER,
+      updatedAt: LATER,
+    });
+    assert.notEqual(repo.findCompletedByExactSource(scope()), null);
+    assert.equal(repo.findQuarantinedByExactSource(scope()), null);
+
+    const failedSeed = reserve(repo, 'migration-failed', hash('source-2'));
+    repo.transitionRunningToFailed(failedSeed.id, {
+      errorCode: 'LEGACY_TASK_IMPORT_OPERATION_FAILED',
+      finishedAt: LATER,
+      updatedAt: LATER,
+    });
+    assert.equal(repo.findCompletedByExactSource(scope(hash('source-2'))), null);
+    assert.equal(repo.findQuarantinedByExactSource(scope(hash('source-2'))), null);
+
+    const quarantinedSeed = reserve(repo, 'migration-quarantined', hash('source-3'));
+    repo.transitionRunningToQuarantined(quarantinedSeed.id, {
+      errorCode: 'LEGACY_TASK_SOURCE_PARSE_FAILED',
+      finishedAt: LATER,
+      updatedAt: LATER,
+    });
+    const exact = repo.findQuarantinedByExactSource(scope(hash('source-3')));
+    assert.equal(exact?.id, 'migration-quarantined');
+    assert.equal(exact?.status, 'quarantined');
+
+    assert.equal(repo.findQuarantinedByExactSource(scope(hash('source-4'))), null);
+  } finally {
+    db.close();
+  }
+});

@@ -1065,3 +1065,147 @@ test('[M27-P5-T006] Workspace migration preserves no-op, revision, conflict, and
     fx.cleanup();
   }
 });
+
+function registryAttempts(db: Db): Array<Record<string, unknown>> {
+  return db.prepare(`
+    SELECT status, attempt, scope_kind, scope_key, error_code
+    FROM legacy_data_migrations ORDER BY attempt, rowid
+  `).all() as Array<Record<string, unknown>>;
+}
+
+test('[M2.8-P3-R1-T005] parse failure rerun is a no-op without a new Attempt or Backup and a changed source re-quarantines', async () => {
+  const fx = await fixture();
+  try {
+    mkdirSync(join(fx.root, 'workspace'), { recursive: true });
+    writeFileSync(join(fx.root, 'workspace', 'workspaces.json'), Buffer.from('not-json', 'utf8'));
+    const first = await fx.service.run(runInput(fx));
+    assert.equal(first.quarantinedCount, 1);
+    assert.equal(first.dispositions.parse_failed, 1);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryAttempts(fx.db).length, 1);
+
+    const second = await fx.service.run(runInput(fx));
+    assert.equal(second.noopCount, 1);
+    assert.equal(second.quarantinedCount, 0);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryAttempts(fx.db).length, 1);
+
+    writeFileSync(join(fx.root, 'workspace', 'workspaces.json'), Buffer.from('not-json-changed', 'utf8'));
+    const third = await fx.service.run(runInput(fx));
+    assert.equal(third.noopCount, 0);
+    assert.equal(third.quarantinedCount, 1);
+    assert.equal(fx.backupCalls.count, 2);
+    const rows = registryAttempts(fx.db);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map(row => ({ status: row.status, attempt: row.attempt, error: row.error_code })), [
+      { status: 'quarantined', attempt: 1, error: 'LEGACY_WORKSPACE_SOURCE_PARSE_FAILED' },
+      { status: 'quarantined', attempt: 2, error: 'LEGACY_WORKSPACE_SOURCE_PARSE_FAILED' },
+    ]);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T006] duplicate and conflict reruns are no-ops without a new Attempt or Backup and a changed source re-quarantines', async () => {
+  const fx = await fixture();
+  try {
+    const duplicate = workspace('dup', join(fx.root, 'dup'));
+    writeSource(fx.root, [duplicate, { ...duplicate, name: 'Duplicate Second' }]);
+    const duplicateFirst = await fx.service.run(runInput(fx));
+    assert.equal(duplicateFirst.quarantinedCount, 1);
+    assert.equal(duplicateFirst.dispositions.LEGACY_WORKSPACE_DUPLICATE_SOURCE_ID, 1);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryAttempts(fx.db).length, 1);
+    const duplicateSecond = await fx.service.run(runInput(fx));
+    assert.equal(duplicateSecond.noopCount, 1);
+    assert.equal(duplicateSecond.quarantinedCount, 0);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryAttempts(fx.db).length, 1);
+  } finally {
+    fx.cleanup();
+  }
+
+  const conflictFx = await fixture();
+  try {
+    const existing = workspace('conflict', join(conflictFx.root, 'conflict'), { name: 'Existing Name' });
+    insertWorkspace(conflictFx.db, existing);
+    const source = workspace('conflict', join(conflictFx.root, 'conflict'), { name: 'JSON Name' });
+    writeSource(conflictFx.root, [source]);
+    const first = await conflictFx.service.run(runInput(conflictFx));
+    assert.equal(first.quarantinedCount, 1);
+    assert.equal(conflictFx.backupCalls.count, 1);
+    assert.equal(registryAttempts(conflictFx.db).length, 1);
+
+    const second = await conflictFx.service.run(runInput(conflictFx));
+    assert.equal(second.noopCount, 1);
+    assert.equal(second.quarantinedCount, 0);
+    assert.equal(conflictFx.backupCalls.count, 1);
+    assert.equal(registryAttempts(conflictFx.db).length, 1);
+
+    writeSource(conflictFx.root, [workspace('conflict', join(conflictFx.root, 'conflict'), { name: 'Third Name' })]);
+    const third = await conflictFx.service.run(runInput(conflictFx));
+    assert.equal(third.noopCount, 0);
+    assert.equal(third.quarantinedCount, 1);
+    assert.equal(conflictFx.backupCalls.count, 2);
+    const rows = registryAttempts(conflictFx.db);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map(row => row.attempt), [1, 2]);
+    assert.ok(rows.every(row => row.status === 'quarantined'));
+  } finally {
+    conflictFx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T007] a failed exact-source Attempt stays retryable while completed and tombstone reruns keep their no-op semantics', async () => {
+  const fx = await fixture();
+  try {
+    const retrySource = workspace('retry', join(fx.root, 'retry'));
+    const retryBytes = writeSource(fx.root, [retrySource]);
+    const { LegacyDataMigrationRepository } = await import('../store/LegacyDataMigrationRepository.js') as {
+      LegacyDataMigrationRepository: new (db: Db) => {
+        reconcileStaleRunningAndReserveAttempt(input: Record<string, unknown>): { id: string };
+        transitionRunningToFailed(id: string, input: Record<string, unknown>): void;
+      };
+    };
+    const repository = new LegacyDataMigrationRepository(fx.db);
+    const failedSeed = repository.reconcileStaleRunningAndReserveAttempt({
+      migrationKind: 'workspace_adoption',
+      sourceKey: 'workspaces.json',
+      scopeKind: 'workspace',
+      scopeKey: 'retry',
+      canonicalWorkspaceId: null,
+      sourceHash: hash(retryBytes),
+      migrationId: 'retry-failed-attempt',
+      now: NOW,
+    });
+    repository.transitionRunningToFailed(failedSeed.id, {
+      errorCode: 'LEGACY_WORKSPACE_OPERATION_FAILED',
+      finishedAt: NOW,
+      updatedAt: NOW,
+    });
+    const retry = await fx.service.run(runInput(fx));
+    assert.equal(retry.completedCount, 1);
+    assert.equal(retry.noopCount, 0);
+    const retryRows = registryAttempts(fx.db);
+    assert.deepEqual(retryRows.map(row => row.status), ['failed', 'completed']);
+  } finally {
+    fx.cleanup();
+  }
+
+  const tombstoneFx = await fixture();
+  try {
+    tombstoneFx.db.prepare('INSERT INTO _workspace_tombstones (workspace_id, deleted_at) VALUES (?, ?)').run('dead', NOW);
+    writeSource(tombstoneFx.root, [workspace('dead', join(tombstoneFx.root, 'dead'))]);
+    const first = await tombstoneFx.service.run(runInput(tombstoneFx));
+    assert.equal(first.tombstoneCount, 1);
+    assert.equal(first.completedCount, 1);
+    const second = await tombstoneFx.service.run(runInput(tombstoneFx));
+    assert.equal(second.noopCount, 1);
+    assert.equal(second.completedCount, 0);
+    assert.equal(tombstoneFx.backupCalls.count, 1);
+    assert.equal(registryAttempts(tombstoneFx.db).length, 1);
+    assert.equal((tombstoneFx.db.prepare("SELECT COUNT(*) AS count FROM workspaces WHERE id = 'dead'").get() as { count: number }).count, 0);
+  } finally {
+    tombstoneFx.cleanup();
+  }
+});

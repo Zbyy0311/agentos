@@ -624,3 +624,100 @@ test('[M27-P3-T012] Cross-workspace Task items fail closed while matching worksp
     fx.cleanup();
   }
 });
+
+test('[M2.8-P3-R1-T201] parse failure rerun is a no-op without a new Attempt or Backup and a changed source re-quarantines', async () => {
+  const fx = await fixture();
+  try {
+    writeTasks(fx.root, 'ws-tasks', [], 'not-json');
+    const first = await fx.service.run(runInput(fx, 'ws-tasks'));
+    assert.equal(first.quarantinedCount, 1);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryRows(fx.db).length, 1);
+
+    const second = await fx.service.run(runInput(fx, 'ws-tasks'));
+    assert.equal(second.noopCount, 1);
+    assert.equal(second.quarantinedCount, 0);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryRows(fx.db).length, 1);
+
+    writeTasks(fx.root, 'ws-tasks', [], 'not-json-changed');
+    const third = await fx.service.run(runInput(fx, 'ws-tasks'));
+    assert.equal(third.noopCount, 0);
+    assert.equal(third.quarantinedCount, 1);
+    assert.equal(fx.backupCalls.count, 2);
+    const rows = registryRows(fx.db);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map(row => ({ status: row.status, attempt: row.attempt })), [
+      { status: 'quarantined', attempt: 1 },
+      { status: 'quarantined', attempt: 2 },
+    ]);
+    assert.ok(rows.every(row => row.error_code === 'LEGACY_TASK_SOURCE_PARSE_FAILED'));
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T202] duplicate rejection rerun is a no-op without a new Attempt or Backup and a changed source re-quarantines', async () => {
+  const fx = await fixture();
+  try {
+    writeTasks(fx.root, 'ws-tasks', [task('alpha'), task('alpha')]);
+    const first = await fx.service.run(runInput(fx, 'ws-tasks'));
+    assert.equal(first.quarantinedCount, 1);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryRows(fx.db).length, 1);
+
+    const second = await fx.service.run(runInput(fx, 'ws-tasks'));
+    assert.equal(second.noopCount, 1);
+    assert.equal(second.quarantinedCount, 0);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryRows(fx.db).length, 1);
+
+    writeTasks(fx.root, 'ws-tasks', [task('alpha'), task('alpha'), task('beta')]);
+    const third = await fx.service.run(runInput(fx, 'ws-tasks'));
+    assert.equal(third.noopCount, 0);
+    assert.equal(third.quarantinedCount, 1);
+    assert.equal(fx.backupCalls.count, 2);
+    const rows = registryRows(fx.db);
+    assert.equal(rows.length, 2);
+    assert.ok(rows.every(row => row.status === 'quarantined' && row.error_code === 'LEGACY_TASK_DUPLICATE_SOURCE_ID'));
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T203] a failed exact-source Attempt stays retryable', async () => {
+  const fx = await fixture();
+  try {
+    const source = writeTasks(fx.root, 'ws-tasks', [task('alpha')]);
+    const { LegacyDataMigrationRepository } = await import('../store/LegacyDataMigrationRepository.js') as {
+      LegacyDataMigrationRepository: new (db: Db) => {
+        reconcileStaleRunningAndReserveAttempt(input: Record<string, unknown>): { id: string };
+        transitionRunningToFailed(id: string, input: Record<string, unknown>): void;
+      };
+    };
+    const repository = new LegacyDataMigrationRepository(fx.db);
+    const failedSeed = repository.reconcileStaleRunningAndReserveAttempt({
+      migrationKind: 'legacy_task_item_import',
+      sourceKey: 'tasks.json',
+      scopeKind: 'workspace',
+      scopeKey: 'ws-tasks',
+      canonicalWorkspaceId: null,
+      sourceHash: hash(source),
+      migrationId: 'retry-failed-attempt',
+      now: NOW,
+    });
+    repository.transitionRunningToFailed(failedSeed.id, {
+      errorCode: 'LEGACY_TASK_IMPORT_OPERATION_FAILED',
+      finishedAt: NOW,
+      updatedAt: NOW,
+    });
+    const result = await fx.service.run(runInput(fx, 'ws-tasks'));
+    assert.equal(result.completedCount, 1);
+    assert.equal(result.noopCount, 0);
+    assert.equal(result.importedCount, 1);
+    assert.equal(countRows(fx.db, 'legacy_task_items'), 1);
+    assert.deepEqual(registryRows(fx.db).map(row => row.status), ['failed', 'completed']);
+  } finally {
+    fx.cleanup();
+  }
+});
