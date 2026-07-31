@@ -4,7 +4,7 @@
 > **Status:** M2.1 VERIFIED & MERGED — `b4613b2a`; M2.2 VERIFIED & MERGED — `0075d36e`; M2.3 VERIFIED & MERGED — `ab1fa905`; M2.4 VERIFIED & MERGED — `e02db3b0`; Build-order remediation MERGED — `bee118ed`; Runtime Specification 13/14 MERGED — `a1514d6e`; R39 remediation MERGED — `3e86464b`; M2.5 VERIFIED & MERGED — `39eb1d5a`; M2.6 VERIFIED & MERGED — POST-MERGE CLOSEOUT RECORDED; M2.7 VERIFIED & MERGED — `8dac2448d7a4608c3b2a2a8ca4e3f25c622e1d49`; M2.8 NOT STARTED / NOT AUTHORIZED
 > **Date:** 2026-07-21
 > **Repository:** `Zbyy0311/agentos`
-> **Branch:** `docs/m2-7-post-merge-closeout`
+> **Branch:** `runtime/m2-7-v1-compatibility-migration` (original M2.7 implementation and verification branch, retained after merge)
 > **Current Main:** `8dac2448d7a4608c3b2a2a8ca4e3f25c622e1d49`
 > **Plan Documents:**
 > - `docs/implementation/schema-inventory.md`
