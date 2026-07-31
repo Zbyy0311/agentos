@@ -170,9 +170,19 @@ test('P2 Existing Coverage Inventory maps every core acceptance area to executab
   }
 });
 
-test('P2 Existing Coverage Inventory contains no P3/P4/P5 authority or cutover claim', () => {
+test('P2 status closure is reflected consistently and contains no stale review state', () => {
+  const p1 = readRepositoryFile('docs/implementation/milestones/M2.8-p1-read-only-parity-inventory.md');
+  const p2 = readRepositoryFile('docs/implementation/milestones/M2.8-p2-core-acceptance-verification.md');
   const plan = readRepositoryFile('docs/implementation/milestones/M2.8-verification-cutover-readiness-plan.md');
-  assert.match(plan, /P2: IMPLEMENTATION COMPLETE — CORE M2 ACCEPTANCE VERIFIED LOCALLY — PENDING INDEPENDENT REVIEW/);
+  assert.match(p1, /P1 VERIFIED — LOCAL GATES PASSED — INDEPENDENT REVIEW PASSED/);
+  assert.match(p2, /P2 VERIFIED — CORE M2 ACCEPTANCE VERIFIED LOCALLY — INDEPENDENT REVIEW PASSED/);
+  assert.match(plan, /P1: VERIFIED — LOCAL GATES PASSED — INDEPENDENT REVIEW PASSED/);
+  assert.match(plan, /P2: VERIFIED — CORE M2 ACCEPTANCE VERIFIED LOCALLY — INDEPENDENT REVIEW PASSED/);
+  for (const source of [p1, p2, plan]) {
+    assert.doesNotMatch(source, /PENDING(?: FINAL)? INDEPENDENT(?: FINAL)? RE-?REVIEW|PENDING INDEPENDENT REVIEW/);
+    assert.doesNotMatch(source, /P2:\s*NOT AUTHORIZED/i);
+    assert.doesNotMatch(source, /P2 started:\s*NO/i);
+  }
   assert.match(plan, /P3: NOT AUTHORIZED/);
   assert.match(plan, /Production Cutover: OUT OF SCOPE/);
   assert.match(plan, /P3 \| Migration and Restore Rehearsal/);
