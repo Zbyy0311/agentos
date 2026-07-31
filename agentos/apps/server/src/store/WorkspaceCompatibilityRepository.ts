@@ -99,7 +99,7 @@ export class WorkspaceCompatibilityRepository {
       : undefined;
     const rawCliCommand = row.cli_command;
     const rawCliArgs = parseStringArray(JSON.parse(row.cli_args_json));
-    const rawModel = typeof row.model === 'string' ? row.model : undefined;
+    const rawModel = typeof row.model === 'string' && row.model.length > 0 ? row.model : undefined;
     const effectiveProvider = providerConfiguration
       ? providerTypeToAgentProvider(providerConfiguration.providerType)
       : (rawProvider ?? providerFromLegacyRole(row.agent_role as AgentProfile['role']));

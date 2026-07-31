@@ -306,6 +306,30 @@ test('[M2.8-P3-R1-T001] Legacy orphan Agents are preserved, missing Agents are a
   }
 });
 
+test('[M2.8-P3-R1-T004] Empty legacy model is compatible with an omitted Source model and remains unchanged', async () => {
+  const fx = await legacyAdoptionFixture();
+  try {
+    fx.db.prepare('UPDATE agent_profiles SET model = ? WHERE workspace_id = ? AND id = ?').run('', 'legacy-adoption', 'codex');
+    const value = workspace('legacy-adoption', join(fx.root, 'legacy-adoption'), { agents: [fx.sourceAgent] });
+    const source = writeSource(fx.root, [value]);
+    const beforeAgent = legacyAgentSnapshot(fx.db, 'legacy-adoption', 'codex');
+
+    const result = await fx.service.run(runInput(fx));
+
+    assert.equal(result.adoptableCount, 1);
+    assert.equal(result.completedCount, 1);
+    assert.equal(result.quarantinedCount, 0);
+    assert.equal((legacyAgentSnapshot(fx.db, 'legacy-adoption', 'codex')).model, '');
+    assert.deepEqual({
+      ...legacyAgentSnapshot(fx.db, 'legacy-adoption', 'codex'),
+      provider_config_id: null,
+    }, { ...beforeAgent, provider_config_id: null });
+    assert.deepEqual(readFileSync(join(fx.root, 'workspace', 'workspaces.json')), source);
+  } finally {
+    fx.cleanup();
+  }
+});
+
 test('[M2.8-P3-R1-T002] Legacy Agent set and Provider compatibility conflicts quarantine without Workspace insertion', async () => {
   const extraAgentFx = await legacyAdoptionFixture();
   try {
