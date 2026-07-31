@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto';
 
-import type { AcceptanceDomainId } from './M2AcceptanceInventory.js';
+import {
+  M2_PARITY_FIELD_MAPS,
+  type AcceptanceDomainId,
+  type M2AcceptanceAggregate,
+  type M2ParityFieldMap,
+} from './M2AcceptanceInventory.js';
 
 export type M2ParityClassification =
   | 'equal'
@@ -13,15 +18,7 @@ export type M2ParityClassification =
   | 'conflict'
   | 'changed_source';
 
-export type M2ParityAggregate =
-  | 'task-domain'
-  | 'conversation'
-  | 'workspace'
-  | 'agent-profile'
-  | 'provider-configuration'
-  | 'legacy-task-item'
-  | 'migration-evidence'
-  | 'operational';
+export type M2ParityAggregate = M2AcceptanceAggregate;
 
 export interface M2ParityRecord {
   readonly recordKey: string;
@@ -160,10 +157,8 @@ function emptyCounts(): Record<M2ParityClassification, number> {
   return Object.fromEntries(CLASSIFICATIONS.map(classification => [classification, 0])) as Record<M2ParityClassification, number>;
 }
 
-function expectedAggregate(domainId: AcceptanceDomainId): M2ParityAggregate | undefined {
-  if (domainId === 'task_domain_task_run') return 'task-domain';
-  if (domainId === 'conversation_runtime') return 'conversation';
-  return undefined;
+function fieldMapFor(domainId: AcceptanceDomainId): M2ParityFieldMap {
+  return M2_PARITY_FIELD_MAPS[domainId];
 }
 
 function sortedUnique(values: readonly string[]): string[] {
@@ -273,29 +268,77 @@ export class M2ReadOnlyParityService {
       );
     }
 
+    const fieldMap = fieldMapFor(input.domainId);
     const allRecords = [...input.legacyRecords, ...input.canonicalRecords];
-    const expected = expectedAggregate(input.domainId);
-    const invalidAggregateKeys = sortedUnique(
-      allRecords
-        .filter(record => record.aggregate !== input.aggregate || (expected !== undefined && record.aggregate !== expected))
-        .map(record => record.recordKey),
-    );
-    if (invalidAggregateKeys.length > 0) {
-      counts.conflict = invalidAggregateKeys.length;
+    const aggregateEvidence: M2ParityEvidence[] = [];
+    if (input.aggregate !== fieldMap.expectedAggregate) {
+      aggregateEvidence.push(evidenceFor(
+        '__input__',
+        'aggregate',
+        'conflict',
+        fieldMap.expectedAggregate,
+        input.aggregate,
+        'input_aggregate_mismatch',
+      ));
+    }
+    for (const record of [...allRecords].sort((left, right) => left.recordKey.localeCompare(right.recordKey))) {
+      if (record.aggregate !== fieldMap.expectedAggregate) {
+        aggregateEvidence.push(evidenceFor(
+          record.recordKey,
+          'aggregate',
+          'conflict',
+          fieldMap.expectedAggregate,
+          record.aggregate,
+          'aggregate_boundary_mismatch',
+        ));
+      }
+    }
+    if (aggregateEvidence.length > 0) {
+      counts.conflict = aggregateEvidence.length;
       return finish(
         input,
         sourceHash,
         'conflict',
         counts,
         { fieldConsistent: false, contractConsistent: false },
-        invalidAggregateKeys.map(recordKey => evidenceFor(
-          recordKey,
-          'aggregate',
-          'conflict',
-          expected,
-          input.aggregate,
-          'aggregate_boundary_mismatch',
-        )),
+        aggregateEvidence,
+      );
+    }
+
+    const malformedEvidence: M2ParityEvidence[] = [];
+    for (const record of [...allRecords].sort((left, right) => left.recordKey.localeCompare(right.recordKey))) {
+      for (const fieldName of fieldMap.requiredLogicalFields) {
+        if (!Object.prototype.hasOwnProperty.call(record.fields, fieldName) || record.fields[fieldName] === undefined) {
+          malformedEvidence.push(evidenceFor(
+            record.recordKey,
+            fieldName,
+            'malformed',
+            undefined,
+            undefined,
+            'required_field_missing',
+          ));
+        }
+      }
+    }
+    if (fieldMap.requiresBehaviorParity && input.behavior === undefined) {
+      malformedEvidence.push(evidenceFor(
+        '__behavior__',
+        'behavior_contract',
+        'malformed',
+        undefined,
+        undefined,
+        'required_behavior_digest_missing',
+      ));
+    }
+    if (malformedEvidence.length > 0) {
+      counts.malformed = malformedEvidence.length;
+      return finish(
+        input,
+        sourceHash,
+        'malformed',
+        counts,
+        { fieldConsistent: false, contractConsistent: false },
+        malformedEvidence,
       );
     }
 
@@ -371,8 +414,8 @@ export class M2ReadOnlyParityService {
       }
     }
 
-    const contractConsistent = input.behavior === undefined
-      || input.behavior.legacyContractDigest === input.behavior.canonicalContractDigest;
+    const contractConsistent = !fieldMap.requiresBehaviorParity
+      || (input.behavior !== undefined && input.behavior.legacyContractDigest === input.behavior.canonicalContractDigest);
     if (!contractConsistent) {
       counts.mismatch += 1;
       evidence.push(evidenceFor(

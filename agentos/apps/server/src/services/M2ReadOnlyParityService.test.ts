@@ -7,6 +7,7 @@ import { join } from 'node:path';
 
 import {
   M2_ACCEPTANCE_INVENTORY,
+  M2_PARITY_FIELD_MAPS,
   createM2AcceptanceInventory,
   type AcceptanceDomainId,
 } from './M2AcceptanceInventory.js';
@@ -29,7 +30,9 @@ function taskRecord(
   fields: Record<string, unknown>,
   aggregate: M2ParityRecord['aggregate'] = 'task-domain',
 ): M2ParityRecord {
-  return { recordKey, fields, aggregate };
+  const requiredFields = M2_PARITY_FIELD_MAPS.task_domain_task_run.requiredLogicalFields;
+  const defaults = Object.fromEntries(requiredFields.map(field => [field, `required-${field}`]));
+  return { recordKey, fields: { ...defaults, ...fields }, aggregate };
 }
 
 function baseInput(overrides: Partial<M2ParityInput> = {}): M2ParityInput {
@@ -95,6 +98,11 @@ test('Acceptance Inventory is deeply immutable and has unique, non-conflicting a
     assert.equal(Object.isFrozen(domain.currentStorage), true);
     assert.equal(Object.isFrozen(domain.productionReaders), true);
     assert.equal(Object.isFrozen(domain.productionWriters), true);
+    assert.equal(Object.isFrozen(domain.routeServiceEntrypoints), true);
+    assert.equal(Object.isFrozen(domain.storageOwners), true);
+    assert.equal(Object.isFrozen(domain.crossDomainWriters), true);
+    assert.equal(Object.isFrozen(domain.productionCapableUnmounted), true);
+    assert.equal(Object.isFrozen(domain.testOnlySymbols), true);
     assert.ok(domain.authoritativeReadSource.length > 0);
     assert.ok(domain.authoritativeWriteSource.length > 0);
     assert.ok(domain.repositoryServiceRouteSymbols.length > 0);
@@ -130,6 +138,167 @@ test('Inventory excludes worktree leases, memory Markdown, artifacts, and test f
   assert.match(exclusions.currentStorage.join('|'), /artifacts/);
   assert.doesNotMatch(exclusions.productionReaders.join('|'), /\.test\.ts/);
   assert.doesNotMatch(exclusions.productionWriters.join('|'), /fixture/i);
+});
+
+test('Inventory records Workspace deletion readers, writers, and tombstone ownership', () => {
+  const workspace = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'workspace_aggregate');
+  assert.ok(workspace);
+  assert.ok(workspace.productionWriters.includes('apps/server/src/routes/workspaces.ts:createWorkspaceRoutes DELETE /:id'));
+  assert.ok(workspace.productionWriters.includes('apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.remove'));
+  assert.ok(workspace.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.deleteWorkspace'));
+  assert.ok(workspace.crossDomainWriters.includes('SqliteStore.deleteWorkspace: workspace tombstone write'));
+  assert.ok(workspace.storageOwners.includes('SqliteStore._workspace_tombstones'));
+});
+
+test('Inventory records Agent/Profile writes and the bound Provider cross-domain write', () => {
+  const agent = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'agent_profile');
+  assert.ok(agent);
+  assert.ok(agent.productionWriters.includes('apps/server/src/store/SqliteStore.ts:SqliteStore.updateAgentProfile'));
+  assert.ok(agent.productionWriters.includes('apps/server/src/routes/conversations.ts:createConversationRoutes PATCH /agents/:agentId'));
+  assert.ok(agent.crossDomainWriters.includes('SqliteStore.updateAgentProfile: provider_configurations binding update'));
+  assert.deepEqual(agent.productionCapableUnmounted, []);
+});
+
+test('Inventory records Provider repository and route reader/writer entrypoints', () => {
+  const provider = M2_ACCEPTANCE_INVENTORY.domains.find(domain => domain.domainId === 'provider_configuration');
+  assert.ok(provider);
+  for (const method of ['findByWorkspace', 'findById', 'findByWorkspaceAndName', 'insert', 'update', 'archive']) {
+    assert.ok(provider.repositoryServiceRouteSymbols.includes(`ProviderConfigurationRepository.${method}`));
+  }
+  assert.ok(provider.productionReaders.includes('apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes GET'));
+  assert.ok(provider.productionWriters.includes('apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes POST/PUT/DELETE'));
+  assert.ok(provider.crossDomainWriters.includes('WorkspaceManager.create: agent_profiles + provider_configurations initial write'));
+  assert.ok(provider.crossDomainWriters.includes('SqliteStore.updateAgentProfile: provider_configurations binding update'));
+});
+
+test('Inventory distinguishes mounted entrypoints, storage owners, cross-domain writers, and test-only symbols', () => {
+  for (const domain of M2_ACCEPTANCE_INVENTORY.domains) {
+    assert.ok(domain.routeServiceEntrypoints.length > 0, domain.domainId);
+    assert.ok(domain.storageOwners.length > 0, domain.domainId);
+    assert.ok(Array.isArray(domain.crossDomainWriters), domain.domainId);
+    assert.ok(Array.isArray(domain.productionCapableUnmounted), domain.domainId);
+    assert.ok(Array.isArray(domain.testOnlySymbols), domain.domainId);
+    assert.doesNotMatch(domain.productionReaders.join('|'), /\.test\.ts/);
+    assert.doesNotMatch(domain.productionWriters.join('|'), /fixture|\.test\.ts/i);
+  }
+});
+
+test('Inventory performs equal-strength symbol coverage for the remaining domains', () => {
+  const inventory = M2_ACCEPTANCE_INVENTORY.domains;
+  const legacyTask = inventory.find(domain => domain.domainId === 'legacy_task_item');
+  const taskRun = inventory.find(domain => domain.domainId === 'task_domain_task_run');
+  const conversation = inventory.find(domain => domain.domainId === 'conversation_runtime');
+  const migration = inventory.find(domain => domain.domainId === 'legacy_migration_evidence');
+  const operational = inventory.find(domain => domain.domainId === 'operational_json_exclusions');
+  assert.ok(legacyTask && taskRun && conversation && migration && operational);
+  assert.ok(legacyTask.productionReaders.includes('apps/server/src/store/JsonFileStore.ts:JsonFileStore.loadTasks'));
+  assert.ok(legacyTask.productionWriters.includes('apps/server/src/store/JsonFileStore.ts:JsonFileStore.saveTasks'));
+  assert.ok(taskRun.repositoryServiceRouteSymbols.includes('TaskRepository'));
+  assert.ok(taskRun.repositoryServiceRouteSymbols.includes('RunRepository'));
+  assert.ok(taskRun.routeServiceEntrypoints.includes('apps/server/src/routes/v2Runs.ts:createV2RunRoutes'));
+  assert.ok(conversation.routeServiceEntrypoints.includes('apps/server/src/routes/conversations.ts:createConversationRoutes'));
+  assert.ok(conversation.storageOwners.includes('apps/server/src/store/SqliteStore.ts:agent_runs + executions + events'));
+  assert.ok(migration.repositoryServiceRouteSymbols.includes('LegacyDataMigrationRepository'));
+  assert.ok(migration.routeServiceEntrypoints.includes('apps/server/src/services/LegacyBackupVerifier.ts:LegacyBackupVerifier'));
+  assert.ok(operational.routeServiceEntrypoints.includes('apps/server/src/services/WorktreeManager.ts:WorktreeManager'));
+  assert.ok(operational.storageOwners.includes('MemoryService:agent-memory/records/**/*.md'));
+});
+
+test('Parity field maps cover all eight domains with frozen, normalized contracts', () => {
+  const ids = M2_ACCEPTANCE_INVENTORY.domains.map(domain => domain.domainId);
+  assert.deepEqual(Object.keys(M2_PARITY_FIELD_MAPS), ids);
+  for (const domainId of ids) {
+    const map = M2_PARITY_FIELD_MAPS[domainId];
+    assert.equal(Object.isFrozen(map), true);
+    assert.equal(Object.isFrozen(map.requiredLogicalFields), true);
+    assert.equal(Object.isFrozen(map.allowedOptionalFields), true);
+    assert.ok(map.expectedAggregate.length > 0);
+    assert.ok(map.requiredLogicalFields.length > 0, domainId);
+    assert.ok(map.behaviorContracts.length > 0, domainId);
+    assert.equal(new Set(map.requiredLogicalFields).size, map.requiredLogicalFields.length);
+    assert.ok(map.requiredLogicalFields.every(field => /^[a-z][a-z0-9_]*$/.test(field)), domainId);
+  }
+});
+
+test('same record key with empty fields on both sides is not equal', () => {
+  const emptyRecord: M2ParityRecord = { recordKey: 'task-1', fields: {}, aggregate: 'task-domain' };
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    legacyRecords: [emptyRecord],
+    canonicalRecords: [emptyRecord],
+  }));
+  assert.notEqual(result.classification, 'equal');
+  assert.equal(result.classification, 'malformed');
+});
+
+test('the same omitted required field on both sides is not equal', () => {
+  const fields = taskRecord('task-1', {}).fields as Record<string, unknown>;
+  delete fields.task_status;
+  const incompleteRecord: M2ParityRecord = { recordKey: 'task-1', fields, aggregate: 'task-domain' };
+  const result = new M2ReadOnlyParityService().compare(baseInput({
+    legacyRecords: [incompleteRecord],
+    canonicalRecords: [incompleteRecord],
+  }));
+  assert.equal(result.classification, 'malformed');
+  assert.ok(result.evidence.some(item => item.fieldName === 'task_status'));
+});
+
+test('required behavior digest is mandatory for equal', () => {
+  const result = new M2ReadOnlyParityService().compare(baseInput({ behavior: undefined }));
+  assert.notEqual(result.classification, 'equal');
+  assert.equal(result.classification, 'malformed');
+  assert.equal(result.behavior.contractConsistent, false);
+});
+
+test('every domain rejects an empty input with the wrong aggregate', () => {
+  for (const domainId of M2_ACCEPTANCE_INVENTORY.domains.map(domain => domain.domainId)) {
+    const map = M2_PARITY_FIELD_MAPS[domainId];
+    const wrongAggregate = map.expectedAggregate === 'task-domain' ? 'conversation' : 'task-domain';
+    const result = new M2ReadOnlyParityService().compare({
+      ...baseInput(),
+      domainId,
+      aggregate: wrongAggregate,
+      legacyRecords: [],
+      canonicalRecords: [],
+    });
+    assert.equal(result.classification, 'conflict', domainId);
+  }
+});
+
+test('aggregate conflict evidence uses expected and actual aggregate digests', () => {
+  const result = new M2ReadOnlyParityService().compare({
+    ...baseInput(),
+    legacyRecords: [taskRecord('task-1', {}, 'conversation')],
+    canonicalRecords: [],
+  });
+  assert.equal(result.classification, 'conflict');
+  const evidence = result.evidence.find(item => item.fieldName === 'aggregate');
+  assert.ok(evidence);
+  assert.equal(evidence.expectedValueDigest, sha256(JSON.stringify({ present: true, value: 'task-domain' })));
+  assert.equal(evidence.actualValueDigest, sha256(JSON.stringify({ present: true, value: 'conversation' })));
+  assert.notEqual(evidence.expectedValueDigest, evidence.actualValueDigest);
+});
+
+test('complete required fields and behavior digest are sufficient for equal', () => {
+  const result = new M2ReadOnlyParityService().compare(baseInput());
+  assert.equal(result.classification, 'equal');
+  assert.equal(result.behavior.contractConsistent, true);
+  assert.equal(result.counts.equal, 1);
+});
+
+test('each domain accepts a complete normalized field map only with its mapped aggregate', () => {
+  for (const domainId of M2_ACCEPTANCE_INVENTORY.domains.map(domain => domain.domainId)) {
+    const map = M2_PARITY_FIELD_MAPS[domainId];
+    const fields = Object.fromEntries(map.requiredLogicalFields.map(field => [field, `value-${field}`]));
+    const record: M2ParityRecord = { recordKey: 'record-1', fields, aggregate: map.expectedAggregate };
+    const result = new M2ReadOnlyParityService().compare({
+      ...baseInput(),
+      domainId,
+      aggregate: map.expectedAggregate,
+      legacyRecords: [record],
+      canonicalRecords: [record],
+    });
+    assert.equal(result.classification, 'equal', domainId);
+  }
 });
 
 test('exact-byte SHA-256 is reported without exposing source bytes', () => {

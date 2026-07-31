@@ -8,6 +8,24 @@ export type AcceptanceDomainId =
   | 'legacy_migration_evidence'
   | 'operational_json_exclusions';
 
+export type M2AcceptanceAggregate =
+  | 'task-domain'
+  | 'conversation'
+  | 'workspace'
+  | 'agent-profile'
+  | 'provider-configuration'
+  | 'legacy-task-item'
+  | 'migration-evidence'
+  | 'operational';
+
+export interface M2ParityFieldMap {
+  readonly expectedAggregate: M2AcceptanceAggregate;
+  readonly requiredLogicalFields: readonly string[];
+  readonly requiresBehaviorParity: boolean;
+  readonly behaviorContracts: readonly string[];
+  readonly allowedOptionalFields: readonly string[];
+}
+
 export interface AcceptanceDomain {
   readonly domainId: AcceptanceDomainId;
   readonly currentStorage: readonly string[];
@@ -17,6 +35,11 @@ export interface AcceptanceDomain {
   readonly productionReaders: readonly string[];
   readonly productionWriters: readonly string[];
   readonly repositoryServiceRouteSymbols: readonly string[];
+  readonly routeServiceEntrypoints: readonly string[];
+  readonly storageOwners: readonly string[];
+  readonly crossDomainWriters: readonly string[];
+  readonly productionCapableUnmounted: readonly string[];
+  readonly testOnlySymbols: readonly string[];
   readonly aggregateBoundary: string;
   readonly currentRetirementStatus: string;
   readonly p1ComparisonResponsibility: readonly string[];
@@ -42,6 +65,10 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     authoritativeWriteSource: [
       'apps/server/src/store/SqliteStore.ts:SqliteStore.saveWorkspaces',
       'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.create/importExisting/touch',
+      'apps/server/src/routes/workspaces.ts:createWorkspaceRoutes DELETE /:id',
+      'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.remove',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.deleteWorkspace',
+      'SqliteStore._workspace_tombstones tombstone write',
     ],
     legacyFallbackSource: [
       'apps/server/src/store/JsonFileStore.ts:JsonFileStore.loadWorkspaces',
@@ -58,6 +85,9 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.create',
       'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.importExisting',
       'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.touch',
+      'apps/server/src/routes/workspaces.ts:createWorkspaceRoutes DELETE /:id',
+      'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.remove',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.deleteWorkspace',
     ],
     repositoryServiceRouteSymbols: [
       'SqliteStore.loadWorkspaces',
@@ -67,6 +97,23 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'WorkspaceManager.create',
       'createWorkspaceRoutes',
     ],
+    routeServiceEntrypoints: [
+      'apps/server/src/routes/workspaces.ts:createWorkspaceRoutes GET /',
+      'apps/server/src/routes/workspaces.ts:createWorkspaceRoutes GET /:id',
+      'apps/server/src/routes/workspaces.ts:createWorkspaceRoutes POST /',
+      'apps/server/src/routes/workspaces.ts:createWorkspaceRoutes DELETE /:id',
+    ],
+    storageOwners: [
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.loadWorkspaces',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.deleteWorkspace',
+      'SqliteStore._workspace_tombstones',
+    ],
+    crossDomainWriters: [
+      'WorkspaceManager.create: agent_profiles + provider_configurations initial write',
+      'SqliteStore.deleteWorkspace: workspace tombstone write',
+    ],
+    productionCapableUnmounted: [],
+    testOnlySymbols: [],
     aggregateBoundary: 'Workspace aggregate with Agent Profile and Provider Configuration child rows; excludes Legacy TaskItem, Task-domain Run, and Conversation runtime.',
     currentRetirementStatus: 'SQLite is the production write authority; workspace/workspaces.json remains a JSON fallback read and evidence source.',
     p1ComparisonResponsibility: [
@@ -92,6 +139,9 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     authoritativeWriteSource: [
       'apps/server/src/store/SqliteStore.ts:SqliteStore.saveWorkspaces',
       'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.create',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateAgentProfile',
+      'apps/server/src/routes/conversations.ts:createConversationRoutes PATCH /agents/:agentId',
+      'SqliteStore.updateAgentProfile: provider_configurations binding update',
     ],
     legacyFallbackSource: [
       'workspace/workspaces.json nested agents',
@@ -105,6 +155,8 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     productionWriters: [
       'apps/server/src/store/SqliteStore.ts:SqliteStore.saveWorkspaces',
       'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.create',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateAgentProfile',
+      'apps/server/src/routes/conversations.ts:createConversationRoutes PATCH /agents/:agentId',
     ],
     repositoryServiceRouteSymbols: [
       'SqliteStore.listAgentProfiles',
@@ -112,6 +164,21 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'WorkspaceManager.create',
       'createAgentRoutes',
     ],
+    routeServiceEntrypoints: [
+      'apps/server/src/routes/conversations.ts:createConversationRoutes GET /agents',
+      'apps/server/src/routes/conversations.ts:createConversationRoutes PATCH /agents/:agentId',
+      'apps/server/src/routes/agents.ts:createAgentRoutes',
+    ],
+    storageOwners: [
+      'apps/server/src/store/SqliteStore.ts:agent_profiles',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.listAgentProfiles',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateAgentProfile',
+    ],
+    crossDomainWriters: [
+      'SqliteStore.updateAgentProfile: provider_configurations binding update',
+    ],
+    productionCapableUnmounted: [],
+    testOnlySymbols: [],
     aggregateBoundary: 'Agent Profile child aggregate bound to a Workspace; excludes Provider execution authority and Task/Conversation runtime history.',
     currentRetirementStatus: 'SQLite is current authority; nested JSON is compatibility source and evidence only.',
     p1ComparisonResponsibility: [
@@ -132,11 +199,15 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     ],
     authoritativeReadSource: [
       'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository.findByWorkspace',
+      'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository.findById',
+      'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository.findByWorkspaceAndName',
       'apps/server/src/store/WorkspaceCompatibilityRepository.ts:WorkspaceCompatibilityRepository',
     ],
     authoritativeWriteSource: [
       'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository.insert/update/archive',
       'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.create',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateAgentProfile',
+      'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes POST/PUT/DELETE',
     ],
     legacyFallbackSource: [
       'workspace/workspaces.json nested provider data',
@@ -144,20 +215,42 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     ],
     productionReaders: [
       'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository.findByWorkspace',
+      'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository.findById',
+      'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository.findByWorkspaceAndName',
       'apps/server/src/store/WorkspaceCompatibilityRepository.ts:WorkspaceCompatibilityRepository',
-      'apps/server/src/routes/providerConfigs.ts',
+      'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes GET',
     ],
     productionWriters: [
       'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository.insert/update/archive',
       'apps/server/src/managers/WorkspaceManager.ts:WorkspaceManager.create',
+      'apps/server/src/store/SqliteStore.ts:SqliteStore.updateAgentProfile',
+      'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes POST/PUT/DELETE',
     ],
     repositoryServiceRouteSymbols: [
       'ProviderConfigurationRepository.findByWorkspace',
+      'ProviderConfigurationRepository.findById',
+      'ProviderConfigurationRepository.findByWorkspaceAndName',
       'ProviderConfigurationRepository.insert',
       'ProviderConfigurationRepository.update',
       'ProviderConfigurationRepository.archive',
       'createProviderConfigRoutes',
     ],
+    routeServiceEntrypoints: [
+      'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes GET',
+      'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes POST',
+      'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes PUT',
+      'apps/server/src/routes/providerConfigs.ts:createProviderConfigRoutes DELETE',
+    ],
+    storageOwners: [
+      'apps/server/src/store/ProviderConfigurationRepository.ts:provider_configurations',
+      'apps/server/src/store/ProviderConfigurationRepository.ts:ProviderConfigurationRepository',
+    ],
+    crossDomainWriters: [
+      'WorkspaceManager.create: agent_profiles + provider_configurations initial write',
+      'SqliteStore.updateAgentProfile: provider_configurations binding update',
+    ],
+    productionCapableUnmounted: [],
+    testOnlySymbols: [],
     aggregateBoundary: 'Provider Configuration execution binding owned by a Workspace; excludes Legacy Task state and Conversation AgentRun history.',
     currentRetirementStatus: 'SQLite is execution authority; old JSON is comparison and adoption source only.',
     p1ComparisonResponsibility: [
@@ -206,6 +299,19 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'createTaskRoutes',
       'recoverInterruptedRunningTasks',
     ],
+    routeServiceEntrypoints: [
+      'apps/server/src/routes/tasks.ts:createTaskRoutes',
+      'apps/server/src/taskRecovery.ts:recoverInterruptedRunningTasks',
+    ],
+    storageOwners: [
+      'apps/server/src/store/JsonFileStore.ts:workspace/<workspaceId>/.agentos/tasks.json',
+      'apps/server/src/store/JsonFileStore.ts:JsonFileStore.loadTasks/saveTasks',
+    ],
+    crossDomainWriters: [
+      'createTaskRoutes Legacy Bridge: tasks.json + TaskRunService per execution',
+    ],
+    productionCapableUnmounted: [],
+    testOnlySymbols: [],
     aggregateBoundary: 'Legacy TaskItem JSON aggregate; excludes canonical Task-domain Run history and Conversation AgentRun history.',
     currentRetirementStatus: 'tasks.json read/write authority remains active in M2.8; bulk conversion and physical retirement are prohibited.',
     p1ComparisonResponsibility: [
@@ -260,6 +366,21 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'createV2RunRoutes',
       'createTaskRoutes',
     ],
+    routeServiceEntrypoints: [
+      'apps/server/src/routes/v2Tasks.ts:createV2TaskRoutes',
+      'apps/server/src/routes/v2Runs.ts:createV2RunRoutes',
+      'apps/server/src/routes/tasks.ts:createTaskRoutes Legacy Bridge',
+    ],
+    storageOwners: [
+      'apps/server/src/store/TaskRepository.ts:tasks',
+      'apps/server/src/store/RunRepository.ts:runs',
+      'apps/server/src/store/SqliteStore.ts:run_snapshots + run_stages',
+    ],
+    crossDomainWriters: [
+      'createTaskRoutes Legacy Bridge: tasks.json + TaskRunService',
+    ],
+    productionCapableUnmounted: [],
+    testOnlySymbols: [],
     aggregateBoundary: 'Task-domain canonical Task and Run aggregate: runs != agent_runs; bound to canonical task_id; Legacy bridge Run is not a Conversation AgentRun.',
     currentRetirementStatus: 'SQLite canonical for v2 and Bridge participation; Legacy Task JSON remains separate and is not bulk-converted.',
     p1ComparisonResponsibility: [
@@ -302,6 +423,17 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'createConversationRoutes',
       'createSseWriter',
     ],
+    routeServiceEntrypoints: [
+      'apps/server/src/routes/conversations.ts:createConversationRoutes',
+      'apps/server/src/routes/sse.ts:createSseWriter',
+    ],
+    storageOwners: [
+      'apps/server/src/store/SqliteStore.ts:agent_runs + executions + events',
+      'apps/server/src/services/ConversationService.ts:ConversationService',
+    ],
+    crossDomainWriters: [],
+    productionCapableUnmounted: [],
+    testOnlySymbols: [],
     aggregateBoundary: 'Conversation/message/execution lifecycle aggregate using agent_runs; independent from Task-domain runs.',
     currentRetirementStatus: 'Separate SQLite runtime retained; no Task/Conversation aggregate unification in M2.8.',
     p1ComparisonResponsibility: [
@@ -351,6 +483,22 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'LegacyTaskItemImportService',
       'LegacyBackupVerifier',
     ],
+    routeServiceEntrypoints: [
+      'apps/server/src/services/WorkspaceCompatibilityMigrationService.ts:WorkspaceCompatibilityMigrationService',
+      'apps/server/src/services/LegacyTaskItemImportService.ts:LegacyTaskItemImportService',
+      'apps/server/src/services/LegacyBackupVerifier.ts:LegacyBackupVerifier',
+    ],
+    storageOwners: [
+      'apps/server/src/store/LegacyDataMigrationRepository.ts:legacy_data_migrations',
+      'apps/server/src/store/LegacyTaskItemRepository.ts:legacy_task_items',
+      'exact-byte source and backup evidence',
+    ],
+    crossDomainWriters: [
+      'WorkspaceCompatibilityMigrationService: Workspace/Agent/Provider compatibility rows',
+      'LegacyTaskItemImportService: Legacy TaskItem evidence rows',
+    ],
+    productionCapableUnmounted: [],
+    testOnlySymbols: [],
     aggregateBoundary: 'Append-only compatibility and audit evidence; not an authoritative Task, Run, Agent Profile, Provider, or Conversation aggregate.',
     currentRetirementStatus: 'Long-term evidence retained; no Migration 012 or physical Legacy JSON retirement in M2.8.',
     p1ComparisonResponsibility: [
@@ -398,6 +546,19 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
       'MemoryService',
       'RuntimeArtifactService',
     ],
+    routeServiceEntrypoints: [
+      'apps/server/src/services/WorktreeManager.ts:WorktreeManager',
+      'apps/server/src/services/MemoryService.ts:MemoryService',
+      'apps/server/src/services/RuntimeArtifactService.ts:RuntimeArtifactService',
+    ],
+    storageOwners: [
+      'WorktreeManager:.agentos/worktrees/leases.json',
+      'MemoryService:agent-memory/records/**/*.md',
+      'RuntimeArtifactService:.agentos/artifacts/*',
+    ],
+    crossDomainWriters: [],
+    productionCapableUnmounted: [],
+    testOnlySymbols: [],
     aggregateBoundary: 'Operational state and file-backed subsystems; not part of Legacy Product JSON retirement or Task/Conversation runtime aggregates.',
     currentRetirementStatus: 'Explicitly excluded from Legacy Product JSON retirement; retained under their own contracts.',
     p1ComparisonResponsibility: [
@@ -411,6 +572,76 @@ const DOMAIN_DEFINITIONS: readonly AcceptanceDomain[] = [
     ],
   },
 ];
+
+const FIELD_MAP_DEFINITIONS: Record<AcceptanceDomainId, M2ParityFieldMap> = {
+  workspace_aggregate: {
+    expectedAggregate: 'workspace',
+    requiredLogicalFields: ['identity', 'name', 'canonical_root_path', 'git_enabled', 'memory_enabled', 'tombstone_visibility_state', 'version'],
+    requiresBehaviorParity: true,
+    behaviorContracts: ['workspace CRUD, fallback visibility, deletion tombstone, and version/concurrency behavior'],
+    allowedOptionalFields: ['last_opened_at', 'created_at', 'updated_at', 'agent_bindings', 'provider_bindings'],
+  },
+  agent_profile: {
+    expectedAggregate: 'agent-profile',
+    requiredLogicalFields: ['identity', 'workspace_binding', 'role', 'enabled', 'provider_binding', 'model', 'thinking_effort', 'version'],
+    requiresBehaviorParity: true,
+    behaviorContracts: ['profile update, provider binding, enabled state, and version/concurrency behavior'],
+    allowedOptionalFields: ['name', 'role_title', 'system_prompt_digest', 'permissions_digest', 'runtime_capability_digest'],
+  },
+  provider_configuration: {
+    expectedAggregate: 'provider-configuration',
+    requiredLogicalFields: [
+      'identity', 'workspace_binding', 'provider_type', 'adapter_runtime_mode', 'executable_digest',
+      'args_template_digest', 'model', 'capabilities', 'timeout_policy', 'approval_output_mode', 'enabled', 'version',
+    ],
+    requiresBehaviorParity: true,
+    behaviorContracts: ['provider route GET/POST/PUT/DELETE, optimistic versioning, archive protection, and secret rejection'],
+    allowedOptionalFields: ['name', 'environment_profile_binding', 'secret_profile_binding', 'working_directory_mode'],
+  },
+  legacy_task_item: {
+    expectedAggregate: 'legacy-task-item',
+    requiredLogicalFields: ['identity', 'workspace_binding', 'status', 'current_agent', 'review_state', 'terminal_error_state', 'bridge_relevant_state'],
+    requiresBehaviorParity: true,
+    behaviorContracts: ['Legacy TaskItem read/write, recovery, per-execution bridge, and SSE behavior'],
+    allowedOptionalFields: ['title', 'description_digest', 'created_at', 'updated_at'],
+  },
+  task_domain_task_run: {
+    expectedAggregate: 'task-domain',
+    requiredLogicalFields: [
+      'task_identity', 'task_status', 'task_version', 'run_identity', 'run_status', 'run_origin',
+      'run_task_binding', 'snapshot_identity', 'snapshot_immutability', 'stage_identity', 'stage_status_sequence',
+    ],
+    requiresBehaviorParity: true,
+    behaviorContracts: ['Task/Run lifecycle, snapshots, stages, idempotency, concurrency, and Legacy bridge separation'],
+    allowedOptionalFields: ['task_metadata_digest', 'run_error_digest', 'created_at', 'updated_at'],
+  },
+  conversation_runtime: {
+    expectedAggregate: 'conversation',
+    requiredLogicalFields: [
+      'conversation_identity', 'message_identity', 'run_identity', 'execution_identity',
+      'lifecycle_status', 'sequence_cursor_ownership', 'event_step_ownership',
+    ],
+    requiresBehaviorParity: true,
+    behaviorContracts: ['direct/group Conversation execution, agent_runs lifecycle, sequence/cursor, and SSE/event behavior'],
+    allowedOptionalFields: ['title', 'message_content_digest', 'agent_binding', 'created_at', 'updated_at'],
+  },
+  legacy_migration_evidence: {
+    expectedAggregate: 'migration-evidence',
+    requiredLogicalFields: ['source_identity_hash', 'scope', 'classification', 'terminal_outcome', 'accepted_snapshot_identity', 'evidence_immutability'],
+    requiresBehaviorParity: true,
+    behaviorContracts: ['migration registry ownership, repeat/no-op behavior, backup evidence, and append-only retention'],
+    allowedOptionalFields: ['migration_id', 'record_count', 'created_at', 'updated_at'],
+  },
+  operational_json_exclusions: {
+    expectedAggregate: 'operational',
+    requiredLogicalFields: ['opaque_identity', 'subsystem_kind', 'source_digest', 'exclusion_contract'],
+    requiresBehaviorParity: true,
+    behaviorContracts: ['independent leases, Memory Markdown, and artifact file contracts outside product JSON retirement'],
+    allowedOptionalFields: ['workspace_binding', 'metadata_digest', 'created_at', 'updated_at'],
+  },
+};
+
+export const M2_PARITY_FIELD_MAPS: Readonly<Record<AcceptanceDomainId, M2ParityFieldMap>> = deepFreeze(FIELD_MAP_DEFINITIONS);
 
 function deepFreeze<T>(value: T): T {
   if (value !== null && typeof value === 'object' && !Object.isFrozen(value)) {
@@ -432,6 +663,11 @@ function cloneDomain(domain: AcceptanceDomain): AcceptanceDomain {
     productionReaders: [...domain.productionReaders],
     productionWriters: [...domain.productionWriters],
     repositoryServiceRouteSymbols: [...domain.repositoryServiceRouteSymbols],
+    routeServiceEntrypoints: [...domain.routeServiceEntrypoints],
+    storageOwners: [...domain.storageOwners],
+    crossDomainWriters: [...domain.crossDomainWriters],
+    productionCapableUnmounted: [...domain.productionCapableUnmounted],
+    testOnlySymbols: [...domain.testOnlySymbols],
     p1ComparisonResponsibility: [...domain.p1ComparisonResponsibility],
     p2P3P4OwningGate: [...domain.p2P3P4OwningGate],
   };
