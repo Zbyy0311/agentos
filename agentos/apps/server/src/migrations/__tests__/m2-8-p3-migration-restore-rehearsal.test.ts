@@ -15,6 +15,9 @@ import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
 import test from 'node:test';
 
+import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
+import type { TaskItem, Workspace } from '@agentos/shared';
+
 import { MigrationRunner } from '../MigrationRunner.js';
 import { MigrationRegistry } from '../registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../default-registry.js';
@@ -22,6 +25,11 @@ import { LegacyDataMigrationRepository } from '../../store/LegacyDataMigrationRe
 import { LegacyBackupVerifier, type LegacyBackupResult } from '../../services/LegacyBackupVerifier.js';
 import { LegacyTaskItemImportService } from '../../services/LegacyTaskItemImportService.js';
 import { WorkspaceCompatibilityMigrationService } from '../../services/WorkspaceCompatibilityMigrationService.js';
+import { SqliteStore } from '../../store/SqliteStore.js';
+import { RunStepService } from '../../services/RunStepService.js';
+import { TaskRunService } from '../../services/TaskRunService.js';
+import { recoverInterruptedRuns } from '../../runRecovery.js';
+import { recoverInterruptedTaskRuntime } from '../../taskRecovery.js';
 
 type SqliteDb = {
   exec(sql: string): void;
@@ -127,10 +135,112 @@ function cleanupTemp(path: string): void {
   assert.equal(existsSync(path), false, 'P3 temporary rehearsal directory was not cleaned up');
 }
 
+/**
+ * Portable contract: the real-copy rehearsal runs only when the operator
+ * binds AGENTOS_P3_SOURCE_ROOT to a representative v1 source. Without the
+ * variable the single real-copy test is explicitly skipped, never failed,
+ * so the default Full Server run stays free of real user data.
+ */
+const P3_SOURCE_ROOT = process.env.AGENTOS_P3_SOURCE_ROOT?.trim() || undefined;
+const P3_REAL_COPY_SKIP: string | false = P3_SOURCE_ROOT === undefined
+  ? 'AGENTOS_P3_SOURCE_ROOT is not set; the real-copy rehearsal is explicitly skipped for the portable run'
+  : false;
+
 function sourceRootFromEnvironment(): string {
-  const sourceRoot = process.env.AGENTOS_P3_SOURCE_ROOT?.trim();
-  assert.ok(sourceRoot, 'AGENTOS_P3_SOURCE_ROOT is required for the real-copy rehearsal');
-  return sourceRoot;
+  assert.ok(P3_SOURCE_ROOT, 'AGENTOS_P3_SOURCE_ROOT is required for the real-copy rehearsal');
+  return P3_SOURCE_ROOT;
+}
+
+/** Tables the approved compatibility services may append to during apply. */
+const APPEND_ALLOWED_TABLES = new Set([
+  'workspaces',
+  'agent_profiles',
+  'provider_configurations',
+  'legacy_data_migrations',
+  'legacy_task_items',
+]);
+
+const FTS_SHADOW_SUFFIXES = ['_data', '_idx', '_content', '_docsize', '_config'];
+
+/**
+ * Enumerate the source database business tables. SQLite internal tables,
+ * FTS shadow tables, and the legitimately advancing _schema_migrations are
+ * excluded; everything else is preservation evidence.
+ */
+function businessTables(db: SqliteDb): string[] {
+  const rows = db.prepare("SELECT name, sql FROM sqlite_master WHERE type = 'table'").all() as Array<{ name: string; sql: string | null }>;
+  const shadowTables = new Set(
+    rows
+      .filter(row => typeof row.sql === 'string' && /using\s+fts5/i.test(row.sql))
+      .flatMap(row => FTS_SHADOW_SUFFIXES.map(suffix => `${row.name}${suffix}`)),
+  );
+  return rows
+    .map(row => row.name)
+    .filter(name => !name.startsWith('sqlite_') && name !== '_schema_migrations' && !shadowTables.has(name))
+    .sort();
+}
+
+interface SourceTableSnapshot {
+  columns: string[];
+  count: number;
+  digest: string;
+  rowids: number[] | null;
+}
+
+function digestRows(rows: unknown[]): string {
+  const json = JSON.stringify(rows, (_key, value: unknown) => typeof value === 'bigint' ? value.toString() : value);
+  return sha256(Buffer.from(json, 'utf8'));
+}
+
+/**
+ * Capture one source table by its original column list. The digest never
+ * includes columns added later by migrations, so an added
+ * agent_profiles.provider_config_id cannot enter the preservation digest.
+ */
+function captureSourceTable(db: SqliteDb, table: string): SourceTableSnapshot {
+  const columns = (db.prepare(`PRAGMA table_info("${table}")`).all() as Array<{ name: string }>).map(column => column.name);
+  assert.ok(columns.length > 0, `source table ${table} has no columns`);
+  const definition = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ?").get(table) as { sql: string | null };
+  const selectColumns = columns.map(column => `"${column}"`).join(', ');
+  const withoutRowid = typeof definition.sql === 'string' && /without\s+rowid/i.test(definition.sql);
+  const rows = withoutRowid
+    ? db.prepare(`SELECT ${selectColumns} FROM "${table}" ORDER BY ${selectColumns}`).all() as Array<Record<string, unknown>>
+    : db.prepare(`SELECT rowid AS __rowid__, ${selectColumns} FROM "${table}" ORDER BY __rowid__`).all() as Array<Record<string, unknown>>;
+  return {
+    columns,
+    count: rows.length,
+    digest: digestRows(rows),
+    rowids: withoutRowid ? null : rows.map(row => Number(row.__rowid__)),
+  };
+}
+
+function captureSourceTables(db: SqliteDb): Record<string, SourceTableSnapshot> {
+  return Object.fromEntries(businessTables(db).map(table => [table, captureSourceTable(db, table)]));
+}
+
+/**
+ * Verify that every original source record survives apply unchanged on its
+ * original columns. Tables outside the approved append set must also keep
+ * their exact row count; append-allowed tables may only add new rows.
+ */
+function assertSourceTablesPreserved(db: SqliteDb, snapshots: Record<string, SourceTableSnapshot>): Record<string, number> {
+  const preservedCounts: Record<string, number> = {};
+  for (const [table, snapshot] of Object.entries(snapshots)) {
+    const selectColumns = snapshot.columns.map(column => `"${column}"`).join(', ');
+    const rows = snapshot.rowids === null
+      ? db.prepare(`SELECT ${selectColumns} FROM "${table}" ORDER BY ${selectColumns}`).all() as Array<Record<string, unknown>>
+      : db.prepare(`SELECT rowid AS __rowid__, ${selectColumns} FROM "${table}" ORDER BY __rowid__`).all() as Array<Record<string, unknown>>;
+    const preserved = snapshot.rowids === null
+      ? rows
+      : rows.filter(row => snapshot.rowids!.includes(Number(row.__rowid__)));
+    assert.equal(preserved.length, snapshot.count, `source table ${table} lost original records`);
+    assert.equal(digestRows(preserved), snapshot.digest, `source table ${table} changed original records`);
+    if (!APPEND_ALLOWED_TABLES.has(table)) {
+      assert.equal(rows.length, snapshot.count, `non-append source table ${table} gained or lost rows`);
+    }
+    preservedCounts[table] = snapshot.count;
+  }
+  return preservedCounts;
 }
 
 function loadRealSources(sourceRoot: string): { databasePath: string; files: SourceFile[] } {
@@ -300,7 +410,7 @@ test('P3 fresh DB applies 001–011 once and is an explicit no-op on the second 
   }
 });
 
-test('P3 real-copy migration, verified Backup, isolated Restore, and source hash preservation', async () => {
+test('P3 real-copy migration, verified Backup, isolated Restore, and source hash preservation', { skip: P3_REAL_COPY_SKIP }, async () => {
   const sourceRoot = sourceRootFromEnvironment();
   const sources = loadRealSources(sourceRoot);
   const sourceDbBefore = readFileSync(sources.databasePath);
@@ -318,6 +428,11 @@ test('P3 real-copy migration, verified Backup, isolated Restore, and source hash
 
   try {
     const sourceDb = openDb(sources.databasePath, true);
+    const sourceTableSnapshots = captureSourceTables(sourceDb);
+    const activeRunInventoryBefore = {
+      conversationActive: (sourceDb.prepare("SELECT COUNT(*) AS count FROM agent_runs WHERE status IN ('queued', 'running')").get() as { count: number }).count,
+      conversationWaiting: (sourceDb.prepare("SELECT COUNT(*) AS count FROM agent_runs WHERE status = 'waiting_user'").get() as { count: number }).count,
+    };
     const sourceBackups = await createVerifiedBackups(
       sources.databasePath,
       sourceDb,
@@ -357,37 +472,65 @@ test('P3 real-copy migration, verified Backup, isolated Restore, and source hash
     workingDb.close();
 
     const workspaceEntries = readWorkspaceEntries(sources.files[0].bytes);
-    const workspaceRuns: Array<{ first: Record<string, unknown>; second: Record<string, unknown> }> = [];
+    const workspaceRuns: Array<{ first: Record<string, unknown> }> = [];
     for (const [cohortIndex, entry] of workspaceEntries.entries()) {
       assert.equal(typeof entry.id, 'string');
       console.log(`P3_REAL_COPY_WORKSPACE_COHORT index=${cohortIndex + 1}`);
       const preview = await runWorkspaceDryRun(workingRoot, workingDatabasePath, entry.id as string);
       console.log(`P3_REAL_COPY_WORKSPACE_PREVIEW index=${cohortIndex + 1} adoptable=${preview.adoptableCount} equal=${preview.equalCount} compatibleMissing=${preview.compatibleMissingCount} conflict=${preview.conflictCount} invalid=${preview.invalidCount}`);
       const first = await runWorkspaceMigration(workingRoot, workingDatabasePath, applyBackupDirectory, entry.id as string);
-      const second = await runWorkspaceMigration(workingRoot, workingDatabasePath, applyBackupDirectory, entry.id as string);
       assert.equal(first.quarantinedCount, 0);
       assert.equal(first.completedCount, 1);
-      assert.equal(second.noopCount, 1);
-      workspaceRuns.push({ first, second });
+      workspaceRuns.push({ first });
     }
 
-    const taskResults: Array<{ first: Record<string, unknown>; second: Record<string, unknown> }> = [];
+    const taskResults: Array<{ first: Record<string, unknown> }> = [];
     for (const file of sources.files.slice(1)) {
       const taskWorkspaceId = relative(join(workingRoot, 'workspace'), join(workingRoot, file.relativePath)).split(/[\\/]/)[0];
       const first = await runTaskMigration(workingRoot, workingDatabasePath, applyBackupDirectory, taskWorkspaceId);
-      const second = await runTaskMigration(workingRoot, workingDatabasePath, applyBackupDirectory, taskWorkspaceId);
       assert.equal(first.quarantinedCount, 0);
       assert.equal(first.completedCount, 1);
-      assert.equal(second.noopCount, 1);
-      taskResults.push({ first, second });
+      taskResults.push({ first });
     }
 
+    // Post-apply gate before any repeat: strict Registry 001-011,
+    // integrity_check=ok, foreign_key_check=0, and every original source
+    // record preserved on its original columns.
     const afterApplyDb = openDb(workingDatabasePath, true);
+    assertMigrationState(afterApplyDb);
+    const preservedSourceTables = assertSourceTablesPreserved(afterApplyDb, sourceTableSnapshots);
     const afterApplyEvidence = tableEvidence(afterApplyDb);
     assert.equal(afterApplyEvidence.agent_profiles.count, sourceRecordCounts.agent_profiles);
     assert.equal(afterApplyEvidence.agent_runs.count, sourceRecordCounts.agent_runs);
     assert.equal(afterApplyEvidence.legacy_task_items.count, taskResults.reduce((sum, result) => sum + Number(result.first.importedCount), 0));
+    const appliedAttemptCount = tableCount(afterApplyDb, 'legacy_data_migrations');
+    const taskActiveAfterApply = (afterApplyDb.prepare("SELECT COUNT(*) AS count FROM runs WHERE status IN ('queued', 'running')").get() as { count: number }).count;
     afterApplyDb.close();
+
+    // Repeat/no-op gate: every cohort reruns as an exact-source no-op with
+    // no new Attempt, no table drift, and unchanged integrity.
+    const workspaceRepeats: Array<Record<string, unknown>> = [];
+    for (const entry of workspaceEntries) {
+      const second = await runWorkspaceMigration(workingRoot, workingDatabasePath, applyBackupDirectory, entry.id as string);
+      assert.equal(second.noopCount, 1);
+      assert.equal(second.completedCount, 0);
+      assert.equal(second.quarantinedCount, 0);
+      workspaceRepeats.push(second);
+    }
+    const taskRepeats: Array<Record<string, unknown>> = [];
+    for (const file of sources.files.slice(1)) {
+      const taskWorkspaceId = relative(join(workingRoot, 'workspace'), join(workingRoot, file.relativePath)).split(/[\\/]/)[0];
+      const second = await runTaskMigration(workingRoot, workingDatabasePath, applyBackupDirectory, taskWorkspaceId);
+      assert.equal(second.noopCount, 1);
+      assert.equal(second.completedCount, 0);
+      assert.equal(second.quarantinedCount, 0);
+      taskRepeats.push(second);
+    }
+    const afterRepeatDb = openDb(workingDatabasePath, true);
+    assertMigrationState(afterRepeatDb);
+    assert.deepEqual(tableEvidence(afterRepeatDb), afterApplyEvidence);
+    assert.equal(tableCount(afterRepeatDb, 'legacy_data_migrations'), appliedAttemptCount, 'repeat runs must not add migration Attempts');
+    afterRepeatDb.close();
 
     mkdirSync(join(restoreRoot, '.agentos'), { recursive: true });
     copyFileSync(preApplyBackups.sqliteBackupPath, restoreDatabasePath);
@@ -408,10 +551,18 @@ test('P3 real-copy migration, verified Backup, isolated Restore, and source hash
     console.log(`P3_REAL_COPY_EVIDENCE ${JSON.stringify({
       sourceDb: { bytes: sourceDbBefore.length, sha256: sourceDbHashBefore },
       sourceJson: sources.files.map(file => ({ label: file.label, bytes: file.bytes.length, sha256: file.hash })),
+      sourceTablesPreserved: preservedSourceTables,
+      activeRunInventory: {
+        beforeMigration: activeRunInventoryBefore,
+        taskDomainActiveAfterApply: taskActiveAfterApply,
+      },
       preApplyTables: preApplyEvidence,
       afterApplyTables: afterApplyEvidence,
-      workspace: { cohortCount: workspaceRuns.length, firstCompleted: workspaceRuns.reduce((sum, run) => sum + Number(run.first.completedCount), 0), secondNoop: workspaceRuns.reduce((sum, run) => sum + Number(run.second.noopCount), 0) },
-      tasks: taskResults,
+      workspace: { cohortCount: workspaceRuns.length, firstCompleted: workspaceRuns.reduce((sum, run) => sum + Number(run.first.completedCount), 0), repeatNoop: workspaceRepeats.reduce((sum, run) => sum + Number(run.noopCount), 0) },
+      tasks: taskResults.map(result => result.first),
+      taskRepeatNoop: taskRepeats.reduce((sum, run) => sum + Number(run.noopCount), 0),
+      postApply: { registry: EXPECTED_MIGRATIONS, integrity: 'ok', foreignKeyViolations: 0, attempts: appliedAttemptCount },
+      repeat: { registry: EXPECTED_MIGRATIONS, integrity: 'ok', foreignKeyViolations: 0, attemptsUnchanged: true },
       restore: { registry: EXPECTED_MIGRATIONS, jsonExactByte: true, integrity: 'ok', foreignKeyViolations: 0 },
       originalHashesUnchanged: true,
     })}`);
@@ -496,6 +647,119 @@ test('P3 isolated classification and recovery fixtures quarantine unsafe records
       sourceKind: 'isolated-derived-fixture',
     })}`);
   } finally {
+    cleanupTemp(root);
+  }
+});
+
+test('P3 Run Recovery: active inventory, Conversation interrupted recovery, Task queued bridge recovery, and aggregate isolation', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-m28-p3-run-recovery-'));
+  const workspaceId = 'p3-run-recovery';
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const workspace: Workspace = {
+      id: workspaceId,
+      name: 'P3 Run Recovery',
+      rootPath: root,
+      gitEnabled: false,
+      memoryEnabled: false,
+      agents: structuredClone(DEFAULT_WORKSPACE_AGENTS),
+      lastOpenedAt: NOW,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    store.saveWorkspaces([workspace]);
+    store.createConversation({ id: 'conversation-a', workspaceId, type: 'direct', title: 'Recovery', agentId: 'codex', createdAt: NOW, updatedAt: NOW });
+    store.createMessage({ id: 'message-a', conversationId: 'conversation-a', workspaceId, senderType: 'user', content: 'recover', createdAt: NOW });
+    for (const [id, status] of [['queued-run', 'queued'], ['running-run', 'running'], ['done-run', 'completed'], ['cancelled-run', 'cancelled']] as const) {
+      store.createRun({ id, workspaceId, conversationId: 'conversation-a', sourceMessageId: 'message-a', objective: id, status, createdAt: NOW, updatedAt: NOW });
+    }
+    store.createExecution({ id: 'running-execution', runId: 'running-run', conversationId: 'conversation-a', workspaceId, sourceMessageId: 'message-a', agentId: 'codex', status: 'running_cli', mode: 'mock', createdAt: NOW, updatedAt: NOW });
+    const steps = new RunStepService(store);
+    await steps.initializeDirectRun({ workspaceId, runId: 'running-run', agentId: 'codex' });
+    await steps.update({ workspaceId, runId: 'running-run', stableStepKey: 'direct.context', status: 'running' });
+
+    const legacyTask: TaskItem = {
+      id: 'p3-legacy-running',
+      workspaceId,
+      title: 'P3 legacy running task',
+      status: 'running',
+      currentAgent: 'codex_manager',
+      outputs: [],
+      reviewDecision: 'unknown',
+      reviewBlocked: false,
+      createdAt: NOW,
+      updatedAt: NOW,
+    };
+    store.saveTask(workspaceId, legacyTask);
+    const service = new TaskRunService(store);
+    const bridge = service.createLegacyRunForBridge({
+      workspaceId,
+      legacyTaskId: legacyTask.id,
+      title: legacyTask.title,
+      createdBy: 'legacy_pipeline',
+      objective: legacyTask.title,
+      workspace,
+    });
+
+    // Active Run inventory across both aggregates before recovery.
+    const db = store.getDatabase() as unknown as SqliteDb;
+    const conversationActiveBefore = store.listRunsForRecovery().map(run => run.id).sort();
+    assert.deepEqual(conversationActiveBefore, ['queued-run', 'running-run']);
+    assert.equal(store.runRepository().findActiveByTask(workspaceId, bridge.task.id)?.id, bridge.run.id);
+    const taskTablesBefore = Object.fromEntries(['tasks', 'runs', 'run_snapshots', 'run_stages'].map(table => [table, tableDigest(db, table)]));
+
+    // Conversation interrupted agent_run/execution/run_step recovery.
+    assert.equal(recoverInterruptedRuns(store), 2);
+    assert.equal(store.getRun(workspaceId, 'queued-run')?.status, 'failed');
+    assert.equal(store.getRun(workspaceId, 'running-run')?.status, 'failed');
+    assert.equal(typeof store.getRun(workspaceId, 'running-run')?.failureReason, 'string');
+    assert.equal(store.getRun(workspaceId, 'done-run')?.status, 'completed');
+    assert.equal(store.getRun(workspaceId, 'cancelled-run')?.status, 'cancelled');
+    assert.equal(store.getExecution(workspaceId, 'running-execution')?.status, 'failed');
+    assert.equal(store.getRunStep(workspaceId, 'running-run', 'direct.context')?.status, 'failed');
+    assert.equal(store.listRunsForRecovery().length, 0);
+    // No cross-write into the Task-domain aggregate.
+    for (const [table, digest] of Object.entries(taskTablesBefore)) {
+      assert.equal(tableDigest(db, table), digest, `conversation recovery wrote task-domain table ${table}`);
+    }
+    const conversationTablesBefore = Object.fromEntries(['agent_runs', 'executions', 'run_steps'].map(table => [table, tableDigest(db, table)]));
+    store.close();
+
+    // Task-domain queued bridge Run recovery after a simulated restart.
+    store = new SqliteStore(root);
+    const taskDb = store.getDatabase() as unknown as SqliteDb;
+    const recovered = recoverInterruptedTaskRuntime(store, new TaskRunService(store));
+    assert.deepEqual(recovered.recoveredLegacyTasks, [{ workspaceId, taskId: legacyTask.id }]);
+    assert.deepEqual(recovered.recoveredLegacyQueuedRuns, [{
+      workspaceId,
+      taskId: bridge.task.id,
+      runId: bridge.run.id,
+      previousStatus: 'queued',
+      recoveredStatus: 'failed',
+    }]);
+    assert.equal(store.runRepository().findById(workspaceId, bridge.run.id)?.failureCode, 'BRIDGE_PRESTART_INTERRUPTED');
+    assert.equal(store.runRepository().findActiveByTask(workspaceId, bridge.task.id), undefined);
+    // No cross-write into the Conversation aggregate.
+    for (const [table, digest] of Object.entries(conversationTablesBefore)) {
+      assert.equal(tableDigest(taskDb, table), digest, `task recovery wrote conversation table ${table}`);
+    }
+
+    // runs and agent_runs stay disjoint Aggregates.
+    const agentRunIds = new Set((taskDb.prepare('SELECT id FROM agent_runs').all() as Array<{ id: string }>).map(row => row.id));
+    const taskRunIds = (taskDb.prepare('SELECT id FROM runs').all() as Array<{ id: string }>).map(row => row.id);
+    assert.equal(taskRunIds.filter(id => agentRunIds.has(id)).length, 0);
+
+    console.log(`P3_RUN_RECOVERY_EVIDENCE ${JSON.stringify({
+      activeInventoryBefore: { conversation: conversationActiveBefore, taskQueuedBridge: bridge.run.id },
+      conversation: { recovered: 2, runFailed: true, executionFailed: true, runStepFailed: true, terminalUnchanged: true },
+      taskDomain: { legacyTaskRecovered: true, queuedBridgeRunFailed: 'BRIDGE_PRESTART_INTERRUPTED' },
+      activeInventoryAfter: { conversation: 0, task: 0 },
+      crossWrite: { conversationRecoveryTaskTablesUnchanged: true, taskRecoveryConversationTablesUnchanged: true },
+      runIdsDisjoint: true,
+    })}`);
+  } finally {
+    store?.close();
     cleanupTemp(root);
   }
 });

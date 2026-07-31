@@ -1161,7 +1161,7 @@ test('[M2.8-P3-R1-T007] a failed exact-source Attempt stays retryable while comp
   try {
     const retrySource = workspace('retry', join(fx.root, 'retry'));
     const retryBytes = writeSource(fx.root, [retrySource]);
-    const { LegacyDataMigrationRepository } = await import('../store/LegacyDataMigrationRepository.js') as {
+    const { LegacyDataMigrationRepository } = await import('../store/LegacyDataMigrationRepository.js') as unknown as {
       LegacyDataMigrationRepository: new (db: Db) => {
         reconcileStaleRunningAndReserveAttempt(input: Record<string, unknown>): { id: string };
         transitionRunningToFailed(id: string, input: Record<string, unknown>): void;

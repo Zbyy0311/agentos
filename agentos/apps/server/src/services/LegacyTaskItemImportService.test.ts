@@ -689,7 +689,7 @@ test('[M2.8-P3-R1-T203] a failed exact-source Attempt stays retryable', async ()
   const fx = await fixture();
   try {
     const source = writeTasks(fx.root, 'ws-tasks', [task('alpha')]);
-    const { LegacyDataMigrationRepository } = await import('../store/LegacyDataMigrationRepository.js') as {
+    const { LegacyDataMigrationRepository } = await import('../store/LegacyDataMigrationRepository.js') as unknown as {
       LegacyDataMigrationRepository: new (db: Db) => {
         reconcileStaleRunningAndReserveAttempt(input: Record<string, unknown>): { id: string };
         transitionRunningToFailed(id: string, input: Record<string, unknown>): void;
