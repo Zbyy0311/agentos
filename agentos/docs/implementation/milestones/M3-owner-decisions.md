@@ -1,71 +1,84 @@
 # AgentOS M3 Owner Decision Register
 
-Status: DRAFT — PENDING OWNER REVIEW — no decision in this register authorizes implementation, production data change, restore, cutover, deletion, or M3 P1.
+Status: TECHNICAL CONTRACT DECISIONS PENDING INDEPENDENT TECHNICAL REVIEW — DEFERRED POST-M3 DECISIONS PRESERVED — M3 P1 NOT AUTHORIZED
 
-Baseline: `origin/main` at `80e398d5074ca8e0d6367d95a1aba3951b9a8843`
+Baseline: origin/main at 80e398d5074ca8e0d6367d95a1aba3951b9a8843
 
-This register contains questions that code facts cannot approve. The recommendations are planning proposals only. Any row marked `OWNER APPROVAL REQUIRED` must remain unresolved until the named Owner records an explicit decision and evidence boundary.
+This register separates decisions needed to implement the M3 Lifecycle, Event and API Foundation from historical Production Cutover and Legacy Retirement decisions. A recommendation is not an approval and does not authorize code, DDL, production behavior, restore, deletion, Web default changes, or M3 P1.
 
 ## 1. Decision rules
 
-- M2 remains sealed at `VERIFIED & MERGED / FULLY COMPLETE`; this register does not reopen or extend M2.
-- Production Cutover, Production Restore, real data deletion, irreversible schema changes, external infrastructure or paid services, and material user-visible behavior changes require `OWNER APPROVAL REQUIRED`.
-- A technical recommendation is not an approval and does not authorize code, migration, rollout, or deletion.
-- A decision must name its scope, owner, evidence, stop condition, rollback boundary, and expiry/review date.
-- Unknown records, data mismatches, active or interrupted Runs, and unavailable Remote Checks must fail closed rather than become implicit success.
+- M2 remains sealed at VERIFIED & MERGED / FULLY COMPLETE. This register does not reopen or extend M2.
+- M3 is governed by Runtime Specification 14, Roadmap §§47–53, with lifecycle/event/API details from Runtime Specification 02, 03, 10, and 11.
+- Technical contract decisions are recommendations pending independent technical review. They are not user Owner Approvals unless they deviate from the Runtime Specification, create irreversible schema or data risk, incur external cost, or materially change user-visible behavior.
+- Production Cutover, Production Restore, real data deletion, irreversible schema changes, external infrastructure or paid services, and material user-visible behavior changes require USER OWNER APPROVAL REQUIRED.
+- Unknown records, data mismatches, active or interrupted Runs, missing Remote Checks, and unavailable evidence fail closed rather than becoming implicit success.
+- Every future implementation phase must record evidence, stop conditions, rollback boundary, reviewer, and authorization before execution.
 
-## 2. Decisions
+## 2. M3 Technical Contract Decisions
 
-| ID | Decision topic | Current fact | Options to decide | Planning recommendation (not approved) | Approval boundary |
-| --- | --- | --- | --- | --- | --- |
-| M3-OD-01 | Production Cutover definition and completion standard | No M3 production transition has started | Domain-by-domain; cohort-by-cohort; or one global transition | Define Cutover as an explicitly authorized change of read/write/default authority with recorded start, end, evidence, and rollback window | `OWNER APPROVAL REQUIRED` because it authorizes production behavior |
-| M3-OD-02 | Workspace JSON fallback retirement | Workspace reads SQLite first and still read JSON for missing, non-tombstoned records | Stop reads by cohort; stop reads globally; retain indefinitely | Cohort stop-read only after parity, conflict/quarantine, source-hash, and rollback gates | `OWNER APPROVAL REQUIRED` for irreversible source retirement |
-| M3-OD-03 | Workspace JSON physical handling | Source file remains retained | Keep in place; archive; delete after retention | Keep through observation and rollback window; deletion is a separate later gate | `OWNER APPROVAL REQUIRED` for deletion |
-| M3-OD-04 | Legacy Task JSON migration or retention | `tasks.json` remains the read/write authority for Legacy TaskItem | Keep; import as compatibility evidence; map to canonical Task; retire by cohort | Keep source and compatibility rows until per-cohort mapping and history policy are approved; prohibit bulk history synthesis | `OWNER APPROVAL REQUIRED` because mapping changes data meaning |
-| M3-OD-05 | Legacy Task JSON stop-write/stop-read order | Legacy route and recovery still write JSON | Stop writes first; dual-write temporarily; stop reads first; retain both | Avoid new dual-write; use an explicit stop-write then observation then stop-read sequence only if reconciliation is proven | `OWNER APPROVAL REQUIRED` for source-authority change |
-| M3-OD-06 | Legacy API retirement | Legacy Task routes are mounted and Web still calls them | Deprecate and measure; alias to v2; remove after consumers migrate | Deprecation plus caller telemetry, then removal only after no-caller evidence and replacement contract | `OWNER APPROVAL REQUIRED` for user-visible API removal |
-| M3-OD-07 | Web default path switch | `useTask` uses the Legacy Task API; Conversation UI is separate | Feature flag; test workspace; global switch | Test-workspace flag first, then staged default switch with instant rollback | `OWNER APPROVAL REQUIRED` for material user-visible behavior |
-| M3-OD-08 | Rollback window and downgrade policy | Backup verifier exists; production Restore/downgrade workflow is not evidenced | Fixed time window; cohort rollback; version rollback; forward repair only | Require a tested cohort rollback boundary and define when downgrade is forbidden | `OWNER APPROVAL REQUIRED` because rollback may alter real data |
-| M3-OD-09 | Backup retention period | M2 requires verified SQLite and exact-byte JSON backup evidence | Time-based; until observation end; until explicit deletion approval | Retain through full rollback window plus the post-cutover observation period; specify access and deletion owner | `OWNER APPROVAL REQUIRED` for retention/deletion policy |
-| M3-OD-10 | Source quiescence proof | Lock services exist, but production quiescence and process ownership are not current evidence | Maintenance window; admission gate; operator-held lease | Require no-new-work admission proof, active-run inventory, owner-held process lease, and explicit release record | `OWNER APPROVAL REQUIRED` for production quiescence |
-| M3-OD-11 | Partial Cutover | Different domains currently have different authorities | Allow independent domain/cohort cutover; require all-at-once; prohibit partial state | Allow only explicitly named cohort/domain boundaries with an invariant matrix; never leave an unowned mixed state | `OWNER APPROVAL REQUIRED` because partial state changes failure scope |
-| M3-OD-12 | Failed Cutover handling | There is no production Cutover controller | Abort and rollback; freeze and investigate; forward repair | Fail closed, preserve source and evidence, stop new writes, and use only the pre-approved rollback boundary | `OWNER APPROVAL REQUIRED` |
-| M3-OD-13 | Data mismatch handling | M2 compatibility code classifies conflicts/quarantine, but production disposition is unset | Block cohort; quarantine per record; owner override; source wins; canonical wins | Block the affected cohort, retain both source hashes/payload references, and require per-record disposition | `OWNER APPROVAL REQUIRED` for any overwrite or exception |
-| M3-OD-14 | Unknown Legacy record handling | Legacy sources can contain records not represented canonically | Quarantine; retain read-only; reject; manual mapping | Quarantine and keep source bytes; do not drop or synthesize records | `OWNER APPROVAL REQUIRED` if any record is deleted or rewritten |
-| M3-OD-15 | Active/interrupted Run handling | Legacy Task recovery and Conversation recovery have different aggregates and restart rules | Drain; fail closed; resume; reattach; cancel | Inventory by aggregate, mark uncertain work explicitly, and never infer success from a process or stream state | `OWNER APPROVAL REQUIRED` for live-work policy |
-| M3-OD-16 | v2 realtime / Durable Events scope | v2 Task/Run routes are REST-only; Conversation has separate persisted events and a process-local stream buffer | Include in M3; defer to a separate event milestone; implement only read replay | Defer broad v2 realtime until its event authority, replay, retention, and consumer contract are frozen; do not call Conversation stream a substitute | `OWNER APPROVAL REQUIRED` for scope and user-visible stream change |
-| M3-OD-17 | `runs` versus `agent_runs` boundary | The current code keeps Task-domain and Conversation aggregates separate | Continue separation; introduce a shared projection; unify data model | Continue separation through M3; any unification is a separate milestone with a separate design | `OWNER APPROVAL REQUIRED` for data-model unification |
-| M3-OD-18 | Migration 012 trigger | Registry `001`–`011` is present; no M3 schema contract is frozen | Create now; never create; create only after a schema diff | Create only if a reviewed M3 contract proves a real missing table/column/index/invariant; attach schema diff and rollback plan | `OWNER APPROVAL REQUIRED` for any schema migration |
-| M3-OD-19 | Production Restore authority | Current backup verifier does not restore | Owner-only restore; L3 operator; two-person approval; no production restore in M3 | Require named production owner, two-person confirmation, audit transcript, and tested non-production rehearsal | `OWNER APPROVAL REQUIRED` |
-| M3-OD-20 | Telemetry and audit evidence | Current code has diagnostics and persisted migration/event evidence, but no final M3 metric contract | Logs only; metrics; audit table; external telemetry | Define counts for legacy reads/writes, mismatch/quarantine, stream failures, active Runs, rollback, and operator actions; redact payloads and credentials | `OWNER APPROVAL REQUIRED` where external infrastructure or sensitive data is involved |
-| M3-OD-21 | Branch, PR, and merge policy | This P0 task is docs-only and forbids a PR | Draft PR; ordinary Merge Commit; squash; push-only | Use a Draft PR for implementation phases that change code, require independent review, and use an ordinary merge commit unless Owner changes the policy | `OWNER APPROVAL REQUIRED` for merge/release policy; current task explicitly forbids PR |
-| M3-OD-22 | Remote Checks unavailable | M2 documents say `UNAVAILABLE — NOT PASS` | Wait; local substitute; owner exception | Use exact local L3 output plus independent review, disclose missing remote evidence, and never label Remote Checks passed | Owner acknowledgment required for any release gate using a substitute |
-| M3-OD-23 | Post-Cutover observation period | No M3 transition has occurred, so no observation window exists | Fixed duration; N successful cohorts; metrics-based | Define a minimum fixed window plus metric thresholds and incident response before Legacy retirement | `OWNER APPROVAL REQUIRED` |
-| M3-OD-24 | Legacy data deletion permission | M2 retains Legacy JSON and compatibility evidence; no deletion is authorized | Never delete; archive; delete after observation; delete per cohort | No automatic deletion. Require separate destructive-operation approval, verified restore, retention expiry, and a deletion manifest | `OWNER APPROVAL REQUIRED` |
-| M3-OD-25 | Backup/copy sanitization and access | M2 real-copy evidence is isolated; future production copies need an owner policy | Raw copy; sanitized copy; representative cohort; no copy | Prefer least-data representative copies, document provenance and access, and prohibit untracked local copies | `OWNER APPROVAL REQUIRED` for real user data |
-| M3-OD-26 | Provider and Agent conflict disposition | SQLite profile/provider rows can be compared with legacy nested agent values | Canonical wins; source wins; quarantine; manual mapping | Quarantine conflicts and require explicit provider/executable/model binding review; never silently switch a provider | `OWNER APPROVAL REQUIRED` for execution behavior |
+These rows are M3 technical-contract closure items. Their current status is PENDING INDEPENDENT TECHNICAL REVIEW. They do not authorize M3 P1.
 
-## 3. Decision closure requirements
+| ID | Contract decision | Current fact | Technical recommendation | Status and approval boundary |
+| --- | --- | --- | --- | --- |
+| M3-TD-01 | Task-domain Event scope versus Conversation agent_runs | Task-domain runs and Conversation agent_runs are separate aggregates. Conversation agent_events is persisted through EventBus under Conversation context. | M3 Runtime Events, Event Store, Outbox, sequence, replay, and Run Stream apply to Task-domain runs only. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required only for a later aggregate-unification deviation. |
+| M3-TD-02 | runs versus agent_runs boundary | runs belongs to Task/Run REST and the Legacy Bridge; agent_runs belongs to Conversation execution and recovery. | Preserve separation through M3. Any shared projection or unification is a later design. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required for a data-model unification or material behavior change. |
+| M3-TD-03 | Run state machine and transition owner | RunRepository has a partial transition graph and persists version, but no complete Run Engine owns transitions. | Task-domain Run Engine owns the Roadmap transition table; repository enforces legal transition and optimistic version checks; terminal Runs never reset. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required for any Runtime Specification deviation. |
+| M3-TD-04 | Persist-then-publish path | Current Run updates do not atomically write a Task-domain Runtime Event and Outbox message. | A transition transaction writes Current State, Runtime Event, and Outbox; commit precedes EventBus/SSE publication. | PENDING INDEPENDENT TECHNICAL REVIEW. Any DDL or irreversible transaction change requires USER OWNER APPROVAL REQUIRED. |
+| M3-TD-05 | Event aggregate key | Conversation events use conversation_id and may carry run_id; that does not establish Task-domain ownership. | Task-domain Event Store keys the event to run_id, with workspace_id and task_id context as required by the canonical envelope. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required for a cross-aggregate schema deviation. |
+| M3-TD-06 | Per-Run sequence allocator | runs.next_event_sequence exists; run_event_sequences is Conversation infrastructure and cannot be reused by Task-domain Runs. | Allocate sequence in the same transaction as the Run and Event, with unique run_id plus sequence enforcement. | PENDING INDEPENDENT TECHNICAL REVIEW. Future schema implementation remains separately authorized. |
+| M3-TD-07 | Outbox delivery contract | No Task-domain outbox table, repository, publisher, or dead-letter path exists in migrations 001–011. | Persist Outbox before publication; publisher is at-least-once, retryable, observable, and idempotent at the consumer boundary. | PENDING INDEPENDENT TECHNICAL REVIEW. External broker or paid infrastructure requires USER OWNER APPROVAL REQUIRED; local foundation does not. |
+| M3-TD-08 | Publisher retry and idempotency | EventBus provides Conversation publication behavior but not the M3 Task-domain Outbox contract. | Retry by durable message identity, preserve event identity, prevent duplicate externally visible effects, and retain failure evidence. | PENDING INDEPENDENT TECHNICAL REVIEW. Any externally charged service requires USER OWNER APPROVAL REQUIRED. |
+| M3-TD-09 | SSE cursor, reconnect, and replay | Legacy SSE is request-bound; RunStreamRegistry is a process-local Conversation buffer. | Task-domain Run Stream first replays persisted Events after afterSequence or Last-Event-ID, then subscribes to new publication; expired cursors map to a stable error. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required for a material client-visible behavior deviation. |
+| M3-TD-10 | Client disconnect and server restart | Some current request-bound paths abort on close; no Task-domain durable recovery stream exists. | Client disconnect ends only the subscription. Restart scans persisted Run/Stage/Event state, resumes or marks uncertainty explicitly, and never guesses success. | PENDING INDEPENDENT TECHNICAL REVIEW. Production recovery or restore is deferred and requires USER OWNER APPROVAL REQUIRED. |
+| M3-TD-11 | Operation Resource lifecycle | No Operation resource table or route exists; a Run is not an Operation. | Async Start and long commands return a durable Operation with pending/running/succeeded/failed/cancelled state, result reference, and ApiProblem error. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required for a new material product workflow. |
+| M3-TD-12 | API Problem and stable error mapping | respondV2 exposes partial error/code mapping. | Implement the Runtime Specification ApiProblem shape and stable mappings for validation, not found, conflict, precondition, rate, and internal failures. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required only for a user-visible contract deviation. |
+| M3-TD-13 | ETag, If-Match, and version | Selected routes accept expectedVersion in the body; ETag and If-Match are not implemented. | Emit ETag from resource version; accept If-Match and return 412 for stale mutation, with expectedVersion as a documented compatibility fallback where needed. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required for a materially incompatible client behavior. |
+| M3-TD-14 | Idempotency command set | Migration 010 and IdempotencyService cover a partial set of Task commands. | Preserve M2 replay/key-reuse semantics and extend middleware to M3 Start, Cancel, Retry, and applicable Create commands so state/event/outbox effects occur once. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required for destructive or irreversible commands outside M3. |
+| M3-TD-15 | Retry child Run | parentRunId and rootRunId are persisted, but no complete Retry command and event path exists. | Failed or cancelled Run is immutable; Retry creates a new child Run with parent/root lineage and its own idempotency result. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required only if the behavior deviates from the Runtime Specification. |
+| M3-TD-16 | Legacy SSE compatibility mapping | Legacy route emits status, stage, thinking, done, and error frames and has partial Run bridging. | Preserve the Legacy endpoint and project legacy frames from the Task-domain Event contract: status/stage to lifecycle events, thinking to stream.text_delta, done to terminal event, error to stable failure event. | PENDING INDEPENDENT TECHNICAL REVIEW. Legacy API retirement or material UX change requires USER OWNER APPROVAL REQUIRED and is not M3 scope. |
+| M3-TD-17 | Basic OpenAPI boundary | No concrete OpenAPI artifact is present in the current implementation. | Document only the M3 Task/Run/Operation/Event/Stream contract, headers, errors, and status codes; validate it as a contract artifact. | PENDING INDEPENDENT TECHNICAL REVIEW. Later domains are not silently added. |
+| M3-TD-18 | Migration 012 schema conclusion | Registry 001–011 has runs.next_event_sequence and version, but no Task-domain runtime_events, outbox_messages, or Operation persistence. | Migration 012 REQUIRED — PLANNING ONLY. Record the exact schema gap; do not create DDL in P0. | PENDING INDEPENDENT TECHNICAL REVIEW. Any future irreversible DDL requires USER OWNER APPROVAL REQUIRED, independent review, and a separate implementation authorization. |
+| M3-TD-19 | Async Run Start result | Current v2 routes have no Start Run route or Operation response. | Create Run remains distinct from Start Run; Start returns an asynchronous Operation/202 result and later advances the persisted Run. | PENDING INDEPENDENT TECHNICAL REVIEW. User approval is required for a material API or UX deviation. |
+| M3-TD-20 | Roadmap deliverable closure | Create Task and partial Create/Get/Cancel Run routes exist; Events, Stream, Replay, Operation, and OpenAPI are absent. | Close deliverables by evidence, not by route-name presence: each API must have contract fixtures and lifecycle integration coverage. | PENDING INDEPENDENT TECHNICAL REVIEW. No deliverable is marked passed in this planning register. |
 
-An Owner Decision is closed only when the record contains:
+## 3. Deferred Post-M3 Decisions
 
-1. decision text and selected option;
-2. owner identity and timestamp;
-3. affected domain/cohort and user-visible impact;
-4. required evidence and thresholds;
-5. stop/no-go condition;
-6. rollback boundary and backup retention;
-7. whether independent review and L3 validation are required;
-8. whether a Draft PR and ordinary Merge Commit are required;
-9. expiry or re-review trigger.
+The following historical decision content remains recorded, but it is not required to implement the M3 Lifecycle, Event and API Foundation. Every row is NOT AN M3 P1 BLOCKER and NOT AUTHORIZED IN M3.
 
-Until these fields are populated and independently reviewed, the decision remains `PENDING OWNER` and must not be used as implementation authorization.
+| ID | Deferred decision | Historical/current fact and preserved planning recommendation | Status in M3 |
+| --- | --- | --- | --- |
+| M3-POST-01 | Production Cutover definition and completion standard | No production transition has started. A future Cutover must name read/write/default authority, start/end evidence, operator, stop condition, and rollback window. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED. |
+| M3-POST-02 | Workspace JSON stop-read, stop-write, archive, and deletion | Workspace remains SQLite-first with JSON fallback; retain source through parity, conflict/quarantine, backup, and rollback gates before any retirement. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED for source retirement or deletion. |
+| M3-POST-03 | Legacy Task JSON migration, retention, and history policy | tasks.json remains active compatibility authority. Preserve source and do not synthesize history; future mapping requires per-record disposition. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED for data meaning changes or deletion. |
+| M3-POST-04 | Legacy API retirement | Legacy routes remain mounted and used by current Web code. Future removal needs caller inventory, deprecation, replacement contract, and no-caller evidence. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED. |
+| M3-POST-05 | Web global default switch | apps/web/src/lib/useTask.ts still calls Legacy Task endpoints. Future switch needs a feature flag, user-visible acceptance, staged rollout, and instant rollback. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED. |
+| M3-POST-06 | Production Restore and downgrade authority | Backup verification exists, but production Restore and downgrade workflow is not evidenced. Any restore needs named owner, two-person confirmation, audit transcript, and rehearsal. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED. |
+| M3-POST-07 | Rollback window and failed Cutover handling | Future transition must fail closed, preserve source and evidence, stop new writes, and use only a pre-approved reversible boundary. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED. |
+| M3-POST-08 | Backup retention and production-copy access | Retain verified backups through rollback and observation; define least-data copies, provenance, access, and deletion owner. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED for real data retention or deletion policy. |
+| M3-POST-09 | Source quiescence and process ownership | Existing locks are not production quiescence proof. Future cutover needs no-new-work admission, active/interrupted inventory, process lease, and release record. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED. |
+| M3-POST-10 | Partial Cutover and data mismatch | Future cohorts may not be left in an unowned mixed state; mismatches and unknown records must be quarantined with source references, never silently overwritten or dropped. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED for cohort policy or data disposition. |
+| M3-POST-11 | Active/interrupted Run treatment | Future production transition must inventory each aggregate, mark uncertainty explicitly, and never infer success from a process or stream state. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED for live-work policy. |
+| M3-POST-12 | Post-Cutover observation and telemetry | No transition has occurred, so no observation window exists. Future metrics must cover legacy reads/writes, mismatches, stream failures, active Runs, rollback, and operator actions. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED where external telemetry or sensitive data is involved. |
+| M3-POST-13 | Legacy data deletion | M2 retains Legacy JSON and compatibility evidence; no deletion is implied by M3 event/API work. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED for any destructive operation. |
+| M3-POST-14 | Branch, PR, merge, and release policy | This remediation is one docs-only commit with no PR. Future implementation may use Draft PR, independent review, and ordinary merge commit if separately authorized. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; current remediation has no PR. |
+| M3-POST-15 | Remote Checks unavailable | Existing M2 status is UNAVAILABLE — NOT PASS. Future gates may disclose exact local L3 evidence but must not relabel missing remote evidence as passed. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; independent review or Owner acknowledgment is required for any substitute release gate. |
 
-## 4. Current closure status
+## 4. P0 closure status
 
-- M3 Owner Decisions: `DRAFT / PENDING OWNER REVIEW`
-- M3 P1: `NOT AUTHORIZED`
-- Production Cutover: `NOT AUTHORIZED / NOT STARTED`
-- Production Restore: `OWNER APPROVAL REQUIRED`
-- Legacy data deletion: `OWNER APPROVAL REQUIRED / NOT AUTHORIZED`
-- Migration 012: `NOT AUTHORIZED; trigger unresolved pending a real schema-gap proof`
+### Technical contract
+
+- M3 contract: RESTORED to Lifecycle, Event and API Foundation.
+- Technical decisions: PENDING INDEPENDENT TECHNICAL REVIEW.
+- Migration 012: REQUIRED — PLANNING ONLY; no DDL created.
+- M3 P1: NOT AUTHORIZED.
+
+### Deferred post-M3 work
+
+- Production Cutover: NOT AUTHORIZED.
+- Production Restore: NOT AUTHORIZED.
+- Web global default switch: NOT AUTHORIZED.
+- Legacy API and Legacy JSON retirement/deletion: NOT AUTHORIZED.
+- Post-cutover observation: NOT AN M3 P1 BLOCKER and NOT AUTHORIZED IN M3.
+
+An Owner Decision is closed only when it includes the selected option, owner identity and timestamp, affected scope, evidence thresholds, stop/no-go condition, rollback boundary, review requirement, and re-review trigger. Until then, the decision remains pending and cannot authorize implementation.
