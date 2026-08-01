@@ -99,7 +99,7 @@ export class WorkspaceCompatibilityRepository {
       : undefined;
     const rawCliCommand = row.cli_command;
     const rawCliArgs = parseStringArray(JSON.parse(row.cli_args_json));
-    const rawModel = typeof row.model === 'string' ? row.model : undefined;
+    const rawModel = typeof row.model === 'string' && row.model.length > 0 ? row.model : undefined;
     const effectiveProvider = providerConfiguration
       ? providerTypeToAgentProvider(providerConfiguration.providerType)
       : (rawProvider ?? providerFromLegacyRole(row.agent_role as AgentProfile['role']));
@@ -125,6 +125,19 @@ export class WorkspaceCompatibilityRepository {
       providerConfigId,
       ...(providerConfiguration ? { providerConfiguration } : {}),
     };
+  }
+
+  listAgentProfileIds(workspaceId: string): string[] {
+    const rows = this.db.prepare(`
+      SELECT id
+      FROM agent_profiles
+      WHERE workspace_id = ?
+      ORDER BY id COLLATE BINARY
+    `).all(workspaceId) as Array<{ id?: unknown }>;
+    return rows.map(row => {
+      if (typeof row.id !== 'string') throw new Error('invalid agent profile id');
+      return row.id;
+    });
   }
 
   findProviderByWorkspaceAndName(workspaceId: string, name: string): ProviderConfiguration | undefined {

@@ -346,13 +346,13 @@ export class WorkspaceCompatibilityMigrationService {
       db = this.databaseFactory(input.databasePath);
       this.assertDatabaseBinding(db, input.databasePath);
       const repository = new WorkspaceCompatibilityRepository(db);
+      const migrations = new LegacyDataMigrationRepository(db);
       let parsed: LegacySourceParseResult;
       try {
         parsed = this.parser(sourceBytes);
       } catch {
         if (input.mode === 'dry-run') throw new WorkspaceCompatibilityMigrationError(LEGACY_WORKSPACE_SOURCE_PARSE_FAILED);
-        await this.createBackup(input, db, sourceBytes, sourceHash);
-        return this.quarantineParseFailure(db, repository, sourceHash);
+        return await this.applyParseFailure(db, migrations, input, sourceBytes, sourceHash);
       }
       const selected = this.selectEntries(parsed.value, input.workspaceId);
       const classifications = selected.map((entry, index) => this.classify(entry, repository, input.workspaceId, index));
@@ -360,12 +360,12 @@ export class WorkspaceCompatibilityMigrationService {
       for (const item of classifications) this.countClassification(summary, item);
       if (input.mode === 'dry-run') {
         for (const item of classifications) {
-          if (this.hasNoop(repository, item, sourceHash)) summary.noopCount += 1;
+          if (this.hasNoop(migrations, repository, item, sourceHash)) summary.noopCount += 1;
         }
         return summary;
       }
 
-      const pending = classifications.filter(item => !this.hasNoop(repository, item, sourceHash));
+      const pending = classifications.filter(item => !this.hasNoop(migrations, repository, item, sourceHash));
       if (pending.length === 0) {
         for (const item of classifications) summary.noopCount += 1;
         return summary;
@@ -476,7 +476,14 @@ export class WorkspaceCompatibilityMigrationService {
     if (existing === undefined && rootOwner !== undefined && rootOwner.id !== valid.workspace.id) {
       return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: null, errorCode: LEGACY_WORKSPACE_CANONICAL_ROOT_CONFLICT };
     }
-    if (existing === undefined) return { kind: 'adoptable', source: valid.source, workspace: valid, canonicalWorkspaceId: null };
+    if (existing === undefined) {
+      try {
+        this.assertAgentSetCompatible(repository, valid.workspace.id, valid.workspace.updatedAt, valid.agents);
+      } catch {
+        return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: null, errorCode: LEGACY_WORKSPACE_CANONICAL_CONFLICT };
+      }
+      return { kind: 'adoptable', source: valid.source, workspace: valid, canonicalWorkspaceId: null };
+    }
     if (!sameWorkspace(existing, valid.workspace)) {
       return { kind: 'conflict', source: valid.source, workspace: valid, canonicalWorkspaceId: existing.id, errorCode: LEGACY_WORKSPACE_CANONICAL_CONFLICT };
     }
@@ -492,24 +499,34 @@ export class WorkspaceCompatibilityMigrationService {
   }
 
   private assertChildrenCompatible(repository: WorkspaceCompatibilityRepository, existing: Workspace, agents: WorkspaceAgent[]): boolean {
+    return this.assertAgentSetCompatible(repository, existing.id, existing.updatedAt, agents);
+  }
+
+  private assertAgentSetCompatible(
+    repository: WorkspaceCompatibilityRepository,
+    workspaceId: string,
+    updatedAt: string,
+    agents: WorkspaceAgent[],
+  ): boolean {
     const sourceIds = new Set(agents.map(agent => agent.id));
+    const existingIds = repository.listAgentProfileIds(workspaceId);
     let hasMissingChildren = false;
-    for (const existingAgent of existing.agents) {
-      if (!sourceIds.has(existingAgent.id)) throw new Error('agent set conflict');
+    for (const existingAgentId of existingIds) {
+      if (!sourceIds.has(existingAgentId)) throw new Error('agent set conflict');
     }
     for (const agent of agents) {
-      const current = repository.findAgent(existing.id, agent.id);
+      const current = repository.findAgent(workspaceId, agent.id);
       if (current === undefined) {
         hasMissingChildren = true;
         continue;
       }
-      const expected = expectedProvider(existing.id, agent, existing.updatedAt, current.providerConfigId ?? createEntityId('provider'));
+      const expected = expectedProvider(workspaceId, agent, updatedAt, current.providerConfigId ?? createEntityId('provider'));
       const expectedRuntime = projectProviderConfiguration(expected, agent.cliCommand);
       if (!sameAgent(agent, expectedRuntime, current)) throw new Error('agent conflict');
       if (current.providerConfigId === null) {
         hasMissingChildren = true;
-        const provider = repository.findProviderByWorkspaceAndName(existing.id, `${agent.name} Provider`);
-        if (provider !== undefined && !sameProvider(expectedProvider(existing.id, agent, existing.updatedAt, provider.id), provider)) {
+        const provider = repository.findProviderByWorkspaceAndName(workspaceId, `${agent.name} Provider`);
+        if (provider !== undefined && !sameProvider(expectedProvider(workspaceId, agent, updatedAt, provider.id), provider)) {
           throw new Error('provider conflict');
         }
         continue;
@@ -533,8 +550,18 @@ export class WorkspaceCompatibilityMigrationService {
     if (item.kind === 'invalid') summary.invalidCount += 1;
   }
 
-  private hasNoop(repository: WorkspaceCompatibilityRepository, item: Classification, sourceHash: string): boolean {
-    if (item.workspace === null || item.kind === 'conflict' || item.kind === 'invalid') return false;
+  private classificationScope(item: Classification, sourceHash: string): LegacyMigrationScope {
+    const validScopeKey = typeof item.source.id === 'string' && item.source.id.length > 0;
+    return validScopeKey
+      ? { migrationKind: 'workspace_adoption', sourceKey: 'workspaces.json', scopeKind: 'workspace', scopeKey: item.source.id as string, canonicalWorkspaceId: item.canonicalWorkspaceId, sourceHash }
+      : { migrationKind: 'workspace_adoption', sourceKey: 'workspaces.json', scopeKind: 'global', scopeKey: 'global', canonicalWorkspaceId: null, sourceHash };
+  }
+
+  private hasNoop(migrations: LegacyDataMigrationRepository, repository: WorkspaceCompatibilityRepository, item: Classification, sourceHash: string): boolean {
+    if (item.kind === 'conflict' || item.kind === 'invalid') {
+      return migrations.findQuarantinedByExactSource(this.classificationScope(item, sourceHash)) !== null;
+    }
+    if (item.workspace === null) return false;
     const scope: LegacyMigrationScope = { migrationKind: 'workspace_adoption', sourceKey: 'workspaces.json', scopeKind: 'workspace', scopeKey: item.workspace.workspace.id, canonicalWorkspaceId: item.canonicalWorkspaceId, sourceHash };
     return repository.findCompletedByExactSource(scope) !== null;
   }
@@ -555,8 +582,24 @@ export class WorkspaceCompatibilityMigrationService {
     } catch { throw new WorkspaceCompatibilityMigrationError(LEGACY_WORKSPACE_BACKUP_FAILED); }
   }
 
-  private quarantineParseFailure(db: WorkspaceDatabase, repository: WorkspaceCompatibilityRepository, sourceHash: string): WorkspaceCompatibilitySummary {
-    const migrations = new LegacyDataMigrationRepository(db);
+  private async applyParseFailure(
+    db: WorkspaceDatabase,
+    migrations: LegacyDataMigrationRepository,
+    input: WorkspaceCompatibilityRunInput,
+    sourceBytes: Uint8Array,
+    sourceHash: string,
+  ): Promise<WorkspaceCompatibilitySummary> {
+    const scope: LegacyMigrationScope = { migrationKind: 'workspace_adoption', sourceKey: 'workspaces.json', scopeKind: 'global', scopeKey: 'global', canonicalWorkspaceId: null, sourceHash };
+    if (migrations.findQuarantinedByExactSource(scope) !== null) {
+      const summary = this.createSummary('apply', 0, 0);
+      summary.noopCount = 1;
+      return summary;
+    }
+    await this.createBackup(input, db, sourceBytes, sourceHash);
+    return this.quarantineParseFailure(db, migrations, sourceHash);
+  }
+
+  private quarantineParseFailure(db: WorkspaceDatabase, migrations: LegacyDataMigrationRepository, sourceHash: string): WorkspaceCompatibilitySummary {
     const id = this.migrationIdFactory();
     const now = this.clock();
     const scope: LegacyMigrationScope = { migrationKind: 'workspace_adoption', sourceKey: 'workspaces.json', scopeKind: 'global', scopeKey: 'global', canonicalWorkspaceId: null, sourceHash };
@@ -570,10 +613,7 @@ export class WorkspaceCompatibilityMigrationService {
 
   private async processClassification(db: WorkspaceDatabase, repository: WorkspaceCompatibilityRepository, item: Classification, sourceHash: string, parsed: LegacySourceParseResult, summary: WorkspaceCompatibilitySummary): Promise<void> {
     const migrations = new LegacyDataMigrationRepository(db);
-    const validScopeKey = typeof item.source.id === 'string' && item.source.id.length > 0;
-    const scope: LegacyMigrationScope = validScopeKey
-      ? { migrationKind: 'workspace_adoption', sourceKey: 'workspaces.json', scopeKind: 'workspace', scopeKey: item.source.id as string, canonicalWorkspaceId: item.canonicalWorkspaceId, sourceHash }
-      : { migrationKind: 'workspace_adoption', sourceKey: 'workspaces.json', scopeKind: 'global', scopeKey: 'global', canonicalWorkspaceId: null, sourceHash };
+    const scope: LegacyMigrationScope = this.classificationScope(item, sourceHash);
     if (item.workspace !== null) {
       const exact = migrations.findCompletedByExactSource(scope);
       if (exact !== null) {
@@ -581,8 +621,12 @@ export class WorkspaceCompatibilityMigrationService {
         return;
       }
     }
-    const attemptId = this.migrationIdFactory();
     if (item.kind === 'invalid' || item.kind === 'conflict') {
+      if (migrations.findQuarantinedByExactSource(scope) !== null) {
+        summary.noopCount += 1;
+        return;
+      }
+      const attemptId = this.migrationIdFactory();
       const running = migrations.reconcileStaleRunningAndReserveAttempt({ ...scope, migrationId: attemptId, now: this.clock() });
       const conflictEvidence = item.kind === 'conflict'
         ? { payloadHash: sha256(canonicalizeLegacyJson([item.source])), sourceSchemaVersion: parsed.sourceSchemaVersion, entityCount: 1 }
@@ -597,6 +641,7 @@ export class WorkspaceCompatibilityMigrationService {
     const latest = migrations.findLatestAcceptedCompleted(scope);
     const revision = latest?.payloadHash === payloadHash ? (latest.revision ?? 1) : (latest?.revision ?? 0) + 1;
 
+    const attemptId = this.migrationIdFactory();
     const reservationScope: LegacyMigrationScope = item.kind === 'adoptable'
       ? { ...scope, canonicalWorkspaceId: null }
       : scope;
@@ -606,7 +651,7 @@ export class WorkspaceCompatibilityMigrationService {
       db.exec('BEGIN IMMEDIATE');
       if (item.kind === 'adoptable') {
         repository.insertWorkspaceWithinTransaction(item.workspace.workspace);
-        this.insertChildren(repository, item.workspace, item.workspace.workspace.id);
+        this.insertMissingChildren(repository, item.workspace, item.workspace.workspace.id);
       } else if (item.kind === 'equal' || item.kind === 'compatible-missing') {
         this.insertMissingChildren(repository, item.workspace, item.workspace.workspace.id);
       }
@@ -632,10 +677,6 @@ export class WorkspaceCompatibilityMigrationService {
       summary.failedCount += 1;
       throw new WorkspaceCompatibilityMigrationError(LEGACY_WORKSPACE_OPERATION_FAILED);
     }
-  }
-
-  private insertChildren(repository: WorkspaceCompatibilityRepository, workspace: ValidWorkspace, workspaceId: string): void {
-    for (const agent of workspace.agents) this.insertAgentWithProvider(repository, workspace, workspaceId, agent);
   }
 
   private insertMissingChildren(repository: WorkspaceCompatibilityRepository, workspace: ValidWorkspace, workspaceId: string): void {

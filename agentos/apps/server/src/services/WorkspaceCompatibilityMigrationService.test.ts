@@ -15,6 +15,7 @@ import { migration011 } from '../migrations/migrations/011-legacy-data-migration
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
 import { canonicalizeLegacyJson } from './LegacySourceParser.js';
+import { WorkspaceCompatibilityRepository } from '../store/WorkspaceCompatibilityRepository.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -102,6 +103,86 @@ function insertEqualChildren(db: Db, value: Record<string, unknown>): void {
   `).run(value.id, sourceAgent.id, sourceAgent.name, sourceAgent.cliCommand, JSON.stringify(sourceAgent.cliArgs), providerId, value.createdAt, value.updatedAt);
 }
 
+function insertLegacyAgent(db: Db, workspaceId: string, value: Record<string, unknown>, overrides: Record<string, unknown> = {}): void {
+  const sourceAgent = { ...value, ...overrides };
+  db.prepare(`
+    INSERT INTO agent_profiles (
+      workspace_id, id, name, agent_role, provider, role_title, system_prompt,
+      permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    workspaceId,
+    sourceAgent.id,
+    sourceAgent.name,
+    sourceAgent.role,
+    sourceAgent.provider ?? null,
+    `${sourceAgent.name} Role`,
+    'legacy-system-prompt',
+    '["read","review"]',
+    sourceAgent.enabled ? 1 : 0,
+    sourceAgent.cliCommand,
+    JSON.stringify(sourceAgent.cliArgs),
+    sourceAgent.model ?? null,
+    sourceAgent.thinkingEffort ?? 'auto',
+    NOW,
+    NOW,
+  );
+}
+
+async function legacyAdoptionFixture(options: {
+  beforeAggregateTransaction?: () => void;
+} = {}): Promise<{
+  root: string;
+  databasePath: string;
+  db: Db;
+  service: any;
+  sourceAgent: Record<string, unknown>;
+  cleanup(): void;
+}> {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-m28-p3-remediation-'));
+  mkdirSync(join(root, '.agentos'), { recursive: true });
+  const databasePath = join(root, '.agentos', 'agentos.sqlite');
+  const db = new DatabaseSync(databasePath);
+  db.exec('PRAGMA foreign_keys = ON');
+  const sourceAgent = agent();
+  baselineMigration.apply({ db });
+  migration002.apply({ db });
+  insertLegacyAgent(db, 'legacy-adoption', sourceAgent);
+  migration003.apply({ db });
+  migration004.apply({ db });
+  migration011.apply({ db });
+  const { WorkspaceCompatibilityMigrationService } = await import('./WorkspaceCompatibilityMigrationService.js') as {
+    WorkspaceCompatibilityMigrationService: new (options?: Record<string, unknown>) => any;
+  };
+  const service = new WorkspaceCompatibilityMigrationService({
+    leaseFactory: async () => ({ release: async () => {} }),
+    databaseFactory: () => new DatabaseSync(databasePath),
+    migrationIdFactory: (() => { let n = 0; return () => `m28-p3-remediation-${++n}`; })(),
+    clock: () => NOW,
+    beforeAggregateTransaction: options.beforeAggregateTransaction,
+    backupProvider: {
+      createAndVerify: async () => ({
+        sqliteBackupFileName: 'backup.sqlite',
+        jsonBackupFileName: 'backup.json',
+        sqliteBackupHash: hash('sqlite'),
+        jsonBackupHash: hash('json'),
+      }),
+    },
+  });
+  return {
+    root,
+    databasePath,
+    db,
+    service,
+    sourceAgent,
+    cleanup() {
+      try { db.close(); } catch {}
+      rmSync(root, { recursive: true, force: true });
+    },
+  };
+}
+
 function writeSource(root: string, workspaces: unknown[], rawPrefix = '{"workspaces":'): Uint8Array {
   const bytes = Buffer.from(`${rawPrefix}${JSON.stringify(workspaces)}}`, 'utf8');
   const dir = join(root, 'workspace');
@@ -178,6 +259,152 @@ function runCommand(args: string[]): Promise<{ code: number | null; output: stri
     child.once('close', code => resolve({ code, output }));
   });
 }
+
+function legacyAgentSnapshot(db: Db, workspaceId: string, agentId: string): Record<string, unknown> {
+  return db.prepare(`
+    SELECT workspace_id, id, name, agent_role, provider, role_title, system_prompt,
+      permissions_json, enabled, cli_command, cli_args_json, model, thinking_effort,
+      provider_config_id, created_at, updated_at, version
+    FROM agent_profiles WHERE workspace_id = ? AND id = ?
+  `).get(workspaceId, agentId) as Record<string, unknown>;
+}
+
+test('[M2.8-P3-R1-T001] Legacy orphan Agents are preserved, missing Agents are added, Providers are bound, and rerun is no-op', async () => {
+  const fx = await legacyAdoptionFixture();
+  try {
+    const value = workspace('legacy-adoption', join(fx.root, 'legacy-adoption'), { agents: [fx.sourceAgent, agent('kimi')] });
+    const source = writeSource(fx.root, [value]);
+    const beforeAgent = legacyAgentSnapshot(fx.db, 'legacy-adoption', 'codex');
+    assert.deepEqual(new WorkspaceCompatibilityRepository(fx.db).listAgentProfileIds('legacy-adoption'), ['codex']);
+
+    const result = await fx.service.run(runInput(fx));
+    assert.equal(result.adoptableCount, 1);
+    assert.equal(result.completedCount, 1);
+    assert.equal(result.quarantinedCount, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM workspaces WHERE id = ?').get('legacy-adoption') as { count: number }).count, 1);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM agent_profiles WHERE workspace_id = ?').get('legacy-adoption') as { count: number }).count, 2);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations WHERE workspace_id = ?').get('legacy-adoption') as { count: number }).count, 2);
+    const afterAgent = legacyAgentSnapshot(fx.db, 'legacy-adoption', 'codex');
+    assert.deepEqual({ ...afterAgent, provider_config_id: null }, { ...beforeAgent, provider_config_id: null });
+    assert.notEqual(afterAgent.provider_config_id, null);
+    assert.deepEqual(readFileSync(join(fx.root, 'workspace', 'workspaces.json')), source);
+
+    const beforeRerun = {
+      agents: (fx.db.prepare('SELECT COUNT(*) AS count FROM agent_profiles WHERE workspace_id = ?').get('legacy-adoption') as { count: number }).count,
+      providers: (fx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations WHERE workspace_id = ?').get('legacy-adoption') as { count: number }).count,
+      attempts: (fx.db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
+    };
+    const rerun = await fx.service.run(runInput(fx));
+    assert.equal(rerun.noopCount, 1);
+    assert.deepEqual({
+      agents: (fx.db.prepare('SELECT COUNT(*) AS count FROM agent_profiles WHERE workspace_id = ?').get('legacy-adoption') as { count: number }).count,
+      providers: (fx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations WHERE workspace_id = ?').get('legacy-adoption') as { count: number }).count,
+      attempts: (fx.db.prepare('SELECT COUNT(*) AS count FROM legacy_data_migrations').get() as { count: number }).count,
+    }, beforeRerun);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T004] Empty legacy model is compatible with an omitted Source model and remains unchanged', async () => {
+  const fx = await legacyAdoptionFixture();
+  try {
+    fx.db.prepare('UPDATE agent_profiles SET model = ? WHERE workspace_id = ? AND id = ?').run('', 'legacy-adoption', 'codex');
+    const value = workspace('legacy-adoption', join(fx.root, 'legacy-adoption'), { agents: [fx.sourceAgent] });
+    const source = writeSource(fx.root, [value]);
+    const beforeAgent = legacyAgentSnapshot(fx.db, 'legacy-adoption', 'codex');
+
+    const result = await fx.service.run(runInput(fx));
+
+    assert.equal(result.adoptableCount, 1);
+    assert.equal(result.completedCount, 1);
+    assert.equal(result.quarantinedCount, 0);
+    assert.equal((legacyAgentSnapshot(fx.db, 'legacy-adoption', 'codex')).model, '');
+    assert.deepEqual({
+      ...legacyAgentSnapshot(fx.db, 'legacy-adoption', 'codex'),
+      provider_config_id: null,
+    }, { ...beforeAgent, provider_config_id: null });
+    assert.deepEqual(readFileSync(join(fx.root, 'workspace', 'workspaces.json')), source);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T002] Legacy Agent set and Provider compatibility conflicts quarantine without Workspace insertion', async () => {
+  const extraAgentFx = await legacyAdoptionFixture();
+  try {
+    insertLegacyAgent(extraAgentFx.db, 'legacy-adoption', agent('kimi'));
+    assert.deepEqual(new WorkspaceCompatibilityRepository(extraAgentFx.db).listAgentProfileIds('legacy-adoption'), ['codex', 'kimi']);
+    writeSource(extraAgentFx.root, [workspace('legacy-adoption', join(extraAgentFx.root, 'legacy-adoption'), { agents: [extraAgentFx.sourceAgent] })]);
+    const extraAgentResult = await extraAgentFx.service.run(runInput(extraAgentFx));
+    assert.equal(extraAgentResult.conflictCount, 1);
+    assert.equal(extraAgentResult.quarantinedCount, 1);
+    assert.equal((extraAgentFx.db.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count, 0);
+  } finally {
+    extraAgentFx.cleanup();
+  }
+
+  const sameIdFx = await legacyAdoptionFixture();
+  try {
+    const changedAgent = agent('codex', { name: 'Changed Existing Agent' });
+    writeSource(sameIdFx.root, [workspace('legacy-adoption', join(sameIdFx.root, 'legacy-adoption'), { agents: [changedAgent] })]);
+    const sameIdResult = await sameIdFx.service.run(runInput(sameIdFx));
+    assert.equal(sameIdResult.conflictCount, 1);
+    assert.equal(sameIdResult.quarantinedCount, 1);
+    assert.equal((sameIdFx.db.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count, 0);
+  } finally {
+    sameIdFx.cleanup();
+  }
+
+  const providerFx = await fixture();
+  try {
+    const providerWorkspace = workspace('provider-conflict-remediation', join(providerFx.root, 'provider-conflict-remediation'));
+    insertWorkspace(providerFx.db, providerWorkspace);
+    insertEqualChildren(providerFx.db, providerWorkspace);
+    providerFx.db.prepare('UPDATE provider_configurations SET executable = ? WHERE workspace_id = ?').run('incompatible-cli', 'provider-conflict-remediation');
+    writeSource(providerFx.root, [providerWorkspace]);
+    const providerResult = await providerFx.service.run(runInput(providerFx));
+    assert.equal(providerResult.conflictCount, 1);
+    assert.equal(providerResult.quarantinedCount, 1);
+    assert.equal((providerFx.db.prepare('SELECT COUNT(*) AS count FROM workspaces WHERE id = ?').get('provider-conflict-remediation') as { count: number }).count, 1);
+  } finally {
+    providerFx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T003] Compatible orphan Provider is reused and injected aggregate failure rolls back adoption', async () => {
+  const providerFx = await fixture();
+  try {
+    const providerWorkspace = workspace('provider-reuse', join(providerFx.root, 'provider-reuse'));
+    insertWorkspace(providerFx.db, providerWorkspace);
+    insertEqualChildren(providerFx.db, providerWorkspace);
+    const source = writeSource(providerFx.root, [providerWorkspace]);
+    const result = await providerFx.service.run(runInput(providerFx));
+    assert.equal(result.equalCount, 1);
+    assert.equal(result.completedCount, 1);
+    assert.equal((providerFx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations WHERE workspace_id = ?').get('provider-reuse') as { count: number }).count, 1);
+    assert.equal((providerFx.db.prepare('SELECT id FROM agent_profiles WHERE workspace_id = ? AND id = ?').get('provider-reuse', 'codex') as { id: string }).id, 'codex');
+    assert.deepEqual(readFileSync(join(providerFx.root, 'workspace', 'workspaces.json')), source);
+  } finally {
+    providerFx.cleanup();
+  }
+
+  const rollbackFx = await legacyAdoptionFixture({ beforeAggregateTransaction: () => { throw new Error('injected aggregate failure'); } });
+  try {
+    const source = writeSource(rollbackFx.root, [workspace('legacy-adoption', join(rollbackFx.root, 'legacy-adoption'), { agents: [rollbackFx.sourceAgent] })]);
+    const beforeAgent = legacyAgentSnapshot(rollbackFx.db, 'legacy-adoption', 'codex');
+    await assert.rejects(() => rollbackFx.service.run(runInput(rollbackFx)));
+    assert.equal((rollbackFx.db.prepare('SELECT COUNT(*) AS count FROM workspaces').get() as { count: number }).count, 0);
+    assert.equal((rollbackFx.db.prepare('SELECT COUNT(*) AS count FROM provider_configurations').get() as { count: number }).count, 0);
+    assert.deepEqual(legacyAgentSnapshot(rollbackFx.db, 'legacy-adoption', 'codex'), beforeAgent);
+    const failedAttempt = rollbackFx.db.prepare('SELECT status, error_code FROM legacy_data_migrations').get() as { status: string; error_code: string };
+    assert.equal(failedAttempt.status, 'failed');
+    assert.equal(failedAttempt.error_code, 'LEGACY_WORKSPACE_OPERATION_FAILED');
+    assert.deepEqual(readFileSync(join(rollbackFx.root, 'workspace', 'workspaces.json')), source);
+  } finally {
+    rollbackFx.cleanup();
+  }
+});
 
 function runCrashAfterReservationChild(fx: { root: string; databasePath: string }): Promise<{ code: number | null; output: string }> {
   const input = JSON.stringify(runInput(fx));
@@ -836,5 +1063,149 @@ test('[M27-P5-T006] Workspace migration preserves no-op, revision, conflict, and
     assert.equal((fx.db.prepare("SELECT COUNT(*) AS count FROM workspaces WHERE id = 'p5-tombstone'").get() as { count: number }).count, 0);
   } finally {
     fx.cleanup();
+  }
+});
+
+function registryAttempts(db: Db): Array<Record<string, unknown>> {
+  return db.prepare(`
+    SELECT status, attempt, scope_kind, scope_key, error_code
+    FROM legacy_data_migrations ORDER BY attempt, rowid
+  `).all() as Array<Record<string, unknown>>;
+}
+
+test('[M2.8-P3-R1-T005] parse failure rerun is a no-op without a new Attempt or Backup and a changed source re-quarantines', async () => {
+  const fx = await fixture();
+  try {
+    mkdirSync(join(fx.root, 'workspace'), { recursive: true });
+    writeFileSync(join(fx.root, 'workspace', 'workspaces.json'), Buffer.from('not-json', 'utf8'));
+    const first = await fx.service.run(runInput(fx));
+    assert.equal(first.quarantinedCount, 1);
+    assert.equal(first.dispositions.parse_failed, 1);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryAttempts(fx.db).length, 1);
+
+    const second = await fx.service.run(runInput(fx));
+    assert.equal(second.noopCount, 1);
+    assert.equal(second.quarantinedCount, 0);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryAttempts(fx.db).length, 1);
+
+    writeFileSync(join(fx.root, 'workspace', 'workspaces.json'), Buffer.from('not-json-changed', 'utf8'));
+    const third = await fx.service.run(runInput(fx));
+    assert.equal(third.noopCount, 0);
+    assert.equal(third.quarantinedCount, 1);
+    assert.equal(fx.backupCalls.count, 2);
+    const rows = registryAttempts(fx.db);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map(row => ({ status: row.status, attempt: row.attempt, error: row.error_code })), [
+      { status: 'quarantined', attempt: 1, error: 'LEGACY_WORKSPACE_SOURCE_PARSE_FAILED' },
+      { status: 'quarantined', attempt: 2, error: 'LEGACY_WORKSPACE_SOURCE_PARSE_FAILED' },
+    ]);
+  } finally {
+    fx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T006] duplicate and conflict reruns are no-ops without a new Attempt or Backup and a changed source re-quarantines', async () => {
+  const fx = await fixture();
+  try {
+    const duplicate = workspace('dup', join(fx.root, 'dup'));
+    writeSource(fx.root, [duplicate, { ...duplicate, name: 'Duplicate Second' }]);
+    const duplicateFirst = await fx.service.run(runInput(fx));
+    assert.equal(duplicateFirst.quarantinedCount, 1);
+    assert.equal(duplicateFirst.dispositions.LEGACY_WORKSPACE_DUPLICATE_SOURCE_ID, 1);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryAttempts(fx.db).length, 1);
+    const duplicateSecond = await fx.service.run(runInput(fx));
+    assert.equal(duplicateSecond.noopCount, 1);
+    assert.equal(duplicateSecond.quarantinedCount, 0);
+    assert.equal(fx.backupCalls.count, 1);
+    assert.equal(registryAttempts(fx.db).length, 1);
+  } finally {
+    fx.cleanup();
+  }
+
+  const conflictFx = await fixture();
+  try {
+    const existing = workspace('conflict', join(conflictFx.root, 'conflict'), { name: 'Existing Name' });
+    insertWorkspace(conflictFx.db, existing);
+    const source = workspace('conflict', join(conflictFx.root, 'conflict'), { name: 'JSON Name' });
+    writeSource(conflictFx.root, [source]);
+    const first = await conflictFx.service.run(runInput(conflictFx));
+    assert.equal(first.quarantinedCount, 1);
+    assert.equal(conflictFx.backupCalls.count, 1);
+    assert.equal(registryAttempts(conflictFx.db).length, 1);
+
+    const second = await conflictFx.service.run(runInput(conflictFx));
+    assert.equal(second.noopCount, 1);
+    assert.equal(second.quarantinedCount, 0);
+    assert.equal(conflictFx.backupCalls.count, 1);
+    assert.equal(registryAttempts(conflictFx.db).length, 1);
+
+    writeSource(conflictFx.root, [workspace('conflict', join(conflictFx.root, 'conflict'), { name: 'Third Name' })]);
+    const third = await conflictFx.service.run(runInput(conflictFx));
+    assert.equal(third.noopCount, 0);
+    assert.equal(third.quarantinedCount, 1);
+    assert.equal(conflictFx.backupCalls.count, 2);
+    const rows = registryAttempts(conflictFx.db);
+    assert.equal(rows.length, 2);
+    assert.deepEqual(rows.map(row => row.attempt), [1, 2]);
+    assert.ok(rows.every(row => row.status === 'quarantined'));
+  } finally {
+    conflictFx.cleanup();
+  }
+});
+
+test('[M2.8-P3-R1-T007] a failed exact-source Attempt stays retryable while completed and tombstone reruns keep their no-op semantics', async () => {
+  const fx = await fixture();
+  try {
+    const retrySource = workspace('retry', join(fx.root, 'retry'));
+    const retryBytes = writeSource(fx.root, [retrySource]);
+    const { LegacyDataMigrationRepository } = await import('../store/LegacyDataMigrationRepository.js') as unknown as {
+      LegacyDataMigrationRepository: new (db: Db) => {
+        reconcileStaleRunningAndReserveAttempt(input: Record<string, unknown>): { id: string };
+        transitionRunningToFailed(id: string, input: Record<string, unknown>): void;
+      };
+    };
+    const repository = new LegacyDataMigrationRepository(fx.db);
+    const failedSeed = repository.reconcileStaleRunningAndReserveAttempt({
+      migrationKind: 'workspace_adoption',
+      sourceKey: 'workspaces.json',
+      scopeKind: 'workspace',
+      scopeKey: 'retry',
+      canonicalWorkspaceId: null,
+      sourceHash: hash(retryBytes),
+      migrationId: 'retry-failed-attempt',
+      now: NOW,
+    });
+    repository.transitionRunningToFailed(failedSeed.id, {
+      errorCode: 'LEGACY_WORKSPACE_OPERATION_FAILED',
+      finishedAt: NOW,
+      updatedAt: NOW,
+    });
+    const retry = await fx.service.run(runInput(fx));
+    assert.equal(retry.completedCount, 1);
+    assert.equal(retry.noopCount, 0);
+    const retryRows = registryAttempts(fx.db);
+    assert.deepEqual(retryRows.map(row => row.status), ['failed', 'completed']);
+  } finally {
+    fx.cleanup();
+  }
+
+  const tombstoneFx = await fixture();
+  try {
+    tombstoneFx.db.prepare('INSERT INTO _workspace_tombstones (workspace_id, deleted_at) VALUES (?, ?)').run('dead', NOW);
+    writeSource(tombstoneFx.root, [workspace('dead', join(tombstoneFx.root, 'dead'))]);
+    const first = await tombstoneFx.service.run(runInput(tombstoneFx));
+    assert.equal(first.tombstoneCount, 1);
+    assert.equal(first.completedCount, 1);
+    const second = await tombstoneFx.service.run(runInput(tombstoneFx));
+    assert.equal(second.noopCount, 1);
+    assert.equal(second.completedCount, 0);
+    assert.equal(tombstoneFx.backupCalls.count, 1);
+    assert.equal(registryAttempts(tombstoneFx.db).length, 1);
+    assert.equal((tombstoneFx.db.prepare("SELECT COUNT(*) AS count FROM workspaces WHERE id = 'dead'").get() as { count: number }).count, 0);
+  } finally {
+    tombstoneFx.cleanup();
   }
 });

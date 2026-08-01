@@ -216,6 +216,25 @@ export class LegacyTaskItemImportService {
         };
       }
 
+      // Quarantined exact-source no-op: an unchanged rejected source never
+      // earns another Backup or Attempt. Failed Attempts miss this lookup and
+      // stay retryable; a changed source hash reclassifies below.
+      const quarantined = migrations.findQuarantinedByExactSource(scope);
+      if (quarantined !== null) {
+        return {
+          mode: input.mode,
+          kind: 'tasks',
+          workspaceId: input.workspaceId,
+          sourceCount: 0,
+          validTaskCount: 0,
+          completedCount: 0,
+          noopCount: 1,
+          quarantinedCount: 0,
+          importedCount: 0,
+          revision: null,
+        };
+      }
+
       if (input.mode === 'dry-run') {
         return this.dryRun(scope, sourceBytes);
       }
