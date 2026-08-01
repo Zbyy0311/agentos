@@ -89,6 +89,17 @@ M3 is Lifecycle, Event and API Foundation:
 - ProcessManager and ProviderAdapter work reserved for M4.
 - Worktree, Policy, Approval, and other later-milestone runtime domains.
 
+### 2.4 Shared contract and Event Registry
+
+The M3 shared contract must be explicit before lifecycle implementation:
+
+- packages/shared status types for Run and Stage.
+- RuntimeEvent envelope, schemaVersion, payload schema, and unknown-event fallback.
+- A central Runtime Event Registry that validates event registration, default severity, visibility, durability, payload schema, and future unknown-event behavior.
+- ApiProblem, ApiOperation, Request/Response DTOs, and the SSE event contract.
+
+An unregistered Core Event must not publish. Conversation AgentEvents are not a substitute for this registry.
+
 ## 3. Current authority and compatibility inventory
 
 | Domain or surface | Current implementation | Current assessment |
@@ -127,23 +138,23 @@ Every row below has the required fields: Current implementation, Existing partia
 | 1 Run Engine | No Task-domain RunEngine or Start scheduler exists; TaskRunService creates records and RunRepository persists rows. | Create Run and Legacy Bridge reconciliation exist. | HTTP request lifetime must not be the Run execution lifetime; a persisted Run must advance independently. | Define a minimal Task-domain Run Engine and asynchronous Start path with durable ownership. | No ProcessManager, ProviderAdapter, provider execution redesign, or M4 runtime. | apps/server/src/services/TaskRunService.ts; apps/server/src/store/RunRepository.ts; Runtime-Specification/02-Runtime-Lifecycle.md §§2, 57 |
 | 2 Run state machine and allowed transitions | RunRepository allows only a partial queued/running/terminal graph; starting, waiting_approval, and paused have no complete transitions. | Status, version, parentRunId, and rootRunId are persisted. | Only specified transitions are legal, terminal states cannot reset, and every transition is version-safe and event-producing. | Implement the M3 transition table and transition owner with cancel/complete conflict handling. | No Policy or Approval runtime; later domains remain deferred. | apps/server/src/store/RunRepository.ts; Runtime-Specification/02-Runtime-Lifecycle.md §56 |
 | 3 Workflow Executor Foundation | Workflow definitions, snapshots, and stages exist, but no Task-domain executor schedules a persisted Run. | run_snapshots and run_stages are created during v2 Run creation. | A Run must execute a resolved workflow snapshot through an owned minimal stage executor. | Add only the foundation needed for a deterministic mock or built-in stage and Run completion. | No ProviderAdapter or real provider runtime; M4 owns that boundary. | apps/server/src/services/TaskRunService.ts; apps/server/src/migrations/migrations/007-workflow-definitions.ts; Runtime-Specification/02-Runtime-Lifecycle.md §§5, 57 |
-| 4 Stage Transition | Initial run_stages rows are persisted, but there is no Task-domain stage transition engine. | Stage definitions, ordering, and snapshot persistence exist. | Stage transitions must be persisted, ordered, legal, and reflected in Run events. | Implement stage transition ownership and the minimal stage lifecycle used by the Run Engine. | No Worktree, Policy, Approval, or provider-specific stage behavior. | apps/server/src/migrations/migrations/009-run-stages.ts; apps/server/src/store/RunRepository.ts; Runtime-Specification/02-Runtime-Lifecycle.md §§6, 57 |
-| 5 Event Envelope | Conversation AgentEvent records and Legacy SSE frames use different shapes; no canonical Task-domain RuntimeEvent writer exists. | EventBus persists Conversation AgentEvents after Conversation execution changes. | Each Task-domain event must have the canonical envelope, identity, run reference, sequence, durability, visibility, and validated payload. | Add envelope types, factory, validation, redaction, and Task-domain event fixtures. | Conversation AgentEvents are not converted into the Task-domain Event Store by assumption. | apps/server/src/events/EventBus.ts; apps/server/src/store/SqliteStore.ts; Runtime-Specification/03-Event-Model.md §§4, 5 |
+| 4 Stage Transition | Initial run_stages rows are persisted with status limited to pending; there is no Task-domain stage transition engine, failure field, started/completed timestamp, or version guard. | Stage definitions, ordering, and snapshot persistence exist. | M3 Stage lifecycle must be persisted, ordered, legal, version-safe, and reflected in Run Events. | Extend run_stages through the reviewed Migration 012 scope, then implement stage transition ownership. | No Worktree, Policy, Approval, or provider-specific stage behavior. | apps/server/src/migrations/migrations/009-run-stages.ts; apps/server/src/store/RunRepository.ts; Runtime-Specification/02-Runtime-Lifecycle.md §§6, 57 |
+| 5 Event Envelope | Conversation AgentEvent records and Legacy SSE frames use different shapes; no canonical Task-domain RuntimeEvent writer or central registry exists. | EventBus persists Conversation AgentEvents after Conversation execution changes. | Each Task-domain event must use the canonical envelope, schemaVersion, registered type, default severity/visibility/durability, validated payload, and unknown-event fallback. | Add shared envelope types, central Runtime Event Registry, factory, validation, redaction, and Task-domain event fixtures. | Conversation AgentEvents are not converted into the Task-domain Event Store by assumption. | packages/shared; apps/server/src/events/EventBus.ts; apps/server/src/store/SqliteStore.ts; Runtime-Specification/03-Event-Model.md §§4, 5 |
 | 6 Task-domain Sequence Allocator | runs has next_event_sequence, but RunRepository has no allocator; run_event_sequences allocates Conversation sequences. | A persisted counter and Conversation sequence mechanism exist. | Task-domain allocation is transactional with the target Run and yields strict per-Run monotonic sequence. | Add a Run-bound allocator using the runs row and a concurrency-safe transaction. | No reuse of Conversation run_event_sequences for Task-domain Runs. | apps/server/src/migrations/migrations/006-runs-table.ts; apps/server/src/store/SqliteStore.ts; Runtime-Specification/03-Event-Model.md §16 |
 | 7 Task-domain Event Store | No runtime_events table or Task-domain event repository exists. agent_events requires Conversation context and serves agent_runs. | Conversation event persistence provides a pattern for append-only records. | Task-domain Runtime Events are append-only, queryable by Run, and uniquely constrained by run_id plus sequence. | Plan and later implement the Task-domain Event Store and query/replay repository. | Do not relabel agent_events as runtime_events or merge Conversation and Task histories. | apps/server/src/migrations/migrations/001-baseline-schema.ts; apps/server/src/migrations/migrations/006-runs-table.ts; Runtime-Specification/03-Event-Model.md §§5, 16 |
-| 8 Outbox table, repository, publisher | Registry 001–011 has no outbox_messages table, repository, publisher, retry, or dead-letter path. | Migration and EventBus infrastructure shows transaction and publication patterns in other domains. | State/Event commit must enqueue a durable Outbox message before any broadcast; publication is at-least-once and retryable. | Plan a Task-domain Outbox schema, repository, publisher, retry/idempotency, and failure fixtures. | No external broker or paid infrastructure; local durable publisher foundation only. | apps/server/src/migrations/default-registry.ts; Runtime-Specification/10-Data-Model.md §§78, 111 |
+| 8 Outbox table, repository, publisher | Registry 001–011 has no outbox_messages table, repository, publisher, retry, or independent dead_letters or reviewed equivalent. | Migration and EventBus infrastructure shows transaction and publication patterns in other domains. | State/Event commit must enqueue an immutable durable Outbox message before any broadcast; publication is at-least-once, retryable, and deduplicated by durable identity. | Plan Outbox, dead-letter, repository, publisher, retry/idempotency, immutability, concurrency constraints, and failure fixtures. | No external broker or paid infrastructure; local durable publisher foundation only. | apps/server/src/migrations/default-registry.ts; Runtime-Specification/10-Data-Model.md §§78, 111 |
 | 9 State plus Event plus Outbox transaction boundary | RunRepository updates runs without a Runtime Event and Outbox write in the same transaction. | Run row version updates and idempotency records are transaction-capable in selected callers. | A state transition commits Current State + Runtime Event + Outbox atomically, or none of them commit. | Define and implement the aggregate transaction boundary with rollback tests. | No speculative migration or runtime implementation in this P0 remediation. | apps/server/src/store/RunRepository.ts; apps/server/src/services/IdempotencyService.ts; Runtime-Specification/10-Data-Model.md §§111, 121 |
-| 10 Run Events API | v2Runs exposes Get Run and Cancel only; no v2 GET /runs/:runId/events route exists. | Get Run and cancel routes have workspace/run authorization and stable partial errors. | Clients can query persisted Task-domain events by Run and cursor without relying on a stream buffer. | Add Run Events route, cursor validation, authorization, and stable ApiProblem responses. | No Legacy route removal or Web global migration. | apps/server/src/routes/v2Runs.ts; Runtime-Specification/11-API-Specification.md §§57, 215 |
+| 10 Run Events API | v2Runs exposes Get Run and Cancel only; no canonical top-level Run Events route exists. | Get Run and cancel routes have workspace/run authorization and stable partial errors. | Clients can query persisted Task-domain events by Run and cursor without relying on a stream buffer. | Preserve current v2 collection compatibility and add canonical GET /api/runs/:runId/events with cursor validation, authorization, and stable ApiProblem responses. | No Legacy route removal, canonical Task collection replacement, or Web global migration. | apps/server/src/routes/v2Runs.ts; Runtime-Specification/11-API-Specification.md §§57, 215 |
 | 11 Durable Run Stream | RunStreamRegistry is a process-local session Map with a short retention window and is used by Conversation routes. | Conversation stream has live subscribers and a local cursor. | Task-domain Run Stream replays from persisted Events and remains recoverable after process loss. | Add the Task-domain SSE stream backed by Event Store history followed by Outbox/EventBus delivery. | RunStreamRegistry is not upgraded by relabeling; Conversation stream remains separate. | apps/server/src/services/RunStreamRegistry.ts; apps/server/src/routes/conversations.ts; Runtime-Specification/03-Event-Model.md §§17, 18 |
-| 12 SSE reconnect, cursor, and Last-Event-ID | Legacy SSE has no v2 cursor contract; Conversation stream cursor is process-local. | RunStreamRegistry tracks an in-memory sequence/cursor for a live session. | afterSequence and Last-Event-ID must resume persisted history, reject expired cursors predictably, and never cancel the Run. | Implement cursor parsing, historical replay, live handoff, keepalive, disconnect semantics, and cursor error mapping. | No Web default switch and no removal of Legacy SSE. | apps/server/src/routes/tasks.ts; apps/server/src/routes/conversations.ts; Runtime-Specification/11-API-Specification.md §§87, 131 |
+| 12 SSE reconnect, cursor, and Last-Event-ID | Legacy SSE has no v2 cursor contract; Conversation stream cursor is process-local. | RunStreamRegistry tracks an in-memory sequence/cursor for a live session. | afterSequence and Last-Event-ID must resume persisted history with no loss, no duplicate, strict order, and no Run cancellation. | Freeze race-free handoff: subscribe and buffer, capture durable high-watermark, replay through it, drain buffered events above it, deduplicate by runId plus sequence, then enter Live mode. | No Web default switch and no removal of Legacy SSE. | apps/server/src/routes/tasks.ts; apps/server/src/routes/conversations.ts; Runtime-Specification/11-API-Specification.md §§87, 131 |
 | 13 Replay Foundation | No v2 Run replay route or persisted Task-domain replay reader exists. | Conversation history can be read from its own aggregate. | Replay reads persisted events, detects gaps/unknown schemas, and never re-executes a provider or Run. | Add Task-domain replay foundation and fixtures for ordered, duplicate, gap, and unknown-event cases. | No Conversation history unification or provider re-run. | apps/server/src/services/ConversationService.ts; Runtime-Specification/03-Event-Model.md §§26, 27 |
-| 14 Operation Resource | No Operation table, repository, or v2 operation route is present. | Start-like work can be represented by a Run row, but there is no separate command lifecycle. | Long or asynchronous commands return an Operation resource that is distinct from Run and has durable status/result/error. | Add the minimal Operation resource and route needed for async Start and command polling. | Do not use Operation to authorize cutover or production work. | apps/server/src/routes/v2Runs.ts; Runtime-Specification/11-API-Specification.md §§31, 32 |
+| 14 Operation Resource | No durable Operation table, repository, or operation route is present. | Start-like work can be represented by a Run row, but there is no separate command lifecycle. | Operation is distinct from Run and persists exact status queued/running/waiting_approval/paused/completed/failed/cancelled, result, ApiProblem, aggregate reference, timestamps, and version. | Add durable Operation schema and GET /api/operations/:operationId, GET /api/operations/:operationId/events, POST /api/operations/:operationId/cancel. | Do not use Operation to authorize cutover or production work. | apps/server/src/routes/v2Runs.ts; Runtime-Specification/11-API-Specification.md §§31, 32 |
 | 15 API Problem and Error Mapping | respondV2 returns a partial error/code shape; it is not the full ApiProblem contract. | Stable code mapping exists for current v2 Task/Run errors. | All M3 API failures map to stable type/title/status/code/detail/request/field data without leaking internals. | Define ApiProblem mapping, middleware, and contract fixtures for 400, 404, 409, 412, 422, 429, and 500 classes. | No broad API rewrite outside M3 deliverables. | apps/server/src/routes/v2Tasks.ts; Runtime-Specification/11-API-Specification.md §§12, 214 |
 | 16 ETag and If-Match | v2 routes accept body expectedVersion in selected paths; ETag and If-Match headers are absent. | Run version is persisted and optimistic conflicts are detectable. | Reads emit ETag and mutations enforce If-Match or an explicitly mapped expected-version rule with 412 semantics. | Add version header behavior, If-Match parsing, 412 mapping, and tests. | No unrelated resource-wide concurrency redesign. | apps/server/src/store/RunRepository.ts; apps/server/src/routes/v2Tasks.ts; Runtime-Specification/11-API-Specification.md §§22, 23 |
-| 17 Idempotency Middleware | Migration 010 and IdempotencyService cover a partial set of six operations; callers own transactions. | task.create, run.create, run.cancel, task.accept, task.cancel, and task.reopen have replay/key-reuse behavior. | M3 high-side-effect lifecycle commands replay the original result and never duplicate state/event/outbox effects. | Extend the middleware and records for M3 Start, Cancel, Retry, and applicable Create commands while preserving M2 behavior. | No destructive Legacy deletion or production cutover command. | apps/server/src/migrations/migrations/010-idempotency-records.ts; apps/server/src/services/IdempotencyService.ts; Runtime-Specification/11-API-Specification.md §23 |
+| 17 Idempotency Middleware | Migration 010 and IdempotencyService cover a partial set of six operations; callers own transactions. | task.create, run.create, run.cancel, task.accept, task.cancel, and task.reopen have replay/key-reuse behavior. | M3 high-side-effect lifecycle commands replay the original result and never duplicate state/event/outbox effects. | Extend idempotency_records.operation for run.start, run.retry, and finally approved M3 commands while preserving M2 behavior and transaction ownership. | No destructive Legacy deletion or production cutover command. | apps/server/src/migrations/migrations/010-idempotency-records.ts; apps/server/src/services/IdempotencyService.ts; Runtime-Specification/11-API-Specification.md §23 |
 | 18 Basic OpenAPI | No concrete v2 OpenAPI artifact or generator is present in the current implementation search. | Route files and tests provide partial executable contract evidence. | M3 deliverables have a reviewable OpenAPI description for schemas, headers, status codes, events, and stream endpoints. | Add the minimal documented contract and validation/check step. | No API documentation for later Worktree, Policy, Approval, or Provider domains. | apps/server/src/routes/v2Tasks.ts; apps/server/src/routes/v2Runs.ts; Runtime-Specification/11-API-Specification.md §§2, 57 |
 | 19 Retry creates child Run | RunRepository has parentRunId/rootRunId fields and child creation rules, but no complete Retry command lifecycle. | New Run creation can record parent/root identity and reason. | Retry never resets a failed/cancelled Run; it creates a new child Run with explicit lineage and idempotent command behavior. | Add Retry command, lineage events, child Run creation, and conflict/idempotency tests. | No provider retry policy or production retry automation. | apps/server/src/store/RunRepository.ts; apps/server/src/services/TaskRunService.ts; Runtime-Specification/02-Runtime-Lifecycle.md §38 |
-| 20 Browser disconnect and server restart | Request-bound Legacy execution aborts on close; v2 Task Run stream/recovery is absent. Conversation GET subscription close unsubscribes, while message execution close can abort its controller. | Legacy queued recovery and Conversation recovery exist in separate aggregates. | Browser disconnect ends only the subscription; server restart recovers from persisted Run/Stage/Event state and never guesses success. | Implement disconnect-safe Run execution, startup recovery scan, persisted replay, and uncertain-state handling. | No production restore, operator cutover, or runs/agent_runs unification. | apps/server/src/routes/tasks.ts; apps/server/src/routes/conversations.ts; apps/server/src/taskRecovery.ts; Runtime-Specification/02-Runtime-Lifecycle.md §§52, 54 |
+| 20 Browser disconnect and server restart | Request-bound Legacy execution aborts on close; v2 Task Run stream/recovery is absent. Conversation GET subscription close unsubscribes, while message execution close can abort its controller. No recovery_required Run status or Recovery Record exists. | Legacy queued recovery and Conversation recovery exist in separate aggregates. | Browser disconnect ends only the subscription; server restart recovers from persisted Run/Stage/Event state and never guesses success. | Decide before P6 whether recovery_required is added to runs or a separate Recovery Record is used; P6 must not reference a schema state that does not exist. | No production restore, operator cutover, or runs/agent_runs unification. | apps/server/src/routes/tasks.ts; apps/server/src/routes/conversations.ts; apps/server/src/taskRecovery.ts; Runtime-Specification/02-Runtime-Lifecycle.md §§52, 54 |
 | 21 Legacy execute-task and Legacy SSE to v2 compatibility mapping | Legacy task run emits status/stage/thinking/done/error and bridges selected Run rows, but frames are not reconstructed from a v2 Event Store. | TaskRunService has createLegacyRunForBridge and terminal bridge calls. | Legacy POST maps internally to Create Run then Start Run, and legacy frames are projections of persisted v2 Events without a second execution model. | Define and test status/stage/thinking/done/error projection while keeping the Legacy endpoint usable. | No Legacy API retirement, Legacy JSON deletion, or Web default switch. | apps/server/src/routes/tasks.ts; apps/server/src/services/TaskRunService.ts; Runtime-Specification/11-API-Specification.md §§181, 182 |
 | 22 Tests, fixtures, and recovery gaps | Existing tests cover M2 repositories/routes/Conversation behavior, not the complete Task-domain Event/Outbox/replay/API vertical chain. | Route, repository, idempotency, and Conversation tests provide regression baselines. | RED/GREEN evidence must cover transitions, duplicate Start, cancel/complete race, child retry, ordering, duplicates, reconnect, disconnect, Outbox recovery, ApiProblem, ETag, Idempotency, and contract shape. | Add a minimal Event Fixture and the M3 vertical acceptance suite with recovery and regression coverage. | No claim of passed tests in this planning branch; no production or browser execution. | apps/server/src/**/__tests__; Runtime-Specification/14-Roadmap.md §52 |
 
@@ -160,16 +171,67 @@ This is a schema-gap conclusion for future planning, not authorization to create
 Registry migrations 001–011 provide runs.next_event_sequence and runs.version, but they do not provide:
 
 1. A Task-domain runtime_events table with the canonical envelope fields and a foreign-key relationship to Task-domain runs.
-2. A unique run_id plus sequence invariant for append-only Task-domain events.
-3. A durable outbox_messages table with message identity, event reference, delivery status, attempt count, availability, published time, error/dead-letter state, and retry ownership.
-4. An atomic schema path that writes Run state, Runtime Event, and Outbox in one transaction.
-5. A durable Operation resource needed to track asynchronous commands independently from a Run.
+2. UNIQUE(run_id, sequence) and query indexes for append-only Task-domain events.
+3. A durable outbox_messages table with immutable message identity, event reference, delivery status, attempt count, availability, published time, error state, and retry ownership.
+4. An independent dead_letters table or a separately reviewed equivalent.
+5. A durable Operation resource.
+6. Operation lifecycle, result, ApiProblem, aggregate reference, timestamps, and version fields.
+7. A rebuilt or extended run_stages schema. The current status is limited to pending and lacks M3 failure, started/completed timestamps, and version fields.
+8. idempotency_records.operation values for run.start, run.retry, and the finally approved M3 command set.
+9. An explicit Run recovery representation: either runs.recovery_required or a separate Recovery Record. P6 must not use a state absent from the schema.
+10. A Task-domain sequence allocator that uses runs.next_event_sequence.
+11. Append-only Event and immutable/serialized Outbox constraints under concurrency.
+12. A durable Queue decision. M3 uses runs(status=queued) as the persistent Queue Record; scheduler_jobs is not added unless later evidence proves the invariant cannot be met.
 
 The existing agent_events and run_event_sequences structures do not satisfy this gap: agent_events requires conversation_id and belongs to the Conversation agent_runs/EventBus path; run_event_sequences allocates Conversation event sequence and is not a sequence allocator for Task-domain runs. Conversation events must not be counted as a Task-domain Event Store.
 
-Therefore conclusion B, Migration 012 NOT REQUIRED, is not supportable from 001–011. The correct conclusion is A, with implementation explicitly deferred until the contract and schema are independently reviewed.
+Migration 012 may require SQLite table rebuilds. Future implementation requires a separate DDL review, checksum review, fresh and legacy database fixtures, rollback/forward-compatibility evidence, and L3 validation. Therefore conclusion B, Migration 012 NOT REQUIRED, is not supportable from 001–011. The correct conclusion is A, with implementation explicitly deferred until the contract and schema are independently reviewed. No DDL is created in this remediation.
 
-## 6. M3 boundary and pre-P1 gate
+## 6. Technical alignment decisions
+
+### 6.1 Task Event and runId specification alignment
+
+M3 runtime_events remain Run-scoped. Create Task does not fabricate a Run ID for task.created. In M3, Create Task is evidenced through Task state, Idempotency, and Audit records. An independent Task Aggregate Event design is deferred until the specifications are aligned. run_id is not made nullable for this purpose. This is a known Deferred Specification Alignment and does not block Task-domain M3 implementation.
+
+### 6.2 API path compatibility alignment
+
+The current route facts are:
+
+- Legacy Task occupies /api/workspaces/:workspaceId/tasks.
+- Current v2 routes are under /api/workspaces/:workspaceId/v2.
+- The API Specification’s canonical Task Collection conflicts with the Legacy collection path.
+
+The M3 compatibility decision is:
+
+- Preserve the Legacy Task path and behavior.
+- Preserve the current v2 Task/Run collection as a compatibility path.
+- Add canonical top-level Run/Operation paths without claiming the Task Collection has switched:
+  - /api/runs/:runId
+  - /api/runs/:runId/start
+  - /api/runs/:runId/retry
+  - /api/runs/:runId/events
+  - /api/runs/:runId/replay
+  - /api/runs/:runId/stream
+  - /api/operations/:operationId
+  - /api/operations/:operationId/events
+  - /api/operations/:operationId/cancel
+- Defer canonical Task Collection replacement to Post-M3 Web/Legacy Cutover.
+- OpenAPI must document Legacy, current v2, and canonical top-level Run paths separately.
+
+### 6.3 Race-free SSE handoff
+
+The M3 handoff is not a replay-then-subscribe algorithm. The required sequence is:
+
+1. Establish the live subscription and buffer incoming events.
+2. Read the durable high-watermark.
+3. Replay persisted Events through that high-watermark.
+4. Drain buffered events with sequence greater than the high-watermark.
+5. Deduplicate by runId plus sequence.
+6. Enter Live mode.
+
+The acceptance evidence must include an Event committed in the replay/live switch window, with no loss, no duplicate, strict sequence order, Last-Event-ID/afterSequence reconnect, disconnect without Run cancellation, and process-restart recovery from Event Store.
+
+## 7. M3 boundary and pre-P1 gate
 
 ### 6.1 M3 end-state boundary
 
@@ -190,7 +252,21 @@ Before any future M3 implementation branch:
 
 The current remediation does not modify local main, because local main is currently b61aedf6f2aaacd846324d5abd452a8875579840 while origin/main is 80e398d5074ca8e0d6367d95a1aba3951b9a8843.
 
-## 7. Evidence index
+### 7.3 P0 docs merge gate
+
+The current P0 docs must not become an implicit parent contract for a P1 implementation branch. After this revision receives final independent P0 review:
+
+1. Create a docs-only Draft PR.
+2. Complete independent review.
+3. Merge with an ordinary Merge Commit.
+4. Fetch and confirm origin/main is updated.
+5. Synchronize local main with origin/main using fast-forward-only.
+6. Confirm main equals origin/main.
+7. Only then create the M3 P1 implementation branch.
+
+This remediation itself creates no PR and does not authorize P1.
+
+## 8. Evidence index
 
 ### Runtime contracts
 
@@ -225,7 +301,7 @@ The current remediation does not modify local main, because local main is curren
 - apps/server/src/routes/conversations.ts
 - apps/web/src/lib/useTask.ts
 
-## 8. Audit conclusion
+## 9. Audit conclusion
 
 The current checkout is prepared for independent M3 technical review, not implementation. M3 must be planned as Lifecycle, Event and API Foundation. The authoritative gap is the missing Task-domain persistent state machine plus Persist-then-publish chain, not Production Cutover.
 

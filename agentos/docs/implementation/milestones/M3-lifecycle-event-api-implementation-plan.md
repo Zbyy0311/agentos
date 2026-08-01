@@ -1,58 +1,60 @@
 # AgentOS M3 Lifecycle, Event and API Foundation Implementation Plan
 
-Status: DRAFT PLAN — PREPARED FOR INDEPENDENT TECHNICAL REVIEW — M3 P1 NOT AUTHORIZED — PRODUCTION CUTOVER NOT AUTHORIZED
+Status: DRAFT — TECHNICAL CONTRACT APPROVED BY INDEPENDENT REVIEW — IMPLEMENTATION STILL NOT AUTHORIZED — M3 P1 NOT AUTHORIZED — PRODUCTION CUTOVER NOT AUTHORIZED
 
-This plan is a future implementation plan. No phase below is complete or passed. The current remediation changes documentation only and does not authorize M3 P1, Migration 012, production behavior, data deletion, restore, or a Web default switch.
+This plan is the third-commit remediation target, not an implementation result. The current turn changes only the three existing M3 Markdown files. It creates no DDL, code, test, Registry, API, Web, database, migration, restore, production, or PR state.
 
 ## 1. Authoritative contract
 
-M3 is defined by Runtime Specification 14, Roadmap §§47–53:
+M3 is the Lifecycle, Event and API Foundation defined by Runtime Specification 14, Roadmap §§47–53:
 
-- Objective: run a persistent Run state machine and use the Persist-then-publish Event Path.
-- Scope: Run Engine, Workflow Executor Foundation, Stage Transition, Event Envelope, Task-domain Sequence Allocator, Event Store, Outbox, SSE, reconnect, ApiProblem, Operation Resource, ETag, Idempotency Middleware, and Basic OpenAPI.
+- Objective: run a persistent Run state machine through a Persist-then-publish Event Path.
+- Scope: Run Engine, Workflow Executor Foundation, Stage Transition, Runtime Event Envelope, Task-domain Sequence Allocator, Event Store, Outbox, SSE, reconnect, ApiProblem, Operation Resource, ETag, Idempotency Middleware, Basic OpenAPI, and the shared contracts needed by those surfaces.
 - Deliverables: Create Task, Create Run, Start Run, Get Run, Cancel Run, Run Events, Run Stream, Operation, Error Mapping, Event Fixture, and Replay Foundation.
-- Compatibility: Legacy execute-task remains usable and maps to Create Run then Start Run; Legacy SSE remains usable and maps status, stage, thinking, done, and error frames to v2 events.
-- Exit gate: Browser refresh does not cancel Run; client disconnect ends only the subscription; event sequence is strictly increasing; State/Event/Outbox is transactional; error codes are stable; Start Run is asynchronous; Retry creates a new Run.
+- Compatibility: Legacy execute-task remains usable and maps to Create Run then Start Run; Legacy SSE remains usable and maps status, stage, thinking, done, and error frames to v2 Events.
+- Exit invariants: Browser refresh does not cancel Run; client disconnect ends only the subscription; per-Run sequence is strictly increasing; State/Event/Outbox is transactional; error codes are stable; Start Run is asynchronous; Retry creates a new Run.
 
-The supporting contract sources are Runtime Specification 02 Runtime Lifecycle, 03 Event Model, 10 Data Model, and 11 API Specification.
+## 2. Frozen boundaries and dependency cycle
 
-## 2. Global boundaries and sequencing
+### 2.1 M3 in scope
 
-### In scope for M3
+- Task-domain Run and Stage lifecycle.
+- Schema and Shared Contract Foundation.
+- Central Runtime Event Registry.
+- Task-domain Runtime Event Store, sequence allocator, Outbox, dead letters, and replay.
+- Transactional Run/Stage state transitions.
+- Run Engine, minimal Workflow Executor, and Operation.
+- ApiProblem, ETag, If-Match, Idempotency, OpenAPI, and route compatibility.
+- Durable Run Events, Replay, SSE, reconnect, cursor, and Last-Event-ID.
+- Legacy mapping, recovery, Outbox failure verification, fixtures, regression, and L3 evidence.
 
-- Task-domain Run lifecycle and legal transitions.
-- Minimal Run Engine and Workflow Executor Foundation.
-- Stage transition persistence.
-- Canonical Task-domain Runtime Event envelope, allocator, Event Store, and replay.
-- Outbox transaction, publisher, retry, and idempotency.
-- Task/Run/Operation/Event/Stream API foundation.
-- SSE reconnect and Last-Event-ID behavior.
-- Legacy compatibility mapping while keeping the Legacy path usable.
-- Recovery and browser-disconnect invariants.
-- Tests, fixtures, OpenAPI, formal evidence, independent review, and ordinary merge closeout.
-
-### Forbidden throughout M3
+### 2.2 M3 out of scope
 
 - Production Cutover or Production Restore.
 - Web global v2 default switch.
-- Legacy API removal.
+- Legacy API retirement.
 - Legacy JSON physical retirement, deletion, or speculative bulk migration.
-- Post-cutover production observation or cohort rollout.
+- Post-Cutover production observation or cohort rollout.
 - Task and Conversation aggregate unification.
-- ProcessManager, ProviderAdapter, Worktree, Policy, Approval, or other later-milestone domains.
-- Treating Conversation agent_events or RunStreamRegistry as the Task-domain Event Store or Durable Run Stream.
+- ProcessManager and ProviderAdapter work reserved for M4.
+- Worktree, Policy, Approval, and other later-milestone runtime domains.
+- Treating Conversation agent_events or RunStreamRegistry as Task-domain Event Store or Durable Run Stream.
 
-### M3 sequencing rules
+### 2.3 Hard dependency rules
 
-1. P0 contract and technical decision closure precedes P1.
-2. P1 is not authorized until P0 receives independent technical review and the Pre-P1 Gate is satisfied.
-3. P2 schema work cannot start from a name-only assumption. Migration 012 is REQUIRED — PLANNING ONLY in the current audit; future DDL requires separate authorization and review.
-4. P5 compatibility mapping must preserve the Legacy route at M3 end.
-5. P7 formal gate is not Production Cutover authorization. Production Cutover and Legacy Retirement remain later gates.
+1. P0 closes the technical contract and the final P0 docs merge gate.
+2. P1 only completes Schema and Shared Contract Foundation.
+3. No persistent Run/Stage status migration or real lifecycle transition occurs in P1.
+4. All persistent Run/Stage status migration begins in P2.
+5. Every P2 state transition atomically writes Current State + Runtime Event + Outbox. No real state transition may be implemented before that transaction core.
+6. Run Engine, Workflow Executor execution, and Start route integration begin only after P2 transaction core.
+7. P4 preserves Legacy and current v2 routes while adding canonical top-level Run/Operation paths; it does not replace the canonical Task Collection.
+8. P5 uses the race-free subscribe/buffer/high-watermark/replay/drain/deduplicate/live handoff.
+9. P7 can propose an ordinary merge for M3 Foundation only; it cannot authorize Production Cutover or Legacy Retirement.
 
-## 3. Pre-P1 Gate
+## 3. Pre-P1 and P0 merge gate
 
-Before opening any future M3 implementation branch:
+Before any future M3 implementation branch:
 
 1. Fetch origin.
 2. Confirm the main worktree is clean.
@@ -61,7 +63,17 @@ Before opening any future M3 implementation branch:
 5. Do not use reset --hard, force-push, or an implicit merge to hide divergence.
 6. If fast-forward-only synchronization is impossible, stop and obtain independent review.
 
-Current recorded state is local main b61aedf6f2aaacd846324d5abd452a8875579840 versus origin/main 80e398d5074ca8e0d6367d95a1aba3951b9a8843. This docs-only remediation does not modify local main.
+The P0 docs must not become an implicit parent contract for a P1 branch. After this remediation receives final independent P0 review:
+
+1. Create a docs-only Draft PR.
+2. Complete independent review.
+3. Merge with an ordinary Merge Commit.
+4. Fetch and confirm origin/main has the merge.
+5. Synchronize local main with origin/main using fast-forward-only.
+6. Confirm main equals origin/main.
+7. Only then create the M3 P1 implementation branch.
+
+This current remediation creates no PR and does not authorize P1.
 
 ## 4. Implementation phases
 
@@ -69,642 +81,658 @@ Current recorded state is local main b61aedf6f2aaacd846324d5abd452a8875579840 ve
 
 #### Goal
 
-Restore the authoritative M3 Lifecycle, Event and API Foundation contract, reconcile current code facts with Roadmap §§47–53, and close technical decisions sufficiently for independent review.
+Close the M3 technical contract, schema-gap scope, shared contract boundaries, API compatibility paths, Task Event/runId conflict, race-free SSE handoff, and phase dependency order.
 
 #### Authorized scope
 
-- Read-only inspection of Runtime Specification, M2 contracts, migration registry, and current implementation.
-- Modification of the three M3 Markdown artifacts in this planning branch.
-- The 22-entry M3 Gap Matrix.
-- Technical Decision Register and Deferred Post-M3 Decision Register.
-- Migration 012 schema-gap analysis and planning-only conclusion.
+- Read-only inspection of Runtime Specification, M2 contracts, migration registry, and current code.
+- Modification of the three existing M3 Markdown files only.
+- The 22-entry Gap Matrix and exact Migration 012 planning scope.
+- Technical decisions marked APPROVED BY INDEPENDENT TECHNICAL REVIEW — IMPLEMENTATION STILL NOT AUTHORIZED.
 
 #### Forbidden scope
 
-- Any production code, test, migration, registry, package, API, Web, database, or runtime edit.
-- Migration 012 creation or DDL.
+- Production code, tests, migrations, Registry, package, API, Web, database, runtime, restore, or data changes.
+- Migration 012 DDL.
+- Persistent Run/Stage migration.
 - M3 P1 implementation.
-- Production Cutover, Restore, data copy, deletion, server/Web startup, process termination, or PR creation.
+- PR creation in this remediation.
 
 #### Exact files/categories
 
-- Current remediation: docs/implementation/milestones/M3-current-state-audit.md.
-- Current remediation: docs/implementation/milestones/M3-owner-decisions.md.
-- Current remediation: docs/implementation/milestones/M3-lifecycle-event-api-implementation-plan.md.
-- Read-only evidence: docs/Runtime-Specification/*.md, docs/implementation/milestones/M2.8-*.md, docs/implementation/migration-register.md, apps/server/src/**, and apps/web/src/lib/useTask.ts.
+- docs/implementation/milestones/M3-current-state-audit.md.
+- docs/implementation/milestones/M3-owner-decisions.md.
+- docs/implementation/milestones/M3-lifecycle-event-api-implementation-plan.md.
+- Read-only evidence from docs/Runtime-Specification, migration registry, packages/shared, apps/server/src, and apps/web/src/lib/useTask.ts.
 
 #### Required evidence
 
-- Roadmap §§47–53 mapped to objective, scope, deliverables, compatibility, tests, and exit gate.
-- Current code evidence for Run, Event, Outbox, API, SSE, recovery, compatibility, and separation.
-- Exactly 22 Gap Matrix rows with every required field.
-- Explicit proof that Conversation agent_events and RunStreamRegistry do not satisfy Task-domain Event Store/Stream.
-- Explicit Migration 012 conclusion A, planning only, with exact missing schema.
-- Explicit local main versus origin/main mismatch and Pre-P1 Gate.
+- Roadmap §§47–53 mapped to phases and exit invariants.
+- Exact 12-part Migration 012 planning scope, including run_stages, recovery representation, idempotency operation values, dead letters, and Queue decision.
+- Explicit Task Event/runId deferred alignment.
+- Explicit Legacy/current-v2/canonical-top-level route strategy.
+- Exact six-step race-free SSE handoff.
+- Central Runtime Event Registry and packages/shared scope.
+- P0 merge gate requiring Draft PR, independent review, ordinary Merge Commit, origin/main update, ff-only local main sync, and only then P1.
 
 #### RED/GREEN tests
 
-- RED evidence: the prior plan framed M3 primarily as Production Cutover and left the Lifecycle/Event/API contract incomplete.
-- GREEN evidence required for P0: the three docs contain the corrected title, contract, matrix, decision split, seven implementation phases, boundaries, and no completion claims.
-- These are document acceptance checks; they are not implementation test results.
+- RED: the prior plan placed Run Engine/Start too early, left schema/state dependencies unresolved, used a race-prone replay-then-subscribe shape, and left API/Event conflicts implicit.
+- GREEN evidence required: all three docs state the corrected order, schema gaps, approved decisions, compatibility paths, handoff algorithm, and authorization boundaries.
+- These are document acceptance checks, not implementation test results.
 
 #### Related regression
 
-- Preserve M2.8 authority, Legacy compatibility, Web Legacy default, and runs versus agent_runs separation.
-- Do not rewrite Runtime Specification or M2 documents.
+- M2 remains sealed.
+- Legacy JSON, Legacy API, Web default, current v2 compatibility, and runs versus agent_runs remain unchanged.
 
 #### Full-gate trigger conditions
 
-- Independent reviewer accepts the M3 contract and Gap Matrix.
-- Technical Decision Register has a disposition or review owner for every M3 contract item.
-- Migration 012 conclusion is accepted as planning-only.
-- Pre-P1 Gate is satisfied on the implementation branch’s actual main baseline.
+- Final independent P0 technical review accepts all contract decisions.
+- Docs-only Draft PR and ordinary Merge Commit process is available for the future P0 merge.
+- origin/main can be updated and local main can be synchronized ff-only.
+- No P1 branch is created from an unmerged P0 docs branch.
 
 #### Stop conditions
 
-- Runtime Specification conflict is unresolved.
-- A proposed decision would change production behavior, delete data, or create irreversible schema without Owner Approval.
-- Evidence requires running a migration, restore, server, Web, or production copy.
-- Any request expands M3 into Cutover, Retirement, M4, or aggregate unification.
+- Runtime Specification conflict remains unresolved.
+- A decision requires DDL, data deletion, restore, production behavior, external cost, or major UX without Owner Approval.
+- Evidence requires running migration, restore, server, Web, or production copy.
+- Scope expands into Cutover, Retirement, M4, or aggregate unification.
 
 #### Rollback boundary
 
-Only the docs commit may be reverted before implementation. No database, production, or user data state is touched.
+Only this docs remediation commit may be reverted before implementation. No database, production, or user-data state is touched.
 
 #### Exit gate
 
-P0 remains PLANNING READY / PENDING INDEPENDENT TECHNICAL REVIEW. It does not authorize P1.
+P0 remains TECHNICAL CONTRACT APPROVED BY INDEPENDENT REVIEW — IMPLEMENTATION STILL NOT AUTHORIZED until final P0 docs review and the docs-only merge gate complete.
 
 #### Independent review requirements
 
-Independent technical review is required for Runtime contract mapping, Task/Conversation boundary, Event/Outbox transaction semantics, API contract, and Migration 012 conclusion.
+Independent review must cover contract mapping, Migration 012 planning scope, Task/Conversation separation, API path compatibility, Event Registry, and SSE handoff.
 
-#### L3 requirements
+#### L3 Gate requirements
 
-Use exact Git, diff, file-scope, link, and secret-scan evidence from the actual worktree. Do not substitute a narrative count for command output and do not call missing Remote Checks passed.
+Use exact Git, diff, scope, structure, link, encoding, and secret-scan evidence from the actual worktree. Missing Remote Checks remain UNAVAILABLE — NOT PASS.
 
-### P1 — Run Lifecycle and Transition Foundation
+### P1 — Schema and Shared Contract Foundation
 
 #### Goal
 
-Implement the minimal Task-domain Run Engine, legal Run state machine, Workflow Executor Foundation, and Stage Transition needed to create, asynchronously start, advance, complete, fail, cancel, and retry a persistent Run.
+Define and validate the shared types, event registry, schema contract, and Migration 012 implementation package without performing persistent Run/Stage status migration or real lifecycle transitions.
 
 #### Authorized scope
 
-- Task-domain Run Engine and Start command.
-- Run transition ownership and version checks.
-- Minimal workflow snapshot resolution and deterministic built-in/mock stage executor.
-- Stage transition persistence.
-- Run/Create/Start/Get/Cancel command integration.
-- RED/GREEN tests for state transitions, duplicate Start, cancel versus complete, and child Retry.
+- packages/shared Run/Stage status types.
+- RuntimeEvent envelope, schemaVersion, payload schemas, unknown-event fallback, and SSE event DTOs.
+- ApiProblem, ApiOperation, Request/Response DTOs, and shared identifiers.
+- Central Runtime Event Registry with registration/default/payload validation.
+- Exact Migration 012 schema design and review package.
+- Queue decision: runs(status=queued), with no scheduler_jobs by default.
 
 #### Forbidden scope
 
-- ProviderAdapter or ProcessManager implementation.
-- Real provider execution redesign.
-- Worktree, Policy, Approval, production execution, or Web default changes.
-- Event Store or Outbox substitution with Conversation tables.
-- Treating the Run row alone as proof of the M3 exit gate.
+- Applying persistent Run/Stage status migration.
+- Creating a real Run/Stage transition that lacks the State/Event/Outbox transaction.
+- Run Engine, Workflow Executor execution, Start route, Operation route behavior, Replay, SSE live subscription, or recovery execution.
+- Using Conversation event structures as Task-domain schema.
+- Adding scheduler_jobs without evidence and review.
 
 #### Exact files/categories
 
-- Candidate server runtime: apps/server/src/services/TaskRunService.ts and a new Task-domain Run Engine/Scheduler category.
-- Candidate repositories: apps/server/src/store/RunRepository.ts and stage/snapshot repositories.
-- Candidate v2 routes: apps/server/src/routes/v2Tasks.ts and apps/server/src/routes/v2Runs.ts.
-- Candidate tests: apps/server/src/**/__tests__/RunStateMachine.test.ts, RunEngine.test.ts, StageTransition.test.ts, StartRun.test.ts, and related existing v2/bridge tests.
-- No migration file unless a separately reviewed schema gap is discovered and authorized.
+- packages/shared status, RuntimeEvent, ApiProblem, ApiOperation, DTO, and SSE contract categories.
+- Candidate central Event Registry category and its schema/fixture definitions.
+- Migration 012 design artifact and review category; no DDL is created in this remediation.
+- Shared contract and Registry unit/fixture test categories only.
 
 #### Required evidence
 
-- State transition table matches Runtime Specification: queued to starting/cancelled; starting to running/failed/cancelled; running to waiting_approval/paused/completed/failed/cancelled; waiting_approval to running/failed/cancelled; paused to running/cancelled/failed; terminal states do not reset.
-- Start is asynchronous and is distinct from Create.
-- Retry creates a new child Run with parent/root lineage.
-- Run execution can outlive the initiating HTTP request at the foundation boundary.
+- Registry rejects unregistered Core Events.
+- Registry validates schemaVersion, default severity, visibility, durability, payload schema, and unknown future-event behavior.
+- Migration 012 package specifies runtime_events, UNIQUE(run_id, sequence) and query indexes, outbox_messages, dead_letters or reviewed equivalent, durable operations, run_stages expansion, idempotency operation values, recovery representation, sequence allocator, append-only/immutable constraints, and Queue decision.
+- SQLite table rebuild risk, checksum, fresh/legacy DB, rollback/forward-compatibility, and L3 review requirements are recorded.
 
 #### RED/GREEN tests
 
-- RED: illegal transition, duplicate Start, stale version, cancel/complete race, and retry reset behavior fail against the current partial graph.
-- GREEN: legal transitions, duplicate Start idempotency, race resolution, terminal immutability, and child Run lineage pass in the future implementation suite.
+- RED: current shared contract is fragmented, no central registry exists, and migrations 001–011 lack the M3 schema.
+- GREEN: shared type, envelope, Registry, payload validation, unknown-event fallback, and schema-contract tests pass; no persistent lifecycle state has moved.
 
 #### Related regression
 
-- Existing RunRepository, TaskRunService, v2Tasks, v2Runs, Legacy bridge, and task recovery tests must remain green.
-- Legacy Task route remains usable and receives no global Web switch.
+- Existing packages/shared consumers, M2 migrations 001–011, Conversation AgentEvent/EventBus tests, and current v2 DTO consumers remain unchanged.
 
 #### Full-gate trigger conditions
 
-- P0 independent review is complete.
-- Pre-P1 Gate is complete.
-- State machine, command ownership, and async Start contract are accepted.
-- RED/GREEN evidence covers the complete P1 transition table.
+- P0 final review and docs-only merge gate are complete.
+- Migration 012 schema package has independent schema review.
+- Shared contract does not encode a state or route that later phases cannot transactionally support.
 
 #### Stop conditions
 
-- A transition needs Policy, Approval, ProcessManager, ProviderAdapter, or production authority.
-- Run/Event/Outbox transaction design is required but P2 contract is not reviewed.
-- HTTP disconnect still cancels the Task-domain Run.
-- Existing M2 regression or Legacy compatibility breaks.
+- A proposed shared type requires an unapproved product behavior.
+- Run/Stage migration is attempted in P1.
+- Registry accepts unregistered Core Events or hides unknown-event incompatibility.
+- Schema gap cannot be represented without changing the approved Task-domain boundary.
 
 #### Rollback boundary
 
-Revert the P1 code and test commit before P2 begins. If a schema change becomes necessary, stop before DDL and return to P0/P2 review.
+Revert shared types, Registry, contract fixtures, and schema design artifacts as one P1 package. No persistent data rollback is involved because no status migration occurs.
 
 #### Exit gate
 
-P1 is complete only when the independent reviewer accepts the state machine and the P1 RED/GREEN suite, with no claim that M3 as a whole is complete.
+P1 is complete only when Schema and Shared Contract Foundation evidence is independently accepted and no real Run/Stage state has migrated.
 
 #### Independent review requirements
 
-Review Run state transitions, retry lineage, cancellation conflict behavior, async Start, and separation from agent_runs.
+Independent review covers shared type compatibility, Event Registry invariants, schema design, SQLite rebuild risk, and unknown-event behavior.
 
-#### L3 requirements
+#### L3 Gate requirements
 
-Run the exact targeted suite plus related M2 regression suite, typecheck/build as applicable, and record command, commit, environment, and result. A local pass does not replace unavailable Remote Checks.
+Run shared type/fixture tests, schema diff inspection, fresh/legacy fixture preparation checks, checksum design checks, and related regressions. Do not apply Migration 012.
 
-### P2 — Event Store, Sequence and Outbox Foundation
+### P2 — Transactional Run and Stage Lifecycle Core
 
 #### Goal
 
-Implement the Task-domain canonical Runtime Event path: envelope, per-Run sequence, append-only Event Store, State/Event/Outbox transaction, durable Outbox publisher, retry, and duplicate prevention.
+Begin all persistent Run/Stage status migration and implement the transaction core that atomically writes Current State + Runtime Event + Outbox for every state transition.
 
 #### Authorized scope
 
-- Task-domain Runtime Event envelope, factory, validation, redaction, and fixture.
-- Transactional runs.next_event_sequence allocator.
-- runtime_events repository and query foundation.
-- outbox_messages repository, publisher, retry, idempotency, and dead-letter evidence.
-- Atomic state plus Event plus Outbox writes.
+- Authorized Migration 012 implementation and schema registration after P1 review.
+- runtime_events, indexes, sequence allocator using runs.next_event_sequence.
+- outbox_messages, dead_letters or reviewed equivalent, immutable/concurrency constraints.
+- run_stages expansion for M3 lifecycle, failure, started/completed timestamps, and version.
+- Explicit runs.recovery_required or separate Recovery Record choice.
+- idempotency_records.operation extension for run.start, run.retry, and approved M3 commands.
+- Run/Stage transition repository and transaction service, without Run Engine orchestration.
 
 #### Forbidden scope
 
-- Relabeling Conversation agent_events or RunStreamRegistry as Task-domain infrastructure.
-- Creating DDL without independent review and Owner authorization.
-- External broker or paid infrastructure.
-- Production migration, restore, cutover, or data backfill.
+- Any transition that writes Current State without Runtime Event and Outbox in the same transaction.
+- Run Engine, Start route integration, Workflow Executor execution, Operation API, SSE, Replay, or Legacy mapping.
+- Production migration, restore, data copy, or unreviewed DDL.
+- Referencing recovery_required if the chosen schema representation does not exist.
 
 #### Exact files/categories
 
-- Candidate schema: a future Migration 012 category only after the P0 schema-gap review; no migration is created in this remediation.
-- Candidate repositories: apps/server/src/store/RuntimeEventRepository.ts, SequenceAllocator category, OutboxRepository category.
-- Candidate services: EventFactory, EventValidator, OutboxPublisher, and transaction service categories.
-- Candidate tests: EventEnvelope, SequenceAllocator, RuntimeEventRepository, OutboxPublisher, and transaction atomicity suites.
+- Migration 012 and migration registry categories, only after separate authorization.
+- RuntimeEventRepository, SequenceAllocator, OutboxRepository, DeadLetter/Failure repository.
+- RunStageRepository and transactional lifecycle core category.
+- Idempotency schema/repository category.
+- Transaction, sequence, duplicate, rollback, and migration tests.
 
 #### Required evidence
 
-- Canonical envelope has identity, schemaVersion, type, workspace/task/run context, sequence, timestamp, source, causation/correlation, severity, visibility, durability, payload, and metadata.
-- Unique run_id plus sequence is enforced for Task-domain events.
-- State, Event, and Outbox commit together; publication happens after commit.
-- Publisher retry is at-least-once and duplicate-safe.
-- Event Store is the sole history source for replay.
+- Every Run/Stage status transition uses the same transaction boundary.
+- Runtime Event is append-only and unique by run_id plus sequence.
+- Outbox is immutable per durable identity and supports concurrent-safe at-least-once publication.
+- Run Stage status fields support the approved M3 lifecycle.
+- Queue uses runs(status=queued) unless later evidence proves otherwise.
+- Recovery representation is present before any P6 implementation references it.
 
 #### RED/GREEN tests
 
-- RED: current 001–011 schema cannot insert canonical Task-domain runtime_events or durable outbox_messages; current transition path cannot atomically write all three records.
-- GREEN: envelope validation, monotonic sequence, duplicate rejection, rollback atomicity, post-commit publication, retry, and dead-letter tests pass after authorized implementation.
+- RED: current RunRepository updates state without Runtime Event/Outbox; current run_stages is pending-only; migrations 001–011 lack the schema.
+- GREEN: migration fresh/legacy, sequence monotonicity, duplicate rejection, atomic rollback, Run/Stage transition, Outbox immutability, and idempotency operation tests pass.
 
 #### Related regression
 
-- Existing migrations 001–011, EventBus, Conversation AgentEvent tests, TaskRunService, RunRepository, and idempotency tests remain green.
-- Conversation event persistence remains separate and behaviorally unchanged.
+- Migrations 001–011, MigrationRunner, RunRepository, TaskRunService, IdempotencyService, EventBus, and Conversation persistence tests remain green.
 
 #### Full-gate trigger conditions
 
-- P0 independent technical review accepts Migration 012 REQUIRED — PLANNING ONLY.
-- A separate schema implementation review authorizes exact DDL, checksum, rollback, and test strategy.
-- P1 transition owner is stable and calls the transaction boundary.
+- P1 schema/shared contract exit is accepted.
+- Migration 012 DDL receives independent schema review and required Owner Approval for irreversible change.
+- Transaction core proves no un-evented real state path.
 
 #### Stop conditions
 
-- The proposed DDL cannot prove the M3 invariants.
-- Schema or data behavior is irreversible without Owner Approval.
-- A reviewer proposes using Conversation event tables as a shortcut.
-- Outbox failure cannot be made observable and retryable.
+- State transition path can commit without Event or Outbox.
+- Migration 012 needs unapproved data destruction or cannot pass fresh/legacy/rollback review.
+- Recovery state is referenced before schema representation exists.
+- Conversation tables are proposed as Task-domain substitutes.
 
 #### Rollback boundary
 
-Before any authorized database deployment, revert code and test changes. A future Migration 012 must have its own reviewed rollback/forward-compatibility boundary; it is not rolled back by deleting a migration file.
+Future Migration 012 has its own reviewed rollback/forward-compatibility boundary; deleting a migration file is not rollback. Code/test changes may revert before P3.
 
 #### Exit gate
 
-P2 is complete only when independent review accepts Task-domain Event Store, transaction, sequence, and Outbox evidence. It does not authorize production migration.
+P2 is complete only when the transactional Run/Stage lifecycle core and schema evidence are independently accepted. No Run Engine or Start route claim is included.
 
 #### Independent review requirements
 
-Independent schema and transaction review is mandatory. Owner approval is mandatory for any irreversible DDL, data migration, external infrastructure, or cost.
+Independent schema, transaction, concurrency, and data migration review is mandatory. Owner Approval is mandatory for irreversible DDL or data movement.
 
-#### L3 requirements
+#### L3 Gate requirements
 
-Use fresh and legacy database fixtures, migration checksum validation, targeted transaction tests, duplicate/retry tests, and related regression output. Do not run against production data.
+Run fresh and legacy DB fixtures, checksum checks, transaction rollback/commit tests, concurrent sequence tests, duplicate Outbox tests, and related regressions. Do not use production data.
 
-### P3 — API Problem, Operation, ETag, Idempotency and OpenAPI Foundation
+### P3 — Run Engine, Workflow Executor and Operation
 
 #### Goal
 
-Complete the stable API contract for asynchronous Run commands and resource concurrency without changing the Web default or removing Legacy routes.
+Build the Task-domain Run Engine, minimal Workflow Executor Foundation, Stage orchestration, durable Operation lifecycle, and asynchronous Start only after P2 transaction core.
+
+#### Authorized scope
+
+- Run Engine and scheduler ownership over runs(status=queued).
+- Minimal deterministic/mock Workflow Executor and Stage execution.
+- Run transitions through P2 transaction core.
+- Create Run, Start Run, Get Run, Cancel Run, Retry, and Operation integration.
+- Operation statuses exactly queued, running, waiting_approval, paused, completed, failed, cancelled.
+- HTTP 202 Start result and Operation APIs.
+
+#### Forbidden scope
+
+- Start integration before P2 exit.
+- ProcessManager, ProviderAdapter, real provider runtime, Worktree, Policy, or Approval implementation.
+- Run/Stage state writes bypassing Event/Outbox.
+- Production execution or cutover behavior.
+
+#### Exact files/categories
+
+- Run Engine, Scheduler, Workflow Executor, and Stage Executor service categories.
+- RunRepository, RunStageRepository, TaskRunService integration categories.
+- OperationRepository and Operation service categories.
+- Canonical top-level Run/Operation route categories, without replacing Legacy/current v2 collections.
+- Run lifecycle, Operation, duplicate Start, Cancel race, and Retry tests.
+
+#### Required evidence
+
+- queued Run is the persistent Queue Record.
+- Start is asynchronous, returns 202 and Operation, and is idempotent.
+- Run state machine follows Runtime Lifecycle Transition Table.
+- Retry creates a child Run and never resets old Run.
+- Operation is distinct from Run and exposes exact status/result/error/version fields.
+- Workflow Executor is deterministic and does not require M4 provider runtime.
+
+#### RED/GREEN tests
+
+- RED: no Run Engine/Start route/Operation resource exists and current transition graph is partial.
+- GREEN: Run Engine, deterministic stage execution, async Start, duplicate Start, cancel/complete conflict, Operation lifecycle, and child Retry tests pass.
+
+#### Related regression
+
+- Existing v2 Task/Run, RunRepository, TaskRunService, task recovery, and Legacy bridge tests remain green.
+
+#### Full-gate trigger conditions
+
+- P2 transaction core is independently accepted.
+- Operation status/API contract is accepted.
+- Run Engine has no direct persistence path outside the transaction core.
+
+#### Stop conditions
+
+- Engine requires ProcessManager, ProviderAdapter, Policy, Approval, or production operator behavior.
+- Start or Stage transition bypasses Event/Outbox.
+- Operation status diverges from the approved exact vocabulary.
+
+#### Rollback boundary
+
+Revert Engine, executor, Operation, and route integration as one package before P4. Preserve durable evidence; do not reset or delete data to hide a failed transition.
+
+#### Exit gate
+
+P3 is complete only when Run Engine, minimal Workflow Executor, Operation, async Start, and Retry evidence are independently accepted.
+
+#### Independent review requirements
+
+Review Run ownership, transaction usage, Operation distinction, retry lineage, cancellation races, and M4 boundary.
+
+#### L3 Gate requirements
+
+Run targeted lifecycle/Operation tests, typecheck/build, route authorization checks, duplicate/race fixtures, and related M2 regression. Record exact outputs.
+
+### P4 — API Problem, ETag, Idempotency, OpenAPI and Route Compatibility
+
+#### Goal
+
+Complete the stable API contract while preserving Legacy and current v2 paths and adding canonical top-level Run/Operation paths without switching the Web default.
 
 #### Authorized scope
 
 - ApiProblem middleware and stable error mapping.
-- Operation Resource persistence and polling route.
-- ETag and If-Match behavior with version fallback where documented.
-- Idempotency middleware for M3 high-side-effect commands.
-- Basic OpenAPI artifact and contract validation.
-- Create Task, Create Run, Start Run, Get Run, Cancel Run, and Operation contract closure.
+- ETag and If-Match with 412 behavior and documented version fallback.
+- Idempotency middleware for run.start, run.retry, and approved M3 commands.
+- Basic OpenAPI for Legacy, current v2, and canonical top-level routes.
+- Canonical Run and Operation route compatibility.
 
 #### Forbidden scope
 
-- Global Web v2 switch.
-- Legacy API removal or deprecation enforcement.
-- Production operation endpoint.
-- Unrelated later-domain API surfaces.
-- Hiding missing implementation behind an OpenAPI document.
+- Canonical Task Collection replacement.
+- Legacy API removal.
+- Web global default switch.
+- Production operation or cutover command.
+- OpenAPI claims that a route family has already been migrated.
 
 #### Exact files/categories
 
-- Candidate routes: apps/server/src/routes/v2Tasks.ts, v2Runs.ts, and a new operation route.
-- Candidate services/repositories: ApiProblem middleware, OperationRepository, IdempotencyService, and version/ETag middleware categories.
-- Candidate contract: a Basic OpenAPI artifact under the server API documentation category.
-- Candidate tests: ApiProblem, Operation, ETag, If-Match, Idempotency, and OpenAPI contract suites.
+- ApiProblem, ETag/If-Match, Idempotency middleware categories.
+- Basic OpenAPI artifact and validation category.
+- Current v2 route categories under /api/workspaces/:workspaceId/v2.
+- Canonical routes /api/runs/:runId, /start, /retry, /events, /replay, /stream.
+- Operation routes /api/operations/:operationId, /events, and /cancel.
+- API contract, header, error, idempotency, and OpenAPI tests.
 
 #### Required evidence
 
-- Start returns 202 with an Operation/Location result where applicable.
-- ETag is emitted and If-Match stale writes return 412.
-- Same Idempotency-Key and request hash replays the original result without a duplicate effect; key reuse with a different hash fails.
-- OpenAPI documents the exact M3 resources, headers, events, stream, errors, and status codes.
+- ApiProblem is stable for validation, not-found, conflict, precondition, rate, and internal failures.
+- ETag is emitted; stale If-Match returns 412.
+- Same Idempotency-Key and hash replays original result without duplicate State/Event/Outbox effects.
+- OpenAPI separately documents Legacy, current v2, and canonical top-level paths.
+- Current Legacy path and Web behavior remain usable.
 
 #### RED/GREEN tests
 
-- RED: current v2 routes lack Start, Operation, ETag, If-Match, full ApiProblem, and complete M3 idempotency coverage.
-- GREEN: API contract tests cover 202, 409, 412, 422, stable codes, ETag, replay, key reuse, and documented schemas.
+- RED: current v2 exposes partial error/code and expectedVersion behavior but no complete ApiProblem, ETag, If-Match, canonical paths, or M3 idempotency.
+- GREEN: API contract covers 202, 400, 404, 409, 412, 422, stable codes, ETag, replay, key reuse, and all route families.
 
 #### Related regression
 
-- Existing v2 Task/Run route tests, IdempotencyService tests, Legacy Task routes, and Web Legacy consumer behavior remain green.
+- Existing v2 Task/Run, Legacy Task, IdempotencyService, and Web Legacy consumer tests remain green.
 
 #### Full-gate trigger conditions
 
-- P1 state machine and P2 transaction contract are reviewed.
-- API Problem, Operation, concurrency, and idempotency decisions are independently reviewed.
-- Basic OpenAPI matches executable route behavior.
+- P3 Operation and async Start are accepted.
+- API path conflict and compatibility decision are independently reviewed.
+- OpenAPI matches executable route behavior and does not claim Task Collection cutover.
 
 #### Stop conditions
 
-- API contract requires a material UX change without Owner Approval.
-- Idempotency cannot cover State/Event/Outbox as one effect.
-- OpenAPI diverges from the Runtime Specification or current compatibility boundary.
+- A route implementation removes or changes Legacy behavior.
+- OpenAPI masks a missing route or false migration state.
+- Idempotency cannot encompass State/Event/Outbox effects.
 
 #### Rollback boundary
 
-Revert API/middleware/contract changes as one implementation unit. Legacy routes remain available throughout; no compatibility removal is a rollback step.
+Revert API/middleware/OpenAPI changes as one package; preserve Legacy and current v2 paths. No compatibility deletion is a rollback action.
 
 #### Exit gate
 
-P3 is complete only when independent review accepts route behavior, headers, errors, operations, idempotency, and OpenAPI evidence.
+P4 is complete only when route compatibility, ApiProblem, ETag, If-Match, Idempotency, and OpenAPI evidence is independently accepted.
 
 #### Independent review requirements
 
-Review API resource semantics, error stability, optimistic concurrency, idempotency replay, and compatibility impact.
+Review API resource semantics, error stability, concurrency, idempotency replay, route conflicts, and user-visible compatibility.
 
-#### L3 requirements
+#### L3 Gate requirements
 
-Run route contract, schema validation, targeted unit/integration, typecheck, and related regression commands. Report Remote Checks as unavailable if they remain unavailable.
+Run route contract, header, schema/OpenAPI validation, idempotency integration, typecheck/build, and related regressions. Remote Checks remain factual.
 
-### P4 — Run Events, SSE Replay and Reconnect
+### P5 — Run Events, Replay, SSE and Reconnect
 
 #### Goal
 
-Expose durable Task-domain Run Events, Replay, and Run Stream endpoints that recover from persisted history and support cursor reconnect without cancelling the Run.
+Expose durable Task-domain Run Events, Replay, and SSE with race-free reconnect and strict sequence guarantees from Event Store truth.
 
 #### Authorized scope
 
 - GET /api/runs/:runId/events.
 - GET /api/runs/:runId/replay.
 - GET /api/runs/:runId/stream.
-- afterSequence and Last-Event-ID parsing, historical replay, live handoff, keepalive, and cursor errors.
-- Stream authorization and Task-domain event projection.
+- afterSequence and Last-Event-ID.
+- Durable Event Store query, replay, live subscription, cursor expiry, keepalive, and authorization.
+- Six-step race-free handoff: subscribe/buffer, high-watermark, replay, drain above watermark, deduplicate by runId plus sequence, Live.
 
 #### Forbidden scope
 
-- Treating Conversation streams as the Task-domain stream.
-- Re-executing provider or Run work during replay.
-- Removing Legacy SSE or switching the Web default.
-- Persisting keepalive frames as Runtime Events.
+- Replay-then-subscribe race.
+- Process-local RunStreamRegistry as durable truth.
+- Re-running Run/provider during replay.
+- Persisting keepalive as Runtime Event.
+- Legacy SSE removal or Web default switch.
 
 #### Exact files/categories
 
-- Candidate routes: apps/server/src/routes/v2Runs.ts and a new Task-domain events/stream route category.
-- Candidate services: EventQueryService, ReplayService, RunStreamService, and EventBus subscription categories.
-- Candidate tests: RunEvents, Replay, SSEReconnect, LastEventId, CursorExpired, and BrowserDisconnect suites.
+- Canonical Run Event/Replay/Stream route categories.
+- EventQueryService, ReplayService, RunStreamService, and EventBus subscription categories.
+- Cursor, Last-Event-ID, sequence deduplication, and stream fixture categories.
+- Run Events, Replay, SSE handoff, reconnect, cursor expiry, and disconnect tests.
 
 #### Required evidence
 
-- Historical Event Store query precedes live subscription without lost or duplicate events.
-- Sequence is strictly increasing per Run.
-- Last-Event-ID and afterSequence resume the persisted cursor.
-- Client disconnect only removes the subscription; the Run continues.
-- Replay detects gaps/unknown schemas and does not re-run execution.
+- Live subscription buffers before durable high-watermark capture.
+- Replay reaches high-watermark, drains newer buffered events, deduplicates, then enters Live.
+- An Event committed in the handoff window is neither lost nor duplicated.
+- Per-Run sequence is strictly increasing.
+- Last-Event-ID and afterSequence reconnect from Event Store.
+- Client disconnect removes subscription only; Run continues.
+- Process restart replays from Event Store.
 
 #### RED/GREEN tests
 
-- RED: current v2 route family has no events/replay/stream endpoint and RunStreamRegistry cannot survive process loss.
-- GREEN: query ordering, replay, reconnect, duplicate handoff, cursor expiry, disconnect, keepalive, and authorization tests pass after implementation.
+- RED: current v2 route family lacks durable Events/Replay/Stream and current local cursor cannot survive process loss; replay-then-subscribe can race.
+- GREEN: window commit, no-loss, no-duplicate, strict ordering, reconnect, cursor expiry, disconnect, keepalive, and restart recovery tests pass.
 
 #### Related regression
 
 - Legacy Task SSE and Conversation stream tests remain green and remain separate.
-- Existing EventBus and RunStreamRegistry behavior is not silently reclassified.
+- EventBus and RunStreamRegistry are not silently reclassified.
 
 #### Full-gate trigger conditions
 
-- P2 Event Store and Outbox are complete and reviewed.
-- P3 API headers/errors/operation contract is complete.
-- Stream fixture proves history plus realtime handoff.
+- P2 Event Store/Outbox and P4 API contract are accepted.
+- Handoff fixture proves replay/live switching under concurrent event commit.
+- Cursor and authorization behavior are stable.
 
 #### Stop conditions
 
-- Stream correctness depends on process-local buffers.
-- Disconnect cancels Run execution.
-- Replay requires provider or Run re-execution.
-- A cursor or event gap cannot be diagnosed.
+- Stream depends on process-local buffer after replay.
+- Any handoff window loses or duplicates an Event.
+- Disconnect cancels the Run or replay re-executes work.
 
 #### Rollback boundary
 
-Disable or revert new v2 Events/Replay/Stream routes while retaining the Legacy endpoint. Do not delete persisted event data as rollback.
+Disable or revert canonical Events/Replay/Stream routes while retaining persisted Event data and Legacy SSE. Do not delete durable history.
 
 #### Exit gate
 
-P4 is complete only when independent review accepts durable query, replay, reconnect, cursor, and disconnect evidence.
+P5 is complete only when durable query, replay, race-free reconnect, cursor, sequence, and no-cancel evidence is independently accepted.
 
 #### Independent review requirements
 
-Review Event Store truth, cursor semantics, duplicate handoff, authorization, reconnect guarantees, and no-cancel behavior.
+Review Event Store truth, handoff algorithm, duplicate prevention, cursor semantics, authorization, and process-restart behavior.
 
-#### L3 requirements
+#### L3 Gate requirements
 
-Run deterministic SSE integration tests, process-restart fixture tests, event ordering checks, browser-disconnect simulation in the test harness, and related regression. No production server/Web run.
+Run deterministic SSE integration, concurrent handoff, process-restart, event ordering, cursor, and related regression suites. No production server/Web run.
 
-### P5 — Legacy Compatibility Mapping
-
-#### Goal
-
-Keep the Legacy execute-task and Legacy SSE paths usable while making their behavior a projection of the M3 Task-domain Run/Event contract where the mapping is proven.
-
-#### Authorized scope
-
-- Map Legacy POST execute-task internally to Create Run then Start Run.
-- Map status, stage, thinking, done, and error frames to v2 Runtime Events.
-- Preserve Legacy response/frame shape and existing callers.
-- Add compatibility and bridge fixtures.
-
-#### Forbidden scope
-
-- Legacy API retirement.
-- Legacy JSON retirement or deletion.
-- Web global default switch.
-- A second execution model that bypasses the Task-domain Run/Event path.
-- Bulk conversion or invented historical events.
-
-#### Exact files/categories
-
-- Candidate Legacy route: apps/server/src/routes/tasks.ts.
-- Candidate bridge: apps/server/src/services/TaskRunService.ts and compatibility mapping category.
-- Candidate tests: taskPipelineBridge, LegacySseMapping, LegacyReconnectBoundary, and v2 Event projection suites.
-- Web files remain read-only for this phase; no default change.
-
-#### Required evidence
-
-- Legacy route remains callable through the M3 end-state.
-- Compatibility response corresponds to the canonical Run/Operation result.
-- Legacy frames are projected from persisted v2 events, not an independent timer or execution path.
-- Errors and terminal state reconcile without duplicating state transitions.
-
-#### RED/GREEN tests
-
-- RED: current Legacy frames are emitted directly by the request-bound pipeline and are not durable v2 Event projections.
-- GREEN: mapping, terminal reconciliation, error mapping, duplicate command, and Legacy usability tests pass.
-
-#### Related regression
-
-- Existing Legacy Task route, taskRecovery, v2 Task/Run, and Web consumer contract tests remain green.
-
-#### Full-gate trigger conditions
-
-- P3 and P4 contracts are complete.
-- Independent review accepts the mapping and confirms no second execution model.
-- Legacy route compatibility is demonstrated for create, start, progress, terminal, error, and refresh/disconnect boundaries.
-
-#### Stop conditions
-
-- Mapping requires deleting or changing Legacy JSON/API behavior.
-- Web default change is requested.
-- Legacy and v2 paths diverge into two execution authorities.
-
-#### Rollback boundary
-
-Revert the mapping layer while retaining the existing Legacy route and data. Do not delete compatibility evidence or source JSON.
-
-#### Exit gate
-
-P5 is complete only when the Legacy route remains usable and the mapping is independently reviewed. It is not a Legacy Retirement gate.
-
-#### Independent review requirements
-
-Review response/frame compatibility, event projection, no-double-execution, active-run behavior, and rollback safety.
-
-#### L3 requirements
-
-Run Legacy and v2 contract suites together, include refresh/disconnect and terminal race fixtures, and record exact results. No production consumers are switched.
-
-### P6 — Recovery, Browser Disconnect and Outbox Failure Verification
+### P6 — Legacy Mapping, Recovery and Outbox Failure Verification
 
 #### Goal
 
-Demonstrate the M3 resilience invariants across browser refresh/disconnect, process restart, durable replay, Outbox failure, retry, duplicate publication, and uncertain state.
+Keep Legacy behavior usable, map it to the canonical Task-domain path, and verify browser disconnect, server restart, Outbox failure, retry, dead letters, and uncertain state.
 
 #### Authorized scope
 
-- Task-domain startup recovery scan.
-- Persisted Run/Stage/Event recovery decisions.
-- Browser subscription disconnect semantics.
-- Outbox retry, backoff, duplicate, and dead-letter handling.
-- Recovery and failure fixtures without production data.
+- Legacy POST execute-task mapping to Create Run then Start Run.
+- Legacy status/stage/thinking/done/error projection from persisted v2 Events.
+- Task-domain recovery using the P2-approved recovery_required or Recovery Record representation.
+- Browser disconnect subscription-only behavior.
+- Outbox at-least-once retry, durable identity deduplication, dead letters, and failure fixtures.
 
 #### Forbidden scope
 
-- Production Restore or downgrade.
-- Production Cutover or operator quiescence.
-- Guessing success from process or stream state.
-- Cross-domain Conversation recovery unification.
-- Data deletion or user-data copy.
+- Legacy API/JSON retirement or deletion.
+- Web default switch.
+- Production Restore, Cutover, quiescence, or data copy.
+- A second execution model bypassing the Run/Event/Outbox path.
+- Guessing success when persisted evidence is incomplete.
 
 #### Exact files/categories
 
-- Candidate recovery categories: apps/server/src/runRecovery.ts and a Task-domain Run recovery service.
-- Candidate publisher categories: OutboxPublisher and failure/dead-letter repository.
-- Candidate tests: BrowserDisconnect, ServerRestartRecovery, OutboxRecovery, DuplicatePublish, EventGap, and UncertainRun suites.
-- No production migration/restore scripts.
+- Legacy route and bridge categories under apps/server/src/routes/tasks.ts and TaskRunService.
+- Task-domain recovery category and startup recovery integration.
+- OutboxPublisher, retry, dead-letter, and failure categories.
+- Legacy mapping, browser disconnect, server restart, duplicate publish, gap, and uncertain-state tests.
 
 #### Required evidence
 
-- Browser refresh/disconnect leaves Run durable and continues execution.
-- Server restart resumes or marks Run recovery_required based on persisted evidence.
-- Outbox publisher retries without duplicate Run/Event effects.
-- Event Store remains the sole source of replay truth.
-- Failure and unknown state are visible through stable codes/events.
+- Legacy endpoint remains callable and its response/frames correspond to canonical Run/Operation/Event evidence.
+- No double execution path exists.
+- Browser refresh/disconnect leaves Run durable.
+- Restart resumes or marks explicit uncertainty using an existing schema representation.
+- Outbox retry is at-least-once and duplicate-safe; dead letters retain failure evidence.
+- Legacy JSON, Legacy API, and Web default remain unchanged.
 
 #### RED/GREEN tests
 
-- RED: current request-bound Legacy path aborts on close and no Task-domain durable stream/recovery chain exists.
-- GREEN: disconnect, restart, replay, outbox failure, retry, duplicate, gap, and uncertainty tests pass after implementation.
+- RED: current Legacy request-bound execution aborts on close and emits direct frames rather than durable v2 projections; current Task-domain restart/outbox chain is incomplete.
+- GREEN: mapping, terminal reconciliation, disconnect, restart, retry, duplicate publish, dead letter, gap, and uncertainty tests pass.
 
 #### Related regression
 
-- Existing taskRecovery, runRecovery, Conversation recovery, EventBus, Legacy bridge, and stream tests remain green without aggregate unification.
+- Legacy Task route, taskRecovery, runRecovery, v2 Task/Run, Conversation recovery, EventBus, and stream tests remain green without aggregate unification.
 
 #### Full-gate trigger conditions
 
-- P2 Event/Outbox and P4 Stream contracts are implemented and reviewed.
-- Recovery owner and uncertainty policy are accepted.
-- Failure fixtures are deterministic and contain no real user data.
+- P4 route compatibility and P5 durable stream/replay are accepted.
+- P2 recovery representation and Outbox failure contract are available.
+- Independent review confirms Legacy remains usable and no second execution model exists.
 
 #### Stop conditions
 
-- Recovery needs production restore or an unapproved operator policy.
-- The implementation infers success where persisted evidence is incomplete.
-- Browser disconnect still cancels Task-domain execution.
+- Mapping changes Legacy JSON/API or Web behavior.
+- Recovery references absent schema state or infers success.
 - Outbox retry duplicates state transitions.
+- Production Restore or Cutover is requested.
 
 #### Rollback boundary
 
-Revert recovery/publisher code and test fixtures before any production use. Preserve durable evidence; do not delete failed or dead-letter records as rollback.
+Revert mapping/recovery/publisher verification code while preserving Legacy route, source JSON, and durable Event/Outbox failure evidence.
 
 #### Exit gate
 
-P6 is complete only when independent review accepts resilience evidence. It does not authorize production observation or cutover.
+P6 is complete only when compatibility, recovery, disconnect, retry, dead-letter, and no-double-execution evidence is independently accepted. It is not a Retirement or Cutover gate.
 
 #### Independent review requirements
 
-Review restart semantics, uncertainty handling, disconnect behavior, retry idempotency, dead letters, and data safety.
+Review compatibility mapping, recovery uncertainty, Outbox retry/idempotency, data safety, and production boundary.
 
-#### L3 requirements
+#### L3 Gate requirements
 
-Run controlled local fresh/legacy DB fixtures, process restart harnesses, targeted failure suites, typecheck/build, and all related regressions. No restore or production data access.
+Run fresh/legacy local DB fixtures, controlled process restart, failure injection, targeted suites, typecheck/build, and related regression. No production restore or data access.
 
 ### P7 — Consolidated Formal Gate, Draft PR, Ordinary Merge and Closeout
 
 #### Goal
 
-Assemble the complete M3 evidence package, obtain independent review, use the authorized Draft PR and ordinary merge process for a future implementation change, and close M3 without implying Production Cutover.
+Assemble the complete M3 Foundation evidence package, obtain final independent P0/P7 review, and use Draft PR plus ordinary merge only for a future authorized implementation change.
 
 #### Authorized scope
 
-- Consolidated contract-to-evidence matrix.
-- Full M3 test and regression evidence.
-- Independent technical review and remediation.
-- Future Draft PR, ordinary merge commit, and post-merge closeout when implementation is actually authorized.
-- M3 documentation update that records factual status.
+- Contract-to-evidence matrix for P0–P6.
+- Full M3 test, schema, API, OpenAPI, recovery, and L3 evidence.
+- Independent review findings and remediation.
+- Future docs-only Draft PR, ordinary Merge Commit, origin/main update, ff-only local main sync, and factual closeout.
 
 #### Forbidden scope
 
-- Production Cutover authorization or execution.
-- Production Restore.
+- Production Cutover, Restore, observation, cohort rollout, or Legacy Retirement.
 - Web global default switch.
-- Legacy API/JSON deletion or retirement.
-- Post-cutover observation or cohort rollout.
-- Declaring any phase passed without exact evidence.
+- Legacy API/JSON deletion.
+- Claiming any phase passed without exact evidence.
+- Creating the current remediation PR.
 
 #### Exact files/categories
 
-- M3 implementation commits and their tests, only after P0–P6 authorization.
-- Draft PR description and review artifacts for the future implementation branch.
-- Consolidated M3 closeout documentation category.
-- No current remediation PR; current remediation is docs-only and push-only.
+- Future implementation commits and tests only after P0–P6 authorization.
+- Draft PR/review/merge/closeout artifacts for the future branch.
+- No production migration or deployment artifacts in this docs remediation.
 
 #### Required evidence
 
-- M3 Scope, Deliverables, Compatibility, Tests, and Exit Gate each map to exact code/test evidence.
-- All related regression suites, typecheck/build, schema checks, API contract checks, and L3 evidence are recorded.
-- Independent review findings are resolved or explicitly blocking.
-- Branch, parent, merge, and remote-check status are factual.
-- Production Cutover and Legacy Retirement remain separate future gates.
+- Every Roadmap Scope, Deliverable, Compatibility, Test, and Exit invariant maps to exact code/test evidence.
+- P0 merge gate has occurred before P1 branch creation.
+- Full related regression, schema/checksum, OpenAPI, SSE, recovery, and L3 output is recorded.
+- Branch, parent, merge, remote-check, and production status are factual.
+- M3 Foundation closeout explicitly leaves Cutover, Restore, Retirement, and Web switch unauthorized.
 
 #### RED/GREEN tests
 
-- RED: any missing M3 deliverable, unreviewed boundary, unsupported completion claim, or regression failure blocks closeout.
-- GREEN: the full M3 acceptance matrix passes with exact command output and independent review, while production gates remain explicitly not authorized.
+- RED: missing deliverable, unsupported completion claim, unresolved independent-review blocker, regression failure, or unauthorized scope blocks closeout.
+- GREEN: the complete M3 Foundation acceptance matrix passes with exact outputs and final independent review, while production gates remain not authorized.
 
 #### Related regression
 
-- M2 retained contracts, Legacy route usability, Web Legacy default behavior, Task/Conversation separation, migrations 001–011, and existing route/recovery tests.
+- M2 retained contracts, migrations 001–011, Legacy route usability, Web Legacy default, Task/Conversation separation, and all P1–P6 suites.
 
 #### Full-gate trigger conditions
 
-- P0 through P6 each have an accepted exit gate.
-- Full M3 Roadmap exit conditions are evidenced.
-- Independent reviewer signs the technical gate.
-- Any future Draft PR has required reviewers and no unresolved blocking comments.
-- Ordinary Merge Commit is separately authorized by the project workflow.
+- P0 through P6 exit gates are accepted.
+- Final independent P0/P7 review signs the technical contract and implementation evidence.
+- A future Draft PR has required reviewers and no unresolved blocking comments.
+- Ordinary Merge Commit is separately authorized and local main is synchronized ff-only afterward.
 
 #### Stop conditions
 
-- Remote Checks are unavailable and no permitted substitute evidence is accepted.
-- A required gate is inferred from documentation rather than command output.
-- Review finds a production cutover, deletion, restore, default switch, or later-milestone scope leak.
-- Any phase is described as complete without evidence.
+- Remote Checks are unavailable and no accepted substitute exists.
+- Evidence is inferred from docs rather than command output.
+- Review finds Cutover, deletion, Restore, default switch, M4, or aggregate-unification scope.
+- Any phase is represented as passed without its exit evidence.
 
 #### Rollback boundary
 
-Rollback is limited to the future implementation branch/merge boundary. Production rollback, downgrade, restore, and data deletion remain post-M3 Owner decisions.
+Rollback is limited to the future implementation branch/merge boundary. Production rollback, downgrade, Restore, and deletion remain post-M3 Owner decisions.
 
 #### Exit gate
 
-M3 Lifecycle, Event and API Foundation may be proposed for ordinary merge only after formal review. Production Cutover remains NOT AUTHORIZED, Legacy Retirement remains later work, and M3 P1 is not authorized by this planning document.
+M3 Lifecycle, Event and API Foundation may be proposed for ordinary merge only after formal review. Production Cutover remains NOT AUTHORIZED, Legacy Retirement remains later work, and M3 P1 is not authorized by this plan.
 
 #### Independent review requirements
 
-Independent technical review, API/schema review, security/privacy review where payloads or credentials are involved, and L3 verification are required. Owner approval is required for any irreversible schema/data, production, external-cost, or material UX action.
+Independent technical, schema/API, security/privacy where applicable, and L3 review are required. Owner Approval is required for irreversible schema/data, production, external-cost, or material UX actions.
 
-#### L3 requirements
+#### L3 Gate requirements
 
-Provide exact commands, outputs, commit SHAs, changed-file scope, migration registry/checksum evidence, API/schema contract evidence, test evidence, and explicit Remote Checks status. Never label unavailable evidence as passed.
+Provide exact commands, outputs, commit SHAs, changed-file scope, schema/checksum evidence, API/OpenAPI evidence, test evidence, and explicit Remote Checks status. Never relabel unavailable evidence as passed.
 
-## 5. Contract-to-phase correspondence
+## 5. Migration 012 final Planning Scope
 
-| Roadmap contract | Primary phase(s) | Required evidence |
-| --- | --- | --- |
-| Run state machine and Run Engine | P0, P1, P6 | Transition matrix, async Start, version conflict, restart/disconnect evidence |
-| Workflow Executor Foundation and Stage Transition | P1 | Snapshot/stage ownership and deterministic executor tests |
-| Runtime Event envelope and sequence | P0, P2 | 22-row gap proof, canonical fixture, unique per-Run sequence |
-| Event Store and Outbox | P2, P6 | Atomic transaction, post-commit publish, retry/dead-letter evidence |
-| Create/Get/Cancel/Start Run and Operation | P1, P3 | Route contract, 202 Operation, stable errors, idempotency |
-| Run Events, Replay, and Run Stream | P3, P4, P6 | Query, replay, Last-Event-ID, afterSequence, restart and disconnect evidence |
-| Legacy compatibility | P5 | Usable Legacy route and event projection without second execution model |
-| API Problem, ETag, If-Match, OpenAPI | P3 | Contract artifact and 400/409/412/422/500 fixtures |
-| Retry child Run and exit invariants | P1, P2, P4, P6 | Child lineage, immutable terminal Run, ordering, recovery evidence |
-| Formal M3 gate | P7 | Full evidence matrix and independent review; no Production Cutover claim |
+Migration 012 REQUIRED — PLANNING ONLY. No DDL is created in this remediation.
+
+The future planning package must cover:
+
+1. Task-domain runtime_events.
+2. UNIQUE(run_id, sequence) and query indexes.
+3. outbox_messages.
+4. Independent dead_letters or a reviewed equivalent.
+5. Durable operations.
+6. run_stages rebuild/extension from pending-only to M3 lifecycle, including failure, started/completed, and version fields.
+7. idempotency_records.operation values run.start, run.retry, and finally approved M3 commands.
+8. Recovery representation: runs.recovery_required or a separate Recovery Record, chosen before P6.
+9. Task-domain sequence allocation through runs.next_event_sequence.
+10. Event append-only and Outbox immutable/concurrency constraints.
+11. Operation lifecycle, result, ApiProblem, aggregate reference, time, and version fields.
+12. Queue decision: runs(status=queued) is the M3 persistent Queue Record; do not add scheduler_jobs unless later evidence proves it necessary.
+
+SQLite table rebuild risk requires separate DDL review, checksum review, fresh/legacy DB fixtures, rollback/forward-compatibility, and L3 validation. None of that authorizes production migration.
 
 ## 6. M3 exit boundary
 
-The M3 exit proposal must state all of the following:
+The M3 exit proposal must state:
 
 - Browser Refresh does not cancel Run.
 - Client disconnect ends only the subscription.
-- Event sequence is strictly increasing per Run.
-- State, Event, and Outbox are transactional.
+- Per-Run Event sequence is strictly increasing.
+- State, Runtime Event, and Outbox are transactional.
 - Error codes are stable.
-- Run Start is asynchronous.
-- Retry creates a new Run.
-- Legacy route remains usable.
+- Start Run is asynchronous with Operation.
+- Retry creates a new Child Run.
+- Legacy route and behavior remain usable.
+- Current v2 compatibility remains available.
+- Canonical Task Collection replacement is deferred.
 - Web global default remains unchanged.
 - Legacy API and Legacy JSON are not deleted.
 - runs and agent_runs remain separate.
-- Production Cutover, Production Restore, and Legacy Retirement are not M3 exit claims.
+- Production Cutover, Restore, observation, and Legacy Retirement are not M3 exit claims.
 
-Current status remains:
+Current status:
 
 M3 P1 NOT AUTHORIZED.
 
 PRODUCTION CUTOVER NOT AUTHORIZED.
 
-This plan is a draft for independent technical review, not an implementation result.
+This document remains a draft until final independent P0 review and the docs-only merge gate.
