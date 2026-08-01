@@ -91,7 +91,7 @@ Operation association rules:
 Migration 012 must rebuild or extend run_stages without adding a second version column:
 
 - Preserve the existing version field from Migration 009.
-- Expand Stage status vocabulary to the approved M3 lifecycle: created, blocked, ready, starting, running, waiting_approval, paused, completed, failed, cancelled, skipped.
+- Expand Stage status vocabulary to the approved M3 lifecycle: pending, ready, starting, running, waiting_approval, paused, completed, failed, cancelled, skipped.
 - Add failure_code.
 - Add failure_message.
 - Add started_at.

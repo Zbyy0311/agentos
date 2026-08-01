@@ -1,19 +1,8 @@
-export const M3_RUN_STATUSES = Object.freeze([
-  'queued',
-  'starting',
-  'running',
-  'waiting_approval',
-  'paused',
-  'completed',
-  'failed',
-  'cancelled',
-] as const);
-
-export type M3RunStatus = (typeof M3_RUN_STATUSES)[number];
+export { M3_RUN_STATUSES } from './m3-run-status.js';
+export type { M3RunStatus } from './m3-run-status.js';
 
 export const M3_STAGE_STATUSES = Object.freeze([
-  'created',
-  'blocked',
+  'pending',
   'ready',
   'starting',
   'running',
@@ -40,11 +29,21 @@ export const M3_OPERATION_STATUSES = Object.freeze([
 export type M3OperationStatus = (typeof M3_OPERATION_STATUSES)[number];
 
 export const RUNTIME_EVENT_SOURCES = Object.freeze([
-  'api',
-  'run_engine',
-  'stage_executor',
-  'recovery',
-  'legacy_bridge',
+  'run-engine',
+  'workflow-executor',
+  'stage-executor',
+  'provider-adapter',
+  'process-manager',
+  'worktree-manager',
+  'git-runtime',
+  'memory-engine',
+  'policy-engine',
+  'approval-service',
+  'artifact-manager',
+  'usage-aggregator',
+  'recovery-manager',
+  'conversation-service',
+  'extension',
   'system',
 ] as const);
 
@@ -128,6 +127,15 @@ export interface RuntimeEventDraft<TPayload = unknown> {
   readonly taskId?: string;
   readonly runId: string;
   readonly stageId?: string;
+  readonly agentId?: string;
+  readonly providerConfigId?: string;
+  readonly providerSessionId?: string;
+  readonly processId?: string;
+  readonly worktreeId?: string;
+  readonly artifactId?: string;
+  readonly approvalRequestId?: string;
+  readonly conversationId?: string;
+  readonly messageId?: string;
   readonly sequence: number;
   readonly timestamp: string;
   readonly source?: RuntimeEventSource;
@@ -143,14 +151,33 @@ export interface RuntimeEventDraft<TPayload = unknown> {
 
 export interface UnknownFutureRuntimeEvent {
   readonly kind: 'unknown_future_event';
+  readonly raw: Readonly<Record<string, unknown>>;
   readonly id: string;
   readonly type: string;
   readonly schemaVersion: number;
   readonly workspaceId: string;
+  readonly taskId?: string;
   readonly runId: string;
+  readonly stageId?: string;
+  readonly agentId?: string;
+  readonly providerConfigId?: string;
+  readonly providerSessionId?: string;
+  readonly processId?: string;
+  readonly worktreeId?: string;
+  readonly artifactId?: string;
+  readonly approvalRequestId?: string;
+  readonly conversationId?: string;
+  readonly messageId?: string;
   readonly sequence: number;
+  readonly timestamp: string;
+  readonly source: string;
   readonly correlationId: string;
+  readonly severity: string;
+  readonly visibility: string;
+  readonly durability: string;
   readonly payload: unknown;
+  readonly metadata?: Readonly<Record<string, unknown>>;
+  readonly [key: string]: unknown;
   readonly warning: 'UNKNOWN_FUTURE_EVENT_SCHEMA';
 }
 
@@ -217,24 +244,53 @@ export interface ApiOperation {
   readonly version: number;
 }
 
-export interface CreateRunRequest {
-  readonly taskId: string;
-  readonly reason?: 'initial' | 'retry' | 'resume-fallback' | 'review-fix' | 'provider-comparison' | 'manual';
-  readonly parentRunId?: string;
-  readonly objective?: string;
-  readonly createdBy: string;
+export interface CreateRunBody {
+  readonly reason?: 'initial' | 'retry' | 'review-fix' | 'provider-comparison' | 'manual';
+  readonly workflowDefinitionId?: string;
+  readonly workflowVersionId?: string;
+  readonly defaultAgentId?: string;
+  readonly providerOverrides?: Readonly<Record<string, string>>;
+  readonly policyProfileId?: string;
+  readonly isolationStrategy?: string;
+  readonly baseBranch?: string;
+  readonly baseCommit?: string;
+  readonly priority?: string;
+  readonly startImmediately?: boolean;
 }
 
-export interface StartRunRequest {
+export type CreateRunRequest = CreateRunBody;
+
+export interface StartRunBody {}
+
+export type StartRunRequest = StartRunBody;
+
+export interface CancelRunBody {
+  readonly reason?: string;
+  readonly mode?: 'graceful' | 'force';
+  readonly expectedVersion?: number;
+}
+
+export type CancelRunRequest = CancelRunBody;
+
+export interface RunPathParams {
   readonly runId: string;
-  readonly idempotencyKey: string;
+}
+
+export interface RunRequestHeaders {
+  readonly idempotencyKey?: string;
   readonly ifMatch?: string;
 }
 
-export interface CancelRunRequest {
-  readonly runId: string;
-  readonly idempotencyKey: string;
-  readonly ifMatch?: string;
+export interface RunEventsQuery {
+  readonly afterSequence?: number;
+  readonly beforeSequence?: number;
+  readonly limit?: number;
+  readonly types?: readonly string[];
+  readonly stageId?: string;
+  readonly severity?: RuntimeEventSeverity;
+  readonly visibility?: RuntimeEventVisibility;
+  readonly source?: RuntimeEventSource;
+  readonly correlationId?: string;
 }
 
 export interface OperationResponse {
@@ -247,10 +303,17 @@ export interface OperationEventsRequest {
   readonly lastEventId?: string;
 }
 
-export interface RunEventsResponse {
-  readonly data: readonly RuntimeEventEnvelope[];
-  readonly afterSequence?: number;
-  readonly nextSequence?: number;
+export interface RuntimeEventPage {
+  readonly events: readonly RuntimeEventEnvelope[];
+  readonly nextAfterSequence?: number;
+  readonly hasMore: boolean;
+}
+
+export type RunEventsResponse = RuntimeEventPage;
+
+export interface CancelRunHeaders {
+  readonly idempotencyKey?: string;
+  readonly ifMatch?: string;
 }
 
 export interface SseCursor {
@@ -263,8 +326,17 @@ export interface RunStreamRequest {
   readonly cursor?: SseCursor;
 }
 
-export interface RuntimeEventSseMessage {
+export interface RuntimeEventFrame {
   readonly id: string;
-  readonly event: 'runtime-event' | 'keepalive';
-  readonly data: RuntimeEventEnvelope | { readonly time: string };
+  readonly event: 'runtime-event';
+  readonly data: RuntimeEventEnvelope;
 }
+
+export interface RuntimeKeepaliveFrame {
+  readonly id?: string;
+  readonly event: 'keepalive';
+  readonly data: { readonly time: string };
+}
+
+export type RuntimeSseFrame = RuntimeEventFrame | RuntimeKeepaliveFrame;
+export type RuntimeEventSseMessage = RuntimeSseFrame;

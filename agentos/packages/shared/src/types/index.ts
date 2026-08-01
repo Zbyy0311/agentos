@@ -1,3 +1,5 @@
+import type { V2RunStatus } from './m3-run-status.js';
+
 export type TaskStatus = 'pending' | 'running' | 'reviewing' | 'completed' | 'failed' | 'cancelled';
 
 export type AgentRole = 'codex' | 'kimi' | 'opencode' | 'mimo';
@@ -671,9 +673,8 @@ export interface ThinkingChunk {
 
 export type V2TaskStatus = 'open' | 'in_progress' | 'blocked' | 'done' | 'cancelled';
 export type V2TaskPriority = 'low' | 'normal' | 'high' | 'critical';
-export type V2RunStatus =
-  | 'queued' | 'starting' | 'running' | 'waiting_approval'
-  | 'paused' | 'completed' | 'failed' | 'cancelled';
+export { V2_RUN_STATUSES } from './m3-run-status.js';
+export type { V2RunStatus } from './m3-run-status.js';
 export type V2RunReason = 'initial' | 'retry' | 'resume-fallback' | 'review-fix' | 'provider-comparison' | 'manual';
 export type V2RunOrigin = 'v2_api' | 'legacy_pipeline';
 
@@ -917,5 +918,4 @@ export interface RunStage {
 }
 
 export * from './m3-runtime.js';
-export * from './m3-runtime-fixtures.js';
 export * from './m3-runtime-registry.js';

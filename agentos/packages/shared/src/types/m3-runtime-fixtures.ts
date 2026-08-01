@@ -1,88 +1,32 @@
-import type { RuntimeEventDefinition, RuntimeEventValidationResult } from './m3-runtime-registry.js';
-import { CentralRuntimeEventRegistry } from './m3-runtime-registry.js';
+import {
+  CentralRuntimeEventRegistry,
+  createM3RuntimeEventRegistry,
+} from './m3-runtime-registry.js';
+import type { RuntimeEventValidationResult } from './m3-runtime-registry.js';
 import type {
-  M3OperationStatus,
   RuntimeEventDraft,
   RuntimeEventEnvelope,
+  M3OperationStatus,
 } from './m3-runtime.js';
 
-type RunEventPayload = {
-  readonly runId: string;
+type RunCreatedPayload = {
+  readonly reason: string;
+  readonly rootRunId: string;
+  readonly worktreeMode: string;
+  readonly createdBy: string;
 };
 
-type StageEventPayload = {
-  readonly runId: string;
-  readonly stageId: string;
+type RunStartedPayload = {
+  readonly startedAt: string;
 };
 
-type OperationEventPayload = {
-  readonly operationId: string;
-  readonly runId: string;
-  readonly correlationId: string;
+type StageStartedPayload = {
+  readonly workflowStageKey: string;
+  readonly name: string;
+  readonly attempt: number;
+  readonly agentSnapshot: Readonly<Record<string, unknown>>;
+  readonly providerSnapshot: Readonly<Record<string, unknown>>;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function hasString(value: Record<string, unknown>, key: string): boolean {
-  return typeof value[key] === 'string' && String(value[key]).length > 0;
-}
-
-function isRunEventPayload(value: unknown): value is RunEventPayload {
-  return isRecord(value) && hasString(value, 'runId');
-}
-
-function isStageEventPayload(value: unknown): value is StageEventPayload {
-  return isRecord(value) && hasString(value, 'runId') && hasString(value, 'stageId');
-}
-
-function isOperationEventPayload(value: unknown): value is OperationEventPayload {
-  return (
-    isRecord(value)
-    && hasString(value, 'operationId')
-    && hasString(value, 'runId')
-    && hasString(value, 'correlationId')
-  );
-}
-
-export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
-  {
-    type: 'run.created',
-    schemaVersion: 1,
-    source: 'run_engine',
-    defaultSeverity: 'info',
-    defaultVisibility: 'public',
-    defaultDurability: 'durable',
-    validatePayload: isRunEventPayload,
-  },
-  {
-    type: 'stage.started',
-    schemaVersion: 1,
-    source: 'stage_executor',
-    defaultSeverity: 'info',
-    defaultVisibility: 'public',
-    defaultDurability: 'durable',
-    validatePayload: isStageEventPayload,
-  },
-  {
-    type: 'run.operation.accepted',
-    schemaVersion: 1,
-    source: 'api',
-    defaultSeverity: 'info',
-    defaultVisibility: 'internal',
-    defaultDurability: 'durable',
-    validatePayload: isOperationEventPayload,
-  },
-];
-
-export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
-  const registry = new CentralRuntimeEventRegistry();
-  for (const definition of M3_CORE_EVENT_DEFINITIONS) {
-    registry.registerCore(definition);
-  }
-  return registry;
-}
 
 function baseDraft<TPayload>(
   type: string,
@@ -105,56 +49,142 @@ function baseDraft<TPayload>(
 }
 
 export interface M3RuntimeEventFixtureSet {
-  readonly validRunEvent: RuntimeEventEnvelope<RunEventPayload>;
-  readonly validStageEvent: RuntimeEventEnvelope<StageEventPayload>;
+  readonly validRunCreatedEvent: RuntimeEventEnvelope<RunCreatedPayload>;
+  readonly validRunStartedEvent: RuntimeEventEnvelope<RunStartedPayload>;
+  readonly validStageStartedEvent: RuntimeEventEnvelope<StageStartedPayload>;
   readonly invalidPayload: RuntimeEventDraft;
+  readonly invalidStageEnvelope: RuntimeEventDraft;
   readonly unregisteredCoreEvent: RuntimeEventDraft;
+  readonly invalidSchemaVersion: RuntimeEventDraft;
   readonly unknownFutureEvent: RuntimeEventDraft;
   readonly unknownFutureFallback: RuntimeEventValidationResult;
-  readonly operationCorrelationEvent: RuntimeEventEnvelope<OperationEventPayload>;
+  readonly operationCorrelationEvent: RuntimeEventEnvelope<RunStartedPayload>;
   readonly operationStatuses: readonly M3OperationStatus[];
 }
 
 export function createM3RuntimeEventFixtures(
-  registry = createM3RuntimeEventRegistry(),
+  registry: CentralRuntimeEventRegistry = createM3RuntimeEventRegistry(),
 ): M3RuntimeEventFixtureSet {
-  const validRunEvent = registry.assertPublishable(
-    baseDraft('run.created', { runId: 'run_fixture_01' }),
-  ) as RuntimeEventEnvelope<RunEventPayload>;
+  const validRunCreatedEvent = registry.publish(
+    baseDraft('run.created', {
+      reason: 'initial',
+      rootRunId: 'run_fixture_01',
+      worktreeMode: 'workspace',
+      createdBy: 'fixture',
+    }),
+  ) as RuntimeEventEnvelope<RunCreatedPayload>;
 
-  const validStageEvent = registry.assertPublishable(
+  const validRunStartedEvent = registry.publish(
     baseDraft(
-      'stage.started',
-      { runId: 'run_fixture_01', stageId: 'stage_fixture_01' },
+      'run.started',
+      { startedAt: '2026-08-02T00:00:01.000Z' },
       { id: 'evt_fixture_02', sequence: 2 },
     ),
-  ) as RuntimeEventEnvelope<StageEventPayload>;
+  ) as RuntimeEventEnvelope<RunStartedPayload>;
 
-  const operationCorrelationEvent = registry.assertPublishable(
+  const validStageStartedEvent = registry.publish(
     baseDraft(
-      'run.operation.accepted',
+      'stage.started',
       {
-        operationId: 'op_fixture_01',
-        runId: 'run_fixture_01',
-        correlationId: 'corr_fixture_01',
+        workflowStageKey: 'plan',
+        name: 'Plan',
+        attempt: 1,
+        agentSnapshot: { agentId: 'agent_fixture_01' },
+        providerSnapshot: { providerConfigId: 'provider_fixture_01' },
       },
-      { id: 'evt_fixture_03', sequence: 3 },
+      {
+        id: 'evt_fixture_03',
+        sequence: 3,
+        stageId: 'stage_fixture_01',
+      },
     ),
-  ) as RuntimeEventEnvelope<OperationEventPayload>;
+  ) as RuntimeEventEnvelope<StageStartedPayload>;
 
   const unknownFutureEvent = baseDraft(
     'run.future_event',
-    { runId: 'run_fixture_01', future: true },
-    { id: 'evt_fixture_future', schemaVersion: 99, sequence: 4 },
+    {
+      reason: 'initial',
+      rootRunId: 'run_fixture_01',
+      worktreeMode: 'workspace',
+      createdBy: 'fixture',
+      futureField: { preserved: true },
+    },
+    {
+      id: 'evt_fixture_future',
+      schemaVersion: 99,
+      sequence: 4,
+      source: 'future-source' as RuntimeEventDraft['source'],
+      severity: 'future-severity' as RuntimeEventDraft['severity'],
+      visibility: 'future-visibility' as RuntimeEventDraft['visibility'],
+      durability: 'future-durability' as RuntimeEventDraft['durability'],
+      agentId: 'agent_future',
+      providerConfigId: 'provider_future',
+      providerSessionId: 'session_future',
+      processId: 'process_future',
+      worktreeId: 'worktree_future',
+      artifactId: 'artifact_future',
+      approvalRequestId: 'approval_future',
+      conversationId: 'conversation_future',
+      messageId: 'message_future',
+      metadata: { futureMetadata: true },
+    },
   );
 
+  const operationCorrelationEvent = registry.publish(
+    baseDraft(
+      'run.started',
+      { startedAt: '2026-08-02T00:00:02.000Z' },
+      {
+        id: 'evt_fixture_operation',
+        sequence: 5,
+        correlationId: 'corr_operation_fixture',
+      },
+    ),
+  ) as RuntimeEventEnvelope<RunStartedPayload>;
+
   return {
-    validRunEvent,
-    validStageEvent,
-    invalidPayload: baseDraft('stage.started', { runId: 'run_fixture_01' }),
-    unregisteredCoreEvent: baseDraft('run.unregistered', { runId: 'run_fixture_01' }),
+    validRunCreatedEvent,
+    validRunStartedEvent,
+    validStageStartedEvent,
+    invalidPayload: baseDraft(
+      'stage.started',
+      {
+        workflowStageKey: 'plan',
+        name: 'Plan',
+        attempt: 1,
+        agentSnapshot: {},
+        providerSnapshot: {},
+        operationId: 'not-allowed',
+      },
+      { stageId: 'stage_fixture_01' },
+    ),
+    invalidStageEnvelope: baseDraft(
+      'stage.started',
+      {
+        workflowStageKey: 'plan',
+        name: 'Plan',
+        attempt: 1,
+        agentSnapshot: {},
+        providerSnapshot: {},
+      },
+      { id: 'evt_fixture_missing_stage', sequence: 6 },
+    ),
+    unregisteredCoreEvent: baseDraft(
+      'run.unregistered',
+      {
+        reason: 'initial',
+        rootRunId: 'run_fixture_01',
+        worktreeMode: 'workspace',
+        createdBy: 'fixture',
+      },
+      { id: 'evt_fixture_unregistered', sequence: 7 },
+    ),
+    invalidSchemaVersion: {
+      ...validRunCreatedEvent,
+      schemaVersion: 0,
+    },
     unknownFutureEvent,
-    unknownFutureFallback: registry.validate(unknownFutureEvent),
+    unknownFutureFallback: registry.consume(unknownFutureEvent),
     operationCorrelationEvent,
     operationStatuses: [
       'queued',
