@@ -41,7 +41,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string, options?: { readOnly?: boolean }) => SqliteDb;
 };
 
-const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011'];
+const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012'];
 const NOW = '2026-07-31T00:00:00.000Z';
 const KEY_TABLES = [
   'agent_profiles',
@@ -85,7 +85,7 @@ function migrationIds(db: SqliteDb): string[] {
 
 function assertMigrationState(db: SqliteDb): void {
   assert.deepEqual(migrationIds(db), EXPECTED_MIGRATIONS);
-  assert.equal(migrationIds(db).includes('012'), false);
+  assert.equal(migrationIds(db).includes('012'), true);
   const integrity = db.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check: string }>;
   assert.equal(integrity.length, 1);
   assert.equal(integrity[0]?.integrity_check, 'ok');
@@ -389,7 +389,7 @@ async function runTaskMigration(
   }) as unknown as Promise<Record<string, unknown>>;
 }
 
-test('P3 fresh DB applies 001–011 once and is an explicit no-op on the second run', () => {
+test('P3 fresh DB applies 001–012 once and is an explicit no-op on the second run', () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-m28-p3-fresh-'));
   const databasePath = join(root, '.agentos', 'agentos.sqlite');
   mkdirSync(dirname(databasePath), { recursive: true });
@@ -493,7 +493,7 @@ test('P3 real-copy migration, verified Backup, isolated Restore, and source hash
       taskResults.push({ first });
     }
 
-    // Post-apply gate before any repeat: strict Registry 001-011,
+    // Post-apply gate before any repeat: strict Registry 001-012,
     // integrity_check=ok, foreign_key_check=0, and every original source
     // record preserved on its original columns.
     const afterApplyDb = openDb(workingDatabasePath, true);

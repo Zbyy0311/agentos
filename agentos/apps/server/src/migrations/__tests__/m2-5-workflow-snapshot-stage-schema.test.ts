@@ -729,15 +729,17 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
 });
 
 describe('M2.5 — Migration 009 run_stages', () => {
-  it('009-01 run_stages has exact columns and no lifecycle columns', () => {
+  it('009-01 run_stages has the M3 lifecycle columns and one version column', () => {
     const db = migratedDb();
     try {
       const cols = tableInfo(db, 'run_stages').map((c) => c.name);
       assert.deepEqual(cols, [
         'id', 'workspace_id', 'run_id', 'run_snapshot_id', 'workflow_stage_key', 'name',
-        'sequence', 'attempt', 'status', 'created_at', 'updated_at', 'version',
+        'sequence', 'attempt', 'status', 'failure_code', 'failure_message', 'started_at',
+        'completed_at', 'created_at', 'updated_at', 'version',
       ]);
-      for (const banned of ['parent_stage_id', 'execution_id', 'agent_id', 'provider_id', 'output', 'failure', 'event_sequence', 'started_at', 'completed_at']) {
+      assert.equal(cols.filter(column => column === 'version').length, 1);
+      for (const banned of ['parent_stage_id', 'execution_id', 'agent_id', 'provider_id', 'output', 'failure', 'event_sequence']) {
         assert.ok(!cols.includes(banned), `unexpected lifecycle column: ${banned}`);
       }
     } finally {
@@ -828,13 +830,21 @@ describe('M2.5 — Migration 009 run_stages', () => {
     }
   });
 
-  it('009-09 status other than pending is rejected', () => {
+  it('009-09 canonical lifecycle statuses are accepted and legacy statuses are rejected', () => {
     const db = migratedDb();
     try {
       seedRunChain(db, 'st', 'ws_st');
-      assert.throws(() => db.prepare(`
+      db.prepare(`
         INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
         VALUES ('stage_st', 'ws_st', 'run_st', 'snapshot_st', 'k', 'k', 1, 1, 'running', ?, ?, 1)
+      `).run(NOW, NOW);
+      assert.throws(() => db.prepare(`
+        INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
+        VALUES ('stage_st_created', 'ws_st', 'run_st', 'snapshot_st', 'created', 'created', 2, 1, 'created', ?, ?, 1)
+      `).run(NOW, NOW));
+      assert.throws(() => db.prepare(`
+        INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
+        VALUES ('stage_st_blocked', 'ws_st', 'run_st', 'snapshot_st', 'blocked', 'blocked', 3, 1, 'blocked', ?, ?, 1)
       `).run(NOW, NOW));
     } finally {
       db.close();
@@ -973,9 +983,9 @@ describe('M2.5 — Migration 009 run_stages', () => {
 });
 
 describe('M2.5 — Registry and integrity', () => {
-  it('REG-01 registry IDs are exactly 001-011 in order with no duplicates', () => {
+  it('REG-01 registry IDs are exactly 001-012 in order with no duplicates', () => {
     const ids = DEFAULT_REGISTRY_MIGRATIONS.map((m) => m.id);
-    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012']);
     assert.equal(new Set(ids).size, ids.length);
     assert.equal(migration007.id, '007');
     assert.equal(migration008.id, '008');
@@ -994,11 +1004,11 @@ describe('M2.5 — Registry and integrity', () => {
     }
   });
 
-  it('REG-03 migration records are exactly 001-011', () => {
+  it('REG-03 migration records are exactly 001-012', () => {
     const db = migratedDb();
     try {
       const rows = db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-      assert.deepEqual(rows.map((r) => r.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+      assert.deepEqual(rows.map((r) => r.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012']);
     } finally {
       db.close();
     }

@@ -120,15 +120,15 @@ const EXISTING_COVERAGE: readonly CoverageEntry[] = [
     checks: [
       {
         file: 'apps/server/src/migrations/__tests__/integration.test.ts',
-        markers: ['Fresh database applies the complete 001-011 registry exactly once', 'The complete 001-011 schema passes integrity and foreign-key checks'],
+        markers: ['Fresh database applies the complete 001-012 registry exactly once', 'The complete 001-012 schema passes integrity and foreign-key checks'],
       },
       {
         file: 'apps/server/src/migrations/__tests__/migration.test.ts',
-        markers: ['sorts by numeric ID', 'Closing and reopening a fully migrated database keeps 001-011 idempotent'],
+        markers: ['sorts by numeric ID', 'Closing and reopening a fully migrated database keeps 001-012 idempotent'],
       },
       {
         file: 'apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts',
-        markers: ['REG-03 migration records are exactly 001-011'],
+        markers: ['REG-03 migration records are exactly 001-012'],
       },
     ],
   },

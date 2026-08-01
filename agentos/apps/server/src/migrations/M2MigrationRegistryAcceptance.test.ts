@@ -4,11 +4,11 @@ import assert from 'node:assert/strict';
 import { DEFAULT_REGISTRY_MIGRATIONS } from './default-registry.js';
 import { MigrationRegistry } from './registry.js';
 
-const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011'] as const;
+const EXPECTED_MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012'] as const;
 
-test('P2 Migration Registry contains exactly migrations 001–011 in contract order', () => {
+test('P2 Migration Registry contains exactly migrations 001–012 in contract order', () => {
   assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);
-  assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), false);
+  assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);
   assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)).size, EXPECTED_MIGRATION_IDS.length);
   assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, EXPECTED_MIGRATION_IDS.length);
   for (const migration of DEFAULT_REGISTRY_MIGRATIONS) {

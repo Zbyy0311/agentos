@@ -410,12 +410,12 @@ describe('Baseline checksum stability', () => {
   });
 });
 
-it('[M27-P5-T001] Fresh database applies the complete 001-011 registry exactly once', () => {
+it('[M27-P5-T001] Fresh database applies the complete 001-012 registry exactly once', () => {
   const ctx = tempDbPath();
   try {
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
     const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012']);
     const compatibilityTables = ctx.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('legacy_data_migrations', 'legacy_task_items') ORDER BY name").all() as Array<{ name: string }>;
     assert.deepEqual(compatibilityTables.map(table => table.name), ['legacy_data_migrations', 'legacy_task_items']);
   } finally {
@@ -423,7 +423,7 @@ it('[M27-P5-T001] Fresh database applies the complete 001-011 registry exactly o
   }
 });
 
-it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 011 without losing its schema records', () => {
+it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 012 without losing its schema records', () => {
   const ctx = tempDbPath();
   try {
     for (const stmt of BASELINE_DDL) ctx.db.exec(stmt);
@@ -443,14 +443,14 @@ it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 011 witho
 
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
     const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012']);
     assert.equal((ctx.db.prepare("SELECT COUNT(*) AS count FROM _schema_migrations WHERE migration_id = '001'").get() as { count: number }).count, 1);
   } finally {
     cleanup(ctx);
   }
 });
 
-it('[M27-P5-T005] The complete 001-011 schema passes integrity and foreign-key checks', () => {
+it('[M27-P5-T005] The complete 001-012 schema passes integrity and foreign-key checks', () => {
   const ctx = tempDbPath();
   try {
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
