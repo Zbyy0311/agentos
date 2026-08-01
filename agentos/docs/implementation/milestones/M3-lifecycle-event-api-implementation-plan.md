@@ -190,7 +190,8 @@ Define and validate the shared types, event registry, schema contract, and Migra
 
 - Registry rejects unregistered Core Events.
 - Registry validates schemaVersion, default severity, visibility, durability, payload schema, and unknown future-event behavior.
-- Migration 012 package specifies runtime_events, UNIQUE(run_id, sequence) and query indexes, outbox_messages, dead_letters or reviewed equivalent, durable operations, run_stages expansion, idempotency operation values, recovery representation, sequence allocator, append-only/immutable constraints, and Queue decision.
+- Migration 012 package specifies runtime_events, UNIQUE(run_id, sequence) and query indexes including runtime_events(run_id, correlation_id, sequence), outbox_messages, dead_letters or reviewed equivalent, durable operations with operations.run_id or equivalent aggregate reference and operations.correlation_id, run_stages expansion preserving existing version, idempotency operation values, recovery representation, sequence allocator, append-only/controlled-update constraints, and Queue decision.
+- Operation contract includes workspaceId, aggregateType=run, aggregateId/runId, immutable unique correlationId, exact lifecycle/result/ApiProblem fields, and no independent operation_events Event Store.
 - SQLite table rebuild risk, checksum, fresh/legacy DB, rollback/forward-compatibility, and L3 review requirements are recorded.
 
 #### RED/GREEN tests
@@ -242,7 +243,7 @@ Begin all persistent Run/Stage status migration and implement the transaction co
 - Authorized Migration 012 implementation and schema registration after P1 review.
 - runtime_events, indexes, sequence allocator using runs.next_event_sequence.
 - outbox_messages, dead_letters or reviewed equivalent, immutable/concurrency constraints.
-- run_stages expansion for M3 lifecycle, failure, started/completed timestamps, and version.
+- run_stages expansion for M3 lifecycle, failure_code/failure_message, and started_at/completed_at; preserve the existing Migration 009 version column and use it for optimistic version-checked updates, without adding a duplicate version column.
 - Explicit runs.recovery_required or separate Recovery Record choice.
 - idempotency_records.operation extension for run.start, run.retry, and approved M3 commands.
 - Run/Stage transition repository and transaction service, without Run Engine orchestration.
@@ -266,7 +267,8 @@ Begin all persistent Run/Stage status migration and implement the transaction co
 
 - Every Run/Stage status transition uses the same transaction boundary.
 - Runtime Event is append-only and unique by run_id plus sequence.
-- Outbox is immutable per durable identity and supports concurrent-safe at-least-once publication.
+- Outbox immutable fields are id, event_id or equivalent Event reference, topic, aggregate_type/aggregate_id, payload, and created_at. Controlled mutable delivery fields are status, attempts, available_at, published_at, last_error, and optional lease/fencing/version. Delivery updates use a state machine, conditional UPDATE, and concurrency protection; the entire outbox_messages table is not UPDATE-prohibited.
+- operations.run_id or equivalent aggregate reference and operations.correlation_id are present; correlationId is unique and immutable; runtime_events(run_id, correlation_id, sequence) supports query.
 - Run Stage status fields support the approved M3 lifecycle.
 - Queue uses runs(status=queued) unless later evidence proves otherwise.
 - Recovery representation is present before any P6 implementation references it.
@@ -322,6 +324,7 @@ Build the Task-domain Run Engine, minimal Workflow Executor Foundation, Stage or
 - Run transitions through P2 transaction core.
 - Create Run, Start Run, Get Run, Cancel Run, Retry, and Operation integration.
 - Operation statuses exactly queued, running, waiting_approval, paused, completed, failed, cancelled.
+- M3 Operation tracks only Task-domain Run commands and stores workspaceId, aggregateType=run, aggregateId/runId, unique immutable correlationId, result, ApiProblem, timestamps, and version.
 - HTTP 202 Start result and Operation APIs.
 
 #### Forbidden scope
@@ -337,6 +340,7 @@ Build the Task-domain Run Engine, minimal Workflow Executor Foundation, Stage or
 - RunRepository, RunStageRepository, TaskRunService integration categories.
 - OperationRepository and Operation service categories.
 - Canonical top-level Run/Operation route categories, without replacing Legacy/current v2 collections.
+- Operation endpoints use the unified parameter name operationId: GET /api/operations/:operationId, GET /api/operations/:operationId/events, and POST /api/operations/:operationId/cancel.
 - Run lifecycle, Operation, duplicate Start, Cancel race, and Retry tests.
 
 #### Required evidence
@@ -346,6 +350,7 @@ Build the Task-domain Run Engine, minimal Workflow Executor Foundation, Stage or
 - Run state machine follows Runtime Lifecycle Transition Table.
 - Retry creates a child Run and never resets old Run.
 - Operation is distinct from Run and exposes exact status/result/error/version fields.
+- GET /api/operations/:operationId/events first reads and authorizes the Operation, then uses its runId and correlationId to query runtime_events and return ascending sequence. It does not use an operation_events store; non-Run Operations are Post-M3.
 - Workflow Executor is deterministic and does not require M4 provider runtime.
 
 #### RED/GREEN tests
@@ -696,16 +701,16 @@ Migration 012 REQUIRED — PLANNING ONLY. No DDL is created in this remediation.
 The future planning package must cover:
 
 1. Task-domain runtime_events.
-2. UNIQUE(run_id, sequence) and query indexes.
+2. UNIQUE(run_id, sequence) and query indexes, including runtime_events(run_id, correlation_id, sequence).
 3. outbox_messages.
 4. Independent dead_letters or a reviewed equivalent.
-5. Durable operations.
-6. run_stages rebuild/extension from pending-only to M3 lifecycle, including failure, started/completed, and version fields.
+5. Durable operations with operations.run_id or equivalent aggregate reference, operations.correlation_id, and immutable unique correlation_id.
+6. run_stages rebuild/extension from pending-only to M3 lifecycle, including failure_code/failure_message and started_at/completed_at while preserving the existing version column for optimistic version-checked updates; no duplicate version column.
 7. idempotency_records.operation values run.start, run.retry, and finally approved M3 commands.
 8. Recovery representation: runs.recovery_required or a separate Recovery Record, chosen before P6.
 9. Task-domain sequence allocation through runs.next_event_sequence.
-10. Event append-only and Outbox immutable/concurrency constraints.
-11. Operation lifecycle, result, ApiProblem, aggregate reference, time, and version fields.
+10. Event append-only and Outbox immutable/concurrency constraints, with immutable identity/payload fields and controlled delivery-field updates.
+11. Operation lifecycle, result, ApiProblem, aggregate reference, workspaceId, aggregateType=run, aggregateId/runId, timestamps, and version fields.
 12. Queue decision: runs(status=queued) is the M3 persistent Queue Record; do not add scheduler_jobs unless later evidence proves it necessary.
 
 SQLite table rebuild risk requires separate DDL review, checksum review, fresh/legacy DB fixtures, rollback/forward-compatibility, and L3 validation. None of that authorizes production migration.
