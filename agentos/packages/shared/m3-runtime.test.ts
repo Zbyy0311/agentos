@@ -6,6 +6,8 @@ import {
   M3_STAGE_STATUSES,
   RUNTIME_EVENT_SOURCES,
   RuntimeEventRegistryError,
+  V2_RUN_REASONS,
+  WORKTREE_MODES,
   createM3RuntimeEventRegistry,
 } from './src/index.ts';
 import {
@@ -14,6 +16,9 @@ import {
 import type {
   CancelRunBody,
   CreateRunBody,
+  OperationEventsQuery,
+  OperationPathParams,
+  ResolvedSseCursor,
   RuntimeEventDraft,
   RuntimeEventFrame,
   RuntimeEventPage,
@@ -21,6 +26,9 @@ import type {
   RunEventsQuery,
   RunPathParams,
   RunRequestHeaders,
+  RunStreamQuery,
+  SseRequestHeaders,
+  StartRunBody,
 } from './src/types/m3-runtime.ts';
 
 test('uses the canonical Stage status set and keeps Migration 009 pending compatibility', () => {
@@ -73,6 +81,25 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
   );
 });
 
+test('enforces the single-source Run reason and canonical WorktreeMode values', () => {
+  assert.deepEqual(V2_RUN_REASONS, [
+    'initial',
+    'retry',
+    'resume-fallback',
+    'review-fix',
+    'provider-comparison',
+    'manual',
+  ]);
+  assert.deepEqual(WORKTREE_MODES, ['required', 'preferred', 'disabled']);
+
+  const fixtures = createM3RuntimeEventFixtures();
+  assert.equal(fixtures.validRunCreatedEvent.payload.reason, 'initial');
+  assert.equal(fixtures.validRunCreatedEvent.payload.worktreeMode, 'required');
+  assert.throws(() => createM3RuntimeEventRegistry().publish(fixtures.invalidReason));
+  assert.throws(() => createM3RuntimeEventRegistry().publish(fixtures.invalidWorktreeMode));
+  assert.throws(() => createM3RuntimeEventRegistry().publish(fixtures.invalidUnknownWorktreeMode));
+});
+
 test('validates canonical run.created, run.started, and stage.started payloads', () => {
   const fixtures = createM3RuntimeEventFixtures();
 
@@ -90,14 +117,28 @@ test('validates canonical run.created, run.started, and stage.started payloads',
     'providerSnapshot',
     'workflowStageKey',
   ]);
+  assert.equal(fixtures.validStageStartedEvent.payload.agentSnapshot.version, 1);
+  assert.equal(fixtures.validStageStartedEvent.payload.providerSnapshot.version, 1);
+  assert.ok(Array.isArray(fixtures.validStageStartedEvent.payload.agentSnapshot.permissions));
+  assert.ok(Array.isArray(fixtures.validStageStartedEvent.payload.providerSnapshot.argsTemplate));
 });
 
-test('rejects the old pseudo-payload and missing Stage envelope association', () => {
+test('rejects illegal payloads and missing Stage envelope association', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
 
   assert.throws(
     () => registry.publish(fixtures.invalidPayload),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  assert.throws(
+    () => registry.consume(fixtures.invalidPayload),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.invalidStageSnapshot),
     (error: unknown) => error instanceof RuntimeEventRegistryError
       && error.code === 'INVALID_EVENT_PAYLOAD',
   );
@@ -108,7 +149,70 @@ test('rejects the old pseudo-payload and missing Stage envelope association', ()
   );
 });
 
-test('rejects unregistered Core Events and invalid schema versions', () => {
+test('preserves Publish rejection for same-version unknown and future Events', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+
+  assert.throws(
+    () => registry.publish(fixtures.unknownSameVersionEvent),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'UNREGISTERED_CORE_EVENT',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.unknownFutureEvent),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE',
+  );
+});
+
+test('consumes same-version unknown Events without rejecting them and preserves raw data', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const result = registry.consume(fixtures.unknownSameVersionEvent);
+
+  assert.equal(result.kind, 'unknown');
+  if (result.kind === 'unknown') {
+    assert.equal(result.event.warning, 'UNKNOWN_EVENT_TYPE');
+    assert.deepEqual(result.event.raw, fixtures.unknownSameVersionEvent);
+    assert.equal(result.event.causationId, 'evt_fixture_cause');
+    assert.equal(result.event.parentEventId, 'evt_fixture_parent');
+    assert.deepEqual(result.event.metadata, { unknownMetadata: true });
+    assert.equal(result.event.unknownEnvelopeField, 'preserved');
+  }
+});
+
+test('consumes future Events as lossless Unknown Runtime Events', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const result = registry.consume(fixtures.unknownFutureEvent);
+
+  assert.equal(result.kind, 'unknown');
+  if (result.kind === 'unknown') {
+    assert.equal(result.event.warning, 'UNKNOWN_FUTURE_EVENT_SCHEMA');
+    assert.deepEqual(result.event.raw, fixtures.unknownFutureEvent);
+    assert.equal(result.event.timestamp, fixtures.unknownFutureEvent.timestamp);
+    assert.equal(result.event.source, 'future-source');
+    assert.equal(result.event.severity, 'future-severity');
+    assert.equal(result.event.visibility, 'future-visibility');
+    assert.equal(result.event.durability, 'future-durability');
+    assert.equal(result.event.causationId, 'evt_future_cause');
+    assert.equal(result.event.parentEventId, 'evt_future_parent');
+    assert.equal(result.event.taskId, 'task_fixture_01');
+    assert.equal(result.event.agentId, 'agent_future');
+    assert.equal(result.event.providerConfigId, 'provider_future');
+    assert.equal(result.event.providerSessionId, 'session_future');
+    assert.equal(result.event.processId, 'process_future');
+    assert.equal(result.event.worktreeId, 'worktree_future');
+    assert.equal(result.event.artifactId, 'artifact_future');
+    assert.equal(result.event.approvalRequestId, 'approval_future');
+    assert.equal(result.event.conversationId, 'conversation_future');
+    assert.equal(result.event.messageId, 'message_future');
+    assert.deepEqual(result.event.metadata, { futureMetadata: true });
+    assert.equal(result.event.unknownFutureField, 'preserved');
+  }
+});
+
+test('rejects unregistered Publish Events and invalid schema versions', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
 
@@ -121,38 +225,6 @@ test('rejects unregistered Core Events and invalid schema versions', () => {
     () => registry.publish(fixtures.invalidSchemaVersion),
     (error: unknown) => error instanceof RuntimeEventRegistryError
       && error.code === 'INVALID_EVENT_SCHEMA_VERSION',
-  );
-});
-
-test('preserves complete unknown future Event records during consume', () => {
-  const registry = createM3RuntimeEventRegistry();
-  const fixtures = createM3RuntimeEventFixtures(registry);
-  const result = registry.consume(fixtures.unknownFutureEvent);
-
-  assert.equal(result.kind, 'unknown_future');
-  if (result.kind === 'unknown_future') {
-    assert.equal(result.event.timestamp, fixtures.unknownFutureEvent.timestamp);
-    assert.equal(result.event.source, 'future-source');
-    assert.equal(result.event.severity, 'future-severity');
-    assert.equal(result.event.visibility, 'future-visibility');
-    assert.equal(result.event.durability, 'future-durability');
-    assert.equal(result.event.taskId, 'task_fixture_01');
-    assert.equal(result.event.agentId, 'agent_future');
-    assert.equal(result.event.providerConfigId, 'provider_future');
-    assert.equal(result.event.providerSessionId, 'session_future');
-    assert.equal(result.event.processId, 'process_future');
-    assert.equal(result.event.worktreeId, 'worktree_future');
-    assert.equal(result.event.artifactId, 'artifact_future');
-    assert.equal(result.event.approvalRequestId, 'approval_future');
-    assert.equal(result.event.conversationId, 'conversation_future');
-    assert.equal(result.event.messageId, 'message_future');
-    assert.deepEqual(result.event.metadata, { futureMetadata: true });
-    assert.deepEqual(result.event.raw, fixtures.unknownFutureEvent);
-  }
-  assert.throws(
-    () => registry.publish(fixtures.unknownFutureEvent),
-    (error: unknown) => error instanceof RuntimeEventRegistryError
-      && error.code === 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE',
   );
 });
 
@@ -176,43 +248,30 @@ test('uses the Runtime Event Page contract', () => {
   assert.equal(nextPage.nextAfterSequence, 10);
 });
 
-test('separates API path, query, header, and body DTOs', () => {
-  const path: RunPathParams = { runId: 'run_fixture_01' };
-  const query: RunEventsQuery = {
-    afterSequence: 1,
-    beforeSequence: 10,
-    limit: 50,
-    types: ['run.started'],
-    stageId: 'stage_fixture_01',
-    severity: 'info',
-    visibility: 'public',
-    source: 'run-engine',
-    correlationId: 'corr_fixture_01',
-  };
-  const headers: RunRequestHeaders = {
-    idempotencyKey: 'idem_fixture_01',
-    ifMatch: '7',
-  };
-  const createBody: CreateRunBody = {
-    reason: 'initial',
-    workflowDefinitionId: 'workflow_fixture_01',
-    workflowVersionId: 'workflow_version_01',
-    defaultAgentId: 'agent_fixture_01',
-    providerOverrides: { plan: 'provider_fixture_01' },
-    policyProfileId: 'policy_fixture_01',
-    isolationStrategy: 'worktree',
-    baseBranch: 'main',
-    baseCommit: 'abc123',
-    priority: 'normal',
-    startImmediately: true,
-  };
+test('separates HTTP path, query, header, and body DTOs', () => {
+  const operationPath: OperationPathParams = { operationId: 'op_fixture_01' };
+  const operationQuery: OperationEventsQuery = { afterSequence: 1 };
+  const runPath: RunPathParams = { runId: 'run_fixture_01' };
+  const runEventsQuery: RunEventsQuery = { afterSequence: 1, limit: 50 };
+  const streamQuery: RunStreamQuery = { afterSequence: 2 };
+  const headers: RunRequestHeaders = { idempotencyKey: 'idem_fixture_01', ifMatch: '7' };
+  const sseHeaders: SseRequestHeaders = { lastEventId: 'evt_fixture_01' };
+  const resolvedCursor: ResolvedSseCursor = { afterSequence: 2, lastEventId: 'evt_fixture_01' };
+  const createBody: CreateRunBody = { reason: 'initial', startImmediately: true };
   const cancelBody: CancelRunBody = { reason: 'fixture', mode: 'graceful', expectedVersion: 7 };
+  const startBody: StartRunBody = {};
 
-  assert.equal(path.runId, 'run_fixture_01');
-  assert.equal(query.source, 'run-engine');
-  assert.equal(headers.ifMatch, '7');
+  assert.deepEqual(Object.keys(operationPath), ['operationId']);
+  assert.deepEqual(Object.keys(operationQuery), ['afterSequence']);
+  assert.deepEqual(Object.keys(runPath), ['runId']);
+  assert.deepEqual(Object.keys(runEventsQuery), ['afterSequence', 'limit']);
+  assert.deepEqual(Object.keys(streamQuery), ['afterSequence']);
+  assert.deepEqual(Object.keys(headers), ['idempotencyKey', 'ifMatch']);
+  assert.deepEqual(Object.keys(sseHeaders), ['lastEventId']);
+  assert.equal(resolvedCursor.lastEventId, 'evt_fixture_01');
   assert.equal(createBody.startImmediately, true);
   assert.equal(cancelBody.mode, 'graceful');
+  assert.deepEqual(Object.keys(startBody), []);
 });
 
 test('uses the discriminated SSE frame contract', () => {

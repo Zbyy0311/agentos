@@ -5,14 +5,17 @@ import type {
   RuntimeEventSeverity,
   RuntimeEventSource,
   RuntimeEventVisibility,
-  UnknownFutureRuntimeEvent,
+  UnknownRuntimeEvent,
 } from './m3-runtime.js';
+import type { AgentSnapshotV1, ProviderConfigurationSnapshotV1 } from './index.js';
+import type { V2RunReason, WorktreeMode } from './m3-runtime-contracts.js';
 import {
   RUNTIME_EVENT_DURABILITIES,
   RUNTIME_EVENT_SEVERITIES,
   RUNTIME_EVENT_SOURCES,
   RUNTIME_EVENT_VISIBILITIES,
 } from './m3-runtime.js';
+import { V2_RUN_REASONS, WORKTREE_MODES } from './m3-runtime-contracts.js';
 
 export const CURRENT_RUNTIME_EVENT_SCHEMA_VERSION = 1;
 
@@ -45,8 +48,8 @@ export type RuntimeEventConsumptionResult<TPayload = unknown> =
       readonly event: RuntimeEventEnvelope<TPayload>;
     }
   | {
-      readonly kind: 'unknown_future';
-      readonly event: UnknownFutureRuntimeEvent;
+      readonly kind: 'unknown';
+      readonly event: UnknownRuntimeEvent;
     };
 
 export type RuntimeEventValidationResult<TPayload = unknown> = RuntimeEventConsumptionResult<TPayload>;
@@ -157,32 +160,7 @@ export class CentralRuntimeEventRegistry {
       );
     }
 
-    const result = this.validateCurrentDraft(draft);
-    if (result.kind === 'unknown_future') {
-      throw new RuntimeEventRegistryError(
-        'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE',
-        'Future Runtime Event cannot be published by the current Registry: ' + draft.type,
-      );
-    }
-    return result.event;
-  }
-
-  consume(record: unknown): RuntimeEventConsumptionResult {
-    const draft = this.toDraft(record);
-    if (draft.schemaVersion > CURRENT_RUNTIME_EVENT_SCHEMA_VERSION) {
-      return {
-        kind: 'unknown_future',
-        event: this.toUnknownFutureEvent(record as Record<string, unknown>, draft),
-      };
-    }
-    return this.validateCurrentDraft(draft);
-  }
-
-  private validateCurrentDraft<TPayload>(
-    draft: RuntimeEventDraft<TPayload>,
-  ): RuntimeEventValidationResult<TPayload> {
     this.validateEnvelopeShape(draft);
-
     const definition = this.definitions.get(draft.type);
     if (!definition) {
       throw new RuntimeEventRegistryError(
@@ -190,7 +168,39 @@ export class CentralRuntimeEventRegistry {
         'Core Runtime Event type is not registered: ' + draft.type,
       );
     }
+    return this.validateKnownDraft(draft, definition as RuntimeEventDefinition<TPayload>);
+  }
 
+  consume(record: unknown): RuntimeEventConsumptionResult {
+    const draft = this.toDraft(record);
+    if (draft.schemaVersion > CURRENT_RUNTIME_EVENT_SCHEMA_VERSION) {
+      return {
+        kind: 'unknown',
+        event: this.toUnknownRuntimeEvent(
+          record as Record<string, unknown>,
+          draft,
+          'UNKNOWN_FUTURE_EVENT_SCHEMA',
+        ),
+      };
+    }
+    this.validateEnvelopeShape(draft);
+    const definition = this.definitions.get(draft.type);
+    if (!definition) {
+      return {
+        kind: 'unknown',
+        event: this.toUnknownRuntimeEvent(record as Record<string, unknown>, draft, 'UNKNOWN_EVENT_TYPE'),
+      };
+    }
+    return {
+      kind: 'known',
+      event: this.validateKnownDraft(draft, definition),
+    };
+  }
+
+  private validateKnownDraft<TPayload>(
+    draft: RuntimeEventDraft<TPayload>,
+    definition: RuntimeEventDefinition<TPayload>,
+  ): RuntimeEventEnvelope<TPayload> {
     if (draft.schemaVersion !== definition.schemaVersion) {
       throw new RuntimeEventRegistryError(
         'INVALID_EVENT_SCHEMA_VERSION',
@@ -220,14 +230,11 @@ export class CentralRuntimeEventRegistry {
     }
 
     return {
-      kind: 'known',
-      event: {
-        ...draft,
-        source: draft.source ?? definition.source,
-        severity: draft.severity ?? definition.defaultSeverity,
-        visibility: draft.visibility ?? definition.defaultVisibility,
-        durability: draft.durability ?? definition.defaultDurability,
-      },
+      ...draft,
+      source: draft.source ?? definition.source,
+      severity: draft.severity ?? definition.defaultSeverity,
+      visibility: draft.visibility ?? definition.defaultVisibility,
+      durability: draft.durability ?? definition.defaultDurability,
     };
   }
 
@@ -263,14 +270,15 @@ export class CentralRuntimeEventRegistry {
     return draft as RuntimeEventDraft;
   }
 
-  private toUnknownFutureEvent(
+  private toUnknownRuntimeEvent(
     record: Record<string, unknown>,
     draft: RuntimeEventDraft,
-  ): UnknownFutureRuntimeEvent {
+    warning: UnknownRuntimeEvent['warning'],
+  ): UnknownRuntimeEvent {
     return {
       ...record,
       raw: Object.freeze({ ...record }),
-      kind: 'unknown_future_event',
+      kind: 'unknown_runtime_event',
       id: draft.id,
       type: draft.type,
       schemaVersion: draft.schemaVersion,
@@ -291,12 +299,14 @@ export class CentralRuntimeEventRegistry {
       timestamp: draft.timestamp,
       source: String(draft.source),
       correlationId: draft.correlationId,
+      causationId: draft.causationId,
+      parentEventId: draft.parentEventId,
       severity: String(draft.severity),
       visibility: String(draft.visibility),
       durability: String(draft.durability),
       payload: draft.payload,
       metadata: draft.metadata,
-      warning: 'UNKNOWN_FUTURE_EVENT_SCHEMA',
+      warning,
     };
   }
 
@@ -354,11 +364,11 @@ export class CentralRuntimeEventRegistry {
 }
 
 export interface RunCreatedPayload {
-  readonly reason: string;
+  readonly reason: V2RunReason;
   readonly parentRunId?: string;
   readonly rootRunId: string;
   readonly workflowDefinitionId?: string;
-  readonly worktreeMode: string;
+  readonly worktreeMode: WorktreeMode;
   readonly createdBy: string;
 }
 
@@ -373,8 +383,8 @@ export interface StageStartedPayload {
   readonly workflowStageKey: string;
   readonly name: string;
   readonly attempt: number;
-  readonly agentSnapshot: Readonly<Record<string, unknown>>;
-  readonly providerSnapshot: Readonly<Record<string, unknown>>;
+  readonly agentSnapshot: AgentSnapshotV1;
+  readonly providerSnapshot: ProviderConfigurationSnapshotV1;
 }
 
 function hasString(value: Record<string, unknown>, key: string): boolean {
@@ -394,15 +404,97 @@ function hasOnly(value: Record<string, unknown>, keys: readonly string[]): boole
   return Object.keys(value).every(key => keys.includes(key));
 }
 
+function isNullableString(value: unknown): value is string | null {
+  return value === null || isNonEmptyString(value);
+}
+
+function isStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function hasBooleanFields(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return keys.every(key => typeof value[key] === 'boolean');
+}
+
+function isNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function isNonNegativeNumberOrNull(value: unknown): value is number | null {
+  return value === null || isNonNegativeNumber(value);
+}
+
+function isAgentSnapshotV1(value: unknown): value is AgentSnapshotV1 {
+  if (!isRecord(value)) return false;
+  return (
+    hasString(value, 'agentId')
+    && hasString(value, 'name')
+    && hasValue(['codex', 'kimi', 'opencode', 'mimo'], value.role)
+    && hasString(value, 'roleTitle')
+    && hasString(value, 'systemPrompt')
+    && Array.isArray(value.permissions)
+    && value.permissions.every(permission => hasValue(['read', 'write', 'review'], permission))
+    && hasString(value, 'providerConfigId')
+    && typeof value.enabled === 'boolean'
+    && isPositiveSafeInteger(value.version)
+  );
+}
+
+function isProviderConfigurationSnapshotV1(value: unknown): value is ProviderConfigurationSnapshotV1 {
+  if (!isRecord(value) || !isRecord(value.capabilities) || !isRecord(value.timeoutPolicy)) return false;
+  return (
+    hasString(value, 'providerConfigId')
+    && hasString(value, 'name')
+    && hasValue(['codex', 'claude-code', 'kimicode', 'opencode', 'gemini-cli', 'custom-cli', 'remote'], value.providerType)
+    && hasString(value, 'adapterId')
+    && hasValue(['cli', 'api', 'ssh', 'container'], value.runtimeMode)
+    && isNullableString(value.executable)
+    && isStringArray(value.argsTemplate)
+    && isNullableString(value.model)
+    && isNullableString(value.environmentProfileId)
+    && isNullableString(value.secretProfileId)
+    && hasValue(['workspace', 'worktree', 'custom'], value.workingDirectoryMode)
+    && isNullableString(value.workspaceRelativeWorkingDirectory)
+    && hasBooleanFields(value.capabilities, [
+      'sessionResume',
+      'structuredEvents',
+      'nativeApprovals',
+      'subagents',
+      'toolEvents',
+      'fileEvents',
+      'usageEvents',
+      'reasoningStream',
+      'interactiveInput',
+      'pause',
+      'cancellation',
+      'modelSelection',
+      'workspaceAwareness',
+      'nativeSandbox',
+      'outputContracts',
+    ])
+    && isNonNegativeNumber(value.timeoutPolicy.discoveryTimeoutMs)
+    && isNonNegativeNumber(value.timeoutPolicy.validationTimeoutMs)
+    && isNonNegativeNumber(value.timeoutPolicy.startupTimeoutMs)
+    && isNonNegativeNumberOrNull(value.timeoutPolicy.idleTimeoutMs)
+    && isNonNegativeNumberOrNull(value.timeoutPolicy.totalTimeoutMs)
+    && isNonNegativeNumber(value.timeoutPolicy.cancelGracePeriodMs)
+    && isNonNegativeNumberOrNull(value.timeoutPolicy.approvalTimeoutMs)
+    && hasValue(['agentos', 'native', 'hybrid', 'disabled'], value.approvalMode)
+    && hasValue(['structured', 'parsed-text', 'raw-stream'], value.outputMode)
+    && typeof value.enabled === 'boolean'
+    && isPositiveSafeInteger(value.version)
+  );
+}
+
 function isRunCreatedPayload(value: unknown): value is RunCreatedPayload {
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['reason', 'parentRunId', 'rootRunId', 'workflowDefinitionId', 'worktreeMode', 'createdBy'])
-    && hasString(value, 'reason')
+    && hasValue(V2_RUN_REASONS, value.reason)
     && hasOptionalString(value, 'parentRunId')
     && hasString(value, 'rootRunId')
     && hasOptionalString(value, 'workflowDefinitionId')
-    && hasString(value, 'worktreeMode')
+    && hasValue(WORKTREE_MODES, value.worktreeMode)
     && hasString(value, 'createdBy')
   );
 }
@@ -427,8 +519,8 @@ function isStageStartedPayload(value: unknown): value is StageStartedPayload {
     && typeof value.attempt === 'number'
     && Number.isSafeInteger(value.attempt)
     && value.attempt >= 1
-    && isRecord(value.agentSnapshot)
-    && isRecord(value.providerSnapshot)
+    && isAgentSnapshotV1(value.agentSnapshot)
+    && isProviderConfigurationSnapshotV1(value.providerSnapshot)
   );
 }
 

@@ -16,6 +16,9 @@ export const M3_STAGE_STATUSES = Object.freeze([
 
 export type M3StageStatus = (typeof M3_STAGE_STATUSES)[number];
 
+export { WORKTREE_MODES } from './m3-runtime-contracts.js';
+export type { WorktreeMode } from './m3-runtime-contracts.js';
+
 export const M3_OPERATION_STATUSES = Object.freeze([
   'queued',
   'running',
@@ -149,8 +152,8 @@ export interface RuntimeEventDraft<TPayload = unknown> {
   readonly metadata?: RuntimeEventMetadata;
 }
 
-export interface UnknownFutureRuntimeEvent {
-  readonly kind: 'unknown_future_event';
+export interface UnknownRuntimeEvent {
+  readonly kind: 'unknown_runtime_event';
   readonly raw: Readonly<Record<string, unknown>>;
   readonly id: string;
   readonly type: string;
@@ -172,13 +175,15 @@ export interface UnknownFutureRuntimeEvent {
   readonly timestamp: string;
   readonly source: string;
   readonly correlationId: string;
+  readonly causationId?: string;
+  readonly parentEventId?: string;
   readonly severity: string;
   readonly visibility: string;
   readonly durability: string;
   readonly payload: unknown;
   readonly metadata?: Readonly<Record<string, unknown>>;
   readonly [key: string]: unknown;
-  readonly warning: 'UNKNOWN_FUTURE_EVENT_SCHEMA';
+  readonly warning: 'UNKNOWN_EVENT_TYPE' | 'UNKNOWN_FUTURE_EVENT_SCHEMA';
 }
 
 export interface ApiProblemFieldError {
@@ -297,10 +302,12 @@ export interface OperationResponse {
   readonly data: ApiOperation;
 }
 
-export interface OperationEventsRequest {
+export interface OperationPathParams {
   readonly operationId: string;
+}
+
+export interface OperationEventsQuery {
   readonly afterSequence?: number;
-  readonly lastEventId?: string;
 }
 
 export interface RuntimeEventPage {
@@ -311,19 +318,17 @@ export interface RuntimeEventPage {
 
 export type RunEventsResponse = RuntimeEventPage;
 
-export interface CancelRunHeaders {
-  readonly idempotencyKey?: string;
-  readonly ifMatch?: string;
+export interface RunStreamQuery {
+  readonly afterSequence?: number;
 }
 
-export interface SseCursor {
-  readonly afterSequence?: number;
+export interface SseRequestHeaders {
   readonly lastEventId?: string;
 }
 
-export interface RunStreamRequest {
-  readonly runId: string;
-  readonly cursor?: SseCursor;
+export interface ResolvedSseCursor {
+  readonly afterSequence?: number;
+  readonly lastEventId?: string;
 }
 
 export interface RuntimeEventFrame {

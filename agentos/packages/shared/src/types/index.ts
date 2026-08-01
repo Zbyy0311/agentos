@@ -1,4 +1,5 @@
 import type { V2RunStatus } from './m3-run-status.js';
+import type { V2RunReason } from './m3-runtime-contracts.js';
 
 export type TaskStatus = 'pending' | 'running' | 'reviewing' | 'completed' | 'failed' | 'cancelled';
 
@@ -675,7 +676,8 @@ export type V2TaskStatus = 'open' | 'in_progress' | 'blocked' | 'done' | 'cancel
 export type V2TaskPriority = 'low' | 'normal' | 'high' | 'critical';
 export { V2_RUN_STATUSES } from './m3-run-status.js';
 export type { V2RunStatus } from './m3-run-status.js';
-export type V2RunReason = 'initial' | 'retry' | 'resume-fallback' | 'review-fix' | 'provider-comparison' | 'manual';
+export { V2_RUN_REASONS } from './m3-runtime-contracts.js';
+export type { V2RunReason } from './m3-runtime-contracts.js';
 export type V2RunOrigin = 'v2_api' | 'legacy_pipeline';
 
 export interface Task {
