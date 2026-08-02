@@ -11,6 +11,7 @@ import type {
 import type {
   AgentSnapshotV1,
   ProviderConfigurationSnapshotV1,
+  ProviderTypeV1,
   V2TaskPriority,
 } from './index.js';
 import type { V2RunReason, WorktreeMode } from './m3-runtime-contracts.js';
@@ -25,6 +26,16 @@ import {
 import { V2_RUN_REASONS, WORKTREE_MODES } from './m3-runtime-contracts.js';
 
 export const CURRENT_RUNTIME_EVENT_SCHEMA_VERSION = 1;
+
+const CANONICAL_PROVIDER_TYPES: readonly ProviderTypeV1[] = Object.freeze([
+  'codex',
+  'claude-code',
+  'kimicode',
+  'opencode',
+  'gemini-cli',
+  'custom-cli',
+  'remote',
+]);
 
 export interface RuntimeEventPayloadSchema {
   readonly required: readonly string[];
@@ -225,6 +236,20 @@ export class CentralRuntimeEventRegistry {
       throw new RuntimeEventRegistryError(
         'INVALID_EVENT_SCHEMA_VERSION',
         'Unsupported schemaVersion for ' + draft.type + ': ' + draft.schemaVersion,
+      );
+    }
+
+    if (draft.stageId !== undefined && !isNonEmptyString(draft.stageId)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Runtime Event stageId must be a non-empty string when present: ' + draft.type,
+      );
+    }
+
+    if (draft.approvalRequestId !== undefined && !isNonEmptyString(draft.approvalRequestId)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Runtime Event approvalRequestId must be a non-empty string when present: ' + draft.type,
       );
     }
 
@@ -485,7 +510,7 @@ export interface RunFailedPayload {
   readonly message: string;
   readonly phase: string;
   readonly stageId?: string;
-  readonly providerType?: string;
+  readonly providerType?: ProviderTypeV1;
   readonly retryable: boolean;
   readonly suggestedAction?: string;
   readonly debugArtifactId?: string;
@@ -587,7 +612,7 @@ export interface ApprovalResolvedPayload {
 }
 
 function hasString(value: Record<string, unknown>, key: string): boolean {
-  return typeof value[key] === 'string' && String(value[key]).length > 0;
+  return isNonEmptyString(value[key]);
 }
 
 function hasOptionalString(value: Record<string, unknown>, key: string): boolean {
@@ -616,11 +641,11 @@ function isNullableString(value: unknown): value is string | null {
 }
 
 function isStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(item => typeof item === 'string');
+  return Array.isArray(value) && value.every(item => isNonEmptyString(item));
 }
 
 function isNonEmptyStringArray(value: unknown): value is string[] {
-  return Array.isArray(value) && value.every(item => typeof item === 'string' && item.length > 0);
+  return isStringArray(value);
 }
 
 function hasOptionalRecord(value: Record<string, unknown>, key: string): boolean {
@@ -632,7 +657,10 @@ function hasBooleanFields(value: Record<string, unknown>, keys: readonly string[
 }
 
 function isNonNegativeNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    && (!Number.isInteger(value) || Number.isSafeInteger(value));
 }
 
 function isNonNegativeNumberOrNull(value: unknown): value is number | null {
@@ -660,7 +688,7 @@ function isProviderConfigurationSnapshotV1(value: unknown): value is ProviderCon
   return (
     hasString(value, 'providerConfigId')
     && hasString(value, 'name')
-    && hasValue(['codex', 'claude-code', 'kimicode', 'opencode', 'gemini-cli', 'custom-cli', 'remote'], value.providerType)
+    && hasValue(CANONICAL_PROVIDER_TYPES, value.providerType)
     && hasString(value, 'adapterId')
     && hasValue(['cli', 'api', 'ssh', 'container'], value.runtimeMode)
     && isNullableString(value.executable)
@@ -801,7 +829,7 @@ export function isRunFailedPayload(value: unknown): value is RunFailedPayload {
     && hasString(value, 'phase')
     && hasOptionalString(value, 'stageId')
     && (value.providerType === undefined
-      || hasValue(['codex', 'claude-code', 'kimicode', 'opencode', 'gemini-cli', 'custom-cli', 'remote'], value.providerType))
+      || hasValue(CANONICAL_PROVIDER_TYPES, value.providerType))
     && typeof value.retryable === 'boolean'
     && hasOptionalString(value, 'suggestedAction')
     && hasOptionalString(value, 'debugArtifactId')

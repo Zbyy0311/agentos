@@ -4,6 +4,7 @@ import {
   M3_CORE_EVENT_DEFINITIONS,
   M3_MULTI_EVENT_ORDERING_CONTRACTS,
   M3_OPERATION_STATUSES,
+  M3_RUN_STATUSES,
   M3_RUN_TRANSITION_EVENT_CONTRACTS,
   M3_STAGE_TRANSITION_EVENT_CONTRACTS,
   M3_STAGE_STATUSES,
@@ -38,6 +39,21 @@ import type {
   SseRequestHeaders,
   StartRunBody,
 } from './src/types/m3-runtime.ts';
+
+function withPayloadField(
+  event: RuntimeEventEnvelope,
+  field: string,
+  value: unknown,
+): RuntimeEventDraft {
+  return {
+    ...event,
+    id: `${event.id}-${field}`,
+    payload: {
+      ...(event.payload as Record<string, unknown>),
+      [field]: value,
+    },
+  };
+}
 
 test('uses the canonical Stage status set and keeps Migration 009 pending compatibility', () => {
   assert.deepEqual(M3_STAGE_STATUSES, [
@@ -167,6 +183,121 @@ test('validates canonical UTC timestamp and source/Envelope reference rules', ()
   assert.doesNotThrow(() => registry.publish(fixtures.validRunOnlyApprovalRequiredEvent));
 });
 
+test('rejects whitespace-only payload strings, invalid string-array members, unsafe numbers and providers', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const whitespaceCases: readonly [RuntimeEventEnvelope, string, unknown][] = [
+    [fixtures.validRunPausedEvent, 'requestedBy', ' \t '],
+    [fixtures.validStageCancelledEvent, 'reason', '\t\n'],
+    [fixtures.validRunFailedEvent, 'errorCode', '   '],
+    [fixtures.validRunFailedEvent, 'message', '   '],
+    [fixtures.validRunFailedEvent, 'phase', '   '],
+    [fixtures.validStageCreatedEvent, 'workflowStageKey', '   '],
+    [fixtures.validStageCreatedEvent, 'name', '   '],
+    [fixtures.validStageResumedEvent, 'resumeMode', '   '],
+    [fixtures.validStageSkippedEvent, 'condition', '   '],
+    [fixtures.validRunQueuedEvent, 'queueName', '   '],
+    [fixtures.validRunCompletedEvent, 'worktreeStatus', '   '],
+    [fixtures.validRunCreatedEvent, 'parentRunId', '   '],
+    [fixtures.validRunStartedEvent, 'baseCommit', '   '],
+    [fixtures.validRunFailedEvent, 'debugArtifactId', '   '],
+    [fixtures.validApprovalRequiredEvent, 'title', '   '],
+    [fixtures.validApprovalRequiredEvent, 'description', '   '],
+    [fixtures.validApprovalResolvedEvent, 'decidedBy', '   '],
+  ];
+  for (const [event, field, value] of whitespaceCases) {
+    assert.throws(
+      () => registry.publish(withPayloadField(event, field, value)),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+      `${event.type}.${field} should reject whitespace-only values`,
+    );
+  }
+
+  const stringArrayCases: readonly [RuntimeEventEnvelope, string][] = [
+    [fixtures.validRunCompletedEvent, 'completedStageIds'],
+    [fixtures.validRunCompletedEvent, 'artifactIds'],
+    [fixtures.validStageCreatedEvent, 'dependsOn'],
+    [fixtures.validStageReadyEvent, 'dependenciesCompleted'],
+    [fixtures.validRunCancelledEvent, 'terminatedProcessIds'],
+  ];
+  for (const [event, field] of stringArrayCases) {
+    assert.throws(
+      () => registry.publish(withPayloadField(event, field, ['   '])),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+      `${event.type}.${field} should reject whitespace-only array members`,
+    );
+  }
+
+  const numericCases: readonly [RuntimeEventEnvelope, string, number][] = [
+    [fixtures.validRunQueuedEvent, 'position', Number.NaN],
+    [fixtures.validRunQueuedEvent, 'position', Number.POSITIVE_INFINITY],
+    [fixtures.validRunQueuedEvent, 'position', Number.MAX_SAFE_INTEGER + 1],
+    [fixtures.validRunCompletedEvent, 'durationMs', Number.NaN],
+    [fixtures.validRunCompletedEvent, 'durationMs', Number.MAX_SAFE_INTEGER + 1],
+    [fixtures.validStageCreatedEvent, 'sequence', Number.MAX_SAFE_INTEGER + 1],
+    [fixtures.validStageCompletedEvent, 'durationMs', Number.POSITIVE_INFINITY],
+    [fixtures.validRunStartedEvent, 'workflowSnapshotVersion', Number.MAX_SAFE_INTEGER + 1],
+  ];
+  for (const [event, field, value] of numericCases) {
+    assert.throws(
+      () => registry.publish(withPayloadField(event, field, value)),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+      `${event.type}.${field} should reject invalid numeric values`,
+    );
+  }
+
+  assert.throws(
+    () => registry.publish(withPayloadField(fixtures.validRunFailedEvent, 'providerType', 'not-a-provider')),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+
+  const preserved = withPayloadField(fixtures.validRunPausedEvent, 'requestedBy', '  fixture  ');
+  const published = registry.publish(preserved);
+  assert.equal((published.payload as Record<string, unknown>).requestedBy, '  fixture  ');
+  assert.equal((preserved.payload as Record<string, unknown>).requestedBy, '  fixture  ');
+});
+
+test('validates Approval stage references without misclassifying blank values as Run-only', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+
+  assert.doesNotThrow(() => registry.publish(fixtures.validRunOnlyApprovalRequiredEvent));
+  assert.doesNotThrow(() => registry.publish(fixtures.validApprovalRequiredEvent));
+
+  for (const blank of ['', '   ']) {
+    assert.throws(
+      () => registry.publish({ ...fixtures.validApprovalRequiredEvent, stageId: blank }),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_ENVELOPE',
+    );
+    assert.throws(
+      () => registry.publish({ ...fixtures.validApprovalRequiredEvent, approvalRequestId: blank }),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_ENVELOPE',
+    );
+  }
+
+  assert.throws(
+    () => registry.publish({ ...fixtures.validStageStartedEvent, stageId: '' }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_ENVELOPE',
+  );
+  assert.throws(
+    () => registry.publish({ ...fixtures.validRunCreatedEvent, stageId: '' }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_ENVELOPE',
+  );
+  assert.throws(
+    () => registry.publish({ ...fixtures.validApprovalRequiredEvent, approvalRequestId: undefined }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'MISSING_APPROVAL_REQUEST_ID',
+  );
+});
+
 test('covers every registered payload with a valid and an unknown-field invalid fixture', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
@@ -186,17 +317,68 @@ test('covers every registered payload with a valid and an unknown-field invalid 
 });
 
 test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges', () => {
-  assert.equal(M3_RUN_TRANSITION_EVENT_CONTRACTS.length, 17);
-  assert.equal(M3_STAGE_TRANSITION_EVENT_CONTRACTS.length, 19);
+  const expectedRunMatrix = [
+    { aggregate: 'run', from: null, to: 'queued', primaryEvent: 'run.created', terminal: false },
+    { aggregate: 'run', from: 'queued', to: 'starting', primaryEvent: 'run.dequeued', terminal: false },
+    { aggregate: 'run', from: 'queued', to: 'cancelled', primaryEvent: 'run.cancelled', terminal: true },
+    { aggregate: 'run', from: 'starting', to: 'running', primaryEvent: 'run.started', terminal: false },
+    { aggregate: 'run', from: 'starting', to: 'failed', primaryEvent: 'run.failed', terminal: true },
+    { aggregate: 'run', from: 'starting', to: 'cancelled', primaryEvent: 'run.cancelled', terminal: true },
+    { aggregate: 'run', from: 'running', to: 'waiting_approval', primaryEvent: 'approval.required', terminal: false },
+    { aggregate: 'run', from: 'running', to: 'paused', primaryEvent: 'run.paused', terminal: false },
+    { aggregate: 'run', from: 'running', to: 'completed', primaryEvent: 'run.completed', terminal: true },
+    { aggregate: 'run', from: 'running', to: 'failed', primaryEvent: 'run.failed', terminal: true },
+    { aggregate: 'run', from: 'running', to: 'cancelled', primaryEvent: 'run.cancelled', terminal: true },
+    { aggregate: 'run', from: 'waiting_approval', to: 'running', primaryEvent: 'approval.resolved', terminal: false },
+    { aggregate: 'run', from: 'waiting_approval', to: 'failed', primaryEvent: 'run.failed', terminal: true },
+    { aggregate: 'run', from: 'waiting_approval', to: 'cancelled', primaryEvent: 'run.cancelled', terminal: true },
+    { aggregate: 'run', from: 'paused', to: 'running', primaryEvent: 'run.resumed', terminal: false },
+    { aggregate: 'run', from: 'paused', to: 'failed', primaryEvent: 'run.failed', terminal: true },
+    { aggregate: 'run', from: 'paused', to: 'cancelled', primaryEvent: 'run.cancelled', terminal: true },
+  ];
+  const expectedStageMatrix = [
+    { aggregate: 'stage', from: null, to: 'pending', primaryEvent: 'stage.created', terminal: false },
+    { aggregate: 'stage', from: 'pending', to: 'ready', primaryEvent: 'stage.ready', terminal: false },
+    { aggregate: 'stage', from: 'pending', to: 'skipped', primaryEvent: 'stage.skipped', terminal: true },
+    { aggregate: 'stage', from: 'pending', to: 'cancelled', primaryEvent: 'stage.cancelled', terminal: true },
+    { aggregate: 'stage', from: 'ready', to: 'starting', primaryEvent: 'stage.starting', terminal: false },
+    { aggregate: 'stage', from: 'ready', to: 'cancelled', primaryEvent: 'stage.cancelled', terminal: true },
+    { aggregate: 'stage', from: 'starting', to: 'running', primaryEvent: 'stage.started', terminal: false },
+    { aggregate: 'stage', from: 'starting', to: 'failed', primaryEvent: 'stage.failed', terminal: true },
+    { aggregate: 'stage', from: 'starting', to: 'cancelled', primaryEvent: 'stage.cancelled', terminal: true },
+    { aggregate: 'stage', from: 'running', to: 'waiting_approval', primaryEvent: 'approval.required', terminal: false },
+    { aggregate: 'stage', from: 'running', to: 'paused', primaryEvent: 'stage.paused', terminal: false },
+    { aggregate: 'stage', from: 'running', to: 'completed', primaryEvent: 'stage.completed', terminal: true },
+    { aggregate: 'stage', from: 'running', to: 'failed', primaryEvent: 'stage.failed', terminal: true },
+    { aggregate: 'stage', from: 'running', to: 'cancelled', primaryEvent: 'stage.cancelled', terminal: true },
+    { aggregate: 'stage', from: 'waiting_approval', to: 'running', primaryEvent: 'approval.resolved', terminal: false },
+    { aggregate: 'stage', from: 'waiting_approval', to: 'failed', primaryEvent: 'stage.failed', terminal: true },
+    { aggregate: 'stage', from: 'waiting_approval', to: 'cancelled', primaryEvent: 'stage.cancelled', terminal: true },
+    { aggregate: 'stage', from: 'paused', to: 'running', primaryEvent: 'stage.resumed', terminal: false },
+    { aggregate: 'stage', from: 'paused', to: 'cancelled', primaryEvent: 'stage.cancelled', terminal: true },
+  ];
 
-  assert.equal(getM3RunTransitionEventContract(null, 'queued')?.primaryEvent, 'run.created');
-  assert.equal(getM3RunTransitionEventContract('queued', 'starting')?.primaryEvent, 'run.dequeued');
-  assert.equal(getM3RunTransitionEventContract('starting', 'running')?.primaryEvent, 'run.started');
-  assert.equal(getM3RunTransitionEventContract('waiting_approval', 'running')?.primaryEvent, 'approval.resolved');
-  assert.equal(getM3StageTransitionEventContract(null, 'pending')?.primaryEvent, 'stage.created');
-  assert.equal(getM3StageTransitionEventContract('ready', 'starting')?.primaryEvent, 'stage.starting');
-  assert.equal(getM3StageTransitionEventContract('starting', 'running')?.primaryEvent, 'stage.started');
-  assert.equal(getM3StageTransitionEventContract('waiting_approval', 'running')?.primaryEvent, 'approval.resolved');
+  assert.deepEqual(M3_RUN_TRANSITION_EVENT_CONTRACTS, expectedRunMatrix);
+  assert.deepEqual(M3_STAGE_TRANSITION_EVENT_CONTRACTS, expectedStageMatrix);
+  assert.equal(new Set(M3_RUN_TRANSITION_EVENT_CONTRACTS.map(contract => `${contract.from}->${contract.to}`)).size, 17);
+  assert.equal(new Set(M3_STAGE_TRANSITION_EVENT_CONTRACTS.map(contract => `${contract.from}->${contract.to}`)).size, 19);
+
+  for (const from of [null, ...M3_RUN_STATUSES]) {
+    for (const to of M3_RUN_STATUSES) {
+      assert.deepEqual(
+        getM3RunTransitionEventContract(from, to),
+        expectedRunMatrix.find(contract => contract.from === from && contract.to === to),
+      );
+    }
+  }
+  for (const from of [null, ...M3_STAGE_STATUSES]) {
+    for (const to of M3_STAGE_STATUSES) {
+      assert.deepEqual(
+        getM3StageTransitionEventContract(from, to),
+        expectedStageMatrix.find(contract => contract.from === from && contract.to === to),
+      );
+    }
+  }
 
   assert.equal(getM3RunTransitionEventContract('completed', 'running'), undefined);
   assert.equal(getM3RunTransitionEventContract('failed', 'queued'), undefined);
@@ -211,22 +393,71 @@ test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges',
     assert.equal(registered.has(contract.primaryEvent), true, contract.primaryEvent);
   }
   assert.equal(registered.has('run.queued'), true);
+  assert.equal(M3_RUN_TRANSITION_EVENT_CONTRACTS.some(contract => contract.primaryEvent === 'run.queued'), false);
+  assert.equal(M3_RUNTIME_EVENT_TYPES.includes('run.status_changed' as never), false);
+  assert.equal(M3_RUNTIME_EVENT_TYPES.includes('stage.status_changed' as never), false);
 });
 
 test('freezes the shared multi-Event ordering contracts', () => {
   assert.deepEqual(M3_MULTI_EVENT_ORDERING_CONTRACTS, [
-    { name: 'startup-completion', events: ['stage.started', 'run.started'] },
-    { name: 'approval-failure', events: ['approval.resolved', 'stage.failed', 'run.failed'] },
-    { name: 'approval-cancellation', events: ['approval.resolved', 'stage.cancelled', 'run.cancelled'] },
-    { name: 'run-cancellation', events: ['stage.cancelled', 'run.cancelled'] },
-    { name: 'run-completion', events: ['stage.completed', 'run.completed'] },
+    {
+      name: 'startup-completion',
+      events: ['stage.started', 'run.started'],
+      stageMultiplicity: 'single',
+      stageOrdering: 'none',
+      contiguousRunSequence: true,
+      independentOutboxPerEvent: true,
+      atomicCurrentStateEventOutbox: true,
+    },
+    {
+      name: 'approval-failure',
+      events: ['approval.resolved', 'stage.failed', 'run.failed'],
+      stageMultiplicity: 'single',
+      stageOrdering: 'none',
+      contiguousRunSequence: true,
+      independentOutboxPerEvent: true,
+      atomicCurrentStateEventOutbox: true,
+    },
+    {
+      name: 'approval-cancellation',
+      events: ['approval.resolved', 'stage.cancelled', 'run.cancelled'],
+      stageMultiplicity: 'all-affected-non-terminal',
+      stageOrdering: 'sequence-asc-then-id-asc',
+      contiguousRunSequence: true,
+      independentOutboxPerEvent: true,
+      atomicCurrentStateEventOutbox: true,
+    },
+    {
+      name: 'run-cancellation',
+      events: ['stage.cancelled', 'run.cancelled'],
+      stageMultiplicity: 'all-affected-non-terminal',
+      stageOrdering: 'sequence-asc-then-id-asc',
+      contiguousRunSequence: true,
+      independentOutboxPerEvent: true,
+      atomicCurrentStateEventOutbox: true,
+    },
+    {
+      name: 'run-completion',
+      events: ['stage.completed', 'run.completed'],
+      stageMultiplicity: 'single',
+      stageOrdering: 'none',
+      contiguousRunSequence: true,
+      independentOutboxPerEvent: true,
+      atomicCurrentStateEventOutbox: true,
+    },
   ]);
   assert.equal(Object.isFrozen(M3_RUN_TRANSITION_EVENT_CONTRACTS), true);
   assert.equal(Object.isFrozen(M3_RUN_TRANSITION_EVENT_CONTRACTS[0]), true);
   assert.equal(Object.isFrozen(M3_STAGE_TRANSITION_EVENT_CONTRACTS[0]), true);
   assert.equal(Object.isFrozen(M3_MULTI_EVENT_ORDERING_CONTRACTS), true);
   assert.equal(Object.isFrozen(M3_MULTI_EVENT_ORDERING_CONTRACTS[0]), true);
-  assert.equal(Object.isFrozen(M3_MULTI_EVENT_ORDERING_CONTRACTS[0].events), true);
+  for (const contract of M3_MULTI_EVENT_ORDERING_CONTRACTS) {
+    assert.equal(Object.isFrozen(contract), true);
+    assert.equal(Object.isFrozen(contract.events), true);
+    assert.equal(contract.contiguousRunSequence, true);
+    assert.equal(contract.independentOutboxPerEvent, true);
+    assert.equal(contract.atomicCurrentStateEventOutbox, true);
+  }
 });
 
 test('enforces the single-source Run reason and canonical WorktreeMode values', () => {

@@ -20,6 +20,11 @@ export interface M3MultiEventOrderingContract {
     | 'run-cancellation'
     | 'run-completion';
   readonly events: readonly M3RuntimeEventType[];
+  readonly stageMultiplicity: 'none' | 'single' | 'all-affected-non-terminal';
+  readonly stageOrdering: 'none' | 'sequence-asc-then-id-asc';
+  readonly contiguousRunSequence: true;
+  readonly independentOutboxPerEvent: true;
+  readonly atomicCurrentStateEventOutbox: true;
 }
 
 function freezeTransitionContracts(
@@ -75,11 +80,51 @@ export const M3_STAGE_TRANSITION_EVENT_CONTRACTS = freezeTransitionContracts([
 ]);
 
 export const M3_MULTI_EVENT_ORDERING_CONTRACTS: readonly M3MultiEventOrderingContract[] = Object.freeze([
-  Object.freeze({ name: 'startup-completion', events: freezeEventSequence(['stage.started', 'run.started']) }),
-  Object.freeze({ name: 'approval-failure', events: freezeEventSequence(['approval.resolved', 'stage.failed', 'run.failed']) }),
-  Object.freeze({ name: 'approval-cancellation', events: freezeEventSequence(['approval.resolved', 'stage.cancelled', 'run.cancelled']) }),
-  Object.freeze({ name: 'run-cancellation', events: freezeEventSequence(['stage.cancelled', 'run.cancelled']) }),
-  Object.freeze({ name: 'run-completion', events: freezeEventSequence(['stage.completed', 'run.completed']) }),
+  Object.freeze({
+    name: 'startup-completion',
+    events: freezeEventSequence(['stage.started', 'run.started']),
+    stageMultiplicity: 'single',
+    stageOrdering: 'none',
+    contiguousRunSequence: true,
+    independentOutboxPerEvent: true,
+    atomicCurrentStateEventOutbox: true,
+  }),
+  Object.freeze({
+    name: 'approval-failure',
+    events: freezeEventSequence(['approval.resolved', 'stage.failed', 'run.failed']),
+    stageMultiplicity: 'single',
+    stageOrdering: 'none',
+    contiguousRunSequence: true,
+    independentOutboxPerEvent: true,
+    atomicCurrentStateEventOutbox: true,
+  }),
+  Object.freeze({
+    name: 'approval-cancellation',
+    events: freezeEventSequence(['approval.resolved', 'stage.cancelled', 'run.cancelled']),
+    stageMultiplicity: 'all-affected-non-terminal',
+    stageOrdering: 'sequence-asc-then-id-asc',
+    contiguousRunSequence: true,
+    independentOutboxPerEvent: true,
+    atomicCurrentStateEventOutbox: true,
+  }),
+  Object.freeze({
+    name: 'run-cancellation',
+    events: freezeEventSequence(['stage.cancelled', 'run.cancelled']),
+    stageMultiplicity: 'all-affected-non-terminal',
+    stageOrdering: 'sequence-asc-then-id-asc',
+    contiguousRunSequence: true,
+    independentOutboxPerEvent: true,
+    atomicCurrentStateEventOutbox: true,
+  }),
+  Object.freeze({
+    name: 'run-completion',
+    events: freezeEventSequence(['stage.completed', 'run.completed']),
+    stageMultiplicity: 'single',
+    stageOrdering: 'none',
+    contiguousRunSequence: true,
+    independentOutboxPerEvent: true,
+    atomicCurrentStateEventOutbox: true,
+  }),
 ]);
 
 export const M3_RUN_TERMINAL_STATUSES: readonly M3RunStatus[] = Object.freeze([
