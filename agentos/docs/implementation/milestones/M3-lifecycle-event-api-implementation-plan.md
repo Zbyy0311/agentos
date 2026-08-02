@@ -251,6 +251,61 @@ specification review before P2C-2 begins transactional lifecycle work. P2C-2
 must use the frozen transition/Event ownership from M3-TD-21 and must not
 redefine the four canonical startup mappings.
 
+#### P2 phase status and authorization
+
+- **P2A — Migration 012 Schema Foundation:** COMPLETE; pending whole-P2
+  branch integration.
+- **P2B — Event/Sequence/Outbox Persistence:** COMPLETE; pending whole-P2
+  branch integration.
+- **P2C-0 — Lifecycle Event Specification Closure:** CURRENT docs-only stage.
+- **P2C-1 — Shared Lifecycle Event Contract Implementation:** NOT AUTHORIZED.
+- **P2C-2 — Transactional Run/Stage Lifecycle Core:** NOT AUTHORIZED.
+- **P3 — Run Engine, Workflow Executor and Operation:** NOT AUTHORIZED.
+
+P2C-0 is the specification gate between completed P2A/P2B evidence and any
+future Shared contract or transactional implementation. It must not be
+described as code completion or whole-P2 completion.
+
+#### P2C-0 — Lifecycle Event Specification Closure
+
+##### Goal
+
+Close the normative Transition/Event Matrix and the remaining Run creation,
+Queue telemetry, Approval multi-aggregate, non-terminal Stage cancellation,
+and ordered multi-Event transaction semantics.
+
+##### Authorized scope
+
+- `docs/Runtime-Specification/02-Runtime-Lifecycle.md`;
+- `docs/Runtime-Specification/03-Event-Model.md`;
+- `docs/implementation/milestones/M3-owner-decisions.md`;
+- this implementation plan;
+- `docs/implementation/milestones/M3-p2c-transition-event-matrix.md`.
+
+##### Forbidden scope
+
+- packages/shared, apps/server, Migration 012, Registry, tests, or database;
+- P2C-1 Shared contract implementation;
+- P2C-2 transactional lifecycle implementation;
+- P3 Run Engine, API, Operation, Server, Web, or Production Cutover work.
+
+##### Required evidence
+
+- 17/17 allowed Run transitions and 19/19 allowed Stage transitions have a
+  Primary Event;
+- every unlisted transition has no Event mapping;
+- M3-TD-21 through M3-TD-25 are present without duplicate IDs;
+- Approval and cancellation sequences preserve contiguous ordering and one
+  Outbox record per Durable Event;
+- no implementation or Migration file changes are present.
+
+##### Exit gate
+
+P2C-0 exits only after independent specification review accepts the matrix,
+the four existing startup mappings remain unchanged, and the exact docs-only
+commit is pushed. This exit gate does not authorize P2C-1, P2C-2, P3, or
+Production Cutover.
+
 #### Authorized scope
 
 - Authorized Migration 012 implementation and schema registration after P1 review.

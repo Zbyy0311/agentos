@@ -42,6 +42,10 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-19 | Migration 012 planning | Migration 012 is REQUIRED — PLANNING ONLY for runtime_events, UNIQUE(run_id, sequence), query indexes including runtime_events(run_id, correlation_id, sequence), outbox_messages, dead letters, durable operations with run_id/equivalent aggregate reference and correlation_id, run_stages expansion preserving existing version, idempotency operation values, recovery representation, sequence allocation, append-only/controlled-update constraints, and Queue decision. | Same status. No DDL in this remediation; future DDL needs independent schema review, checksum, fresh/legacy DB, rollback/forward, L3, and USER OWNER APPROVAL REQUIRED. |
 | M3-TD-20 | Phase dependency | P1 is Schema and Shared Contract Foundation only. Persistent Run/Stage status migration and atomic transitions begin in P2. Run Engine and Start route integration begin only after the P2 transaction core. | Same status. No unreviewed P1 branch may start from this unmerged docs branch. |
 | M3-TD-21 | Lifecycle transition Event ownership | The four unique mappings are Run `queued → starting` → `run.dequeued`, Run `starting → running` → `run.started`, Stage `ready → starting` → `stage.starting`, and Stage `starting → running` → `stage.started`. `runs.started_at` and `run_stages.started_at` are first written only when the corresponding entity enters `running`; one Event cannot represent two transitions. | Specification alignment only. Shared contract closure must precede P2C-2 transactional lifecycle work. No Production Cutover or implementation authorization changes. |
+| M3-TD-22 | Run creation and queue telemetry ownership | Run `∅ → queued` has exactly one mandatory Primary Event, `run.created`. `run.queued` is optional Queue Telemetry for queueName, priority, or position and never replaces `run.created`; creation does not require both Events. | P2C-0 specification closure only. No Shared, Registry, Server, Migration, database, or implementation authorization. |
+| M3-TD-23 | Approval multi-aggregate lifecycle evidence | A Stage-specific `approval.required` may evidence Run and Stage `running → waiting_approval` together. `approval.resolved` may evidence both `waiting_approval → running` transitions only for approve_once, approve_run, or approve_workspace. Rejection/cancellation uses the ordered multi-Event sequences and required runId/stageId/approvalRequestId references. | P2C-0 specification closure only. No approval implementation, API, process cancellation, or database authorization. |
+| M3-TD-24 | Non-terminal Stage cancellation closure | `pending`, `ready`, `starting`, `waiting_approval`, and `running` all map to `stage.cancelled` on Run cancellation. Stage order is `stage.sequence ASC`, then `stage.id ASC`; final `run.cancelled` follows all Stage Events. Terminal Stages have no outgoing edge. | P2C-0 specification closure only. No Process termination, Approval cancellation implementation, or database logic authorization. |
+| M3-TD-25 | Multiple ordered Events in one atomic lifecycle transaction | Multiple Durable Events may share one transaction only with contiguous Run sequence values, one Outbox record per Event, deterministic ordering, and all Current State/Event/Outbox/version writes committed or rolled back together. Frozen sequences include startup completion, Approval failure/cancellation, Run cancellation, and Run completion. | P2C-0 specification closure only. P2C-2 transactional implementation remains NOT AUTHORIZED. |
 
 ### M3-TD-21 Lifecycle transition Event ownership
 
@@ -66,6 +70,58 @@ This register separates the approved M3 technical contract from deferred Product
 - **Review and re-review:** independent specification review is required
   before Shared Event Contract Closure. Re-review is required if any payload,
   Registry metadata, state-transition owner, or Production boundary changes.
+
+### M3-TD-22 Run creation and queue telemetry ownership
+
+- **Owner and record time:** M3 technical owner; 2026-08-02.
+- **Selected contract:** `run.created` is the only mandatory Primary Event for
+  `∅ → queued`; `run.queued` is optional telemetry only.
+- **Evidence threshold:** Lifecycle §6.4, Event Model Run Events, and the
+  P2C-0 matrix must contain no second Primary Event for Run creation.
+- **Stop/no-go:** any creation path that requires `run.queued`, omits
+  `run.created`, or treats telemetry as state establishment blocks review.
+- **Rollback/review:** revert the docs-only commit; independent P2C-0 review
+  is required before Shared contract work.
+
+### M3-TD-23 Approval multi-aggregate lifecycle evidence
+
+- **Owner and record time:** M3 technical owner; 2026-08-02.
+- **Selected contract:** one Stage-specific `approval.required` may evidence
+  paired Run/Stage entry into `waiting_approval`; one `approval.resolved` may
+  evidence paired recovery to `running` for the three approved decisions.
+- **Evidence threshold:** stage-specific Events retain `runId`, `stageId`, and
+  `approvalRequestId`; rejection and cancellation sequences are ordered and
+  have separate Outbox records.
+- **Stop/no-go:** any `run.waiting`, `stage.waiting`, extra resume Event, or
+  missing reference blocks review.
+- **Rollback/review:** docs-only revert; no approval implementation is
+  authorized; independent specification review is required.
+
+### M3-TD-24 Non-terminal Stage cancellation closure
+
+- **Owner and record time:** M3 technical owner; 2026-08-02.
+- **Selected contract:** every non-terminal Stage status can transition to
+  `cancelled` on Run cancellation; terminal Stage statuses cannot transition.
+- **Evidence threshold:** the Lifecycle table and matrix cover all five
+  non-terminal cancellation edges and deterministic Stage ordering.
+- **Stop/no-go:** a cancelled Run with a remaining non-terminal Stage, an
+  unordered Stage Event, or an implicit Process/Approval/database action
+  blocks review.
+- **Rollback/review:** docs-only revert; independent specification review is
+  required before implementation authorization.
+
+### M3-TD-25 Multiple ordered Events in one atomic lifecycle transaction
+
+- **Owner and record time:** M3 technical owner; 2026-08-02.
+- **Selected contract:** the matrix order is authoritative for startup,
+  Approval failure/cancellation, Run cancellation, and Run completion.
+- **Evidence threshold:** every Durable Event has a contiguous Run sequence
+  value and independent Outbox record; all State/Event/Outbox/version writes
+  share one commit boundary.
+- **Stop/no-go:** partial commit, shared Outbox record, sequence gap, or
+  reordered Event blocks P2C-2 review.
+- **Rollback/review:** docs-only revert; P2C-2 transactional implementation
+  remains NOT AUTHORIZED and independent review is required.
 
 ## 3. API compatibility record
 

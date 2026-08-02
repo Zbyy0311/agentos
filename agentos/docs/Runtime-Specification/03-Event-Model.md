@@ -231,6 +231,24 @@ AgentOS 保证：
 
 Replay 不重新执行 Provider。
 
+### 4.6 Multi-Event Atomicity and Ordering
+
+一个生命周期事务可以包含多个 Runtime Event，但必须为每个 Durable
+Event 分配连续 Run `sequence` 并写入独立 Outbox 记录。Current State、所有
+Event、所有 Outbox 记录和受影响 Aggregate 的 version 必须全部提交或全部
+回滚。
+
+P2C-0 冻结的顺序包括：
+
+```text
+stage.started → run.started
+approval.resolved → stage.failed → run.failed
+approval.resolved → stage.cancelled × N → run.cancelled
+stage.completed → run.completed
+```
+
+不同 Run 之间不建立全局顺序要求。
+
 ---
 
 # Part I — Event Envelope
@@ -777,6 +795,10 @@ interface RunCreatedPayload {
 }
 ```
 
+`run.created` is the only mandatory Primary Event for the Run creation
+transition `∅ → queued`. It proves that the Run was durably created as the
+Queue Record. A same-transaction `run.queued` Event is not required.
+
 ### `run.queued`
 
 ```ts
@@ -786,6 +808,10 @@ interface RunQueuedPayload {
   position?: number;
 }
 ```
+
+`run.queued` is optional Queue Telemetry only. It may describe `queueName`,
+`priority`, and `position`, but it does not establish `Run.status = queued`
+and must never replace `run.created`.
 
 ### `run.dequeued`
 
@@ -936,6 +962,10 @@ interface RunCancelledPayload {
   reason?: string;
 }
 ```
+
+Run cancellation is terminal only after every affected non-terminal Stage has
+emitted `stage.cancelled` in `stage.sequence ASC`, then `stage.id ASC` order.
+The final `run.cancelled` Event is committed after those Stage Events.
 
 ### `run.completed`
 
@@ -1221,6 +1251,11 @@ interface StageCancelledPayload {
   reason: string;
 }
 ```
+
+`stage.cancelled` is valid for `pending`, `ready`, `starting`,
+`waiting_approval`, and `running` Stages. It is terminal for the Stage. A
+Stage cancellation Event does not itself terminate a Process, cancel an
+Approval, or perform database logic.
 
 ### `stage.skipped`
 
@@ -2102,6 +2137,12 @@ interface ApprovalRequiredPayload {
 }
 ```
 
+For a Stage-specific approval, the Event Envelope must include `runId`,
+`stageId`, and `approvalRequestId`. One `approval.required` Event may be the
+shared lifecycle evidence for both Run and Stage
+`running → waiting_approval`; no `run.waiting` or `stage.waiting` Event is
+defined.
+
 ### `approval.resolved`
 
 ```ts
@@ -2117,6 +2158,30 @@ interface ApprovalResolvedPayload {
   modifiedRequest?: Record<string, unknown>;
 }
 ```
+
+For a Stage-specific approval, the Event Envelope must retain `runId`,
+`stageId`, and `approvalRequestId`. Only `approve_once`, `approve_run`, and
+`approve_workspace` map `waiting_approval → running`; `reject` and
+`cancel_run` use the ordered failure/cancellation sequences below. One
+`approval.resolved` Event may be the shared evidence for both Run and Stage
+restoration, and it must not be followed by `run.resumed` or `stage.resumed`.
+
+### 31.1 Approval multi-Event ordering
+
+Approval failure and cancellation are ordered Durable Events in one atomic
+transaction:
+
+```text
+approval.resolved
+  ↓
+stage.failed / stage.cancelled (stage.sequence ASC, stage.id ASC)
+  ↓
+run.failed / run.cancelled
+```
+
+Each Event receives a contiguous Run sequence value and its own Outbox
+record. All Current State, Event, Outbox, and version writes commit together
+or roll back together.
 
 ### `approval.expired`
 
@@ -3637,7 +3702,6 @@ v1 done
 
 ```text
 run.created
-run.queued
 run.dequeued
 workflow.resolved
 worktree.created
@@ -3658,6 +3722,10 @@ process.exited
 workflow.completed
 run.completed
 ```
+
+`run.queued` may appear as optional Queue Telemetry between `run.created` and
+`run.dequeued`; it is omitted from the mandatory lifecycle sequence and never
+replaces `run.created`.
 
 失败 Run：
 
