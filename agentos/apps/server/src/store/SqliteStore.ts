@@ -70,6 +70,7 @@ import { RuntimeEventRepository } from './RuntimeEventRepository.js';
 import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import { OutboxRepository } from './OutboxRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
+import { LifecycleTransactionService } from '../services/LifecycleTransactionService.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -420,6 +421,7 @@ export class SqliteStore implements Store {
   private readonly runSequenceAllocatorRepo: RunSequenceAllocator;
   private readonly outboxRepo: OutboxRepository;
   private readonly deadLetterRepo: DeadLetterRepository;
+  private readonly lifecycleTransactionServiceRepo: LifecycleTransactionService;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -441,6 +443,14 @@ export class SqliteStore implements Store {
     this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
     this.outboxRepo = new OutboxRepository(this.database as any, this.runtimeEventRepo);
     this.deadLetterRepo = new DeadLetterRepository(this.database as any);
+    this.lifecycleTransactionServiceRepo = new LifecycleTransactionService({
+      runRepository: this.runRepo,
+      runStageRepository: this.runStageRepo,
+      runtimeEventRepository: this.runtimeEventRepo,
+      runSequenceAllocator: this.runSequenceAllocatorRepo,
+      outboxRepository: this.outboxRepo,
+      runInTransaction: fn => inTransaction(this.database as any, fn),
+    });
     try {
       this.database.exec('PRAGMA foreign_keys = ON');
       this.runMigrations(dataDir);
@@ -498,6 +508,10 @@ export class SqliteStore implements Store {
 
   deadLetterRepository(): DeadLetterRepository {
     return this.deadLetterRepo;
+  }
+
+  lifecycleTransactionService(): LifecycleTransactionService {
+    return this.lifecycleTransactionServiceRepo;
   }
 
   /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */

@@ -1,5 +1,6 @@
 import type { V2RunStatus } from './m3-run-status.js';
 import type { V2RunReason } from './m3-runtime-contracts.js';
+import type { M3StageStatus } from './m3-runtime.js';
 
 export type TaskStatus = 'pending' | 'running' | 'reviewing' | 'completed' | 'failed' | 'cancelled';
 
@@ -713,6 +714,7 @@ export interface Run {
   failureCode?: string;
   failureMessage?: string;
   cancellationRequestedAt?: string;
+  recoveryRequired?: boolean;
   nextEventSequence: number;
   startedAt?: string;
   completedAt?: string;
@@ -913,7 +915,11 @@ export interface RunStage {
   name: string;
   sequence: number;
   attempt: number;
-  status: 'pending';
+  status: M3StageStatus;
+  failureCode?: string;
+  failureMessage?: string;
+  startedAt?: string;
+  completedAt?: string;
   createdAt: string;
   updatedAt: string;
   version: number;
