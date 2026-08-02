@@ -298,6 +298,80 @@ test('validates Approval stage references without misclassifying blank values as
   );
 });
 
+test('preserves b838 StageStarted Snapshot compatibility while keeping lifecycle fields strict', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const stageEvent = fixtures.validStageStartedEvent;
+  const stagePayload = stageEvent.payload as Record<string, unknown>;
+  const providerSnapshot = stagePayload.providerSnapshot as Record<string, unknown>;
+  const providerTimeoutPolicy = providerSnapshot.timeoutPolicy as Record<string, unknown>;
+
+  const withProviderPatch = (patch: Record<string, unknown>): RuntimeEventDraft => ({
+    ...stageEvent,
+    id: `${stageEvent.id}-provider-patch`,
+    payload: {
+      ...stagePayload,
+      providerSnapshot: {
+        ...providerSnapshot,
+        ...patch,
+      },
+    },
+  });
+
+  assert.doesNotThrow(() => registry.publish(withProviderPatch({ argsTemplate: ['--flag', ''] })));
+  assert.doesNotThrow(() => registry.publish(withProviderPatch({ argsTemplate: [] })));
+  assert.doesNotThrow(() => registry.publish(withProviderPatch({
+    model: '',
+    environmentProfileId: '',
+    secretProfileId: '',
+    workspaceRelativeWorkingDirectory: '',
+  })));
+  assert.doesNotThrow(() => registry.publish(withProviderPatch({
+    timeoutPolicy: {
+      ...providerTimeoutPolicy,
+      discoveryTimeoutMs: 0,
+      validationTimeoutMs: 0,
+      startupTimeoutMs: 0,
+      idleTimeoutMs: null,
+      totalTimeoutMs: null,
+      cancelGracePeriodMs: 0,
+      approvalTimeoutMs: null,
+    },
+  })));
+
+  assert.throws(
+    () => registry.publish(withProviderPatch({ argsTemplate: ['--flag', 42] })),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  assert.throws(
+    () => registry.publish({
+      ...stageEvent,
+      payload: { ...stagePayload, providerSnapshot: undefined },
+    } as RuntimeEventDraft),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  assert.throws(
+    () => registry.publish({
+      ...stageEvent,
+      payload: { ...stagePayload, agentSnapshot: undefined },
+    } as RuntimeEventDraft),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  assert.throws(
+    () => registry.publish(withPayloadField(stageEvent, 'workflowStageKey', '   ')),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  assert.throws(
+    () => registry.publish(withPayloadField(stageEvent, 'name', '   ')),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+});
+
 test('covers every registered payload with a valid and an unknown-field invalid fixture', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
@@ -314,6 +388,46 @@ test('covers every registered payload with a valid and an unknown-field invalid 
         && error.code === 'INVALID_EVENT_PAYLOAD',
     );
   }
+});
+
+test('rejects omission of every required payload field for all 21 registered Events', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const validEvents = new Map(fixtures.validEvents.map(event => [event.type, event]));
+  let omissionCount = 0;
+
+  for (const definition of M3_CORE_EVENT_DEFINITIONS) {
+    const event = validEvents.get(definition.type);
+    if (!event) throw new Error(`Missing valid fixture for ${definition.type}`);
+    const required = new Set(definition.payloadSchema.required);
+    const optional = new Set(definition.payloadSchema.optional);
+    const allowed = new Set([...required, ...optional]);
+    assert.equal(required.size + optional.size, allowed.size, `${definition.type} schema fields overlap`);
+    assert.equal(
+      Object.keys(event.payload as Record<string, unknown>).every(field => allowed.has(field)),
+      true,
+      `${definition.type} fixture contains an undeclared payload field`,
+    );
+
+    for (const field of definition.payloadSchema.required) {
+      omissionCount += 1;
+      const payload = { ...(event.payload as Record<string, unknown>) };
+      assert.equal(field in payload, true, `${definition.type}.${field} missing from valid fixture`);
+      delete payload[field];
+      assert.throws(
+        () => registry.publish({
+          ...event,
+          id: `${event.id}-missing-${field}`,
+          payload,
+        } as RuntimeEventDraft),
+        (error: unknown) => error instanceof RuntimeEventRegistryError
+          && error.code === 'INVALID_EVENT_PAYLOAD',
+        `${definition.type}.${field} required-field omission must fail`,
+      );
+    }
+  }
+
+  assert.equal(omissionCount, 58);
 });
 
 test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges', () => {

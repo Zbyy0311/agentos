@@ -516,6 +516,12 @@ export interface RunFailedPayload {
   readonly debugArtifactId?: string;
 }
 
+const canonicalProviderTypeCompileCheck: RunFailedPayload['providerType'] = 'codex';
+// @ts-expect-error non-canonical ProviderType must not be assignable to RunFailedPayload
+const invalidProviderTypeCompileCheck: RunFailedPayload['providerType'] = 'not-a-provider';
+void canonicalProviderTypeCompileCheck;
+void invalidProviderTypeCompileCheck;
+
 export interface StageCreatedPayload {
   readonly workflowStageKey: string;
   readonly name: string;
@@ -611,19 +617,19 @@ export interface ApprovalResolvedPayload {
   readonly modifiedRequest?: Record<string, unknown>;
 }
 
-function hasString(value: Record<string, unknown>, key: string): boolean {
+function hasLifecycleString(value: Record<string, unknown>, key: string): boolean {
   return isNonEmptyString(value[key]);
 }
 
-function hasOptionalString(value: Record<string, unknown>, key: string): boolean {
-  return value[key] === undefined || hasString(value, key);
+function hasOptionalLifecycleString(value: Record<string, unknown>, key: string): boolean {
+  return value[key] === undefined || hasLifecycleString(value, key);
 }
 
-function hasCanonicalTimestamp(value: Record<string, unknown>, key: string): boolean {
+function hasLifecycleCanonicalTimestamp(value: Record<string, unknown>, key: string): boolean {
   return isCanonicalRuntimeTimestamp(value[key]);
 }
 
-function hasOptionalCanonicalTimestamp(value: Record<string, unknown>, key: string): boolean {
+function hasOptionalLifecycleCanonicalTimestamp(value: Record<string, unknown>, key: string): boolean {
   return value[key] === undefined || isCanonicalRuntimeTimestamp(value[key]);
 }
 
@@ -636,16 +642,35 @@ function hasOnly(value: Record<string, unknown>, keys: readonly string[]): boole
   return Object.keys(value).every(key => keys.includes(key));
 }
 
-function isNullableString(value: unknown): value is string | null {
-  return value === null || isNonEmptyString(value);
+function hasSnapshotString(value: Record<string, unknown>, key: string): boolean {
+  return typeof value[key] === 'string' && value[key].length > 0;
 }
 
-function isStringArray(value: unknown): value is string[] {
+function isSnapshotStringArray(value: unknown): value is string[] {
+  return Array.isArray(value) && value.every(item => typeof item === 'string');
+}
+
+function isLifecycleStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every(item => isNonEmptyString(item));
 }
 
-function isNonEmptyStringArray(value: unknown): value is string[] {
-  return isStringArray(value);
+function isSnapshotNullableString(value: unknown): value is string | null {
+  return value === null || typeof value === 'string';
+}
+
+function isLifecycleNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number'
+    && Number.isFinite(value)
+    && value >= 0
+    && (!Number.isInteger(value) || Number.isSafeInteger(value));
+}
+
+function isSnapshotNonNegativeNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0;
+}
+
+function isSnapshotNonNegativeNumberOrNull(value: unknown): value is number | null {
+  return value === null || isSnapshotNonNegativeNumber(value);
 }
 
 function hasOptionalRecord(value: Record<string, unknown>, key: string): boolean {
@@ -656,28 +681,17 @@ function hasBooleanFields(value: Record<string, unknown>, keys: readonly string[
   return keys.every(key => typeof value[key] === 'boolean');
 }
 
-function isNonNegativeNumber(value: unknown): value is number {
-  return typeof value === 'number'
-    && Number.isFinite(value)
-    && value >= 0
-    && (!Number.isInteger(value) || Number.isSafeInteger(value));
-}
-
-function isNonNegativeNumberOrNull(value: unknown): value is number | null {
-  return value === null || isNonNegativeNumber(value);
-}
-
 function isAgentSnapshotV1(value: unknown): value is AgentSnapshotV1 {
   if (!isRecord(value)) return false;
   return (
-    hasString(value, 'agentId')
-    && hasString(value, 'name')
+    hasSnapshotString(value, 'agentId')
+    && hasSnapshotString(value, 'name')
     && hasValue(['codex', 'kimi', 'opencode', 'mimo'], value.role)
-    && hasString(value, 'roleTitle')
-    && hasString(value, 'systemPrompt')
+    && hasSnapshotString(value, 'roleTitle')
+    && hasSnapshotString(value, 'systemPrompt')
     && Array.isArray(value.permissions)
     && value.permissions.every(permission => hasValue(['read', 'write', 'review'], permission))
-    && hasString(value, 'providerConfigId')
+    && hasSnapshotString(value, 'providerConfigId')
     && typeof value.enabled === 'boolean'
     && isPositiveSafeInteger(value.version)
   );
@@ -686,18 +700,18 @@ function isAgentSnapshotV1(value: unknown): value is AgentSnapshotV1 {
 function isProviderConfigurationSnapshotV1(value: unknown): value is ProviderConfigurationSnapshotV1 {
   if (!isRecord(value) || !isRecord(value.capabilities) || !isRecord(value.timeoutPolicy)) return false;
   return (
-    hasString(value, 'providerConfigId')
-    && hasString(value, 'name')
+    hasSnapshotString(value, 'providerConfigId')
+    && hasSnapshotString(value, 'name')
     && hasValue(CANONICAL_PROVIDER_TYPES, value.providerType)
-    && hasString(value, 'adapterId')
+    && hasSnapshotString(value, 'adapterId')
     && hasValue(['cli', 'api', 'ssh', 'container'], value.runtimeMode)
-    && isNullableString(value.executable)
-    && isStringArray(value.argsTemplate)
-    && isNullableString(value.model)
-    && isNullableString(value.environmentProfileId)
-    && isNullableString(value.secretProfileId)
+    && isSnapshotNullableString(value.executable)
+    && isSnapshotStringArray(value.argsTemplate)
+    && isSnapshotNullableString(value.model)
+    && isSnapshotNullableString(value.environmentProfileId)
+    && isSnapshotNullableString(value.secretProfileId)
     && hasValue(['workspace', 'worktree', 'custom'], value.workingDirectoryMode)
-    && isNullableString(value.workspaceRelativeWorkingDirectory)
+    && isSnapshotNullableString(value.workspaceRelativeWorkingDirectory)
     && hasBooleanFields(value.capabilities, [
       'sessionResume',
       'structuredEvents',
@@ -715,13 +729,13 @@ function isProviderConfigurationSnapshotV1(value: unknown): value is ProviderCon
       'nativeSandbox',
       'outputContracts',
     ])
-    && isNonNegativeNumber(value.timeoutPolicy.discoveryTimeoutMs)
-    && isNonNegativeNumber(value.timeoutPolicy.validationTimeoutMs)
-    && isNonNegativeNumber(value.timeoutPolicy.startupTimeoutMs)
-    && isNonNegativeNumberOrNull(value.timeoutPolicy.idleTimeoutMs)
-    && isNonNegativeNumberOrNull(value.timeoutPolicy.totalTimeoutMs)
-    && isNonNegativeNumber(value.timeoutPolicy.cancelGracePeriodMs)
-    && isNonNegativeNumberOrNull(value.timeoutPolicy.approvalTimeoutMs)
+    && isSnapshotNonNegativeNumber(value.timeoutPolicy.discoveryTimeoutMs)
+    && isSnapshotNonNegativeNumber(value.timeoutPolicy.validationTimeoutMs)
+    && isSnapshotNonNegativeNumber(value.timeoutPolicy.startupTimeoutMs)
+    && isSnapshotNonNegativeNumberOrNull(value.timeoutPolicy.idleTimeoutMs)
+    && isSnapshotNonNegativeNumberOrNull(value.timeoutPolicy.totalTimeoutMs)
+    && isSnapshotNonNegativeNumber(value.timeoutPolicy.cancelGracePeriodMs)
+    && isSnapshotNonNegativeNumberOrNull(value.timeoutPolicy.approvalTimeoutMs)
     && hasValue(['agentos', 'native', 'hybrid', 'disabled'], value.approvalMode)
     && hasValue(['structured', 'parsed-text', 'raw-stream'], value.outputMode)
     && typeof value.enabled === 'boolean'
@@ -734,11 +748,11 @@ export function isRunCreatedPayload(value: unknown): value is RunCreatedPayload 
   return (
     hasOnly(value, ['reason', 'parentRunId', 'rootRunId', 'workflowDefinitionId', 'worktreeMode', 'createdBy'])
     && hasValue(V2_RUN_REASONS, value.reason)
-    && hasOptionalString(value, 'parentRunId')
-    && hasString(value, 'rootRunId')
-    && hasOptionalString(value, 'workflowDefinitionId')
+    && hasOptionalLifecycleString(value, 'parentRunId')
+    && hasLifecycleString(value, 'rootRunId')
+    && hasOptionalLifecycleString(value, 'workflowDefinitionId')
     && hasValue(WORKTREE_MODES, value.worktreeMode)
-    && hasString(value, 'createdBy')
+    && hasLifecycleString(value, 'createdBy')
   );
 }
 
@@ -747,7 +761,7 @@ export function isRunQueuedPayload(value: unknown): value is RunQueuedPayload {
   return (
     hasOnly(value, ['priority', 'queueName', 'position'])
     && hasValue(['low', 'normal', 'high', 'critical'], value.priority)
-    && hasString(value, 'queueName')
+    && hasLifecycleString(value, 'queueName')
     && (value.position === undefined
       || (typeof value.position === 'number' && Number.isSafeInteger(value.position) && value.position >= 0))
   );
@@ -755,17 +769,17 @@ export function isRunQueuedPayload(value: unknown): value is RunQueuedPayload {
 
 export function isRunDequeuedPayload(value: unknown): value is RunDequeuedPayload {
   if (!isRecord(value)) return false;
-  return hasOnly(value, ['dequeuedAt']) && hasCanonicalTimestamp(value, 'dequeuedAt');
+  return hasOnly(value, ['dequeuedAt']) && hasLifecycleCanonicalTimestamp(value, 'dequeuedAt');
 }
 
 export function isRunStartedPayload(value: unknown): value is RunStartedPayload {
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['startedAt', 'workflowSnapshotVersion', 'policySnapshotVersion', 'baseCommit'])
-    && hasCanonicalTimestamp(value, 'startedAt')
+    && hasLifecycleCanonicalTimestamp(value, 'startedAt')
     && hasOptionalNumber(value, 'workflowSnapshotVersion')
     && hasOptionalNumber(value, 'policySnapshotVersion')
-    && hasOptionalString(value, 'baseCommit')
+    && hasOptionalLifecycleString(value, 'baseCommit')
   );
 }
 
@@ -774,7 +788,7 @@ export function isRunPausedPayload(value: unknown): value is RunPausedPayload {
   return (
     hasOnly(value, ['reason', 'requestedBy', 'resumable'])
     && hasValue(['user', 'policy', 'approval', 'scheduler', 'maintenance'], value.reason)
-    && hasOptionalString(value, 'requestedBy')
+    && hasOptionalLifecycleString(value, 'requestedBy')
     && typeof value.resumable === 'boolean'
   );
 }
@@ -784,7 +798,7 @@ export function isRunResumedPayload(value: unknown): value is RunResumedPayload 
   return (
     hasOnly(value, ['resumeMode', 'requestedBy'])
     && hasValue(['native-session', 'process-restart', 'scheduler'], value.resumeMode)
-    && hasOptionalString(value, 'requestedBy')
+    && hasOptionalLifecycleString(value, 'requestedBy')
   );
 }
 
@@ -792,10 +806,10 @@ export function isRunCancelledPayload(value: unknown): value is RunCancelledPayl
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['requestedBy', 'terminatedProcessIds', 'worktreePreserved', 'reason'])
-    && hasString(value, 'requestedBy')
-    && isNonEmptyStringArray(value.terminatedProcessIds)
+    && hasLifecycleString(value, 'requestedBy')
+    && isLifecycleStringArray(value.terminatedProcessIds)
     && typeof value.worktreePreserved === 'boolean'
-    && hasOptionalString(value, 'reason')
+    && hasOptionalLifecycleString(value, 'reason')
   );
 }
 
@@ -803,11 +817,11 @@ export function isRunCompletedPayload(value: unknown): value is RunCompletedPayl
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['durationMs', 'completedStageIds', 'artifactIds', 'worktreeStatus', 'summaryArtifactId'])
-    && isNonNegativeNumber(value.durationMs)
-    && isNonEmptyStringArray(value.completedStageIds)
-    && isNonEmptyStringArray(value.artifactIds)
-    && hasOptionalString(value, 'worktreeStatus')
-    && hasOptionalString(value, 'summaryArtifactId')
+    && isLifecycleNonNegativeNumber(value.durationMs)
+    && isLifecycleStringArray(value.completedStageIds)
+    && isLifecycleStringArray(value.artifactIds)
+    && hasOptionalLifecycleString(value, 'worktreeStatus')
+    && hasOptionalLifecycleString(value, 'summaryArtifactId')
   );
 }
 
@@ -824,15 +838,15 @@ export function isRunFailedPayload(value: unknown): value is RunFailedPayload {
       'suggestedAction',
       'debugArtifactId',
     ])
-    && hasString(value, 'errorCode')
-    && hasString(value, 'message')
-    && hasString(value, 'phase')
-    && hasOptionalString(value, 'stageId')
+    && hasLifecycleString(value, 'errorCode')
+    && hasLifecycleString(value, 'message')
+    && hasLifecycleString(value, 'phase')
+    && hasOptionalLifecycleString(value, 'stageId')
     && (value.providerType === undefined
       || hasValue(CANONICAL_PROVIDER_TYPES, value.providerType))
     && typeof value.retryable === 'boolean'
-    && hasOptionalString(value, 'suggestedAction')
-    && hasOptionalString(value, 'debugArtifactId')
+    && hasOptionalLifecycleString(value, 'suggestedAction')
+    && hasOptionalLifecycleString(value, 'debugArtifactId')
   );
 }
 
@@ -840,26 +854,26 @@ export function isStageCreatedPayload(value: unknown): value is StageCreatedPayl
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['workflowStageKey', 'name', 'sequence', 'dependsOn'])
-    && hasString(value, 'workflowStageKey')
-    && hasString(value, 'name')
+    && hasLifecycleString(value, 'workflowStageKey')
+    && hasLifecycleString(value, 'name')
     && isPositiveSafeInteger(value.sequence)
-    && isNonEmptyStringArray(value.dependsOn)
+    && isLifecycleStringArray(value.dependsOn)
   );
 }
 
 export function isStageReadyPayload(value: unknown): value is StageReadyPayload {
   if (!isRecord(value)) return false;
-  return hasOnly(value, ['dependenciesCompleted']) && isNonEmptyStringArray(value.dependenciesCompleted);
+  return hasOnly(value, ['dependenciesCompleted']) && isLifecycleStringArray(value.dependenciesCompleted);
 }
 
 export function isStageStartingPayload(value: unknown): value is StageStartingPayload {
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['workflowStageKey', 'name', 'attempt', 'startingAt'])
-    && hasString(value, 'workflowStageKey')
-    && hasString(value, 'name')
+    && hasLifecycleString(value, 'workflowStageKey')
+    && hasLifecycleString(value, 'name')
     && isPositiveSafeInteger(value.attempt)
-    && hasCanonicalTimestamp(value, 'startingAt')
+    && hasLifecycleCanonicalTimestamp(value, 'startingAt')
   );
 }
 
@@ -867,8 +881,8 @@ export function isStageStartedPayload(value: unknown): value is StageStartedPayl
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['workflowStageKey', 'name', 'attempt', 'agentSnapshot', 'providerSnapshot'])
-    && hasString(value, 'workflowStageKey')
-    && hasString(value, 'name')
+    && hasLifecycleString(value, 'workflowStageKey')
+    && hasLifecycleString(value, 'name')
     && typeof value.attempt === 'number'
     && Number.isSafeInteger(value.attempt)
     && value.attempt >= 1
@@ -879,12 +893,12 @@ export function isStageStartedPayload(value: unknown): value is StageStartedPayl
 
 export function isStagePausedPayload(value: unknown): value is StagePausedPayload {
   if (!isRecord(value)) return false;
-  return hasOnly(value, ['reason', 'resumable']) && hasString(value, 'reason') && typeof value.resumable === 'boolean';
+  return hasOnly(value, ['reason', 'resumable']) && hasLifecycleString(value, 'reason') && typeof value.resumable === 'boolean';
 }
 
 export function isStageResumedPayload(value: unknown): value is StageResumedPayload {
   if (!isRecord(value)) return false;
-  return hasOnly(value, ['resumeMode']) && hasString(value, 'resumeMode');
+  return hasOnly(value, ['resumeMode']) && hasLifecycleString(value, 'resumeMode');
 }
 
 export function isStageCompletedPayload(value: unknown): value is StageCompletedPayload {
@@ -892,9 +906,9 @@ export function isStageCompletedPayload(value: unknown): value is StageCompleted
   return (
     hasOnly(value, ['attempt', 'durationMs', 'artifactIds', 'summaryArtifactId', 'outputContractSatisfied'])
     && isPositiveSafeInteger(value.attempt)
-    && isNonNegativeNumber(value.durationMs)
-    && isNonEmptyStringArray(value.artifactIds)
-    && hasOptionalString(value, 'summaryArtifactId')
+    && isLifecycleNonNegativeNumber(value.durationMs)
+    && isLifecycleStringArray(value.artifactIds)
+    && hasOptionalLifecycleString(value, 'summaryArtifactId')
     && typeof value.outputContractSatisfied === 'boolean'
   );
 }
@@ -904,8 +918,8 @@ export function isStageFailedPayload(value: unknown): value is StageFailedPayloa
   return (
     hasOnly(value, ['attempt', 'errorCode', 'message', 'retryable', 'retryScheduled'])
     && isPositiveSafeInteger(value.attempt)
-    && hasString(value, 'errorCode')
-    && hasString(value, 'message')
+    && hasLifecycleString(value, 'errorCode')
+    && hasLifecycleString(value, 'message')
     && typeof value.retryable === 'boolean'
     && typeof value.retryScheduled === 'boolean'
   );
@@ -913,12 +927,14 @@ export function isStageFailedPayload(value: unknown): value is StageFailedPayloa
 
 export function isStageCancelledPayload(value: unknown): value is StageCancelledPayload {
   if (!isRecord(value)) return false;
-  return hasOnly(value, ['reason']) && hasString(value, 'reason');
+  return hasOnly(value, ['reason']) && hasLifecycleString(value, 'reason');
 }
 
 export function isStageSkippedPayload(value: unknown): value is StageSkippedPayload {
   if (!isRecord(value)) return false;
-  return hasOnly(value, ['condition', 'reason']) && hasString(value, 'condition') && hasString(value, 'reason');
+  return hasOnly(value, ['condition', 'reason'])
+    && hasLifecycleString(value, 'condition')
+    && hasLifecycleString(value, 'reason');
 }
 
 export function isApprovalRequiredPayload(value: unknown): value is ApprovalRequiredPayload {
@@ -927,10 +943,10 @@ export function isApprovalRequiredPayload(value: unknown): value is ApprovalRequ
     hasOnly(value, ['category', 'riskLevel', 'title', 'description', 'requestSummary', 'expiresAt'])
     && hasValue(['command', 'file-delete', 'git-push', 'network', 'package-install', 'secret-access', 'merge', 'custom'], value.category)
     && hasValue(['low', 'medium', 'high', 'critical'], value.riskLevel)
-    && hasString(value, 'title')
-    && hasString(value, 'description')
+    && hasLifecycleString(value, 'title')
+    && hasLifecycleString(value, 'description')
     && isRecord(value.requestSummary)
-    && hasOptionalCanonicalTimestamp(value, 'expiresAt')
+    && hasOptionalLifecycleCanonicalTimestamp(value, 'expiresAt')
   );
 }
 
@@ -939,8 +955,8 @@ export function isApprovalResolvedPayload(value: unknown): value is ApprovalReso
   return (
     hasOnly(value, ['decision', 'decidedBy', 'decidedAt', 'modifiedRequest'])
     && hasValue(['approve_once', 'approve_run', 'approve_workspace', 'reject', 'cancel_run'], value.decision)
-    && hasString(value, 'decidedBy')
-    && hasCanonicalTimestamp(value, 'decidedAt')
+    && hasLifecycleString(value, 'decidedBy')
+    && hasLifecycleCanonicalTimestamp(value, 'decidedAt')
     && hasOptionalRecord(value, 'modifiedRequest')
   );
 }
