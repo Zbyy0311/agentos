@@ -65,6 +65,11 @@ import { createEntityId } from './Identity.js';
 import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from './ProviderConfigurationRepository.js';
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
+import { createM3RuntimeEventRegistry } from '@agentos/shared';
+import { RuntimeEventRepository } from './RuntimeEventRepository.js';
+import { RunSequenceAllocator } from './RunSequenceAllocator.js';
+import { OutboxRepository } from './OutboxRepository.js';
+import { DeadLetterRepository } from './DeadLetterRepository.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -411,6 +416,10 @@ export class SqliteStore implements Store {
   private readonly runStageRepo: RunStageRepository;
   private readonly idempotencyRepo: IdempotencyRepository;
   private readonly providerConfigRepo: ProviderConfigurationRepository;
+  private readonly runtimeEventRepo: RuntimeEventRepository;
+  private readonly runSequenceAllocatorRepo: RunSequenceAllocator;
+  private readonly outboxRepo: OutboxRepository;
+  private readonly deadLetterRepo: DeadLetterRepository;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -427,6 +436,11 @@ export class SqliteStore implements Store {
     this.runStageRepo = new RunStageRepository(this.database as any);
     this.idempotencyRepo = new IdempotencyRepository(this.database as any);
     this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
+    const runtimeEventRegistry = createM3RuntimeEventRegistry();
+    this.runtimeEventRepo = new RuntimeEventRepository(this.database as any, runtimeEventRegistry);
+    this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
+    this.outboxRepo = new OutboxRepository(this.database as any, runtimeEventRegistry);
+    this.deadLetterRepo = new DeadLetterRepository(this.database as any);
     try {
       this.database.exec('PRAGMA foreign_keys = ON');
       this.runMigrations(dataDir);
@@ -468,6 +482,22 @@ export class SqliteStore implements Store {
 
   providerConfigurationRepository(): ProviderConfigurationRepository {
     return this.providerConfigRepo;
+  }
+
+  runtimeEventRepository(): RuntimeEventRepository {
+    return this.runtimeEventRepo;
+  }
+
+  runSequenceAllocator(): RunSequenceAllocator {
+    return this.runSequenceAllocatorRepo;
+  }
+
+  outboxRepository(): OutboxRepository {
+    return this.outboxRepo;
+  }
+
+  deadLetterRepository(): DeadLetterRepository {
+    return this.deadLetterRepo;
   }
 
   /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */
