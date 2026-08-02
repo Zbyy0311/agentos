@@ -921,3 +921,4 @@ export interface RunStage {
 
 export * from './m3-runtime.js';
 export * from './m3-runtime-registry.js';
+export * from './m3-lifecycle-transition-contracts.js';

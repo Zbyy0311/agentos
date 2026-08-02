@@ -33,6 +33,7 @@ export type M3OperationStatus = (typeof M3_OPERATION_STATUSES)[number];
 
 export const RUNTIME_EVENT_SOURCES = Object.freeze([
   'run-engine',
+  'scheduler',
   'workflow-executor',
   'stage-executor',
   'provider-adapter',
@@ -51,6 +52,50 @@ export const RUNTIME_EVENT_SOURCES = Object.freeze([
 ] as const);
 
 export type RuntimeEventSource = (typeof RUNTIME_EVENT_SOURCES)[number];
+
+export const RUNTIME_EVENT_DOMAINS = Object.freeze([
+  'run',
+  'stage',
+  'approval',
+] as const);
+
+export type RuntimeEventDomain = (typeof RUNTIME_EVENT_DOMAINS)[number];
+
+export const M3_RUNTIME_EVENT_TYPES = Object.freeze([
+  'run.created',
+  'run.queued',
+  'run.dequeued',
+  'run.started',
+  'run.paused',
+  'run.resumed',
+  'run.cancelled',
+  'run.completed',
+  'run.failed',
+  'stage.created',
+  'stage.ready',
+  'stage.starting',
+  'stage.started',
+  'stage.paused',
+  'stage.resumed',
+  'stage.completed',
+  'stage.failed',
+  'stage.cancelled',
+  'stage.skipped',
+  'approval.required',
+  'approval.resolved',
+] as const);
+
+export type M3RuntimeEventType = (typeof M3_RUNTIME_EVENT_TYPES)[number];
+
+const CANONICAL_RUNTIME_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+
+export function isCanonicalRuntimeTimestamp(value: unknown): value is string {
+  if (typeof value !== 'string' || !CANONICAL_RUNTIME_TIMESTAMP.test(value)) {
+    return false;
+  }
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.getTime()) && parsed.toISOString() === value;
+}
 
 export const RUNTIME_EVENT_SEVERITIES = Object.freeze([
   'debug',

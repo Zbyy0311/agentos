@@ -3,9 +3,27 @@ import {
   createM3RuntimeEventRegistry,
 } from './m3-runtime-registry.js';
 import type {
+  ApprovalRequiredPayload,
+  ApprovalResolvedPayload,
+  RunCancelledPayload,
+  RunCompletedPayload,
   RuntimeEventValidationResult,
   RunCreatedPayload,
+  RunDequeuedPayload,
+  RunFailedPayload,
+  RunPausedPayload,
+  RunQueuedPayload,
+  RunResumedPayload,
   RunStartedPayload,
+  StageCancelledPayload,
+  StageCompletedPayload,
+  StageCreatedPayload,
+  StageFailedPayload,
+  StagePausedPayload,
+  StageReadyPayload,
+  StageResumedPayload,
+  StageSkippedPayload,
+  StageStartingPayload,
   StageStartedPayload,
 } from './m3-runtime-registry.js';
 import type { AgentSnapshotV1, ProviderConfigurationSnapshotV1 } from './index.js';
@@ -94,15 +112,40 @@ function baseDraft<TPayload>(
 }
 
 export interface M3RuntimeEventFixtureSet {
+  readonly validEvents: readonly RuntimeEventEnvelope[];
   readonly validRunCreatedEvent: RuntimeEventEnvelope<RunCreatedPayload>;
+  readonly validRunQueuedEvent: RuntimeEventEnvelope<RunQueuedPayload>;
+  readonly validRunDequeuedEvent: RuntimeEventEnvelope<RunDequeuedPayload>;
   readonly validRunStartedEvent: RuntimeEventEnvelope<RunStartedPayload>;
+  readonly validRunPausedEvent: RuntimeEventEnvelope<RunPausedPayload>;
+  readonly validRunResumedEvent: RuntimeEventEnvelope<RunResumedPayload>;
+  readonly validRunCancelledEvent: RuntimeEventEnvelope<RunCancelledPayload>;
+  readonly validRunCompletedEvent: RuntimeEventEnvelope<RunCompletedPayload>;
+  readonly validRunFailedEvent: RuntimeEventEnvelope<RunFailedPayload>;
+  readonly validStageCreatedEvent: RuntimeEventEnvelope<StageCreatedPayload>;
+  readonly validStageReadyEvent: RuntimeEventEnvelope<StageReadyPayload>;
+  readonly validStageStartingEvent: RuntimeEventEnvelope<StageStartingPayload>;
   readonly validStageStartedEvent: RuntimeEventEnvelope<StageStartedPayload>;
+  readonly validStagePausedEvent: RuntimeEventEnvelope<StagePausedPayload>;
+  readonly validStageResumedEvent: RuntimeEventEnvelope<StageResumedPayload>;
+  readonly validStageCompletedEvent: RuntimeEventEnvelope<StageCompletedPayload>;
+  readonly validStageFailedEvent: RuntimeEventEnvelope<StageFailedPayload>;
+  readonly validStageCancelledEvent: RuntimeEventEnvelope<StageCancelledPayload>;
+  readonly validStageSkippedEvent: RuntimeEventEnvelope<StageSkippedPayload>;
+  readonly validApprovalRequiredEvent: RuntimeEventEnvelope<ApprovalRequiredPayload>;
+  readonly validRunOnlyApprovalRequiredEvent: RuntimeEventEnvelope<ApprovalRequiredPayload>;
+  readonly validApprovalResolvedEvent: RuntimeEventEnvelope<ApprovalResolvedPayload>;
+  readonly invalidPayloads: readonly RuntimeEventDraft[];
   readonly invalidPayload: RuntimeEventDraft;
   readonly invalidReason: RuntimeEventDraft;
   readonly invalidWorktreeMode: RuntimeEventDraft;
   readonly invalidUnknownWorktreeMode: RuntimeEventDraft;
   readonly invalidStageSnapshot: RuntimeEventDraft;
   readonly invalidStageEnvelope: RuntimeEventDraft;
+  readonly invalidNonCanonicalTimestamp: RuntimeEventDraft;
+  readonly invalidUnexpectedStageId: RuntimeEventDraft;
+  readonly invalidMissingApprovalRequestId: RuntimeEventDraft;
+  readonly invalidSource: RuntimeEventDraft;
   readonly unregisteredCoreEvent: RuntimeEventDraft;
   readonly invalidSchemaVersion: RuntimeEventDraft;
   readonly unknownSameVersionEvent: RuntimeEventDraft;
@@ -115,6 +158,12 @@ export interface M3RuntimeEventFixtureSet {
 export function createM3RuntimeEventFixtures(
   registry: CentralRuntimeEventRegistry = createM3RuntimeEventRegistry(),
 ): M3RuntimeEventFixtureSet {
+  const publish = <TPayload>(
+    type: string,
+    payload: TPayload,
+    overrides: Partial<RuntimeEventDraft<TPayload>> = {},
+  ): RuntimeEventEnvelope<TPayload> => registry.publish(baseDraft(type, payload, overrides));
+
   const validRunCreatedEvent = registry.publish(
     baseDraft('run.created', {
       reason: 'initial' as V2RunReason,
@@ -149,6 +198,184 @@ export function createM3RuntimeEventFixtures(
       },
     ),
   ) as RuntimeEventEnvelope<StageStartedPayload>;
+
+  const validRunQueuedEvent = publish<RunQueuedPayload>(
+    'run.queued',
+    { priority: 'normal', queueName: 'default', position: 1 },
+    { id: 'evt_fixture_04', sequence: 4 },
+  );
+  const validRunDequeuedEvent = publish<RunDequeuedPayload>(
+    'run.dequeued',
+    { dequeuedAt: '2026-08-02T00:00:03.000Z' },
+    { id: 'evt_fixture_05', sequence: 5 },
+  );
+  const validRunPausedEvent = publish<RunPausedPayload>(
+    'run.paused',
+    { reason: 'approval', resumable: true, requestedBy: 'fixture' },
+    { id: 'evt_fixture_06', sequence: 6 },
+  );
+  const validRunResumedEvent = publish<RunResumedPayload>(
+    'run.resumed',
+    { resumeMode: 'scheduler', requestedBy: 'fixture' },
+    { id: 'evt_fixture_07', sequence: 7 },
+  );
+  const validRunCancelledEvent = publish<RunCancelledPayload>(
+    'run.cancelled',
+    { requestedBy: 'fixture', terminatedProcessIds: [], worktreePreserved: true, reason: 'fixture' },
+    { id: 'evt_fixture_08', sequence: 8 },
+  );
+  const validRunCompletedEvent = publish<RunCompletedPayload>(
+    'run.completed',
+    { durationMs: 1, completedStageIds: [], artifactIds: [], worktreeStatus: 'clean' },
+    { id: 'evt_fixture_09', sequence: 9 },
+  );
+  const validRunFailedEvent = publish<RunFailedPayload>(
+    'run.failed',
+    { errorCode: 'FIXTURE_FAILURE', message: 'Fixture failure', phase: 'test', retryable: false },
+    { id: 'evt_fixture_10', sequence: 10 },
+  );
+  const validStageCreatedEvent = publish<StageCreatedPayload>(
+    'stage.created',
+    { workflowStageKey: 'plan', name: 'Plan', sequence: 1, dependsOn: [] },
+    { id: 'evt_fixture_11', sequence: 11, stageId: 'stage_fixture_01' },
+  );
+  const validStageReadyEvent = publish<StageReadyPayload>(
+    'stage.ready',
+    { dependenciesCompleted: [] },
+    { id: 'evt_fixture_12', sequence: 12, stageId: 'stage_fixture_01' },
+  );
+  const validStageStartingEvent = publish<StageStartingPayload>(
+    'stage.starting',
+    {
+      workflowStageKey: 'plan',
+      name: 'Plan',
+      attempt: 1,
+      startingAt: '2026-08-02T00:00:13.000Z',
+    },
+    { id: 'evt_fixture_13', sequence: 13, stageId: 'stage_fixture_01' },
+  );
+  const validStagePausedEvent = publish<StagePausedPayload>(
+    'stage.paused',
+    { reason: 'fixture', resumable: true },
+    { id: 'evt_fixture_14', sequence: 14, stageId: 'stage_fixture_01' },
+  );
+  const validStageResumedEvent = publish<StageResumedPayload>(
+    'stage.resumed',
+    { resumeMode: 'fixture' },
+    { id: 'evt_fixture_15', sequence: 15, stageId: 'stage_fixture_01' },
+  );
+  const validStageCompletedEvent = publish<StageCompletedPayload>(
+    'stage.completed',
+    { attempt: 1, durationMs: 1, artifactIds: [], outputContractSatisfied: true },
+    { id: 'evt_fixture_16', sequence: 16, stageId: 'stage_fixture_01' },
+  );
+  const validStageFailedEvent = publish<StageFailedPayload>(
+    'stage.failed',
+    { attempt: 1, errorCode: 'FIXTURE_FAILURE', message: 'Fixture failure', retryable: false, retryScheduled: false },
+    { id: 'evt_fixture_17', sequence: 17, stageId: 'stage_fixture_01' },
+  );
+  const validStageCancelledEvent = publish<StageCancelledPayload>(
+    'stage.cancelled',
+    { reason: 'fixture' },
+    { id: 'evt_fixture_18', sequence: 18, stageId: 'stage_fixture_01' },
+  );
+  const validStageSkippedEvent = publish<StageSkippedPayload>(
+    'stage.skipped',
+    { condition: 'false', reason: 'fixture' },
+    { id: 'evt_fixture_19', sequence: 19, stageId: 'stage_fixture_01' },
+  );
+  const validApprovalRequiredEvent = publish<ApprovalRequiredPayload>(
+    'approval.required',
+    {
+      category: 'command',
+      riskLevel: 'medium',
+      title: 'Fixture approval',
+      description: 'Approve fixture action',
+      requestSummary: { command: 'fixture' },
+    },
+    { id: 'evt_fixture_20', sequence: 20, stageId: 'stage_fixture_01', approvalRequestId: 'approval_fixture_01' },
+  );
+  const validRunOnlyApprovalRequiredEvent = publish<ApprovalRequiredPayload>(
+    'approval.required',
+    {
+      category: 'network',
+      riskLevel: 'low',
+      title: 'Fixture run approval',
+      description: 'Approve a run-scoped fixture action',
+      requestSummary: { destination: 'fixture' },
+    },
+    { id: 'evt_fixture_20_run_only', sequence: 22, approvalRequestId: 'approval_fixture_run_only' },
+  );
+  const validApprovalResolvedEvent = publish<ApprovalResolvedPayload>(
+    'approval.resolved',
+    { decision: 'approve_once', decidedBy: 'fixture', decidedAt: '2026-08-02T00:00:21.000Z' },
+    { id: 'evt_fixture_21', sequence: 21, stageId: 'stage_fixture_01', approvalRequestId: 'approval_fixture_01' },
+  );
+
+  const validEvents: readonly RuntimeEventEnvelope[] = [
+    validRunCreatedEvent,
+    validRunQueuedEvent,
+    validRunDequeuedEvent,
+    validRunStartedEvent,
+    validRunPausedEvent,
+    validRunResumedEvent,
+    validRunCancelledEvent,
+    validRunCompletedEvent,
+    validRunFailedEvent,
+    validStageCreatedEvent,
+    validStageReadyEvent,
+    validStageStartingEvent,
+    validStageStartedEvent,
+    validStagePausedEvent,
+    validStageResumedEvent,
+    validStageCompletedEvent,
+    validStageFailedEvent,
+    validStageCancelledEvent,
+    validStageSkippedEvent,
+    validApprovalRequiredEvent,
+    validApprovalResolvedEvent,
+  ];
+
+  const invalidPayloads = validEvents.map((event, index) => ({
+    ...event,
+    id: `evt_fixture_invalid_payload_${index + 1}`,
+    payload: {
+      ...(event.payload as Record<string, unknown>),
+      unexpectedFixtureField: true,
+    },
+  } as RuntimeEventDraft));
+
+  const invalidNonCanonicalTimestamp = baseDraft(
+    'run.dequeued',
+    { dequeuedAt: '2026-08-02T00:00:22Z' },
+    { id: 'evt_fixture_invalid_timestamp', sequence: 22 },
+  );
+  const invalidUnexpectedStageId = baseDraft(
+    'run.created',
+    {
+      reason: 'initial' as V2RunReason,
+      rootRunId: 'run_fixture_01',
+      worktreeMode: 'required' as WorktreeMode,
+      createdBy: 'fixture',
+    },
+    { id: 'evt_fixture_unexpected_stage', sequence: 23, stageId: 'stage_fixture_01' },
+  );
+  const invalidMissingApprovalRequestId = baseDraft(
+    'approval.required',
+    {
+      category: 'command',
+      riskLevel: 'medium',
+      title: 'Fixture approval',
+      description: 'Approve fixture action',
+      requestSummary: { command: 'fixture' },
+    },
+    { id: 'evt_fixture_missing_approval', sequence: 24, stageId: 'stage_fixture_01' },
+  );
+  const invalidSource = baseDraft(
+    'run.dequeued',
+    { dequeuedAt: '2026-08-02T00:00:25.000Z' },
+    { id: 'evt_fixture_invalid_source', sequence: 25, source: 'run-engine' },
+  );
 
   const unknownSameVersionEvent = {
     ...baseDraft(
@@ -211,9 +438,30 @@ export function createM3RuntimeEventFixtures(
   ) as RuntimeEventEnvelope<RunStartedPayload>;
 
   return {
+    validEvents,
     validRunCreatedEvent,
+    validRunQueuedEvent,
+    validRunDequeuedEvent,
     validRunStartedEvent,
+    validRunPausedEvent,
+    validRunResumedEvent,
+    validRunCancelledEvent,
+    validRunCompletedEvent,
+    validRunFailedEvent,
+    validStageCreatedEvent,
+    validStageReadyEvent,
+    validStageStartingEvent,
     validStageStartedEvent,
+    validStagePausedEvent,
+    validStageResumedEvent,
+    validStageCompletedEvent,
+    validStageFailedEvent,
+    validStageCancelledEvent,
+    validStageSkippedEvent,
+    validApprovalRequiredEvent,
+    validRunOnlyApprovalRequiredEvent,
+    validApprovalResolvedEvent,
+    invalidPayloads,
     invalidPayload: baseDraft(
       'stage.started',
       {
@@ -272,6 +520,10 @@ export function createM3RuntimeEventFixtures(
       },
       { id: 'evt_fixture_missing_stage', sequence: 8 },
     ),
+    invalidNonCanonicalTimestamp,
+    invalidUnexpectedStageId,
+    invalidMissingApprovalRequestId,
+    invalidSource,
     unregisteredCoreEvent: baseDraft(
       'run.unregistered',
       {

@@ -2,13 +2,21 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   M3_CORE_EVENT_DEFINITIONS,
+  M3_MULTI_EVENT_ORDERING_CONTRACTS,
   M3_OPERATION_STATUSES,
+  M3_RUN_TRANSITION_EVENT_CONTRACTS,
+  M3_STAGE_TRANSITION_EVENT_CONTRACTS,
   M3_STAGE_STATUSES,
+  M3_RUNTIME_EVENT_TYPES,
+  RUNTIME_EVENT_DOMAINS,
   RUNTIME_EVENT_SOURCES,
   RuntimeEventRegistryError,
   V2_RUN_REASONS,
   WORKTREE_MODES,
   createM3RuntimeEventRegistry,
+  getM3RunTransitionEventContract,
+  getM3StageTransitionEventContract,
+  isCanonicalRuntimeTimestamp,
 } from './src/index.ts';
 import {
   createM3RuntimeEventFixtures,
@@ -51,6 +59,7 @@ test('uses the canonical Stage status set and keeps Migration 009 pending compat
 test('uses the exact EventSource protocol and rejects underscore values', () => {
   assert.deepEqual(RUNTIME_EVENT_SOURCES, [
     'run-engine',
+    'scheduler',
     'workflow-executor',
     'stage-executor',
     'provider-adapter',
@@ -79,6 +88,145 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
     (error: unknown) => error instanceof RuntimeEventRegistryError
       && error.code === 'INVALID_EVENT_ENVELOPE',
   );
+});
+
+test('registers the complete P2C-1 Event set with frozen domains and metadata', () => {
+  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval']);
+  const expectedTypes = [
+    'run.created',
+    'run.queued',
+    'run.dequeued',
+    'run.started',
+    'run.paused',
+    'run.resumed',
+    'run.cancelled',
+    'run.completed',
+    'run.failed',
+    'stage.created',
+    'stage.ready',
+    'stage.starting',
+    'stage.started',
+    'stage.paused',
+    'stage.resumed',
+    'stage.completed',
+    'stage.failed',
+    'stage.cancelled',
+    'stage.skipped',
+    'approval.required',
+    'approval.resolved',
+  ];
+  assert.deepEqual(M3_RUNTIME_EVENT_TYPES, expectedTypes);
+  assert.deepEqual(M3_CORE_EVENT_DEFINITIONS.map(definition => definition.type), expectedTypes);
+  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 21);
+
+  const registry = createM3RuntimeEventRegistry();
+  assert.deepEqual(
+    [registry.get('run.dequeued')?.domain, registry.get('run.dequeued')?.source],
+    ['run', 'scheduler'],
+  );
+  assert.equal(registry.get('run.dequeued')?.defaultVisibility, 'internal');
+  assert.equal(registry.get('run.dequeued')?.forbidsStageId, true);
+  assert.equal(registry.get('stage.starting')?.requiresStageId, true);
+  assert.equal(registry.get('approval.required')?.requiresApprovalRequestId, true);
+  assert.equal(registry.get('run.failed')?.defaultSeverity, 'error');
+  assert.equal(registry.get('stage.cancelled')?.defaultSeverity, 'notice');
+  assert.equal(registry.get('approval.required')?.defaultSeverity, 'notice');
+});
+
+test('validates canonical UTC timestamp and source/Envelope reference rules', () => {
+  assert.equal(isCanonicalRuntimeTimestamp('2026-08-02T00:00:00.000Z'), true);
+  assert.equal(isCanonicalRuntimeTimestamp('2026-08-02T08:00:00.000+08:00'), false);
+  assert.equal(isCanonicalRuntimeTimestamp('2026-08-02T00:00:00Z'), false);
+  assert.equal(isCanonicalRuntimeTimestamp('2026-02-29T00:00:00.000Z'), false);
+
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  assert.throws(
+    () => registry.publish(fixtures.invalidNonCanonicalTimestamp),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_TIMESTAMP',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.invalidUnexpectedStageId),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'UNEXPECTED_STAGE_ID',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.invalidMissingApprovalRequestId),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'MISSING_APPROVAL_REQUEST_ID',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.invalidSource),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_ENVELOPE',
+  );
+
+  assert.equal(fixtures.validRunOnlyApprovalRequiredEvent.stageId, undefined);
+  assert.equal(fixtures.validRunOnlyApprovalRequiredEvent.approvalRequestId, 'approval_fixture_run_only');
+  assert.doesNotThrow(() => registry.publish(fixtures.validRunOnlyApprovalRequiredEvent));
+});
+
+test('covers every registered payload with a valid and an unknown-field invalid fixture', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+
+  assert.equal(fixtures.validEvents.length, 21);
+  assert.equal(fixtures.invalidPayloads.length, 21);
+  for (const event of fixtures.validEvents) {
+    assert.ok(registry.get(event.type), `missing definition for ${event.type}`);
+  }
+  for (const invalidPayload of fixtures.invalidPayloads) {
+    assert.throws(
+      () => registry.publish(invalidPayload),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+    );
+  }
+});
+
+test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges', () => {
+  assert.equal(M3_RUN_TRANSITION_EVENT_CONTRACTS.length, 17);
+  assert.equal(M3_STAGE_TRANSITION_EVENT_CONTRACTS.length, 19);
+
+  assert.equal(getM3RunTransitionEventContract(null, 'queued')?.primaryEvent, 'run.created');
+  assert.equal(getM3RunTransitionEventContract('queued', 'starting')?.primaryEvent, 'run.dequeued');
+  assert.equal(getM3RunTransitionEventContract('starting', 'running')?.primaryEvent, 'run.started');
+  assert.equal(getM3RunTransitionEventContract('waiting_approval', 'running')?.primaryEvent, 'approval.resolved');
+  assert.equal(getM3StageTransitionEventContract(null, 'pending')?.primaryEvent, 'stage.created');
+  assert.equal(getM3StageTransitionEventContract('ready', 'starting')?.primaryEvent, 'stage.starting');
+  assert.equal(getM3StageTransitionEventContract('starting', 'running')?.primaryEvent, 'stage.started');
+  assert.equal(getM3StageTransitionEventContract('waiting_approval', 'running')?.primaryEvent, 'approval.resolved');
+
+  assert.equal(getM3RunTransitionEventContract('completed', 'running'), undefined);
+  assert.equal(getM3RunTransitionEventContract('failed', 'queued'), undefined);
+  assert.equal(getM3RunTransitionEventContract('cancelled', 'running'), undefined);
+  assert.equal(getM3StageTransitionEventContract('completed', 'running'), undefined);
+  assert.equal(getM3StageTransitionEventContract('failed', 'running'), undefined);
+  assert.equal(getM3StageTransitionEventContract('cancelled', 'running'), undefined);
+  assert.equal(getM3StageTransitionEventContract('skipped', 'running'), undefined);
+
+  const registered = new Set(M3_CORE_EVENT_DEFINITIONS.map(definition => definition.type));
+  for (const contract of [...M3_RUN_TRANSITION_EVENT_CONTRACTS, ...M3_STAGE_TRANSITION_EVENT_CONTRACTS]) {
+    assert.equal(registered.has(contract.primaryEvent), true, contract.primaryEvent);
+  }
+  assert.equal(registered.has('run.queued'), true);
+});
+
+test('freezes the shared multi-Event ordering contracts', () => {
+  assert.deepEqual(M3_MULTI_EVENT_ORDERING_CONTRACTS, [
+    { name: 'startup-completion', events: ['stage.started', 'run.started'] },
+    { name: 'approval-failure', events: ['approval.resolved', 'stage.failed', 'run.failed'] },
+    { name: 'approval-cancellation', events: ['approval.resolved', 'stage.cancelled', 'run.cancelled'] },
+    { name: 'run-cancellation', events: ['stage.cancelled', 'run.cancelled'] },
+    { name: 'run-completion', events: ['stage.completed', 'run.completed'] },
+  ]);
+  assert.equal(Object.isFrozen(M3_RUN_TRANSITION_EVENT_CONTRACTS), true);
+  assert.equal(Object.isFrozen(M3_RUN_TRANSITION_EVENT_CONTRACTS[0]), true);
+  assert.equal(Object.isFrozen(M3_STAGE_TRANSITION_EVENT_CONTRACTS[0]), true);
+  assert.equal(Object.isFrozen(M3_MULTI_EVENT_ORDERING_CONTRACTS), true);
+  assert.equal(Object.isFrozen(M3_MULTI_EVENT_ORDERING_CONTRACTS[0]), true);
+  assert.equal(Object.isFrozen(M3_MULTI_EVENT_ORDERING_CONTRACTS[0].events), true);
 });
 
 test('enforces the single-source Run reason and canonical WorktreeMode values', () => {
@@ -230,7 +378,7 @@ test('rejects unregistered Publish Events and invalid schema versions', () => {
 
 test('keeps Core Event definitions in the production Registry, not the fixture module', async () => {
   const publicExports = await import('./src/index.ts');
-  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 3);
+  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 21);
   assert.equal('createM3RuntimeEventFixtures' in publicExports, false);
 });
 
