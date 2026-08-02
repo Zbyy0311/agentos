@@ -27,6 +27,7 @@ import {
   RunStageRepository,
   type RunStageLifecycleTransitionWithinTransactionInput,
 } from '../store/RunStageRepository.js';
+import { VersionConflictError } from '../store/Version.js';
 import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import type { RunSequenceAllocator } from '../store/RunSequenceAllocator.js';
 import type { OutboxMessage, OutboxRepository } from '../store/OutboxRepository.js';
@@ -243,6 +244,7 @@ export class LifecycleTransactionService {
     return this.dependencies.runInTransaction(() => {
       const current = this.requireRun(input.workspaceId, input.runId);
       this.assertExpectedRunState(current, input.expectedFrom);
+      this.assertExpectedVersion('runs', input.runId, current.version, input.expectedVersion);
       const timestamp = this.transactionTimestamp();
       const run = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
         workspaceId: input.workspaceId,
@@ -296,10 +298,11 @@ export class LifecycleTransactionService {
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
-      this.assertParentRunAllowsStage(run);
       const stage = this.dependencies.runStageRepository.findById(input.workspaceId, input.runId, input.stageId)
         ?? this.requireStageRunMatch(input.workspaceId, input.runId, input.stageId);
+      this.assertParentRunAllowsStage(run);
       this.assertExpectedStageState(stage, input.expectedFrom);
+      this.assertExpectedVersion('run_stages', input.stageId, stage.version, input.expectedVersion);
       const timestamp = this.transactionTimestamp();
       const nextStage = this.dependencies.runStageRepository.transitionLifecycleWithinTransaction({
         workspaceId: input.workspaceId,
@@ -505,6 +508,17 @@ export class LifecycleTransactionService {
     }
   }
 
+  private assertExpectedVersion(
+    entityType: string,
+    entityId: string,
+    currentVersion: number,
+    expectedVersion: number,
+  ): void {
+    if (currentVersion !== expectedVersion) {
+      throw new VersionConflictError(entityType, entityId, expectedVersion);
+    }
+  }
+
   private assertExpectedStageState(stage: RunStage, expectedFrom: M3StageStatus): void {
     if (stage.status !== expectedFrom) {
       throw new LifecycleTransactionError(
@@ -522,7 +536,7 @@ export class LifecycleTransactionService {
         `Stage ${stageId} belongs to Run ${stage.runId}, not ${runId}`,
       );
     }
-    throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'stageId does not identify a stored Stage');
+    throw new LifecycleTransactionError('LIFECYCLE_STAGE_NOT_FOUND', `Stage ${stageId} was not found`);
   }
 }
 

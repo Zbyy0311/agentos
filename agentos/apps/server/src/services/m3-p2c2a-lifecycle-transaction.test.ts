@@ -23,6 +23,7 @@ import { RunRepository } from '../store/RunRepository.js';
 import { RunSequenceAllocator } from '../store/RunSequenceAllocator.js';
 import { RunStageRepository } from '../store/RunStageRepository.js';
 import { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
+import { VersionConflictError } from '../store/Version.js';
 import {
   LifecycleTransactionError,
   LifecycleTransactionService,
@@ -49,6 +50,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 
 const WORKSPACE_ID = 'workspace-lifecycle-test';
 const TASK_ID = 'task-lifecycle-test';
+const SECOND_TASK_ID = 'task-lifecycle-test-2';
 const RUN_ID = 'run-lifecycle-test';
 const SECOND_RUN_ID = 'run-lifecycle-test-2';
 const STAGE_ID = 'stage-lifecycle-test';
@@ -171,6 +173,19 @@ function setStageStatus(fixture: Fixture, status: M3StageStatus): void {
       completed_at = NULL, updated_at = ?
     WHERE workspace_id = ? AND run_id = ? AND id = ?
   `).run(status, status, STARTED_AT, NOW, WORKSPACE_ID, RUN_ID, STAGE_ID);
+}
+
+function insertSecondRun(fixture: Fixture, status: M3RunStatus = 'starting'): void {
+  fixture.db.prepare(`
+    INSERT INTO tasks (id, workspace_id, title, created_by, created_at, updated_at)
+    VALUES (?, ?, 'Second lifecycle task', 'test', ?, ?)
+  `).run(SECOND_TASK_ID, WORKSPACE_ID, NOW, NOW);
+  fixture.db.prepare(`
+    INSERT INTO runs (
+      id, workspace_id, task_id, root_run_id, status, reason, origin,
+      next_event_sequence, created_by, created_at, updated_at, version, recovery_required
+    ) VALUES (?, ?, ?, ?, ?, 'initial', 'v2_api', 1, 'test', ?, ?, 1, 0)
+  `).run(SECOND_RUN_ID, WORKSPACE_ID, SECOND_TASK_ID, SECOND_RUN_ID, status, NOW, NOW);
 }
 
 function runInput(fixture: Fixture, expectedFrom: M3RunStatus, to: M3RunStatus): RunTransitionInput {
@@ -604,11 +619,6 @@ test('P2C-2A service validation errors are stable and do not leak repository err
       prepare: fixture => { setRunStatus(fixture, 'starting'); setStageStatus(fixture, 'starting'); },
       invoke: fixture => fixture.service.transitionStage({ ...stageInput(fixture, 'starting', 'failed'), message: ' ' } as StageTransitionInput),
     },
-    {
-      name: 'missing Stage record',
-      prepare: fixture => setRunStatus(fixture, 'starting'),
-      invoke: fixture => fixture.service.transitionStage({ ...stageInput(fixture, 'pending', 'ready'), stageId: 'stage-missing' } as StageTransitionInput),
-    },
   ];
   for (const validationCase of cases) {
     const fixture = newFixture();
@@ -620,6 +630,104 @@ test('P2C-2A service validation errors are stable and do not leak repository err
     } finally {
       fixture.db.close();
     }
+  }
+});
+
+test('P2C-2A stored Stage not found has a stable error and does not call the clock', () => {
+  const probe: TransactionProbe = { insideTransaction: false, nowCalls: 0 };
+  const fixture = newFixture(':memory:', {
+    now: () => {
+      probe.nowCalls += 1;
+      return NOW;
+    },
+  }, probe);
+  try {
+    setRunStatus(fixture, 'starting');
+    const before = snapshot(fixture);
+    assert.throws(
+      () => fixture.service.transitionStage({
+        ...stageInput(fixture, 'pending', 'ready'), stageId: 'stage-missing',
+      } as StageTransitionInput),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_STAGE_NOT_FOUND'
+        && error.message === 'LIFECYCLE_STAGE_NOT_FOUND: Stage stage-missing was not found'
+        && !error.message.includes('SELECT')
+        && !error.message.includes('\\'),
+    );
+    assert.equal(probe.nowCalls, 0);
+    assert.deepEqual(snapshot(fixture), before);
+  } finally {
+    fixture.db.close();
+  }
+});
+
+test('P2C-2A Stage/Run mismatch is reported before parent-state or clock checks', () => {
+  const probe: TransactionProbe = { insideTransaction: false, nowCalls: 0 };
+  const fixture = newFixture(':memory:', { now: () => { probe.nowCalls += 1; return NOW; } }, probe);
+  try {
+    insertSecondRun(fixture, 'starting');
+    const before = snapshot(fixture);
+    assert.throws(
+      () => fixture.service.transitionStage({
+        ...stageInput(fixture, 'pending', 'ready'), runId: SECOND_RUN_ID,
+      } as StageTransitionInput),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_STAGE_RUN_MISMATCH'
+        && error.message === `LIFECYCLE_STAGE_RUN_MISMATCH: Stage ${STAGE_ID} belongs to Run ${RUN_ID}, not ${SECOND_RUN_ID}`,
+    );
+    assert.equal(probe.nowCalls, 0);
+    assert.deepEqual(snapshot(fixture), before);
+    const secondRun = fixture.db.prepare(
+      'SELECT status, version, next_event_sequence FROM runs WHERE id = ?',
+    ).get(SECOND_RUN_ID) as { status: string; version: number; next_event_sequence: number };
+    assert.equal(secondRun.status, 'starting');
+    assert.equal(secondRun.version, 1);
+    assert.equal(secondRun.next_event_sequence, 1);
+  } finally {
+    fixture.db.close();
+  }
+});
+
+test('P2C-2A Run stale version fails before clock or mutation', () => {
+  const probe: TransactionProbe = { insideTransaction: false, nowCalls: 0 };
+  const fixture = newFixture(':memory:', { now: () => { probe.nowCalls += 1; return NOW; } }, probe);
+  try {
+    const before = snapshot(fixture);
+    assert.throws(
+      () => fixture.service.transitionRun({
+        ...runInput(fixture, 'queued', 'starting'), expectedVersion: 2,
+      } as RunTransitionInput),
+      (error: unknown) => error instanceof VersionConflictError
+        && error.entityType === 'runs'
+        && error.entityId === RUN_ID
+        && error.expectedVersion === 2,
+    );
+    assert.equal(probe.nowCalls, 0);
+    assert.deepEqual(snapshot(fixture), before);
+  } finally {
+    fixture.db.close();
+  }
+});
+
+test('P2C-2A Stage stale version fails before clock or mutation', () => {
+  const probe: TransactionProbe = { insideTransaction: false, nowCalls: 0 };
+  const fixture = newFixture(':memory:', { now: () => { probe.nowCalls += 1; return NOW; } }, probe);
+  try {
+    setRunStatus(fixture, 'starting');
+    const before = snapshot(fixture);
+    assert.throws(
+      () => fixture.service.transitionStage({
+        ...stageInput(fixture, 'pending', 'ready'), expectedVersion: 2,
+      } as StageTransitionInput),
+      (error: unknown) => error instanceof VersionConflictError
+        && error.entityType === 'run_stages'
+        && error.entityId === STAGE_ID
+        && error.expectedVersion === 2,
+    );
+    assert.equal(probe.nowCalls, 0);
+    assert.deepEqual(snapshot(fixture), before);
+  } finally {
+    fixture.db.close();
   }
 });
 
