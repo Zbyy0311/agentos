@@ -238,6 +238,19 @@ Run shared type/fixture tests, schema diff inspection, fresh/legacy fixture prep
 
 Begin all persistent Run/Stage status migration and implement the transaction core that atomically writes Current State + Runtime Event + Outbox for every state transition.
 
+#### Lifecycle/Event dependency
+
+The P2 lifecycle sequence is:
+
+```text
+Specification Alignment → Shared Event Contract Closure → Transactional Lifecycle Core
+```
+
+P2C-1 must complete the Shared Event Contract Closure and receive independent
+specification review before P2C-2 begins transactional lifecycle work. P2C-2
+must use the frozen transition/Event ownership from M3-TD-21 and must not
+redefine the four canonical startup mappings.
+
 #### Authorized scope
 
 - Authorized Migration 012 implementation and schema registration after P1 review.

@@ -41,6 +41,31 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-18 | Recovery representation | Before P6, choose either runs.recovery_required or a separate Recovery Record. P6 must not reference a schema state that does not exist. | Same status. Production Restore remains a deferred Owner decision. |
 | M3-TD-19 | Migration 012 planning | Migration 012 is REQUIRED — PLANNING ONLY for runtime_events, UNIQUE(run_id, sequence), query indexes including runtime_events(run_id, correlation_id, sequence), outbox_messages, dead letters, durable operations with run_id/equivalent aggregate reference and correlation_id, run_stages expansion preserving existing version, idempotency operation values, recovery representation, sequence allocation, append-only/controlled-update constraints, and Queue decision. | Same status. No DDL in this remediation; future DDL needs independent schema review, checksum, fresh/legacy DB, rollback/forward, L3, and USER OWNER APPROVAL REQUIRED. |
 | M3-TD-20 | Phase dependency | P1 is Schema and Shared Contract Foundation only. Persistent Run/Stage status migration and atomic transitions begin in P2. Run Engine and Start route integration begin only after the P2 transaction core. | Same status. No unreviewed P1 branch may start from this unmerged docs branch. |
+| M3-TD-21 | Lifecycle transition Event ownership | The four unique mappings are Run `queued → starting` → `run.dequeued`, Run `starting → running` → `run.started`, Stage `ready → starting` → `stage.starting`, and Stage `starting → running` → `stage.started`. `runs.started_at` and `run_stages.started_at` are first written only when the corresponding entity enters `running`; one Event cannot represent two transitions. | Specification alignment only. Shared contract closure must precede P2C-2 transactional lifecycle work. No Production Cutover or implementation authorization changes. |
+
+### M3-TD-21 Lifecycle transition Event ownership
+
+- **Owner and record time:** M3 technical owner; 2026-08-02.
+- **Selected contract:** the four unique transition/Event mappings in the
+  table above are canonical and exhaustive for the Run/Stage startup edges
+  covered by this alignment.
+- **Affected scope:** Runtime Lifecycle §9, Stage Startup §14, the Run and
+  Stage transition tables, and the four Event definitions in Event Model §§16
+  and 18.
+- **Evidence threshold:** the Lifecycle and Event Model documents must agree
+  on payload, metadata, ownership, timestamp format, and transaction timing;
+  the successful lifecycle sequence must place `run.started` after the first
+  eligible Stage enters `running`.
+- **Stop/no-go:** any remaining mapping of `run.started` to
+  `queued → starting`, `stage.started` to `ready → starting`, a duplicate
+  Event owner, or an early `started_at` write blocks P2C-2 review. Code,
+  Registry, Migration, database, Server, Web, and Production Cutover changes
+  are outside this decision.
+- **Rollback boundary:** revert the single specification-alignment commit;
+  no runtime state, schema, or production data is changed by this decision.
+- **Review and re-review:** independent specification review is required
+  before Shared Event Contract Closure. Re-review is required if any payload,
+  Registry metadata, state-transition owner, or Production boundary changes.
 
 ## 3. API compatibility record
 

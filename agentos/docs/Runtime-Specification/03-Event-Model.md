@@ -346,7 +346,8 @@ approval.required
 
 ### 6.7 `timestamp`
 
-UTC ISO 8601。
+所有 Event Envelope 的 `timestamp` 以及 Payload 中的时间字段，必须使用
+UTC ISO 8601 毫秒格式：`YYYY-MM-DDTHH:mm:ss.sssZ`。
 
 示例：
 
@@ -361,6 +362,7 @@ UTC ISO 8601。
 ```ts
 type EventSource =
   | 'run-engine'
+  | 'scheduler'
   | 'workflow-executor'
   | 'stage-executor'
   | 'provider-adapter'
@@ -785,7 +787,89 @@ interface RunQueuedPayload {
 }
 ```
 
+### `run.dequeued`
+
+`run.dequeued` is the unique canonical Event for the Run transition
+`queued → starting`.
+
+Envelope requirements:
+
+- the standard Runtime Event envelope is required;
+- `runId`, `workspaceId`, `sequence`, `timestamp`, and `correlationId` are
+  required;
+- `stageId` is absent because this Event is Run-scoped;
+- `schemaVersion` is exactly `1` and `type` is exactly `run.dequeued`.
+
+Registry metadata:
+
+| Field | Value |
+|---|---|
+| domain | `run` |
+| schemaVersion | `1` |
+| source | `scheduler` |
+| defaultSeverity | `info` |
+| defaultVisibility | `internal` |
+| defaultDurability | `durable` |
+| requiresStageId | `false` |
+
+Payload schema:
+
+```ts
+interface RunDequeuedPayload {
+  dequeuedAt: string;
+}
+```
+
+Payload requirements:
+
+- `dequeuedAt` is a UTC timestamp in the exact form
+  `YYYY-MM-DDTHH:mm:ss.sssZ`;
+- no additional payload fields are accepted;
+- the Event means that the scheduler selected/acquired the Run, committed
+  `queued → starting`, and began startup preparation;
+- it does not mean that startup preparation completed or that a Provider or
+  Stage is active.
+
+Example:
+
+```json
+{
+  "id": "evt_01JZRUNDEQUEUED",
+  "schemaVersion": 1,
+  "type": "run.dequeued",
+  "workspaceId": "ws_01JZ",
+  "taskId": "task_01JZ",
+  "runId": "run_01JZ",
+  "sequence": 2,
+  "timestamp": "2026-07-19T12:00:00.000Z",
+  "source": "scheduler",
+  "correlationId": "corr_run_01JZ",
+  "severity": "info",
+  "visibility": "internal",
+  "durability": "durable",
+  "payload": {
+    "dequeuedAt": "2026-07-19T12:00:00.000Z"
+  }
+}
+```
+
 ### `run.started`
+
+`run.started` is the unique canonical Event for the Run transition
+`starting → running`. It is emitted only after startup preparation succeeds
+and the first eligible Stage formally enters `running`.
+
+Registry metadata (unchanged):
+
+| Field | Value |
+|---|---|
+| domain | `run` |
+| schemaVersion | `1` |
+| source | `run-engine` |
+| defaultSeverity | `info` |
+| defaultVisibility | `public` |
+| defaultDurability | `durable` |
+| requiresStageId | `false` |
 
 ```ts
 interface RunStartedPayload {
@@ -795,6 +879,16 @@ interface RunStartedPayload {
   baseCommit?: string;
 }
 ```
+
+Payload requirements:
+
+- `startedAt` is a UTC timestamp in the exact form
+  `YYYY-MM-DDTHH:mm:ss.sssZ`;
+- `runs.started_at` is first written in the same transaction that emits this
+  Event;
+- `run.started` must not be emitted by the `queued → starting` transaction;
+- no payload fields other than the required `startedAt` and the three listed
+  optional snapshot fields are accepted.
 
 ### `run.paused`
 
@@ -969,17 +1063,115 @@ interface StageReadyPayload {
 }
 ```
 
+### `stage.starting`
+
+`stage.starting` is the unique canonical Event for the Stage transition
+`ready → starting`.
+
+Envelope requirements:
+
+- the standard Runtime Event envelope is required;
+- `runId`, `workspaceId`, `stageId`, `sequence`, `timestamp`, and
+  `correlationId` are required;
+- `stageId` is required and identifies the Stage whose scheduling rights were
+  acquired;
+- `schemaVersion` is exactly `1` and `type` is exactly `stage.starting`.
+
+Registry metadata:
+
+| Field | Value |
+|---|---|
+| domain | `stage` |
+| schemaVersion | `1` |
+| source | `stage-executor` |
+| defaultSeverity | `info` |
+| defaultVisibility | `public` |
+| defaultDurability | `durable` |
+| requiresStageId | `true` |
+
+Payload schema:
+
+```ts
+interface StageStartingPayload {
+  workflowStageKey: string;
+  name: string;
+  attempt: number;
+  startingAt: string;
+}
+```
+
+Payload requirements:
+
+- `workflowStageKey` and `name` are non-empty strings;
+- `attempt` is a positive safe integer;
+- `startingAt` is a UTC timestamp in the exact form
+  `YYYY-MM-DDTHH:mm:ss.sssZ`;
+- no additional payload fields are accepted;
+- the Event means that scheduling rights were acquired and Provider startup
+  preparation began; it does not mean that the Provider is active.
+
+Example:
+
+```json
+{
+  "id": "evt_01JZSTAGESTARTING",
+  "schemaVersion": 1,
+  "type": "stage.starting",
+  "workspaceId": "ws_01JZ",
+  "taskId": "task_01JZ",
+  "runId": "run_01JZ",
+  "stageId": "stage_impl",
+  "sequence": 4,
+  "timestamp": "2026-07-19T12:00:01.000Z",
+  "source": "stage-executor",
+  "correlationId": "corr_stage_impl",
+  "severity": "info",
+  "visibility": "public",
+  "durability": "durable",
+  "payload": {
+    "workflowStageKey": "implement",
+    "name": "Implementation",
+    "attempt": 1,
+    "startingAt": "2026-07-19T12:00:01.000Z"
+  }
+}
+```
+
 ### `stage.started`
+
+`stage.started` is the unique canonical Event for the Stage transition
+`starting → running`. It is emitted only after the Provider is confirmed
+active and the Agent/Provider snapshots are frozen.
+
+Registry metadata (unchanged):
+
+| Field | Value |
+|---|---|
+| domain | `stage` |
+| schemaVersion | `1` |
+| source | `stage-executor` |
+| defaultSeverity | `info` |
+| defaultVisibility | `public` |
+| defaultDurability | `durable` |
+| requiresStageId | `true` |
 
 ```ts
 interface StageStartedPayload {
   workflowStageKey: string;
   name: string;
   attempt: number;
-  agentSnapshot: AgentSnapshot;
-  providerSnapshot: ProviderConfigurationSnapshot;
+  agentSnapshot: AgentSnapshotV1;
+  providerSnapshot: ProviderConfigurationSnapshotV1;
 }
 ```
+
+Payload requirements:
+
+- `attempt` is a positive safe integer;
+- `stage.started` must not represent `ready → starting`;
+- `run_stages.started_at` is first written in the same transaction that emits
+  this Event;
+- no payload fields other than the five listed fields are accepted.
 
 ### `stage.paused`
 
@@ -3446,13 +3638,15 @@ v1 done
 ```text
 run.created
 run.queued
-run.started
+run.dequeued
 workflow.resolved
 worktree.created
 memory.retrieved
-stage.started
+stage.starting
 provider.session_started
 process.started
+stage.started
+run.started
 tool.started
 command.started
 command.completed

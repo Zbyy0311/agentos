@@ -493,6 +493,11 @@ run.queue_position_updated
 run.queue_blocked
 ```
 
+`run.dequeued` is the canonical Event for the single Run transition
+`queued → starting`. It records scheduler acquisition and the beginning of
+startup preparation; it does not mean that the Run or a Provider is already
+running.
+
 ---
 
 # Part IV — Run Startup
@@ -511,10 +516,9 @@ queued → starting
 
 - 确认 Run 未被取消；
 - 获取执行锁；
-- 更新状态为 `starting`；
-- 记录 `startedAt`；
-- 生成 `run.started` Event；
-- 初始化资源。
+- 将状态从 `queued` 原子更新为 `starting`；
+- 生成 `run.dequeued` Event；
+- 开始启动资源准备。
 
 ### 9.2 Startup Phases
 
@@ -530,7 +534,21 @@ queued → starting
 9. Start first eligible Stage
 ```
 
-### 9.3 Startup Failure
+### 9.3 Startup Completion Transaction
+
+启动完成事务必须满足：
+
+- 所有启动前检查成功；
+- 第一个 eligible Stage 完成 `starting → running`；
+- Run 在同一事务中完成 `starting → running`；
+- 首次写入 `runs.started_at`；
+- 生成 `run.started` Event；
+- Current State、Runtime Event 与 Outbox 在同一事务中原子提交。
+
+`run.started` 只能在上述启动完成事务中生成，不能在
+`queued → starting` 事务中生成。
+
+### 9.4 Startup Failure
 
 任何启动阶段失败都必须：
 
@@ -847,7 +865,7 @@ Stage ready
   ↓
 Acquire stage execution lock
   ↓
-Set starting
+Set starting and emit stage.starting
   ↓
 Resolve Agent
   ↓
@@ -863,8 +881,21 @@ Create Provider Session
   ↓
 Start Runtime Process
   ↓
-Set running
+Confirm Provider active and freeze snapshots
+  ↓
+Set running, first write started_at, and emit stage.started
 ```
+
+Stage transition Event ownership is fixed as follows:
+
+- `ready → starting` emits `stage.starting` after scheduling rights are
+  acquired and Provider startup preparation begins;
+- `starting → running` emits `stage.started` only after the Provider is
+  confirmed active and the Agent/Provider snapshots are frozen;
+- `stage.started` never represents `ready → starting`.
+
+`run_stages.started_at` is written for the first time only in the transaction
+that enters `running` and emits `stage.started`.
 
 ### 14.2 Stage Prompt Composition
 
@@ -2379,6 +2410,24 @@ Run 状态迁移必须使用：
 | waiting_approval | failed | Rejected/fatal |
 | paused | running | Resume |
 | paused | cancelled | Run cancelled |
+
+### 47.1 Canonical Lifecycle Event Ownership
+
+The Run table in §46 and the Stage table in §47 retain their state sets
+unchanged. This adjacent contract records their canonical Event ownership.
+M3-TD-21 freezes these four unique
+transition-to-Event mappings; one Event must not represent two lifecycle
+transitions:
+
+| Transition | Canonical Event |
+|---|---|
+| Run `queued → starting` | `run.dequeued` |
+| Run `starting → running` | `run.started` |
+| Stage `ready → starting` | `stage.starting` |
+| Stage `starting → running` | `stage.started` |
+
+The remaining transition rows retain their existing Event semantics and are
+not remapped by this specification-alignment change.
 
 ---
 
