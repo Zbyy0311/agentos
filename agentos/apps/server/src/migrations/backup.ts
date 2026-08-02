@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync } from 'node:fs';
+import { constants, copyFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface BackupResult {
@@ -27,9 +27,21 @@ export function createFileBackupProvider(backupDir: string): BackupProvider {
         throw new Error(`Cannot backup database at: ${path}`);
       }
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = `agentos-${timestamp}.db`;
-      const backupPath = join(backupDir, filename);
-      copyFileSync(path, backupPath);
+      let attempt = 0;
+      while (true) {
+        const suffix = attempt === 0 ? '' : `-${attempt}`;
+        const backupPath = join(backupDir, `agentos-${timestamp}${suffix}.db`);
+        try {
+          copyFileSync(path, backupPath, constants.COPYFILE_EXCL);
+          return;
+        } catch (error) {
+          const code = error && typeof error === 'object' && 'code' in error
+            ? (error as { code?: string }).code
+            : undefined;
+          if (code !== 'EEXIST') throw error;
+          attempt += 1;
+        }
+      }
     },
     getBackupPath(): string {
       return backupDir;

@@ -58,6 +58,7 @@ import { ProviderConfigurationRepository } from './ProviderConfigurationReposito
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import { createFileBackupProvider } from '../migrations/backup.js';
 import { inTransaction } from './Transaction.js';
 import { assertVersionedMutation } from './Repository.js';
 import { createEntityId } from './Identity.js';
@@ -428,7 +429,7 @@ export class SqliteStore implements Store {
     this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
     try {
       this.database.exec('PRAGMA foreign_keys = ON');
-      this.runMigrations();
+      this.runMigrations(dataDir);
       this.migrateAgentEventSequences();
       this.migrateLegacyExecutionRuns();
       this.migrateLegacyWorkspaceAggregates();
@@ -1985,11 +1986,12 @@ export class SqliteStore implements Store {
     return this.getMemoryCandidate(workspaceId, candidateId) ?? { ...current, status, reviewedAt };
   }
 
-  private runMigrations(): void {
+  private runMigrations(dataDir: string): void {
     // MigrationRunner takes over schema initialization.
     // migrateSchema() is kept as the implementation source for baseline DDL.
     const registry = new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS);
-    const runner = new MigrationRunner(this.database as any, registry);
+    const backupProvider = createFileBackupProvider(join(dataDir, 'migration-backups'));
+    const runner = new MigrationRunner(this.database as any, registry, { backupProvider });
     runner.run();
   }
 

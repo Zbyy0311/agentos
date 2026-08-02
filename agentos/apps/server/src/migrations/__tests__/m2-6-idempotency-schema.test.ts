@@ -32,6 +32,7 @@ const VALID_ID = `idem_${'0'.repeat(26)}`;
 const VALID_ID_B = `idem_${'0'.repeat(25)}1`;
 
 const REGISTRY_FIRST_NINE = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 9);
+const REGISTRY_FIRST_TEN = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 10);
 
 function runMigrations(db: Db, migrations: Migration[]): void {
   new MigrationRunner(db, new MigrationRegistry(migrations)).run();
@@ -117,7 +118,7 @@ describe('M2.6 — Migration 010 idempotency_records schema', () => {
     try {
       runMigrations(db, [...REGISTRY_FIRST_NINE]);
       assert.ok(!tableNames(db).includes('idempotency_records'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_TEN]);
       assert.ok(tableNames(db).includes('idempotency_records'));
       const record = db.prepare("SELECT migration_id FROM _schema_migrations WHERE migration_id = '010'").all();
       assert.equal(record.length, 1);
@@ -133,7 +134,7 @@ describe('M2.6 — Migration 010 idempotency_records schema', () => {
       runMigrations(db, [...REGISTRY_FIRST_NINE]);
       insertWorkspace(db, 'ws-1');
       insertTask(db, 'task-1', 'ws-1');
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_TEN]);
       const task = db.prepare("SELECT id FROM tasks WHERE id = 'task-1'").all();
       assert.equal(task.length, 1);
       const workspace = db.prepare("SELECT id FROM workspaces WHERE id = 'ws-1'").all();

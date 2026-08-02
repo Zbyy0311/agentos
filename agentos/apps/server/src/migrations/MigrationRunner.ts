@@ -37,7 +37,8 @@ export class MigrationRunner {
       return;
     }
 
-    if (this.hasUserTables()) {
+    const isFreshDatabase = !this.hasUserTables();
+    if (!isFreshDatabase) {
       // Legacy database without _schema_migrations — inspect before any write
       this.adoptOrRejectLegacyDatabase();
     } else {
@@ -47,7 +48,7 @@ export class MigrationRunner {
 
     // Apply any further pending migrations (second pass: fresh baseline or legacy adoption
     // both write the 001 record, so applyPending will skip it)
-    this.applyPending();
+    this.applyPending(isFreshDatabase);
     this.assertIntegrity('*');
   }
 
@@ -105,7 +106,7 @@ export class MigrationRunner {
     });
   }
 
-  private applyPending(): void {
+  private applyPending(allowFreshDestructiveSkip = false): void {
     const rows = this.db.prepare(`SELECT migration_id, checksum FROM ${META_TABLE} ORDER BY migration_id`).all() as Array<{ migration_id: string; checksum: string }>;
     const appliedMap = new Map(rows.map(r => [r.migration_id, r.checksum]));
 
@@ -123,33 +124,33 @@ export class MigrationRunner {
         continue;
       }
 
-      this.applyOne(migration);
+      this.applyOne(migration, allowFreshDestructiveSkip);
     }
   }
 
-  private applyOne(migration: Migration): void {
-    // Destructive migrations: acquire the migration lock FIRST, then backup
-    // so the backup matches the locked database state.
-    if (migration.destructive) {
-      const dbPath = this.resolveDatabasePath();
-      if (!this.backupProvider) {
-        throw new MigrationError(
-          'MIGRATION_FAILED',
-          `Destructive migration ${migration.id} (${migration.name}) requires a backup provider but none was configured.`,
-          migration.id,
-        );
-      }
-      if (!dbPath) {
-        throw new MigrationError(
-          'MIGRATION_FAILED',
-          `Destructive migration ${migration.id} (${migration.name}) requires a database file path for backup but the path is unavailable.`,
-          migration.id,
-        );
-      }
-      // Acquire lock, then backup, then apply.
-      this.execImmediate(() => {
+  private applyOne(migration: Migration, allowFreshDestructiveSkip = false): void {
+    this.execImmediate(() => {
+      // Existing destructive migrations are locked first, then backed up, and
+      // only then allowed to execute DDL. A confirmed empty database is the
+      // sole path allowed to skip an old-state backup.
+      if (migration.destructive && !allowFreshDestructiveSkip) {
+        const dbPath = this.resolveDatabasePath();
+        if (!this.backupProvider) {
+          throw new MigrationError(
+            'MIGRATION_FAILED',
+            `Destructive migration ${migration.id} (${migration.name}) requires a backup provider but none was configured.`,
+            migration.id,
+          );
+        }
+        if (!dbPath) {
+          throw new MigrationError(
+            'MIGRATION_FAILED',
+            `Destructive migration ${migration.id} (${migration.name}) requires a database file path for backup but the path is unavailable.`,
+            migration.id,
+          );
+        }
         try {
-          this.backupProvider!.backup(dbPath);
+          this.backupProvider.backup(dbPath);
         } catch (err) {
           throw new MigrationError(
             'MIGRATION_FAILED',
@@ -158,21 +159,8 @@ export class MigrationRunner {
             err instanceof Error ? err : undefined,
           );
         }
-        const start = Date.now();
-        migration.apply({ db: this.db });
-        const elapsed = Date.now() - start;
-        this.assertIntegrity(migration.id);
+      }
 
-        const now = new Date().toISOString();
-        this.db.prepare(`
-          INSERT INTO ${META_TABLE} (migration_id, name, checksum, applied_at, execution_ms, app_version)
-          VALUES (?, ?, ?, ?, ?, ?)
-        `).run(migration.id, migration.name, migration.checksum, now, elapsed, this.appVersion ?? null);
-      });
-      return;
-    }
-
-    this.execImmediate(() => {
       const start = Date.now();
       migration.apply({ db: this.db });
       const elapsed = Date.now() - start;

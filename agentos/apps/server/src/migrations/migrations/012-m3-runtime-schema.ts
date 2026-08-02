@@ -121,14 +121,10 @@ export const M3_P2A_012_DDL_STATEMENTS = Object.freeze([
     metadata_json TEXT CHECK (metadata_json IS NULL OR json_valid(metadata_json)),
     created_at TEXT NOT NULL,
     UNIQUE(run_id, sequence),
-    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
-    FOREIGN KEY (task_id, workspace_id) REFERENCES tasks(id, workspace_id) ON DELETE CASCADE,
-    FOREIGN KEY (run_id, workspace_id) REFERENCES runs(id, workspace_id) ON DELETE CASCADE,
-    FOREIGN KEY (stage_id, run_id) REFERENCES run_stages(id, run_id) ON DELETE CASCADE,
-    FOREIGN KEY (workspace_id, agent_id) REFERENCES agent_profiles(workspace_id, id) ON DELETE SET NULL,
-    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE SET NULL,
-    FOREIGN KEY (message_id) REFERENCES messages(id) ON DELETE SET NULL,
-    FOREIGN KEY (artifact_id) REFERENCES runtime_artifacts(id) ON DELETE SET NULL
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT,
+    FOREIGN KEY (task_id, workspace_id) REFERENCES tasks(id, workspace_id) ON DELETE RESTRICT,
+    FOREIGN KEY (run_id, workspace_id) REFERENCES runs(id, workspace_id) ON DELETE RESTRICT,
+    FOREIGN KEY (stage_id, run_id) REFERENCES run_stages(id, run_id) ON DELETE RESTRICT
   )`,
 
   `CREATE INDEX runtime_events_run_sequence
@@ -262,6 +258,7 @@ export const migration012: Migration = {
   id: '012',
   name: 'm3-runtime-schema',
   checksum: migration012Checksum,
+  destructive: true,
   apply(ctx: MigrationContext): void {
     for (const statement of M3_P2A_012_DDL_STATEMENTS) {
       ctx.db.exec(statement);

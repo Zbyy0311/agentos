@@ -56,6 +56,7 @@ const HASH_REGEX = /^[0-9a-f]{64}$/;
 const REGISTRY_FIRST_SIX = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 6);
 const REGISTRY_FIRST_SEVEN = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 7);
 const REGISTRY_FIRST_EIGHT = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 8);
+const REGISTRY_FIRST_NINE = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 9);
 
 function runMigrations(db: Db, migrations: Migration[]): void {
   new MigrationRunner(db, new MigrationRegistry(migrations)).run();
@@ -199,7 +200,7 @@ describe('M2.5 — Migration 007 workflow_definitions', () => {
       insertTask(db, 'task_up', 'ws_up');
       assert.equal(countRows(db, 'tasks'), 1);
       assert.ok(!tableNames(db).includes('workflow_definitions'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_SEVEN]);
       assert.ok(tableNames(db).includes('workflow_definitions'));
       assert.equal(countRows(db, 'tasks'), 1);
     } finally {
@@ -330,7 +331,7 @@ describe('M2.5 — Migration 007 workflow_definitions', () => {
       };
       assert.throws(() => runMigrations(db, [...REGISTRY_FIRST_SIX, failing007]));
       assert.ok(!tableNames(db).includes('workflow_definitions'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_SEVEN]);
       assert.equal(countRows(db, 'workflow_definitions'), 2);
     } finally {
       db.close();
@@ -454,7 +455,7 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
       insertWorkspace(db, 'ws_keep');
       insertTask(db, 'task_keep', 'ws_keep');
       insertRun(db, 'run_keep', 'ws_keep', 'task_keep');
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_EIGHT]);
       assert.equal(countRows(db, 'tasks'), 1);
       assert.equal(countRows(db, 'runs'), 1);
       const run = db.prepare('SELECT id, status FROM runs').get() as { id: string; status: string };
@@ -696,7 +697,7 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
       };
       assert.throws(() => runMigrations(db, [...REGISTRY_FIRST_SEVEN, failing008]));
       assert.ok(!tableNames(db).includes('run_snapshots'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_EIGHT]);
       assert.ok(tableNames(db).includes('run_snapshots'));
       const record = db.prepare("SELECT checksum FROM _schema_migrations WHERE migration_id = '008'").get() as { checksum: string };
       assert.equal(record.checksum, migration008Checksum);
@@ -971,7 +972,7 @@ describe('M2.5 — Migration 009 run_stages', () => {
       };
       assert.throws(() => runMigrations(db, [...REGISTRY_FIRST_EIGHT, failing009]));
       assert.ok(!tableNames(db).includes('run_stages'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_NINE]);
       assert.ok(tableNames(db).includes('run_stages'));
       const record = db.prepare("SELECT checksum FROM _schema_migrations WHERE migration_id = '009'").get() as { checksum: string };
       assert.equal(record.checksum, migration009Checksum);
