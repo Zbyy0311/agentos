@@ -5,7 +5,15 @@ import { spawn } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { test } from 'node:test';
-import { createM3RuntimeEventRegistry, type M3RunStatus, type M3StageStatus } from '@agentos/shared';
+import {
+  M3_RUN_STATUSES,
+  M3_STAGE_STATUSES,
+  createM3RuntimeEventRegistry,
+  getM3RunTransitionEventContract,
+  getM3StageTransitionEventContract,
+  type M3RunStatus,
+  type M3StageStatus,
+} from '@agentos/shared';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
@@ -18,6 +26,8 @@ import { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import {
   LifecycleTransactionError,
   LifecycleTransactionService,
+  classifyRunTransition,
+  classifyStageTransition,
   type LifecycleTransactionServiceOptions,
   type RunTransitionInput,
   type StageTransitionInput,
@@ -44,6 +54,12 @@ const SECOND_RUN_ID = 'run-lifecycle-test-2';
 const STAGE_ID = 'stage-lifecycle-test';
 const SNAPSHOT_ID = 'snapshot-lifecycle-test';
 const NOW = '2026-08-02T12:00:00.000Z';
+const STARTED_AT = '2026-08-02T11:00:00.000Z';
+
+interface TransactionProbe {
+  insideTransaction: boolean;
+  nowCalls: number;
+}
 
 interface Fixture {
   db: Database;
@@ -53,9 +69,14 @@ interface Fixture {
   runSequenceAllocator: RunSequenceAllocator;
   outboxRepository: OutboxRepository;
   service: LifecycleTransactionService;
+  transactionProbe: TransactionProbe;
 }
 
-function newFixture(databasePath = ':memory:', options: LifecycleTransactionServiceOptions = {}): Fixture {
+function newFixture(
+  databasePath = ':memory:',
+  options: LifecycleTransactionServiceOptions = {},
+  transactionProbe: TransactionProbe = { insideTransaction: false, nowCalls: 0 },
+): Fixture {
   const db = new DatabaseSync(databasePath);
   db.exec('PRAGMA foreign_keys = ON');
   new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
@@ -101,7 +122,14 @@ function newFixture(databasePath = ':memory:', options: LifecycleTransactionServ
     runtimeEventRepository,
     runSequenceAllocator,
     outboxRepository,
-    runInTransaction: fn => inTransaction(db, fn),
+    runInTransaction: fn => inTransaction(db, () => {
+      transactionProbe.insideTransaction = true;
+      try {
+        return fn();
+      } finally {
+        transactionProbe.insideTransaction = false;
+      }
+    }),
   }, { now: () => NOW, ...options });
   return {
     db,
@@ -111,6 +139,7 @@ function newFixture(databasePath = ':memory:', options: LifecycleTransactionServ
     runSequenceAllocator,
     outboxRepository,
     service,
+    transactionProbe,
   };
 }
 
@@ -127,19 +156,21 @@ function setRunStatus(fixture: Fixture, status: M3RunStatus): void {
   fixture.db.prepare(`
     UPDATE runs
     SET status = ?, version = 1, failure_code = NULL, failure_message = NULL,
-      started_at = NULL, completed_at = NULL, cancellation_requested_at = NULL,
+      started_at = CASE WHEN ? IN ('running', 'paused') THEN ? ELSE NULL END,
+      completed_at = NULL, cancellation_requested_at = NULL,
       next_event_sequence = 1, updated_at = ?
     WHERE workspace_id = ? AND id = ?
-  `).run(status, NOW, WORKSPACE_ID, RUN_ID);
+  `).run(status, status, STARTED_AT, NOW, WORKSPACE_ID, RUN_ID);
 }
 
 function setStageStatus(fixture: Fixture, status: M3StageStatus): void {
   fixture.db.prepare(`
     UPDATE run_stages
     SET status = ?, version = 1, failure_code = NULL, failure_message = NULL,
-      started_at = NULL, completed_at = NULL, updated_at = ?
+      started_at = CASE WHEN ? IN ('running', 'paused') THEN ? ELSE NULL END,
+      completed_at = NULL, updated_at = ?
     WHERE workspace_id = ? AND run_id = ? AND id = ?
-  `).run(status, NOW, WORKSPACE_ID, RUN_ID, STAGE_ID);
+  `).run(status, status, STARTED_AT, NOW, WORKSPACE_ID, RUN_ID, STAGE_ID);
 }
 
 function runInput(fixture: Fixture, expectedFrom: M3RunStatus, to: M3RunStatus): RunTransitionInput {
@@ -232,6 +263,7 @@ function assertStageResult(fixture: Fixture, result: ReturnType<LifecycleTransac
 test('P2C-2A Run queued -> starting emits run.dequeued with service timestamp', () => withFixture(fixture => {
   const result = fixture.service.transitionRun(runInput(fixture, 'queued', 'starting'));
   assertRunResult(fixture, result, 'starting', 'run.dequeued', { dequeuedAt: NOW });
+  assert.equal(result.run.startedAt, undefined);
 }));
 
 test('P2C-2A Run starting -> failed persists failure fields and emits run.failed', () => withFixture(fixture => {
@@ -240,6 +272,7 @@ test('P2C-2A Run starting -> failed persists failure fields and emits run.failed
   assertRunResult(fixture, result, 'failed', 'run.failed', {
     errorCode: 'E_LIFECYCLE', message: 'lifecycle failure', phase: 'execution', retryable: false,
   });
+  assert.equal(result.run.startedAt, undefined);
   assert.deepEqual(fixture.runRepository.findById(WORKSPACE_ID, RUN_ID), result.run);
 }));
 
@@ -247,6 +280,7 @@ test('P2C-2A Run running -> paused emits run.paused', () => withFixture(fixture 
   setRunStatus(fixture, 'running');
   const result = fixture.service.transitionRun(runInput(fixture, 'running', 'paused'));
   assertRunResult(fixture, result, 'paused', 'run.paused', { reason: 'user', resumable: true });
+  assert.equal(result.run.startedAt, STARTED_AT);
 }));
 
 test('P2C-2A Run running -> failed emits run.failed', () => withFixture(fixture => {
@@ -255,12 +289,14 @@ test('P2C-2A Run running -> failed emits run.failed', () => withFixture(fixture 
   assertRunResult(fixture, result, 'failed', 'run.failed', {
     errorCode: 'E_LIFECYCLE', message: 'lifecycle failure', phase: 'execution', retryable: false,
   });
+  assert.equal(result.run.startedAt, STARTED_AT);
 }));
 
 test('P2C-2A Run paused -> running emits run.resumed', () => withFixture(fixture => {
   setRunStatus(fixture, 'paused');
   const result = fixture.service.transitionRun(runInput(fixture, 'paused', 'running'));
   assertRunResult(fixture, result, 'running', 'run.resumed', { resumeMode: 'native-session' });
+  assert.equal(result.run.startedAt, STARTED_AT);
 }));
 
 test('P2C-2A Run paused -> failed emits run.failed', () => withFixture(fixture => {
@@ -269,28 +305,34 @@ test('P2C-2A Run paused -> failed emits run.failed', () => withFixture(fixture =
   assertRunResult(fixture, result, 'failed', 'run.failed', {
     errorCode: 'E_LIFECYCLE', message: 'lifecycle failure', phase: 'execution', retryable: false,
   });
+  assert.equal(result.run.startedAt, STARTED_AT);
 }));
 
 test('P2C-2A Stage pending -> ready emits stage.ready', () => withFixture(fixture => {
+  setRunStatus(fixture, 'starting');
   const result = fixture.service.transitionStage(stageInput(fixture, 'pending', 'ready'));
   assertStageResult(fixture, result, 'ready', 'stage.ready', { dependenciesCompleted: [] });
 }));
 
 test('P2C-2A Stage pending -> skipped writes completed_at and emits stage.skipped', () => withFixture(fixture => {
+  setRunStatus(fixture, 'starting');
   const result = fixture.service.transitionStage(stageInput(fixture, 'pending', 'skipped'));
   assertStageResult(fixture, result, 'skipped', 'stage.skipped', { condition: 'false', reason: 'condition not met' });
   assert.equal(result.stage.completedAt, NOW);
 }));
 
 test('P2C-2A Stage ready -> starting emits stage.starting with service timestamp', () => withFixture(fixture => {
+  setRunStatus(fixture, 'starting');
   setStageStatus(fixture, 'ready');
   const result = fixture.service.transitionStage(stageInput(fixture, 'ready', 'starting'));
   assertStageResult(fixture, result, 'starting', 'stage.starting', {
     workflowStageKey: 'stage_one', name: 'stage_one', attempt: 1, startingAt: NOW,
   });
+  assert.equal(result.stage.startedAt, undefined);
 }));
 
 test('P2C-2A Stage starting -> failed persists failure fields and emits stage.failed', () => withFixture(fixture => {
+  setRunStatus(fixture, 'starting');
   setStageStatus(fixture, 'starting');
   const result = fixture.service.transitionStage(stageInput(fixture, 'starting', 'failed'));
   assertStageResult(fixture, result, 'failed', 'stage.failed', {
@@ -298,37 +340,47 @@ test('P2C-2A Stage starting -> failed persists failure fields and emits stage.fa
   });
   assert.equal(result.stage.failureCode, 'E_STAGE');
   assert.equal(result.stage.failureMessage, 'stage failure');
+  assert.equal(result.stage.startedAt, undefined);
 }));
 
 test('P2C-2A Stage running -> paused emits stage.paused', () => withFixture(fixture => {
+  setRunStatus(fixture, 'running');
   setStageStatus(fixture, 'running');
   const result = fixture.service.transitionStage(stageInput(fixture, 'running', 'paused'));
   assertStageResult(fixture, result, 'paused', 'stage.paused', { reason: 'operator hold', resumable: true });
+  assert.equal(result.stage.startedAt, STARTED_AT);
 }));
 
 test('P2C-2A Stage running -> completed writes completed_at without run completion', () => withFixture(fixture => {
+  setRunStatus(fixture, 'running');
   setStageStatus(fixture, 'running');
   const result = fixture.service.transitionStage(stageInput(fixture, 'running', 'completed'));
   assertStageResult(fixture, result, 'completed', 'stage.completed', {
     attempt: 1, durationMs: 42, artifactIds: ['artifact-output'], outputContractSatisfied: true,
   });
   assert.equal(result.stage.completedAt, NOW);
-  assert.equal(result.run.status, 'queued');
+  assert.equal(result.stage.startedAt, STARTED_AT);
+  assert.equal(result.run.status, 'running');
+  assert.equal(result.run.startedAt, STARTED_AT);
   assert.equal(fixture.runtimeEventRepository.listByRunAfterSequence(RUN_ID, 0).length, 1);
 }));
 
 test('P2C-2A Stage running -> failed persists failure fields and emits stage.failed', () => withFixture(fixture => {
+  setRunStatus(fixture, 'running');
   setStageStatus(fixture, 'running');
   const result = fixture.service.transitionStage(stageInput(fixture, 'running', 'failed'));
   assertStageResult(fixture, result, 'failed', 'stage.failed', {
     attempt: 1, errorCode: 'E_STAGE', message: 'stage failure', retryable: true, retryScheduled: false,
   });
+  assert.equal(result.stage.startedAt, STARTED_AT);
 }));
 
 test('P2C-2A Stage paused -> running emits stage.resumed', () => withFixture(fixture => {
+  setRunStatus(fixture, 'running');
   setStageStatus(fixture, 'paused');
   const result = fixture.service.transitionStage(stageInput(fixture, 'paused', 'running'));
   assertStageResult(fixture, result, 'running', 'stage.resumed', { resumeMode: 'process-restart' });
+  assert.equal(result.stage.startedAt, STARTED_AT);
 }));
 
 function snapshot(fixture: Fixture): Record<string, unknown> {
@@ -344,11 +396,11 @@ function assertLifecycleError(fn: () => unknown, code: LifecycleTransactionError
   assert.throws(fn, (error: unknown) => error instanceof LifecycleTransactionError && error.code === code);
 }
 
-test('P2C-2A rejects all unsupported Run composite transitions without writes', () => withFixture(fixture => {
+test('P2C-2A rejects supported Run composite transitions without writes', () => withFixture(fixture => {
   const before = snapshot(fixture);
   assertLifecycleError(() => fixture.service.transitionRun({
     workspaceId: WORKSPACE_ID, runId: RUN_ID, expectedVersion: 1,
-    expectedFrom: 'queued', to: 'running', correlationId: 'composite-run',
+    expectedFrom: 'starting', to: 'running', correlationId: 'composite-run',
   } as RunTransitionInput), 'LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED');
   assert.deepEqual(snapshot(fixture), before);
 }));
@@ -360,6 +412,310 @@ test('P2C-2A rejects all unsupported Stage composite transitions without writes'
     expectedFrom: 'starting', to: 'running', correlationId: 'composite-stage',
   } as StageTransitionInput), 'LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED');
   assert.deepEqual(snapshot(fixture), before);
+}));
+
+test('P2C-2A transition classification is exhaustive for every Run and Stage pair', () => {
+  const runSingle = new Set([
+    'queued->starting',
+    'starting->failed',
+    'running->paused',
+    'running->failed',
+    'paused->running',
+    'paused->failed',
+  ]);
+  const stageSingle = new Set([
+    'pending->ready',
+    'pending->skipped',
+    'ready->starting',
+    'starting->failed',
+    'running->paused',
+    'running->completed',
+    'running->failed',
+    'paused->running',
+  ]);
+  const runFroms: Array<M3RunStatus | null> = [null, ...M3_RUN_STATUSES];
+  const stageFroms: Array<M3StageStatus | null> = [null, ...M3_STAGE_STATUSES];
+  let runCounts = { SINGLE: 0, COMPOSITE: 0, INVALID: 0 };
+  let stageCounts = { SINGLE: 0, COMPOSITE: 0, INVALID: 0 };
+
+  for (const from of runFroms) {
+    for (const to of M3_RUN_STATUSES) {
+      const classification = classifyRunTransition(from, to);
+      const pair = `${from}->${to}`;
+      const expected = !getM3RunTransitionEventContract(from, to)
+        ? 'INVALID'
+        : runSingle.has(pair) ? 'SINGLE' : 'COMPOSITE';
+      assert.equal(classification, expected, `Run ${pair}`);
+      runCounts = { ...runCounts, [classification]: runCounts[classification] + 1 };
+    }
+  }
+  for (const from of stageFroms) {
+    for (const to of M3_STAGE_STATUSES) {
+      const classification = classifyStageTransition(from, to);
+      const pair = `${from}->${to}`;
+      const expected = !getM3StageTransitionEventContract(from, to)
+        ? 'INVALID'
+        : stageSingle.has(pair) ? 'SINGLE' : 'COMPOSITE';
+      assert.equal(classification, expected, `Stage ${pair}`);
+      stageCounts = { ...stageCounts, [classification]: stageCounts[classification] + 1 };
+    }
+  }
+  assert.deepEqual(runCounts, { SINGLE: 6, COMPOSITE: 11, INVALID: 55 });
+  assert.deepEqual(stageCounts, { SINGLE: 8, COMPOSITE: 11, INVALID: 91 });
+});
+
+test('P2C-2A invalid and composite routing never calls now', () => {
+  const probe: TransactionProbe = { insideTransaction: false, nowCalls: 0 };
+  const fixture = newFixture(':memory:', {
+    now: () => {
+      probe.nowCalls += 1;
+      throw new Error('now must not be called');
+    },
+  }, probe);
+  try {
+    assertLifecycleError(() => fixture.service.transitionRun({
+      workspaceId: WORKSPACE_ID, runId: RUN_ID, expectedVersion: 1,
+      expectedFrom: 'queued', to: 'running', correlationId: 'invalid-run',
+    } as RunTransitionInput), 'LIFECYCLE_INVALID_TRANSITION');
+    assertLifecycleError(() => fixture.service.transitionRun({
+      workspaceId: WORKSPACE_ID, runId: RUN_ID, expectedVersion: 1,
+      expectedFrom: 'starting', to: 'running', correlationId: 'composite-run',
+    } as RunTransitionInput), 'LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED');
+    assertLifecycleError(() => fixture.service.transitionStage({
+      workspaceId: WORKSPACE_ID, runId: RUN_ID, stageId: STAGE_ID, expectedVersion: 1,
+      expectedFrom: 'pending', to: 'running', correlationId: 'invalid-stage',
+    } as StageTransitionInput), 'LIFECYCLE_INVALID_TRANSITION');
+    assertLifecycleError(() => fixture.service.transitionStage({
+      workspaceId: WORKSPACE_ID, runId: RUN_ID, stageId: STAGE_ID, expectedVersion: 1,
+      expectedFrom: 'starting', to: 'running', correlationId: 'composite-stage',
+    } as StageTransitionInput), 'LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED');
+    assert.equal(probe.nowCalls, 0);
+  } finally {
+    fixture.db.close();
+  }
+});
+
+test('P2C-2A captures one canonical timestamp only after BEGIN IMMEDIATE', () => {
+  const probe: TransactionProbe = { insideTransaction: false, nowCalls: 0 };
+  const fixture = newFixture(':memory:', {
+    now: () => {
+      probe.nowCalls += 1;
+      assert.equal(probe.insideTransaction, true);
+      return NOW;
+    },
+  }, probe);
+  try {
+    const runResult = fixture.service.transitionRun(runInput(fixture, 'queued', 'starting'));
+    assert.equal(probe.nowCalls, 1);
+    assert.equal(runResult.run.updatedAt, NOW);
+    assert.equal(runResult.event.timestamp, NOW);
+    assert.equal((runResult.event.payload as { dequeuedAt: string }).dequeuedAt, NOW);
+    assert.equal(runResult.outbox.availableAt, NOW);
+    assert.equal(runResult.outbox.createdAt, NOW);
+  } finally {
+    fixture.db.close();
+  }
+
+  const stageProbe: TransactionProbe = { insideTransaction: false, nowCalls: 0 };
+  const stageFixture = newFixture(':memory:', {
+    now: () => {
+      stageProbe.nowCalls += 1;
+      assert.equal(stageProbe.insideTransaction, true);
+      return NOW;
+    },
+  }, stageProbe);
+  try {
+    setRunStatus(stageFixture, 'starting');
+    setStageStatus(stageFixture, 'ready');
+    const stageResult = stageFixture.service.transitionStage(stageInput(stageFixture, 'ready', 'starting'));
+    assert.equal(stageProbe.nowCalls, 1);
+    assert.equal(stageResult.stage.updatedAt, NOW);
+    assert.equal(stageResult.event.timestamp, NOW);
+    assert.equal((stageResult.event.payload as { startingAt: string }).startingAt, NOW);
+    assert.equal(stageResult.outbox.availableAt, NOW);
+    assert.equal(stageResult.outbox.createdAt, NOW);
+  } finally {
+    stageFixture.db.close();
+  }
+});
+
+test('P2C-2A service validation errors are stable and do not leak repository errors', () => {
+  const cases: Array<{ name: string; prepare?: (fixture: Fixture) => void; invoke: (fixture: Fixture) => void }> = [
+    {
+      name: 'empty workspace',
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'queued', 'starting'), workspaceId: '' } as RunTransitionInput),
+    },
+    {
+      name: 'blank workspace',
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'queued', 'starting'), workspaceId: '   ' } as RunTransitionInput),
+    },
+    {
+      name: 'empty run',
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'queued', 'starting'), runId: '' } as RunTransitionInput),
+    },
+    {
+      name: 'blank run',
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'queued', 'starting'), runId: '   ' } as RunTransitionInput),
+    },
+    {
+      name: 'empty stage',
+      prepare: fixture => setRunStatus(fixture, 'starting'),
+      invoke: fixture => fixture.service.transitionStage({ ...stageInput(fixture, 'pending', 'ready'), stageId: '' } as StageTransitionInput),
+    },
+    {
+      name: 'blank stage',
+      prepare: fixture => setRunStatus(fixture, 'starting'),
+      invoke: fixture => fixture.service.transitionStage({ ...stageInput(fixture, 'pending', 'ready'), stageId: '   ' } as StageTransitionInput),
+    },
+    {
+      name: 'empty correlation',
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'queued', 'starting'), correlationId: '' } as RunTransitionInput),
+    },
+    {
+      name: 'blank correlation',
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'queued', 'starting'), correlationId: '   ' } as RunTransitionInput),
+    },
+    {
+      name: 'invalid expected version',
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'queued', 'starting'), expectedVersion: Number.NaN } as RunTransitionInput),
+    },
+    {
+      name: 'Run failure errorCode',
+      prepare: fixture => setRunStatus(fixture, 'starting'),
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'starting', 'failed'), errorCode: ' ' } as RunTransitionInput),
+    },
+    {
+      name: 'Run failure message',
+      prepare: fixture => setRunStatus(fixture, 'starting'),
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'starting', 'failed'), message: ' ' } as RunTransitionInput),
+    },
+    {
+      name: 'Run failure phase',
+      prepare: fixture => setRunStatus(fixture, 'starting'),
+      invoke: fixture => fixture.service.transitionRun({ ...runInput(fixture, 'starting', 'failed'), phase: ' ' } as RunTransitionInput),
+    },
+    {
+      name: 'Stage failure errorCode',
+      prepare: fixture => { setRunStatus(fixture, 'starting'); setStageStatus(fixture, 'starting'); },
+      invoke: fixture => fixture.service.transitionStage({ ...stageInput(fixture, 'starting', 'failed'), errorCode: ' ' } as StageTransitionInput),
+    },
+    {
+      name: 'Stage failure message',
+      prepare: fixture => { setRunStatus(fixture, 'starting'); setStageStatus(fixture, 'starting'); },
+      invoke: fixture => fixture.service.transitionStage({ ...stageInput(fixture, 'starting', 'failed'), message: ' ' } as StageTransitionInput),
+    },
+    {
+      name: 'missing Stage record',
+      prepare: fixture => setRunStatus(fixture, 'starting'),
+      invoke: fixture => fixture.service.transitionStage({ ...stageInput(fixture, 'pending', 'ready'), stageId: 'stage-missing' } as StageTransitionInput),
+    },
+  ];
+  for (const validationCase of cases) {
+    const fixture = newFixture();
+    try {
+      validationCase.prepare?.(fixture);
+      const before = snapshot(fixture);
+      assertLifecycleError(() => validationCase.invoke(fixture), 'LIFECYCLE_VALIDATION_FAILED');
+      assert.deepEqual(snapshot(fixture), before, validationCase.name);
+    } finally {
+      fixture.db.close();
+    }
+  }
+});
+
+test('P2C-2A caller lifecycle fields cannot override derived Event boundaries', () => withFixture(fixture => {
+  const run = fixture.service.transitionRun({
+    ...runInput(fixture, 'queued', 'starting'),
+    type: 'run.completed',
+    source: 'caller',
+    sequence: 999,
+    dequeuedAt: '2026-08-02T10:00:00.000Z',
+    timestamp: '2026-08-02T10:00:00.000Z',
+  } as RunTransitionInput & Record<string, unknown>);
+  assert.equal(run.event.type, 'run.dequeued');
+  assert.equal(run.event.source, 'scheduler');
+  assert.equal(run.event.sequence, 1);
+  assert.equal(run.event.timestamp, NOW);
+  assert.deepEqual(run.event.payload, { dequeuedAt: NOW });
+  assert.equal(run.outbox.event.type, 'run.dequeued');
+}));
+
+test('P2C-2A caller Stage lifecycle fields cannot override derived Event boundaries', () => withFixture(fixture => {
+  setRunStatus(fixture, 'starting');
+  setStageStatus(fixture, 'ready');
+  const stage = fixture.service.transitionStage({
+    ...stageInput(fixture, 'ready', 'starting'),
+    type: 'stage.completed',
+    source: 'caller',
+    sequence: 999,
+    startingAt: '2026-08-02T10:00:00.000Z',
+    timestamp: '2026-08-02T10:00:00.000Z',
+  } as StageTransitionInput & Record<string, unknown>);
+  assert.equal(stage.event.type, 'stage.starting');
+  assert.equal(stage.event.source, 'stage-executor');
+  assert.equal(stage.event.sequence, 1);
+  assert.equal(stage.event.timestamp, NOW);
+  assert.deepEqual(stage.event.payload, {
+    workflowStageKey: 'stage_one', name: 'stage_one', attempt: 1, startingAt: NOW,
+  });
+  assert.equal(stage.outbox.event.type, 'stage.starting');
+}));
+
+test('P2C-2A terminal parent Run fences all 8 Stage Single transitions', async () => {
+  const stageCases: Array<[M3StageStatus, M3StageStatus]> = [
+    ['pending', 'ready'],
+    ['pending', 'skipped'],
+    ['ready', 'starting'],
+    ['starting', 'failed'],
+    ['running', 'paused'],
+    ['running', 'completed'],
+    ['running', 'failed'],
+    ['paused', 'running'],
+  ];
+  for (const terminalStatus of ['completed', 'failed', 'cancelled'] as const) {
+    for (const [from, to] of stageCases) {
+      await withFixture(fixture => {
+        setRunStatus(fixture, terminalStatus);
+        setStageStatus(fixture, from);
+        const before = snapshot(fixture);
+        assert.throws(
+          () => fixture.service.transitionStage(stageInput(fixture, from, to)),
+          (error: unknown) => error instanceof LifecycleTransactionError
+            && error.code === 'LIFECYCLE_STATE_MISMATCH'
+            && error.message === 'LIFECYCLE_STATE_MISMATCH: Stage transition is not allowed after parent Run is terminal',
+        );
+        assert.deepEqual(snapshot(fixture), before, `${terminalStatus}:${from}->${to}`);
+      });
+    }
+  }
+});
+
+test('RunStageRepository reports non-Matrix transitions as INVALID_RUN_STAGE_TRANSITION', () => withFixture(fixture => {
+  assert.throws(
+    () => fixture.runStageRepository.transitionLifecycleWithinTransaction({
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      stageId: STAGE_ID,
+      expectedVersion: 1,
+      expectedFrom: 'pending',
+      to: 'running',
+      timestamp: NOW,
+    }),
+    (error: unknown) => error instanceof Error
+      && error.name === 'RunStageValidationError'
+      && error.message.includes('INVALID_RUN_STAGE_TRANSITION'),
+  );
+  const composite = fixture.runStageRepository.transitionLifecycleWithinTransaction({
+    workspaceId: WORKSPACE_ID,
+    runId: RUN_ID,
+    stageId: STAGE_ID,
+    expectedVersion: 1,
+    expectedFrom: 'pending',
+    to: 'cancelled',
+    timestamp: NOW,
+  });
+  assert.equal(composite.status, 'cancelled');
+  assert.equal(composite.version, 2);
 }));
 
 test('P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure', async () => {

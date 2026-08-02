@@ -216,7 +216,9 @@ export class RunStageRepository {
       throw new RunStageValidationError('LIFECYCLE_VALIDATION_FAILED: timestamp must be canonical UTC ISO 8601 milliseconds');
     }
     if (!getM3StageTransitionEventContract(input.expectedFrom, input.to)) {
-      throw new RunStageValidationError(`LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED: ${input.expectedFrom}->${input.to}`);
+      throw new RunStageValidationError(
+        `INVALID_RUN_STAGE_TRANSITION: cannot transition stage from '${input.expectedFrom}' to '${input.to}'`,
+      );
     }
     if (input.to === 'failed'
       && (!input.failureCode?.trim() || !input.failureMessage?.trim())) {

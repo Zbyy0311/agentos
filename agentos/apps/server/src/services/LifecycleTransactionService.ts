@@ -36,6 +36,7 @@ export type LifecycleTransactionErrorCode =
   | 'LIFECYCLE_STATE_MISMATCH'
   | 'LIFECYCLE_STAGE_NOT_FOUND'
   | 'LIFECYCLE_STAGE_RUN_MISMATCH'
+  | 'LIFECYCLE_INVALID_TRANSITION'
   | 'LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED';
 
 export class LifecycleTransactionError extends Error {
@@ -181,6 +182,26 @@ const STAGE_SINGLE_TRANSITIONS = new Set([
   'paused->running',
 ]);
 
+export type LifecycleTransitionClassification = 'SINGLE' | 'COMPOSITE' | 'INVALID';
+
+export function classifyRunTransition(
+  from: M3RunStatus | null,
+  to: M3RunStatus,
+): LifecycleTransitionClassification {
+  const contract = getM3RunTransitionEventContract(from, to);
+  if (!contract) return 'INVALID';
+  return RUN_SINGLE_TRANSITIONS.has(`${from}->${to}`) ? 'SINGLE' : 'COMPOSITE';
+}
+
+export function classifyStageTransition(
+  from: M3StageStatus | null,
+  to: M3StageStatus,
+): LifecycleTransitionClassification {
+  const contract = getM3StageTransitionEventContract(from, to);
+  if (!contract) return 'INVALID';
+  return STAGE_SINGLE_TRANSITIONS.has(`${from}->${to}`) ? 'SINGLE' : 'COMPOSITE';
+}
+
 export interface LifecycleTransactionServiceOptions {
   readonly now?: () => string;
   readonly createEventId?: () => string;
@@ -203,17 +224,26 @@ export class LifecycleTransactionService {
 
   transitionRun(input: RunTransitionInput): RunLifecycleTransitionResult {
     const contract = getM3RunTransitionEventContract(input.expectedFrom, input.to);
-    if (!contract || !RUN_SINGLE_TRANSITIONS.has(`${input.expectedFrom}->${input.to}`)) {
+    const classification = classifyRunTransition(input.expectedFrom, input.to);
+    if (classification === 'INVALID') {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_INVALID_TRANSITION',
+        `${input.expectedFrom}->${input.to} is not a Shared Run transition`,
+      );
+    }
+    if (classification === 'COMPOSITE') {
       throw new LifecycleTransactionError(
         'LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED',
         `${input.expectedFrom}->${input.to} is not a P2C-2A single Run transition`,
       );
     }
-    const timestamp = this.validateCommonInput(input);
+    const singleContract = contract!;
+    this.validateRunInput(input);
 
     return this.dependencies.runInTransaction(() => {
       const current = this.requireRun(input.workspaceId, input.runId);
       this.assertExpectedRunState(current, input.expectedFrom);
+      const timestamp = this.transactionTimestamp();
       const run = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
         workspaceId: input.workspaceId,
         runId: input.runId,
@@ -228,7 +258,7 @@ export class LifecycleTransactionService {
       const event = this.appendEvent(
         run,
         undefined,
-        contract.primaryEvent,
+        singleContract.primaryEvent,
         timestamp,
         input.correlationId,
         input.causationId,
@@ -248,19 +278,29 @@ export class LifecycleTransactionService {
 
   transitionStage(input: StageTransitionInput): StageLifecycleTransitionResult {
     const contract = getM3StageTransitionEventContract(input.expectedFrom, input.to);
-    if (!contract || !STAGE_SINGLE_TRANSITIONS.has(`${input.expectedFrom}->${input.to}`)) {
+    const classification = classifyStageTransition(input.expectedFrom, input.to);
+    if (classification === 'INVALID') {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_INVALID_TRANSITION',
+        `${input.expectedFrom}->${input.to} is not a Shared Stage transition`,
+      );
+    }
+    if (classification === 'COMPOSITE') {
       throw new LifecycleTransactionError(
         'LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED',
         `${input.expectedFrom}->${input.to} is not a P2C-2A single Stage transition`,
       );
     }
-    const timestamp = this.validateCommonInput(input);
+    const singleContract = contract!;
+    this.validateStageInput(input);
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
+      this.assertParentRunAllowsStage(run);
       const stage = this.dependencies.runStageRepository.findById(input.workspaceId, input.runId, input.stageId)
         ?? this.requireStageRunMatch(input.workspaceId, input.runId, input.stageId);
       this.assertExpectedStageState(stage, input.expectedFrom);
+      const timestamp = this.transactionTimestamp();
       const nextStage = this.dependencies.runStageRepository.transitionLifecycleWithinTransaction({
         workspaceId: input.workspaceId,
         runId: input.runId,
@@ -276,7 +316,7 @@ export class LifecycleTransactionService {
       const event = this.appendEvent(
         run,
         nextStage,
-        contract.primaryEvent,
+        singleContract.primaryEvent,
         timestamp,
         input.correlationId,
         input.causationId,
@@ -385,13 +425,52 @@ export class LifecycleTransactionService {
     return { resumeMode: input.resumeMode };
   }
 
-  private validateCommonInput(input: LifecycleInputBase): string {
-    if (!input.workspaceId.trim() || !input.correlationId.trim()) {
+  private validateCommonInput(input: LifecycleInputBase): void {
+    if (!isNonBlankString(input.workspaceId) || !isNonBlankString(input.correlationId)) {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'workspaceId and correlationId are required');
     }
     if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'expectedVersion must be a positive safe integer');
     }
+  }
+
+  private validateRunInput(input: RunTransitionInput): void {
+    this.validateCommonInput(input);
+    if (!isNonBlankString(input.runId)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'runId is required');
+    }
+    if (input.to === 'failed') {
+      if (!isNonBlankString(input.errorCode)) {
+        throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'Run failed errorCode is required');
+      }
+      if (!isNonBlankString(input.message)) {
+        throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'Run failed message is required');
+      }
+      if (!isNonBlankString(input.phase)) {
+        throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'Run failed phase is required');
+      }
+    }
+  }
+
+  private validateStageInput(input: StageTransitionInput): void {
+    this.validateCommonInput(input);
+    if (!isNonBlankString(input.runId)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'runId is required');
+    }
+    if (!isNonBlankString(input.stageId)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'stageId is required');
+    }
+    if (input.to === 'failed') {
+      if (!isNonBlankString(input.errorCode)) {
+        throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'Stage failed errorCode is required');
+      }
+      if (!isNonBlankString(input.message)) {
+        throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'Stage failed message is required');
+      }
+    }
+  }
+
+  private transactionTimestamp(): string {
     const timestamp = this.now();
     if (!isCanonicalUtcTimestamp(timestamp)) {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'transaction timestamp must be canonical UTC ISO 8601 milliseconds');
@@ -400,12 +479,21 @@ export class LifecycleTransactionService {
   }
 
   private requireRun(workspaceId: string, runId: string): Run {
-    if (!runId.trim()) {
+    if (!isNonBlankString(runId)) {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'runId is required');
     }
     const run = this.dependencies.runRepository.findById(workspaceId, runId);
     if (!run) throw new RunNotFoundError(runId);
     return run;
+  }
+
+  private assertParentRunAllowsStage(run: Run): void {
+    if (run.status === 'completed' || run.status === 'failed' || run.status === 'cancelled') {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_STATE_MISMATCH',
+        'Stage transition is not allowed after parent Run is terminal',
+      );
+    }
   }
 
   private assertExpectedRunState(run: Run, expectedFrom: M3RunStatus): void {
@@ -434,6 +522,10 @@ export class LifecycleTransactionService {
         `Stage ${stageId} belongs to Run ${stage.runId}, not ${runId}`,
       );
     }
-    throw new LifecycleTransactionError('LIFECYCLE_STAGE_NOT_FOUND', `Stage ${stageId} was not found`);
+    throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'stageId does not identify a stored Stage');
   }
+}
+
+function isNonBlankString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
 }
