@@ -22,6 +22,7 @@ import {
 import {
   createM3RuntimeEventFixtures,
 } from './src/types/m3-runtime-fixtures.ts';
+import type { RunFailedPayload } from './src/types/m3-runtime-registry.ts';
 import type {
   CancelRunBody,
   CreateRunBody,
@@ -29,6 +30,7 @@ import type {
   OperationPathParams,
   ResolvedSseCursor,
   RuntimeEventDraft,
+  RuntimeEventEnvelope,
   RuntimeEventFrame,
   RuntimeEventPage,
   RuntimeKeepaliveFrame,
@@ -39,6 +41,14 @@ import type {
   SseRequestHeaders,
   StartRunBody,
 } from './src/types/m3-runtime.ts';
+
+test('keeps the ProviderType compile-time contract in the Shared test source', () => {
+  const validProviderType: RunFailedPayload['providerType'] = 'codex';
+  assert.equal(validProviderType, 'codex');
+  // @ts-expect-error non-canonical ProviderType must not be assignable to RunFailedPayload
+  const invalidProviderType: RunFailedPayload['providerType'] = 'not-a-provider';
+  void invalidProviderType;
+});
 
 function withPayloadField(
   event: RuntimeEventEnvelope,
@@ -302,7 +312,7 @@ test('preserves b838 StageStarted Snapshot compatibility while keeping lifecycle
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
   const stageEvent = fixtures.validStageStartedEvent;
-  const stagePayload = stageEvent.payload as Record<string, unknown>;
+  const stagePayload = stageEvent.payload as unknown as Record<string, unknown>;
   const providerSnapshot = stagePayload.providerSnapshot as Record<string, unknown>;
   const providerTimeoutPolicy = providerSnapshot.timeoutPolicy as Record<string, unknown>;
 
@@ -321,12 +331,6 @@ test('preserves b838 StageStarted Snapshot compatibility while keeping lifecycle
   assert.doesNotThrow(() => registry.publish(withProviderPatch({ argsTemplate: ['--flag', ''] })));
   assert.doesNotThrow(() => registry.publish(withProviderPatch({ argsTemplate: [] })));
   assert.doesNotThrow(() => registry.publish(withProviderPatch({
-    model: '',
-    environmentProfileId: '',
-    secretProfileId: '',
-    workspaceRelativeWorkingDirectory: '',
-  })));
-  assert.doesNotThrow(() => registry.publish(withProviderPatch({
     timeoutPolicy: {
       ...providerTimeoutPolicy,
       discoveryTimeoutMs: 0,
@@ -338,6 +342,29 @@ test('preserves b838 StageStarted Snapshot compatibility while keeping lifecycle
       approvalTimeoutMs: null,
     },
   })));
+
+  const nullableSnapshotFields = [
+    'executable',
+    'model',
+    'environmentProfileId',
+    'secretProfileId',
+    'workspaceRelativeWorkingDirectory',
+  ];
+  for (const field of nullableSnapshotFields) {
+    for (const value of [null, 'fixture', '  fixture  ']) {
+      const published = registry.publish(withProviderPatch({ [field]: value }));
+      const publishedProviderSnapshot = (published.payload as Record<string, unknown>).providerSnapshot as Record<string, unknown>;
+      assert.equal(publishedProviderSnapshot[field], value, `${field} must preserve its original value`);
+    }
+    for (const value of ['', '   ', '\t\n', 42]) {
+      assert.throws(
+        () => registry.publish(withProviderPatch({ [field]: value })),
+        (error: unknown) => error instanceof RuntimeEventRegistryError
+          && error.code === 'INVALID_EVENT_PAYLOAD',
+        `${field}=${String(value)} must be rejected`,
+      );
+    }
+  }
 
   assert.throws(
     () => registry.publish(withProviderPatch({ argsTemplate: ['--flag', 42] })),
@@ -411,14 +438,16 @@ test('rejects omission of every required payload field for all 21 registered Eve
 
     for (const field of definition.payloadSchema.required) {
       omissionCount += 1;
-      const payload = { ...(event.payload as Record<string, unknown>) };
-      assert.equal(field in payload, true, `${definition.type}.${field} missing from valid fixture`);
-      delete payload[field];
+      const omittedPayload: Record<string, unknown> = {
+        ...(event.payload as Record<string, unknown>),
+      };
+      assert.equal(field in omittedPayload, true, `${definition.type}.${field} missing from valid fixture`);
+      delete omittedPayload[field];
       assert.throws(
         () => registry.publish({
           ...event,
           id: `${event.id}-missing-${field}`,
-          payload,
+          payload: omittedPayload,
         } as RuntimeEventDraft),
         (error: unknown) => error instanceof RuntimeEventRegistryError
           && error.code === 'INVALID_EVENT_PAYLOAD',

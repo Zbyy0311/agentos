@@ -516,12 +516,6 @@ export interface RunFailedPayload {
   readonly debugArtifactId?: string;
 }
 
-const canonicalProviderTypeCompileCheck: RunFailedPayload['providerType'] = 'codex';
-// @ts-expect-error non-canonical ProviderType must not be assignable to RunFailedPayload
-const invalidProviderTypeCompileCheck: RunFailedPayload['providerType'] = 'not-a-provider';
-void canonicalProviderTypeCompileCheck;
-void invalidProviderTypeCompileCheck;
-
 export interface StageCreatedPayload {
   readonly workflowStageKey: string;
   readonly name: string;
@@ -655,7 +649,7 @@ function isLifecycleStringArray(value: unknown): value is string[] {
 }
 
 function isSnapshotNullableString(value: unknown): value is string | null {
-  return value === null || typeof value === 'string';
+  return value === null || isNonEmptyString(value);
 }
 
 function isLifecycleNonNegativeNumber(value: unknown): value is number {
