@@ -230,7 +230,7 @@ function base(input: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     workspaceId: WORKSPACE_ID,
     runId: RUN_ID,
-    expectedVersion: 1,
+    expectedRunVersion: 1,
     correlationId: 'correlation-composite',
     ...input,
   };
@@ -239,7 +239,7 @@ function base(input: Record<string, unknown> = {}): Record<string, unknown> {
 function startupInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return base({
     stageId: STAGE_ID,
-    stageExpectedVersion: 1,
+    expectedStageVersion: 1,
     agentSnapshot: AGENT_SNAPSHOT,
     providerSnapshot: PROVIDER_SNAPSHOT,
     workflowSnapshotVersion: 2,
@@ -259,6 +259,33 @@ function approvalInput(overrides: Record<string, unknown> = {}): Record<string, 
     requestSummary: { command: 'test' },
     ...overrides,
   });
+}
+
+function seedApprovalRequired(fixture: Fixture, stageId?: string): void {
+  const event = inTransaction(fixture.db, () => fixture.runtimeEventRepository.appendWithinTransaction({
+    id: 'evt_01J6J3Z7V6T5C4D3E2F1G0H9K9',
+    schemaVersion: 1,
+    type: 'approval.required',
+    workspaceId: WORKSPACE_ID,
+    taskId: TASK_ID,
+    runId: RUN_ID,
+    ...(stageId === undefined ? {} : { stageId }),
+    approvalRequestId: 'approval-composite-test',
+    sequence: 1,
+    timestamp: NOW,
+    correlationId: 'correlation-composite',
+    payload: {
+      category: 'command',
+      riskLevel: 'medium',
+      title: 'Approve composite command',
+      description: 'The composite test needs approval.',
+      requestSummary: { command: 'test' },
+    },
+  }));
+  fixture.outboxRepository.insertWithinTransaction({
+    id: 'outbox_seed_approval_required', eventId: event.id, availableAt: NOW, createdAt: NOW,
+  });
+  fixture.db.prepare('UPDATE runs SET next_event_sequence = 2 WHERE id = ?').run(RUN_ID);
 }
 
 function cancellationInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
@@ -352,7 +379,7 @@ test('P2C-2B requestApproval supports Run-only and Stage-specific approval envel
     setRunStatus(stageSpecific, 'running');
     setStageStatus(stageSpecific, STAGE_ID, 'running');
     const result = stageSpecific.service.requestApproval(approvalInput({
-      stageId: STAGE_ID, stageExpectedVersion: 1,
+      stageId: STAGE_ID, expectedStageVersion: 1,
     }) as never);
     assertResultShape(result, ['approval.required']);
     assert.equal(result.run.status, 'waiting_approval');
@@ -370,9 +397,11 @@ test('P2C-2B resolveApprovalToRunning emits only approval.resolved', () => {
   try {
     setRunStatus(fixture, 'waiting_approval');
     setStageStatus(fixture, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(fixture, STAGE_ID);
+    fixture.probe.nowCalls = 0;
     const result = fixture.service.resolveApprovalToRunning(approvalInput({
       stageId: STAGE_ID,
-      stageExpectedVersion: 1,
+      expectedStageVersion: 1,
       decision: 'approve_once',
       decidedBy: 'operator',
     }) as never);
@@ -393,6 +422,8 @@ test('P2C-2B resolveApprovalToRunning emits only approval.resolved', () => {
   try {
     setRunStatus(runOnly, 'waiting_approval');
     setStageStatus(runOnly, STAGE_ID, 'running');
+    seedApprovalRequired(runOnly);
+    runOnly.probe.nowCalls = 0;
     const result = runOnly.service.resolveApprovalToRunning(approvalInput({
       decision: 'approve_workspace',
       decidedBy: 'workspace-admin',
@@ -411,9 +442,11 @@ test('P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run fa
   try {
     setRunStatus(fixture, 'waiting_approval');
     setStageStatus(fixture, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(fixture, STAGE_ID);
+    fixture.probe.nowCalls = 0;
     const result = fixture.service.resolveApprovalToFailure(approvalInput({
       stageId: STAGE_ID,
-      stageExpectedVersion: 1,
+      expectedStageVersion: 1,
       decision: 'reject',
       decidedBy: 'operator',
       errorCode: 'E_APPROVAL_REJECTED',
@@ -423,8 +456,8 @@ test('P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run fa
       retryScheduled: false,
     }) as never);
     assertResultShape(result, ['approval.resolved', 'stage.failed', 'run.failed']);
-    assert.deepEqual(events(fixture).map(event => [event.type, event.sequence]), [
-      ['approval.resolved', 1], ['stage.failed', 2], ['run.failed', 3],
+    assert.deepEqual(result.events.map(event => [event.type, event.sequence]), [
+      ['approval.resolved', 2], ['stage.failed', 3], ['run.failed', 4],
     ]);
     assert.equal(result.run.status, 'failed');
     assert.equal(result.stages[0]?.status, 'failed');
@@ -443,9 +476,11 @@ test('P2C-2B resolveApprovalToCancellation fans out affected Stages in stable or
     insertStage(fixture, 'stage-terminal', 4, 'completed');
     setRunStatus(fixture, 'waiting_approval');
     setStageStatus(fixture, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(fixture, STAGE_ID);
+    fixture.probe.nowCalls = 0;
     const result = fixture.service.resolveApprovalToCancellation(approvalInput({
       stageId: STAGE_ID,
-      stageExpectedVersion: 1,
+      expectedStageVersion: 1,
       decision: 'cancel_run',
       decidedBy: 'operator',
       requestedBy: 'operator',
@@ -463,6 +498,204 @@ test('P2C-2B resolveApprovalToCancellation fans out affected Stages in stable or
     assert.equal(fixture.probe.nowCalls, 1);
   } finally {
     closeFixture(fixture);
+  }
+});
+
+test('P2C-2B approval resolution binds identity and exact Run/Stage scope before the clock', () => {
+  const missing = newFixture();
+  try {
+    setRunStatus(missing, 'waiting_approval');
+    setStageStatus(missing, STAGE_ID, 'waiting_approval');
+    const before = stateSnapshot(missing);
+    assert.throws(
+      () => missing.service.resolveApprovalToRunning(approvalInput({
+        stageId: STAGE_ID, expectedStageVersion: 1, decision: 'approve_once', decidedBy: 'operator',
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_REQUEST_NOT_FOUND',
+    );
+    assert.deepEqual(stateSnapshot(missing), before);
+    assert.equal(missing.probe.nowCalls, 0);
+  } finally {
+    closeFixture(missing);
+  }
+
+  const duplicate = newFixture();
+  try {
+    setRunStatus(duplicate, 'waiting_approval');
+    setStageStatus(duplicate, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(duplicate, STAGE_ID);
+    const resolved = inTransaction(duplicate.db, () => duplicate.runtimeEventRepository.appendWithinTransaction({
+      id: 'evt_01J6J3Z7V6T5C4D3E2F1G0H9K0',
+      schemaVersion: 1,
+      type: 'approval.resolved',
+      workspaceId: WORKSPACE_ID,
+      taskId: TASK_ID,
+      runId: RUN_ID,
+      stageId: STAGE_ID,
+      approvalRequestId: 'approval-composite-test',
+      sequence: 2,
+      timestamp: NOW,
+      correlationId: 'correlation-composite',
+      payload: { decision: 'approve_once', decidedBy: 'operator', decidedAt: NOW },
+    }));
+    duplicate.outboxRepository.insertWithinTransaction({
+      id: 'outbox_seed_approval_resolved', eventId: resolved.id, availableAt: NOW, createdAt: NOW,
+    });
+    const before = stateSnapshot(duplicate);
+    assert.throws(
+      () => duplicate.service.resolveApprovalToRunning(approvalInput({
+        stageId: STAGE_ID, expectedStageVersion: 1, decision: 'approve_once', decidedBy: 'operator',
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_ALREADY_RESOLVED',
+    );
+    assert.deepEqual(stateSnapshot(duplicate), before);
+    assert.equal(duplicate.probe.nowCalls, 0);
+  } finally {
+    closeFixture(duplicate);
+  }
+
+  const runOnlyRequired = newFixture();
+  try {
+    setRunStatus(runOnlyRequired, 'waiting_approval');
+    setStageStatus(runOnlyRequired, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(runOnlyRequired);
+    const before = stateSnapshot(runOnlyRequired);
+    assert.throws(
+      () => runOnlyRequired.service.resolveApprovalToRunning(approvalInput({
+        stageId: STAGE_ID, expectedStageVersion: 1, decision: 'approve_once', decidedBy: 'operator',
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_SCOPE_MISMATCH',
+    );
+    assert.deepEqual(stateSnapshot(runOnlyRequired), before);
+    assert.equal(runOnlyRequired.probe.nowCalls, 0);
+  } finally {
+    closeFixture(runOnlyRequired);
+  }
+
+  const stageSpecificRequired = newFixture();
+  try {
+    setRunStatus(stageSpecificRequired, 'waiting_approval');
+    setStageStatus(stageSpecificRequired, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(stageSpecificRequired, STAGE_ID);
+    const before = stateSnapshot(stageSpecificRequired);
+    assert.throws(
+      () => stageSpecificRequired.service.resolveApprovalToRunning(approvalInput({
+        decision: 'approve_once', decidedBy: 'operator',
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_SCOPE_MISMATCH',
+    );
+    assert.deepEqual(stateSnapshot(stageSpecificRequired), before);
+    assert.equal(stageSpecificRequired.probe.nowCalls, 0);
+  } finally {
+    closeFixture(stageSpecificRequired);
+  }
+});
+
+test('P2C-2B all three approval running decisions and strict composite version contract pass', () => {
+  for (const decision of ['approve_once', 'approve_run', 'approve_workspace'] as const) {
+    const fixture = newFixture();
+    try {
+      setRunStatus(fixture, 'waiting_approval');
+      setStageStatus(fixture, STAGE_ID, 'running');
+      seedApprovalRequired(fixture);
+      const result = fixture.service.resolveApprovalToRunning(approvalInput({ decision, decidedBy: 'operator' }) as never);
+      assertResultShape(result, ['approval.resolved']);
+      assert.equal(result.run.status, 'running');
+      assert.equal(fixture.probe.nowCalls, 1);
+    } finally {
+      closeFixture(fixture);
+    }
+  }
+
+  const legacyRunAlias = newFixture();
+  try {
+    setRunStatus(legacyRunAlias, 'running');
+    const before = stateSnapshot(legacyRunAlias);
+    assert.throws(
+      () => legacyRunAlias.service.requestApproval({
+        ...approvalInput(), expectedRunVersion: 1, expectedVersion: 1,
+      } as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_VALIDATION_FAILED',
+    );
+    assert.deepEqual(stateSnapshot(legacyRunAlias), before);
+    assert.equal(legacyRunAlias.probe.nowCalls, 0);
+  } finally {
+    closeFixture(legacyRunAlias);
+  }
+
+  const legacyStageAlias = newFixture();
+  try {
+    setRunStatus(legacyStageAlias, 'running');
+    setStageStatus(legacyStageAlias, STAGE_ID, 'running');
+    assert.throws(
+      () => legacyStageAlias.service.requestApproval({
+        ...approvalInput({ stageId: STAGE_ID }), expectedRunVersion: 1, stageExpectedVersion: 1,
+      } as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_VALIDATION_FAILED',
+    );
+    assert.equal(legacyStageAlias.probe.nowCalls, 0);
+  } finally {
+    closeFixture(legacyStageAlias);
+  }
+
+  const stageVersionWithoutStage = newFixture();
+  try {
+    setRunStatus(stageVersionWithoutStage, 'running');
+    assert.throws(
+      () => stageVersionWithoutStage.service.requestApproval({
+        ...approvalInput(), expectedRunVersion: 1, expectedStageVersion: 1,
+      } as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_VALIDATION_FAILED',
+    );
+    assert.equal(stageVersionWithoutStage.probe.nowCalls, 0);
+  } finally {
+    closeFixture(stageVersionWithoutStage);
+  }
+});
+
+test('P2C-2B resolveApprovalToFailure requires Stage-specific scope and expectedStageVersion', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'waiting_approval');
+    const before = stateSnapshot(fixture);
+    assert.throws(
+      () => fixture.service.resolveApprovalToFailure(approvalInput({
+        decision: 'reject', decidedBy: 'operator', errorCode: 'E_REJECTED',
+        message: 'rejected', phase: 'approval', retryable: false,
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_VALIDATION_FAILED',
+    );
+    assert.deepEqual(stateSnapshot(fixture), before);
+    assert.equal(fixture.probe.nowCalls, 0);
+  } finally {
+    closeFixture(fixture);
+  }
+
+  const missingVersion = newFixture();
+  try {
+    setRunStatus(missingVersion, 'waiting_approval');
+    setStageStatus(missingVersion, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(missingVersion, STAGE_ID);
+    assert.throws(
+      () => missingVersion.service.resolveApprovalToFailure({
+        ...approvalInput({ stageId: STAGE_ID }), expectedRunVersion: 1,
+        decision: 'reject', decidedBy: 'operator', errorCode: 'E_REJECTED',
+        message: 'rejected', phase: 'approval', retryable: false,
+      } as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_VALIDATION_FAILED',
+    );
+    assert.equal(missingVersion.probe.nowCalls, 0);
+  } finally {
+    closeFixture(missingVersion);
   }
 });
 
@@ -529,7 +762,7 @@ test('P2C-2B completeRun derives completedStageIds and enforces the completion r
     setStageStatus(success, STAGE_ID, 'running');
     const result = success.service.completeRun(base({
       stageId: STAGE_ID,
-      stageExpectedVersion: 1,
+      expectedStageVersion: 1,
       durationMs: 42,
       artifactIds: ['artifact-1'],
       outputContractSatisfied: true,
@@ -553,7 +786,7 @@ test('P2C-2B completeRun derives completedStageIds and enforces the completion r
     assert.throws(
       () => failure.service.completeRun(base({
         stageId: STAGE_ID,
-        stageExpectedVersion: 1,
+      expectedStageVersion: 1,
         durationMs: 42,
         artifactIds: [],
         outputContractSatisfied: true,
@@ -567,6 +800,29 @@ test('P2C-2B completeRun derives completedStageIds and enforces the completion r
   } finally {
     closeFixture(failure);
   }
+
+  const outputContractFailure = newFixture();
+  try {
+    setRunStatus(outputContractFailure, 'running');
+    setStageStatus(outputContractFailure, STAGE_ID, 'running');
+    const before = stateSnapshot(outputContractFailure);
+    assert.throws(
+      () => outputContractFailure.service.completeRun(base({
+        stageId: STAGE_ID,
+        expectedStageVersion: 1,
+        durationMs: 42,
+        artifactIds: [],
+        outputContractSatisfied: false,
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_COMPLETION_RULE_NOT_SATISFIED',
+    );
+    assert.deepEqual(stateSnapshot(outputContractFailure), before);
+    assert.equal(outputContractFailure.probe.nowCalls, 0);
+    assertHealthy(outputContractFailure);
+  } finally {
+    closeFixture(outputContractFailure);
+  }
 });
 
 test('P2C-2B stale versions, invalid decisions, and terminal states fail before clock or mutation', () => {
@@ -576,7 +832,7 @@ test('P2C-2B stale versions, invalid decisions, and terminal states fail before 
     setStageStatus(fixture, STAGE_ID, 'running');
     const before = stateSnapshot(fixture);
     assert.throws(
-      () => fixture.service.requestApproval(approvalInput({ expectedVersion: 2 }) as never),
+      () => fixture.service.requestApproval(approvalInput({ expectedRunVersion: 2 }) as never),
       /runs run-composite-test: version conflict at version 2/,
     );
     assert.deepEqual(stateSnapshot(fixture), before);
@@ -591,7 +847,7 @@ test('P2C-2B stale versions, invalid decisions, and terminal states fail before 
     setStageStatus(stageVersion, STAGE_ID, 'running');
     const before = stateSnapshot(stageVersion);
     assert.throws(
-      () => stageVersion.service.requestApproval(approvalInput({ stageId: STAGE_ID, stageExpectedVersion: 2 }) as never),
+      () => stageVersion.service.requestApproval(approvalInput({ stageId: STAGE_ID, expectedStageVersion: 2 }) as never),
       /run_stages stage-composite-test: version conflict at version 2/,
     );
     assert.deepEqual(stateSnapshot(stageVersion), before);
@@ -645,26 +901,26 @@ function compositeFailureCases(): FailureCase[] {
     {
       name: 'approval-required', eventCount: 1,
       prepare: fixture => { setRunStatus(fixture, 'running'); setStageStatus(fixture, STAGE_ID, 'running'); },
-      invoke: fixture => fixture.service.requestApproval(approvalInput({ stageId: STAGE_ID, stageExpectedVersion: 1 }) as never),
+      invoke: fixture => fixture.service.requestApproval(approvalInput({ stageId: STAGE_ID, expectedStageVersion: 1 }) as never),
     },
     {
       name: 'approval-resolved', eventCount: 1,
-      prepare: fixture => { setRunStatus(fixture, 'waiting_approval'); setStageStatus(fixture, STAGE_ID, 'waiting_approval'); },
-      invoke: fixture => fixture.service.resolveApprovalToRunning(approvalInput({ stageId: STAGE_ID, stageExpectedVersion: 1, decision: 'approve_once', decidedBy: 'test-user' }) as never),
+      prepare: fixture => { setRunStatus(fixture, 'waiting_approval'); setStageStatus(fixture, STAGE_ID, 'waiting_approval'); seedApprovalRequired(fixture, STAGE_ID); },
+      invoke: fixture => fixture.service.resolveApprovalToRunning(approvalInput({ stageId: STAGE_ID, expectedStageVersion: 1, decision: 'approve_once', decidedBy: 'test-user' }) as never),
     },
     {
       name: 'approval-failure', eventCount: 3,
-      prepare: fixture => { setRunStatus(fixture, 'waiting_approval'); setStageStatus(fixture, STAGE_ID, 'waiting_approval'); },
+      prepare: fixture => { setRunStatus(fixture, 'waiting_approval'); setStageStatus(fixture, STAGE_ID, 'waiting_approval'); seedApprovalRequired(fixture, STAGE_ID); },
       invoke: fixture => fixture.service.resolveApprovalToFailure(approvalInput({
-        stageId: STAGE_ID, stageExpectedVersion: 1, decision: 'reject',
+        stageId: STAGE_ID, expectedStageVersion: 1, decision: 'reject',
         decidedBy: 'test-user', errorCode: 'E_REJECTED', message: 'rejected', phase: 'approval', retryable: false,
       }) as never),
     },
     {
       name: 'approval-cancellation', eventCount: 3,
-      prepare: fixture => { insertStage(fixture, 'stage-second', 2, 'running'); setRunStatus(fixture, 'waiting_approval'); setStageStatus(fixture, STAGE_ID, 'waiting_approval'); },
+      prepare: fixture => { insertStage(fixture, 'stage-second', 2, 'running'); setRunStatus(fixture, 'waiting_approval'); setStageStatus(fixture, STAGE_ID, 'waiting_approval'); seedApprovalRequired(fixture, STAGE_ID); },
       invoke: fixture => fixture.service.resolveApprovalToCancellation(approvalInput({
-        stageId: STAGE_ID, stageExpectedVersion: 1, decision: 'cancel_run',
+        stageId: STAGE_ID, expectedStageVersion: 1, decision: 'cancel_run',
         decidedBy: 'test-user', requestedBy: 'test-user', terminatedProcessIds: [], worktreePreserved: true,
       }) as never),
     },
@@ -677,7 +933,7 @@ function compositeFailureCases(): FailureCase[] {
       name: 'run-completion', eventCount: 2,
       prepare: fixture => { insertStage(fixture, 'stage-completed', 2, 'completed'); setRunStatus(fixture, 'running'); setStageStatus(fixture, STAGE_ID, 'running'); },
       invoke: fixture => fixture.service.completeRun(base({
-        stageId: STAGE_ID, stageExpectedVersion: 1, durationMs: 1, artifactIds: [], outputContractSatisfied: true,
+        stageId: STAGE_ID, expectedStageVersion: 1, durationMs: 1, artifactIds: [], outputContractSatisfied: true,
       }) as never),
     },
   ];
@@ -772,11 +1028,13 @@ function concurrentCompositeChild(databasePath: string): Promise<Record<string, 
     }, { now: () => '${NOW}' });
     try {
       const result = service.cancelRun({
-        workspaceId: '${WORKSPACE_ID}', runId: '${RUN_ID}', expectedVersion: 1,
+        workspaceId: '${WORKSPACE_ID}', runId: '${RUN_ID}', expectedRunVersion: 1,
         correlationId: process.env.COMPOSITE_CORRELATION,
         requestedBy: 'concurrent-test', terminatedProcessIds: [], worktreePreserved: true,
       });
-      process.stdout.write(JSON.stringify({ ok: true, status: result.run.status, events: result.events.length }));
+      const stage = db.prepare('SELECT status, version FROM run_stages WHERE id = ?').get('${STAGE_ID}');
+      const outboxCount = db.prepare('SELECT COUNT(*) AS count FROM outbox_messages').get();
+      process.stdout.write(JSON.stringify({ ok: true, status: result.run.status, events: result.events.length, stage, outboxCount }));
     } catch (error) {
       process.stdout.write(JSON.stringify({ ok: false, name: error instanceof Error ? error.name : 'unknown', message: error instanceof Error ? error.message : String(error) }));
     } finally { db.close(); }
@@ -817,6 +1075,9 @@ test('P2C-2B same-file concurrency permits only one composite cancellation', asy
     const results = await Promise.all([concurrentCompositeChild(databasePath), concurrentCompositeChild(databasePath)]);
     assert.equal(results.filter(result => result.ok === true).length, 1);
     assert.equal(results.filter(result => result.ok === false).length, 1);
+    const winner = results.find(result => result.ok === true)!;
+    assert.deepEqual(winner.stage, { status: 'cancelled', version: 2 });
+    assert.deepEqual(winner.outboxCount, { count: 2 });
     const checkDb = new DatabaseSync(databasePath);
     checkDb.exec('PRAGMA foreign_keys = ON');
     const check = { db: checkDb } as Fixture;

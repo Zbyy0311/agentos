@@ -45,7 +45,10 @@ export type LifecycleTransactionErrorCode =
   | 'LIFECYCLE_INVALID_TRANSITION'
   | 'LIFECYCLE_COMPOSITE_TRANSITION_REQUIRED'
   | 'LIFECYCLE_COMPLETION_RULE_NOT_SATISFIED'
-  | 'LIFECYCLE_APPROVAL_DECISION_INVALID';
+  | 'LIFECYCLE_APPROVAL_DECISION_INVALID'
+  | 'LIFECYCLE_APPROVAL_REQUEST_NOT_FOUND'
+  | 'LIFECYCLE_APPROVAL_ALREADY_RESOLVED'
+  | 'LIFECYCLE_APPROVAL_SCOPE_MISMATCH';
 
 export class LifecycleTransactionError extends Error {
   constructor(
@@ -171,15 +174,21 @@ export interface StageLifecycleTransitionResult {
 }
 
 interface CompositeLifecycleInputBase extends Omit<LifecycleInputBase, 'expectedVersion'> {
-  readonly expectedVersion?: number;
-  readonly expectedRunVersion?: number;
-  readonly expectedStageVersion?: number;
-  readonly stageExpectedVersion?: number;
+  readonly expectedRunVersion: number;
 }
 
-export interface CompleteRunStartupInput extends CompositeLifecycleInputBase {
-  readonly runId: string;
+interface RunOnlyCompositeInput extends CompositeLifecycleInputBase {
+  readonly stageId?: never;
+  readonly expectedStageVersion?: never;
+}
+
+interface StageCompositeInput extends CompositeLifecycleInputBase {
   readonly stageId: string;
+  readonly expectedStageVersion: number;
+}
+
+export interface CompleteRunStartupInput extends StageCompositeInput {
+  readonly runId: string;
   readonly agentSnapshot: AgentSnapshotV1;
   readonly providerSnapshot: ProviderConfigurationSnapshotV1;
   readonly workflowSnapshotVersion?: number;
@@ -187,9 +196,8 @@ export interface CompleteRunStartupInput extends CompositeLifecycleInputBase {
   readonly baseCommit?: string;
 }
 
-export interface RequestApprovalInput extends CompositeLifecycleInputBase {
+interface RequestApprovalFields {
   readonly runId: string;
-  readonly stageId?: string;
   readonly approvalRequestId: string;
   readonly category: ApprovalCategory;
   readonly riskLevel: ApprovalRiskLevel;
@@ -199,9 +207,12 @@ export interface RequestApprovalInput extends CompositeLifecycleInputBase {
   readonly expiresAt?: string;
 }
 
-export interface ResolveApprovalToRunningInput extends CompositeLifecycleInputBase {
+export type RequestApprovalInput =
+  | (RunOnlyCompositeInput & RequestApprovalFields)
+  | (StageCompositeInput & RequestApprovalFields);
+
+interface ResolveApprovalToRunningFields {
   readonly runId: string;
-  readonly stageId?: string;
   readonly approvalRequestId: string;
   readonly decision: Extract<ApprovalResolutionDecision, 'approve_once' | 'approve_run' | 'approve_workspace'>;
   readonly decidedBy: string;
@@ -209,9 +220,12 @@ export interface ResolveApprovalToRunningInput extends CompositeLifecycleInputBa
   readonly modifiedRequest?: Record<string, unknown>;
 }
 
-export interface ResolveApprovalToFailureInput extends CompositeLifecycleInputBase {
+export type ResolveApprovalToRunningInput =
+  | (RunOnlyCompositeInput & ResolveApprovalToRunningFields)
+  | (StageCompositeInput & ResolveApprovalToRunningFields);
+
+export interface ResolveApprovalToFailureInput extends StageCompositeInput {
   readonly runId: string;
-  readonly stageId?: string;
   readonly approvalRequestId: string;
   readonly decision: 'reject';
   readonly decidedBy: string;
@@ -224,9 +238,8 @@ export interface ResolveApprovalToFailureInput extends CompositeLifecycleInputBa
   readonly retryScheduled?: boolean;
 }
 
-export interface ResolveApprovalToCancellationInput extends CompositeLifecycleInputBase {
+interface ResolveApprovalToCancellationFields {
   readonly runId: string;
-  readonly stageId?: string;
   readonly approvalRequestId: string;
   readonly decision: 'cancel_run';
   readonly decidedBy: string;
@@ -238,7 +251,11 @@ export interface ResolveApprovalToCancellationInput extends CompositeLifecycleIn
   readonly reason?: string;
 }
 
-export interface CancelRunInput extends CompositeLifecycleInputBase {
+export type ResolveApprovalToCancellationInput =
+  | (RunOnlyCompositeInput & ResolveApprovalToCancellationFields)
+  | (StageCompositeInput & ResolveApprovalToCancellationFields);
+
+export interface CancelRunInput extends RunOnlyCompositeInput {
   readonly runId: string;
   readonly requestedBy: string;
   readonly terminatedProcessIds: string[];
@@ -246,9 +263,8 @@ export interface CancelRunInput extends CompositeLifecycleInputBase {
   readonly reason?: string;
 }
 
-export interface CompleteRunInput extends CompositeLifecycleInputBase {
+export interface CompleteRunInput extends StageCompositeInput {
   readonly runId: string;
-  readonly stageId: string;
   readonly durationMs: number;
   readonly artifactIds: string[];
   readonly outputContractSatisfied: boolean;
@@ -585,6 +601,7 @@ export class LifecycleTransactionService {
         this.assertExpectedVersion('run_stages', stage.id, stage.version, expectedStageVersion!);
       }
       this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+      this.assertApprovalResolutionBinding(input, run.id);
       const timestamp = this.transactionTimestamp();
       const decidedAt = input.decidedAt ?? timestamp;
 
@@ -633,7 +650,7 @@ export class LifecycleTransactionService {
     this.validateResolveApprovalInput(input, ['reject']);
     this.validateFailureInput(input);
     const expectedRunVersion = this.expectedRunVersion(input);
-    const expectedStageVersion = input.stageId === undefined ? undefined : this.expectedStageVersion(input);
+    const expectedStageVersion = this.expectedStageVersion(input);
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
@@ -646,6 +663,7 @@ export class LifecycleTransactionService {
         this.assertExpectedVersion('run_stages', stage.id, stage.version, expectedStageVersion!);
       }
       this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+      this.assertApprovalResolutionBinding(input, run.id);
       const timestamp = this.transactionTimestamp();
       const decidedAt = input.decidedAt ?? timestamp;
       const events: RuntimeEventEnvelope[] = [];
@@ -755,6 +773,7 @@ export class LifecycleTransactionService {
         this.assertExpectedVersion('run_stages', approvalStage.id, approvalStage.version, expectedStageVersion!);
       }
       this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+      this.assertApprovalResolutionBinding(input, run.id);
       const affectedStages = stages.filter(stage => !isTerminalStage(stage.status));
       const timestamp = this.transactionTimestamp();
       const decidedAt = input.decidedAt ?? timestamp;
@@ -1128,18 +1147,16 @@ export class LifecycleTransactionService {
     if (!isNonBlankString(input.workspaceId) || !isNonBlankString(input.correlationId)) {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'workspaceId and correlationId are required');
     }
+    this.rejectLegacyVersionAliases(input);
     this.expectedRunVersion(input);
   }
 
   private expectedRunVersion(input: CompositeLifecycleInputBase): number {
-    return this.positiveVersion(input.expectedRunVersion ?? input.expectedVersion, 'expectedRunVersion');
+    return this.positiveVersion(input.expectedRunVersion, 'expectedRunVersion');
   }
 
   private expectedStageVersion(input: CompositeLifecycleInputBase): number {
-    return this.positiveVersion(
-      input.expectedStageVersion ?? input.stageExpectedVersion ?? input.expectedVersion,
-      'expectedStageVersion',
-    );
+    return this.positiveVersion((input as { expectedStageVersion?: unknown }).expectedStageVersion, 'expectedStageVersion');
   }
 
   private positiveVersion(value: unknown, field: string): number {
@@ -1164,7 +1181,12 @@ export class LifecycleTransactionService {
   private validateRequestApprovalInput(input: RequestApprovalInput): void {
     this.validateCompositeCommonInput(input);
     this.validateRunId(input.runId);
-    this.validateOptionalStageId(input.stageId);
+    const versionInput = input as unknown as Record<string, unknown>;
+    this.validateStageVersionPair(
+      input.stageId,
+      versionInput.expectedStageVersion,
+      'expectedStageVersion' in versionInput,
+    );
     this.validateApprovalRequestId(input.approvalRequestId);
     if (!isNonBlankString(input.category) || !isNonBlankString(input.riskLevel)) {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'approval category and riskLevel are required');
@@ -1188,8 +1210,14 @@ export class LifecycleTransactionService {
     allowed: readonly string[],
   ): void {
     this.validateCompositeCommonInput(input);
+    this.rejectLegacyVersionAliases(input);
     this.validateRunId(input.runId);
-    this.validateOptionalStageId(input.stageId);
+    const versionInput = input as unknown as Record<string, unknown>;
+    this.validateStageVersionPair(
+      input.stageId,
+      versionInput.expectedStageVersion,
+      'expectedStageVersion' in versionInput,
+    );
     this.validateApprovalRequestId(input.approvalRequestId);
     if (!allowed.includes(input.decision)) {
       throw new LifecycleTransactionError(
@@ -1207,6 +1235,10 @@ export class LifecycleTransactionService {
   }
 
   private validateFailureInput(input: ResolveApprovalToFailureInput): void {
+    if (!isNonBlankString(input.stageId)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'stageId is required for approval failure resolution');
+    }
+    this.expectedStageVersion(input);
     for (const [field, value] of [
       ['errorCode', input.errorCode],
       ['message', input.message],
@@ -1226,8 +1258,14 @@ export class LifecycleTransactionService {
 
   private validateCancellationInput(input: CancelRunInput | ResolveApprovalToCancellationInput): void {
     this.validateCompositeCommonInput(input);
+    this.rejectLegacyVersionAliases(input);
     this.validateRunId(input.runId);
-    if ('stageId' in input) this.validateOptionalStageId(input.stageId);
+    const versionInput = input as unknown as Record<string, unknown>;
+    this.validateStageVersionPair(
+      'stageId' in input ? input.stageId : undefined,
+      versionInput.expectedStageVersion,
+      'expectedStageVersion' in versionInput,
+    );
     if (!isNonBlankString(input.requestedBy)) {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'requestedBy is required');
     }
@@ -1242,6 +1280,7 @@ export class LifecycleTransactionService {
 
   private validateCompleteRunInput(input: CompleteRunInput): void {
     this.validateCompositeCommonInput(input);
+    this.rejectLegacyVersionAliases(input);
     this.validateRunAndStageIds(input.runId, input.stageId);
     this.expectedStageVersion(input);
     if (typeof input.durationMs !== 'number' || !Number.isFinite(input.durationMs) || input.durationMs < 0) {
@@ -1261,6 +1300,32 @@ export class LifecycleTransactionService {
     this.validateRunId(runId);
     if (!isNonBlankString(stageId)) {
       throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'stageId is required');
+    }
+  }
+
+  private validateStageVersionPair(stageId: unknown, expectedStageVersion: unknown, provided = expectedStageVersion !== undefined): void {
+    if (stageId === undefined) {
+      if (provided) {
+        throw new LifecycleTransactionError(
+          'LIFECYCLE_VALIDATION_FAILED',
+          'expectedStageVersion is not allowed without stageId',
+        );
+      }
+      return;
+    }
+    if (!isNonBlankString(stageId)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'stageId must be non-empty when provided');
+    }
+    this.positiveVersion(expectedStageVersion, 'expectedStageVersion');
+  }
+
+  private rejectLegacyVersionAliases(input: object): void {
+    const candidate = input as Record<string, unknown>;
+    if ('expectedVersion' in candidate || 'stageExpectedVersion' in candidate) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        'composite lifecycle inputs must use expectedRunVersion and expectedStageVersion',
+      );
     }
   }
 
@@ -1356,6 +1421,40 @@ export class LifecycleTransactionService {
   private requireStage(workspaceId: string, runId: string, stageId: string): RunStage {
     return this.dependencies.runStageRepository.findById(workspaceId, runId, stageId)
       ?? this.requireStageRunMatch(workspaceId, runId, stageId);
+  }
+
+  private assertApprovalResolutionBinding(
+    input: ResolveApprovalToRunningInput | ResolveApprovalToFailureInput | ResolveApprovalToCancellationInput,
+    runId: string,
+  ): void {
+    const records = this.dependencies.runtimeEventRepository.listByRunAfterSequence(runId, 0);
+    let requiredEvent: RuntimeEventEnvelope | undefined;
+    let resolvedEvent: RuntimeEventEnvelope | undefined;
+    for (const record of records) {
+      if (record.kind !== 'known') continue;
+      const event = record.event;
+      if (event.approvalRequestId !== input.approvalRequestId) continue;
+      if (event.type === 'approval.required') requiredEvent = event;
+      if (event.type === 'approval.resolved') resolvedEvent = event;
+    }
+    if (!requiredEvent) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_APPROVAL_REQUEST_NOT_FOUND',
+        `Approval request ${input.approvalRequestId} was not found for Run ${runId}`,
+      );
+    }
+    if (resolvedEvent) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_APPROVAL_ALREADY_RESOLVED',
+        `Approval request ${input.approvalRequestId} was already resolved`,
+      );
+    }
+    if ((requiredEvent.stageId ?? undefined) !== (input.stageId ?? undefined)) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_APPROVAL_SCOPE_MISMATCH',
+        `Approval request ${input.approvalRequestId} has a different Stage scope`,
+      );
+    }
   }
 
   private assertParentRunAllowsStage(run: Run): void {
