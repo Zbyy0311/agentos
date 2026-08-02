@@ -1,4 +1,5 @@
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
+import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import type { TransactionDatabase } from './Transaction.js';
 
 export interface DeadLetterRecord {
@@ -60,10 +61,6 @@ interface DeadLetterRow {
   created_at: string;
 }
 
-function validTimestamp(value: string): boolean {
-  return typeof value === 'string' && value.length > 0 && Number.isFinite(Date.parse(value));
-}
-
 function mapRow(row: DeadLetterRow): DeadLetterRecord {
   return {
     id: row.id,
@@ -98,12 +95,12 @@ export class DeadLetterRepository {
       !input.id.trim() || !input.sourceType.trim() || !input.sourceId.trim() || !input.target.trim()
       || !input.errorCode.trim() || !input.errorMessage.trim()
       || !Number.isSafeInteger(input.attempts) || input.attempts < 0
-      || !validTimestamp(input.firstFailedAt) || !validTimestamp(input.lastFailedAt)
+      || !isCanonicalUtcTimestamp(input.firstFailedAt) || !isCanonicalUtcTimestamp(input.lastFailedAt)
     ) {
       throw new DeadLetterRepositoryError('DEAD_LETTER_VALIDATION_FAILED', 'dead-letter fields are invalid');
     }
     const createdAt = input.createdAt ?? this.now();
-    if (!validTimestamp(createdAt)) throw new DeadLetterRepositoryError('DEAD_LETTER_VALIDATION_FAILED', 'createdAt is invalid');
+    if (!isCanonicalUtcTimestamp(createdAt)) throw new DeadLetterRepositoryError('DEAD_LETTER_VALIDATION_FAILED', 'createdAt is invalid');
     let payloadJson: string | null = null;
     try {
       payloadJson = input.payload === undefined ? null : canonicalizeJson(input.payload);
@@ -151,7 +148,7 @@ export class DeadLetterRepository {
   }
 
   resolve(id: string, resolvedAt: string = this.now(), resolvedBy: string): DeadLetterRecord {
-    if (!id.trim() || !validTimestamp(resolvedAt) || !resolvedBy.trim()) {
+    if (!id.trim() || !isCanonicalUtcTimestamp(resolvedAt) || !resolvedBy.trim()) {
       throw new DeadLetterRepositoryError('DEAD_LETTER_VALIDATION_FAILED', 'resolve fields are invalid');
     }
     const result = this.db.prepare(`

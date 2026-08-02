@@ -19,6 +19,7 @@ import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import { OutboxRepository, RUNTIME_EVENT_OUTBOX_TOPIC } from './OutboxRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
+import { isValidEntityId } from './Identity.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -34,6 +35,10 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 
 type Db = InstanceType<typeof DatabaseSync>;
 const NOW = '2026-08-03T00:00:00.000Z';
+
+function eventId(value: number): string {
+  return `evt_${String(value).padStart(26, '0')}`;
+}
 
 function freshDb(): Db {
   const db = new DatabaseSync(':memory:');
@@ -69,7 +74,7 @@ function seedRun(db: Db, runId: string): void {
   `).run(runId, 'ws_p2b', `task_${runId}`, runId, NOW, NOW);
 }
 
-function draft(runId = 'run_p2b', id = 'evt_p2b_1', sequence = 1): RuntimeEventDraft {
+function draft(runId = 'run_p2b', id = eventId(1), sequence = 1): RuntimeEventDraft {
   return {
     id,
     schemaVersion: 1,
@@ -99,16 +104,16 @@ function runtimeEventRepository(db: Db): RuntimeEventRepository {
 }
 
 function outboxRepository(db: Db): OutboxRepository {
-  return new OutboxRepository(db, createM3RuntimeEventRegistry(), { now: () => NOW });
+  return new OutboxRepository(db, runtimeEventRepository(db), { now: () => NOW });
 }
 
-function appendEventAndOutbox(db: Db, id = 'evt_p2b_1'): { event: RuntimeEventEnvelope; outboxId: string } {
+function appendEventAndOutbox(db: Db, id = eventId(1)): { event: RuntimeEventEnvelope; outboxId: string } {
   const events = runtimeEventRepository(db);
   const outbox = outboxRepository(db);
   let event!: RuntimeEventEnvelope;
   inTransaction(db, () => {
     event = events.appendWithinTransaction(draft('run_p2b', id));
-    outbox.insertWithinTransaction({ id: `outbox_${id}`, event, availableAt: NOW, createdAt: NOW });
+    outbox.insertWithinTransaction({ id: `outbox_${id}`, eventId: event.id, availableAt: NOW, createdAt: NOW });
   });
   return { event, outboxId: `outbox_${id}` };
 }
@@ -129,23 +134,28 @@ test('RuntimeEventRepository validates Registry, durable boundary, canonical fie
   const db = freshDb();
   try {
     const repository = runtimeEventRepository(db);
+    assert.throws(() => repository.appendWithinTransaction(draft('run_p2b', 'event_00000000000000000000000000')), (error: unknown) => (error as { code?: string }).code === 'RUNTIME_EVENT_ID_INVALID');
+    assert.throws(() => repository.appendWithinTransaction(draft('run_p2b', 'evt_0000000000000000000000000')), (error: unknown) => (error as { code?: string }).code === 'RUNTIME_EVENT_ID_INVALID');
+    assert.throws(() => repository.appendWithinTransaction(draft('run_p2b', 'evt_0000000000000000000000000I')), (error: unknown) => (error as { code?: string }).code === 'RUNTIME_EVENT_ID_INVALID');
+    assert.equal(isValidEntityId(eventId(99), 'event'), true);
+    assert.throws(() => repository.appendWithinTransaction({ ...draft('run_p2b', eventId(98)), timestamp: '2026-08-03T08:00:00.000+08:00' }), (error: unknown) => (error as { code?: string }).code === 'RUNTIME_EVENT_TIMESTAMP_INVALID');
     const stored = repository.appendWithinTransaction(draft());
-    assert.equal(stored.id, 'evt_p2b_1');
+    assert.equal(stored.id, eventId(1));
     assert.equal(stored.sequence, 1);
     assert.equal(stored.timestamp, NOW);
-    assert.equal(stored.correlationId, 'corr_evt_p2b_1');
-    const raw = db.prepare('SELECT payload_json, metadata_json FROM runtime_events WHERE id = ?').get('evt_p2b_1') as { payload_json: string; metadata_json: string };
+    assert.equal(stored.correlationId, `corr_${eventId(1)}`);
+    const raw = db.prepare('SELECT payload_json, metadata_json FROM runtime_events WHERE id = ?').get(eventId(1)) as { payload_json: string; metadata_json: string };
     assert.equal(raw.payload_json, '{"createdBy":"test","reason":"initial","rootRunId":"run_p2b","worktreeMode":"disabled"}');
     assert.equal(raw.metadata_json, '{"producer":"p2b-test","traceId":"trace-1"}');
-    assert.equal(repository.findById('evt_p2b_1')?.kind, 'known');
+    assert.equal(repository.findById(eventId(1))?.kind, 'known');
     assert.equal(repository.findByRunAndSequence('run_p2b', 1)?.kind, 'known');
     assert.equal(repository.listByRunAfterSequence('run_p2b', 0).length, 1);
-    assert.equal(repository.listByRunAndCorrelation('run_p2b', 'corr_evt_p2b_1').length, 1);
+    assert.equal(repository.listByRunAndCorrelation('run_p2b', `corr_${eventId(1)}`).length, 1);
 
-    assert.throws(() => repository.appendWithinTransaction({ ...draft('run_p2b', 'evt_ephemeral'), durability: 'ephemeral' }), (error: unknown) => (error as { code?: string }).code === 'RUNTIME_EVENT_EPHEMERAL_NOT_PERSISTABLE');
-    assert.throws(() => repository.appendWithinTransaction({ ...draft('run_p2b', 'evt_unknown'), type: 'run.unknown' }), (error: unknown) => (error as { code?: string }).code === 'UNREGISTERED_CORE_EVENT');
-    assert.throws(() => repository.appendWithinTransaction({ ...draft('run_p2b', 'evt_future'), schemaVersion: 2 }), (error: unknown) => (error as { code?: string }).code === 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE');
-    assert.throws(() => repository.appendWithinTransaction(draft('run_p2b', 'evt_duplicate')), /RUNTIME_EVENT/);
+    assert.throws(() => repository.appendWithinTransaction({ ...draft('run_p2b', eventId(4)), durability: 'ephemeral' }), (error: unknown) => (error as { code?: string }).code === 'RUNTIME_EVENT_EPHEMERAL_NOT_PERSISTABLE');
+    assert.throws(() => repository.appendWithinTransaction({ ...draft('run_p2b', eventId(5)), type: 'run.unknown' }), (error: unknown) => (error as { code?: string }).code === 'UNREGISTERED_CORE_EVENT');
+    assert.throws(() => repository.appendWithinTransaction({ ...draft('run_p2b', eventId(6)), schemaVersion: 2 }), (error: unknown) => (error as { code?: string }).code === 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE');
+    assert.throws(() => repository.appendWithinTransaction(draft('run_p2b', eventId(7))), /RUNTIME_EVENT/);
     assertIntegrity(db);
   } finally {
     db.close();
@@ -156,17 +166,31 @@ test('RuntimeEventRepository returns unknown persisted events losslessly and ord
   const db = freshDb();
   try {
     const repository = runtimeEventRepository(db);
-    repository.appendWithinTransaction(draft('run_p2b', 'evt_known', 1));
+    repository.appendWithinTransaction(draft('run_p2b', eventId(10), 1));
     db.prepare(`
       INSERT INTO runtime_events (
         id, schema_version, type, workspace_id, task_id, run_id, sequence, timestamp,
         source, correlation_id, severity, visibility, durability, payload_json, created_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run('evt_unknown', 1, 'run.future', 'ws_p2b', 'task_run_p2b', 'run_p2b', 2, NOW, 'run-engine', 'corr-unknown', 'info', 'public', 'durable', '{}', NOW);
-    const unknown = repository.findById('evt_unknown');
+    `).run(eventId(11), 1, 'run.future', 'ws_p2b', 'task_run_p2b', 'run_p2b', 2, NOW, 'run-engine', 'corr-unknown', 'info', 'public', 'durable', '{}', NOW);
+    const unknown = repository.findById(eventId(11));
     assert.equal(unknown?.kind, 'unknown');
     assert.equal((unknown as { event?: { raw?: Record<string, unknown> } }).event?.raw?.type, 'run.future');
-    assert.deepEqual(repository.listByRunAfterSequence('run_p2b', 0).map(item => item.event.sequence), [1, 2]);
+    db.prepare(`
+      INSERT INTO runtime_events (
+        id, schema_version, type, workspace_id, task_id, run_id, sequence, timestamp,
+        source, correlation_id, severity, visibility, durability, payload_json, metadata_json, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(eventId(12), 2, 'run.created', 'ws_p2b', 'task_run_p2b', 'run_p2b', 3, NOW, 'run-engine', 'corr-future', 'info', 'public', 'durable', '{"future":true}', '{"future":true}', NOW);
+    const future = repository.findById(eventId(12));
+    assert.equal(future?.kind, 'unknown');
+    assert.equal((future as { event?: { warning?: string; raw?: Record<string, unknown> } }).event?.warning, 'UNKNOWN_FUTURE_EVENT_SCHEMA');
+    assert.deepEqual((future as { event?: { raw?: Record<string, unknown> } }).event?.raw, {
+      id: eventId(12), schemaVersion: 2, type: 'run.created', workspaceId: 'ws_p2b', taskId: 'task_run_p2b',
+      runId: 'run_p2b', sequence: 3, timestamp: NOW, source: 'run-engine', correlationId: 'corr-future',
+      severity: 'info', visibility: 'public', durability: 'durable', payload: { future: true }, metadata: { future: true },
+    });
+    assert.deepEqual(repository.listByRunAfterSequence('run_p2b', 0).map(item => item.event.sequence), [1, 2, 3]);
   } finally {
     db.close();
   }
@@ -209,7 +233,7 @@ test('OutboxRepository persists canonical durable Events and enforces conditiona
     const claimed = repository.claimWithinTransaction({ id: outboxId, expectedVersion: 1, leaseOwner: 'worker-1', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' });
     assert.equal(claimed.status, 'publishing');
     assert.equal(claimed.attempts, 1);
-    const published = repository.markPublishedWithinTransaction({ id: outboxId, expectedVersion: 2, publishedAt: '2026-08-03T00:00:30.000Z' });
+    const published = repository.markPublishedWithinTransaction({ id: outboxId, expectedVersion: 2, expectedLeaseOwner: 'worker-1', now: NOW, publishedAt: '2026-08-03T00:00:30.000Z' });
     assert.equal(published.status, 'published');
     assert.equal(published.leaseOwner, undefined);
     assert.throws(() => repository.claimWithinTransaction({ id: outboxId, expectedVersion: 3, leaseOwner: 'worker-2', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' }), /OUTBOX/);
@@ -224,13 +248,47 @@ test('OutboxRepository rejects ephemeral/duplicate events, future availability, 
   try {
     const events = runtimeEventRepository(db);
     const outbox = outboxRepository(db);
-    assert.throws(() => outbox.insertWithinTransaction({ id: 'outbox_ephemeral', event: { ...events.appendWithinTransaction(draft('run_p2b', 'evt_ephemeral_source')), durability: 'ephemeral' }, availableAt: NOW, createdAt: NOW }), /OUTBOX/);
-    const event = events.appendWithinTransaction(draft('run_p2b', 'evt_outbox_1', 2));
-    outbox.insertWithinTransaction({ id: 'outbox_1', event, availableAt: '2026-08-03T00:10:00.000Z', createdAt: NOW });
-    assert.throws(() => outbox.insertWithinTransaction({ id: 'outbox_2', event, availableAt: NOW, createdAt: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_PERSISTENCE_FAILED');
+    assert.throws(() => outbox.insertWithinTransaction({ id: 'outbox_missing_event', eventId: eventId(999), availableAt: NOW, createdAt: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_EVENT_NOT_FOUND');
+    db.prepare(`
+      INSERT INTO runtime_events (
+        id, schema_version, type, workspace_id, task_id, run_id, sequence, timestamp,
+        source, correlation_id, severity, visibility, durability, payload_json, created_at
+      ) VALUES (?, 1, 'run.unknown', 'ws_p2b', 'task_run_p2b', 'run_p2b', 1, ?, 'run-engine', 'corr-unknown', 'info', 'public', 'durable', '{}', ?)
+    `).run(eventId(998), NOW, NOW);
+    assert.throws(() => outbox.insertWithinTransaction({ id: 'outbox_unknown_event', eventId: eventId(998), availableAt: NOW, createdAt: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_EVENT_INVALID');
+    const event = events.appendWithinTransaction(draft('run_p2b', eventId(20), 2));
+    outbox.insertWithinTransaction({ id: 'outbox_1', eventId: event.id, availableAt: '2026-08-03T00:10:00.000Z', createdAt: NOW });
+    assert.throws(() => outbox.insertWithinTransaction({ id: 'outbox_2', eventId: event.id, availableAt: NOW, createdAt: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_PERSISTENCE_FAILED');
+    assert.throws(() => outbox.insertWithinTransaction({ id: 'outbox_noncanonical_time', eventId: event.id, availableAt: '2026-08-03T08:00:00.000+08:00', createdAt: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VALIDATION_FAILED');
     assert.throws(() => outbox.claimWithinTransaction({ id: 'outbox_1', expectedVersion: 1, leaseOwner: 'worker', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_NOT_AVAILABLE');
     assert.throws(() => outbox.claimWithinTransaction({ id: 'outbox_1', expectedVersion: 9, leaseOwner: 'worker', now: '2026-08-03T00:20:00.000Z', leaseExpiresAt: '2026-08-03T00:21:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
     assert.throws(() => outbox.claimWithinTransaction({ id: 'outbox_1', expectedVersion: 1, leaseOwner: 'worker', now: '2026-08-03T00:20:00.000Z', leaseExpiresAt: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VALIDATION_FAILED');
+    assert.throws(() => outbox.claimWithinTransaction({ id: 'outbox_1', expectedVersion: 1, leaseOwner: 'worker', now: '2026-08-03T08:00:00.000+08:00', leaseExpiresAt: '2026-08-03T00:21:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VALIDATION_FAILED');
+    assertIntegrity(db);
+  } finally {
+    db.close();
+  }
+});
+
+test('OutboxRepository rejects payload, run and correlation mismatches against the persisted Event', () => {
+  const db = freshDb();
+  try {
+    const events = runtimeEventRepository(db);
+    const outbox = outboxRepository(db);
+    const variants = [
+      { id: 'outbox_payload_mismatch', event: { ...events.appendWithinTransaction(draft('run_p2b', eventId(50), 1)), payload: { reason: 'initial', rootRunId: 'run_p2b', worktreeMode: 'disabled', createdBy: 'tampered' } } },
+      { id: 'outbox_run_mismatch', event: { ...events.appendWithinTransaction(draft('run_p2b', eventId(51), 2)), runId: 'run_other' } },
+      { id: 'outbox_correlation_mismatch', event: { ...events.appendWithinTransaction(draft('run_p2b', eventId(52), 3)), correlationId: 'corr_tampered' } },
+    ];
+    for (const variant of variants) {
+      db.prepare(`
+        INSERT INTO outbox_messages (
+          id, event_id, topic, aggregate_type, aggregate_id, payload_json,
+          status, attempts, available_at, created_at, version
+        ) VALUES (?, ?, ?, 'run', ?, ?, 'pending', 0, ?, ?, 1)
+      `).run(variant.id, variant.event.id, RUNTIME_EVENT_OUTBOX_TOPIC, variant.event.runId, canonicalizeJson(variant.event), NOW, NOW);
+      assert.throws(() => outbox.findById(variant.id), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_EVENT_MISMATCH');
+    }
     assertIntegrity(db);
   } finally {
     db.close();
@@ -243,14 +301,36 @@ test('Outbox retry and dead-letter transitions require publishing and clear deli
     const repository = outboxRepository(db);
     const eventRepository = runtimeEventRepository(db);
     const event = eventRepository.appendWithinTransaction(draft());
-    repository.insertWithinTransaction({ id: 'outbox_retry', event, availableAt: NOW, createdAt: NOW });
+    repository.insertWithinTransaction({ id: 'outbox_retry', eventId: event.id, availableAt: NOW, createdAt: NOW });
     repository.claimWithinTransaction({ id: 'outbox_retry', expectedVersion: 1, leaseOwner: 'worker', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' });
-    const retry = repository.markRetryWithinTransaction({ id: 'outbox_retry', expectedVersion: 2, lastError: 'temporary', availableAt: '2026-08-03T00:02:00.000Z' });
+    const retry = repository.markRetryWithinTransaction({ id: 'outbox_retry', expectedVersion: 2, expectedLeaseOwner: 'worker', now: NOW, lastError: 'temporary', availableAt: '2026-08-03T00:02:00.000Z' });
     assert.equal(retry.status, 'retry');
     repository.claimWithinTransaction({ id: 'outbox_retry', expectedVersion: 3, leaseOwner: 'worker', now: '2026-08-03T00:02:00.000Z', leaseExpiresAt: '2026-08-03T00:03:00.000Z' });
-    const dead = repository.markDeadLetterWithinTransaction({ id: 'outbox_retry', expectedVersion: 4, lastError: 'permanent' });
+    const dead = repository.markDeadLetterWithinTransaction({ id: 'outbox_retry', expectedVersion: 4, expectedLeaseOwner: 'worker', now: '2026-08-03T00:02:00.000Z', lastError: 'permanent' });
     assert.equal(dead.status, 'dead_letter');
-    assert.throws(() => repository.markRetryWithinTransaction({ id: 'outbox_retry', expectedVersion: 5, lastError: 'again', availableAt: NOW }), /OUTBOX/);
+    assert.throws(() => repository.markRetryWithinTransaction({ id: 'outbox_retry', expectedVersion: 5, expectedLeaseOwner: 'worker', now: '2026-08-03T00:02:00.000Z', lastError: 'again', availableAt: NOW }), /OUTBOX/);
+  } finally {
+    db.close();
+  }
+});
+
+test('Outbox lease fencing rejects owner, version and expiry mismatches without mutation', () => {
+  const db = freshDb();
+  try {
+    const events = runtimeEventRepository(db);
+    const repository = outboxRepository(db);
+    const event = events.appendWithinTransaction(draft('run_p2b', eventId(60)));
+    repository.insertWithinTransaction({ id: 'outbox_fence', eventId: event.id, availableAt: NOW, createdAt: NOW });
+    repository.claimWithinTransaction({ id: 'outbox_fence', expectedVersion: 1, leaseOwner: 'owner-a', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' });
+    const before = { ...(db.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_fence') as Record<string, unknown>) };
+
+    assert.throws(() => repository.markPublishedWithinTransaction({ id: 'outbox_fence', expectedVersion: 2, expectedLeaseOwner: 'owner-b', now: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_LEASE_CONFLICT');
+    assert.deepEqual({ ...(db.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_fence') as Record<string, unknown>) }, before);
+    assert.throws(() => repository.markDeadLetterWithinTransaction({ id: 'outbox_fence', expectedVersion: 9, expectedLeaseOwner: 'owner-a', now: NOW, lastError: 'stale' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
+    assert.deepEqual({ ...(db.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_fence') as Record<string, unknown>) }, before);
+    assert.throws(() => repository.markRetryWithinTransaction({ id: 'outbox_fence', expectedVersion: 2, expectedLeaseOwner: 'owner-a', now: '2026-08-03T00:02:00.000Z', lastError: 'expired', availableAt: '2026-08-03T00:03:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_LEASE_EXPIRED');
+    assert.deepEqual({ ...(db.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_fence') as Record<string, unknown>) }, before);
+    assertIntegrity(db);
   } finally {
     db.close();
   }
@@ -260,9 +340,14 @@ test('DeadLetterRepository persists, lists and resolves only unresolved records'
   const db = freshDb();
   try {
     const repository = new DeadLetterRepository(db, { now: () => NOW });
+    assert.throws(() => repository.insertWithinTransaction({
+      id: 'dead_noncanonical_time', sourceType: 'outbox', sourceId: 'outbox_p2b', target: 'subscriber',
+      errorCode: 'TEMPORARY', errorMessage: 'failed', attempts: 1,
+      firstFailedAt: '2026-08-03T08:00:00.000+08:00', lastFailedAt: NOW, retryable: true, createdAt: NOW,
+    }), (error: unknown) => (error as { code?: string }).code === 'DEAD_LETTER_VALIDATION_FAILED');
     const inserted = repository.insertWithinTransaction({
       id: 'dead_p2b', sourceType: 'outbox', sourceId: 'outbox_p2b', target: 'subscriber',
-      payload: { eventId: 'evt_p2b_1' }, errorCode: 'TEMPORARY', errorMessage: 'failed',
+      payload: { eventId: eventId(1) }, errorCode: 'TEMPORARY', errorMessage: 'failed',
       attempts: 1, firstFailedAt: NOW, lastFailedAt: NOW, retryable: true, createdAt: NOW,
     });
     assert.equal(inserted.id, 'dead_p2b');
@@ -285,36 +370,36 @@ test('sequence, Event and Outbox compose atomically and roll back as one unit', 
     const outbox = outboxRepository(db);
     inTransaction(db, () => {
       const sequence = allocator.allocateWithinTransaction('ws_p2b', 'run_p2b');
-      const event = events.appendWithinTransaction({ ...draft('run_p2b', 'evt_atomic'), sequence });
-      outbox.insertWithinTransaction({ id: 'outbox_atomic', event, availableAt: NOW, createdAt: NOW });
+      const event = events.appendWithinTransaction({ ...draft('run_p2b', eventId(30)), sequence });
+      outbox.insertWithinTransaction({ id: 'outbox_atomic', eventId: event.id, availableAt: NOW, createdAt: NOW });
     });
     assert.equal((db.prepare('SELECT next_event_sequence FROM runs WHERE id = ?').get('run_p2b') as { next_event_sequence: number }).next_event_sequence, 2);
 
     assert.throws(() => inTransaction(db, () => {
       const sequence = allocator.allocateWithinTransaction('ws_p2b', 'run_p2b');
-      const event = events.appendWithinTransaction({ ...draft('run_p2b', 'evt_atomic_rollback'), sequence });
-      outbox.insertWithinTransaction({ id: 'outbox_atomic_rollback', event, availableAt: NOW, createdAt: NOW });
+      const event = events.appendWithinTransaction({ ...draft('run_p2b', eventId(31)), sequence });
+      outbox.insertWithinTransaction({ id: 'outbox_atomic_rollback', eventId: event.id, availableAt: NOW, createdAt: NOW });
       throw new Error('event transaction failure');
     }));
     assert.equal((db.prepare('SELECT next_event_sequence FROM runs WHERE id = ?').get('run_p2b') as { next_event_sequence: number }).next_event_sequence, 2);
-    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM runtime_events WHERE id = 'evt_atomic_rollback'").get() as { count: number }).count, 0);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM runtime_events WHERE id = ?').get(eventId(31)) as { count: number }).count, 0);
     assert.equal((db.prepare("SELECT COUNT(*) AS count FROM outbox_messages WHERE id = 'outbox_atomic_rollback'").get() as { count: number }).count, 0);
 
     assert.throws(() => inTransaction(db, () => {
       allocator.allocateWithinTransaction('ws_p2b', 'run_p2b');
-      events.appendWithinTransaction({ ...draft('run_p2b', 'evt_invalid_rollback', 2), type: 'run.invalid' });
+      events.appendWithinTransaction({ ...draft('run_p2b', eventId(32), 2), type: 'run.invalid' });
     }), (error: unknown) => (error as { code?: string }).code === 'UNREGISTERED_CORE_EVENT');
     assert.equal((db.prepare('SELECT next_event_sequence FROM runs WHERE id = ?').get('run_p2b') as { next_event_sequence: number }).next_event_sequence, 2);
-    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM runtime_events WHERE id = 'evt_invalid_rollback'").get() as { count: number }).count, 0);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM runtime_events WHERE id = ?').get(eventId(32)) as { count: number }).count, 0);
     assert.equal((db.prepare("SELECT COUNT(*) AS count FROM outbox_messages WHERE id = 'outbox_invalid_rollback'").get() as { count: number }).count, 0);
 
     assert.throws(() => inTransaction(db, () => {
       const sequence = allocator.allocateWithinTransaction('ws_p2b', 'run_p2b');
-      const event = events.appendWithinTransaction({ ...draft('run_p2b', 'evt_outbox_rollback'), sequence });
-      outbox.insertWithinTransaction({ id: 'outbox_atomic', event, availableAt: NOW, createdAt: NOW });
+      const event = events.appendWithinTransaction({ ...draft('run_p2b', eventId(33)), sequence });
+      outbox.insertWithinTransaction({ id: 'outbox_atomic', eventId: event.id, availableAt: NOW, createdAt: NOW });
     }));
     assert.equal((db.prepare('SELECT next_event_sequence FROM runs WHERE id = ?').get('run_p2b') as { next_event_sequence: number }).next_event_sequence, 2);
-    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM runtime_events WHERE id = 'evt_outbox_rollback'").get() as { count: number }).count, 0);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM runtime_events WHERE id = ?').get(eventId(33)) as { count: number }).count, 0);
     assertIntegrity(db);
   } finally {
     db.close();
@@ -328,17 +413,22 @@ test('two file connections serialize committed sequence allocation and reject du
   try {
     const firstAllocator = new RunSequenceAllocator(ctx.db);
     const secondAllocator = new RunSequenceAllocator(second);
-    inTransaction(ctx.db, () => assert.equal(firstAllocator.allocateWithinTransaction('ws_p2b', 'run_p2b'), 1));
+    ctx.db.exec('BEGIN IMMEDIATE');
+    assert.equal(firstAllocator.allocateWithinTransaction('ws_p2b', 'run_p2b'), 1);
+    assert.throws(() => second.exec('BEGIN IMMEDIATE'), /busy|locked/i);
+    ctx.db.exec('COMMIT');
     inTransaction(second, () => assert.equal(secondAllocator.allocateWithinTransaction('ws_p2b', 'run_p2b'), 2));
 
     const eventRepository = runtimeEventRepository(ctx.db);
     const outbox = outboxRepository(ctx.db);
-    const event = eventRepository.appendWithinTransaction(draft('run_p2b', 'evt_claim'));
-    outbox.insertWithinTransaction({ id: 'outbox_claim', event, availableAt: NOW, createdAt: NOW });
+    const event = eventRepository.appendWithinTransaction(draft('run_p2b', eventId(40)));
+    outbox.insertWithinTransaction({ id: 'outbox_claim', eventId: event.id, availableAt: NOW, createdAt: NOW });
     const secondOutbox = outboxRepository(second);
     const firstClaim = outbox.claimWithinTransaction({ id: 'outbox_claim', expectedVersion: 1, leaseOwner: 'worker-1', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' });
     assert.equal(firstClaim.status, 'publishing');
-    assert.throws(() => secondOutbox.claimWithinTransaction({ id: 'outbox_claim', expectedVersion: 1, leaseOwner: 'worker-2', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' }), /OUTBOX/);
+    const beforeSecondClaim = { ...(second.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_claim') as Record<string, unknown>) };
+    assert.throws(() => secondOutbox.claimWithinTransaction({ id: 'outbox_claim', expectedVersion: 1, leaseOwner: 'worker-2', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
+    assert.deepEqual({ ...(second.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_claim') as Record<string, unknown>) }, beforeSecondClaim);
   } finally {
     try { second.close(); } finally { ctx.close(); }
   }

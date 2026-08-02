@@ -439,7 +439,7 @@ export class SqliteStore implements Store {
     const runtimeEventRegistry = createM3RuntimeEventRegistry();
     this.runtimeEventRepo = new RuntimeEventRepository(this.database as any, runtimeEventRegistry);
     this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
-    this.outboxRepo = new OutboxRepository(this.database as any, runtimeEventRegistry);
+    this.outboxRepo = new OutboxRepository(this.database as any, this.runtimeEventRepo);
     this.deadLetterRepo = new DeadLetterRepository(this.database as any);
     try {
       this.database.exec('PRAGMA foreign_keys = ON');

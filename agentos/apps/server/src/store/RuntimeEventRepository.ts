@@ -6,10 +6,17 @@ import type {
 } from '@agentos/shared';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import type { TransactionDatabase } from './Transaction.js';
+import { isValidEntityId } from './Identity.js';
+import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 
 export class RuntimeEventRepositoryError extends Error {
   constructor(
-    readonly code: 'RUNTIME_EVENT_EPHEMERAL_NOT_PERSISTABLE' | 'RUNTIME_EVENT_PERSISTENCE_FAILED' | 'RUNTIME_EVENT_READ_FAILED',
+    readonly code:
+      | 'RUNTIME_EVENT_ID_INVALID'
+      | 'RUNTIME_EVENT_TIMESTAMP_INVALID'
+      | 'RUNTIME_EVENT_EPHEMERAL_NOT_PERSISTABLE'
+      | 'RUNTIME_EVENT_PERSISTENCE_FAILED'
+      | 'RUNTIME_EVENT_READ_FAILED',
     message: string,
   ) {
     super(`${code}: ${message}`);
@@ -48,10 +55,6 @@ interface RuntimeEventRow {
   created_at: string;
 }
 
-function optionalValue(value: string | null): string | undefined {
-  return value ?? undefined;
-}
-
 function toRecord(row: RuntimeEventRow): Record<string, unknown> {
   const payload = JSON.parse(row.payload_json) as unknown;
   const metadata = row.metadata_json === null ? undefined : JSON.parse(row.metadata_json) as unknown;
@@ -60,28 +63,28 @@ function toRecord(row: RuntimeEventRow): Record<string, unknown> {
     schemaVersion: row.schema_version,
     type: row.type,
     workspaceId: row.workspace_id,
-    taskId: optionalValue(row.task_id),
     runId: row.run_id,
-    stageId: optionalValue(row.stage_id),
-    agentId: optionalValue(row.agent_id),
-    providerConfigId: optionalValue(row.provider_config_id),
-    providerSessionId: optionalValue(row.provider_session_id),
-    processId: optionalValue(row.process_id),
-    worktreeId: optionalValue(row.worktree_id),
-    artifactId: optionalValue(row.artifact_id),
-    approvalRequestId: optionalValue(row.approval_request_id),
-    conversationId: optionalValue(row.conversation_id),
-    messageId: optionalValue(row.message_id),
     sequence: row.sequence,
     timestamp: row.timestamp,
     source: row.source,
     correlationId: row.correlation_id,
-    causationId: optionalValue(row.causation_id),
-    parentEventId: optionalValue(row.parent_event_id),
     severity: row.severity,
     visibility: row.visibility,
     durability: row.durability,
     payload,
+    ...(row.task_id === null ? {} : { taskId: row.task_id }),
+    ...(row.stage_id === null ? {} : { stageId: row.stage_id }),
+    ...(row.agent_id === null ? {} : { agentId: row.agent_id }),
+    ...(row.provider_config_id === null ? {} : { providerConfigId: row.provider_config_id }),
+    ...(row.provider_session_id === null ? {} : { providerSessionId: row.provider_session_id }),
+    ...(row.process_id === null ? {} : { processId: row.process_id }),
+    ...(row.worktree_id === null ? {} : { worktreeId: row.worktree_id }),
+    ...(row.artifact_id === null ? {} : { artifactId: row.artifact_id }),
+    ...(row.approval_request_id === null ? {} : { approvalRequestId: row.approval_request_id }),
+    ...(row.conversation_id === null ? {} : { conversationId: row.conversation_id }),
+    ...(row.message_id === null ? {} : { messageId: row.message_id }),
+    ...(row.causation_id === null ? {} : { causationId: row.causation_id }),
+    ...(row.parent_event_id === null ? {} : { parentEventId: row.parent_event_id }),
     ...(metadata === undefined ? {} : { metadata }),
   };
 }
@@ -93,6 +96,18 @@ export class RuntimeEventRepository {
   ) {}
 
   appendWithinTransaction<TPayload>(draft: RuntimeEventDraft<TPayload>): RuntimeEventEnvelope<TPayload> {
+    if (!isValidEntityId(draft.id, 'event')) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_ID_INVALID',
+        'Runtime Event id must be a canonical evt_ ULID',
+      );
+    }
+    if (!isCanonicalUtcTimestamp(draft.timestamp)) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_TIMESTAMP_INVALID',
+        'Runtime Event timestamp must be canonical UTC ISO 8601 milliseconds',
+      );
+    }
     const event = this.registry.publish(draft);
     if (event.durability !== 'durable') {
       throw new RuntimeEventRepositoryError(
