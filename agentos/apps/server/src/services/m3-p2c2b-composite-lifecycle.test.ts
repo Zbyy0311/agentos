@@ -945,6 +945,47 @@ test('P2C-2B cancelRun handles zero and multiple non-terminal Stages and rejects
   }
 });
 
+test('P2C-2B caller-owned Run cancellation preserves lifecycle order and transaction ownership', () => {
+  const fixture = newFixture();
+  try {
+    insertStage(fixture, 'stage-z', 3, 'running');
+    insertStage(fixture, 'stage-a', 2, 'ready');
+    insertStage(fixture, 'stage-terminal', 4, 'completed');
+    setRunStatus(fixture, 'queued');
+    setStageStatus(fixture, STAGE_ID, 'pending');
+
+    const result = inTransaction(fixture.db, () => fixture.service.cancelRunWithinTransaction(cancellationInput({
+      requestedBy: 'v2_api',
+      terminatedProcessIds: [],
+      worktreePreserved: false,
+    }) as never));
+
+    assertResultShape(result, ['stage.cancelled', 'stage.cancelled', 'stage.cancelled', 'run.cancelled']);
+    assert.deepEqual(result.events.map(event => [event.type, event.sequence, event.stageId]), [
+      ['stage.cancelled', 1, STAGE_ID],
+      ['stage.cancelled', 2, 'stage-a'],
+      ['stage.cancelled', 3, 'stage-z'],
+      ['run.cancelled', 4, undefined],
+    ]);
+    assert.ok(result.events.every(event => event.timestamp === NOW));
+    assert.ok(result.events.every(event => event.correlationId === 'correlation-composite'));
+    assert.equal(result.run.status, 'cancelled');
+    assert.equal(result.run.version, 2);
+    assert.equal(result.run.nextEventSequence, 5);
+    assert.deepEqual(result.stages.map(stage => [stage.id, stage.status, stage.version]), [
+      [STAGE_ID, 'cancelled', 2],
+      ['stage-a', 'cancelled', 2],
+      ['stage-z', 'cancelled', 2],
+      ['stage-terminal', 'completed', 1],
+    ]);
+    assert.equal((fixture.db.prepare('SELECT COUNT(*) AS count FROM runtime_events').get() as { count: number }).count, 4);
+    assert.equal((fixture.db.prepare('SELECT COUNT(*) AS count FROM outbox_messages').get() as { count: number }).count, 4);
+    assertHealthy(fixture);
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
 test('P2C-2B completeRun derives completedStageIds and enforces the completion rule', () => {
   const success = newFixture();
   try {

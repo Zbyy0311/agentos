@@ -931,74 +931,91 @@ export class LifecycleTransactionService {
     this.validateCancellationInput(input);
     const expectedRunVersion = this.expectedRunVersion(input);
 
-    return this.dependencies.runInTransaction(() => {
-      const run = this.requireRun(input.workspaceId, input.runId);
-      const stages = this.dependencies.runStageRepository.listByRun(input.workspaceId, input.runId);
-      if (!['queued', 'starting', 'running', 'paused'].includes(run.status)) {
-        throw new LifecycleTransactionError(
-          'LIFECYCLE_STATE_MISMATCH',
-          `Run ${run.id} is ${run.status}, expected a cancellable non-approval state`,
-        );
-      }
-      this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
-      const affectedStages = stages.filter(stage => !isTerminalStage(stage.status));
-      const timestamp = this.transactionTimestamp();
-      const events: RuntimeEventEnvelope[] = [];
-      const outboxes: OutboxMessage[] = [];
+    return this.dependencies.runInTransaction(() => this.cancelRunWithinTransactionBody(input, expectedRunVersion));
+  }
 
-      for (const stage of affectedStages) {
-        const nextStage = this.dependencies.runStageRepository.transitionLifecycleWithinTransaction({
-          workspaceId: input.workspaceId,
-          runId: input.runId,
-          stageId: stage.id,
-          expectedVersion: stage.version,
-          expectedFrom: stage.status,
-          to: 'cancelled',
-          timestamp,
-        });
-        const stageEvent = this.appendEvent(
-          run,
-          nextStage,
-          'stage.cancelled',
-          timestamp,
-          input.correlationId,
-          input.causationId,
-          input.parentEventId,
-          input.metadata,
-          { reason: input.reason ?? 'run cancellation' },
-        );
-        events.push(stageEvent);
-        outboxes.push(this.insertOutbox(stageEvent, timestamp));
-      }
+  /**
+   * Performs Run cancellation inside a transaction owned by the caller.
+   * V2 mutation idempotency must store its success record in this same
+   * transaction, so this boundary must never open another transaction.
+   */
+  cancelRunWithinTransaction(input: CancelRunInput): CompositeLifecycleTransactionResult {
+    this.validateCancellationInput(input);
+    return this.cancelRunWithinTransactionBody(input, this.expectedRunVersion(input));
+  }
 
-      const nextRun = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
+  private cancelRunWithinTransactionBody(
+    input: CancelRunInput,
+    expectedRunVersion: number,
+  ): CompositeLifecycleTransactionResult {
+    const run = this.requireRun(input.workspaceId, input.runId);
+    const stages = this.dependencies.runStageRepository.listByRun(input.workspaceId, input.runId);
+    if (!['queued', 'starting', 'running', 'paused'].includes(run.status)) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_STATE_MISMATCH',
+        `Run ${run.id} is ${run.status}, expected a cancellable non-approval state`,
+      );
+    }
+    this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+    const affectedStages = stages
+      .filter(stage => !isTerminalStage(stage.status))
+      .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id));
+    const timestamp = this.transactionTimestamp();
+    const events: RuntimeEventEnvelope[] = [];
+    const outboxes: OutboxMessage[] = [];
+
+    for (const stage of affectedStages) {
+      const nextStage = this.dependencies.runStageRepository.transitionLifecycleWithinTransaction({
         workspaceId: input.workspaceId,
         runId: input.runId,
-        expectedVersion: expectedRunVersion,
-        expectedFrom: run.status,
+        stageId: stage.id,
+        expectedVersion: stage.version,
+        expectedFrom: stage.status,
         to: 'cancelled',
         timestamp,
       });
-      const runEvent = this.appendEvent(
-        nextRun,
-        undefined,
-        'run.cancelled',
+      const stageEvent = this.appendEvent(
+        run,
+        nextStage,
+        'stage.cancelled',
         timestamp,
         input.correlationId,
         input.causationId,
         input.parentEventId,
         input.metadata,
-        {
-          requestedBy: input.requestedBy,
-          terminatedProcessIds: input.terminatedProcessIds,
-          worktreePreserved: input.worktreePreserved,
-          ...(input.reason === undefined ? {} : { reason: input.reason }),
-        },
+        { reason: input.reason ?? 'run cancellation' },
       );
-      events.push(runEvent);
-      outboxes.push(this.insertOutbox(runEvent, timestamp));
-      return this.compositeResult(input.workspaceId, input.runId, events, outboxes);
+      events.push(stageEvent);
+      outboxes.push(this.insertOutbox(stageEvent, timestamp));
+    }
+
+    const nextRun = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      expectedVersion: expectedRunVersion,
+      expectedFrom: run.status,
+      to: 'cancelled',
+      timestamp,
     });
+    const runEvent = this.appendEvent(
+      nextRun,
+      undefined,
+      'run.cancelled',
+      timestamp,
+      input.correlationId,
+      input.causationId,
+      input.parentEventId,
+      input.metadata,
+      {
+        requestedBy: input.requestedBy,
+        terminatedProcessIds: input.terminatedProcessIds,
+        worktreePreserved: input.worktreePreserved,
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
+      },
+    );
+    events.push(runEvent);
+    outboxes.push(this.insertOutbox(runEvent, timestamp));
+    return this.compositeResult(input.workspaceId, input.runId, events, outboxes);
   }
 
   completeRun(input: CompleteRunInput): CompositeLifecycleTransactionResult {

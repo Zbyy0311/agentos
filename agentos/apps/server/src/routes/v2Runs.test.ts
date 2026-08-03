@@ -397,11 +397,38 @@ test('T83 cancelling a queued v2 Run succeeds and releases the active slot', asy
   try {
     const taskId = await createTaskViaApi(fx.baseA);
     const runId = await createRunViaApi(fx.baseA, taskId);
-    const cancel = await fetch(`${fx.baseA}/v2/runs/${runId}/cancel`, { method: 'POST' });
+    const runRepository = fx.store.runRepository();
+    Object.defineProperty(runRepository, 'transitionStatus', {
+      configurable: true,
+      writable: true,
+      value: () => { throw new Error('V2_CANCEL_MUST_USE_LIFECYCLE_TRANSACTION'); },
+    });
+    let cancel: Response;
+    try {
+      cancel = await fetch(`${fx.baseA}/v2/runs/${runId}/cancel`, { method: 'POST' });
+    } finally {
+      Reflect.deleteProperty(runRepository, 'transitionStatus');
+    }
     assert.equal(cancel.status, 200);
     const { run } = await cancel.json() as { run: Record<string, unknown> };
     assert.equal(run.status, 'cancelled');
     assert.ok(run.cancellationRequestedAt);
+
+    const eventRows = fx.store.getDatabase().prepare(`
+      SELECT id, type, sequence, timestamp, correlation_id, stage_id
+      FROM runtime_events WHERE run_id = ? ORDER BY sequence ASC
+    `).all(runId) as Array<{ id: string; type: string; sequence: number; timestamp: string; correlation_id: string; stage_id: string | null }>;
+    assert.deepEqual(eventRows.map(row => ({ type: row.type, sequence: row.sequence, stage_id: row.stage_id })), [
+      { type: 'run.created', sequence: 1, stage_id: null },
+      { type: 'run.cancelled', sequence: 2, stage_id: null },
+    ]);
+    assert.deepEqual(eventRows.map(row => row.correlation_id), [runId, runId]);
+    assert.ok(eventRows[0]?.timestamp);
+    assert.equal(eventRows[1]?.timestamp, run.cancellationRequestedAt);
+    const outboxRows = fx.store.getDatabase().prepare(`
+      SELECT event_id FROM outbox_messages WHERE aggregate_id = ? ORDER BY created_at ASC, id ASC
+    `).all(runId) as Array<{ event_id: string }>;
+    assert.deepEqual(outboxRows.map(row => row.event_id), eventRows.map(row => row.id));
 
     const nextRunId = await createRunViaApi(fx.baseA, taskId);
     assert.ok(nextRunId);
@@ -443,6 +470,12 @@ test('R08 run cancel replay is evaluated before RUN_NOT_CANCELLABLE', async () =
     assert.equal(first.headers.get('idempotency-replayed'), null);
     const firstRun = (await first.json() as { run: { id: string; status: string } }).run;
     assert.equal(firstRun.status, 'cancelled');
+    const firstCounts = fx.store.getDatabase().prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM runtime_events WHERE run_id = ?) AS events,
+        (SELECT COUNT(*) FROM outbox_messages WHERE aggregate_id = ?) AS outboxes
+    `).get(runId, runId) as { events: number; outboxes: number };
+    assert.deepEqual({ ...firstCounts }, { events: 2, outboxes: 2 });
     // The run is already cancelled; without idempotency this would be a 409 RUN_NOT_CANCELLABLE.
     const replay = await fetch(`${fx.baseA}/v2/runs/${runId}/cancel`, {
       method: 'POST',
@@ -453,6 +486,12 @@ test('R08 run cancel replay is evaluated before RUN_NOT_CANCELLABLE', async () =
     assert.equal(replay.headers.get('idempotency-replayed'), 'true');
     const replayRun = (await replay.json() as { run: { id: string; status: string } }).run;
     assert.deepEqual(replayRun, firstRun);
+    const replayCounts = fx.store.getDatabase().prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM runtime_events WHERE run_id = ?) AS events,
+        (SELECT COUNT(*) FROM outbox_messages WHERE aggregate_id = ?) AS outboxes
+    `).get(runId, runId) as { events: number; outboxes: number };
+    assert.deepEqual({ ...replayCounts }, { ...firstCounts });
     const conflict = await fetch(`${fx.baseA}/v2/runs/${runId}/cancel`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'r08-key-0002' },
@@ -460,6 +499,12 @@ test('R08 run cancel replay is evaluated before RUN_NOT_CANCELLABLE', async () =
     });
     assert.equal(conflict.status, 409);
     assert.equal((await conflict.json() as { code: string }).code, 'RUN_NOT_CANCELLABLE');
+    const conflictCounts = fx.store.getDatabase().prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM runtime_events WHERE run_id = ?) AS events,
+        (SELECT COUNT(*) FROM outbox_messages WHERE aggregate_id = ?) AS outboxes
+    `).get(runId, runId) as { events: number; outboxes: number };
+    assert.deepEqual({ ...conflictCounts }, { ...firstCounts });
     const recordCount = fx.store.getDatabase()
       .prepare('SELECT COUNT(*) AS count FROM idempotency_records')
       .get() as { count: number };
@@ -494,6 +539,8 @@ test('P401/P402 route run.cancel honors matching and stale expectedVersion', asy
     const untouched = fx.store.runRepository().findById(fx.workspaceAId, runId)!;
     assert.equal(untouched.status, 'queued');
     assert.equal(untouched.version, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runtime_events WHERE run_id = ?').get(runId) as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(runId) as { count: number }).count, 1);
     const matching = await postRunCancel(fx.baseA, runId, { expectedVersion: 1 });
     assert.equal(matching.status, 200);
     const body = await matching.json() as { run: { status: string; version: number } };
@@ -519,10 +566,41 @@ test('P425/P427 route run.cancel invalid expectedVersion returns 400, no mutatio
     }
     const untouched = fx.store.runRepository().findById(fx.workspaceAId, runId)!;
     assert.equal(untouched.status, 'queued');
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runtime_events WHERE run_id = ?').get(runId) as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(runId) as { count: number }).count, 1);
     const recordCount = fx.store.getDatabase()
       .prepare('SELECT COUNT(*) AS count FROM idempotency_records')
       .get() as { count: number };
     assert.equal(recordCount.count, 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('run.cancel rolls back lifecycle Event and keyed idempotency together on Event failure', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'cancel-rollback');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    const runtimeEventRepository = fx.store.runtimeEventRepository();
+    Object.defineProperty(runtimeEventRepository, 'appendWithinTransaction', {
+      configurable: true,
+      writable: true,
+      value: () => { throw new Error('V2_CANCEL_EVENT_FAILURE'); },
+    });
+    let response: Response;
+    try {
+      response = await postRunCancel(fx.baseA, runId, {}, 'cancel-rollback-key');
+    } finally {
+      Reflect.deleteProperty(runtimeEventRepository, 'appendWithinTransaction');
+    }
+    assert.equal(response.status, 500);
+    const run = fx.store.runRepository().findById(fx.workspaceAId, runId)!;
+    assert.equal(run.status, 'queued');
+    assert.equal(run.version, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runtime_events WHERE run_id = ?').get(runId) as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(runId) as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count, 0);
   } finally {
     await closeFixture(fx);
   }

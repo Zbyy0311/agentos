@@ -282,7 +282,7 @@ export class TaskRunService {
         domainInput: {},
         expectedVersion: expectedVersion ?? null,
       },
-      mutate: () => buildRunResultEnvelopeV1('run.cancel', this.cancelQueuedRunInTransaction(workspaceId, runId, expectedVersion)),
+      mutate: () => buildRunResultEnvelopeV1('run.cancel', this.cancelQueuedRunForV2InTransaction(workspaceId, runId, expectedVersion)),
     });
   }
 
@@ -642,6 +642,37 @@ export class TaskRunService {
     const task = this.requireTask(workspaceId, run.taskId);
     this.resolveTaskAfterRunTerminal(task, cancelled);
     return cancelled;
+  }
+
+  /**
+   * V2 cancellation uses the caller-owned Lifecycle Transaction boundary so
+   * Run, affected Stages, Runtime Events, Outbox rows, Task reconciliation,
+   * and keyed idempotency success commit together.
+   */
+  private cancelQueuedRunForV2InTransaction(workspaceId: string, runId: string, expectedVersion?: number): Run {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    const version = this.mutationVersion('runs', runId, run.version, expectedVersion);
+    if (run.status !== 'queued') {
+      throw domainError('RUN_NOT_CANCELLABLE', `Run ${runId} is not cancellable in status '${run.status}'`);
+    }
+
+    const lifecycleTransactionService = this.requireLifecycleTransactionService();
+    if (typeof lifecycleTransactionService.cancelRunWithinTransaction !== 'function') {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    const result = lifecycleTransactionService.cancelRunWithinTransaction({
+      workspaceId,
+      runId,
+      expectedRunVersion: version,
+      correlationId: run.id,
+      requestedBy: 'v2_api',
+      terminatedProcessIds: [],
+      worktreePreserved: false,
+    });
+    const task = this.requireTask(workspaceId, run.taskId);
+    this.resolveTaskAfterRunTerminal(task, result.run);
+    return result.run;
   }
 
   private acceptRunInTransaction(workspaceId: string, taskId: string, runId: string, expectedVersion?: number): Task {
