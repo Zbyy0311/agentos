@@ -921,7 +921,7 @@ export interface RunSnapshotPayloadV2
 
 export type RunSnapshotPayload = RunSnapshotPayloadV1 | RunSnapshotPayloadV2;
 
-export interface RunSnapshot<TPayload extends RunSnapshotPayload = RunSnapshotPayloadV1> {
+export interface RunSnapshot<TPayload extends RunSnapshotPayload = RunSnapshotPayload> {
   id: string;
   workspaceId: string;
   runId: string;

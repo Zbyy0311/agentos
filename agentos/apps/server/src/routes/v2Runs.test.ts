@@ -127,12 +127,14 @@ test('P4 malformed repository read surfaces fail closed instead of synthesizing 
     });
     const validSnapshotRepository = fx.store.runSnapshotRepository();
     const validStageRepository = fx.store.runStageRepository();
-    const malformedStore = fx.store as unknown as {
-      runSnapshotRepository: () => unknown;
-      runStageRepository: () => unknown;
+    const overrideStoreMethod = (
+      name: 'runSnapshotRepository' | 'runStageRepository',
+      value: () => unknown,
+    ): void => {
+      Object.defineProperty(fx.store, name, { configurable: true, writable: true, value });
     };
 
-    malformedStore.runSnapshotRepository = () => ({});
+    overrideStoreMethod('runSnapshotRepository', () => ({}));
     const missingSnapshotRead = await fetch(`${fx.baseA}/v2/runs/${created.run.id}`);
     assert.equal(missingSnapshotRead.status, 500);
     assert.deepEqual(await missingSnapshotRead.json(), {
@@ -140,8 +142,8 @@ test('P4 malformed repository read surfaces fail closed instead of synthesizing 
       code: 'INTERNAL_ERROR',
     });
 
-    malformedStore.runSnapshotRepository = () => validSnapshotRepository;
-    malformedStore.runStageRepository = () => ({});
+    overrideStoreMethod('runSnapshotRepository', () => validSnapshotRepository);
+    overrideStoreMethod('runStageRepository', () => ({}));
     const missingStageRead = await fetch(`${fx.baseA}/v2/runs/${created.run.id}?include=stages`);
     assert.equal(missingStageRead.status, 500);
     assert.deepEqual(await missingStageRead.json(), {
@@ -149,7 +151,9 @@ test('P4 malformed repository read surfaces fail closed instead of synthesizing 
       code: 'INTERNAL_ERROR',
     });
 
-    malformedStore.runStageRepository = () => validStageRepository;
+    overrideStoreMethod('runStageRepository', () => validStageRepository);
+    Reflect.deleteProperty(fx.store, 'runSnapshotRepository');
+    Reflect.deleteProperty(fx.store, 'runStageRepository');
   } finally {
     await closeFixture(fx);
   }
@@ -238,14 +242,38 @@ test('P4 GET v2 Run includes snapshot payload and content hash without row metad
     });
     const response = await fetch(`${fx.baseA}/v2/runs/${created.run.id}?include=snapshot`);
     assert.equal(response.status, 200);
-    const body = await response.json() as Record<string, unknown>;
+    const body = await response.json() as {
+      snapshotAvailable: boolean;
+      snapshotSchemaVersion: number;
+      snapshot: {
+        workflow: {
+          definitionKey: string;
+          worktreeMode: string;
+          stages: Array<{ dependsOn: string[] }>;
+        };
+      };
+      contentHash: string;
+      [key: string]: unknown;
+    };
     assert.equal(body.snapshotAvailable, true);
     assert.equal(body.snapshotSchemaVersion, 2);
-    assert.equal((body.snapshot as { workflow: { definitionKey: string } }).workflow.definitionKey, 'legacy-pipeline');
-    assert.match(body.contentHash as string, /^[0-9a-f]{64}$/);
+    assert.equal(body.snapshot.workflow.definitionKey, 'legacy-pipeline');
+    assert.equal(body.snapshot.workflow.worktreeMode, 'preferred');
+    assert.deepEqual(body.snapshot.workflow.stages.map(stage => stage.dependsOn), [
+      [], ['codex_manager'], ['kimi_worker'], ['opencode_reviewer'],
+    ]);
+    assert.match(body.contentHash, /^[0-9a-f]{64}$/);
     assert.equal('snapshotId' in body, false);
     assert.equal('workflowDefinitionId' in body, false);
-    assert.equal('id' in (body.snapshot as Record<string, unknown>), false);
+    assert.equal('id' in body.snapshot, false);
+
+    body.snapshot.workflow.worktreeMode = 'disabled';
+    body.snapshot.workflow.stages[1]!.dependsOn = [];
+    const reread = await (await fetch(`${fx.baseA}/v2/runs/${created.run.id}?include=snapshot`)).json() as typeof body;
+    assert.equal(reread.snapshot.workflow.worktreeMode, 'preferred');
+    assert.deepEqual(reread.snapshot.workflow.stages.map(stage => stage.dependsOn), [
+      [], ['codex_manager'], ['kimi_worker'], ['opencode_reviewer'],
+    ]);
   } finally {
     await closeFixture(fx);
   }

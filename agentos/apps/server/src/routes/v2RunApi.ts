@@ -3,9 +3,11 @@ import type {
   ProviderConfigurationSnapshotV1,
   Run,
   RunSnapshot,
-  RunSnapshotPayloadV1,
+  RunSnapshotPayload,
+  RunSnapshotPayloadV2,
   RunStage,
   WorkflowStageSnapshotV1,
+  WorkflowStageSnapshotV2,
 } from '@agentos/shared';
 import { posix, win32 } from 'node:path';
 import { V2ValidationError } from './v2Tasks.js';
@@ -93,7 +95,7 @@ function scanWorkspaceRelativePath(value: string | null): void {
   }
 }
 
-function scanPayload(payload: RunSnapshotPayloadV1): void {
+function scanPayload(payload: RunSnapshotPayload): void {
   const values: string[] = [
     payload.capturedAt,
     payload.run.workspaceId,
@@ -107,6 +109,9 @@ function scanPayload(payload: RunSnapshotPayloadV1): void {
     payload.workflow.name,
     payload.workflow.definitionHash,
   ];
+  if (payload.schemaVersion === 2) {
+    values.push(payload.workflow.worktreeMode);
+  }
   for (const stage of payload.workflow.stages) {
     values.push(stage.workflowStageKey, stage.name);
     if (stage.agent) {
@@ -133,6 +138,9 @@ function scanPayload(payload: RunSnapshotPayloadV1): void {
       values.push(...stage.provider.argsTemplate);
     }
   }
+  if (payload.schemaVersion === 2) {
+    for (const stage of payload.workflow.stages) values.push(...stage.dependsOn);
+  }
   for (const value of values) rejectUnsafeText(value);
 }
 
@@ -150,20 +158,39 @@ function cloneAgent(agent: AgentSnapshotV1): AgentSnapshotV1 {
   };
 }
 
-const CAPABILITY_KEYS = [
-  'sessionResume', 'structuredEvents', 'nativeApprovals', 'subagents', 'toolEvents',
-  'fileEvents', 'usageEvents', 'reasoningStream', 'interactiveInput', 'pause',
-  'cancellation', 'modelSelection', 'workspaceAwareness', 'nativeSandbox', 'outputContracts',
-] as const;
+function cloneCapabilities(capabilities: ProviderConfigurationSnapshotV1['capabilities']): ProviderConfigurationSnapshotV1['capabilities'] {
+  return {
+    sessionResume: capabilities.sessionResume,
+    structuredEvents: capabilities.structuredEvents,
+    nativeApprovals: capabilities.nativeApprovals,
+    subagents: capabilities.subagents,
+    toolEvents: capabilities.toolEvents,
+    fileEvents: capabilities.fileEvents,
+    usageEvents: capabilities.usageEvents,
+    reasoningStream: capabilities.reasoningStream,
+    interactiveInput: capabilities.interactiveInput,
+    pause: capabilities.pause,
+    cancellation: capabilities.cancellation,
+    modelSelection: capabilities.modelSelection,
+    workspaceAwareness: capabilities.workspaceAwareness,
+    nativeSandbox: capabilities.nativeSandbox,
+    outputContracts: capabilities.outputContracts,
+  };
+}
 
-const TIMEOUT_KEYS = [
-  'discoveryTimeoutMs', 'validationTimeoutMs', 'startupTimeoutMs', 'idleTimeoutMs',
-  'totalTimeoutMs', 'cancelGracePeriodMs', 'approvalTimeoutMs',
-] as const;
+function cloneTimeoutPolicy(timeoutPolicy: ProviderConfigurationSnapshotV1['timeoutPolicy']): ProviderConfigurationSnapshotV1['timeoutPolicy'] {
+  return {
+    discoveryTimeoutMs: timeoutPolicy.discoveryTimeoutMs,
+    validationTimeoutMs: timeoutPolicy.validationTimeoutMs,
+    startupTimeoutMs: timeoutPolicy.startupTimeoutMs,
+    idleTimeoutMs: timeoutPolicy.idleTimeoutMs,
+    totalTimeoutMs: timeoutPolicy.totalTimeoutMs,
+    cancelGracePeriodMs: timeoutPolicy.cancelGracePeriodMs,
+    approvalTimeoutMs: timeoutPolicy.approvalTimeoutMs,
+  };
+}
 
 function cloneProvider(provider: ProviderConfigurationSnapshotV1): ProviderConfigurationSnapshotV1 {
-  const capabilities = Object.fromEntries(CAPABILITY_KEYS.map(key => [key, provider.capabilities[key]])) as unknown as ProviderConfigurationSnapshotV1['capabilities'];
-  const timeoutPolicy = Object.fromEntries(TIMEOUT_KEYS.map(key => [key, provider.timeoutPolicy[key]])) as unknown as ProviderConfigurationSnapshotV1['timeoutPolicy'];
   return {
     providerConfigId: provider.providerConfigId,
     name: provider.name,
@@ -177,8 +204,8 @@ function cloneProvider(provider: ProviderConfigurationSnapshotV1): ProviderConfi
     secretProfileId: provider.secretProfileId,
     workingDirectoryMode: provider.workingDirectoryMode,
     workspaceRelativeWorkingDirectory: provider.workspaceRelativeWorkingDirectory,
-    capabilities,
-    timeoutPolicy,
+    capabilities: cloneCapabilities(provider.capabilities),
+    timeoutPolicy: cloneTimeoutPolicy(provider.timeoutPolicy),
     approvalMode: provider.approvalMode,
     outputMode: provider.outputMode,
     enabled: provider.enabled,
@@ -196,7 +223,18 @@ function cloneStageSnapshot(stage: WorkflowStageSnapshotV1): WorkflowStageSnapsh
   };
 }
 
-function clonePayload(payload: RunSnapshotPayloadV1): RunSnapshotPayloadV1 {
+function cloneStageSnapshotV2(stage: WorkflowStageSnapshotV2): WorkflowStageSnapshotV2 {
+  return {
+    workflowStageKey: stage.workflowStageKey,
+    name: stage.name,
+    sequence: stage.sequence,
+    dependsOn: [...stage.dependsOn],
+    agent: stage.agent ? cloneAgent(stage.agent) : null,
+    provider: stage.provider ? cloneProvider(stage.provider) : null,
+  };
+}
+
+function clonePayloadV1(payload: Extract<RunSnapshotPayload, { schemaVersion: 1 }>): Extract<RunSnapshotPayload, { schemaVersion: 1 }> {
   return {
     schemaVersion: payload.schemaVersion,
     capturedAt: payload.capturedAt,
@@ -218,6 +256,35 @@ function clonePayload(payload: RunSnapshotPayloadV1): RunSnapshotPayloadV1 {
     },
     security: { redactionApplied: payload.security.redactionApplied },
   };
+}
+
+function clonePayloadV2(payload: RunSnapshotPayloadV2): RunSnapshotPayloadV2 {
+  return {
+    schemaVersion: payload.schemaVersion,
+    capturedAt: payload.capturedAt,
+    run: {
+      workspaceId: payload.run.workspaceId,
+      taskId: payload.run.taskId,
+      origin: payload.run.origin,
+      reason: payload.run.reason,
+      parentRunId: payload.run.parentRunId,
+      rootRunId: payload.run.rootRunId,
+    },
+    workflow: {
+      definitionId: payload.workflow.definitionId,
+      definitionKey: payload.workflow.definitionKey,
+      definitionVersion: payload.workflow.definitionVersion,
+      name: payload.workflow.name,
+      definitionHash: payload.workflow.definitionHash,
+      worktreeMode: payload.workflow.worktreeMode,
+      stages: payload.workflow.stages.map(cloneStageSnapshotV2),
+    },
+    security: { redactionApplied: payload.security.redactionApplied },
+  };
+}
+
+function clonePayload(payload: RunSnapshotPayload): RunSnapshotPayload {
+  return payload.schemaVersion === 1 ? clonePayloadV1(payload) : clonePayloadV2(payload);
 }
 
 function cloneRunStage(stage: RunStage): RunStage {

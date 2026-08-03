@@ -15,7 +15,6 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 };
 
 import type {
-  RunSnapshot,
   RunSnapshotPayload,
   RunSnapshotPayloadV1,
   RunSnapshotPayloadV2,
@@ -205,7 +204,12 @@ function sampleV2Payload(): RunSnapshotPayloadV2 {
       name: 'legacy-pipeline-v2',
       definitionHash: M3_013_LEGACY_DEFINITION_HASH,
       worktreeMode: 'preferred',
-      stages: [{ ...stage, dependsOn: [] }],
+      stages: [
+        { ...stage, workflowStageKey: 'codex_manager', name: 'codex_manager', sequence: 1, dependsOn: [] },
+        { ...stage, workflowStageKey: 'kimi_worker', name: 'kimi_worker', sequence: 2, dependsOn: ['codex_manager'] },
+        { ...stage, workflowStageKey: 'opencode_reviewer', name: 'opencode_reviewer', sequence: 3, dependsOn: ['kimi_worker'] },
+        { ...stage, workflowStageKey: 'codex_final_review', name: 'codex_final_review', sequence: 4, dependsOn: ['opencode_reviewer'] },
+      ],
     },
     security: { redactionApplied: false },
   };
@@ -220,11 +224,40 @@ function insertSnapshot(repository: RunSnapshotRepository, payload = samplePaylo
   });
 }
 
-function assertValidation(fn: () => unknown): void {
+function cloneV2Payload(payload: RunSnapshotPayloadV2): RunSnapshotPayloadV2 {
+  return JSON.parse(JSON.stringify(payload)) as RunSnapshotPayloadV2;
+}
+
+function insertRawSnapshot(
+  db: Db,
+  payload: RunSnapshotPayload,
+  workflowDefinitionId: string,
+  id = 'snapshot_00000000000000000000000001',
+): void {
+  const snapshotJson = canonicalizeJson(payload);
+  db.prepare(`
+    INSERT INTO run_snapshots (
+      id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version,
+      snapshot_json, content_hash, redaction_applied, captured_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    'ws_snapshot',
+    'run_snapshot',
+    workflowDefinitionId,
+    payload.schemaVersion,
+    snapshotJson,
+    hashCanonicalJson(payload),
+    payload.security.redactionApplied ? 1 : 0,
+    payload.capturedAt,
+  );
+}
+
+function assertValidation(fn: () => unknown, message?: string): void {
   assert.throws(fn, (error: unknown) => (
     error instanceof RunSnapshotValidationError
     && error.code === 'RUN_SNAPSHOT_VALIDATION_FAILED'
-  ));
+  ), message);
 }
 
 describe('RunSnapshotRepository', () => {
@@ -490,6 +523,10 @@ describe('RunSnapshotRepository', () => {
       ).get('run_snapshot') as { id: string; snapshot_json: string; content_hash: string; redaction_applied: number };
       assert.match(snapshot.id, /^snapshot_[0-9A-HJKMNP-TV-Z]{26}$/);
       assert.deepEqual(snapshot.payload, payload);
+      const stored = repository.findByRunId('ws_snapshot', 'run_snapshot');
+      assert.ok(stored);
+      if (stored.payload.schemaVersion !== 1) throw new Error('expected a V1 Snapshot');
+      assert.deepEqual(stored.payload, payload);
       assert.equal(row.snapshot_json, canonicalizeJson(payload));
       assert.equal(row.content_hash, hashCanonicalJson(payload));
       assert.equal(row.redaction_applied, 0);
@@ -509,17 +546,133 @@ describe('RunSnapshotRepository', () => {
         workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
         payload,
       });
-      const stored = repository.findByRunId('ws_snapshot', 'run_snapshot') as unknown as RunSnapshot<RunSnapshotPayloadV2>;
-      assert.equal(stored.payload.schemaVersion, 2);
+      const stored = repository.findByRunId('ws_snapshot', 'run_snapshot');
+      assert.ok(stored);
+      if (stored.payload.schemaVersion !== 2) throw new Error('expected a V2 Snapshot');
       assert.equal(stored.payload.workflow.worktreeMode, 'preferred');
-      assert.deepEqual(stored.payload.workflow.stages[0]?.dependsOn, []);
-      assert.equal(repository.verifyHash(snapshot as unknown as RunSnapshot<RunSnapshotPayload>), true);
+      assert.deepEqual(stored.payload.workflow.stages.map(stage => stage.dependsOn), [
+        [], ['codex_manager'], ['kimi_worker'], ['opencode_reviewer'],
+      ]);
+      assert.equal(repository.verifyHash(snapshot), true);
       assert.equal(
         (db.prepare('SELECT snapshot_schema_version FROM run_snapshots WHERE run_id = ?').get('run_snapshot') as { snapshot_schema_version: number }).snapshot_schema_version,
         2,
       );
     } finally {
       db.close();
+    }
+  });
+
+  it('rejects V2 inserts whose workflow metadata does not match the referenced Workflow V2', () => {
+    const mutations: Array<[string, (payload: RunSnapshotPayloadV2) => void]> = [
+      ['worktreeMode', payload => { payload.workflow.worktreeMode = 'disabled'; }],
+      ['dependsOn', payload => { payload.workflow.stages[1]!.dependsOn = []; }],
+      ['missing stage', payload => { payload.workflow.stages.pop(); }],
+      ['additional stage', payload => {
+        payload.workflow.stages.push({
+          ...payload.workflow.stages[3]!,
+          workflowStageKey: 'extra_stage',
+          name: 'extra_stage',
+          sequence: 5,
+          dependsOn: ['codex_final_review'],
+        });
+      }],
+      ['reordered stages', payload => {
+        payload.workflow.stages = [
+          payload.workflow.stages[1]!,
+          payload.workflow.stages[0]!,
+          payload.workflow.stages[2]!,
+          payload.workflow.stages[3]!,
+        ];
+      }],
+    ];
+    for (const [label, mutate] of mutations) {
+      const db = migratedDb();
+      try {
+        const payload = cloneV2Payload(sampleV2Payload());
+        mutate(payload);
+        assertValidation(() => new RunSnapshotRepository(db).insert({
+          workspaceId: 'ws_snapshot',
+          runId: 'run_snapshot',
+          workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+          payload,
+        }), label);
+      } finally {
+        db.close();
+      }
+    }
+  });
+
+  it('rejects V2 inserts and reads that reference a Workflow V1', () => {
+    const db = migratedDb();
+    try {
+      const payload = cloneV2Payload(sampleV2Payload());
+      payload.workflow.definitionId = M25_UNBOUND_WORKFLOW_ID;
+      payload.workflow.definitionKey = M25_UNBOUND_DEFINITION_KEY;
+      payload.workflow.definitionVersion = 1;
+      payload.workflow.name = M25_UNBOUND_DEFINITION_NAME;
+      payload.workflow.definitionHash = M25_UNBOUND_DEFINITION_HASH;
+      payload.workflow.worktreeMode = 'disabled';
+      payload.workflow.stages = [];
+      const repository = new RunSnapshotRepository(db);
+      assertValidation(() => repository.insert({
+        workspaceId: 'ws_snapshot',
+        runId: 'run_snapshot',
+        workflowDefinitionId: M25_UNBOUND_WORKFLOW_ID,
+        payload,
+      }), 'insert V2 Snapshot referencing Workflow V1');
+
+      insertRawSnapshot(db, payload, M25_UNBOUND_WORKFLOW_ID);
+      assert.throws(
+        () => repository.findByRunId('ws_snapshot', 'run_snapshot'),
+        (error: unknown) => error instanceof RunSnapshotIntegrityError
+          && error.message.includes('V2 Snapshot requires a V2 workflow definition'),
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it('fails closed on read when a V2 Snapshot binding is tampered', () => {
+    const mutations: Array<[string, (payload: RunSnapshotPayloadV2) => void]> = [
+      ['worktreeMode', payload => { payload.workflow.worktreeMode = 'disabled'; }],
+      ['dependsOn', payload => { payload.workflow.stages[1]!.dependsOn = []; }],
+      ['missing stage', payload => { payload.workflow.stages.pop(); }],
+      ['additional stage', payload => {
+        payload.workflow.stages.push({
+          ...payload.workflow.stages[3]!,
+          workflowStageKey: 'extra_stage',
+          name: 'extra_stage',
+          sequence: 5,
+          dependsOn: ['codex_final_review'],
+        });
+      }],
+      ['reordered stages', payload => {
+        payload.workflow.stages = [
+          payload.workflow.stages[1]!,
+          payload.workflow.stages[0]!,
+          payload.workflow.stages[2]!,
+          payload.workflow.stages[3]!,
+        ];
+      }],
+    ];
+    for (const [label, mutate] of mutations) {
+      const db = migratedDb();
+      try {
+        const payload = cloneV2Payload(sampleV2Payload());
+        mutate(payload);
+        insertRawSnapshot(db, payload, M3_013_LEGACY_WORKFLOW_V2_ID);
+        assert.throws(
+          () => new RunSnapshotRepository(db).findByRunId('ws_snapshot', 'run_snapshot'),
+          (error: unknown) => error instanceof RunSnapshotIntegrityError
+            && error.message.includes('Snapshot stages do not match the referenced workflow')
+              || error instanceof RunSnapshotIntegrityError
+                && error.message.includes('Snapshot worktreeMode does not match the referenced workflow'),
+          label,
+        );
+      } finally {
+        db.close();
+      }
     }
   });
 

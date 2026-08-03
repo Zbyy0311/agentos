@@ -245,6 +245,8 @@ test('SnapshotService persists one immutable payload and four initial Legacy sta
   const persisted = service.persistResolvedRun(run, resolved);
   assert.equal(captured.length, 1);
   assert.equal(persisted.stages.length, 4);
+  if (persisted.snapshot.payload.schemaVersion !== 2) throw new Error('expected a V2 Snapshot');
+  assert.equal(persisted.snapshot.payload.workflow.worktreeMode, 'preferred');
   assert.deepEqual(stageKeys, ['codex_manager', 'kimi_worker', 'opencode_reviewer', 'codex_final_review']);
   const payload = captured[0] as {
     schemaVersion: number;

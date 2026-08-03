@@ -346,7 +346,7 @@ export class SnapshotService {
   persistResolvedRun(
     run: Run,
     resolved: ResolvedRunConfiguration,
-  ): { snapshot: RunSnapshot; stages: RunStage[] } {
+  ): { snapshot: RunSnapshot<RunSnapshotPayloadV2>; stages: RunStage[] } {
     try {
       const capturedAt = this.now();
       const payload: RunSnapshotPayloadV2 = {
@@ -404,7 +404,7 @@ export class SnapshotService {
           sequence: materialized.sequence,
         }));
       }
-      return { snapshot: snapshot as unknown as RunSnapshot, stages };
+      return { snapshot, stages };
     } catch (error) {
       if (error instanceof RunSnapshotFailedError) throw error;
       throw new RunSnapshotFailedError(error);

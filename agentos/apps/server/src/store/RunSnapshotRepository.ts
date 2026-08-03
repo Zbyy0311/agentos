@@ -1,14 +1,18 @@
 import type {
   RunSnapshot,
   RunSnapshotPayload,
+  RunSnapshotPayloadV2,
   V2RunOrigin,
   V2RunReason,
+  WorkflowDefinition,
+  WorkflowDefinitionPayloadV2,
   WorktreeMode,
 } from '@agentos/shared';
 import { posix, win32 } from 'node:path';
 import type { TransactionDatabase } from './Transaction.js';
 import { canonicalizeJson, hashCanonicalJson } from '../snapshots/canonicalJson.js';
 import { createEntityId } from './Identity.js';
+import { WorkflowDefinitionRepository } from './WorkflowDefinitionRepository.js';
 
 interface RunRow {
   workspace_id: string;
@@ -408,6 +412,50 @@ function validatePayloadEnvelope(payload: unknown): asserts payload is RunSnapsh
   assertBoolean(security.redactionApplied, 'security.redactionApplied');
 }
 
+function loadWorkflowDefinition(
+  db: TransactionDatabase,
+  workflowId: string,
+  fail: (reason: string) => Error,
+): WorkflowDefinition {
+  try {
+    const definition = new WorkflowDefinitionRepository(db).findById(workflowId);
+    if (!definition) throw new Error('missing workflow definition');
+    return definition;
+  } catch {
+    throw fail('referenced workflow definition is invalid');
+  }
+}
+
+function assertV2WorkflowBinding(
+  payload: RunSnapshotPayloadV2,
+  definition: WorkflowDefinition,
+  fail: (reason: string) => Error,
+): void {
+  if (definition.payload.schemaVersion !== 2) {
+    throw fail('V2 Snapshot requires a V2 workflow definition');
+  }
+  const workflowPayload: WorkflowDefinitionPayloadV2 = definition.payload;
+  if (payload.workflow.worktreeMode !== workflowPayload.worktreeMode) {
+    throw fail('Snapshot worktreeMode does not match the referenced workflow');
+  }
+  if (payload.workflow.stages.length !== workflowPayload.stages.length) {
+    throw fail('Snapshot stages do not match the referenced workflow');
+  }
+  for (const [index, snapshotStage] of payload.workflow.stages.entries()) {
+    const workflowStage = workflowPayload.stages[index];
+    if (
+      !workflowStage
+      || snapshotStage.workflowStageKey !== workflowStage.key
+      || snapshotStage.name !== workflowStage.key
+      || snapshotStage.sequence !== workflowStage.sequence
+      || snapshotStage.dependsOn.length !== workflowStage.dependsOn.length
+      || snapshotStage.dependsOn.some((dependency, dependencyIndex) => dependency !== workflowStage.dependsOn[dependencyIndex])
+    ) {
+      throw fail('Snapshot stages do not match the referenced workflow');
+    }
+  }
+}
+
 function mapRow(row: SnapshotRow, payload: RunSnapshotPayload): RunSnapshot<RunSnapshotPayload> {
   return {
     id: row.id,
@@ -488,6 +536,10 @@ export class RunSnapshotRepository {
     ) {
       throw validationFailure('workflow metadata does not match the stored definition');
     }
+    if (payload.schemaVersion === 2) {
+      const definition = loadWorkflowDefinition(this.db, workflow.id, validationFailure);
+      assertV2WorkflowBinding(payload, definition, validationFailure);
+    }
 
     let snapshotJson: string;
     let contentHash: string;
@@ -519,7 +571,7 @@ export class RunSnapshotRepository {
     return result as RunSnapshot<TPayload>;
   }
 
-  findByRunId(workspaceId: string, runId: string): RunSnapshot | undefined {
+  findByRunId(workspaceId: string, runId: string): RunSnapshot<RunSnapshotPayload> | undefined {
     const row = this.db.prepare(`
       SELECT id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version,
         snapshot_json, content_hash, redaction_applied, captured_at
@@ -587,7 +639,11 @@ export class RunSnapshotRepository {
     ) {
       throw integrityFailure(runId, 'referenced workflow metadata mismatch');
     }
-    return mapRow(row, payload) as RunSnapshot;
+    if (payload.schemaVersion === 2) {
+      const definition = loadWorkflowDefinition(this.db, workflow.id, reason => integrityFailure(runId, reason));
+      assertV2WorkflowBinding(payload, definition, reason => integrityFailure(runId, reason));
+    }
+    return mapRow(row, payload);
   }
 
   verifyHash(snapshot: RunSnapshot<RunSnapshotPayload>): boolean {
