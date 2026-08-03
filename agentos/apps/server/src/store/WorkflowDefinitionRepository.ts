@@ -1,7 +1,8 @@
 import type {
   AgentRole,
   WorkflowDefinition,
-  WorkflowDefinitionPayloadV1,
+  WorkflowDefinitionPayload,
+  WorktreeMode,
 } from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
 import { canonicalizeJson, hashCanonicalJson } from '../snapshots/canonicalJson.js';
@@ -114,14 +115,26 @@ function assertPositiveInteger(value: unknown, rowId: string, path: string): num
   return value;
 }
 
+function assertWorktreeMode(value: unknown, rowId: string, path: string): WorktreeMode {
+  if (value !== 'required' && value !== 'preferred' && value !== 'disabled') {
+    throw integrityFailure(rowId, `${path} is invalid`);
+  }
+  return value;
+}
+
 function validatePayload(
   row: WorkflowDefinitionRow,
   payload: unknown,
-): asserts payload is WorkflowDefinitionPayloadV1 {
-  const root = assertExactObject(payload, row.id, 'payload', [
-    'schemaVersion', 'definitionKey', 'version', 'name', 'executionMode', 'retryPolicy', 'stages',
-  ]);
-  if (root.schemaVersion !== 1) throw integrityFailure(row.id, 'schemaVersion mismatch');
+): asserts payload is WorkflowDefinitionPayload {
+  if (!isRecord(payload)) throw integrityFailure(row.id, 'payload is not a plain object');
+  const schemaVersion = payload.schemaVersion;
+  if (schemaVersion !== 1 && schemaVersion !== 2) {
+    throw integrityFailure(row.id, 'schemaVersion mismatch');
+  }
+  const root = assertExactObject(payload, row.id, 'payload', schemaVersion === 1
+    ? ['schemaVersion', 'definitionKey', 'version', 'name', 'executionMode', 'retryPolicy', 'stages']
+    : ['schemaVersion', 'definitionKey', 'version', 'name', 'executionMode', 'retryPolicy', 'stages', 'worktreeMode']);
+  if (root.schemaVersion !== schemaVersion) throw integrityFailure(row.id, 'schemaVersion mismatch');
   if (assertString(root.definitionKey, row.id, 'definitionKey', true) !== row.definition_key) {
     throw integrityFailure(row.id, 'definitionKey mismatch');
   }
@@ -139,8 +152,11 @@ function validatePayload(
   const stages = assertDenseArray(root.stages, row.id, 'stages');
   const keys = new Set<string>();
   const sequences = new Set<number>();
+  const stageMetadata = new Map<string, { sequence: number; dependsOn: string[] }>();
   for (const stage of stages) {
-    const stageRecord = assertExactObject(stage, row.id, 'stage', ['key', 'sequence', 'agentRole']);
+    const stageRecord = assertExactObject(stage, row.id, 'stage', schemaVersion === 1
+      ? ['key', 'sequence', 'agentRole']
+      : ['key', 'sequence', 'agentRole', 'dependsOn']);
     const key = assertString(stageRecord.key, row.id, 'stage.key', true);
     if (key !== key.trim()) throw integrityFailure(row.id, 'stage key must not be trimmed');
     if (keys.has(key)) throw integrityFailure(row.id, 'duplicate stage key');
@@ -150,6 +166,30 @@ function validatePayload(
     sequences.add(sequence);
     if (stageRecord.agentRole !== null && (typeof stageRecord.agentRole !== 'string' || !AGENT_ROLES.has(stageRecord.agentRole as AgentRole))) {
       throw integrityFailure(row.id, 'stage agentRole is invalid');
+    }
+    const dependsOn = schemaVersion === 2
+      ? assertDenseArray(stageRecord.dependsOn, row.id, 'stage.dependsOn').map((dependency, index) => {
+        const value = assertString(dependency, row.id, `stage.dependsOn[${index}]`, true);
+        if (value !== value.trim()) throw integrityFailure(row.id, 'stage dependency must not be trimmed');
+        return value;
+      })
+      : [];
+    stageMetadata.set(key, { sequence, dependsOn });
+  }
+  if (schemaVersion === 2) {
+    assertWorktreeMode(root.worktreeMode, row.id, 'worktreeMode');
+    for (const [key, metadata] of stageMetadata) {
+      const dependencies = new Set<string>();
+      for (const dependency of metadata.dependsOn) {
+        if (dependencies.has(dependency)) throw integrityFailure(row.id, 'stage dependency is duplicated');
+        dependencies.add(dependency);
+        if (dependency === key) throw integrityFailure(row.id, 'stage dependency cannot reference itself');
+        const dependencyMetadata = stageMetadata.get(dependency);
+        if (!dependencyMetadata) throw integrityFailure(row.id, 'stage dependency does not exist');
+        if (dependencyMetadata.sequence >= metadata.sequence) {
+          throw integrityFailure(row.id, 'stage dependency must precede the stage');
+        }
+      }
     }
   }
   const definitionHash = assertString(row.definition_hash, row.id, 'definition_hash', true);

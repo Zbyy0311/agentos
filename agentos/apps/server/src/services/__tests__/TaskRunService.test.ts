@@ -25,7 +25,15 @@ import { RunRepository } from '../../store/RunRepository.js';
 import { inTransaction } from '../../store/Transaction.js';
 import { migration005 } from '../../migrations/migrations/005-tasks-table.js';
 import { migration006 } from '../../migrations/migrations/006-runs-table.js';
-import type { Run, RunSnapshot, RunStage, WorkflowDefinition, Workspace } from '@agentos/shared';
+import type {
+  Run,
+  RunSnapshot,
+  RunSnapshotPayloadV2,
+  RunStage,
+  WorkflowDefinition,
+  WorkflowDefinitionPayloadV2,
+  Workspace,
+} from '@agentos/shared';
 import type { ResolvedRunConfiguration, SnapshotService } from '../SnapshotService.js';
 
 interface Env {
@@ -52,28 +60,31 @@ const TEST_WORKSPACE: Workspace = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-const TEST_WORKFLOW = (definitionKey: 'legacy-pipeline' | 'unbound-task-run'): WorkflowDefinition => ({
+const TEST_WORKFLOW = (
+  definitionKey: 'legacy-pipeline' | 'unbound-task-run',
+): WorkflowDefinition & { payload: WorkflowDefinitionPayloadV2 } => ({
   id: `workflow-${definitionKey}`,
   definitionKey,
-  version: 1,
+  version: 2,
   name: definitionKey,
   definitionHash: 'a'.repeat(64),
   enabled: true,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   payload: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     definitionKey,
-    version: 1,
+    version: 2,
     name: definitionKey,
     executionMode: definitionKey === 'legacy-pipeline' ? 'legacy_pipeline' : 'unbound',
     retryPolicy: null,
+    worktreeMode: definitionKey === 'legacy-pipeline' ? 'preferred' : 'disabled',
     stages: definitionKey === 'legacy-pipeline'
       ? [
-        { key: 'codex_manager', sequence: 1, agentRole: 'codex' },
-        { key: 'kimi_worker', sequence: 2, agentRole: 'kimi' },
-        { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode' },
-        { key: 'codex_final_review', sequence: 4, agentRole: 'codex' },
+        { key: 'codex_manager', sequence: 1, agentRole: 'codex', dependsOn: [] },
+        { key: 'kimi_worker', sequence: 2, agentRole: 'kimi', dependsOn: ['codex_manager'] },
+        { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode', dependsOn: ['kimi_worker'] },
+        { key: 'codex_final_review', sequence: 4, agentRole: 'codex', dependsOn: ['opencode_reviewer'] },
       ]
       : [],
   },
@@ -86,23 +97,24 @@ function makeLifecycleSnapshotService(): SnapshotService {
     workflowStageKey: stage.key,
     name: stage.key,
     sequence: stage.sequence,
+    dependsOn: [...stage.dependsOn],
     agent: null,
     provider: null,
     runnerAgent: null,
   }));
   return {
-    resolveUnbound: (): ResolvedRunConfiguration => ({ workflow: unboundWorkflow, stages: [], redactionApplied: false }),
-    resolveLegacy: (): ResolvedRunConfiguration => ({ workflow: legacyWorkflow, stages: legacyStages, redactionApplied: false }),
-    persistResolvedRun: (run: Run, resolved: ResolvedRunConfiguration): { snapshot: RunSnapshot; stages: RunStage[] } => {
+    resolveUnbound: (): ResolvedRunConfiguration => ({ workflow: unboundWorkflow, stages: [], worktreeMode: 'disabled', redactionApplied: false }),
+    resolveLegacy: (): ResolvedRunConfiguration => ({ workflow: legacyWorkflow, stages: legacyStages, worktreeMode: 'preferred', redactionApplied: false }),
+    persistResolvedRun: (run: Run, resolved: ResolvedRunConfiguration): { snapshot: RunSnapshot<RunSnapshotPayloadV2>; stages: RunStage[] } => {
       const capturedAt = '2026-01-01T00:00:00.000Z';
-      const snapshot: RunSnapshot = {
+      const snapshot: RunSnapshot<RunSnapshotPayloadV2> = {
         id: `snapshot-${run.id}`,
         workspaceId: run.workspaceId,
         runId: run.id,
         workflowDefinitionId: resolved.workflow.id,
-        snapshotSchemaVersion: 1,
+        snapshotSchemaVersion: 2,
         payload: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           capturedAt,
           run: {
             workspaceId: run.workspaceId,
@@ -118,10 +130,12 @@ function makeLifecycleSnapshotService(): SnapshotService {
             definitionVersion: resolved.workflow.version,
             name: resolved.workflow.name,
             definitionHash: resolved.workflow.definitionHash,
+            worktreeMode: resolved.worktreeMode,
             stages: resolved.stages.map(stage => ({
               workflowStageKey: stage.workflowStageKey,
               name: stage.name,
               sequence: stage.sequence,
+              dependsOn: [...stage.dependsOn],
               agent: stage.agent,
               provider: stage.provider,
             })),

@@ -186,7 +186,7 @@ test('T76 GET v2 Run returns failureCode/failureMessage and the full Run', async
     const body = (await fetch(`${fx.baseA}/v2/runs/${created.run.id}`)).json() as Promise<Record<string, unknown>>;
     const defaultBody = await body;
     assert.equal(defaultBody.snapshotAvailable, true);
-    assert.equal(defaultBody.snapshotSchemaVersion, 1);
+    assert.equal(defaultBody.snapshotSchemaVersion, 2);
     assert.equal('snapshot' in defaultBody, false);
     assert.equal('stages' in defaultBody, false);
     assert.equal('contentHash' in defaultBody, false);
@@ -240,7 +240,7 @@ test('P4 GET v2 Run includes snapshot payload and content hash without row metad
     assert.equal(response.status, 200);
     const body = await response.json() as Record<string, unknown>;
     assert.equal(body.snapshotAvailable, true);
-    assert.equal(body.snapshotSchemaVersion, 1);
+    assert.equal(body.snapshotSchemaVersion, 2);
     assert.equal((body.snapshot as { workflow: { definitionKey: string } }).workflow.definitionKey, 'legacy-pipeline');
     assert.match(body.contentHash as string, /^[0-9a-f]{64}$/);
     assert.equal('snapshotId' in body, false);
@@ -286,7 +286,7 @@ test('P4 GET v2 Run returns stages=[] for an unbound Run and exposes snapshot me
     assert.equal(stagesResponse.status, 200);
     const stagesBody = await stagesResponse.json() as Record<string, unknown>;
     assert.equal(stagesBody.snapshotAvailable, true);
-    assert.equal(stagesBody.snapshotSchemaVersion, 1);
+    assert.equal(stagesBody.snapshotSchemaVersion, 2);
     assert.deepEqual(stagesBody.stages, []);
     const snapshotResponse = await fetch(`${fx.baseA}/v2/runs/${runId}?include=snapshot`);
     const snapshotBody = await snapshotResponse.json() as Record<string, unknown>;

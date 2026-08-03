@@ -14,10 +14,22 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   };
 };
 
-import type { RunSnapshotPayloadV1, V2RunOrigin, V2RunReason } from '@agentos/shared';
+import type {
+  RunSnapshot,
+  RunSnapshotPayload,
+  RunSnapshotPayloadV1,
+  RunSnapshotPayloadV2,
+  V2RunOrigin,
+  V2RunReason,
+} from '@agentos/shared';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import {
+  M3_013_LEGACY_DEFINITION_HASH,
+  M3_013_LEGACY_WORKFLOW_KEY,
+  M3_013_LEGACY_WORKFLOW_V2_ID,
+} from '../migrations/migrations/013-workflow-creation-metadata-v2.js';
 import {
   M25_UNBOUND_DEFINITION_HASH,
   M25_UNBOUND_DEFINITION_KEY,
@@ -171,6 +183,32 @@ function samplePayloadWithStage(): RunSnapshotPayloadV1 {
   const payload = samplePayload();
   payload.workflow.stages = [sampleStage()];
   return payload;
+}
+
+function sampleV2Payload(): RunSnapshotPayloadV2 {
+  const stage = sampleStage();
+  return {
+    schemaVersion: 2,
+    capturedAt: NOW,
+    run: {
+      workspaceId: 'ws_snapshot',
+      taskId: 'task_snapshot',
+      origin: 'v2_api',
+      reason: 'initial',
+      parentRunId: null,
+      rootRunId: 'run_snapshot',
+    },
+    workflow: {
+      definitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+      definitionKey: M3_013_LEGACY_WORKFLOW_KEY,
+      definitionVersion: 2,
+      name: 'legacy-pipeline-v2',
+      definitionHash: M3_013_LEGACY_DEFINITION_HASH,
+      worktreeMode: 'preferred',
+      stages: [{ ...stage, dependsOn: [] }],
+    },
+    security: { redactionApplied: false },
+  };
 }
 
 function insertSnapshot(repository: RunSnapshotRepository, payload = samplePayload()) {
@@ -455,6 +493,31 @@ describe('RunSnapshotRepository', () => {
       assert.equal(row.snapshot_json, canonicalizeJson(payload));
       assert.equal(row.content_hash, hashCanonicalJson(payload));
       assert.equal(row.redaction_applied, 0);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('accepts and verifies a V2 Snapshot with frozen worktreeMode and dependsOn metadata', () => {
+    const db = migratedDb();
+    try {
+      const repository = new RunSnapshotRepository(db);
+      const payload = sampleV2Payload();
+      const snapshot = repository.insert({
+        workspaceId: 'ws_snapshot',
+        runId: 'run_snapshot',
+        workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+        payload,
+      });
+      const stored = repository.findByRunId('ws_snapshot', 'run_snapshot') as unknown as RunSnapshot<RunSnapshotPayloadV2>;
+      assert.equal(stored.payload.schemaVersion, 2);
+      assert.equal(stored.payload.workflow.worktreeMode, 'preferred');
+      assert.deepEqual(stored.payload.workflow.stages[0]?.dependsOn, []);
+      assert.equal(repository.verifyHash(snapshot as unknown as RunSnapshot<RunSnapshotPayload>), true);
+      assert.equal(
+        (db.prepare('SELECT snapshot_schema_version FROM run_snapshots WHERE run_id = ?').get('run_snapshot') as { snapshot_schema_version: number }).snapshot_schema_version,
+        2,
+      );
     } finally {
       db.close();
     }

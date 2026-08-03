@@ -41,7 +41,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string, options?: { readOnly?: boolean }) => SqliteDb;
 };
 
-const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012'];
+const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013'];
 const NOW = '2026-07-31T00:00:00.000Z';
 const KEY_TABLES = [
   'agent_profiles',
@@ -86,6 +86,7 @@ function migrationIds(db: SqliteDb): string[] {
 function assertMigrationState(db: SqliteDb): void {
   assert.deepEqual(migrationIds(db), EXPECTED_MIGRATIONS);
   assert.equal(migrationIds(db).includes('012'), true);
+  assert.equal(migrationIds(db).includes('013'), true);
   const integrity = db.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check: string }>;
   assert.equal(integrity.length, 1);
   assert.equal(integrity[0]?.integrity_check, 'ok');

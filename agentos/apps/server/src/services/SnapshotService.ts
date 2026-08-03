@@ -6,9 +6,10 @@ import type {
   Run,
   RunSnapshot,
   RunStage,
-  RunSnapshotPayloadV1,
+  RunSnapshotPayloadV2,
   Workspace,
   WorkspaceAgent,
+  WorktreeMode,
 } from '@agentos/shared';
 import type { ProviderConfigurationRepository, ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
 import type { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
@@ -21,6 +22,7 @@ export interface ResolvedStageConfiguration {
   workflowStageKey: string;
   name: string;
   sequence: number;
+  dependsOn: string[];
   agent: AgentSnapshotV1 | null;
   provider: ProviderConfigurationSnapshotV1 | null;
   runnerAgent: WorkspaceAgent | null;
@@ -29,6 +31,7 @@ export interface ResolvedStageConfiguration {
 export interface ResolvedRunConfiguration {
   workflow: WorkflowDefinition;
   stages: readonly ResolvedStageConfiguration[];
+  worktreeMode: WorktreeMode;
   redactionApplied: boolean;
 }
 
@@ -247,9 +250,11 @@ export class SnapshotService {
 
   resolveUnbound(workspaceId: string): ResolvedRunConfiguration {
     try {
+      const workflow = this.deps.workflowDefinitionResolver.resolveUnboundTaskRun();
       return {
-        workflow: this.deps.workflowDefinitionResolver.resolveUnboundTaskRun(),
+        workflow,
         stages: [],
+        worktreeMode: workflow.payload.worktreeMode,
         redactionApplied: false,
       };
     } catch (error) {
@@ -322,13 +327,14 @@ export class SnapshotService {
           workflowStageKey: workflowStage.key,
           name: workflowStage.key,
           sequence: workflowStage.sequence,
+          dependsOn: [...workflowStage.dependsOn],
           agent: structuredClone(binding.snapshot),
           provider: structuredClone(binding.provider),
           runnerAgent: structuredClone(binding.runner),
         });
       }
 
-      return { workflow, stages, redactionApplied: false };
+      return { workflow, stages, worktreeMode: workflow.payload.worktreeMode, redactionApplied: false };
     } catch (error) {
       if (error instanceof AgentNotAvailableError || error instanceof ProviderConfigNotAvailableError) throw error;
       if (error instanceof WorkflowNotAvailableError) throw error;
@@ -343,8 +349,8 @@ export class SnapshotService {
   ): { snapshot: RunSnapshot; stages: RunStage[] } {
     try {
       const capturedAt = this.now();
-      const payload: RunSnapshotPayloadV1 = {
-        schemaVersion: 1,
+      const payload: RunSnapshotPayloadV2 = {
+        schemaVersion: 2,
         capturedAt,
         run: {
           workspaceId: run.workspaceId,
@@ -360,10 +366,12 @@ export class SnapshotService {
           definitionVersion: resolved.workflow.version,
           name: resolved.workflow.name,
           definitionHash: resolved.workflow.definitionHash,
+          worktreeMode: resolved.worktreeMode,
           stages: resolved.stages.map(stage => ({
             workflowStageKey: stage.workflowStageKey,
             name: stage.name,
             sequence: stage.sequence,
+            dependsOn: [...stage.dependsOn],
             agent: stage.agent ? structuredClone(stage.agent) : null,
             provider: stage.provider ? structuredClone(stage.provider) : null,
           })),
@@ -396,7 +404,7 @@ export class SnapshotService {
           sequence: materialized.sequence,
         }));
       }
-      return { snapshot, stages };
+      return { snapshot: snapshot as unknown as RunSnapshot, stages };
     } catch (error) {
       if (error instanceof RunSnapshotFailedError) throw error;
       throw new RunSnapshotFailedError(error);

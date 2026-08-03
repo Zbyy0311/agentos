@@ -27,7 +27,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 type Db = InstanceType<typeof DatabaseSync>;
 
 const NOW = '2026-08-02T00:00:00.000Z';
-const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012'];
+const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013'];
 
 function freshDb(): Db {
   const db = new DatabaseSync(':memory:');
@@ -36,7 +36,7 @@ function freshDb(): Db {
 }
 
 function registryBefore012(): MigrationRegistry {
-  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '012'));
+  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '012' && migration.id !== '013'));
 }
 
 function migration012(): Migration {
