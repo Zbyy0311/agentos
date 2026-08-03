@@ -1,8 +1,8 @@
 # AgentOS M3 Lifecycle, Event and API Foundation Implementation Plan
 
-Status: DRAFT — TECHNICAL CONTRACT APPROVED BY INDEPENDENT REVIEW — IMPLEMENTATION STILL NOT AUTHORIZED — M3 P1 NOT AUTHORIZED — PRODUCTION CUTOVER NOT AUTHORIZED
+Status: LOCAL FORMAL GATE PASSED — PENDING INDEPENDENT REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS — P3 NOT AUTHORIZED — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
-This plan is the third-commit remediation target, not an implementation result. The current turn changes only the three existing M3 Markdown files. It creates no DDL, code, test, Registry, API, Web, database, migration, restore, production, or PR state.
+This plan is the integrated M3 P2 local closeout record. The P2 branch implementation and its local formal verification are complete; independent review, Remote Checks, P3, and Production Cutover remain outside this closeout.
 
 ## 1. Authoritative contract
 
@@ -253,18 +253,19 @@ redefine the four canonical startup mappings.
 
 #### P2 phase status and authorization
 
-- **P2A — Migration 012 Schema Foundation:** COMPLETE; pending whole-P2
-  branch integration.
-- **P2B — Event/Sequence/Outbox Persistence:** COMPLETE; pending whole-P2
-  branch integration.
-- **P2C-0 — Lifecycle Event Specification Closure:** CURRENT docs-only stage.
-- **P2C-1 — Shared Lifecycle Event Contract Implementation:** NOT AUTHORIZED.
-- **P2C-2 — Transactional Run/Stage Lifecycle Core:** NOT AUTHORIZED.
+- **P2A — Migration 012 Schema Foundation:** COMPLETE.
+- **P2B — Event/Sequence/Outbox Persistence:** COMPLETE.
+- **P2C-0 — Lifecycle Event Specification Closure:** COMPLETE.
+- **P2C-1 — Shared Lifecycle Event Contract Implementation:** COMPLETE.
+- **P2C-2 — Transactional Run/Stage Lifecycle Core:** LOCAL FORMAL GATE PASSED.
+- **P2 overall:** LOCAL FORMAL GATE PASSED — PENDING INDEPENDENT REVIEW.
+- **Remote Checks:** UNAVAILABLE — NOT PASS.
 - **P3 — Run Engine, Workflow Executor and Operation:** NOT AUTHORIZED.
+- **Production Cutover:** NOT AUTHORIZED / NOT STARTED.
 
-P2C-0 is the specification gate between completed P2A/P2B evidence and any
-future Shared contract or transactional implementation. It must not be
-described as code completion or whole-P2 completion.
+The P2C-0 authorization language below is the historical specification-gate
+record. The current integrated state is the closeout status above; it does not
+authorize P3, Remote Checks, a merge, or Production Cutover.
 
 #### P2C-0 — Lifecycle Event Specification Closure
 
@@ -299,7 +300,7 @@ and ordered multi-Event transaction semantics.
   Outbox record per Durable Event;
 - no implementation or Migration file changes are present.
 
-##### Exit gate
+##### Historical exit gate
 
 P2C-0 exits only after independent specification review accepts the matrix,
 the four existing startup mappings remain unchanged, and the exact docs-only
@@ -804,8 +805,15 @@ The M3 exit proposal must state:
 
 Current status:
 
-M3 P1 NOT AUTHORIZED.
+- P2A: COMPLETE.
+- P2B: COMPLETE.
+- P2C-0: COMPLETE.
+- P2C-1: COMPLETE.
+- P2C-2: LOCAL FORMAL GATE PASSED.
+- P2 overall: LOCAL FORMAL GATE PASSED — PENDING INDEPENDENT REVIEW.
+- Remote Checks: UNAVAILABLE — NOT PASS.
+- P3: NOT AUTHORIZED.
+- Production Cutover: NOT AUTHORIZED / NOT STARTED.
 
-PRODUCTION CUTOVER NOT AUTHORIZED.
-
-This document remains a draft until final independent P0 review and the docs-only merge gate.
+This document does not claim a merge, Remote CI success, P3 authorization,
+Production readiness, or Production Cutover.

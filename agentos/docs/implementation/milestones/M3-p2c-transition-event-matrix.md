@@ -1,6 +1,6 @@
 # AgentOS M3 P2C-0 Transition/Event Matrix
 
-Status: SPECIFICATION AND SHARED CONTRACT CLOSURE ONLY — PRODUCTION IMPLEMENTATION NOT AUTHORIZED.
+Status: P2C-0/P2C-1 CONTRACT COMPLETE — P2C-2 LOCAL FORMAL GATE PASSED — PENDING INDEPENDENT REVIEW.
 
 This matrix is the normative P2C-0 record for the Task-domain Run and Stage
 state machines. It preserves M3-TD-21 and the four frozen startup mappings:
@@ -10,10 +10,10 @@ state machines. It preserves M3-TD-21 and the four frozen startup mappings:
 - Stage `ready → starting` → `stage.starting`;
 - Stage `starting → running` → `stage.started`.
 
-The matrix does not authorize production Shared Event writes, Server,
-Migration, Registry, database, P2C-2 Event implementation, P3, or Production
-Cutover. Shared contract and contract-test changes in this P2C-2C-1 closure
-remain documentation-only and do not create Events.
+The matrix is the frozen contract consumed by the P2C-2 implementation. It
+does not claim Remote Checks, authorize P3, authorize Production Cutover, or
+claim production readiness. Migration and Registry evidence are recorded in
+the separate final verification document.
 
 ## 1. Matrix conventions
 
@@ -186,5 +186,5 @@ back together. Event sequence values remain contiguous within the Run.
 | Run | 17/17 | 17/17 | Every unlisted pair has no mapping |
 | Stage | 19/19 | 19/19 | Every unlisted pair has no mapping |
 
-This file is specification evidence only. P2C-2 method names are not
-implemented by this commit.
+This file is normative specification evidence. P2C-2 implementation and local
+test evidence are recorded in the final verification document.
