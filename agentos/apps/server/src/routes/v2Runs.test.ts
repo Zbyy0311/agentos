@@ -114,6 +114,64 @@ async function createRunViaApi(baseA: string, taskId: string): Promise<string> {
   return (await response.json() as { run: { id: string } }).run.id;
 }
 
+interface CancellationState {
+  run: Record<string, unknown> | undefined;
+  stages: Array<Record<string, unknown>>;
+  task: Record<string, unknown> | undefined;
+  events: Array<Record<string, unknown>>;
+  outboxes: Array<Record<string, unknown>>;
+  idempotency: Array<Record<string, unknown>>;
+  integrity: string;
+  foreignKeys: Array<Record<string, unknown>>;
+}
+
+function readCancellationState(fx: Fixture, runId: string, taskId: string): CancellationState {
+  const db = fx.store.getDatabase();
+  const row = (sql: string, ...parameters: unknown[]): Record<string, unknown> | undefined => {
+    const value = db.prepare(sql).get(...parameters) as Record<string, unknown> | undefined;
+    return value === undefined ? undefined : { ...value };
+  };
+  const rows = (sql: string, ...parameters: unknown[]): Array<Record<string, unknown>> => (
+    (db.prepare(sql).all(...parameters) as Array<Record<string, unknown>>).map(value => ({ ...value }))
+  );
+  return {
+    run: row('SELECT * FROM runs WHERE workspace_id = ? AND id = ?', fx.workspaceAId, runId),
+    stages: rows('SELECT * FROM run_stages WHERE workspace_id = ? AND run_id = ? ORDER BY sequence ASC, id ASC', fx.workspaceAId, runId),
+    task: row('SELECT * FROM tasks WHERE workspace_id = ? AND id = ?', fx.workspaceAId, taskId),
+    events: rows('SELECT * FROM runtime_events WHERE workspace_id = ? AND run_id = ? ORDER BY sequence ASC, id ASC', fx.workspaceAId, runId),
+    outboxes: rows('SELECT * FROM outbox_messages WHERE aggregate_id = ? ORDER BY created_at ASC, id ASC', runId),
+    idempotency: rows('SELECT * FROM idempotency_records WHERE workspace_id = ? ORDER BY operation ASC, key_hash ASC', fx.workspaceAId),
+    integrity: (db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check,
+    foreignKeys: rows('PRAGMA foreign_key_check'),
+  };
+}
+
+function assertHealthyCancellationState(state: CancellationState): void {
+  assert.equal(state.integrity, 'ok');
+  assert.deepEqual(state.foreignKeys, []);
+}
+
+function seedQueuedRunStages(fx: Fixture, runId: string): [string, string] {
+  const snapshot = fx.store.runSnapshotRepository().findByRunId(fx.workspaceAId, runId);
+  assert.ok(snapshot);
+  const repository = fx.store.runStageRepository();
+  const first = repository.insertInitial({
+    workspaceId: fx.workspaceAId,
+    runId,
+    runSnapshotId: snapshot.id,
+    workflowStageKey: 'remediation-2-stage-a',
+    sequence: 1,
+  });
+  const second = repository.insertInitial({
+    workspaceId: fx.workspaceAId,
+    runId,
+    runSnapshotId: snapshot.id,
+    workflowStageKey: 'remediation-2-stage-b',
+    sequence: 2,
+  });
+  return [first.id, second.id];
+}
+
 test('P4 malformed repository read surfaces fail closed instead of synthesizing compatibility', async () => {
   const fx = await createFixture();
   try {
@@ -601,6 +659,120 @@ test('run.cancel rolls back lifecycle Event and keyed idempotency together on Ev
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runtime_events WHERE run_id = ?').get(runId) as { count: number }).count, 1);
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(runId) as { count: number }).count, 1);
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count, 0);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('Remediation 2 V2 Run cancellation rolls back after the second Stage transition fails', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'cancel-stage-transition-rollback');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    const [firstStageId, secondStageId] = seedQueuedRunStages(fx, runId);
+    const before = readCancellationState(fx, runId, taskId);
+    const stageRepository = fx.store.runStageRepository();
+    const originalTransition = stageRepository.transitionLifecycleWithinTransaction;
+    let transitionCalls = 0;
+    Object.defineProperty(stageRepository, 'transitionLifecycleWithinTransaction', {
+      configurable: true,
+      writable: true,
+      value: (...args: Parameters<typeof originalTransition>) => {
+        transitionCalls += 1;
+        if (transitionCalls === 2) throw new Error('V2_CANCEL_STAGE_TRANSITION_FAILURE');
+        const result = originalTransition.apply(stageRepository, args);
+        if (transitionCalls === 1) {
+          const firstStage = stageRepository.findById(fx.workspaceAId, runId, firstStageId);
+          assert.equal(firstStage?.status, 'cancelled');
+          assert.equal(firstStage?.version, 2);
+        }
+        return result;
+      },
+    });
+    let response: Response;
+    try {
+      response = await postRunCancel(fx.baseA, runId, {}, 'cancel-stage-transition-key');
+    } finally {
+      Reflect.deleteProperty(stageRepository, 'transitionLifecycleWithinTransaction');
+    }
+    assert.equal(response.status, 500);
+    assert.equal(transitionCalls, 2);
+    const after = readCancellationState(fx, runId, taskId);
+    assert.deepEqual(after, before);
+    assert.equal(after.run?.status, 'queued');
+    assert.equal(after.run?.version, before.run?.version);
+    assert.deepEqual(after.stages, before.stages);
+    assert.equal(after.events.length, before.events.length);
+    assert.equal(after.outboxes.length, before.outboxes.length);
+    assert.equal(after.run?.next_event_sequence, before.run?.next_event_sequence);
+    assert.deepEqual(after.task, before.task);
+    assert.equal(after.idempotency.length, 0);
+    assert.equal(after.stages.find(stage => stage.id === secondStageId)?.status, 'pending');
+    assertHealthyCancellationState(after);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('Remediation 2 V2 Run cancellation rolls back when Task reconciliation fails after Lifecycle completion', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTaskViaApi(fx.baseA, 'cancel-task-reconciliation-rollback');
+    const runId = await createRunViaApi(fx.baseA, taskId);
+    seedQueuedRunStages(fx, runId);
+    const taskRepository = fx.store.taskRepository();
+    const task = taskRepository.findById(fx.workspaceAId, taskId)!;
+    const inProgressTask = taskRepository.transitionStatus(fx.workspaceAId, taskId, task.version, 'in_progress');
+    assert.equal(inProgressTask.status, 'in_progress');
+    const before = readCancellationState(fx, runId, taskId);
+    const lifecycleService = fx.store.lifecycleTransactionService();
+    const originalCancel = lifecycleService.cancelRunWithinTransaction;
+    let lifecycleReturned = false;
+    Object.defineProperty(lifecycleService, 'cancelRunWithinTransaction', {
+      configurable: true,
+      writable: true,
+      value: (...args: Parameters<typeof originalCancel>) => {
+        const result = originalCancel.apply(lifecycleService, args);
+        lifecycleReturned = true;
+        return result;
+      },
+    });
+    const originalTaskTransition = taskRepository.transitionStatus;
+    let reconciliationCalls = 0;
+    Object.defineProperty(taskRepository, 'transitionStatus', {
+      configurable: true,
+      writable: true,
+      value: (...args: Parameters<typeof originalTaskTransition>) => {
+        void args;
+        reconciliationCalls += 1;
+        assert.equal(lifecycleReturned, true);
+        throw new Error('V2_CANCEL_TASK_RECONCILIATION_FAILURE');
+      },
+    });
+    let response: Response;
+    try {
+      response = await postRunCancel(fx.baseA, runId, {}, 'cancel-task-reconciliation-key');
+    } finally {
+      Reflect.deleteProperty(taskRepository, 'transitionStatus');
+      Reflect.deleteProperty(lifecycleService, 'cancelRunWithinTransaction');
+    }
+    assert.equal(response.status, 500);
+    assert.equal(lifecycleReturned, true);
+    assert.equal(reconciliationCalls, 1);
+    const after = readCancellationState(fx, runId, taskId);
+    assert.deepEqual(after, before);
+    assert.equal(after.run?.status, 'queued');
+    assert.equal(after.run?.version, before.run?.version);
+    assert.deepEqual(after.stages, before.stages);
+    assert.equal(after.events.length, before.events.length);
+    assert.equal(after.outboxes.length, before.outboxes.length);
+    assert.equal(after.run?.next_event_sequence, before.run?.next_event_sequence);
+    assert.deepEqual(after.task, before.task);
+    assert.equal(after.task?.status, 'in_progress');
+    assert.equal(after.task?.version, inProgressTask.version);
+    assert.equal(after.idempotency.length, 0);
+    assert.equal(fx.store.runRepository().findActiveByTask(fx.workspaceAId, taskId)?.id, runId);
+    assertHealthyCancellationState(after);
   } finally {
     await closeFixture(fx);
   }

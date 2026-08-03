@@ -33,6 +33,8 @@ The production remediation is:
 | Branch | `runtime/m3-p2-transactional-lifecycle-core` |
 | Remote branch after Push | `fb9a1e8f65f47abbea04a652b90ba1be1cee1f42` |
 
+Remediation 2 test/documentation commit: `<REMEDIATION_2_COMMIT_SHA_PENDING>`
+
 The remediation commit changes only these four production/test files:
 
 - `apps/server/src/services/LifecycleTransactionService.ts`
@@ -70,19 +72,37 @@ terminal Stages unchanged. N=0 emits only `run.cancelled` and its Outbox.
 
 ## 3. Remediation evidence
 
-The new tests prove:
+Evidence already present before Remediation 2 included:
 
-- V2 queued cancellation does not call `RunRepository.transitionStatus`.
-- N=0 and N>0 cancellation preserve Event order, sequence, timestamp,
-  Outbox cardinality, and per-aggregate version increments.
-- Terminal Stages are not changed.
-- Event, Outbox, Stage-transition, and Task-reconciliation failures roll back
-  State, Events, Outboxes, and keyed Idempotency Success together.
-- Keyed replay does not duplicate Events, Outboxes, or versions.
-- A different key after cancellation preserves `RUN_NOT_CANCELLABLE`.
-- Stale or invalid `expectedVersion` performs no State, Event, Outbox, or
-  Idempotency write.
-- Existing active-slot release and Legacy/M2 behavior remain covered.
+- `T83 cancelling a queued v2 Run succeeds and releases the active slot`:
+  N=0 success, lifecycle Event/Outbox shape, and the V2
+  `RunRepository.transitionStatus` bypass guard.
+- `R08 run cancel replay is evaluated before RUN_NOT_CANCELLABLE`:
+  keyed replay and different-key conflict do not duplicate Events or Outboxes.
+- `run.cancel rolls back lifecycle Event and keyed idempotency together on Event failure`:
+  Event append failure rolls back the existing Run graph and keyed success.
+- `P401/P402 route run.cancel honors matching and stale expectedVersion` and
+  `P425/P427 route run.cancel invalid expectedVersion returns 400, no mutation, no record`:
+  stale and invalid versions perform no State, Event, Outbox, or Idempotency write.
+
+Remediation 2 adds these exact Route tests:
+
+- `Remediation 2 V2 Run cancellation rolls back after the second Stage transition fails`:
+  seeds two legal non-terminal Stages through `RunStageRepository.insertInitial`,
+  lets the first lifecycle Stage mutation complete, throws on the second
+  `transitionLifecycleWithinTransaction` call, and compares the complete
+  pre-request and post-request Run, Stage, Task, Event, Outbox, sequence,
+  Idempotency, integrity, and foreign-key state.
+- `Remediation 2 V2 Run cancellation rolls back when Task reconciliation fails after Lifecycle completion`:
+  prepares the Task as legal `in_progress`, wraps the real lifecycle method to
+  prove it returned, throws from the real Task repository reconciliation
+  mutation, and compares the complete pre-request and post-request state. It
+  also proves the queued Run still occupies the active Run slot after rollback.
+
+Together with the prior tests, the Route evidence now directly covers Event
+append failure, mid-composite Stage transition failure, and post-Lifecycle
+Task reconciliation failure without simulating production cancellation with
+raw SQL. Every monkeypatch is restored in a `finally` block.
 
 ## 4. Verification results
 
@@ -96,7 +116,7 @@ The new tests prove:
 | P2C-2A lifecycle | 30/30 |
 | P2C-2B composite lifecycle | 15/15 |
 | P2C-2C Run graph | 13/13 |
-| V2 Run routes | 17/17 |
+| V2 Run routes | 19/19 |
 | V2 Idempotency | 16/16 |
 | TaskRunService | 62/62 |
 | Migration 012/013 targeted | 19/19 |
