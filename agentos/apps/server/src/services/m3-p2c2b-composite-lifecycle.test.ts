@@ -370,6 +370,16 @@ test('P2C-2B requestApproval supports Run-only and Stage-specific approval envel
     assert.equal(result.stages[0]?.status, 'running');
     assert.equal(result.events[0]?.stageId, undefined);
     assert.equal(result.events[0]?.approvalRequestId, 'approval-composite-test');
+    assert.equal(runOnly.probe.nowCalls, 1);
+    const beforeDuplicate = stateSnapshot(runOnly);
+    runOnly.probe.nowCalls = 0;
+    assert.throws(
+      () => runOnly.service.requestApproval(approvalInput({ expectedRunVersion: result.run.version }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_REQUEST_ALREADY_EXISTS',
+    );
+    assert.deepEqual(stateSnapshot(runOnly), beforeDuplicate);
+    assert.equal(runOnly.probe.nowCalls, 0);
   } finally {
     closeFixture(runOnly);
   }
@@ -395,13 +405,16 @@ test('P2C-2B requestApproval supports Run-only and Stage-specific approval envel
 test('P2C-2B resolveApprovalToRunning emits only approval.resolved', () => {
   const fixture = newFixture();
   try {
-    setRunStatus(fixture, 'waiting_approval');
-    setStageStatus(fixture, STAGE_ID, 'waiting_approval');
-    seedApprovalRequired(fixture, STAGE_ID);
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+    const requested = fixture.service.requestApproval(approvalInput({
+      stageId: STAGE_ID, expectedStageVersion: 1,
+    }) as never);
     fixture.probe.nowCalls = 0;
     const result = fixture.service.resolveApprovalToRunning(approvalInput({
       stageId: STAGE_ID,
-      expectedStageVersion: 1,
+      expectedRunVersion: requested.run.version,
+      expectedStageVersion: requested.stages.find(stage => stage.id === STAGE_ID)!.version,
       decision: 'approve_once',
       decidedBy: 'operator',
     }) as never);
@@ -420,11 +433,12 @@ test('P2C-2B resolveApprovalToRunning emits only approval.resolved', () => {
 
   const runOnly = newFixture();
   try {
-    setRunStatus(runOnly, 'waiting_approval');
+    setRunStatus(runOnly, 'running');
     setStageStatus(runOnly, STAGE_ID, 'running');
-    seedApprovalRequired(runOnly);
+    const requested = runOnly.service.requestApproval(approvalInput() as never);
     runOnly.probe.nowCalls = 0;
     const result = runOnly.service.resolveApprovalToRunning(approvalInput({
+      expectedRunVersion: requested.run.version,
       decision: 'approve_workspace',
       decidedBy: 'workspace-admin',
     }) as never);
@@ -432,6 +446,16 @@ test('P2C-2B resolveApprovalToRunning emits only approval.resolved', () => {
     assert.equal(result.run.status, 'running');
     assert.equal(result.stages[0]?.status, 'running');
     assert.equal(result.events[0]?.stageId, undefined);
+    assert.equal(runOnly.probe.nowCalls, 1);
+    const beforeDuplicate = stateSnapshot(runOnly);
+    runOnly.probe.nowCalls = 0;
+    assert.throws(
+      () => runOnly.service.requestApproval(approvalInput({ expectedRunVersion: result.run.version }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_REQUEST_ALREADY_EXISTS',
+    );
+    assert.deepEqual(stateSnapshot(runOnly), beforeDuplicate);
+    assert.equal(runOnly.probe.nowCalls, 0);
   } finally {
     closeFixture(runOnly);
   }
@@ -440,13 +464,16 @@ test('P2C-2B resolveApprovalToRunning emits only approval.resolved', () => {
 test('P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run failure', () => {
   const fixture = newFixture();
   try {
-    setRunStatus(fixture, 'waiting_approval');
-    setStageStatus(fixture, STAGE_ID, 'waiting_approval');
-    seedApprovalRequired(fixture, STAGE_ID);
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+    const requested = fixture.service.requestApproval(approvalInput({
+      stageId: STAGE_ID, expectedStageVersion: 1,
+    }) as never);
     fixture.probe.nowCalls = 0;
     const result = fixture.service.resolveApprovalToFailure(approvalInput({
       stageId: STAGE_ID,
-      expectedStageVersion: 1,
+      expectedRunVersion: requested.run.version,
+      expectedStageVersion: requested.stages.find(stage => stage.id === STAGE_ID)!.version,
       decision: 'reject',
       decidedBy: 'operator',
       errorCode: 'E_APPROVAL_REJECTED',
@@ -462,6 +489,7 @@ test('P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run fa
     assert.equal(result.run.status, 'failed');
     assert.equal(result.stages[0]?.status, 'failed');
     assert.equal((result.events[2]?.payload as Record<string, unknown>).phase, 'approval');
+    assert.equal((fixture.db.prepare('SELECT COUNT(*) AS count FROM outbox_messages').get() as { count: number }).count, 4);
     assert.equal(fixture.probe.nowCalls, 1);
   } finally {
     closeFixture(fixture);
@@ -474,13 +502,16 @@ test('P2C-2B resolveApprovalToCancellation fans out affected Stages in stable or
     insertStage(fixture, 'stage-z', 3, 'running');
     insertStage(fixture, 'stage-a', 2, 'pending');
     insertStage(fixture, 'stage-terminal', 4, 'completed');
-    setRunStatus(fixture, 'waiting_approval');
-    setStageStatus(fixture, STAGE_ID, 'waiting_approval');
-    seedApprovalRequired(fixture, STAGE_ID);
+    setRunStatus(fixture, 'running');
+    setStageStatus(fixture, STAGE_ID, 'running');
+    const requested = fixture.service.requestApproval(approvalInput({
+      stageId: STAGE_ID, expectedStageVersion: 1,
+    }) as never);
     fixture.probe.nowCalls = 0;
     const result = fixture.service.resolveApprovalToCancellation(approvalInput({
       stageId: STAGE_ID,
-      expectedStageVersion: 1,
+      expectedRunVersion: requested.run.version,
+      expectedStageVersion: requested.stages.find(stage => stage.id === STAGE_ID)!.version,
       decision: 'cancel_run',
       decidedBy: 'operator',
       requestedBy: 'operator',
@@ -509,7 +540,7 @@ test('P2C-2B approval resolution binds identity and exact Run/Stage scope before
     const before = stateSnapshot(missing);
     assert.throws(
       () => missing.service.resolveApprovalToRunning(approvalInput({
-        stageId: STAGE_ID, expectedStageVersion: 1, decision: 'approve_once', decidedBy: 'operator',
+        stageId: 'stage-missing', expectedStageVersion: 1, decision: 'approve_once', decidedBy: 'operator',
       }) as never),
       (error: unknown) => error instanceof LifecycleTransactionError
         && error.code === 'LIFECYCLE_APPROVAL_REQUEST_NOT_FOUND',
@@ -559,7 +590,7 @@ test('P2C-2B approval resolution binds identity and exact Run/Stage scope before
   const runOnlyRequired = newFixture();
   try {
     setRunStatus(runOnlyRequired, 'waiting_approval');
-    setStageStatus(runOnlyRequired, STAGE_ID, 'waiting_approval');
+    setStageStatus(runOnlyRequired, STAGE_ID, 'running');
     seedApprovalRequired(runOnlyRequired);
     const before = stateSnapshot(runOnlyRequired);
     assert.throws(
@@ -592,6 +623,26 @@ test('P2C-2B approval resolution binds identity and exact Run/Stage scope before
     assert.equal(stageSpecificRequired.probe.nowCalls, 0);
   } finally {
     closeFixture(stageSpecificRequired);
+  }
+
+  const otherStage = newFixture();
+  try {
+    insertStage(otherStage, 'stage-other', 2, 'running');
+    setRunStatus(otherStage, 'waiting_approval');
+    setStageStatus(otherStage, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(otherStage, STAGE_ID);
+    const before = stateSnapshot(otherStage);
+    assert.throws(
+      () => otherStage.service.resolveApprovalToRunning(approvalInput({
+        stageId: 'stage-other', expectedStageVersion: 1, decision: 'approve_once', decidedBy: 'operator',
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_SCOPE_MISMATCH',
+    );
+    assert.deepEqual(stateSnapshot(otherStage), before);
+    assert.equal(otherStage.probe.nowCalls, 0);
+  } finally {
+    closeFixture(otherStage);
   }
 });
 

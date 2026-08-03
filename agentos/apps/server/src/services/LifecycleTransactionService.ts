@@ -48,7 +48,8 @@ export type LifecycleTransactionErrorCode =
   | 'LIFECYCLE_APPROVAL_DECISION_INVALID'
   | 'LIFECYCLE_APPROVAL_REQUEST_NOT_FOUND'
   | 'LIFECYCLE_APPROVAL_ALREADY_RESOLVED'
-  | 'LIFECYCLE_APPROVAL_SCOPE_MISMATCH';
+  | 'LIFECYCLE_APPROVAL_SCOPE_MISMATCH'
+  | 'LIFECYCLE_APPROVAL_REQUEST_ALREADY_EXISTS';
 
 export class LifecycleTransactionError extends Error {
   constructor(
@@ -531,6 +532,7 @@ export class LifecycleTransactionService {
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
+      this.assertApprovalRequestAvailable(run.id, input.approvalRequestId);
       const stage = input.stageId === undefined
         ? undefined
         : this.requireStage(input.workspaceId, input.runId, input.stageId);
@@ -592,16 +594,16 @@ export class LifecycleTransactionService {
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
+      this.assertExpectedRunState(run, 'waiting_approval');
+      this.assertApprovalResolutionBinding(input, run.id);
       const stage = input.stageId === undefined
         ? undefined
         : this.requireStage(input.workspaceId, input.runId, input.stageId);
-      this.assertExpectedRunState(run, 'waiting_approval');
       if (stage) {
         this.assertExpectedStageState(stage, 'waiting_approval');
         this.assertExpectedVersion('run_stages', stage.id, stage.version, expectedStageVersion!);
       }
       this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
-      this.assertApprovalResolutionBinding(input, run.id);
       const timestamp = this.transactionTimestamp();
       const decidedAt = input.decidedAt ?? timestamp;
 
@@ -654,16 +656,16 @@ export class LifecycleTransactionService {
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
+      this.assertExpectedRunState(run, 'waiting_approval');
+      this.assertApprovalResolutionBinding(input, run.id);
       const stage = input.stageId === undefined
         ? undefined
         : this.requireStage(input.workspaceId, input.runId, input.stageId);
-      this.assertExpectedRunState(run, 'waiting_approval');
       if (stage) {
         this.assertExpectedStageState(stage, 'waiting_approval');
         this.assertExpectedVersion('run_stages', stage.id, stage.version, expectedStageVersion!);
       }
       this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
-      this.assertApprovalResolutionBinding(input, run.id);
       const timestamp = this.transactionTimestamp();
       const decidedAt = input.decidedAt ?? timestamp;
       const events: RuntimeEventEnvelope[] = [];
@@ -763,17 +765,17 @@ export class LifecycleTransactionService {
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
+      this.assertExpectedRunState(run, 'waiting_approval');
+      this.assertApprovalResolutionBinding(input, run.id);
       const approvalStage = input.stageId === undefined
         ? undefined
         : this.requireStage(input.workspaceId, input.runId, input.stageId);
       const stages = this.dependencies.runStageRepository.listByRun(input.workspaceId, input.runId);
-      this.assertExpectedRunState(run, 'waiting_approval');
       if (approvalStage) {
         this.assertExpectedStageState(approvalStage, 'waiting_approval');
         this.assertExpectedVersion('run_stages', approvalStage.id, approvalStage.version, expectedStageVersion!);
       }
       this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
-      this.assertApprovalResolutionBinding(input, run.id);
       const affectedStages = stages.filter(stage => !isTerminalStage(stage.status));
       const timestamp = this.transactionTimestamp();
       const decidedAt = input.decidedAt ?? timestamp;
@@ -1454,6 +1456,23 @@ export class LifecycleTransactionService {
         'LIFECYCLE_APPROVAL_SCOPE_MISMATCH',
         `Approval request ${input.approvalRequestId} has a different Stage scope`,
       );
+    }
+  }
+
+  private assertApprovalRequestAvailable(runId: string, approvalRequestId: string): void {
+    const records = this.dependencies.runtimeEventRepository.listByRunAfterSequence(runId, 0);
+    for (const record of records) {
+      if (record.kind !== 'known') continue;
+      const event = record.event;
+      if (
+        (event.type === 'approval.required' || event.type === 'approval.resolved')
+        && event.approvalRequestId === approvalRequestId
+      ) {
+        throw new LifecycleTransactionError(
+          'LIFECYCLE_APPROVAL_REQUEST_ALREADY_EXISTS',
+          `Approval request ${approvalRequestId} already exists for Run ${runId}`,
+        );
+      }
     }
   }
 
