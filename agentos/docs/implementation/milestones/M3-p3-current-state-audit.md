@@ -20,6 +20,10 @@ re-scopes Gap Matrix item 15, splits P3C into P3C-0/P3C-1 across the matrix
 and the stage preview, and extends OD-P3-05. Audit item statuses and counts
 are unchanged.
 
+Remediation 3 (Retry Idempotency Ownership and Start Operation Completion
+Gate) splits P3C-0 into P3C-0A/P3C-0B, extends OD-P3-04, and splits failure
+class C into C1/C2. Audit item statuses and counts remain unchanged.
+
 ## 1. Baseline
 
 - Audited baseline (main / origin/main): `3728d670ce0f5c16d07819e65cddbc0bb4c6c5b2`
@@ -264,8 +268,8 @@ Each row: current evidence, required target, proposed implementation
 category, dependency, test evidence, stop condition, and rollback boundary.
 Categories reference the stage split proposed in
 `docs/implementation/milestones/M3-p3-implementation-plan.md`
-(P3A, P3B-1, P3B-2, P3C-0, P3C-1, P3D, P3E). Nothing here is authorized
-work.
+(P3A, P3B-1, P3B-2, P3C-0A, P3C-0B, P3C-1, P3D, P3E). Nothing here is
+authorized work.
 
 | # | Gap | Current evidence | Required target | Category | Depends on | Test evidence | Stop condition | Rollback boundary |
 |---|-----|------------------|-----------------|----------|------------|---------------|----------------|-------------------|
@@ -275,15 +279,15 @@ work.
 | 4 | Deterministic Workflow Executor | Absent (3.5) | Executor reading the run snapshot V2 stage graph (`dependsOn`) deterministically; mock stage runner, no provider runtime | P3B-2 | P3B-1 independent review | Snapshot-graph traversal tests; deterministic ordering proof | Executor needs ProcessManager/ProviderAdapter/CLI | Revert executor package |
 | 5 | Stage orchestration | Absent (3.6) | Stage lifecycle driven through `transitionStage`; `skipped` propagation on failure/cancel per spec | P3B-2 | #4 | Stage transition and skip-propagation tests | Stage writes bypass Event/Outbox | Revert orchestration; stage rows preserved |
 | 6 | Operation persistence/lifecycle | Schema complete; repo/service absent (3.7) | `OperationRepository` + `OperationService` writing/reading `operations` with version optimistic locking | P3A | P2 core | Repository CRUD, identity-immutability trigger, version conflict tests | Operation status vocabulary diverges from the frozen 7 | Revert repo/service; table and rows preserved |
-| 7 | HTTP 202 Start | Absent (3.8) | Start route returns 202 + Operation; the acceptance transaction atomically commits the queued `run.start` Operation and the idempotency success/replay response using the P3C-0 `run.start` + 202 + immutable Operation replay envelope; the run stays queued and gains Engine eligibility only after that commit; the acceptance transaction never starts the run and never writes `run.dequeued` | P3C-1 | #6, #15, #20, P3B-1 | Route contract test: 202 shape, Operation body; acceptance failure leaves no Operation, no idempotency success, run stays queued | Synchronous start execution in the route handler; acceptance transaction writes lifecycle events | Revert route; runs/operations untouched |
+| 7 | HTTP 202 Start | Absent (3.8) | Start route returns 202 + Operation; the acceptance transaction atomically commits the queued `run.start` Operation and the idempotency success/replay response using the P3C-0A `run.start` + 202 + immutable Operation replay envelope; the run stays queued and gains Engine eligibility only after that commit; the acceptance transaction never starts the run and never writes `run.dequeued` | P3C-1 | #6, #15, #20, P3B-1, P3C-0A | Route contract test: 202 shape, Operation body; acceptance failure leaves no Operation, no idempotency success, run stays queued | Synchronous start execution in the route handler; acceptance transaction writes lifecycle events | Revert route; runs/operations untouched |
 | 8 | Duplicate Start | `run.start` idempotency schema-accepted, no consumer (3.9) | Same idempotency key replays the original Operation; different key on an already-started run is rejected per contract; multiple non-terminal `run.start` Operations for the same run fail closed with no arbitrary choice | P3C-1 | #7 | Same-key replay test; different-key rejection test; duplicate-active-Operation fail-closed test | Duplicate start mutates the run twice; an arbitrary Operation is selected | Revert start idempotency wiring |
-| 9 | Start failure rollback | Failure-injection harness exists (3.15) | Three distinct transaction classes: (A) acceptance failure leaves no Operation, no idempotency success, run stays queued; (B) claim failure rolls back Operation/Run/Event/Outbox together; (C) an already-accepted Operation is marked `failed` with the serialized ApiProblem in a separate, explicit failure-record transaction after the lifecycle rollback; wording: no partial lifecycle state — an accepted Operation may persist as durable failure evidence | P3C-1 | #7, P3B-1 | Injection at each event call position in A and B; failure-record transaction test for C; post-failure integrity checks | Any partial lifecycle commit observed; failure recording folded into the rolled-back transaction | Revert start path; preserve durable evidence, no data reset |
+| 9 | Start failure rollback | Failure-injection harness exists (3.15) | Distinct transaction classes: (A) acceptance failure leaves no Operation, no idempotency success, run stays queued; (B) claim failure rolls back Operation/Run/Event/Outbox together; (C1) pre-start command failure — the accepted Operation is marked `failed` with the serialized ApiProblem in a separate, explicit failure-record transaction after the lifecycle rollback (holds under both OD-P3-04 options); (C2) post-start execution outcome — whether the Start Operation becomes completed/failed/cancelled or stays completed is decided entirely by OD-P3-04; wording: no partial lifecycle state — an accepted Operation may persist as durable failure evidence | P3C-1 | #7, P3B-1, OD-P3-04 | Injection at each event call position in A and B; failure-record transaction test for C1; OD-P3-04 option test sets for C2 (only the approved option is executed); post-failure integrity checks | Any partial lifecycle commit observed; failure recording folded into the rolled-back transaction; an unconditional "later execution failure fails the Start Operation" mapping | Revert start path; preserve durable evidence, no data reset |
 | 10 | Cancel/complete race | Atomic transitions + version guard exist (3.10) | Operation-level race resolves to exactly one terminal state with evidence | P3C-1 | #6 | Concurrent cancel vs complete test; loser fails cleanly | Race produces two terminal events or silent overwrite | Revert race handling; events preserved |
-| 11 | Retry child Run | Lineage computation exists; no caller (3.11) | Retry creates a child run (new id, parent lineage), never resets the old run; `run.retry` Operation recorded; activation semantics, response status, and completion timing are decided together by OD-P3-05; until approved, the retry child stays queued and non-executable and `run.retry` is not a claim marker | P3C-1 | #6, OD-P3-05 | Lineage test: root id, parent id, old run untouched; `run.retry` does not authorize claim while OD-P3-05 is undecided | Retry mutates or resets the parent run; a retry child becomes executable without OD-P3-05 | Revert retry path |
+| 11 | Retry child Run | Lineage computation exists; no caller (3.11) | Retry creates a child run (new id, parent lineage), never resets the old run; `run.retry` Operation recorded; activation semantics, response status, and completion timing are decided together by OD-P3-05; the `run.retry` idempotency closure (registration, status mapping, replay envelope) is owned by P3C-0B and is authorized only after OD-P3-05; until approved, the retry child stays queued and non-executable and `run.retry` is not a claim marker | P3C-1 | #6, OD-P3-05, P3C-0B | Lineage test: root id, parent id, old run untouched; `run.retry` does not authorize claim while OD-P3-05 is undecided | Retry mutates or resets the parent run; a retry child becomes executable without OD-P3-05; P3C-1 modifies idempotency core files | Revert retry path |
 | 12 | Operation events query | `runtime_events` index `(run_id, correlation_id, sequence)` exists | `GET /api/operations/:operationId/events` authorizes the operation, then reads events by runId + correlationId ascending sequence; no `operation_events` store | P3D | #6 | Query test: ordering, authorization failure, empty set | An `operation_events` table or store appears | Revert route |
 | 13 | Operation cancel | `cancelRunWithinTransaction` exists; no operation binding | `POST /api/operations/:operationId/cancel` maps to run cancellation per Owner Decision on cancel semantics (OD-P3-02) | P3D | #10, OD-P3-02 | Cancel route test incl. terminal-state rejection | Semantics decided silently without Owner Decision | Revert route |
 | 14 | Task reconciliation | Tasks hold active run linkage via accept/cancel/reopen | Engine/executor outcomes reconcile task active-slot state through existing v2 paths | P3C-1 | #5 | Task slot reconciliation test on run terminal states | Reconciliation bypasses existing task invariants | Revert reconciliation |
-| 15 | Idempotency coverage | 6 consumers wired; the DB accepts `run.start`/`run.retry` and 200–299, but the TypeScript contract (6-operation list, 200/201-only statuses, Task/Run-only envelope, exact-shape parser) cannot store or replay an Operation command response (3.9) | Backward-compatible schemaVersion 1 extension with no DB change and no result schema version 2: `run.start` TypeScript operation registration; 202 HTTP status support; immutable Operation replay snapshot DTO and envelope variant; canonical JSON/hash/parser support over the full envelope; exact original HTTP status replay; Operation envelope corruption rejection; the legacy 6 operations keep their exact status and envelope behavior | P3C-0 | P3A | 12 required tests: `run.start` 202 Operation envelope round-trip; repository persists and returns the original 202; replay returns the original Operation snapshot; later Operation state changes do not affect the saved replay; canonical JSON/hash stable; tampered result JSON/hash rejected; wrong operation/envelope pair rejected; wrong operation/http-status pair rejected; legacy 6 statuses unchanged; legacy Task/Run envelopes still parse; unknown envelope variant fails closed; repository/service join a caller-owned transaction | A route, Operation creation, or run start is added; the DB is changed; replay re-reads the current Operation; a legacy envelope or status changes | Revert the idempotency extension; stored rows preserved |
+| 15 | Idempotency coverage | 6 consumers wired; the DB accepts `run.start`/`run.retry` and 200–299, but the TypeScript contract (6-operation list, 200/201-only statuses, Task/Run-only envelope, exact-shape parser) cannot store or replay an Operation command response (3.9) | Backward-compatible schemaVersion 1 extension with no DB change and no result schema version 2, split into two review boundaries: P3C-0A — `run.start` TypeScript operation registration, 202 HTTP status support, immutable Operation replay snapshot DTO and envelope variant, canonical JSON/hash/parser support over the full envelope, exact original HTTP status replay, Operation envelope corruption rejection, legacy 6 operations keep their exact status and envelope behavior; P3C-0B (authorized only after OD-P3-05) — `run.retry` registration, OD-P3-05-frozen status mapping, matching stable replay envelope (a dedicated Retry Result Envelope if the response carries both Child Run and Operation), same-key replay of the original status and snapshot | P3C-0A (start), P3C-0B (retry closure) | P3A; P3C-0B additionally OD-P3-05 | 12 required tests for P3C-0A: `run.start` 202 Operation envelope round-trip; repository persists and returns the original 202; replay returns the original Operation snapshot; later Operation state changes do not affect the saved replay; canonical JSON/hash stable; tampered result JSON/hash rejected; wrong operation/envelope pair rejected; wrong operation/http-status pair rejected; legacy 6 statuses unchanged; legacy Task/Run envelopes still parse; unknown envelope variant fails closed; repository/service join a caller-owned transaction. P3C-0B mirrors these for `run.retry` per the OD-P3-05-approved shape | A route, Operation creation, or run start is added; the DB is changed; replay re-reads the current Operation or Child Run; a legacy envelope or status changes; `run.retry` closure is implemented before OD-P3-05 | Revert the idempotency extension; stored rows preserved |
 | 16 | `recovery_required` interaction | Column and setting paths exist from P2 | P3 transitions leave the flag semantics unchanged; startup recovery continues to own it | P3B-1/P3C-1 | P2 core | Regression: flag set/clear paths unchanged | P3 code writes the flag directly | Revert offending path |
 | 17 | Legacy/v2 compatibility | Both paths green at baseline (3.13) | All P3 additions are additive; Legacy bridge and v2 collections keep passing | All stages | None (standing constraint) | Full server suite green each stage | Any Legacy/v2 regression | Revert the offending stage package |
 | 18 | M4 boundary | No provider runtime in scope | No ProcessManager, ProviderAdapter, CLI execution, Worktree runtime, Policy, or Approval implementation enters P3 | All stages | None (standing constraint) | Dependency scan: no imports of M4 surfaces | Any M4 surface is touched | Revert the offending change |
@@ -328,10 +332,16 @@ not resolve them silently.
 - OD-P3-03 — `progress` field usage on Operation: whether P3 populates
   progress at all, and if so from which source (stage counts vs. explicit
   updates), given no `operation_events` store exists.
-- OD-P3-04 — Start Operation completion timing: whether the `run.start`
-  Operation completes when the start transition is committed, or tracks the
-  run until a later terminal signal, and how that maps to the frozen 7
-  statuses.
+- OD-P3-04 — Start Operation completion timing. The decision must answer
+  all of the following as one package: (1) when the `run.start` Operation
+  reaches `completed`; (2) whether a later Stage/Run failure, after the Run
+  has entered `starting` or `running`, affects that Operation; (3) whether
+  a later Run cancellation affects that Operation; (4) whether the
+  Operation result stores the Run ID, the startup result, or the final Run
+  result; (5) which point-in-time immutable Operation snapshot the
+  idempotency replay always returns. This remediation approves none of the
+  options; P3B-2 must not implement any Start Operation terminal mapping
+  before OD-P3-04 is approved, and planning must not pre-select an option.
 - OD-P3-05 — Retry Child Run Activation Semantics. Options:
   A. Retry only creates a queued Child Run; a separate Start command is
      required.
@@ -345,11 +355,12 @@ not resolve them silently.
   Boundaries: this remediation approves neither A nor B; until OD-P3-05 is
   approved, a `run.retry` Operation must not authorize an Engine claim and
   the retry child stays queued and non-executable; the generic
-  Operation/claim infrastructure (P3A, P3B-1) and the generic Operation
-  replay envelope (P3C-0) may still be planned, but P3C-0 must not freeze
-  the final `run.retry` HTTP status or enable a `run.retry` consumer; P3C-1
-  retry activation/result mapping is blocked by OD-P3-05. These related
-  semantics are merged into OD-P3-05; no OD-P3-06 exists.
+  Operation/claim infrastructure (P3A, P3B-1) and the `run.start` replay
+  envelope (P3C-0A, which does not depend on OD-P3-05) may still be
+  planned; the `run.retry` idempotency closure (P3C-0B) is authorized only
+  after OD-P3-05; P3C-1 retry activation/result mapping is blocked by
+  OD-P3-05 and P3C-0B. These related semantics are merged into OD-P3-05;
+  no OD-P3-06 exists.
 
 ## 7. Recommended Stage Split (preview)
 
@@ -358,17 +369,23 @@ Detailed in `docs/implementation/milestones/M3-p3-implementation-plan.md`:
 - P3A — Operation Persistence and Lifecycle Foundation
 - P3B-1 — Start-Authorized Claim and Transaction Composition
 - P3B-2 — Deterministic Workflow and Stage Execution
-- P3C-0 — Operation Idempotency Replay Foundation
+- P3C-0A — Start Operation Idempotency Replay
+- P3C-0B — Retry Operation Idempotency Closure
 - P3C-1 — Async Start, Cancel Race, Child Retry
 - P3D — Operation Routes and Event Query
 - P3E — Integrated Verification and Closeout
 
-The default order is accepted on code evidence: Operations are the dependency
-of Start/Cancel/Retry routes (P3C-1/P3D), the Start-authorized claim (P3B-1)
-is the dependency of any execution, deterministic workflow/stage execution
-(P3B-2) depends on the P3B-1 independent review, and the Operation replay
-foundation (P3C-0) is the dependency of the Start acceptance contract
-(P3C-1).
+These dependencies are directed gates, not a mechanical serial order:
+
+- P3C-0A may start once P3A is accepted.
+- P3B-1 depends on P3A + OD-P3-01.
+- P3B-2 depends on P3B-1 + OD-P3-04.
+- P3C-0B depends on OD-P3-05.
+- P3C-1 Start portion depends on P3C-0A + P3B-1 + OD-P3-01/OD-P3-04.
+- P3C-1 Retry portion additionally depends on P3C-0B + OD-P3-05.
+
+This freezes the dependency graph only; it does not authorize parallel
+implementation.
 
 ## 8. Standing Constraints (restated for P3)
 
@@ -381,10 +398,10 @@ foundation (P3C-0) is the dependency of the Start acceptance contract
   claim requires a queued, binding-valid `run.start` Operation;
   `run.create`/`run.cancel` never authorize claim; `run.retry` claim
   authorization is gated by OD-P3-05.
-- Failure semantics: command acceptance (A), Engine claim (B), and
-  accepted-command failure recording (C) are three distinct transactions;
-  no partial lifecycle state; an accepted Operation may persist as durable
-  failure evidence.
+- Failure semantics: command acceptance (A), Engine claim (B), pre-start
+  failure recording (C1), and post-start execution outcome mapping (C2, per
+  OD-P3-04) are distinct transactions; no partial lifecycle state; an
+  accepted Operation may persist as durable failure evidence.
 - v2 and Legacy remain usable; Web default is not switched; no Migration 014;
   no ProcessManager/ProviderAdapter/CLI execution/Worktree runtime/Policy/
   Approval implementation; no SSE/Replay; no OpenAPI completion; no Web
