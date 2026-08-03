@@ -532,6 +532,147 @@ test('P2C-2B resolveApprovalToCancellation fans out affected Stages in stable or
   }
 });
 
+test('P2C-2B resolution retries return already-resolved before state, Stage, or version checks', () => {
+  const approve = newFixture();
+  try {
+    setRunStatus(approve, 'running');
+    setStageStatus(approve, STAGE_ID, 'running');
+    const requested = approve.service.requestApproval(approvalInput({
+      stageId: STAGE_ID, expectedStageVersion: 1,
+    }) as never);
+    approve.probe.nowCalls = 0;
+    const first = approve.service.resolveApprovalToRunning(approvalInput({
+      stageId: STAGE_ID,
+      expectedRunVersion: requested.run.version,
+      expectedStageVersion: requested.stages.find(stage => stage.id === STAGE_ID)!.version,
+      decision: 'approve_once',
+      decidedBy: 'operator',
+    }) as never);
+    assert.equal(approve.probe.nowCalls, 1);
+    const beforeRetry = stateSnapshot(approve);
+    approve.probe.nowCalls = 0;
+    assert.throws(
+      () => approve.service.resolveApprovalToRunning(approvalInput({
+        stageId: STAGE_ID,
+        expectedRunVersion: first.run.version,
+        expectedStageVersion: first.stages.find(stage => stage.id === STAGE_ID)!.version,
+        decision: 'approve_run',
+        decidedBy: 'operator',
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_ALREADY_RESOLVED',
+    );
+    assert.deepEqual(stateSnapshot(approve), beforeRetry);
+    assert.equal(approve.probe.nowCalls, 0);
+  } finally {
+    closeFixture(approve);
+  }
+
+  const reject = newFixture();
+  try {
+    setRunStatus(reject, 'running');
+    setStageStatus(reject, STAGE_ID, 'running');
+    const requested = reject.service.requestApproval(approvalInput({
+      stageId: STAGE_ID, expectedStageVersion: 1,
+    }) as never);
+    reject.probe.nowCalls = 0;
+    const first = reject.service.resolveApprovalToFailure(approvalInput({
+      stageId: STAGE_ID,
+      expectedRunVersion: requested.run.version,
+      expectedStageVersion: requested.stages.find(stage => stage.id === STAGE_ID)!.version,
+      decision: 'reject', decidedBy: 'operator', errorCode: 'E_REJECTED',
+      message: 'rejected', phase: 'approval', retryable: false,
+    }) as never);
+    assert.equal(reject.probe.nowCalls, 1);
+    const beforeRetry = stateSnapshot(reject);
+    reject.probe.nowCalls = 0;
+    assert.throws(
+      () => reject.service.resolveApprovalToFailure(approvalInput({
+        stageId: STAGE_ID,
+        expectedRunVersion: first.run.version,
+        expectedStageVersion: first.stages.find(stage => stage.id === STAGE_ID)!.version,
+        decision: 'reject', decidedBy: 'operator', errorCode: 'E_REJECTED_AGAIN',
+        message: 'rejected again', phase: 'approval', retryable: false,
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_ALREADY_RESOLVED',
+    );
+    assert.deepEqual(stateSnapshot(reject), beforeRetry);
+    assert.equal(reject.probe.nowCalls, 0);
+  } finally {
+    closeFixture(reject);
+  }
+
+  const cancel = newFixture();
+  try {
+    setRunStatus(cancel, 'running');
+    setStageStatus(cancel, STAGE_ID, 'running');
+    const requested = cancel.service.requestApproval(approvalInput({
+      stageId: STAGE_ID, expectedStageVersion: 1,
+    }) as never);
+    cancel.probe.nowCalls = 0;
+    const first = cancel.service.resolveApprovalToCancellation(approvalInput({
+      stageId: STAGE_ID,
+      expectedRunVersion: requested.run.version,
+      expectedStageVersion: requested.stages.find(stage => stage.id === STAGE_ID)!.version,
+      decision: 'cancel_run', decidedBy: 'operator', requestedBy: 'operator',
+      terminatedProcessIds: [], worktreePreserved: true,
+    }) as never);
+    assert.equal(cancel.probe.nowCalls, 1);
+    const beforeRetry = stateSnapshot(cancel);
+    cancel.probe.nowCalls = 0;
+    assert.throws(
+      () => cancel.service.resolveApprovalToCancellation(approvalInput({
+        stageId: STAGE_ID,
+        expectedRunVersion: first.run.version,
+        expectedStageVersion: first.stages.find(stage => stage.id === STAGE_ID)!.version,
+        decision: 'cancel_run', decidedBy: 'operator', requestedBy: 'operator',
+        terminatedProcessIds: [], worktreePreserved: true,
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_ALREADY_RESOLVED',
+    );
+    assert.deepEqual(stateSnapshot(cancel), beforeRetry);
+    assert.equal(cancel.probe.nowCalls, 0);
+  } finally {
+    closeFixture(cancel);
+  }
+
+  const crossRetry = newFixture();
+  try {
+    setRunStatus(crossRetry, 'running');
+    setStageStatus(crossRetry, STAGE_ID, 'running');
+    const requested = crossRetry.service.requestApproval(approvalInput({
+      stageId: STAGE_ID, expectedStageVersion: 1,
+    }) as never);
+    crossRetry.probe.nowCalls = 0;
+    const first = crossRetry.service.resolveApprovalToRunning(approvalInput({
+      stageId: STAGE_ID,
+      expectedRunVersion: requested.run.version,
+      expectedStageVersion: requested.stages.find(stage => stage.id === STAGE_ID)!.version,
+      decision: 'approve_workspace', decidedBy: 'operator',
+    }) as never);
+    assert.equal(crossRetry.probe.nowCalls, 1);
+    const beforeRetry = stateSnapshot(crossRetry);
+    crossRetry.probe.nowCalls = 0;
+    assert.throws(
+      () => crossRetry.service.resolveApprovalToFailure(approvalInput({
+        stageId: STAGE_ID,
+        expectedRunVersion: first.run.version,
+        expectedStageVersion: first.stages.find(stage => stage.id === STAGE_ID)!.version,
+        decision: 'reject', decidedBy: 'operator', errorCode: 'E_CROSS_RETRY',
+        message: 'cross retry', phase: 'approval', retryable: false,
+      }) as never),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_ALREADY_RESOLVED',
+    );
+    assert.deepEqual(stateSnapshot(crossRetry), beforeRetry);
+    assert.equal(crossRetry.probe.nowCalls, 0);
+  } finally {
+    closeFixture(crossRetry);
+  }
+});
+
 test('P2C-2B approval resolution binds identity and exact Run/Stage scope before the clock', () => {
   const missing = newFixture();
   try {

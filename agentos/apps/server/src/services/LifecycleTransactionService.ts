@@ -594,8 +594,8 @@ export class LifecycleTransactionService {
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
-      this.assertExpectedRunState(run, 'waiting_approval');
       this.assertApprovalResolutionBinding(input, run.id);
+      this.assertExpectedRunState(run, 'waiting_approval');
       const stage = input.stageId === undefined
         ? undefined
         : this.requireStage(input.workspaceId, input.runId, input.stageId);
@@ -656,8 +656,8 @@ export class LifecycleTransactionService {
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
-      this.assertExpectedRunState(run, 'waiting_approval');
       this.assertApprovalResolutionBinding(input, run.id);
+      this.assertExpectedRunState(run, 'waiting_approval');
       const stage = input.stageId === undefined
         ? undefined
         : this.requireStage(input.workspaceId, input.runId, input.stageId);
@@ -765,8 +765,8 @@ export class LifecycleTransactionService {
 
     return this.dependencies.runInTransaction(() => {
       const run = this.requireRun(input.workspaceId, input.runId);
-      this.assertExpectedRunState(run, 'waiting_approval');
       this.assertApprovalResolutionBinding(input, run.id);
+      this.assertExpectedRunState(run, 'waiting_approval');
       const approvalStage = input.stageId === undefined
         ? undefined
         : this.requireStage(input.workspaceId, input.runId, input.stageId);
