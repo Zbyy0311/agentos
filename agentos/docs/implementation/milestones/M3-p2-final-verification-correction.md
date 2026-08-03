@@ -33,7 +33,7 @@ The production remediation is:
 | Branch | `runtime/m3-p2-transactional-lifecycle-core` |
 | Remote branch after Push | `fb9a1e8f65f47abbea04a652b90ba1be1cee1f42` |
 
-Remediation 2 test/documentation commit: `<REMEDIATION_2_COMMIT_SHA_PENDING>`
+Remediation 2 test/documentation commit: `c61a794d683fd8d9c8b6c7bddbe2ed4e13ed71de`
 
 The remediation commit changes only these four production/test files:
 
