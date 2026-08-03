@@ -58,12 +58,19 @@ import { ProviderConfigurationRepository } from './ProviderConfigurationReposito
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
+import { createFileBackupProvider } from '../migrations/backup.js';
 import { inTransaction } from './Transaction.js';
 import { assertVersionedMutation } from './Repository.js';
 import { createEntityId } from './Identity.js';
 import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from './ProviderConfigurationRepository.js';
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
+import { createM3RuntimeEventRegistry } from '@agentos/shared';
+import { RuntimeEventRepository } from './RuntimeEventRepository.js';
+import { RunSequenceAllocator } from './RunSequenceAllocator.js';
+import { OutboxRepository } from './OutboxRepository.js';
+import { DeadLetterRepository } from './DeadLetterRepository.js';
+import { LifecycleTransactionService } from '../services/LifecycleTransactionService.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -410,6 +417,11 @@ export class SqliteStore implements Store {
   private readonly runStageRepo: RunStageRepository;
   private readonly idempotencyRepo: IdempotencyRepository;
   private readonly providerConfigRepo: ProviderConfigurationRepository;
+  private readonly runtimeEventRepo: RuntimeEventRepository;
+  private readonly runSequenceAllocatorRepo: RunSequenceAllocator;
+  private readonly outboxRepo: OutboxRepository;
+  private readonly deadLetterRepo: DeadLetterRepository;
+  private readonly lifecycleTransactionServiceRepo: LifecycleTransactionService;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -426,9 +438,22 @@ export class SqliteStore implements Store {
     this.runStageRepo = new RunStageRepository(this.database as any);
     this.idempotencyRepo = new IdempotencyRepository(this.database as any);
     this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
+    const runtimeEventRegistry = createM3RuntimeEventRegistry();
+    this.runtimeEventRepo = new RuntimeEventRepository(this.database as any, runtimeEventRegistry);
+    this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
+    this.outboxRepo = new OutboxRepository(this.database as any, this.runtimeEventRepo);
+    this.deadLetterRepo = new DeadLetterRepository(this.database as any);
+    this.lifecycleTransactionServiceRepo = new LifecycleTransactionService({
+      runRepository: this.runRepo,
+      runStageRepository: this.runStageRepo,
+      runtimeEventRepository: this.runtimeEventRepo,
+      runSequenceAllocator: this.runSequenceAllocatorRepo,
+      outboxRepository: this.outboxRepo,
+      runInTransaction: fn => inTransaction(this.database as any, fn),
+    });
     try {
       this.database.exec('PRAGMA foreign_keys = ON');
-      this.runMigrations();
+      this.runMigrations(dataDir);
       this.migrateAgentEventSequences();
       this.migrateLegacyExecutionRuns();
       this.migrateLegacyWorkspaceAggregates();
@@ -467,6 +492,26 @@ export class SqliteStore implements Store {
 
   providerConfigurationRepository(): ProviderConfigurationRepository {
     return this.providerConfigRepo;
+  }
+
+  runtimeEventRepository(): RuntimeEventRepository {
+    return this.runtimeEventRepo;
+  }
+
+  runSequenceAllocator(): RunSequenceAllocator {
+    return this.runSequenceAllocatorRepo;
+  }
+
+  outboxRepository(): OutboxRepository {
+    return this.outboxRepo;
+  }
+
+  deadLetterRepository(): DeadLetterRepository {
+    return this.deadLetterRepo;
+  }
+
+  lifecycleTransactionService(): LifecycleTransactionService {
+    return this.lifecycleTransactionServiceRepo;
   }
 
   /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */
@@ -1985,11 +2030,12 @@ export class SqliteStore implements Store {
     return this.getMemoryCandidate(workspaceId, candidateId) ?? { ...current, status, reviewedAt };
   }
 
-  private runMigrations(): void {
+  private runMigrations(dataDir: string): void {
     // MigrationRunner takes over schema initialization.
     // migrateSchema() is kept as the implementation source for baseline DDL.
     const registry = new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS);
-    const runner = new MigrationRunner(this.database as any, registry);
+    const backupProvider = createFileBackupProvider(join(dataDir, 'migration-backups'));
+    const runner = new MigrationRunner(this.database as any, registry, { backupProvider });
     runner.run();
   }
 

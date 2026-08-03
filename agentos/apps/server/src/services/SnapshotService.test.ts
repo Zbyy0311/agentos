@@ -30,17 +30,18 @@ const legacyWorkflow: WorkflowDefinition = {
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   payload: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     definitionKey: 'legacy-pipeline',
-    version: 1,
-    name: 'legacy-pipeline-v1',
+    version: 2,
+    name: 'legacy-pipeline-v2',
     executionMode: 'legacy_pipeline',
     retryPolicy: null,
+    worktreeMode: 'preferred',
     stages: [
-      { key: 'codex_manager', sequence: 1, agentRole: 'codex' },
-      { key: 'kimi_worker', sequence: 2, agentRole: 'kimi' },
-      { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode' },
-      { key: 'codex_final_review', sequence: 4, agentRole: 'codex' },
+      { key: 'codex_manager', sequence: 1, agentRole: 'codex', dependsOn: [] },
+      { key: 'kimi_worker', sequence: 2, agentRole: 'kimi', dependsOn: ['codex_manager'] },
+      { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode', dependsOn: ['kimi_worker'] },
+      { key: 'codex_final_review', sequence: 4, agentRole: 'codex', dependsOn: ['opencode_reviewer'] },
     ],
   },
 };
@@ -51,12 +52,13 @@ const unboundWorkflow: WorkflowDefinition = {
   definitionKey: 'unbound-task-run',
   name: 'unbound-task-run-v1',
   payload: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     definitionKey: 'unbound-task-run',
-    version: 1,
-    name: 'unbound-task-run-v1',
+    version: 2,
+    name: 'unbound-task-run-v2',
     executionMode: 'unbound',
     retryPolicy: null,
+    worktreeMode: 'disabled',
     stages: [],
   },
 };
@@ -148,7 +150,7 @@ function makeDeps(options: {
         options.onSnapshot?.(input.payload);
         return {
           id: 'snapshot-1', workspaceId: input.workspaceId, runId: input.runId,
-          workflowDefinitionId: input.workflowDefinitionId, snapshotSchemaVersion: 1,
+          workflowDefinitionId: input.workflowDefinitionId, snapshotSchemaVersion: 2,
           payload: input.payload as never, contentHash: 'b'.repeat(64), redactionApplied: false,
           capturedAt: '2026-01-01T00:00:00.000Z',
         } as RunSnapshot;
@@ -200,6 +202,7 @@ test('SnapshotService resolves an unbound run without agent/provider bindings', 
   const resolved = service.resolveUnbound('ws-1');
   assert.equal(resolved.workflow.definitionKey, 'unbound-task-run');
   assert.deepEqual(resolved.stages, []);
+  assert.equal(resolved.worktreeMode, 'disabled');
   assert.equal(resolved.redactionApplied, false);
 });
 
@@ -210,6 +213,10 @@ test('SnapshotService resolves Legacy stages once and projects one runner bindin
     'codex_manager', 'kimi_worker', 'opencode_reviewer', 'codex_final_review',
   ]);
   assert.equal(resolved.stages.length, 4);
+  assert.deepEqual(resolved.stages.map(stage => stage.dependsOn), [
+    [], ['codex_manager'], ['kimi_worker'], ['opencode_reviewer'],
+  ]);
+  assert.equal(resolved.worktreeMode, 'preferred');
   assert.equal(resolved.stages[0]!.agent?.version, 7);
   assert.equal(resolved.stages[0]!.provider?.version, 1);
   assert.equal(resolved.stages[0]!.provider?.secretProfileId, 'secret-profile');
@@ -238,11 +245,23 @@ test('SnapshotService persists one immutable payload and four initial Legacy sta
   const persisted = service.persistResolvedRun(run, resolved);
   assert.equal(captured.length, 1);
   assert.equal(persisted.stages.length, 4);
+  if (persisted.snapshot.payload.schemaVersion !== 2) throw new Error('expected a V2 Snapshot');
+  assert.equal(persisted.snapshot.payload.workflow.worktreeMode, 'preferred');
   assert.deepEqual(stageKeys, ['codex_manager', 'kimi_worker', 'opencode_reviewer', 'codex_final_review']);
-  const payload = captured[0] as { capturedAt: string; security: { redactionApplied: boolean }; workflow: { stages: unknown[] } };
+  const payload = captured[0] as {
+    schemaVersion: number;
+    capturedAt: string;
+    security: { redactionApplied: boolean };
+    workflow: { worktreeMode: string; stages: Array<{ dependsOn: string[] }> };
+  };
+  assert.equal(payload.schemaVersion, 2);
+  assert.equal(payload.workflow.worktreeMode, 'preferred');
   assert.equal(payload.capturedAt, '2026-01-02T00:00:00.000Z');
   assert.equal(payload.security.redactionApplied, false);
   assert.equal(payload.workflow.stages.length, 4);
+  assert.deepEqual(payload.workflow.stages.map(stage => stage.dependsOn), [
+    [], ['codex_manager'], ['kimi_worker'], ['opencode_reviewer'],
+  ]);
 });
 
 test('SnapshotService fails closed for agent/provider availability and secret-like values', () => {

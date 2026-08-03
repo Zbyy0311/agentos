@@ -1,7 +1,10 @@
+import { getM3RunTransitionEventContract } from '@agentos/shared';
 import type { CreateV2RunInput, Run, V2RunOrigin, V2RunReason, V2RunStatus } from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
 import { assertVersionedMutation } from './Repository.js';
 import { createEntityId } from './Identity.js';
+import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
+import { VersionConflictError } from './Version.js';
 
 export interface InsertRunInput extends CreateV2RunInput {
   workspaceId: string;
@@ -52,6 +55,17 @@ export class RunValidationError extends Error {
   }
 }
 
+export interface RunLifecycleTransitionWithinTransactionInput {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly expectedVersion: number;
+  readonly expectedFrom: V2RunStatus;
+  readonly to: V2RunStatus;
+  readonly timestamp: string;
+  readonly failureCode?: string;
+  readonly failureMessage?: string;
+}
+
 interface RunRow {
   id: string;
   workspace_id: string;
@@ -65,6 +79,7 @@ interface RunRow {
   failure_code: string | null;
   failure_message: string | null;
   cancellation_requested_at: string | null;
+  recovery_required?: number | null;
   next_event_sequence: number;
   started_at: string | null;
   completed_at: string | null;
@@ -88,6 +103,9 @@ function mapRow(row: RunRow): Run {
     failureCode: row.failure_code ?? undefined,
     failureMessage: row.failure_message ?? undefined,
     cancellationRequestedAt: row.cancellation_requested_at ?? undefined,
+    ...(row.recovery_required === undefined || row.recovery_required === null
+      ? {}
+      : { recoveryRequired: row.recovery_required === 1 }),
     nextEventSequence: row.next_event_sequence,
     startedAt: row.started_at ?? undefined,
     completedAt: row.completed_at ?? undefined,
@@ -245,6 +263,66 @@ export class RunRepository {
       entityType: 'runs', entityId: runId, expectedVersion,
     });
     return this.findById(workspaceId, runId)!;
+  }
+
+  transitionLifecycleWithinTransaction(input: RunLifecycleTransitionWithinTransactionInput): Run {
+    if (!input.workspaceId.trim() || !input.runId.trim()) {
+      throw new RunValidationError('LIFECYCLE_VALIDATION_FAILED: workspaceId and runId are required');
+    }
+    if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) {
+      throw new RunValidationError('LIFECYCLE_VALIDATION_FAILED: expectedVersion must be a positive safe integer');
+    }
+    if (!isCanonicalUtcTimestamp(input.timestamp)) {
+      throw new RunValidationError('LIFECYCLE_VALIDATION_FAILED: timestamp must be canonical UTC ISO 8601 milliseconds');
+    }
+    if (!getM3RunTransitionEventContract(input.expectedFrom, input.to)) {
+      throw new InvalidRunTransitionError(input.expectedFrom, input.to);
+    }
+    if (input.to === 'failed'
+      && (!input.failureCode?.trim() || !input.failureMessage?.trim())) {
+      throw new InvalidRunTransitionError(input.expectedFrom, input.to, 'failureCode and failureMessage are required');
+    }
+
+    const result = this.db.prepare(`
+      UPDATE runs
+      SET status = ?,
+        started_at = CASE
+          WHEN ? = 'starting' AND ? = 'running' AND started_at IS NULL THEN ?
+          ELSE started_at
+        END,
+        completed_at = CASE
+          WHEN ? = 'running' AND ? = 'completed' AND completed_at IS NULL THEN ?
+          ELSE completed_at
+        END,
+        failure_code = CASE WHEN ? = 'failed' THEN ? ELSE failure_code END,
+        failure_message = CASE WHEN ? = 'failed' THEN ? ELSE failure_message END,
+        cancellation_requested_at = CASE
+          WHEN ? = 'cancelled' AND cancellation_requested_at IS NULL THEN ?
+          ELSE cancellation_requested_at
+        END,
+        updated_at = ?,
+        version = version + 1
+      WHERE workspace_id = ? AND id = ? AND status = ? AND version = ?
+    `).run(
+      input.to,
+      input.expectedFrom, input.to, input.timestamp,
+      input.expectedFrom, input.to, input.timestamp,
+      input.to, input.failureCode ?? null,
+      input.to, input.failureMessage ?? null,
+      input.to, input.timestamp,
+      input.timestamp,
+      input.workspaceId, input.runId, input.expectedFrom, input.expectedVersion,
+    ) as { changes: number };
+
+    if (result.changes !== 1) {
+      const current = this.findById(input.workspaceId, input.runId);
+      if (!current) throw new RunNotFoundError(input.runId);
+      if (current.status !== input.expectedFrom) {
+        throw new InvalidRunTransitionError(current.status, input.to, 'expectedFrom does not match current status');
+      }
+      throw new VersionConflictError('runs', input.runId, input.expectedVersion);
+    }
+    return this.findById(input.workspaceId, input.runId)!;
   }
 
   /** Bridge-claim compensation only: legacy_pipeline queued Run → failed (BRIDGE_CLAIM_FAILED). */

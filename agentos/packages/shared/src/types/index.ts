@@ -1,5 +1,6 @@
 import type { V2RunStatus } from './m3-run-status.js';
-import type { V2RunReason } from './m3-runtime-contracts.js';
+import type { V2RunReason, WorktreeMode } from './m3-runtime-contracts.js';
+import type { M3StageStatus } from './m3-runtime.js';
 
 export type TaskStatus = 'pending' | 'running' | 'reviewing' | 'completed' | 'failed' | 'cancelled';
 
@@ -713,6 +714,7 @@ export interface Run {
   failureCode?: string;
   failureMessage?: string;
   cancellationRequestedAt?: string;
+  recoveryRequired?: boolean;
   nextEventSequence: number;
   startedAt?: string;
   completedAt?: string;
@@ -755,6 +757,10 @@ export interface WorkflowStageDefinitionV1 {
   agentRole: AgentRole | null;
 }
 
+export interface WorkflowStageDefinitionV2 extends WorkflowStageDefinitionV1 {
+  dependsOn: string[];
+}
+
 export interface WorkflowDefinitionPayloadV1 {
   schemaVersion: 1;
   definitionKey: string;
@@ -765,12 +771,21 @@ export interface WorkflowDefinitionPayloadV1 {
   stages: WorkflowStageDefinitionV1[];
 }
 
+export interface WorkflowDefinitionPayloadV2
+  extends Omit<WorkflowDefinitionPayloadV1, 'schemaVersion' | 'stages'> {
+  schemaVersion: 2;
+  worktreeMode: WorktreeMode;
+  stages: WorkflowStageDefinitionV2[];
+}
+
+export type WorkflowDefinitionPayload = WorkflowDefinitionPayloadV1 | WorkflowDefinitionPayloadV2;
+
 export interface WorkflowDefinition {
   id: string;
   definitionKey: string;
   version: number;
   name: string;
-  payload: WorkflowDefinitionPayloadV1;
+  payload: WorkflowDefinitionPayload;
   definitionHash: string;
   enabled: boolean;
   archivedAt?: string;
@@ -891,13 +906,28 @@ export interface RunSnapshotPayloadV1 {
   };
 }
 
-export interface RunSnapshot {
+export interface WorkflowStageSnapshotV2 extends WorkflowStageSnapshotV1 {
+  dependsOn: string[];
+}
+
+export interface RunSnapshotPayloadV2
+  extends Omit<RunSnapshotPayloadV1, 'schemaVersion' | 'workflow'> {
+  schemaVersion: 2;
+  workflow: Omit<RunSnapshotPayloadV1['workflow'], 'stages'> & {
+    worktreeMode: WorktreeMode;
+    stages: WorkflowStageSnapshotV2[];
+  };
+}
+
+export type RunSnapshotPayload = RunSnapshotPayloadV1 | RunSnapshotPayloadV2;
+
+export interface RunSnapshot<TPayload extends RunSnapshotPayload = RunSnapshotPayload> {
   id: string;
   workspaceId: string;
   runId: string;
   workflowDefinitionId: string;
   snapshotSchemaVersion: number;
-  payload: RunSnapshotPayloadV1;
+  payload: TPayload;
   contentHash: string;
   redactionApplied: boolean;
   capturedAt: string;
@@ -913,7 +943,11 @@ export interface RunStage {
   name: string;
   sequence: number;
   attempt: number;
-  status: 'pending';
+  status: M3StageStatus;
+  failureCode?: string;
+  failureMessage?: string;
+  startedAt?: string;
+  completedAt?: string;
   createdAt: string;
   updatedAt: string;
   version: number;
@@ -921,3 +955,4 @@ export interface RunStage {
 
 export * from './m3-runtime.js';
 export * from './m3-runtime-registry.js';
+export * from './m3-lifecycle-transition-contracts.js';

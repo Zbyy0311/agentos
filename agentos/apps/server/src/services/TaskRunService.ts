@@ -21,6 +21,7 @@ import type { RunStageRepository } from '../store/RunStageRepository.js';
 import type { ProviderConfigurationRepository } from '../store/ProviderConfigurationRepository.js';
 import type { AgentSnapshotSourceRecord } from '../store/SqliteStore.js';
 import { WorkflowDefinitionResolver } from './WorkflowDefinitionResolver.js';
+import type { LifecycleTransactionService } from './LifecycleTransactionService.js';
 import {
   SnapshotService,
   type ResolvedRunConfiguration,
@@ -46,6 +47,8 @@ export interface TaskRunServiceDeps {
   providerConfigurationRepository(): ProviderConfigurationRepository;
   findAgentSnapshotSource(workspaceId: string, agentId: string): AgentSnapshotSourceRecord | undefined;
   runInTransaction<T>(fn: () => T): T;
+  /** Supplied by SqliteStore for the production V2 Run creation path. */
+  lifecycleTransactionService(): LifecycleTransactionService;
 }
 
 export interface CreateLegacyRunForBridgeInput {
@@ -106,6 +109,16 @@ function domainError(code: string, message: string): Error & { code: string } {
   const err = new Error(message) as Error & { code: string };
   err.code = code;
   return err;
+}
+
+function isLifecycleTransactionService(value: unknown): value is LifecycleTransactionService {
+  try {
+    return typeof value === 'object'
+      && value !== null
+      && typeof (value as { createRunGraphEventsWithinTransaction?: unknown }).createRunGraphEventsWithinTransaction === 'function';
+  } catch {
+    return false;
+  }
 }
 
 export class BridgeCompensationFailedError extends Error {
@@ -269,7 +282,7 @@ export class TaskRunService {
         domainInput: {},
         expectedVersion: expectedVersion ?? null,
       },
-      mutate: () => buildRunResultEnvelopeV1('run.cancel', this.cancelQueuedRunInTransaction(workspaceId, runId, expectedVersion)),
+      mutate: () => buildRunResultEnvelopeV1('run.cancel', this.cancelQueuedRunForV2InTransaction(workspaceId, runId, expectedVersion)),
     });
   }
 
@@ -568,10 +581,36 @@ export class TaskRunService {
     if (this.deps.runRepository().findActiveByTask(workspaceId, input.taskId)) {
       throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
     }
+    const lifecycleTransactionService = this.requireLifecycleTransactionService();
     const resolved = this.snapshotService.resolveUnbound(workspaceId);
     const run = this.deps.runRepository().insert({ ...input, workspaceId, origin: 'v2_api' });
-    this.snapshotService.persistResolvedRun(run, resolved);
-    return run;
+    const persisted = this.snapshotService.persistResolvedRun(run, resolved);
+    lifecycleTransactionService.createRunGraphEventsWithinTransaction(run, persisted.snapshot, persisted.stages);
+    const currentRun = this.deps.runRepository().findById(workspaceId, run.id);
+    if (!currentRun) throw new RunNotFoundError(run.id);
+    return currentRun;
+  }
+
+  private requireLifecycleTransactionService(): LifecycleTransactionService {
+    let factory: unknown;
+    try {
+      factory = this.deps.lifecycleTransactionService;
+    } catch {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    if (typeof factory !== 'function') {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    let service: unknown;
+    try {
+      service = factory.call(this.deps);
+    } catch {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    if (!isLifecycleTransactionService(service)) {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    return service;
   }
 
   /**
@@ -603,6 +642,37 @@ export class TaskRunService {
     const task = this.requireTask(workspaceId, run.taskId);
     this.resolveTaskAfterRunTerminal(task, cancelled);
     return cancelled;
+  }
+
+  /**
+   * V2 cancellation uses the caller-owned Lifecycle Transaction boundary so
+   * Run, affected Stages, Runtime Events, Outbox rows, Task reconciliation,
+   * and keyed idempotency success commit together.
+   */
+  private cancelQueuedRunForV2InTransaction(workspaceId: string, runId: string, expectedVersion?: number): Run {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    const version = this.mutationVersion('runs', runId, run.version, expectedVersion);
+    if (run.status !== 'queued') {
+      throw domainError('RUN_NOT_CANCELLABLE', `Run ${runId} is not cancellable in status '${run.status}'`);
+    }
+
+    const lifecycleTransactionService = this.requireLifecycleTransactionService();
+    if (typeof lifecycleTransactionService.cancelRunWithinTransaction !== 'function') {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    const result = lifecycleTransactionService.cancelRunWithinTransaction({
+      workspaceId,
+      runId,
+      expectedRunVersion: version,
+      correlationId: run.id,
+      requestedBy: 'v2_api',
+      terminatedProcessIds: [],
+      worktreePreserved: false,
+    });
+    const task = this.requireTask(workspaceId, run.taskId);
+    this.resolveTaskAfterRunTerminal(task, result.run);
+    return result.run;
   }
 
   private acceptRunInTransaction(workspaceId: string, taskId: string, runId: string, expectedVersion?: number): Task {

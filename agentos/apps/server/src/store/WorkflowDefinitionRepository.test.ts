@@ -137,12 +137,12 @@ describe('WorkflowDefinitionRepository', () => {
   it('findLatestAvailableByKey selects the highest enabled non-archived version', () => {
     const db = migratedDb();
     try {
-      insertDefinition(db, { id: 'workflow_latest_v2', payload: payload(M25_LEGACY_DEFINITION_KEY, 2, 'v2') });
-      insertDefinition(db, { id: 'workflow_latest_v3', payload: payload(M25_LEGACY_DEFINITION_KEY, 3, 'v3'), enabled: 0 });
-      insertDefinition(db, { id: 'workflow_latest_v4', payload: payload(M25_LEGACY_DEFINITION_KEY, 4, 'v4'), enabled: 0, archivedAt: NOW });
+      insertDefinition(db, { id: 'workflow_latest_v3', payload: payload(M25_LEGACY_DEFINITION_KEY, 3, 'v3') });
+      insertDefinition(db, { id: 'workflow_latest_v4', payload: payload(M25_LEGACY_DEFINITION_KEY, 4, 'v4'), enabled: 0 });
+      insertDefinition(db, { id: 'workflow_latest_v5', payload: payload(M25_LEGACY_DEFINITION_KEY, 5, 'v5'), enabled: 0, archivedAt: NOW });
       const result = new WorkflowDefinitionRepository(db).findLatestAvailableByKey(M25_LEGACY_DEFINITION_KEY);
-      assert.equal(result?.version, 2);
-      assert.equal(result?.name, 'v2');
+      assert.equal(result?.version, 3);
+      assert.equal(result?.name, 'v3');
     } finally {
       db.close();
     }

@@ -361,18 +361,42 @@ Run 创建前必须验证：
 
 ### 6.4 Creation Transaction
 
-Run 创建应在一个数据库事务内完成：
+The M3 P2C-2C-1 Run Graph Creation contract is one atomic transaction with
+this exact order:
 
-1. 创建 Run；
-2. 设置 `status = queued`；
-3. 创建 Run Snapshot；
-4. 创建 Stage Records；
-5. 预留 Event Sequence；
-6. 发出 `run.created`；
-7. 更新 Task 状态；
-8. 写入 Queue Record。
+1. Persist Run with `status = queued`, `version = 1`, and
+   `next_event_sequence = 1`.
+2. Persist the V2 Run Snapshot.
+3. Persist Stage Records with `status = pending` and `version = 1`.
+4. Validate that the Run, V2 Snapshot, V2 Workflow, and Stage Records form one
+   complete consistent graph.
+5. Append `run.created`.
+6. Append `stage.created × N` in `stage.sequence ASC`, then `stage.id ASC` order.
+7. Immediately after each Event, insert its own independent Outbox record.
+8. Write Idempotency Success.
+9. Commit.
 
-任何步骤失败，事务必须回滚。
+The Event order is `run.created` → `stage.created × N`. `run.created` receives
+sequence `1`; `stage.created` receives sequences `2..N+1`; the final
+`next_event_sequence` is `N+2`. `N = 0` is valid and produces only
+`run.created`. No `run.queued` Event is produced. Every Creation Event uses the
+same timestamp. Run and Stage versions remain `1`; Creation Events do not
+increment them.
+
+Creation correlation and causation are frozen: `correlationId` is exactly the
+persisted `run.id`; `CreateV2RunInput` does not add `correlationId`, and callers
+cannot override it. `run.created` has no `causationId` or `parentEventId`. Every
+`stage.created` uses `correlationId = run.id`, with both `causationId` and
+`parentEventId` equal to the `run.created` Event ID. Stage Events directly
+belong to `run.created`; they do not form a Stage Event chain.
+
+`run.created` payload fields are derived from persisted Run state and the V2
+Snapshot: `reason`, `parentRunId` when present, `rootRunId`,
+`workflowDefinitionId`, `worktreeMode`, and `createdBy`. Each `stage.created`
+payload is derived from its persisted Stage and matching V2 Snapshot Stage:
+`workflowStageKey`, `name`, `sequence`, and `dependsOn`. Callers cannot
+override Event type, source, sequence, timestamp, correlation, causation,
+parent-event, or payload fields. Any failure rolls back the whole transaction.
 
 ---
 
@@ -493,6 +517,15 @@ run.queue_position_updated
 run.queue_blocked
 ```
 
+`run.dequeued` is the canonical Event for the single Run transition
+`queued → starting`. It records scheduler acquisition and the beginning of
+startup preparation; it does not mean that the Run or a Provider is already
+running.
+
+`run.queued` is optional queue telemetry. It may carry queue name, priority,
+or position, but it never establishes the `queued` state and never replaces
+`run.created`.
+
 ---
 
 # Part IV — Run Startup
@@ -511,10 +544,9 @@ queued → starting
 
 - 确认 Run 未被取消；
 - 获取执行锁；
-- 更新状态为 `starting`；
-- 记录 `startedAt`；
-- 生成 `run.started` Event；
-- 初始化资源。
+- 将状态从 `queued` 原子更新为 `starting`；
+- 生成 `run.dequeued` Event；
+- 开始启动资源准备。
 
 ### 9.2 Startup Phases
 
@@ -530,7 +562,29 @@ queued → starting
 9. Start first eligible Stage
 ```
 
-### 9.3 Startup Failure
+### 9.3 Startup Completion Transaction
+
+启动完成事务必须满足：
+
+- 所有启动前检查成功；
+- 第一个 eligible Stage 完成 `starting → running` 并生成 `stage.started`；
+- Run 在同一事务中完成 `starting → running`；
+- 首次写入 `runs.started_at`；
+- 生成 `run.started` Event；
+- Current State、Runtime Event 与 Outbox 在同一事务中原子提交。
+
+Runtime Event 的提交顺序固定为：
+
+```text
+stage.started
+  ↓
+run.started
+```
+
+`run.started` 只能在上述启动完成事务中生成，不能在
+`queued → starting` 事务中生成。
+
+### 9.4 Startup Failure
 
 任何启动阶段失败都必须：
 
@@ -779,6 +833,9 @@ running
   ├── completed
   ├── failed
   └── cancelled
+
+pending / ready / starting / waiting_approval
+  └── cancelled (Run cancellation)
 ```
 
 建议 Stage Status：
@@ -847,7 +904,7 @@ Stage ready
   ↓
 Acquire stage execution lock
   ↓
-Set starting
+Set starting and emit stage.starting
   ↓
 Resolve Agent
   ↓
@@ -863,8 +920,21 @@ Create Provider Session
   ↓
 Start Runtime Process
   ↓
-Set running
+Confirm Provider active and freeze snapshots
+  ↓
+Set running, first write started_at, and emit stage.started
 ```
+
+Stage transition Event ownership is fixed as follows:
+
+- `ready → starting` emits `stage.starting` after scheduling rights are
+  acquired and Provider startup preparation begins;
+- `starting → running` emits `stage.started` only after the Provider is
+  confirmed active and the Agent/Provider snapshots are frozen;
+- `stage.started` never represents `ready → starting`.
+
+`run_stages.started_at` is written for the first time only in the transaction
+that enters `running` and emits `stage.started`.
 
 ### 14.2 Stage Prompt Composition
 
@@ -1256,6 +1326,11 @@ Evaluate Policy
 - 暂停相关动作；
 - Process 可保持等待或安全挂起。
 
+同一个 Stage-specific `approval.required` 可以作为 Run 与 Stage 两个
+`running → waiting_approval` 迁移的共同 Primary Event。它必须带有
+`runId`、`stageId` 与 `approvalRequestId` Envelope 引用；不得额外产生
+`run.waiting` 或 `stage.waiting`。
+
 ---
 
 ## 22. Approval Resolution
@@ -1289,6 +1364,28 @@ Resume provider or reject action
 Restore Stage / Run state
 ```
 
+Approval 恢复只允许以下 Decision：
+
+- `approve_once`；
+- `approve_run`；
+- `approve_workspace`。
+
+对于 `waiting_approval → running`，`approval.resolved` 同时作为 Run 与
+Stage 的恢复证据；不得额外产生 `run.resumed` 或 `stage.resumed`。
+
+Approval rejection/cancellation 的多 Event 顺序固定为：
+
+```text
+approval.resolved
+  ↓
+stage.failed / stage.cancelled (按受影响 Stage 顺序)
+  ↓
+run.failed / run.cancelled
+```
+
+Stage-specific `approval.resolved` 必须保留 `runId`、`stageId` 与
+`approvalRequestId` 引用。
+
 ### 22.3 Approval Concurrency
 
 同一个 Approval 只能成功决策一次。
@@ -1306,6 +1403,11 @@ Restore Stage / Run state
 - Stage 完成但有 warning；
 - Stage 失败；
 - Run 取消。
+
+若拒绝结果为失败，必须按 `approval.resolved → stage.failed → run.failed`
+提交；若结果为取消，必须按
+`approval.resolved → stage.cancelled → run.cancelled` 提交。每个 Durable
+Event 都必须有独立 Outbox 记录。
 
 ---
 
@@ -1430,7 +1532,8 @@ Terminate process tree
   ↓
 Finalize raw logs
   ↓
-Mark active stages cancelled
+Mark every non-terminal Stage cancelled in
+stage.sequence ASC, then stage.id ASC order
   ↓
 Mark Run cancelled
   ↓
@@ -1438,6 +1541,11 @@ Emit run.cancelled
   ↓
 Preserve Worktree for review or cleanup policy
 ```
+
+每个 `pending`、`ready`、`starting`、`waiting_approval` 或 `running` 的
+非终态 Stage 都必须产生一个 `stage.cancelled`。所有 Stage Event 提交后
+才产生最终 `run.cancelled`；取消一个 Stage 不会隐式终止 Process、取消
+Approval 或执行数据库逻辑。
 
 ### 25.3 Cancel Idempotency
 
@@ -2339,6 +2447,7 @@ Run 状态迁移必须使用：
 
 | From | To | Trigger | Allowed |
 |---|---|---|---|
+| ∅ | queued | Run creation | Yes |
 | queued | starting | Scheduler | Yes |
 | queued | cancelled | User cancel | Yes |
 | starting | running | First stage active | Yes |
@@ -2365,11 +2474,15 @@ Run 状态迁移必须使用：
 
 | From | To | Trigger |
 |---|---|---|
+| ∅ | pending | Stage creation |
 | pending | ready | Dependencies satisfied |
 | pending | skipped | Condition false |
+| pending | cancelled | Run cancelled |
 | ready | starting | Scheduler |
+| ready | cancelled | Run cancelled |
 | starting | running | Provider active |
 | starting | failed | Startup error |
+| starting | cancelled | Run cancelled |
 | running | waiting_approval | Approval required |
 | running | paused | Pause |
 | running | completed | Contract satisfied |
@@ -2377,8 +2490,32 @@ Run 状态迁移必须使用：
 | running | cancelled | Run cancelled |
 | waiting_approval | running | Approved |
 | waiting_approval | failed | Rejected/fatal |
+| waiting_approval | cancelled | Approval/Run cancelled |
 | paused | running | Resume |
 | paused | cancelled | Run cancelled |
+
+### 47.1 Canonical Lifecycle Event Ownership
+
+The Run table in §46 and the Stage table in §47 retain their state sets
+unchanged. This adjacent contract records their canonical Event ownership.
+M3-TD-21 freezes these four unique
+transition-to-Event mappings; one Event must not represent two lifecycle
+transitions:
+
+| Transition | Canonical Event |
+|---|---|
+| Run `queued → starting` | `run.dequeued` |
+| Run `starting → running` | `run.started` |
+| Stage `ready → starting` | `stage.starting` |
+| Stage `starting → running` | `stage.started` |
+
+The remaining transition rows retain their existing Event semantics and are
+not remapped by this specification-alignment change.
+
+The complete 17-row Run and 19-row Stage mapping, including required payloads,
+references, version writes, terminal behavior, and multi-Event order, is
+recorded in
+`docs/implementation/milestones/M3-p2c-transition-event-matrix.md`.
 
 ---
 

@@ -1,4 +1,4 @@
-import type { WorkflowDefinition, WorkflowStageDefinitionV1 } from '@agentos/shared';
+import type { WorkflowDefinition, WorkflowDefinitionPayloadV2, WorkflowStageDefinitionV2 } from '@agentos/shared';
 import type { WorkflowDefinitionRepository } from '../store/WorkflowDefinitionRepository.js';
 
 const LEGACY_KEY = 'legacy-pipeline';
@@ -19,17 +19,27 @@ function snapshotFailure(message: string): Error & { code: 'RUN_SNAPSHOT_FAILED'
   return error;
 }
 
-function assertLegacyPayload(definition: WorkflowDefinition): void {
-  const expected: readonly WorkflowStageDefinitionV1[] = [
-    { key: 'codex_manager', sequence: 1, agentRole: 'codex' },
-    { key: 'kimi_worker', sequence: 2, agentRole: 'kimi' },
-    { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode' },
-    { key: 'codex_final_review', sequence: 4, agentRole: 'codex' },
+type V2WorkflowDefinition = WorkflowDefinition & { payload: WorkflowDefinitionPayloadV2 };
+
+function requireV2(definition: WorkflowDefinition): V2WorkflowDefinition {
+  if (definition.payload.schemaVersion !== 2) {
+    throw snapshotFailure('RUN_SNAPSHOT_FAILED: workflow definition V2 is required');
+  }
+  return definition as V2WorkflowDefinition;
+}
+
+function assertLegacyPayload(definition: V2WorkflowDefinition): void {
+  const expected: readonly WorkflowStageDefinitionV2[] = [
+    { key: 'codex_manager', sequence: 1, agentRole: 'codex', dependsOn: [] },
+    { key: 'kimi_worker', sequence: 2, agentRole: 'kimi', dependsOn: ['codex_manager'] },
+    { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode', dependsOn: ['kimi_worker'] },
+    { key: 'codex_final_review', sequence: 4, agentRole: 'codex', dependsOn: ['opencode_reviewer'] },
   ];
   const payload = definition.payload;
   if (
     payload.executionMode !== 'legacy_pipeline'
     || payload.retryPolicy !== null
+    || payload.worktreeMode !== 'preferred'
     || payload.stages.length !== expected.length
     || payload.definitionKey !== LEGACY_KEY
   ) {
@@ -41,17 +51,19 @@ function assertLegacyPayload(definition: WorkflowDefinition): void {
       stage.key !== expectedStage.key
       || stage.sequence !== expectedStage.sequence
       || stage.agentRole !== expectedStage.agentRole
+      || JSON.stringify(stage.dependsOn) !== JSON.stringify(expectedStage.dependsOn)
     ) {
       throw snapshotFailure('RUN_SNAPSHOT_FAILED: legacy workflow definition is incompatible');
     }
   }
 }
 
-function assertUnboundPayload(definition: WorkflowDefinition): void {
+function assertUnboundPayload(definition: V2WorkflowDefinition): void {
   const payload = definition.payload;
   if (
     payload.executionMode !== 'unbound'
     || payload.retryPolicy !== null
+    || payload.worktreeMode !== 'disabled'
     || payload.stages.length !== 0
     || payload.definitionKey !== UNBOUND_KEY
   ) {
@@ -62,12 +74,13 @@ function assertUnboundPayload(definition: WorkflowDefinition): void {
 export class WorkflowDefinitionResolver {
   constructor(private readonly repository: WorkflowDefinitionRepository) {}
 
-  resolveLegacyPipeline(): WorkflowDefinition {
+  resolveLegacyPipeline(): V2WorkflowDefinition {
     try {
       const definition = this.repository.findLatestAvailableByKey(LEGACY_KEY);
       if (!definition) throw new WorkflowNotAvailableError(LEGACY_KEY);
-      assertLegacyPayload(definition);
-      return definition;
+      const v2 = requireV2(definition);
+      assertLegacyPayload(v2);
+      return v2;
     } catch (error) {
       if (error instanceof WorkflowNotAvailableError || (error as { code?: string } | null)?.code === 'RUN_SNAPSHOT_FAILED') {
         throw error;
@@ -76,12 +89,13 @@ export class WorkflowDefinitionResolver {
     }
   }
 
-  resolveUnboundTaskRun(): WorkflowDefinition {
+  resolveUnboundTaskRun(): V2WorkflowDefinition {
     try {
       const definition = this.repository.findLatestAvailableByKey(UNBOUND_KEY);
       if (!definition) throw new WorkflowNotAvailableError(UNBOUND_KEY);
-      assertUnboundPayload(definition);
-      return definition;
+      const v2 = requireV2(definition);
+      assertUnboundPayload(v2);
+      return v2;
     } catch (error) {
       if (error instanceof WorkflowNotAvailableError || (error as { code?: string } | null)?.code === 'RUN_SNAPSHOT_FAILED') {
         throw error;

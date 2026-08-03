@@ -231,6 +231,24 @@ AgentOS 保证：
 
 Replay 不重新执行 Provider。
 
+### 4.6 Multi-Event Atomicity and Ordering
+
+一个生命周期事务可以包含多个 Runtime Event，但必须为每个 Durable
+Event 分配连续 Run `sequence` 并写入独立 Outbox 记录。Current State、所有
+Event、所有 Outbox 记录和受影响 Aggregate 的 version 必须全部提交或全部
+回滚。
+
+P2C-0 冻结的顺序包括：
+
+```text
+stage.started → run.started
+approval.resolved → stage.failed → run.failed
+approval.resolved → stage.cancelled × N → run.cancelled
+stage.completed → run.completed
+```
+
+不同 Run 之间不建立全局顺序要求。
+
 ---
 
 # Part I — Event Envelope
@@ -346,7 +364,8 @@ approval.required
 
 ### 6.7 `timestamp`
 
-UTC ISO 8601。
+所有 Event Envelope 的 `timestamp` 以及 Payload 中的时间字段，必须使用
+UTC ISO 8601 毫秒格式：`YYYY-MM-DDTHH:mm:ss.sssZ`。
 
 示例：
 
@@ -361,6 +380,7 @@ UTC ISO 8601。
 ```ts
 type EventSource =
   | 'run-engine'
+  | 'scheduler'
   | 'workflow-executor'
   | 'stage-executor'
   | 'provider-adapter'
@@ -775,6 +795,49 @@ interface RunCreatedPayload {
 }
 ```
 
+`run.created` is the only mandatory Primary Event for the Run creation
+transition `∅ → queued`. It proves that the Run was durably created as the
+Queue Record. A same-transaction `run.queued` Event is not required.
+
+### M3 P2C-2C-1 Run Graph Creation Contract
+
+The M3 P2C-2C-1 Run Graph Creation contract is one atomic transaction with
+this exact order:
+
+1. Persist Run with `status = queued`, `version = 1`, and
+   `next_event_sequence = 1`.
+2. Persist the V2 Run Snapshot.
+3. Persist Stage Records with `status = pending` and `version = 1`.
+4. Validate that the Run, V2 Snapshot, V2 Workflow, and Stage Records form one
+   complete consistent graph.
+5. Append `run.created`.
+6. Append `stage.created × N` in `stage.sequence ASC`, then `stage.id ASC` order.
+7. Immediately after each Event, insert its own independent Outbox record.
+8. Write Idempotency Success.
+9. Commit.
+
+The Event order is `run.created` → `stage.created × N`. `run.created` receives
+sequence `1`; `stage.created` receives sequences `2..N+1`; the final
+`next_event_sequence` is `N+2`. `N = 0` is valid and produces only
+`run.created`. No `run.queued` Event is produced. Every Creation Event uses the
+same timestamp. Run and Stage versions remain `1`; Creation Events do not
+increment them.
+
+Creation correlation and causation are frozen: `correlationId` is exactly the
+persisted `run.id`; `CreateV2RunInput` does not add `correlationId`, and callers
+cannot override it. `run.created` has no `causationId` or `parentEventId`. Every
+`stage.created` uses `correlationId = run.id`, with both `causationId` and
+`parentEventId` equal to the `run.created` Event ID. Stage Events directly
+belong to `run.created`; they do not form a Stage Event chain.
+
+`run.created` payload fields are derived from persisted Run state and the V2
+Snapshot: `reason`, `parentRunId` when present, `rootRunId`,
+`workflowDefinitionId`, `worktreeMode`, and `createdBy`. Each `stage.created`
+payload is derived from its persisted Stage and matching V2 Snapshot Stage:
+`workflowStageKey`, `name`, `sequence`, and `dependsOn`. Callers cannot
+override Event type, source, sequence, timestamp, correlation, causation,
+parent-event, or payload fields. Any failure rolls back the whole transaction.
+
 ### `run.queued`
 
 ```ts
@@ -785,7 +848,93 @@ interface RunQueuedPayload {
 }
 ```
 
+`run.queued` is optional Queue Telemetry only. It may describe `queueName`,
+`priority`, and `position`, but it does not establish `Run.status = queued`
+and must never replace `run.created`.
+
+### `run.dequeued`
+
+`run.dequeued` is the unique canonical Event for the Run transition
+`queued → starting`.
+
+Envelope requirements:
+
+- the standard Runtime Event envelope is required;
+- `runId`, `workspaceId`, `sequence`, `timestamp`, and `correlationId` are
+  required;
+- `stageId` is absent because this Event is Run-scoped;
+- `schemaVersion` is exactly `1` and `type` is exactly `run.dequeued`.
+
+Registry metadata:
+
+| Field | Value |
+|---|---|
+| domain | `run` |
+| schemaVersion | `1` |
+| source | `scheduler` |
+| defaultSeverity | `info` |
+| defaultVisibility | `internal` |
+| defaultDurability | `durable` |
+| requiresStageId | `false` |
+
+Payload schema:
+
+```ts
+interface RunDequeuedPayload {
+  dequeuedAt: string;
+}
+```
+
+Payload requirements:
+
+- `dequeuedAt` is a UTC timestamp in the exact form
+  `YYYY-MM-DDTHH:mm:ss.sssZ`;
+- no additional payload fields are accepted;
+- the Event means that the scheduler selected/acquired the Run, committed
+  `queued → starting`, and began startup preparation;
+- it does not mean that startup preparation completed or that a Provider or
+  Stage is active.
+
+Example:
+
+```json
+{
+  "id": "evt_01JZRUNDEQUEUED",
+  "schemaVersion": 1,
+  "type": "run.dequeued",
+  "workspaceId": "ws_01JZ",
+  "taskId": "task_01JZ",
+  "runId": "run_01JZ",
+  "sequence": 2,
+  "timestamp": "2026-07-19T12:00:00.000Z",
+  "source": "scheduler",
+  "correlationId": "corr_run_01JZ",
+  "severity": "info",
+  "visibility": "internal",
+  "durability": "durable",
+  "payload": {
+    "dequeuedAt": "2026-07-19T12:00:00.000Z"
+  }
+}
+```
+
 ### `run.started`
+
+`run.started` is the unique canonical Event for the Run transition
+`starting → running`. It is emitted only after startup preparation succeeds
+and the first eligible Stage formally enters `running`.
+
+Registry metadata (unchanged):
+
+| Field | Value |
+|---|---|
+| domain | `run` |
+| schemaVersion | `1` |
+| source | `run-engine` |
+| defaultSeverity | `info` |
+| defaultVisibility | `public` |
+| defaultDurability | `durable` |
+| requiresStageId | `false` |
 
 ```ts
 interface RunStartedPayload {
@@ -795,6 +944,16 @@ interface RunStartedPayload {
   baseCommit?: string;
 }
 ```
+
+Payload requirements:
+
+- `startedAt` is a UTC timestamp in the exact form
+  `YYYY-MM-DDTHH:mm:ss.sssZ`;
+- `runs.started_at` is first written in the same transaction that emits this
+  Event;
+- `run.started` must not be emitted by the `queued → starting` transaction;
+- no payload fields other than the required `startedAt` and the three listed
+  optional snapshot fields are accepted.
 
 ### `run.paused`
 
@@ -842,6 +1001,10 @@ interface RunCancelledPayload {
   reason?: string;
 }
 ```
+
+Run cancellation is terminal only after every affected non-terminal Stage has
+emitted `stage.cancelled` in `stage.sequence ASC`, then `stage.id ASC` order.
+The final `run.cancelled` Event is committed after those Stage Events.
 
 ### `run.completed`
 
@@ -969,17 +1132,115 @@ interface StageReadyPayload {
 }
 ```
 
+### `stage.starting`
+
+`stage.starting` is the unique canonical Event for the Stage transition
+`ready → starting`.
+
+Envelope requirements:
+
+- the standard Runtime Event envelope is required;
+- `runId`, `workspaceId`, `stageId`, `sequence`, `timestamp`, and
+  `correlationId` are required;
+- `stageId` is required and identifies the Stage whose scheduling rights were
+  acquired;
+- `schemaVersion` is exactly `1` and `type` is exactly `stage.starting`.
+
+Registry metadata:
+
+| Field | Value |
+|---|---|
+| domain | `stage` |
+| schemaVersion | `1` |
+| source | `stage-executor` |
+| defaultSeverity | `info` |
+| defaultVisibility | `public` |
+| defaultDurability | `durable` |
+| requiresStageId | `true` |
+
+Payload schema:
+
+```ts
+interface StageStartingPayload {
+  workflowStageKey: string;
+  name: string;
+  attempt: number;
+  startingAt: string;
+}
+```
+
+Payload requirements:
+
+- `workflowStageKey` and `name` are non-empty strings;
+- `attempt` is a positive safe integer;
+- `startingAt` is a UTC timestamp in the exact form
+  `YYYY-MM-DDTHH:mm:ss.sssZ`;
+- no additional payload fields are accepted;
+- the Event means that scheduling rights were acquired and Provider startup
+  preparation began; it does not mean that the Provider is active.
+
+Example:
+
+```json
+{
+  "id": "evt_01JZSTAGESTARTING",
+  "schemaVersion": 1,
+  "type": "stage.starting",
+  "workspaceId": "ws_01JZ",
+  "taskId": "task_01JZ",
+  "runId": "run_01JZ",
+  "stageId": "stage_impl",
+  "sequence": 4,
+  "timestamp": "2026-07-19T12:00:01.000Z",
+  "source": "stage-executor",
+  "correlationId": "corr_stage_impl",
+  "severity": "info",
+  "visibility": "public",
+  "durability": "durable",
+  "payload": {
+    "workflowStageKey": "implement",
+    "name": "Implementation",
+    "attempt": 1,
+    "startingAt": "2026-07-19T12:00:01.000Z"
+  }
+}
+```
+
 ### `stage.started`
+
+`stage.started` is the unique canonical Event for the Stage transition
+`starting → running`. It is emitted only after the Provider is confirmed
+active and the Agent/Provider snapshots are frozen.
+
+Registry metadata (unchanged):
+
+| Field | Value |
+|---|---|
+| domain | `stage` |
+| schemaVersion | `1` |
+| source | `stage-executor` |
+| defaultSeverity | `info` |
+| defaultVisibility | `public` |
+| defaultDurability | `durable` |
+| requiresStageId | `true` |
 
 ```ts
 interface StageStartedPayload {
   workflowStageKey: string;
   name: string;
   attempt: number;
-  agentSnapshot: AgentSnapshot;
-  providerSnapshot: ProviderConfigurationSnapshot;
+  agentSnapshot: AgentSnapshotV1;
+  providerSnapshot: ProviderConfigurationSnapshotV1;
 }
 ```
+
+Payload requirements:
+
+- `attempt` is a positive safe integer;
+- `stage.started` must not represent `ready → starting`;
+- `run_stages.started_at` is first written in the same transaction that emits
+  this Event;
+- no payload fields other than the five listed fields are accepted.
 
 ### `stage.paused`
 
@@ -1029,6 +1290,11 @@ interface StageCancelledPayload {
   reason: string;
 }
 ```
+
+`stage.cancelled` is valid for `pending`, `ready`, `starting`,
+`waiting_approval`, and `running` Stages. It is terminal for the Stage. A
+Stage cancellation Event does not itself terminate a Process, cancel an
+Approval, or perform database logic.
 
 ### `stage.skipped`
 
@@ -1910,6 +2176,12 @@ interface ApprovalRequiredPayload {
 }
 ```
 
+For a Stage-specific approval, the Event Envelope must include `runId`,
+`stageId`, and `approvalRequestId`. One `approval.required` Event may be the
+shared lifecycle evidence for both Run and Stage
+`running → waiting_approval`; no `run.waiting` or `stage.waiting` Event is
+defined.
+
 ### `approval.resolved`
 
 ```ts
@@ -1925,6 +2197,30 @@ interface ApprovalResolvedPayload {
   modifiedRequest?: Record<string, unknown>;
 }
 ```
+
+For a Stage-specific approval, the Event Envelope must retain `runId`,
+`stageId`, and `approvalRequestId`. Only `approve_once`, `approve_run`, and
+`approve_workspace` map `waiting_approval → running`; `reject` and
+`cancel_run` use the ordered failure/cancellation sequences below. One
+`approval.resolved` Event may be the shared evidence for both Run and Stage
+restoration, and it must not be followed by `run.resumed` or `stage.resumed`.
+
+### 31.1 Approval multi-Event ordering
+
+Approval failure and cancellation are ordered Durable Events in one atomic
+transaction:
+
+```text
+approval.resolved
+  ↓
+stage.failed / stage.cancelled (stage.sequence ASC, stage.id ASC)
+  ↓
+run.failed / run.cancelled
+```
+
+Each Event receives a contiguous Run sequence value and its own Outbox
+record. All Current State, Event, Outbox, and version writes commit together
+or roll back together.
 
 ### `approval.expired`
 
@@ -3445,14 +3741,16 @@ v1 done
 
 ```text
 run.created
-run.queued
-run.started
+stage.created × N
+run.dequeued
 workflow.resolved
 worktree.created
 memory.retrieved
-stage.started
+stage.starting
 provider.session_started
 process.started
+stage.started
+run.started
 tool.started
 command.started
 command.completed
@@ -3464,6 +3762,10 @@ process.exited
 workflow.completed
 run.completed
 ```
+
+`run.queued` may appear as optional Queue Telemetry between `run.created` and
+`run.dequeued`; it is omitted from the mandatory lifecycle sequence and never
+replaces `run.created`.
 
 失败 Run：
 

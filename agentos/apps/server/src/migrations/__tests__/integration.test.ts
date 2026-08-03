@@ -338,21 +338,22 @@ describe('Destructive migration backup', () => {
     assert.equal(baselineMigration.destructive, undefined);
   });
 
-  it('destructive migration without backup provider is rejected', () => {
+  it('fresh destructive migration may skip an old-state backup', () => {
+    let applied = false;
     const destructive: Migration = {
       id: '002', name: 'no-backup', checksum: 'nb', destructive: true,
-      apply: () => { throw new Error('should not reach apply'); },
+      apply: () => { applied = true; },
     };
     const reg = new MigrationRegistry([destructive]);
     const runner = new MigrationRunner(ctx.db, reg);
-    assert.throws(() => runner.run(), (err: unknown) => {
-      return err instanceof MigrationError && err.code === 'MIGRATION_FAILED'
-        && err.message.includes('backup provider');
-    });
+    assert.doesNotThrow(() => runner.run());
+    assert.equal(applied, true);
   });
 
   it('destructive migration creates backup before apply', () => {
     const backupDir = join(ctx.dir, 'backups');
+
+    new MigrationRunner(ctx.db, new MigrationRegistry([baselineMigration])).run();
 
     // Create a destructive migration
     let applied = false;
@@ -373,6 +374,7 @@ describe('Destructive migration backup', () => {
   });
 
   it('backup failure prevents migration execution', () => {
+    new MigrationRunner(ctx.db, new MigrationRegistry([baselineMigration])).run();
     let backupCalled = false;
     const failProvider = {
       backup: (_path: string) => {
@@ -386,7 +388,7 @@ describe('Destructive migration backup', () => {
       apply: () => { throw new Error('should not reach apply'); },
     };
 
-    const reg = new MigrationRegistry([destructive]);
+    const reg = new MigrationRegistry([baselineMigration, destructive]);
     const runner = new MigrationRunner(ctx.db, reg, { backupProvider: failProvider });
 
     assert.throws(() => runner.run(), (err: unknown) => {
@@ -410,12 +412,12 @@ describe('Baseline checksum stability', () => {
   });
 });
 
-it('[M27-P5-T001] Fresh database applies the complete 001-011 registry exactly once', () => {
+it('[M27-P5-T001] Fresh database applies the complete 001-013 registry exactly once', () => {
   const ctx = tempDbPath();
   try {
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
     const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
     const compatibilityTables = ctx.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('legacy_data_migrations', 'legacy_task_items') ORDER BY name").all() as Array<{ name: string }>;
     assert.deepEqual(compatibilityTables.map(table => table.name), ['legacy_data_migrations', 'legacy_task_items']);
   } finally {
@@ -423,7 +425,7 @@ it('[M27-P5-T001] Fresh database applies the complete 001-011 registry exactly o
   }
 });
 
-it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 011 without losing its schema records', () => {
+it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 013 without losing its schema records', () => {
   const ctx = tempDbPath();
   try {
     for (const stmt of BASELINE_DDL) ctx.db.exec(stmt);
@@ -441,16 +443,18 @@ it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 011 witho
     ctx.db.prepare(`INSERT INTO _schema_migrations (migration_id, name, checksum, applied_at, execution_ms, app_version)
       VALUES ('002', 'aggregate-versions', ?, ?, 0, NULL)`).run(migration002.checksum, '2026-07-30T00:00:01.000Z');
 
-    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+      backupProvider: createFileBackupProvider(join(ctx.dir, 'migration-backups')),
+    }).run();
     const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
     assert.equal((ctx.db.prepare("SELECT COUNT(*) AS count FROM _schema_migrations WHERE migration_id = '001'").get() as { count: number }).count, 1);
   } finally {
     cleanup(ctx);
   }
 });
 
-it('[M27-P5-T005] The complete 001-011 schema passes integrity and foreign-key checks', () => {
+it('[M27-P5-T005] The complete 001-013 schema passes integrity and foreign-key checks', () => {
   const ctx = tempDbPath();
   try {
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();

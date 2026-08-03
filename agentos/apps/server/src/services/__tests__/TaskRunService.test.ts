@@ -20,12 +20,21 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 type Db = InstanceType<typeof DatabaseSync>;
 
 import { TaskRunService, type TaskRunServiceDeps } from '../TaskRunService.js';
+import type { LifecycleTransactionService } from '../LifecycleTransactionService.js';
 import { TaskRepository } from '../../store/TaskRepository.js';
 import { RunRepository } from '../../store/RunRepository.js';
 import { inTransaction } from '../../store/Transaction.js';
 import { migration005 } from '../../migrations/migrations/005-tasks-table.js';
 import { migration006 } from '../../migrations/migrations/006-runs-table.js';
-import type { Run, RunSnapshot, RunStage, WorkflowDefinition, Workspace } from '@agentos/shared';
+import type {
+  Run,
+  RunSnapshot,
+  RunSnapshotPayloadV2,
+  RunStage,
+  WorkflowDefinition,
+  WorkflowDefinitionPayloadV2,
+  Workspace,
+} from '@agentos/shared';
 import type { ResolvedRunConfiguration, SnapshotService } from '../SnapshotService.js';
 
 interface Env {
@@ -33,6 +42,7 @@ interface Env {
   taskRepo: TaskRepository;
   runRepo: RunRepository;
   service: TaskRunService;
+  lifecycleStub: TestOnlyLifecycleTransactionServiceStub;
   workspace: Workspace;
 }
 
@@ -52,28 +62,31 @@ const TEST_WORKSPACE: Workspace = {
   updatedAt: '2026-01-01T00:00:00.000Z',
 };
 
-const TEST_WORKFLOW = (definitionKey: 'legacy-pipeline' | 'unbound-task-run'): WorkflowDefinition => ({
+const TEST_WORKFLOW = (
+  definitionKey: 'legacy-pipeline' | 'unbound-task-run',
+): WorkflowDefinition & { payload: WorkflowDefinitionPayloadV2 } => ({
   id: `workflow-${definitionKey}`,
   definitionKey,
-  version: 1,
+  version: 2,
   name: definitionKey,
   definitionHash: 'a'.repeat(64),
   enabled: true,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
   payload: {
-    schemaVersion: 1,
+    schemaVersion: 2,
     definitionKey,
-    version: 1,
+    version: 2,
     name: definitionKey,
     executionMode: definitionKey === 'legacy-pipeline' ? 'legacy_pipeline' : 'unbound',
     retryPolicy: null,
+    worktreeMode: definitionKey === 'legacy-pipeline' ? 'preferred' : 'disabled',
     stages: definitionKey === 'legacy-pipeline'
       ? [
-        { key: 'codex_manager', sequence: 1, agentRole: 'codex' },
-        { key: 'kimi_worker', sequence: 2, agentRole: 'kimi' },
-        { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode' },
-        { key: 'codex_final_review', sequence: 4, agentRole: 'codex' },
+        { key: 'codex_manager', sequence: 1, agentRole: 'codex', dependsOn: [] },
+        { key: 'kimi_worker', sequence: 2, agentRole: 'kimi', dependsOn: ['codex_manager'] },
+        { key: 'opencode_reviewer', sequence: 3, agentRole: 'opencode', dependsOn: ['kimi_worker'] },
+        { key: 'codex_final_review', sequence: 4, agentRole: 'codex', dependsOn: ['opencode_reviewer'] },
       ]
       : [],
   },
@@ -86,23 +99,24 @@ function makeLifecycleSnapshotService(): SnapshotService {
     workflowStageKey: stage.key,
     name: stage.key,
     sequence: stage.sequence,
+    dependsOn: [...stage.dependsOn],
     agent: null,
     provider: null,
     runnerAgent: null,
   }));
   return {
-    resolveUnbound: (): ResolvedRunConfiguration => ({ workflow: unboundWorkflow, stages: [], redactionApplied: false }),
-    resolveLegacy: (): ResolvedRunConfiguration => ({ workflow: legacyWorkflow, stages: legacyStages, redactionApplied: false }),
-    persistResolvedRun: (run: Run, resolved: ResolvedRunConfiguration): { snapshot: RunSnapshot; stages: RunStage[] } => {
+    resolveUnbound: (): ResolvedRunConfiguration => ({ workflow: unboundWorkflow, stages: [], worktreeMode: 'disabled', redactionApplied: false }),
+    resolveLegacy: (): ResolvedRunConfiguration => ({ workflow: legacyWorkflow, stages: legacyStages, worktreeMode: 'preferred', redactionApplied: false }),
+    persistResolvedRun: (run: Run, resolved: ResolvedRunConfiguration): { snapshot: RunSnapshot<RunSnapshotPayloadV2>; stages: RunStage[] } => {
       const capturedAt = '2026-01-01T00:00:00.000Z';
-      const snapshot: RunSnapshot = {
+      const snapshot: RunSnapshot<RunSnapshotPayloadV2> = {
         id: `snapshot-${run.id}`,
         workspaceId: run.workspaceId,
         runId: run.id,
         workflowDefinitionId: resolved.workflow.id,
-        snapshotSchemaVersion: 1,
+        snapshotSchemaVersion: 2,
         payload: {
-          schemaVersion: 1,
+          schemaVersion: 2,
           capturedAt,
           run: {
             workspaceId: run.workspaceId,
@@ -118,10 +132,12 @@ function makeLifecycleSnapshotService(): SnapshotService {
             definitionVersion: resolved.workflow.version,
             name: resolved.workflow.name,
             definitionHash: resolved.workflow.definitionHash,
+            worktreeMode: resolved.worktreeMode,
             stages: resolved.stages.map(stage => ({
               workflowStageKey: stage.workflowStageKey,
               name: stage.name,
               sequence: stage.sequence,
+              dependsOn: [...stage.dependsOn],
               agent: stage.agent,
               provider: stage.provider,
             })),
@@ -158,9 +174,28 @@ function unexpectedRealCaptureDependency(): never {
   throw new Error('UNEXPECTED_REAL_CAPTURE_DEPENDENCY');
 }
 
+interface TestOnlyLifecycleTransactionServiceStub {
+  readonly service: LifecycleTransactionService;
+  creationEventCalls: number;
+}
+
+function makeTestOnlyLifecycleTransactionServiceStub(): TestOnlyLifecycleTransactionServiceStub {
+  const stub: TestOnlyLifecycleTransactionServiceStub = {
+    service: {
+      createRunGraphEventsWithinTransaction: () => {
+        stub.creationEventCalls += 1;
+        return { events: [], outboxes: [] };
+      },
+    } as unknown as LifecycleTransactionService,
+    creationEventCalls: 0,
+  };
+  return stub;
+}
+
 function createEnv(db: Db): Env {
   const taskRepo = new TaskRepository(db as never);
   const runRepo = new RunRepository(db as never);
+  const lifecycleStub = makeTestOnlyLifecycleTransactionServiceStub();
   const deps: TaskRunServiceDeps = {
     taskRepository: () => taskRepo,
     runRepository: () => runRepo,
@@ -170,12 +205,14 @@ function createEnv(db: Db): Env {
     providerConfigurationRepository: unexpectedRealCaptureDependency as never,
     findAgentSnapshotSource: unexpectedRealCaptureDependency as never,
     runInTransaction: <T>(fn: () => T): T => inTransaction(db as never, fn),
+    lifecycleTransactionService: () => lifecycleStub.service,
   };
   return {
     db,
     taskRepo,
     runRepo,
     service: new TaskRunService(deps, { snapshotService: makeLifecycleSnapshotService() }),
+    lifecycleStub,
     workspace: TEST_WORKSPACE,
   };
 }
@@ -221,6 +258,7 @@ describe('TaskRunService', () => {
       const run = env.service.createRun('ws1', { taskId: task.id, createdBy: 'tester' });
       assert.equal(run.status, 'queued');
       assert.equal(run.origin, 'v2_api');
+      assert.equal(env.lifecycleStub.creationEventCalls, 1);
       assert.equal(env.taskRepo.findById('ws1', task.id)!.status, 'open');
     } finally {
       env.db.close();

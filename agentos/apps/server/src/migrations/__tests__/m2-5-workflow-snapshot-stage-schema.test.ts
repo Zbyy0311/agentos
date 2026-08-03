@@ -56,6 +56,7 @@ const HASH_REGEX = /^[0-9a-f]{64}$/;
 const REGISTRY_FIRST_SIX = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 6);
 const REGISTRY_FIRST_SEVEN = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 7);
 const REGISTRY_FIRST_EIGHT = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 8);
+const REGISTRY_FIRST_NINE = DEFAULT_REGISTRY_MIGRATIONS.slice(0, 9);
 
 function runMigrations(db: Db, migrations: Migration[]): void {
   new MigrationRunner(db, new MigrationRegistry(migrations)).run();
@@ -199,7 +200,7 @@ describe('M2.5 — Migration 007 workflow_definitions', () => {
       insertTask(db, 'task_up', 'ws_up');
       assert.equal(countRows(db, 'tasks'), 1);
       assert.ok(!tableNames(db).includes('workflow_definitions'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_SEVEN]);
       assert.ok(tableNames(db).includes('workflow_definitions'));
       assert.equal(countRows(db, 'tasks'), 1);
     } finally {
@@ -210,7 +211,7 @@ describe('M2.5 — Migration 007 workflow_definitions', () => {
   it('007-03 built-in row count is exactly 2', () => {
     const db = migratedDb();
     try {
-      assert.equal(countRows(db, 'workflow_definitions'), 2);
+      assert.equal((db.prepare('SELECT COUNT(*) AS count FROM workflow_definitions WHERE version = 1').get() as { count: number }).count, 2);
     } finally {
       db.close();
     }
@@ -220,7 +221,7 @@ describe('M2.5 — Migration 007 workflow_definitions', () => {
     const db = migratedDb();
     try {
       const rawRows = db.prepare(
-        'SELECT id, definition_key, version, name FROM workflow_definitions ORDER BY id',
+        'SELECT id, definition_key, version, name FROM workflow_definitions WHERE version = 1 ORDER BY id',
       ).all() as Array<{ id: string; definition_key: string; version: number; name: string }>;
       const rows = rawRows.map((r) => ({
         id: r.id,
@@ -330,8 +331,8 @@ describe('M2.5 — Migration 007 workflow_definitions', () => {
       };
       assert.throws(() => runMigrations(db, [...REGISTRY_FIRST_SIX, failing007]));
       assert.ok(!tableNames(db).includes('workflow_definitions'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
-      assert.equal(countRows(db, 'workflow_definitions'), 2);
+      runMigrations(db, [...REGISTRY_FIRST_SEVEN]);
+      assert.equal((db.prepare('SELECT COUNT(*) AS count FROM workflow_definitions WHERE version = 1').get() as { count: number }).count, 2);
     } finally {
       db.close();
     }
@@ -434,7 +435,7 @@ describe('M2.5 — Migration 007 workflow_definitions', () => {
 
     const db = migratedDb();
     try {
-      assert.equal(countRows(db, 'workflow_definitions'), 2);
+      assert.equal((db.prepare('SELECT COUNT(*) AS count FROM workflow_definitions WHERE version = 1').get() as { count: number }).count, 2);
       const record = db.prepare(
         "SELECT COUNT(*) AS c FROM _schema_migrations WHERE migration_id = '007'",
       ).get() as { c: number };
@@ -454,7 +455,7 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
       insertWorkspace(db, 'ws_keep');
       insertTask(db, 'task_keep', 'ws_keep');
       insertRun(db, 'run_keep', 'ws_keep', 'task_keep');
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_EIGHT]);
       assert.equal(countRows(db, 'tasks'), 1);
       assert.equal(countRows(db, 'runs'), 1);
       const run = db.prepare('SELECT id, status FROM runs').get() as { id: string; status: string };
@@ -696,7 +697,7 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
       };
       assert.throws(() => runMigrations(db, [...REGISTRY_FIRST_SEVEN, failing008]));
       assert.ok(!tableNames(db).includes('run_snapshots'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_EIGHT]);
       assert.ok(tableNames(db).includes('run_snapshots'));
       const record = db.prepare("SELECT checksum FROM _schema_migrations WHERE migration_id = '008'").get() as { checksum: string };
       assert.equal(record.checksum, migration008Checksum);
@@ -729,15 +730,17 @@ describe('M2.5 — Migration 008 run_snapshots', () => {
 });
 
 describe('M2.5 — Migration 009 run_stages', () => {
-  it('009-01 run_stages has exact columns and no lifecycle columns', () => {
+  it('009-01 run_stages has the M3 lifecycle columns and one version column', () => {
     const db = migratedDb();
     try {
       const cols = tableInfo(db, 'run_stages').map((c) => c.name);
       assert.deepEqual(cols, [
         'id', 'workspace_id', 'run_id', 'run_snapshot_id', 'workflow_stage_key', 'name',
-        'sequence', 'attempt', 'status', 'created_at', 'updated_at', 'version',
+        'sequence', 'attempt', 'status', 'failure_code', 'failure_message', 'started_at',
+        'completed_at', 'created_at', 'updated_at', 'version',
       ]);
-      for (const banned of ['parent_stage_id', 'execution_id', 'agent_id', 'provider_id', 'output', 'failure', 'event_sequence', 'started_at', 'completed_at']) {
+      assert.equal(cols.filter(column => column === 'version').length, 1);
+      for (const banned of ['parent_stage_id', 'execution_id', 'agent_id', 'provider_id', 'output', 'failure', 'event_sequence']) {
         assert.ok(!cols.includes(banned), `unexpected lifecycle column: ${banned}`);
       }
     } finally {
@@ -828,13 +831,21 @@ describe('M2.5 — Migration 009 run_stages', () => {
     }
   });
 
-  it('009-09 status other than pending is rejected', () => {
+  it('009-09 canonical lifecycle statuses are accepted and legacy statuses are rejected', () => {
     const db = migratedDb();
     try {
       seedRunChain(db, 'st', 'ws_st');
-      assert.throws(() => db.prepare(`
+      db.prepare(`
         INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
         VALUES ('stage_st', 'ws_st', 'run_st', 'snapshot_st', 'k', 'k', 1, 1, 'running', ?, ?, 1)
+      `).run(NOW, NOW);
+      assert.throws(() => db.prepare(`
+        INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
+        VALUES ('stage_st_created', 'ws_st', 'run_st', 'snapshot_st', 'created', 'created', 2, 1, 'created', ?, ?, 1)
+      `).run(NOW, NOW));
+      assert.throws(() => db.prepare(`
+        INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
+        VALUES ('stage_st_blocked', 'ws_st', 'run_st', 'snapshot_st', 'blocked', 'blocked', 3, 1, 'blocked', ?, ?, 1)
       `).run(NOW, NOW));
     } finally {
       db.close();
@@ -961,7 +972,7 @@ describe('M2.5 — Migration 009 run_stages', () => {
       };
       assert.throws(() => runMigrations(db, [...REGISTRY_FIRST_EIGHT, failing009]));
       assert.ok(!tableNames(db).includes('run_stages'));
-      runMigrations(db, [...DEFAULT_REGISTRY_MIGRATIONS]);
+      runMigrations(db, [...REGISTRY_FIRST_NINE]);
       assert.ok(tableNames(db).includes('run_stages'));
       const record = db.prepare("SELECT checksum FROM _schema_migrations WHERE migration_id = '009'").get() as { checksum: string };
       assert.equal(record.checksum, migration009Checksum);
@@ -973,9 +984,9 @@ describe('M2.5 — Migration 009 run_stages', () => {
 });
 
 describe('M2.5 — Registry and integrity', () => {
-  it('REG-01 registry IDs are exactly 001-011 in order with no duplicates', () => {
+  it('REG-01 registry IDs are exactly 001-013 in order with no duplicates', () => {
     const ids = DEFAULT_REGISTRY_MIGRATIONS.map((m) => m.id);
-    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
     assert.equal(new Set(ids).size, ids.length);
     assert.equal(migration007.id, '007');
     assert.equal(migration008.id, '008');
@@ -994,11 +1005,11 @@ describe('M2.5 — Registry and integrity', () => {
     }
   });
 
-  it('REG-03 migration records are exactly 001-011', () => {
+  it('REG-03 migration records are exactly 001-013', () => {
     const db = migratedDb();
     try {
       const rows = db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-      assert.deepEqual(rows.map((r) => r.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011']);
+      assert.deepEqual(rows.map((r) => r.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
     } finally {
       db.close();
     }
@@ -1017,9 +1028,9 @@ describe('M2.5 — Registry and integrity', () => {
       second.exec('PRAGMA foreign_keys = ON');
       try {
         runMigrations(second, [...DEFAULT_REGISTRY_MIGRATIONS]);
-        assert.equal(countRows(second, 'workflow_definitions'), 2);
+        assert.equal((second.prepare('SELECT COUNT(*) AS count FROM workflow_definitions WHERE version = 1').get() as { count: number }).count, 2);
         const rawRows = second.prepare(
-          'SELECT id, definition_hash, updated_at FROM workflow_definitions ORDER BY id',
+          'SELECT id, definition_hash, updated_at FROM workflow_definitions WHERE version = 1 ORDER BY id',
         ).all() as Array<{ id: string; definition_hash: string; updated_at: string }>;
         const rows = rawRows.map((r) => ({
           id: r.id,

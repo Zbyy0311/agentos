@@ -195,7 +195,7 @@ describe('M2.4 migration 005/006 schema', () => {
       assert.deepEqual(cols.map(c => c.name), [
         'id', 'workspace_id', 'task_id', 'parent_run_id', 'root_run_id', 'status', 'reason', 'origin',
         'objective', 'failure_code', 'failure_message', 'cancellation_requested_at', 'next_event_sequence',
-        'started_at', 'completed_at', 'created_by', 'created_at', 'updated_at', 'version',
+        'started_at', 'completed_at', 'created_by', 'created_at', 'updated_at', 'version', 'recovery_required',
       ]);
       const byName = new Map(cols.map(c => [c.name, c]));
       assert.equal(byName.get('workspace_id')!.notnull, 1);
@@ -207,6 +207,7 @@ describe('M2.4 migration 005/006 schema', () => {
       assert.equal(byName.get('origin')!.dflt_value, "'v2_api'");
       assert.equal(byName.get('next_event_sequence')!.dflt_value, '1');
       assert.equal(byName.get('version')!.dflt_value, '1');
+      assert.equal(byName.get('recovery_required')!.dflt_value, '0');
 
       insertWorkspace(db, 'ws1');
       insertTask(db, 'task_a', 'ws1');
@@ -371,7 +372,7 @@ describe('M2.4 migration 005/006 schema', () => {
 
   it('migrations 005/006 remain registered after 004 as later migrations are appended', () => {
     const ids = DEFAULT_REGISTRY_MIGRATIONS.map(m => m.id);
-    assert.deepEqual(ids.slice(4), ['005', '006', '007', '008', '009', '010', '011']);
+    assert.deepEqual(ids.slice(4), ['005', '006', '007', '008', '009', '010', '011', '012', '013']);
     assert.equal(DEFAULT_REGISTRY_MIGRATIONS[4], migration005);
     assert.equal(DEFAULT_REGISTRY_MIGRATIONS[5], migration006);
   });

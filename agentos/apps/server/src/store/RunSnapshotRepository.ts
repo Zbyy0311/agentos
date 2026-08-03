@@ -1,13 +1,18 @@
 import type {
   RunSnapshot,
-  RunSnapshotPayloadV1,
+  RunSnapshotPayload,
+  RunSnapshotPayloadV2,
   V2RunOrigin,
   V2RunReason,
+  WorkflowDefinition,
+  WorkflowDefinitionPayloadV2,
+  WorktreeMode,
 } from '@agentos/shared';
 import { posix, win32 } from 'node:path';
 import type { TransactionDatabase } from './Transaction.js';
 import { canonicalizeJson, hashCanonicalJson } from '../snapshots/canonicalJson.js';
 import { createEntityId } from './Identity.js';
+import { WorkflowDefinitionRepository } from './WorkflowDefinitionRepository.js';
 
 interface RunRow {
   workspace_id: string;
@@ -150,6 +155,10 @@ function assertEnum<T extends string>(value: unknown, path: string, allowed: rea
     throw validationFailure(`${path} is invalid`);
   }
   return value as T;
+}
+
+function assertWorktreeMode(value: unknown, path: string): WorktreeMode {
+  return assertEnum(value, path, ['required', 'preferred', 'disabled'] as const);
 }
 
 function assertBoolean(value: unknown, path: string): boolean {
@@ -308,9 +317,40 @@ function validateStage(value: unknown, path: string): void {
   }
 }
 
-function validatePayloadEnvelope(payload: unknown): asserts payload is RunSnapshotPayloadV1 {
+function validateStageV2(value: unknown, path: string): string[] {
+  const stage = assertExactObject(value, path, [
+    'workflowStageKey', 'name', 'sequence', 'dependsOn', 'agent', 'provider',
+  ]);
+  const key = assertString(stage.workflowStageKey, `${path}.workflowStageKey`, true);
+  if (key !== key.trim()) throw validationFailure(`${path}.workflowStageKey must not be trimmed`);
+  if (assertString(stage.name, `${path}.name`) !== key) throw validationFailure(`${path}.name must match key`);
+  assertPositiveInteger(stage.sequence, `${path}.sequence`);
+  const dependsOn = assertDenseArray(stage.dependsOn, `${path}.dependsOn`).map((dependency, index) => {
+    const value = assertString(dependency, `${path}.dependsOn[${index}]`, true);
+    if (value !== value.trim()) throw validationFailure(`${path}.dependsOn[${index}] must not be trimmed`);
+    return value;
+  });
+  const agentIsNull = stage.agent === null;
+  const providerIsNull = stage.provider === null;
+  if (agentIsNull !== providerIsNull) throw validationFailure(`${path} agent/provider binding is invalid`);
+  if (!agentIsNull && !providerIsNull) {
+    validateAgent(stage.agent, `${path}.agent`);
+    validateProvider(stage.provider, `${path}.provider`);
+    const agent = stage.agent as Record<string, unknown>;
+    const provider = stage.provider as Record<string, unknown>;
+    if (agent.providerConfigId !== provider.providerConfigId) {
+      throw validationFailure(`${path} agent/provider ids do not match`);
+    }
+  }
+  return dependsOn;
+}
+
+function validatePayloadEnvelope(payload: unknown): asserts payload is RunSnapshotPayload {
+  if (!isRecord(payload)) throw validationFailure('payload must be a plain object');
+  const schemaVersion = payload.schemaVersion;
+  if (schemaVersion !== 1 && schemaVersion !== 2) throw validationFailure('schemaVersion is invalid');
   const root = assertExactObject(payload, 'payload', ['schemaVersion', 'capturedAt', 'run', 'workflow', 'security']);
-  if (root.schemaVersion !== 1) throw validationFailure('schemaVersion is invalid');
+  if (root.schemaVersion !== schemaVersion) throw validationFailure('schemaVersion is invalid');
   assertString(root.capturedAt, 'capturedAt', true);
 
   const run = assertExactObject(root.run, 'run', [
@@ -325,9 +365,9 @@ function validatePayloadEnvelope(payload: unknown): asserts payload is RunSnapsh
   assertNullableString(run.parentRunId, 'run.parentRunId', true);
   assertString(run.rootRunId, 'run.rootRunId', true);
 
-  const workflow = assertExactObject(root.workflow, 'workflow', [
-    'definitionId', 'definitionKey', 'definitionVersion', 'name', 'definitionHash', 'stages',
-  ]);
+  const workflow = assertExactObject(root.workflow, 'workflow', schemaVersion === 1
+    ? ['definitionId', 'definitionKey', 'definitionVersion', 'name', 'definitionHash', 'stages']
+    : ['definitionId', 'definitionKey', 'definitionVersion', 'name', 'definitionHash', 'worktreeMode', 'stages']);
   assertString(workflow.definitionId, 'workflow.definitionId', true);
   assertString(workflow.definitionKey, 'workflow.definitionKey', true);
   assertPositiveInteger(workflow.definitionVersion, 'workflow.definitionVersion');
@@ -337,8 +377,11 @@ function validatePayloadEnvelope(payload: unknown): asserts payload is RunSnapsh
   const stages = assertDenseArray(workflow.stages, 'workflow.stages');
   const stageKeys = new Set<string>();
   const stageSequences = new Set<number>();
+  const stageDependencies = new Map<string, { sequence: number; dependsOn: string[] }>();
   for (const [index, stage] of stages.entries()) {
-    validateStage(stage, `workflow.stages[${index}]`);
+    const path = `workflow.stages[${index}]`;
+    const dependsOn = schemaVersion === 1 ? [] : validateStageV2(stage, path);
+    if (schemaVersion === 1) validateStage(stage, path);
     const typedStage = stage as Record<string, unknown>;
     const key = typedStage.workflowStageKey as string;
     const sequence = typedStage.sequence as number;
@@ -346,13 +389,74 @@ function validatePayloadEnvelope(payload: unknown): asserts payload is RunSnapsh
     if (stageSequences.has(sequence)) throw validationFailure('workflow stage sequence is duplicated');
     stageKeys.add(key);
     stageSequences.add(sequence);
+    stageDependencies.set(key, { sequence, dependsOn });
+  }
+  if (schemaVersion === 2) {
+    assertWorktreeMode(workflow.worktreeMode, 'workflow.worktreeMode');
+    for (const [key, metadata] of stageDependencies) {
+      const dependencies = new Set<string>();
+      for (const dependency of metadata.dependsOn) {
+        if (dependencies.has(dependency)) throw validationFailure('workflow stage dependency is duplicated');
+        dependencies.add(dependency);
+        if (dependency === key) throw validationFailure('workflow stage dependency cannot reference itself');
+        const dependencyMetadata = stageDependencies.get(dependency);
+        if (!dependencyMetadata) throw validationFailure('workflow stage dependency does not exist');
+        if (dependencyMetadata.sequence >= metadata.sequence) {
+          throw validationFailure('workflow stage dependency must precede the stage');
+        }
+      }
+    }
   }
 
   const security = assertExactObject(root.security, 'security', ['redactionApplied']);
   assertBoolean(security.redactionApplied, 'security.redactionApplied');
 }
 
-function mapRow(row: SnapshotRow, payload: RunSnapshotPayloadV1): RunSnapshot {
+function loadWorkflowDefinition(
+  db: TransactionDatabase,
+  workflowId: string,
+  fail: (reason: string) => Error,
+): WorkflowDefinition {
+  try {
+    const definition = new WorkflowDefinitionRepository(db).findById(workflowId);
+    if (!definition) throw new Error('missing workflow definition');
+    return definition;
+  } catch {
+    throw fail('referenced workflow definition is invalid');
+  }
+}
+
+function assertV2WorkflowBinding(
+  payload: RunSnapshotPayloadV2,
+  definition: WorkflowDefinition,
+  fail: (reason: string) => Error,
+): void {
+  if (definition.payload.schemaVersion !== 2) {
+    throw fail('V2 Snapshot requires a V2 workflow definition');
+  }
+  const workflowPayload: WorkflowDefinitionPayloadV2 = definition.payload;
+  if (payload.workflow.worktreeMode !== workflowPayload.worktreeMode) {
+    throw fail('Snapshot worktreeMode does not match the referenced workflow');
+  }
+  if (payload.workflow.stages.length !== workflowPayload.stages.length) {
+    throw fail('Snapshot stages do not match the referenced workflow');
+  }
+  for (const [index, snapshotStage] of payload.workflow.stages.entries()) {
+    const workflowStage = workflowPayload.stages[index];
+    if (
+      !workflowStage
+      || snapshotStage.workflowStageKey !== workflowStage.key
+      || snapshotStage.name !== workflowStage.key
+      || snapshotStage.sequence !== workflowStage.sequence
+      || snapshotStage.dependsOn.length !== workflowStage.dependsOn.length
+      || snapshotStage.dependsOn.some((dependency, dependencyIndex) => dependency !== workflowStage.dependsOn[dependencyIndex])
+    ) {
+      throw fail('Snapshot stages do not match the referenced workflow');
+    }
+  }
+}
+
+function mapRow(row: SnapshotRow, payload: RunSnapshotPayload): RunSnapshot<RunSnapshotPayload> {
   return {
     id: row.id,
     workspaceId: row.workspace_id,
@@ -370,7 +474,7 @@ export interface InsertRunSnapshotInput {
   workspaceId: string;
   runId: string;
   workflowDefinitionId: string;
-  payload: RunSnapshotPayloadV1;
+  payload: RunSnapshotPayload;
 }
 
 export class RunSnapshotValidationError extends Error {
@@ -394,7 +498,9 @@ export class RunSnapshotIntegrityError extends Error {
 export class RunSnapshotRepository {
   constructor(private readonly db: TransactionDatabase) {}
 
-  insert(input: InsertRunSnapshotInput): RunSnapshot {
+  insert<TPayload extends RunSnapshotPayload>(
+    input: Omit<InsertRunSnapshotInput, 'payload'> & { payload: TPayload },
+  ): RunSnapshot<TPayload> {
     validatePayloadEnvelope(input.payload);
     const run = this.db.prepare(`
       SELECT workspace_id, task_id, origin, reason, parent_run_id, root_run_id
@@ -430,6 +536,10 @@ export class RunSnapshotRepository {
     ) {
       throw validationFailure('workflow metadata does not match the stored definition');
     }
+    if (payload.schemaVersion === 2) {
+      const definition = loadWorkflowDefinition(this.db, workflow.id, validationFailure);
+      assertV2WorkflowBinding(payload, definition, validationFailure);
+    }
 
     let snapshotJson: string;
     let contentHash: string;
@@ -458,10 +568,10 @@ export class RunSnapshotRepository {
     );
     const result = this.findByRunId(input.workspaceId, input.runId);
     if (!result) throw integrityFailure(input.runId, 'inserted snapshot could not be read');
-    return result;
+    return result as RunSnapshot<TPayload>;
   }
 
-  findByRunId(workspaceId: string, runId: string): RunSnapshot | undefined {
+  findByRunId(workspaceId: string, runId: string): RunSnapshot<RunSnapshotPayload> | undefined {
     const row = this.db.prepare(`
       SELECT id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version,
         snapshot_json, content_hash, redaction_applied, captured_at
@@ -478,7 +588,7 @@ export class RunSnapshotRepository {
       if (error instanceof RunSnapshotIntegrityError) throw error;
       throw integrityFailure(runId, 'snapshot JSON is invalid');
     }
-    const payload = parsed as RunSnapshotPayloadV1;
+    const payload = parsed as RunSnapshotPayload;
     let canonical: string;
     let computedHash: string;
     try {
@@ -529,10 +639,14 @@ export class RunSnapshotRepository {
     ) {
       throw integrityFailure(runId, 'referenced workflow metadata mismatch');
     }
+    if (payload.schemaVersion === 2) {
+      const definition = loadWorkflowDefinition(this.db, workflow.id, reason => integrityFailure(runId, reason));
+      assertV2WorkflowBinding(payload, definition, reason => integrityFailure(runId, reason));
+    }
     return mapRow(row, payload);
   }
 
-  verifyHash(snapshot: RunSnapshot): boolean {
+  verifyHash(snapshot: RunSnapshot<RunSnapshotPayload>): boolean {
     try {
       validatePayloadEnvelope(snapshot.payload);
       return hashCanonicalJson(snapshot.payload) === snapshot.contentHash;
