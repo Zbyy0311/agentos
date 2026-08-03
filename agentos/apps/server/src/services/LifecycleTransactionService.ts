@@ -15,6 +15,8 @@ import type {
   RuntimeEventEnvelope,
   RuntimeEventMetadata,
   Run,
+  RunSnapshot,
+  RunSnapshotPayloadV2,
   RunStage,
   RunPausedPayload,
   RunResumedPayload,
@@ -172,6 +174,16 @@ export interface StageLifecycleTransitionResult {
   readonly stage: RunStage;
   readonly event: RuntimeEventEnvelope;
   readonly outbox: OutboxMessage;
+}
+
+export interface RunGraphCreationResult {
+  readonly events: readonly RuntimeEventEnvelope[];
+  readonly outboxes: readonly OutboxMessage[];
+}
+
+interface RunGraphStagePair {
+  readonly stage: RunStage;
+  readonly snapshotStage: RunSnapshotPayloadV2['workflow']['stages'][number];
 }
 
 interface CompositeLifecycleInputBase extends Omit<LifecycleInputBase, 'expectedVersion'> {
@@ -338,6 +350,64 @@ export class LifecycleTransactionService {
     this.now = options.now ?? (() => new Date().toISOString());
     this.createEventId = options.createEventId ?? (() => createEntityId('event'));
     this.createOutboxId = options.createOutboxId ?? (eventId => `outbox_${eventId}`);
+  }
+
+  /**
+   * Appends the complete V2 Run creation graph using the caller-owned
+   * transaction. This method deliberately accepts persisted state only: all
+   * envelope fields, sequence values, timestamps, and payloads are derived
+   * here and cannot be supplied by CreateV2RunInput.
+   */
+  createRunGraphEventsWithinTransaction(
+    run: Run,
+    snapshot: RunSnapshot<RunSnapshotPayloadV2>,
+    stages: readonly RunStage[],
+  ): RunGraphCreationResult {
+    const pairs = this.validateRunGraphCreation(run, snapshot, stages);
+    const timestamp = this.transactionTimestamp();
+    const runEvent = this.appendEvent(
+      run,
+      undefined,
+      'run.created',
+      timestamp,
+      run.id,
+      undefined,
+      undefined,
+      undefined,
+      {
+        reason: run.reason,
+        ...(run.parentRunId === undefined ? {} : { parentRunId: run.parentRunId }),
+        rootRunId: run.rootRunId,
+        workflowDefinitionId: snapshot.workflowDefinitionId,
+        worktreeMode: snapshot.payload.workflow.worktreeMode,
+        createdBy: run.createdBy,
+      },
+    );
+    const events: RuntimeEventEnvelope[] = [runEvent];
+    const outboxes: OutboxMessage[] = [this.insertOutbox(runEvent, timestamp)];
+
+    for (const { stage, snapshotStage } of pairs) {
+      const stageEvent = this.appendEvent(
+        run,
+        stage,
+        'stage.created',
+        timestamp,
+        run.id,
+        runEvent.id,
+        runEvent.id,
+        undefined,
+        {
+          workflowStageKey: stage.workflowStageKey,
+          name: snapshotStage.name,
+          sequence: stage.sequence,
+          dependsOn: [...snapshotStage.dependsOn],
+        },
+      );
+      events.push(stageEvent);
+      outboxes.push(this.insertOutbox(stageEvent, timestamp));
+    }
+
+    return { events, outboxes };
   }
 
   transitionRun(input: RunTransitionInput): RunLifecycleTransitionResult {
@@ -1018,6 +1088,152 @@ export class LifecycleTransactionService {
       const runOutbox = this.insertOutbox(runEvent, timestamp);
       return this.compositeResult(input.workspaceId, input.runId, [stageEvent, runEvent], [stageOutbox, runOutbox]);
     });
+  }
+
+  private validateRunGraphCreation(
+    run: Run,
+    snapshot: RunSnapshot<RunSnapshotPayloadV2>,
+    stages: readonly RunStage[],
+  ): RunGraphStagePair[] {
+    if (
+      run.status !== 'queued'
+      || run.version !== 1
+      || run.nextEventSequence !== 1
+    ) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        `Run ${run.id} is not a fresh queued Run graph`,
+      );
+    }
+    if (
+      snapshot.snapshotSchemaVersion !== 2
+      || snapshot.workspaceId !== run.workspaceId
+      || snapshot.runId !== run.id
+      || snapshot.workflowDefinitionId !== snapshot.payload.workflow.definitionId
+      || snapshot.payload.schemaVersion !== 2
+      || snapshot.payload.run.workspaceId !== run.workspaceId
+      || snapshot.payload.run.taskId !== run.taskId
+      || snapshot.payload.run.origin !== run.origin
+      || snapshot.payload.run.reason !== run.reason
+      || snapshot.payload.run.parentRunId !== (run.parentRunId ?? null)
+      || snapshot.payload.run.rootRunId !== run.rootRunId
+    ) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        `Run ${run.id} Snapshot graph binding is invalid`,
+      );
+    }
+
+    const workflow = snapshot.payload.workflow;
+    if (
+      workflow.worktreeMode !== 'required'
+      && workflow.worktreeMode !== 'preferred'
+      && workflow.worktreeMode !== 'disabled'
+    ) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        `Run ${run.id} Snapshot workflow mode is invalid`,
+      );
+    }
+    if (!Array.isArray(workflow.stages)) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        `Run ${run.id} Snapshot workflow stages are invalid`,
+      );
+    }
+
+    const snapshotStagesByKey = new Map<string, RunGraphStagePair['snapshotStage']>();
+    const snapshotStageSequences = new Map<string, number>();
+    for (const snapshotStage of workflow.stages) {
+      if (
+        typeof snapshotStage.workflowStageKey !== 'string'
+        || snapshotStage.workflowStageKey.length === 0
+        || snapshotStage.name !== snapshotStage.workflowStageKey
+        || !Number.isSafeInteger(snapshotStage.sequence)
+        || snapshotStage.sequence < 1
+        || !Array.isArray(snapshotStage.dependsOn)
+      ) {
+        throw new LifecycleTransactionError(
+          'LIFECYCLE_VALIDATION_FAILED',
+          `Run ${run.id} Snapshot workflow stage is invalid`,
+        );
+      }
+      if (snapshotStagesByKey.has(snapshotStage.workflowStageKey)) {
+        throw new LifecycleTransactionError(
+          'LIFECYCLE_VALIDATION_FAILED',
+          `Run ${run.id} Snapshot workflow stage keys are not unique`,
+        );
+      }
+      snapshotStagesByKey.set(snapshotStage.workflowStageKey, snapshotStage);
+      snapshotStageSequences.set(snapshotStage.workflowStageKey, snapshotStage.sequence);
+    }
+    for (const snapshotStage of workflow.stages) {
+      const dependencies = new Set<string>();
+      for (let index = 0; index < snapshotStage.dependsOn.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(snapshotStage.dependsOn, index)) {
+          throw new LifecycleTransactionError(
+            'LIFECYCLE_VALIDATION_FAILED',
+            `Run ${run.id} Snapshot workflow dependencies are sparse`,
+          );
+        }
+        const dependency = snapshotStage.dependsOn[index];
+        if (
+          typeof dependency !== 'string'
+          || dependency.length === 0
+          || dependencies.has(dependency)
+          || dependency === snapshotStage.workflowStageKey
+          || !snapshotStagesByKey.has(dependency)
+          || (snapshotStageSequences.get(dependency) ?? Number.MAX_SAFE_INTEGER) >= snapshotStage.sequence
+        ) {
+          throw new LifecycleTransactionError(
+            'LIFECYCLE_VALIDATION_FAILED',
+            `Run ${run.id} Snapshot workflow dependencies are invalid`,
+          );
+        }
+        dependencies.add(dependency);
+      }
+    }
+
+    const sortedStages = [...stages].sort((left, right) => {
+      if (left.sequence !== right.sequence) return left.sequence - right.sequence;
+      if (left.id < right.id) return -1;
+      if (left.id > right.id) return 1;
+      return 0;
+    });
+    const seenStageIds = new Set<string>();
+    const seenStageKeys = new Set<string>();
+    const pairs: RunGraphStagePair[] = [];
+    for (const stage of sortedStages) {
+      const snapshotStage = snapshotStagesByKey.get(stage.workflowStageKey);
+      if (
+        !snapshotStage
+        || seenStageIds.has(stage.id)
+        || seenStageKeys.has(stage.workflowStageKey)
+        || stage.workspaceId !== run.workspaceId
+        || stage.runId !== run.id
+        || stage.runSnapshotId !== snapshot.id
+        || stage.name !== stage.workflowStageKey
+        || stage.sequence !== snapshotStage.sequence
+        || stage.attempt !== 1
+        || stage.status !== 'pending'
+        || stage.version !== 1
+      ) {
+        throw new LifecycleTransactionError(
+          'LIFECYCLE_VALIDATION_FAILED',
+          `Run ${run.id} persisted Stage graph is invalid`,
+        );
+      }
+      seenStageIds.add(stage.id);
+      seenStageKeys.add(stage.workflowStageKey);
+      pairs.push({ stage, snapshotStage });
+    }
+    if (pairs.length !== workflow.stages.length) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        `Run ${run.id} persisted Stage graph is incomplete`,
+      );
+    }
+    return pairs;
   }
 
   private appendEvent(

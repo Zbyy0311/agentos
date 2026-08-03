@@ -21,6 +21,7 @@ import type { RunStageRepository } from '../store/RunStageRepository.js';
 import type { ProviderConfigurationRepository } from '../store/ProviderConfigurationRepository.js';
 import type { AgentSnapshotSourceRecord } from '../store/SqliteStore.js';
 import { WorkflowDefinitionResolver } from './WorkflowDefinitionResolver.js';
+import type { LifecycleTransactionService } from './LifecycleTransactionService.js';
 import {
   SnapshotService,
   type ResolvedRunConfiguration,
@@ -46,6 +47,8 @@ export interface TaskRunServiceDeps {
   providerConfigurationRepository(): ProviderConfigurationRepository;
   findAgentSnapshotSource(workspaceId: string, agentId: string): AgentSnapshotSourceRecord | undefined;
   runInTransaction<T>(fn: () => T): T;
+  /** Supplied by SqliteStore for the production V2 Run creation path. */
+  lifecycleTransactionService?(): LifecycleTransactionService;
 }
 
 export interface CreateLegacyRunForBridgeInput {
@@ -570,8 +573,14 @@ export class TaskRunService {
     }
     const resolved = this.snapshotService.resolveUnbound(workspaceId);
     const run = this.deps.runRepository().insert({ ...input, workspaceId, origin: 'v2_api' });
-    this.snapshotService.persistResolvedRun(run, resolved);
-    return run;
+    const persisted = this.snapshotService.persistResolvedRun(run, resolved);
+    const lifecycleTransactionService = this.deps.lifecycleTransactionService?.();
+    if (lifecycleTransactionService) {
+      lifecycleTransactionService.createRunGraphEventsWithinTransaction(run, persisted.snapshot, persisted.stages);
+    }
+    const currentRun = this.deps.runRepository().findById(workspaceId, run.id);
+    if (!currentRun) throw new RunNotFoundError(run.id);
+    return currentRun;
   }
 
   /**
