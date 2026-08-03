@@ -113,6 +113,11 @@ function capabilityLessStore(): TaskRunServiceDeps {
     providerConfigurationRepository: () => ({}) as never,
     findAgentSnapshotSource: () => undefined,
     runInTransaction: <T>(fn: () => T): T => fn(),
+    lifecycleTransactionService: () => ({
+      createRunGraphEventsWithinTransaction: () => {
+        throw new Error('UNEXPECTED_LIFECYCLE_EVENT_SERVICE_CALL');
+      },
+    }) as never,
   };
 }
 

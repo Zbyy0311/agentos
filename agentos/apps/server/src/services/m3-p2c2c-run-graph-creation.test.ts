@@ -24,7 +24,7 @@ import {
   SnapshotService,
   type ResolvedRunConfiguration,
 } from './SnapshotService.js';
-import { TaskRunService } from './TaskRunService.js';
+import { TaskRunService, type TaskRunServiceDeps } from './TaskRunService.js';
 import { WorkflowDefinitionResolver } from './WorkflowDefinitionResolver.js';
 import type { OutboxMessage } from '../store/OutboxRepository.js';
 import type { RunRepository } from '../store/RunRepository.js';
@@ -76,6 +76,33 @@ function close(fx: Fixture): void {
 
 function createTask(fx: Fixture, title = 'run graph task') {
   return fx.service.createTask(fx.workspace.id, { title, createdBy: 'test' });
+}
+
+function makeStoreDeps(
+  store: SqliteStore,
+  lifecycleFactory: () => LifecycleTransactionService,
+): TaskRunServiceDeps {
+  return {
+    taskRepository: () => store.taskRepository(),
+    runRepository: () => store.runRepository(),
+    workflowDefinitionRepository: () => store.workflowDefinitionRepository(),
+    runSnapshotRepository: () => store.runSnapshotRepository(),
+    runStageRepository: () => store.runStageRepository(),
+    providerConfigurationRepository: () => store.providerConfigurationRepository(),
+    findAgentSnapshotSource: (workspaceId, agentId) => store.findAgentSnapshotSource(workspaceId, agentId),
+    runInTransaction: <T>(fn: () => T): T => store.runInTransaction(fn),
+    lifecycleTransactionService: lifecycleFactory,
+  };
+}
+
+function makeDepsWithoutLifecycleService(store: SqliteStore): TaskRunServiceDeps {
+  const deps = makeStoreDeps(store, () => store.lifecycleTransactionService());
+  const { lifecycleTransactionService: _lifecycleTransactionService, ...withoutLifecycleService } = deps;
+  return withoutLifecycleService as unknown as TaskRunServiceDeps;
+}
+
+function errorCode(error: unknown): string | undefined {
+  return (error as { code?: string } | null)?.code;
 }
 
 function legacyGraphSnapshotService(store: SqliteStore): SnapshotService {
@@ -182,6 +209,84 @@ test('N=0 writes only run.created with sequence 1 and next sequence 2', () => {
     assert.equal(countRows(fx, 'runtime_events'), 1);
     assert.equal(countRows(fx, 'outbox_messages'), 1);
     assert.equal(rows.some(row => row.type === 'run.queued'), false);
+  } finally {
+    close(fx);
+  }
+});
+
+test('missing lifecycle Event service fails closed before any V2 Run creation write', () => {
+  const fx = fixture();
+  try {
+    const task = createTask(fx, 'missing event service task');
+    const service = new TaskRunService(makeDepsWithoutLifecycleService(fx.store));
+    assert.throws(
+      () => service.createRun(fx.workspace.id, createRunInput(task.id)),
+      (error: unknown) => errorCode(error) === 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE',
+    );
+    assertGraphRolledBack(fx);
+  } finally {
+    close(fx);
+  }
+});
+
+test('missing lifecycle Event service fails closed for keyed createRunForV2 without Idempotency Success', () => {
+  const fx = fixture();
+  try {
+    const task = createTask(fx, 'missing keyed event service task');
+    const service = new TaskRunService(makeDepsWithoutLifecycleService(fx.store), {
+      idempotencyService: new IdempotencyService(fx.store.idempotencyRepository()),
+    });
+    assert.throws(
+      () => service.createRunForV2(fx.workspace.id, createRunInput(task.id), 'missing-event-service-key'),
+      (error: unknown) => errorCode(error) === 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE',
+    );
+    assertGraphRolledBack(fx);
+  } finally {
+    close(fx);
+  }
+});
+
+test('undefined and invalid lifecycle Event service factories fail closed', () => {
+  for (const [label, factory] of [
+    ['undefined', () => undefined as never],
+    ['invalid-object', () => ({}) as never],
+  ] as const) {
+    const fx = fixture();
+    try {
+      const task = createTask(fx, `${label} event service task`);
+      const service = new TaskRunService(makeStoreDeps(fx.store, factory));
+      assert.throws(
+        () => service.createRun(fx.workspace.id, createRunInput(task.id)),
+        (error: unknown) => errorCode(error) === 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE',
+      );
+      assertGraphRolledBack(fx);
+    } finally {
+      close(fx);
+    }
+  }
+});
+
+test('a successful V2 creation resolves and invokes the Event service exactly once', () => {
+  const fx = fixture();
+  try {
+    const productionService = fx.store.lifecycleTransactionService();
+    const append = productionService.createRunGraphEventsWithinTransaction.bind(productionService);
+    let factoryCalls = 0;
+    let creationEventCalls = 0;
+    const wrappedService = {
+      createRunGraphEventsWithinTransaction: (run: Run, snapshot: RunSnapshot<RunSnapshotPayloadV2>, stages: readonly RunStage[]) => {
+        creationEventCalls += 1;
+        return append(run, snapshot, stages);
+      },
+    } as unknown as LifecycleTransactionService;
+    const service = new TaskRunService(makeStoreDeps(fx.store, () => {
+      factoryCalls += 1;
+      return wrappedService;
+    }));
+    const task = createTask(fx, 'event service call count task');
+    service.createRun(fx.workspace.id, createRunInput(task.id));
+    assert.equal(factoryCalls, 1);
+    assert.equal(creationEventCalls, 1);
   } finally {
     close(fx);
   }

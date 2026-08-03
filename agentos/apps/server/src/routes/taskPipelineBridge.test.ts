@@ -297,6 +297,9 @@ async function createFixture(
     providerConfigurationRepository: () => ({ findById: () => undefined } as never),
     findAgentSnapshotSource: () => undefined,
     runInTransaction: <T>(fn: () => T): T => inTransaction(db as never, fn),
+    lifecycleTransactionService: () => ({
+      createRunGraphEventsWithinTransaction: () => ({ events: [], outboxes: [] }),
+    }) as never,
   };
   const service = new TaskRunService(storeDeps, { snapshotService: makeCaptureTestDouble() });
   const fakeStore = new FakeJsonStore();

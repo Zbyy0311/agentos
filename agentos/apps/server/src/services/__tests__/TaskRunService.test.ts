@@ -20,6 +20,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 type Db = InstanceType<typeof DatabaseSync>;
 
 import { TaskRunService, type TaskRunServiceDeps } from '../TaskRunService.js';
+import type { LifecycleTransactionService } from '../LifecycleTransactionService.js';
 import { TaskRepository } from '../../store/TaskRepository.js';
 import { RunRepository } from '../../store/RunRepository.js';
 import { inTransaction } from '../../store/Transaction.js';
@@ -41,6 +42,7 @@ interface Env {
   taskRepo: TaskRepository;
   runRepo: RunRepository;
   service: TaskRunService;
+  lifecycleStub: TestOnlyLifecycleTransactionServiceStub;
   workspace: Workspace;
 }
 
@@ -172,9 +174,28 @@ function unexpectedRealCaptureDependency(): never {
   throw new Error('UNEXPECTED_REAL_CAPTURE_DEPENDENCY');
 }
 
+interface TestOnlyLifecycleTransactionServiceStub {
+  readonly service: LifecycleTransactionService;
+  creationEventCalls: number;
+}
+
+function makeTestOnlyLifecycleTransactionServiceStub(): TestOnlyLifecycleTransactionServiceStub {
+  const stub: TestOnlyLifecycleTransactionServiceStub = {
+    service: {
+      createRunGraphEventsWithinTransaction: () => {
+        stub.creationEventCalls += 1;
+        return { events: [], outboxes: [] };
+      },
+    } as unknown as LifecycleTransactionService,
+    creationEventCalls: 0,
+  };
+  return stub;
+}
+
 function createEnv(db: Db): Env {
   const taskRepo = new TaskRepository(db as never);
   const runRepo = new RunRepository(db as never);
+  const lifecycleStub = makeTestOnlyLifecycleTransactionServiceStub();
   const deps: TaskRunServiceDeps = {
     taskRepository: () => taskRepo,
     runRepository: () => runRepo,
@@ -184,12 +205,14 @@ function createEnv(db: Db): Env {
     providerConfigurationRepository: unexpectedRealCaptureDependency as never,
     findAgentSnapshotSource: unexpectedRealCaptureDependency as never,
     runInTransaction: <T>(fn: () => T): T => inTransaction(db as never, fn),
+    lifecycleTransactionService: () => lifecycleStub.service,
   };
   return {
     db,
     taskRepo,
     runRepo,
     service: new TaskRunService(deps, { snapshotService: makeLifecycleSnapshotService() }),
+    lifecycleStub,
     workspace: TEST_WORKSPACE,
   };
 }
@@ -235,6 +258,7 @@ describe('TaskRunService', () => {
       const run = env.service.createRun('ws1', { taskId: task.id, createdBy: 'tester' });
       assert.equal(run.status, 'queued');
       assert.equal(run.origin, 'v2_api');
+      assert.equal(env.lifecycleStub.creationEventCalls, 1);
       assert.equal(env.taskRepo.findById('ws1', task.id)!.status, 'open');
     } finally {
       env.db.close();

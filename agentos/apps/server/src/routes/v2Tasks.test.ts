@@ -1010,6 +1010,7 @@ function withoutIdempotencyCapability(store: SqliteStore): TaskRunServiceDeps {
     providerConfigurationRepository: () => store.providerConfigurationRepository(),
     findAgentSnapshotSource: (workspaceId, agentId) => store.findAgentSnapshotSource(workspaceId, agentId),
     runInTransaction: <T>(fn: () => T): T => store.runInTransaction(fn),
+    lifecycleTransactionService: () => store.lifecycleTransactionService(),
   };
 }
 

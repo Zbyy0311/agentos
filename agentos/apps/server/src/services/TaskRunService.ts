@@ -48,7 +48,7 @@ export interface TaskRunServiceDeps {
   findAgentSnapshotSource(workspaceId: string, agentId: string): AgentSnapshotSourceRecord | undefined;
   runInTransaction<T>(fn: () => T): T;
   /** Supplied by SqliteStore for the production V2 Run creation path. */
-  lifecycleTransactionService?(): LifecycleTransactionService;
+  lifecycleTransactionService(): LifecycleTransactionService;
 }
 
 export interface CreateLegacyRunForBridgeInput {
@@ -109,6 +109,16 @@ function domainError(code: string, message: string): Error & { code: string } {
   const err = new Error(message) as Error & { code: string };
   err.code = code;
   return err;
+}
+
+function isLifecycleTransactionService(value: unknown): value is LifecycleTransactionService {
+  try {
+    return typeof value === 'object'
+      && value !== null
+      && typeof (value as { createRunGraphEventsWithinTransaction?: unknown }).createRunGraphEventsWithinTransaction === 'function';
+  } catch {
+    return false;
+  }
 }
 
 export class BridgeCompensationFailedError extends Error {
@@ -571,16 +581,36 @@ export class TaskRunService {
     if (this.deps.runRepository().findActiveByTask(workspaceId, input.taskId)) {
       throw domainError('RUN_ACTIVE_EXISTS', `Task ${task.id} already has an active run`);
     }
+    const lifecycleTransactionService = this.requireLifecycleTransactionService();
     const resolved = this.snapshotService.resolveUnbound(workspaceId);
     const run = this.deps.runRepository().insert({ ...input, workspaceId, origin: 'v2_api' });
     const persisted = this.snapshotService.persistResolvedRun(run, resolved);
-    const lifecycleTransactionService = this.deps.lifecycleTransactionService?.();
-    if (lifecycleTransactionService) {
-      lifecycleTransactionService.createRunGraphEventsWithinTransaction(run, persisted.snapshot, persisted.stages);
-    }
+    lifecycleTransactionService.createRunGraphEventsWithinTransaction(run, persisted.snapshot, persisted.stages);
     const currentRun = this.deps.runRepository().findById(workspaceId, run.id);
     if (!currentRun) throw new RunNotFoundError(run.id);
     return currentRun;
+  }
+
+  private requireLifecycleTransactionService(): LifecycleTransactionService {
+    let factory: unknown;
+    try {
+      factory = this.deps.lifecycleTransactionService;
+    } catch {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    if (typeof factory !== 'function') {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    let service: unknown;
+    try {
+      service = factory.call(this.deps);
+    } catch {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    if (!isLifecycleTransactionService(service)) {
+      throw domainError('RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE', 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE');
+    }
+    return service;
   }
 
   /**
