@@ -361,22 +361,42 @@ Run 创建前必须验证：
 
 ### 6.4 Creation Transaction
 
-Run 创建应在一个数据库事务内完成：
+The M3 P2C-2C-1 Run Graph Creation contract is one atomic transaction with
+this exact order:
 
-1. 创建 Run；
-2. 设置 `status = queued`；
-3. 创建 Run Snapshot；
-4. 创建 Stage Records；
-5. 预留 Event Sequence；
-6. 发出 `run.created`；
-7. 更新 Task 状态；
-8. 写入 Queue Record。
+1. Persist Run with `status = queued`, `version = 1`, and
+   `next_event_sequence = 1`.
+2. Persist the V2 Run Snapshot.
+3. Persist Stage Records with `status = pending` and `version = 1`.
+4. Validate that the Run, V2 Snapshot, V2 Workflow, and Stage Records form one
+   complete consistent graph.
+5. Append `run.created`.
+6. Append `stage.created × N` in `stage.sequence ASC`, then `stage.id ASC` order.
+7. Immediately after each Event, insert its own independent Outbox record.
+8. Write Idempotency Success.
+9. Commit.
 
-这一步冻结 Run 的唯一强制创建迁移：`∅ → queued` 的 Primary Event 是
-`run.created`。`run.queued` 只表示可选 Queue Telemetry，不是创建迁移的
-替代品；创建事务不要求同时生成 `run.queued`。
+The Event order is `run.created` → `stage.created × N`. `run.created` receives
+sequence `1`; `stage.created` receives sequences `2..N+1`; the final
+`next_event_sequence` is `N+2`. `N = 0` is valid and produces only
+`run.created`. No `run.queued` Event is produced. Every Creation Event uses the
+same timestamp. Run and Stage versions remain `1`; Creation Events do not
+increment them.
 
-任何步骤失败，事务必须回滚。
+Creation correlation and causation are frozen: `correlationId` is exactly the
+persisted `run.id`; `CreateV2RunInput` does not add `correlationId`, and callers
+cannot override it. `run.created` has no `causationId` or `parentEventId`. Every
+`stage.created` uses `correlationId = run.id`, with both `causationId` and
+`parentEventId` equal to the `run.created` Event ID. Stage Events directly
+belong to `run.created`; they do not form a Stage Event chain.
+
+`run.created` payload fields are derived from persisted Run state and the V2
+Snapshot: `reason`, `parentRunId` when present, `rootRunId`,
+`workflowDefinitionId`, `worktreeMode`, and `createdBy`. Each `stage.created`
+payload is derived from its persisted Stage and matching V2 Snapshot Stage:
+`workflowStageKey`, `name`, `sequence`, and `dependsOn`. Callers cannot
+override Event type, source, sequence, timestamp, correlation, causation,
+parent-event, or payload fields. Any failure rolls back the whole transaction.
 
 ---
 

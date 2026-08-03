@@ -1,6 +1,6 @@
 # AgentOS M3 P2C-0 Transition/Event Matrix
 
-Status: SPECIFICATION CLOSURE ONLY — IMPLEMENTATION NOT AUTHORIZED.
+Status: SPECIFICATION AND SHARED CONTRACT CLOSURE ONLY — PRODUCTION IMPLEMENTATION NOT AUTHORIZED.
 
 This matrix is the normative P2C-0 record for the Task-domain Run and Stage
 state machines. It preserves M3-TD-21 and the four frozen startup mappings:
@@ -10,8 +10,10 @@ state machines. It preserves M3-TD-21 and the four frozen startup mappings:
 - Stage `ready → starting` → `stage.starting`;
 - Stage `starting → running` → `stage.started`.
 
-The matrix does not authorize Shared, Server, Migration, Registry, test,
-database, P2C-1, P2C-2, P3, or Production Cutover implementation.
+The matrix does not authorize production Shared Event writes, Server,
+Migration, Registry, database, P2C-2 Event implementation, P3, or Production
+Cutover. Shared contract and contract-test changes in this P2C-2C-1 closure
+remain documentation-only and do not create Events.
 
 ## 1. Matrix conventions
 
@@ -19,7 +21,8 @@ database, P2C-1, P2C-2, P3, or Production Cutover implementation.
   aggregate version. A multi-aggregate transaction increments each affected
   aggregate exactly once.
 - `N` means every affected non-terminal Stage in deterministic order
-  `stage.sequence ASC`, then `stage.id ASC`.
+  `stage.sequence ASC`, then `stage.id ASC`; for `run-graph-creation`, it
+  means every materialized Stage in that same order.
 - Every Durable Runtime Event receives one contiguous Run `sequence` value and
   one independent Outbox record. Multiple Events in one transaction are
   ordered exactly as shown and commit with all affected Current State rows.
@@ -32,6 +35,49 @@ database, P2C-1, P2C-2, P3, or Production Cutover implementation.
 - `ApprovalStageEnv` means
   `workspaceId, runId, stageId, approvalRequestId, sequence, correlationId`.
 - Future method names are design names for a later P2C-2 implementation only.
+
+## 1.1 M3 P2C-2C-1 Run Graph Creation Contract
+
+The M3 P2C-2C-1 Run Graph Creation contract is one atomic transaction with
+this exact order:
+
+1. Persist Run with `status = queued`, `version = 1`, and
+   `next_event_sequence = 1`.
+2. Persist the V2 Run Snapshot.
+3. Persist Stage Records with `status = pending` and `version = 1`.
+4. Validate that the Run, V2 Snapshot, V2 Workflow, and Stage Records form one
+   complete consistent graph.
+5. Append `run.created`.
+6. Append `stage.created × N` in `stage.sequence ASC`, then `stage.id ASC` order.
+7. Immediately after each Event, insert its own independent Outbox record.
+8. Write Idempotency Success.
+9. Commit.
+
+The Event order is `run.created` → `stage.created × N`. `run.created` receives
+sequence `1`; `stage.created` receives sequences `2..N+1`; the final
+`next_event_sequence` is `N+2`. `N = 0` is valid and produces only
+`run.created`. No `run.queued` Event is produced. Every Creation Event uses the
+same timestamp. Run and Stage versions remain `1`; Creation Events do not
+increment them.
+
+Creation correlation and causation are frozen: `correlationId` is exactly the
+persisted `run.id`; `CreateV2RunInput` does not add `correlationId`, and callers
+cannot override it. `run.created` has no `causationId` or `parentEventId`. Every
+`stage.created` uses `correlationId = run.id`, with both `causationId` and
+`parentEventId` equal to the `run.created` Event ID. Stage Events directly
+belong to `run.created`; they do not form a Stage Event chain.
+
+`run.created` payload fields are derived from persisted Run state and the V2
+Snapshot: `reason`, `parentRunId` when present, `rootRunId`,
+`workflowDefinitionId`, `worktreeMode`, and `createdBy`. Each `stage.created`
+payload is derived from its persisted Stage and matching V2 Snapshot Stage:
+`workflowStageKey`, `name`, `sequence`, and `dependsOn`. Callers cannot
+override Event type, source, sequence, timestamp, correlation, causation,
+parent-event, or payload fields. Any failure rolls back the whole transaction.
+
+Run and Stage creation are one `run-graph-creation` composite transaction.
+The Run and every created Stage remain at version `1`; the transaction emits
+one independent Outbox record immediately after each Event.
 
 ## 2. Run transition matrix
 

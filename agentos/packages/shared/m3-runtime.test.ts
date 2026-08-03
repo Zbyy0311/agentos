@@ -588,6 +588,15 @@ test('freezes the shared multi-Event ordering contracts', () => {
       independentOutboxPerEvent: true,
       atomicCurrentStateEventOutbox: true,
     },
+    {
+      name: 'run-graph-creation',
+      events: ['run.created', 'stage.created'],
+      stageMultiplicity: 'all-created',
+      stageOrdering: 'sequence-asc-then-id-asc',
+      contiguousRunSequence: true,
+      independentOutboxPerEvent: true,
+      atomicCurrentStateEventOutbox: true,
+    },
   ]);
   assert.equal(Object.isFrozen(M3_RUN_TRANSITION_EVENT_CONTRACTS), true);
   assert.equal(Object.isFrozen(M3_RUN_TRANSITION_EVENT_CONTRACTS[0]), true);
@@ -601,6 +610,37 @@ test('freezes the shared multi-Event ordering contracts', () => {
     assert.equal(contract.independentOutboxPerEvent, true);
     assert.equal(contract.atomicCurrentStateEventOutbox, true);
   }
+});
+
+test('freezes the Run Graph Creation composite order and cardinality rules', () => {
+  const creation = M3_MULTI_EVENT_ORDERING_CONTRACTS.find(
+    contract => contract.name === 'run-graph-creation',
+  );
+  assert.ok(creation);
+  assert.deepEqual(creation.events, ['run.created', 'stage.created']);
+  assert.equal(creation.stageMultiplicity, 'all-created');
+  assert.equal(creation.stageOrdering, 'sequence-asc-then-id-asc');
+  assert.equal(creation.contiguousRunSequence, true);
+  assert.equal(creation.independentOutboxPerEvent, true);
+  assert.equal(creation.atomicCurrentStateEventOutbox, true);
+
+  const stages = [
+    { sequence: 2, id: 'stage_b' },
+    { sequence: 1, id: 'stage_z' },
+    { sequence: 1, id: 'stage_a' },
+  ].sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id));
+  assert.deepEqual(stages.map(stage => stage.id), ['stage_a', 'stage_z', 'stage_b']);
+  const eventTypes = [creation.events[0], ...stages.map(() => creation.events[1])];
+  assert.deepEqual(eventTypes, ['run.created', 'stage.created', 'stage.created', 'stage.created']);
+  assert.equal(eventTypes[0], 'run.created');
+  assert.deepEqual(eventTypes.slice(1), ['stage.created', 'stage.created', 'stage.created']);
+  assert.deepEqual(eventTypes.map((_, index) => index + 1), [1, 2, 3, 4]);
+  assert.equal(eventTypes.length, stages.length + 1);
+  assert.equal(eventTypes.length + 1, stages.length + 2);
+  const emptyEventTypes = [creation.events[0]];
+  assert.deepEqual(emptyEventTypes, ['run.created']);
+  assert.deepEqual(emptyEventTypes.map((_, index) => index + 1), [1]);
+  assert.equal(emptyEventTypes.length + 1, 2);
 });
 
 test('enforces the single-source Run reason and canonical WorktreeMode values', () => {

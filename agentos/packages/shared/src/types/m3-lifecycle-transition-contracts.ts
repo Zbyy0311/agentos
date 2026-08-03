@@ -18,9 +18,10 @@ export interface M3MultiEventOrderingContract {
     | 'approval-failure'
     | 'approval-cancellation'
     | 'run-cancellation'
-    | 'run-completion';
+    | 'run-completion'
+    | 'run-graph-creation';
   readonly events: readonly M3RuntimeEventType[];
-  readonly stageMultiplicity: 'none' | 'single' | 'all-affected-non-terminal';
+  readonly stageMultiplicity: 'none' | 'single' | 'all-affected-non-terminal' | 'all-created';
   readonly stageOrdering: 'none' | 'sequence-asc-then-id-asc';
   readonly contiguousRunSequence: true;
   readonly independentOutboxPerEvent: true;
@@ -121,6 +122,15 @@ export const M3_MULTI_EVENT_ORDERING_CONTRACTS: readonly M3MultiEventOrderingCon
     events: freezeEventSequence(['stage.completed', 'run.completed']),
     stageMultiplicity: 'single',
     stageOrdering: 'none',
+    contiguousRunSequence: true,
+    independentOutboxPerEvent: true,
+    atomicCurrentStateEventOutbox: true,
+  }),
+  Object.freeze({
+    name: 'run-graph-creation',
+    events: freezeEventSequence(['run.created', 'stage.created']),
+    stageMultiplicity: 'all-created',
+    stageOrdering: 'sequence-asc-then-id-asc',
     contiguousRunSequence: true,
     independentOutboxPerEvent: true,
     atomicCurrentStateEventOutbox: true,

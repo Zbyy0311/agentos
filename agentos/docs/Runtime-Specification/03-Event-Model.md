@@ -799,6 +799,45 @@ interface RunCreatedPayload {
 transition `∅ → queued`. It proves that the Run was durably created as the
 Queue Record. A same-transaction `run.queued` Event is not required.
 
+### M3 P2C-2C-1 Run Graph Creation Contract
+
+The M3 P2C-2C-1 Run Graph Creation contract is one atomic transaction with
+this exact order:
+
+1. Persist Run with `status = queued`, `version = 1`, and
+   `next_event_sequence = 1`.
+2. Persist the V2 Run Snapshot.
+3. Persist Stage Records with `status = pending` and `version = 1`.
+4. Validate that the Run, V2 Snapshot, V2 Workflow, and Stage Records form one
+   complete consistent graph.
+5. Append `run.created`.
+6. Append `stage.created × N` in `stage.sequence ASC`, then `stage.id ASC` order.
+7. Immediately after each Event, insert its own independent Outbox record.
+8. Write Idempotency Success.
+9. Commit.
+
+The Event order is `run.created` → `stage.created × N`. `run.created` receives
+sequence `1`; `stage.created` receives sequences `2..N+1`; the final
+`next_event_sequence` is `N+2`. `N = 0` is valid and produces only
+`run.created`. No `run.queued` Event is produced. Every Creation Event uses the
+same timestamp. Run and Stage versions remain `1`; Creation Events do not
+increment them.
+
+Creation correlation and causation are frozen: `correlationId` is exactly the
+persisted `run.id`; `CreateV2RunInput` does not add `correlationId`, and callers
+cannot override it. `run.created` has no `causationId` or `parentEventId`. Every
+`stage.created` uses `correlationId = run.id`, with both `causationId` and
+`parentEventId` equal to the `run.created` Event ID. Stage Events directly
+belong to `run.created`; they do not form a Stage Event chain.
+
+`run.created` payload fields are derived from persisted Run state and the V2
+Snapshot: `reason`, `parentRunId` when present, `rootRunId`,
+`workflowDefinitionId`, `worktreeMode`, and `createdBy`. Each `stage.created`
+payload is derived from its persisted Stage and matching V2 Snapshot Stage:
+`workflowStageKey`, `name`, `sequence`, and `dependsOn`. Callers cannot
+override Event type, source, sequence, timestamp, correlation, causation,
+parent-event, or payload fields. Any failure rolls back the whole transaction.
+
 ### `run.queued`
 
 ```ts
@@ -3702,6 +3741,7 @@ v1 done
 
 ```text
 run.created
+stage.created × N
 run.dequeued
 workflow.resolved
 worktree.created
