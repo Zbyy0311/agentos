@@ -411,6 +411,10 @@ export class LifecycleTransactionService {
   }
 
   transitionRun(input: RunTransitionInput): RunLifecycleTransitionResult {
+    return this.dependencies.runInTransaction(() => this.transitionRunWithinTransaction(input));
+  }
+
+  transitionRunWithinTransaction(input: RunTransitionInput): RunLifecycleTransitionResult {
     const contract = getM3RunTransitionEventContract(input.expectedFrom, input.to);
     const classification = classifyRunTransition(input.expectedFrom, input.to);
     if (classification === 'INVALID') {
@@ -428,41 +432,39 @@ export class LifecycleTransactionService {
     const singleContract = contract!;
     this.validateRunInput(input);
 
-    return this.dependencies.runInTransaction(() => {
-      const current = this.requireRun(input.workspaceId, input.runId);
-      this.assertExpectedRunState(current, input.expectedFrom);
-      this.assertExpectedVersion('runs', input.runId, current.version, input.expectedVersion);
-      const timestamp = this.transactionTimestamp();
-      const run = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
-        workspaceId: input.workspaceId,
-        runId: input.runId,
-        expectedVersion: input.expectedVersion,
-        expectedFrom: input.expectedFrom,
-        to: input.to,
-        timestamp,
-        ...(input.to === 'failed'
-          ? { failureCode: input.errorCode, failureMessage: input.message }
-          : {}),
-      } satisfies RunLifecycleTransitionWithinTransactionInput);
-      const event = this.appendEvent(
-        run,
-        undefined,
-        singleContract.primaryEvent,
-        timestamp,
-        input.correlationId,
-        input.causationId,
-        input.parentEventId,
-        input.metadata,
-        this.runPayload(input, timestamp),
-      );
-      const outbox = this.dependencies.outboxRepository.insertWithinTransaction({
-        id: this.createOutboxId(event.id),
-        eventId: event.id,
-        availableAt: timestamp,
-        createdAt: timestamp,
-      });
-      return { run: this.requireRun(input.workspaceId, input.runId), event, outbox };
+    const current = this.requireRun(input.workspaceId, input.runId);
+    this.assertExpectedRunState(current, input.expectedFrom);
+    this.assertExpectedVersion('runs', input.runId, current.version, input.expectedVersion);
+    const timestamp = this.transactionTimestamp();
+    const run = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      expectedVersion: input.expectedVersion,
+      expectedFrom: input.expectedFrom,
+      to: input.to,
+      timestamp,
+      ...(input.to === 'failed'
+        ? { failureCode: input.errorCode, failureMessage: input.message }
+        : {}),
+    } satisfies RunLifecycleTransitionWithinTransactionInput);
+    const event = this.appendEvent(
+      run,
+      undefined,
+      singleContract.primaryEvent,
+      timestamp,
+      input.correlationId,
+      input.causationId,
+      input.parentEventId,
+      input.metadata,
+      this.runPayload(input, timestamp),
+    );
+    const outbox = this.dependencies.outboxRepository.insertWithinTransaction({
+      id: this.createOutboxId(event.id),
+      eventId: event.id,
+      availableAt: timestamp,
+      createdAt: timestamp,
     });
+    return { run: this.requireRun(input.workspaceId, input.runId), event, outbox };
   }
 
   transitionStage(input: StageTransitionInput): StageLifecycleTransitionResult {
