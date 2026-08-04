@@ -542,10 +542,20 @@ test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges',
 });
 
 test('freezes the shared multi-Event ordering contracts', () => {
+  // Branch A: stage.failed → run.failed. Branch B: run.failed only.
   assert.deepEqual(M3_MULTI_EVENT_ORDERING_CONTRACTS, [
     {
       name: 'startup-completion',
       events: ['stage.started', 'run.started'],
+      stageMultiplicity: 'single',
+      stageOrdering: 'none',
+      contiguousRunSequence: true,
+      independentOutboxPerEvent: true,
+      atomicCurrentStateEventOutbox: true,
+    },
+    {
+      name: 'startup-failure',
+      events: ['stage.failed', 'run.failed'],
       stageMultiplicity: 'single',
       stageOrdering: 'none',
       contiguousRunSequence: true,
@@ -598,6 +608,36 @@ test('freezes the shared multi-Event ordering contracts', () => {
       atomicCurrentStateEventOutbox: true,
     },
   ]);
+  assert.equal(M3_MULTI_EVENT_ORDERING_CONTRACTS.length, 7);
+  assert.deepEqual(
+    M3_MULTI_EVENT_ORDERING_CONTRACTS.map(contract => contract.name),
+    [
+      'startup-completion',
+      'startup-failure',
+      'approval-failure',
+      'approval-cancellation',
+      'run-cancellation',
+      'run-completion',
+      'run-graph-creation',
+    ],
+  );
+  assert.equal(
+    new Set(M3_MULTI_EVENT_ORDERING_CONTRACTS.map(contract => contract.name)).size,
+    7,
+  );
+  const startupFailure = M3_MULTI_EVENT_ORDERING_CONTRACTS.find(
+    contract => contract.name === 'startup-failure',
+  );
+  assert.ok(startupFailure);
+  assert.deepEqual(startupFailure, {
+    name: 'startup-failure',
+    events: ['stage.failed', 'run.failed'],
+    stageMultiplicity: 'single',
+    stageOrdering: 'none',
+    contiguousRunSequence: true,
+    independentOutboxPerEvent: true,
+    atomicCurrentStateEventOutbox: true,
+  });
   assert.equal(Object.isFrozen(M3_RUN_TRANSITION_EVENT_CONTRACTS), true);
   assert.equal(Object.isFrozen(M3_RUN_TRANSITION_EVENT_CONTRACTS[0]), true);
   assert.equal(Object.isFrozen(M3_STAGE_TRANSITION_EVENT_CONTRACTS[0]), true);

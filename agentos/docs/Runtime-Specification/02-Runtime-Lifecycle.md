@@ -4,7 +4,7 @@
 
 > Status: Draft  
 > Version: 2.0  
-> Last Updated: 2026-07-19  
+> Last Updated: 2026-08-04
 > Scope: AgentOS v2 Runtime Execution Lifecycle  
 > Depends On:
 > - `00-Vision.md`
@@ -586,14 +586,59 @@ run.started
 
 ### 9.4 Startup Failure
 
-任何启动阶段失败都必须：
+不可恢复的 pre-start startup failure 必须严格区分以下两个互斥分支。
 
-- 生成结构化错误；
-- 记录失败 Phase；
-- 清理已创建资源；
-- 更新 Run 为 `failed`；
-- 发出 `run.failed`；
-- 保留 Debug Artifact。
+#### Branch A — Stage 已进入 `starting`
+
+恰好一个 startup Stage 已经进入 `starting` 时：
+
+1. Stage 执行合法的 `starting → failed`；
+2. Run 执行合法的 `starting → failed`；
+3. 两个 Current State transition 属于同一个 caller-owned transaction；
+4. Event 顺序严格为：
+
+   ```text
+   stage.failed → run.failed
+   ```
+
+5. 两个 Event 获得连续的 Run `sequence`，各自拥有独立 Outbox；
+6. Stage 与 Run 的 `version` 各增加一次；
+7. Stage、Run、两个 Event 和两个 Outbox 必须全部提交或全部回滚。
+
+该组合事务使用 `startup-failure` ordering contract，其冻结属性为：
+
+```text
+stageMultiplicity=single
+stageOrdering=none
+contiguousRunSequence=true
+independentOutboxPerEvent=true
+atomicCurrentStateEventOutbox=true
+```
+
+#### Branch B — 没有 Stage 进入 `starting`
+
+没有 Stage 进入 `starting` 时：
+
+1. 仅执行 Run 的合法 `starting → failed`；
+2. 仅生成 `run.failed`；
+3. Additional Event 为 `None`，只增加 Run `version`；
+4. 不生成或伪造 `stage.failed`，未开始的 Stage 保持原状态；
+5. 该单 Event 分支不是 `startup-failure` multi-Event 实例。
+
+```text
+run.failed only
+```
+
+两条分支都必须生成结构化错误、记录失败 Phase、清理已创建资源并保留
+Debug Artifact。所有 Event 只能在事务提交后广播。
+
+Operation `running → failed` 可由后续 P3B-2B 加入同一个 caller-owned
+transaction；Operation 不产生 Runtime Event，也不改变
+`stage.failed → run.failed` 的顺序。P3B-2A 不实现该 Operation transition。
+
+用户取消不属于 C1a/C1b startup failure；cancellation 继续服从 M3-TD-27，
+使用 `stage.cancelled` / `run.cancelled`，不得用 `stage.failed` /
+`run.failed` 表达用户取消。
 
 ---
 

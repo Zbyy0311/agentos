@@ -79,6 +79,60 @@ Run and Stage creation are one `run-graph-creation` composite transaction.
 The Run and every created Stage remain at version `1`; the transaction emits
 one independent Outbox record immediately after each Event.
 
+## 1.2 M3 P3B-2A Startup Failure Contract Alignment
+
+Status: IMPLEMENTED — PENDING INDEPENDENT REVIEW.
+
+This is a narrow Shared/specification alignment. It does not implement a
+failure transaction, Workflow Executor, Stage Executor, Operation terminal
+transition, or any Server Runtime behavior.
+
+### Branch A — one startup Stage already entered `starting`
+
+For an unrecoverable pre-start startup error where exactly one startup Stage
+has entered `starting`:
+
+- Stage transition: `starting → failed`, Primary Event `stage.failed`;
+- Run transition: `starting → failed`, Primary Event `run.failed`;
+- both Current State transitions belong to one caller-owned transaction;
+- Stage Event source is `stage-executor`; Run Event source is `run-engine`;
+- Stage Event envelope is `StageEnv`; Run Event envelope is `RunEnv`;
+- payloads are `StageFailedPayload` and `RunFailedPayload`;
+- Stage and Run versions each increase by one;
+- startup Stage and Run both become terminal `failed`;
+- Event order is exactly:
+
+  ```text
+  stage.failed → run.failed
+  ```
+
+- both Events receive contiguous Run sequence values and each receives an
+  independent Outbox record;
+- all Current State, Event, Outbox, and version writes commit or roll back
+  together;
+- ordering name is `startup-failure` with
+  `stageMultiplicity=single`, `stageOrdering=none`,
+  `contiguousRunSequence=true`, `independentOutboxPerEvent=true`, and
+  `atomicCurrentStateEventOutbox=true`.
+
+### Branch B — no Stage entered `starting`
+
+For an unrecoverable pre-start startup error where no Stage has entered
+`starting`:
+
+- Run transition: `starting → failed`, Primary Event `run.failed`;
+- Additional Event: `None`;
+- only the Run version increases by one;
+- no `stage.failed` is generated or fabricated;
+- the Event order is `run.failed only`;
+- every not-started Stage remains in its prior valid state.
+
+This single-Event branch is not a `startup-failure` multi-Event instance.
+Operation `running → failed` may join a caller-owned transaction in later
+P3B-2B, but Operation does not emit a Runtime Event and does not change the
+`stage.failed → run.failed` order. User cancellation remains governed by
+M3-TD-27 and uses `stage.cancelled` / `run.cancelled`, never failure Events.
+
 ## 2. Run transition matrix
 
 The Run matrix contains 17 allowed transitions, including the initial
@@ -90,7 +144,7 @@ The Run matrix contains 17 allowed transitions, including the initial
 | 2 | Run | `queued` | `starting` | Scheduler acquired the Run | `run.dequeued` | None | `scheduler` | `RunEnv` | `RunDequeuedPayload`: `dequeuedAt` only | Event `timestamp` and `dequeuedAt`; no `started_at` | Run `version + 1` | Non-terminal startup state | `run.dequeued` | `dequeueRun` |
 | 3 | Run | `queued` | `cancelled` | User cancellation before startup | `run.cancelled` | `stage.cancelled × N` for affected Stages | `run-engine`; `stage-executor` for additional Events | Run: `RunEnv`; each Stage: `StageEnv` | `RunCancelledPayload`: `requestedBy`, `terminatedProcessIds`, `worktreePreserved`; optional `reason`. Each additional Event uses `StageCancelledPayload`: `reason` | First write `cancellation_requested_at`; Event `timestamp`; update `updated_at`; no `started_at` | Run `version + 1`; each affected Stage `version + 1` | Run and all affected Stages terminal | `stage.cancelled` in `N` order → `run.cancelled` | `cancelRun` |
 | 4 | Run | `starting` | `running` | Startup complete and first eligible Stage active | `run.started` | `stage.started` for the first eligible Stage | `run-engine`; `stage-executor` for additional Event | Run: `RunEnv`; Stage: `StageEnv` | `RunStartedPayload`: `startedAt`; optional `workflowSnapshotVersion`, `policySnapshotVersion`, `baseCommit`. Additional Event uses `StageStartedPayload`: `workflowStageKey`, `name`, `attempt`, `agentSnapshot`, `providerSnapshot` | First write `runs.started_at`; Stage first writes `run_stages.started_at`; Event timestamps | Run `version + 1`; first active Stage `version + 1` | Run remains non-terminal | `stage.started` → `run.started` | `completeRunStartup` |
-| 5 | Run | `starting` | `failed` | Startup error | `run.failed` | None | `run-engine` | `RunEnv` | `RunFailedPayload`: `errorCode`, `message`, `phase`, `retryable`; optional `stageId`, `providerType`, `suggestedAction`, `debugArtifactId` | Event `timestamp`; update terminal `updated_at`; no `started_at` unless previously written | Run `version + 1` | Run terminal | `run.failed` | `failRunStartup` |
+| 5 | Run | `starting` | `failed` | Unrecoverable pre-start startup failure; Branch A: exactly one startup Stage has entered `starting`; Branch B: no Stage has entered `starting` | `run.failed` | Branch A: conditional `stage.failed`; Branch B: None | Branch A: Stage=`stage-executor`, Run=`run-engine`; Branch B: `run-engine` | Branch A: Stage=`StageEnv`, Run=`RunEnv`; Branch B: `RunEnv` | Branch A: `StageFailedPayload` and `RunFailedPayload`; Branch B: `RunFailedPayload` | Event `timestamp`; terminal `updated_at`; no `started_at` unless previously written | Branch A: Stage `version + 1`, Run `version + 1`; Branch B: Run `version + 1` | Branch A: startup Stage and Run failed; Branch B: Run failed and Stage states unchanged | Branch A: `stage.failed → run.failed`, ordering `startup-failure`; Branch B: `run.failed only` | `failRunStartup` |
 | 6 | Run | `starting` | `cancelled` | User cancellation during startup | `run.cancelled` | `stage.cancelled × N` for affected Stages | `run-engine`; `stage-executor` for additional Events | Run: `RunEnv`; each Stage: `StageEnv` | `RunCancelledPayload`: `requestedBy`, `terminatedProcessIds`, `worktreePreserved`; optional `reason`. Additional Events use `StageCancelledPayload`: `reason` | First write `cancellation_requested_at`; Event `timestamp`; update terminal `updated_at` | Run `version + 1`; each affected Stage `version + 1` | Run and all affected Stages terminal | `stage.cancelled` in `N` order → `run.cancelled` | `cancelRun` |
 | 7 | Run | `running` | `waiting_approval` | Policy requires approval | `approval.required` | None; the same Event is evidence for the paired Stage transition | `approval-service` | `ApprovalStageEnv` for Stage-specific approval; `ApprovalRunEnv` for Run-only approval | `ApprovalRequiredPayload`: `category`, `riskLevel`, `title`, `description`, `requestSummary`; optional `expiresAt`; Stage-specific approval requires `runId`, `stageId`, and `approvalRequestId` envelope references | Event `timestamp`; optional payload `expiresAt`; no `started_at` rewrite | Run `version + 1`; paired Stage `version + 1` | Non-terminal approval wait | One `approval.required` | `requestApproval` |
 | 8 | Run | `running` | `paused` | User/System/Policy pause | `run.paused` | None | `run-engine` | `RunEnv` | `RunPausedPayload`: `reason`, `resumable`; optional `requestedBy` | Event `timestamp`; update `updated_at` | Run `version + 1` | Non-terminal paused state | `run.paused` | `pauseRun` |
@@ -121,7 +175,7 @@ The Stage matrix contains 19 allowed transitions, including the initial
 | 5 | Stage | `ready` | `starting` | Scheduler acquired Stage rights | `stage.starting` | None | `stage-executor` | `StageEnv` | `StageStartingPayload`: `workflowStageKey`, `name`, `attempt`, `startingAt` | Event `timestamp` and `startingAt`; no `run_stages.started_at` | Stage `version + 1` | Non-terminal starting state | `stage.starting` | `startStagePreparation` |
 | 6 | Stage | `ready` | `cancelled` | Run cancellation | `stage.cancelled` | None | `stage-executor` | `StageEnv` | `StageCancelledPayload`: `reason` | Terminal `updated_at`; Event `timestamp` | Stage `version + 1` | Terminal cancelled state | `stage.cancelled` | `cancelStage` |
 | 7 | Stage | `starting` | `running` | Provider active and snapshots frozen | `stage.started` | None; Run startup completion has its own Run row | `stage-executor` | `StageEnv` | `StageStartedPayload`: `workflowStageKey`, `name`, `attempt`, `agentSnapshot`, `providerSnapshot` | First write `run_stages.started_at`; Event `timestamp` | Stage `version + 1` | Non-terminal running state | `stage.started` precedes `run.started` when it completes Run startup | `startStage` |
-| 8 | Stage | `starting` | `failed` | Startup error | `stage.failed` | None; Run failure has its own Run row | `stage-executor` | `StageEnv` | `StageFailedPayload`: `attempt`, `errorCode`, `message`, `retryable`, `retryScheduled` | Terminal `updated_at`; Event `timestamp` | Stage `version + 1` | Terminal failed state | `stage.failed` | `failStageStartup` |
+| 8 | Stage | `starting` | `failed` | Startup error | `stage.failed` | None; the paired Run failure is defined by Run row 5 | `stage-executor` | `StageEnv` | `StageFailedPayload`: `attempt`, `errorCode`, `message`, `retryable`, `retryScheduled` | Terminal `updated_at`; Event `timestamp` | Stage `version + 1` | Terminal failed state | `stage.failed`; in Branch A, this Event participates in `startup-failure` before `run.failed` | `failStageStartup` |
 | 9 | Stage | `starting` | `cancelled` | Run cancellation | `stage.cancelled` | None | `stage-executor` | `StageEnv` | `StageCancelledPayload`: `reason` | Terminal `updated_at`; Event `timestamp` | Stage `version + 1` | Terminal cancelled state | `stage.cancelled` | `cancelStage` |
 | 10 | Stage | `running` | `waiting_approval` | Policy requires approval | `approval.required` | None; the same Event is evidence for the paired Run transition | `approval-service` | `ApprovalStageEnv` | `ApprovalRequiredPayload`: `category`, `riskLevel`, `title`, `description`, `requestSummary`; optional `expiresAt`; `runId`, `stageId`, `approvalRequestId` required | Event `timestamp`; optional `expiresAt`; no `started_at` rewrite | Stage `version + 1`; paired Run `version + 1` | Non-terminal approval wait | One `approval.required` | `requestStageApproval` |
 | 11 | Stage | `running` | `paused` | Pause | `stage.paused` | None | `stage-executor` | `StageEnv` | `StagePausedPayload`: `reason`, `resumable` | Event `timestamp`; update `updated_at` | Stage `version + 1` | Non-terminal paused state | `stage.paused` | `pauseStage` |

@@ -4,7 +4,7 @@
 
 > Status: Draft  
 > Version: 2.0  
-> Last Updated: 2026-07-19  
+> Last Updated: 2026-08-04
 > Scope: AgentOS v2 Runtime Event Protocol  
 > Depends On:
 > - `00-Vision.md`
@@ -246,6 +246,36 @@ approval.resolved → stage.failed → run.failed
 approval.resolved → stage.cancelled × N → run.cancelled
 stage.completed → run.completed
 ```
+
+Startup failure 在恰好一个 startup Stage 已进入 `starting` 且发生不可恢复
+pre-start failure 时，增加以下组合顺序：
+
+```text
+stage.failed → run.failed
+```
+
+该顺序只适用于 `Run=starting`、恰好一个 startup Stage 已进入 `starting`
+的 Branch A。其 ordering contract 为：
+
+```text
+ordering name: startup-failure
+stageMultiplicity: single
+stageOrdering: none
+contiguousRunSequence: true
+independentOutboxPerEvent: true
+atomicCurrentStateEventOutbox: true
+```
+
+没有 Stage 进入 `starting` 时属于 Branch B，仍然只产生 `run.failed`；该单一
+Event 分支不是 `startup-failure` multi-Event 实例，也不得伪造 `stage.failed`。
+其精确顺序为：
+
+```text
+run.failed only
+```
+Operation 可以由后续阶段加入同一事务，但没有 Operation Event。不同 Run
+之间仍无全局排序，Event 广播只能在事务提交后发生。P3B-2A 不授权任何
+Runtime 实现。
 
 不同 Run 之间不建立全局顺序要求。
 
