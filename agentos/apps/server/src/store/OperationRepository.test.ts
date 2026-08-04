@@ -91,20 +91,53 @@ function seedWorkspaceAndRun(db: Db, workspaceId: string, taskId: string, runId:
 
 function operationInput(overrides: Partial<InsertOperationInput> = {}): InsertOperationInput {
   const id = overrides.id ?? createEntityId('operation');
+  const type = overrides.type ?? 'run.create';
   return {
     id,
-    type: 'run.create',
+    type,
     status: 'queued',
     workspaceId: WORKSPACE_ID,
     aggregateType: 'run',
     aggregateId: RUN_ID,
     runId: RUN_ID,
-    correlationId: RUN_ID,
+    correlationId: type === 'run.create' ? RUN_ID : id,
     createdAt: NOW,
     updatedAt: NOW,
     version: 1,
     ...overrides,
   };
+}
+
+function insertRawOperationRow(
+  db: Db,
+  input: {
+    id: string;
+    type: string;
+    status: string;
+    correlationId: string;
+    startedAt: string | null;
+    completedAt: string | null;
+  },
+): void {
+  db.prepare(`
+    INSERT INTO operations (
+      id, type, status, workspace_id, aggregate_type, aggregate_id, run_id,
+      correlation_id, result_json, error_json, created_at, started_at,
+      completed_at, updated_at, version
+    ) VALUES (?, ?, ?, ?, 'run', ?, ?, ?, NULL, NULL, ?, ?, ?, ?, 1)
+  `).run(
+    input.id,
+    input.type,
+    input.status,
+    WORKSPACE_ID,
+    RUN_ID,
+    RUN_ID,
+    input.correlationId,
+    NOW,
+    input.startedAt,
+    input.completedAt,
+    NOW,
+  );
 }
 
 afterEach(() => {
@@ -136,22 +169,77 @@ describe('OperationRepository', () => {
     assert.equal(repository.findById('other-workspace', input.id), undefined);
   });
 
+  test('enforces M3-TD-26 correlation binding before every insert', () => {
+    const db = migratedDb();
+    const repository = new OperationRepository(db);
+    const create = repository.insert(operationInput({ type: 'run.create' }));
+    const start = repository.insert(operationInput({ type: 'run.start' }));
+    const cancel = repository.insert(operationInput({ type: 'run.cancel' }));
+    const retry = repository.insert(operationInput({ type: 'run.retry' }));
+
+    assert.equal(create.correlationId, RUN_ID);
+    assert.equal(start.correlationId, start.id);
+    assert.equal(cancel.correlationId, cancel.id);
+    assert.equal(retry.correlationId, retry.id);
+
+    const count = (): number => (db.prepare('SELECT COUNT(*) AS count FROM operations').get() as { count: number }).count;
+    assert.equal(count(), 4);
+    const invalidInputs: InsertOperationInput[] = [
+      operationInput({ type: 'run.create', correlationId: createEntityId('operation') }),
+      operationInput({ type: 'run.start', correlationId: RUN_ID }),
+      operationInput({ type: 'run.cancel', correlationId: RUN_ID }),
+      operationInput({ type: 'run.retry', correlationId: RUN_ID }),
+    ];
+
+    for (const invalid of invalidInputs) {
+      assert.throws(
+        () => repository.insert(invalid),
+        (error: unknown) => error instanceof OperationValidationError
+          && error.code === 'OPERATION_VALIDATION_FAILED',
+      );
+      assert.equal(count(), 4);
+    }
+  });
+
+  test('mapper rejects a schema-valid correlation mismatch on every read path', () => {
+    const db = migratedDb();
+    const repository = new OperationRepository(db);
+    const id = createEntityId('operation');
+    insertRawOperationRow(db, {
+      id,
+      type: 'run.start',
+      status: 'queued',
+      correlationId: RUN_ID,
+      startedAt: null,
+      completedAt: null,
+    });
+
+    const assertClosed = (read: () => unknown): void => {
+      assert.throws(
+        read,
+        (error: unknown) => error instanceof OperationValidationError
+          && error.code === 'OPERATION_VALIDATION_FAILED',
+      );
+    };
+    assertClosed(() => repository.findById(WORKSPACE_ID, id));
+    assertClosed(() => repository.findByCorrelationId(WORKSPACE_ID, RUN_ID));
+    assertClosed(() => repository.listByRun(WORKSPACE_ID, RUN_ID));
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM operations').get() as { count: number }).count, 1);
+  });
+
   test('lists by workspace/run in created_at ASC, id ASC order and filters non-terminal type', () => {
     const db = migratedDb();
     const repository = new OperationRepository(db);
     const first = operationInput({
       type: 'run.start',
-      correlationId: createEntityId('operation'),
       createdAt: NOW,
     });
     const second = operationInput({
       type: 'run.retry',
-      correlationId: createEntityId('operation'),
       createdAt: LATER,
     });
     const terminal = operationInput({
       type: 'run.cancel',
-      correlationId: createEntityId('operation'),
       status: 'cancelled',
       createdAt: LATER,
       completedAt: LATER,
@@ -183,7 +271,6 @@ describe('OperationRepository', () => {
       type: 'run.start',
       aggregateId: OTHER_RUN_ID,
       runId: OTHER_RUN_ID,
-      correlationId: createEntityId('operation'),
       workspaceId: OTHER_WORKSPACE_ID,
     });
     repository.insert(operation);
@@ -199,7 +286,6 @@ describe('OperationRepository', () => {
     const repository = new OperationRepository(db);
     const operation = repository.insert(operationInput({
       type: 'run.start',
-      correlationId: createEntityId('operation'),
     }));
 
     const updated = repository.update({
@@ -240,7 +326,6 @@ describe('OperationRepository', () => {
     const repository = new OperationRepository(db);
     const completed = repository.insert(operationInput({
       type: 'run.start',
-      correlationId: createEntityId('operation'),
       status: 'completed',
       startedAt: NOW,
       completedAt: LATER,
@@ -248,7 +333,6 @@ describe('OperationRepository', () => {
     }));
     const failed = repository.insert(operationInput({
       type: 'run.retry',
-      correlationId: createEntityId('operation'),
       status: 'failed',
       completedAt: LATER,
       error: SAMPLE_PROBLEM,
@@ -258,6 +342,235 @@ describe('OperationRepository', () => {
     assert.deepEqual(repository.findById(WORKSPACE_ID, failed.id)?.error, SAMPLE_PROBLEM);
     assert.equal(repository.findById(WORKSPACE_ID, completed.id)?.error, undefined);
     assert.equal(repository.findById(WORKSPACE_ID, failed.id)?.result, undefined);
+  });
+
+  test('rejects every non-JSON Value before writing result_json', () => {
+    class PayloadClass {
+      readonly value = 'class-instance';
+    }
+    const sparse: unknown[] = [];
+    sparse.length = 1;
+    const cyclic: Record<string, unknown> = {};
+    cyclic.self = cyclic;
+    const customPrototype: Record<string, unknown> = Object.create({ inherited: true });
+    customPrototype.value = 'custom-prototype';
+    const customToJson: Record<string, unknown> = {
+      value: 'custom-to-json',
+      toJSON: () => ({ value: 'transformed' }),
+    };
+    const invalidData: Array<[string, unknown]> = [
+      ['undefined', undefined],
+      ['function', () => 'function'],
+      ['symbol', Symbol('operation')],
+      ['bigint', 1n],
+      ['NaN', Number.NaN],
+      ['Infinity', Number.POSITIVE_INFINITY],
+      ['-Infinity', Number.NEGATIVE_INFINITY],
+      ['sparse array', sparse],
+      ['Date', new Date(NOW)],
+      ['Map', new Map([['key', 'value']])],
+      ['Set', new Set(['value'])],
+      ['class instance', new PayloadClass()],
+      ['circular object', cyclic],
+      ['custom prototype', customPrototype],
+      ['custom toJSON', customToJson],
+    ];
+
+    for (const [label, data] of invalidData) {
+      const db = migratedDb();
+      const repository = new OperationRepository(db);
+      const result: ApiOperationResult = { resourceType: 'run', resourceId: RUN_ID, data };
+      assert.throws(
+        () => repository.insert(operationInput({
+          type: 'run.start',
+          status: 'completed',
+          startedAt: NOW,
+          completedAt: LATER,
+          result,
+        })),
+        (error: unknown) => error instanceof OperationValidationError
+          && error.code === 'OPERATION_VALIDATION_FAILED',
+        label,
+      );
+      assert.equal(
+        (db.prepare('SELECT COUNT(*) AS count FROM operations').get() as { count: number }).count,
+        0,
+        label,
+      );
+    }
+  });
+
+  test('preserves nested JSON Values without loss during result round-trip', () => {
+    const db = migratedDb();
+    const repository = new OperationRepository(db);
+    const nested: ApiOperationResult = {
+      resourceType: 'run',
+      resourceId: RUN_ID,
+      data: {
+        nullValue: null,
+        booleanValue: true,
+        numberValue: 12.5,
+        stringValue: 'nested',
+        arrayValue: [null, false, { child: ['value', 3] }],
+        objectValue: { nested: { key: 'value' } },
+      },
+    };
+    const inserted = repository.insert(operationInput({
+      type: 'run.start',
+      status: 'completed',
+      startedAt: NOW,
+      completedAt: LATER,
+      result: nested,
+    }));
+    const raw = db.prepare('SELECT result_json FROM operations WHERE id = ?').get(inserted.id) as {
+      result_json: string;
+    };
+
+    assert.deepEqual(inserted.result, nested);
+    assert.deepEqual(repository.findById(WORKSPACE_ID, inserted.id)?.result, nested);
+    assert.deepEqual(JSON.parse(raw.result_json), nested);
+  });
+
+  test('enforces ApiProblem exact shape and retryAfterMs range before writing error_json', () => {
+    const invalidProblems = [
+      { ...SAMPLE_PROBLEM, extra: 'unexpected' },
+      {
+        ...SAMPLE_PROBLEM,
+        errors: [{ field: 'runId', code: 'INVALID', message: 'invalid', extra: 'unexpected' }],
+      },
+      {
+        ...SAMPLE_PROBLEM,
+        context: { workspaceId: WORKSPACE_ID, runId: RUN_ID, extra: 'unexpected' },
+      },
+      { ...SAMPLE_PROBLEM, retryAfterMs: -1 },
+    ];
+
+    for (const problem of invalidProblems) {
+      const db = migratedDb();
+      const repository = new OperationRepository(db);
+      assert.throws(
+        () => repository.insert(operationInput({
+          type: 'run.retry',
+          status: 'failed',
+          completedAt: LATER,
+          error: problem,
+        })),
+        (error: unknown) => error instanceof OperationValidationError
+          && error.code === 'OPERATION_VALIDATION_FAILED',
+      );
+      assert.equal(
+        (db.prepare('SELECT COUNT(*) AS count FROM operations').get() as { count: number }).count,
+        0,
+      );
+    }
+  });
+
+  test('accepts the exact state and timestamp combinations', () => {
+    const db = migratedDb();
+    const repository = new OperationRepository(db);
+    const legal: Array<Partial<InsertOperationInput>> = [
+      { status: 'queued' },
+      { status: 'running', startedAt: NOW },
+      { status: 'waiting_approval', startedAt: NOW },
+      { status: 'paused', startedAt: NOW },
+      { status: 'completed', startedAt: NOW, completedAt: LATER },
+      { status: 'failed', completedAt: LATER, error: SAMPLE_PROBLEM },
+      { status: 'failed', startedAt: NOW, completedAt: LATER, error: SAMPLE_PROBLEM },
+      { status: 'cancelled', completedAt: LATER },
+      { status: 'cancelled', startedAt: NOW, completedAt: LATER },
+    ];
+
+    for (const input of legal) {
+      assert.doesNotThrow(() => repository.insert(operationInput({ type: 'run.start', ...input })));
+    }
+    assert.equal(repository.listByRun(WORKSPACE_ID, RUN_ID).length, legal.length);
+  });
+
+  test('rejects every invalid state and timestamp combination before insert/update SQL', () => {
+    const db = migratedDb();
+    const repository = new OperationRepository(db);
+    const invalid: Array<Partial<InsertOperationInput>> = [
+      { status: 'queued', startedAt: NOW },
+      { status: 'queued', completedAt: LATER },
+      { status: 'running' },
+      { status: 'running', startedAt: NOW, completedAt: LATER },
+      { status: 'waiting_approval' },
+      { status: 'waiting_approval', startedAt: NOW, completedAt: LATER },
+      { status: 'paused' },
+      { status: 'paused', startedAt: NOW, completedAt: LATER },
+      { status: 'completed', completedAt: LATER },
+      { status: 'completed', startedAt: NOW },
+      { status: 'failed', error: SAMPLE_PROBLEM },
+      { status: 'cancelled' },
+    ];
+
+    for (const input of invalid) {
+      assert.throws(
+        () => repository.insert(operationInput({ type: 'run.start', ...input })),
+        (error: unknown) => error instanceof OperationValidationError
+          && error.code === 'OPERATION_VALIDATION_FAILED',
+      );
+    }
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM operations').get() as { count: number }).count, 0);
+
+    const operation = repository.insert(operationInput({ type: 'run.start' }));
+    assert.throws(
+      () => repository.update({
+        workspaceId: WORKSPACE_ID,
+        operationId: operation.id,
+        expectedStatus: 'queued',
+        expectedVersion: 1,
+        status: 'running',
+        startedAt: null,
+        completedAt: null,
+        result: null,
+        error: null,
+        updatedAt: LATER,
+      }),
+      (error: unknown) => error instanceof OperationValidationError
+        && error.code === 'OPERATION_VALIDATION_FAILED',
+    );
+    assert.equal(repository.findById(WORKSPACE_ID, operation.id)?.version, 1);
+  });
+
+  test('mapper rejects schema-valid rows with invalid state and timestamp combinations', () => {
+    const db = migratedDb();
+    const repository = new OperationRepository(db);
+    const invalid: Array<{
+      status: string;
+      startedAt: string | null;
+      completedAt: string | null;
+    }> = [
+      { status: 'queued', startedAt: NOW, completedAt: null },
+      { status: 'queued', startedAt: null, completedAt: LATER },
+      { status: 'running', startedAt: null, completedAt: null },
+      { status: 'running', startedAt: NOW, completedAt: LATER },
+      { status: 'waiting_approval', startedAt: null, completedAt: null },
+      { status: 'waiting_approval', startedAt: NOW, completedAt: LATER },
+      { status: 'paused', startedAt: null, completedAt: null },
+      { status: 'paused', startedAt: NOW, completedAt: LATER },
+      { status: 'completed', startedAt: null, completedAt: LATER },
+      { status: 'completed', startedAt: NOW, completedAt: null },
+      { status: 'failed', startedAt: null, completedAt: null },
+      { status: 'cancelled', startedAt: null, completedAt: null },
+    ];
+
+    for (const row of invalid) {
+      const id = createEntityId('operation');
+      insertRawOperationRow(db, {
+        id,
+        type: 'run.start',
+        status: row.status,
+        correlationId: id,
+        startedAt: row.startedAt,
+        completedAt: row.completedAt,
+      });
+      assert.throws(
+        () => repository.findById(WORKSPACE_ID, id),
+        (error: unknown) => error instanceof OperationValidationError
+          && error.code === 'OPERATION_VALIDATION_FAILED',
+      );
+    }
   });
 
   test('malformed persisted JSON fails closed with OPERATION_VALIDATION_FAILED', () => {
@@ -319,7 +632,6 @@ describe('OperationRepository', () => {
     const committed = operationInput();
     const rolledBack = operationInput({
       type: 'run.start',
-      correlationId: createEntityId('operation'),
     });
 
     inTransaction(db, () => repository.insert(committed));
@@ -382,7 +694,6 @@ describe('OperationRepository — file-backed concurrency', () => {
     const seedRepository = new OperationRepository(setup);
     const operation = seedRepository.insert(operationInput({
       type: 'run.start',
-      correlationId: createEntityId('operation'),
     }));
     setup.close();
 

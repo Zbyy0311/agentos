@@ -258,21 +258,23 @@ describe('OperationService — transition graph', () => {
       assertCode('INVALID_OPERATION_TRANSITION'),
     );
 
-    db.prepare('UPDATE operations SET status = ?, version = version + 1 WHERE id = ?').run('waiting_approval', operation.id);
+    db.prepare('UPDATE operations SET status = ?, started_at = ?, version = version + 1 WHERE id = ?')
+      .run('waiting_approval', LATER, operation.id);
     assert.throws(
       () => service.transition({ workspaceId: WORKSPACE_ID, operationId: operation.id, expectedVersion: 2, to: 'running' }),
       (error: unknown) => error instanceof InvalidOperationTransitionError
         && error.code === 'INVALID_OPERATION_TRANSITION',
     );
 
-    db.prepare('UPDATE operations SET status = ?, version = version + 1 WHERE id = ?').run('paused', operation.id);
+    db.prepare('UPDATE operations SET status = ?, started_at = ?, version = version + 1 WHERE id = ?')
+      .run('paused', LATER, operation.id);
     assert.throws(
       () => service.transition({ workspaceId: WORKSPACE_ID, operationId: operation.id, expectedVersion: 3, to: 'cancelled' }),
       assertCode('INVALID_OPERATION_TRANSITION'),
     );
 
-    db.prepare('UPDATE operations SET status = ?, completed_at = ?, version = version + 1 WHERE id = ?')
-      .run('completed', LATER, operation.id);
+    db.prepare('UPDATE operations SET status = ?, started_at = ?, completed_at = ?, version = version + 1 WHERE id = ?')
+      .run('completed', LATER, LATER, operation.id);
     assert.throws(
       () => service.transition({ workspaceId: WORKSPACE_ID, operationId: operation.id, expectedVersion: 4, to: 'failed', error: sampleProblem() }),
       assertCode('INVALID_OPERATION_TRANSITION'),

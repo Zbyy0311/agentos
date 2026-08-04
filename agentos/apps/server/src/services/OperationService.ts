@@ -15,6 +15,8 @@ import {
   OperationNotFoundError,
   OperationRepository,
   OperationValidationError,
+  isValidApiOperationResult,
+  isValidApiProblem,
   type InsertOperationInput,
   type OperationType,
 } from '../store/OperationRepository.js';
@@ -150,10 +152,10 @@ export class OperationService {
 
     const result = input.result === null ? undefined : input.result;
     const error = input.error === null ? undefined : input.error;
-    if (result !== undefined && !this.isOperationResult(result)) {
+    if (result !== undefined && !isValidApiOperationResult(result)) {
       throw new OperationValidationError('result is malformed');
     }
-    if (error !== undefined && !this.isApiProblem(error)) {
+    if (error !== undefined && !isValidApiProblem(error)) {
       throw new OperationValidationError('error is malformed');
     }
     this.assertResultErrorContract(input.to, result, error);
@@ -223,30 +225,6 @@ export class OperationService {
     }
   }
 
-  private isOperationResult(value: unknown): value is ApiOperationResult {
-    return isPlainRecord(value)
-      && Object.keys(value).every(key => ['resourceType', 'resourceId', 'data'].includes(key))
-      && (value.resourceType === undefined || typeof value.resourceType === 'string')
-      && (value.resourceId === undefined || typeof value.resourceId === 'string');
-  }
-
-  private isApiProblem(value: unknown): value is ApiProblem {
-    return isPlainRecord(value)
-      && typeof value.type === 'string'
-      && typeof value.title === 'string'
-      && Number.isSafeInteger(value.status)
-      && typeof value.code === 'string'
-      && typeof value.detail === 'string'
-      && typeof value.instance === 'string'
-      && typeof value.requestId === 'string'
-      && typeof value.retryable === 'boolean';
-  }
-}
-
-function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 export {

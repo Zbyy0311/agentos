@@ -11,6 +11,37 @@ import {
 
 const kinds = Object.keys(ENTITY_ID_PREFIXES) as EntityIdKind[];
 
+const EXPECTED_PREFIXES: Record<EntityIdKind, string> = {
+  workspace: 'ws',
+  agent: 'agent',
+  provider: 'provider',
+  providerSession: 'psess',
+  workflow: 'workflow',
+  workflowStage: 'wstage',
+  task: 'task',
+  run: 'run',
+  stage: 'stage',
+  snapshot: 'snapshot',
+  event: 'evt',
+  process: 'proc',
+  worktree: 'wt',
+  memory: 'mem',
+  memoryCandidate: 'mcand',
+  memoryContext: 'mctx',
+  policy: 'policy',
+  policyRule: 'prule',
+  policyDecision: 'pdec',
+  approval: 'approval',
+  grant: 'grant',
+  conversation: 'conv',
+  message: 'msg',
+  turn: 'turn',
+  artifact: 'artifact',
+  extension: 'ext',
+  idempotency: 'idem',
+  operation: 'op',
+};
+
 const MAX_TS = 2 ** 48 - 1; // 281474976710655
 
 describe('Identity — canonical entity IDs', () => {
@@ -272,13 +303,17 @@ describe('Identity — M2.6 idempotency kind', () => {
     assert.ok(!isValidEntityId(taskId, 'idempotency'));
   });
 
-  it('all 27 prior kinds remain valid alongside idempotency', () => {
-    const priorKinds = kinds.filter((kind) => kind !== 'idempotency');
+  it('all 27 pre-operation kinds remain unchanged', () => {
+    const priorKinds = kinds.filter((kind) => kind !== 'operation');
     assert.equal(priorKinds.length, 27);
+    assert.ok(priorKinds.includes('idempotency'));
+    assert.deepEqual(ENTITY_ID_PREFIXES, EXPECTED_PREFIXES);
+    const operationId = createEntityId('operation');
     for (const kind of priorKinds) {
       const id = createEntityId(kind);
       assert.ok(isValidEntityId(id, kind));
-      assert.ok(!isValidEntityId(id, 'idempotency'));
+      assert.ok(!isValidEntityId(id, 'operation'));
+      assert.ok(!isValidEntityId(operationId, kind));
     }
   });
 });

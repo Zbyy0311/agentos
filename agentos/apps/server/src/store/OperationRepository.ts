@@ -119,12 +119,16 @@ const OPERATION_SELECT = `
   FROM operations
 `;
 
-const TERMINAL_STATUSES: readonly M3OperationStatus[] = ['completed', 'failed', 'cancelled'];
+type JsonValue = null | string | boolean | number | JsonValue[] | { readonly [key: string]: JsonValue };
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
+  try {
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+  } catch {
+    return false;
+  }
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -137,6 +141,71 @@ function isOperationType(value: unknown): value is OperationType {
 
 function isOperationStatus(value: unknown): value is M3OperationStatus {
   return typeof value === 'string' && (M3_OPERATION_STATUSES as readonly string[]).includes(value);
+}
+
+function isJsonValue(value: unknown, ancestors = new WeakSet<object>()): value is JsonValue {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value !== 'object') return false;
+  if (ancestors.has(value)) return false;
+
+  ancestors.add(value);
+  try {
+    if (Array.isArray(value)) {
+      if (Object.getPrototypeOf(value) !== Array.prototype) return false;
+      if (Object.getOwnPropertySymbols(value).length > 0) return false;
+      for (const name of Object.getOwnPropertyNames(value)) {
+        if (name === 'length') continue;
+        if (!/^(0|[1-9]\d*)$/.test(name)) return false;
+        const index = Number(name);
+        if (index >= value.length) return false;
+        const descriptor = Object.getOwnPropertyDescriptor(value, name);
+        if (!descriptor || !descriptor.enumerable || !('value' in descriptor)) return false;
+      }
+      for (let index = 0; index < value.length; index += 1) {
+        if (!Object.prototype.hasOwnProperty.call(value, index)) return false;
+        const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+        if (!descriptor || !('value' in descriptor) || !isJsonValue(descriptor.value, ancestors)) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    const prototype = Object.getPrototypeOf(value);
+    if (prototype !== Object.prototype && prototype !== null) return false;
+    if (Object.getOwnPropertySymbols(value).length > 0) return false;
+    for (const name of Object.getOwnPropertyNames(value)) {
+      if (name === 'toJSON') return false;
+      const descriptor = Object.getOwnPropertyDescriptor(value, name);
+      if (!descriptor || !descriptor.enumerable || !('value' in descriptor)
+        || !isJsonValue(descriptor.value, ancestors)) {
+        return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  } finally {
+    ancestors.delete(value);
+  }
+}
+
+function hasOnlyOwnKeys(value: Record<string, unknown>, allowed: readonly string[]): boolean {
+  return Object.getOwnPropertyNames(value).every(key => allowed.includes(key))
+    && Object.getOwnPropertySymbols(value).length === 0;
+}
+
+function assertOperationCorrelationBinding(
+  type: OperationType,
+  id: string,
+  runId: string,
+  correlationId: string,
+): void {
+  const expectedCorrelationId = type === 'run.create' ? runId : id;
+  if (correlationId !== expectedCorrelationId) {
+    throw new OperationValidationError('correlationId does not match the operation identity contract');
+  }
 }
 
 function assertPositiveVersion(value: unknown): asserts value is number {
@@ -155,23 +224,47 @@ function assertOptionalTimestamp(value: unknown, field: string): asserts value i
   if (value !== null && value !== undefined) assertCanonicalTimestamp(value, field);
 }
 
+function assertOperationStateTimestamps(
+  status: M3OperationStatus,
+  startedAt: string | null | undefined,
+  completedAt: string | null | undefined,
+): void {
+  const hasStartedAt = startedAt !== null && startedAt !== undefined;
+  const hasCompletedAt = completedAt !== null && completedAt !== undefined;
+  if (status === 'queued' && (hasStartedAt || hasCompletedAt)) {
+    throw new OperationValidationError('queued operations cannot have lifecycle timestamps');
+  }
+  if (status === 'running' || status === 'waiting_approval' || status === 'paused') {
+    if (!hasStartedAt || hasCompletedAt) {
+      throw new OperationValidationError(`${status} operations require startedAt and no completedAt`);
+    }
+  }
+  if (status === 'completed' && (!hasStartedAt || !hasCompletedAt)) {
+    throw new OperationValidationError('completed operations require startedAt and completedAt');
+  }
+  if ((status === 'failed' || status === 'cancelled') && !hasCompletedAt) {
+    throw new OperationValidationError(`${status} operations require completedAt`);
+  }
+}
+
 export function isValidApiOperationResult(value: unknown): value is ApiOperationResult {
-  if (!isPlainRecord(value)) return false;
-  const keys = Object.keys(value);
-  if (keys.some(key => !['resourceType', 'resourceId', 'data'].includes(key))) return false;
+  if (!isPlainRecord(value) || !isJsonValue(value)
+    || !hasOnlyOwnKeys(value, ['resourceType', 'resourceId', 'data'])) return false;
   return (value.resourceType === undefined || typeof value.resourceType === 'string')
-    && (value.resourceId === undefined || typeof value.resourceId === 'string');
+    && (value.resourceId === undefined || typeof value.resourceId === 'string')
+    && (value.data === undefined || isJsonValue(value.data));
 }
 
 function isValidApiProblemFieldError(value: unknown): boolean {
-  if (!isPlainRecord(value)) return false;
+  if (!isPlainRecord(value) || !isJsonValue(value)
+    || !hasOnlyOwnKeys(value, ['field', 'code', 'message'])) return false;
   return (value.field === undefined || typeof value.field === 'string')
     && typeof value.code === 'string'
     && typeof value.message === 'string';
 }
 
 function isValidApiProblemContext(value: unknown): boolean {
-  if (!isPlainRecord(value)) return false;
+  if (!isPlainRecord(value) || !isJsonValue(value)) return false;
   const allowed = [
     'workspaceId',
     'taskId',
@@ -183,12 +276,16 @@ function isValidApiProblemContext(value: unknown): boolean {
     'worktreeId',
     'approvalRequestId',
   ];
-  return Object.keys(value).every(key => allowed.includes(key))
+  return hasOnlyOwnKeys(value, allowed)
     && Object.values(value).every(item => typeof item === 'string');
 }
 
 export function isValidApiProblem(value: unknown): value is ApiProblem {
-  if (!isPlainRecord(value)) return false;
+  if (!isPlainRecord(value) || !isJsonValue(value)
+    || !hasOnlyOwnKeys(value, [
+      'type', 'title', 'status', 'code', 'detail', 'instance', 'requestId',
+      'retryable', 'retryAfterMs', 'suggestedAction', 'errors', 'context',
+    ])) return false;
   return typeof value.type === 'string'
     && typeof value.title === 'string'
     && Number.isSafeInteger(value.status)
@@ -197,7 +294,10 @@ export function isValidApiProblem(value: unknown): value is ApiProblem {
     && typeof value.instance === 'string'
     && typeof value.requestId === 'string'
     && typeof value.retryable === 'boolean'
-    && (value.retryAfterMs === undefined || Number.isSafeInteger(value.retryAfterMs))
+    && (value.retryAfterMs === undefined
+      || (typeof value.retryAfterMs === 'number'
+        && Number.isSafeInteger(value.retryAfterMs)
+        && value.retryAfterMs >= 0))
     && (value.suggestedAction === undefined || typeof value.suggestedAction === 'string')
     && (value.errors === undefined
       || (Array.isArray(value.errors) && value.errors.every(isValidApiProblemFieldError)))
@@ -206,8 +306,13 @@ export function isValidApiProblem(value: unknown): value is ApiProblem {
 
 function serializeJson(value: ApiOperationResult | ApiProblem | null | undefined, field: string): string | null {
   if (value === null || value === undefined) return null;
+  if (!isJsonValue(value)) throw new OperationValidationError(`${field} must be a JSON Value`);
   try {
-    return JSON.stringify(value);
+    const serialized = JSON.stringify(value);
+    if (typeof serialized !== 'string') {
+      throw new OperationValidationError(`${field} must serialize to a JSON string`);
+    }
+    return serialized;
   } catch {
     throw new OperationValidationError(`${field} must be JSON serializable`);
   }
@@ -276,6 +381,7 @@ function assertInsertInput(input: InsertOperationInput): void {
   }
   if (input.aggregateId !== input.runId) throw new OperationValidationError('aggregateId must equal runId');
   if (!isNonEmptyString(input.correlationId)) throw new OperationValidationError('correlationId is required');
+  assertOperationCorrelationBinding(input.type, input.id, input.runId, input.correlationId);
   assertCanonicalTimestamp(input.createdAt, 'createdAt');
   assertCanonicalTimestamp(input.updatedAt, 'updatedAt');
   assertOptionalTimestamp(input.startedAt, 'startedAt');
@@ -288,15 +394,7 @@ function assertInsertInput(input: InsertOperationInput): void {
     throw new OperationValidationError('error is malformed');
   }
   assertPayloadInvariants(input.status, input.result, input.error);
-  if (input.status === 'queued' && (input.startedAt !== undefined || input.completedAt !== undefined)) {
-    throw new OperationValidationError('queued operations cannot have terminal timestamps');
-  }
-  if (input.status === 'running' && input.completedAt !== undefined) {
-    throw new OperationValidationError('running operations cannot have completedAt');
-  }
-  if (TERMINAL_STATUSES.includes(input.status) && input.completedAt === undefined) {
-    throw new OperationValidationError('terminal operations require completedAt');
-  }
+  assertOperationStateTimestamps(input.status, input.startedAt, input.completedAt);
 }
 
 function assertUpdateInput(input: UpdateOperationInput): void {
@@ -321,15 +419,7 @@ function assertUpdateInput(input: UpdateOperationInput): void {
     input.result === null ? undefined : input.result,
     input.error === null ? undefined : input.error,
   );
-  if (input.status === 'queued' && (input.startedAt !== null || input.completedAt !== null)) {
-    throw new OperationValidationError('queued operations cannot have terminal timestamps');
-  }
-  if (input.status === 'running' && input.completedAt !== null) {
-    throw new OperationValidationError('running operations cannot have completedAt');
-  }
-  if (TERMINAL_STATUSES.includes(input.status) && input.completedAt === null) {
-    throw new OperationValidationError('terminal operations require completedAt');
-  }
+  assertOperationStateTimestamps(input.status, input.startedAt, input.completedAt);
 }
 
 function mapRow(raw: unknown): ApiOperation {
@@ -351,6 +441,7 @@ function mapRow(raw: unknown): ApiOperation {
   if (row.aggregate_type !== 'run' || row.aggregate_id !== row.run_id) {
     throw new OperationValidationError('row aggregate binding is invalid');
   }
+  assertOperationCorrelationBinding(row.type, row.id, row.run_id, row.correlation_id);
   assertCanonicalTimestamp(row.created_at, 'created_at');
   assertCanonicalTimestamp(row.updated_at, 'updated_at');
   assertOptionalTimestamp(row.started_at, 'started_at');
@@ -368,15 +459,7 @@ function mapRow(raw: unknown): ApiOperation {
     throw new OperationValidationError('error_json is malformed');
   }
   assertPayloadInvariants(row.status, result, error);
-  if (row.status === 'queued' && (row.started_at !== null || row.completed_at !== null)) {
-    throw new OperationValidationError('queued row has terminal timestamps');
-  }
-  if (row.status === 'running' && row.completed_at !== null) {
-    throw new OperationValidationError('running row has completedAt');
-  }
-  if (TERMINAL_STATUSES.includes(row.status) && row.completed_at === null) {
-    throw new OperationValidationError('terminal row has no completedAt');
-  }
+  assertOperationStateTimestamps(row.status, row.started_at, row.completed_at);
 
   return {
     id: row.id,
