@@ -133,6 +133,11 @@ export class OperationService {
   }
 
   transitionWithinTransaction(input: TransitionOperationInput): ApiOperation {
+    return this.transitionWithinTransactionAt(input, this.now());
+  }
+
+  transitionWithinTransactionAt(input: TransitionOperationInput, timestamp: string): ApiOperation {
+    assertTimestamp(timestamp);
     if (!isNonEmptyString(input.workspaceId) || !isNonEmptyString(input.operationId)) {
       throw new OperationValidationError('workspaceId and operationId are required');
     }
@@ -160,7 +165,6 @@ export class OperationService {
     }
     this.assertResultErrorContract(input.to, result, error);
 
-    const timestamp = assertTimestamp(this.now());
     const startedAt = current.startedAt ?? (input.to === 'running' ? timestamp : null);
     const completedAt = TERMINAL_STATUSES.includes(input.to)
       ? current.completedAt ?? timestamp
