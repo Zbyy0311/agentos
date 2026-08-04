@@ -15,6 +15,7 @@ export interface M3TransitionEventContract {
 export interface M3MultiEventOrderingContract {
   readonly name:
     | 'startup-completion'
+    | 'startup-failure'
     | 'approval-failure'
     | 'approval-cancellation'
     | 'run-cancellation'
@@ -80,10 +81,20 @@ export const M3_STAGE_TRANSITION_EVENT_CONTRACTS = freezeTransitionContracts([
   { aggregate: 'stage', from: 'paused', to: 'cancelled', primaryEvent: 'stage.cancelled', terminal: true },
 ]);
 
+// Branch A: stage.failed → run.failed. Branch B: run.failed only.
 export const M3_MULTI_EVENT_ORDERING_CONTRACTS: readonly M3MultiEventOrderingContract[] = Object.freeze([
   Object.freeze({
     name: 'startup-completion',
     events: freezeEventSequence(['stage.started', 'run.started']),
+    stageMultiplicity: 'single',
+    stageOrdering: 'none',
+    contiguousRunSequence: true,
+    independentOutboxPerEvent: true,
+    atomicCurrentStateEventOutbox: true,
+  }),
+  Object.freeze({
+    name: 'startup-failure',
+    events: freezeEventSequence(['stage.failed', 'run.failed']),
     stageMultiplicity: 'single',
     stageOrdering: 'none',
     contiguousRunSequence: true,
