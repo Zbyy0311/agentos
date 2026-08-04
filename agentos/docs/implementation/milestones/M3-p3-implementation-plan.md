@@ -27,8 +27,8 @@ Gate) split P3C-0 into P3C-0A (Start Operation Idempotency Replay) and
 P3C-0B (Retry Operation Idempotency Closure), made P3C-1 a two-portion
 stage with directed dependencies, extended OD-P3-04 into a five-question
 package that gates P3B-2, froze the P3B-1 claim boundary, and split failure
-class C into C1 (pre-start command failure) and C2 (post-start execution
-outcome).
+class C into C1a (before claim commit), C1b (after claim and before
+`run.started`), and C2 (post-start execution outcome).
 
 Owner Decision Freeze (2026-08-04): the five P3 Owner Decision candidates
 OD-P3-01 through OD-P3-05 are resolved as approved technical directions
@@ -202,11 +202,14 @@ rollback rolls back the Operation write, that an outer commit commits it,
 that the service never secretly opens an independent transaction, and that
 `integrity_check`/`foreign_key_check` stay clean. Cross-aggregate
 Operation/Run/Event/Outbox full-rollback evidence belongs only to P3B-1.
-Recording `failed` on an already-accepted Operation is a separate, explicit
-failure-record transaction (class C1); it is never folded into a rolled-back
-transaction, and evidence is worded as "no partial lifecycle state; an
-accepted Operation may persist as durable failure evidence" — never as "all
-Operation behavior rolls back to zero".
+Recording `failed` on an already-accepted Operation is permitted only after
+the caller classifies an irrecoverable C1a command failure and the Operation
+is still queued; it is a separate, explicit failure-record transaction and
+is never folded into a rolled-back transaction. C1b failure is owned by the
+P3B-2 atomic failure seam, not by an Operation-only update. Evidence is
+worded as "no partial lifecycle state; an accepted Operation may persist as
+durable failure evidence" — never as "all Operation behavior rolls back to
+zero".
 
 Concurrency race evidence: two conditional updates at the same expected
 version — exactly one succeeds.
@@ -391,9 +394,13 @@ Authorized scope (when authorized):
   `LifecycleTransactionService`: `completeRunStartupWithinTransaction` or
   an equivalent seam. The existing `completeRunStartup()` convenience
   wrapper may remain, but it must reuse this seam.
+- Minimal additive caller-owned failure seam on
+  `LifecycleTransactionService`: `failRunStartupWithinTransaction` or an
+  equivalent seam. It must reuse the same Stage/Run/Event/Outbox rules and
+  must not copy a second lifecycle implementation.
 - Minimal additive Operation transaction composition through the P3A
   `OperationService` and `OperationRepository` seams, only as required to
-  complete the Operation inside the same outer transaction.
+  complete or fail the Operation inside the same outer transaction.
 - Unit/integration tests with an injected transaction core.
 
 Forbidden scope: everything forbidden in P3B-1; additionally any change to
@@ -428,14 +435,23 @@ through `cancelRunWithinTransaction`; ordinary transitions emit Event +
 Outbox in the same transaction. The startup-completion targeted test
 `m3-p3b2-atomic-startup-completion.test.ts` proves:
 
-1. Operation completion failure rolls back Stage/Run/Event/Outbox.
-2. Stage/Run/Event/Outbox failure rolls back Operation completion.
-3. Competing cancel/complete has exactly one winner.
-4. A successful transaction leaves Operation `completed`, Run `running`,
-   and the first startup Stage `running`.
-5. No committed intermediate state exists with Run `running` and Operation
-   `running`.
-6. `run.start` and `run.retry` use the same completion composition.
+The successful path leaves Operation `completed`, Run `running`, and the
+first startup Stage `running`, with no committed Run=`running` /
+Operation=`running` intermediate state. The same targeted test proves:
+
+1. Transaction-attempt injection failure rolls back completely and does not
+   automatically mark the Operation `failed`.
+2. C1b with a Stage already `starting` leaves Stage=`failed`, Run=`failed`,
+   Operation=`failed`, with complete Events and Outbox rows in one
+   transaction.
+3. Failure before the Stage enters `starting` emits no fabricated Stage
+   Event and fails Run and Operation together.
+4. Operation failure write failure rolls back Stage/Run/Event/Outbox.
+5. Stage/Run/Event/Outbox failure rolls back Operation failure.
+6. Stale-version/cancel race has exactly one winner.
+7. `run.start` and `run.retry` use the same failure seam.
+8. No committed state exists with Run=`failed` + Operation=`running` or
+   Run=`starting` + Operation=`failed`.
 
 The exact twelve-step startup-completion sequence is:
 
@@ -469,33 +485,43 @@ M3-TD-29):
 Related regressions: LifecycleTransactionService suites, P2C-2A/P2C-2B
 suites, P3B-1 claim tests, migration suites.
 
-Failure injection: inject at each Stage/Run/Event/Outbox/Operation position
-in the twelve-step startup-completion sequence; assert zero partial commits,
-integrity checks clean, and no committed Run=`running` /
-Operation=`running` intermediate state. Operation completion failure must
-roll back Stage/Run/Event/Outbox; Stage/Run/Event/Outbox failure must roll
-back Operation completion. Pre-start failures follow class C1 (separate
-explicit failure-record transaction); post-start execution outcomes follow
-class C2 per M3-TD-29 — post-start outcomes never rewrite the completed
-Start or Retry Operation.
+Failure injection covers both caller-owned seams. A transaction-attempt
+failure (injection, SQLite error, version conflict, or concurrency loss)
+rolls back to the transaction's starting state and does not automatically
+mark an Operation `failed`; the caller classifies retry, competition loss,
+or business failure. C1a covers failure before claim commit: Class B rolls
+back Run/Operation/Event/Outbox and leaves Run/Operation queued with no
+`run.dequeued` partial write. C1b covers failure after claim and before
+`run.started`: with a starting Stage, Stage/Run/Operation failure and both
+failure Events/Outbox rows commit atomically; before a Stage enters
+`starting`, no `stage.failed` is fabricated and Run/Operation failure still
+commits together. Inject at every Stage/Run/Event/Outbox/Operation position;
+assert zero partial commits, integrity checks clean, and no committed
+Run=`failed` + Operation=`running` or Run=`starting` + Operation=`failed`.
+Post-start execution outcomes follow class C2 per M3-TD-29 — post-start
+outcomes never rewrite the completed Start or Retry Operation.
 
 Concurrency race evidence: cancel-during-dispatch; stale-version dispatch
-loss. Losers fail cleanly with no state corruption.
+loss; startup-failure-vs-cancel. Losers fail cleanly with no state
+corruption, and transaction-attempt rollback is not recorded as business
+failure.
 
 Stop conditions: executor needs any M4 surface; engine bypasses the
 transaction core; claim logic modified; engine writes `recovery_required`;
-the completion seam duplicates Stage/Run/Event/Outbox logic; startup
-completion is split across transactions; or any deviation from the
-M3-TD-29 terminal mapping for a Start or Retry Operation.
+the success or failure seam duplicates Stage/Run/Event/Outbox logic;
+startup success/failure is split across transactions; transaction-attempt
+rollback automatically marks an Operation failed; or any deviation from
+the M3-TD-29 terminal mapping for a Start or Retry Operation.
 
 Rollback boundary: revert the executor package and minimal completion seam
 as one package; claim composition (P3B-1) stays; runs, events, Operations,
 and Outbox rows are preserved (no data reset).
 
 Independent review gate: determinism proof; skip propagation; no M4
-imports; P3B-1 boundary respected; caller-owned completion seam reuses the
-transaction core; twelve-step atomicity and rollback proofs pass; Start and
-Retry composition match M3-TD-29/M3-TD-30 exactly.
+imports; P3B-1 boundary respected; caller-owned success and failure seams
+reuse the transaction core; twelve-step success and C1a/C1b rollback proofs
+pass; Start and Retry composition match M3-TD-29/M3-TD-30 exactly; no
+committed invalid intermediate state.
 
 Commit boundary: one ordinary commit, only allowlisted files, e.g.
 `feat: add M3 deterministic workflow and stage execution`.
@@ -784,14 +810,32 @@ Failure injection (distinct transaction classes):
   Retry Operation insert, and Idempotency Success. Every injection leaves:
   no Child Run, no Snapshot, no Stage, no Creation Event, no Outbox, no
   Retry Operation, and no Idempotency Success; the Parent Run is unchanged.
-- Class B (engine claim): inherited from P3B-1 — any failure rolls back
-  Operation/Run/Event/Outbox together.
-- Class C1 (pre-start command failure): the Operation was durably accepted
-  via A, but the claim/start transaction fails before the Run enters
-  `starting` — first roll back the failed lifecycle transaction in full,
-  then mark the Operation `failed` with the serialized ApiProblem in a
-  separate, explicit failure-record transaction. C1 holds unchanged under
-  M3-TD-29.
+- Class B (claim transaction attempt): any injection, SQLite error, version
+  conflict, or competing loss before claim commit rolls back
+  Operation/Run/Event/Outbox together, leaves Run/Operation queued, and does
+  not automatically mark the Operation failed. The caller classifies the
+  stable error as retryable, competition loss, or business failure.
+- Class C1a (failure before claim commit): the Class B rollback is the full
+  closure; no `run.dequeued`, Runtime Event, or Outbox partial write remains.
+  Only when the caller separately classifies an irrecoverable command
+  failure may a still-queued Operation be marked `failed` in a separate
+  transaction.
+- Class C1b (failure after claim and before the atomic `run.started`
+  completion commits): after acceptance, with Operation=`running` and
+  Run=`starting`, use the caller-owned Atomic Pre-Start Failure Closure. If
+  the first Stage is `starting`, re-read and validate Operation/Run/Stage
+  expected versions and bindings, then atomically perform Stage
+  `starting -> failed`, `stage.failed`, Stage Outbox, Run
+  `starting -> failed`, `run.failed`, Run Outbox, Operation
+  `running -> failed`, serialized ApiProblem, `completedAt` from the same
+  transaction timestamp, and absent `result`; any failure rolls back all.
+  If failure occurs before the Stage enters `starting`, do not fabricate
+  `stage.failed`; fail Run and Operation together with `run.failed` and Run
+  Outbox, preserving valid not-yet-started Stage states. C1b never commits
+  `run.failed` before Operation failure, updates only one aggregate, or
+  treats a transaction-attempt rollback as business failure. Start and Retry
+  use the same failure seam, and ApiProblem `runId`/`operationId` bindings
+  must agree.
 - Class C2 (post-start execution outcome): after the Run has entered
   `starting` or `running` — Stage failure, Run failure, Run cancellation,
   or Run completion — per M3-TD-29 the Start Operation is `completed` when
@@ -815,6 +859,7 @@ Concurrency race evidence (race matrix, all required):
 | Retry vs Parent failure transition | A request observing expected `failed` + version can create one Child; a request observing non-`failed` or a stale version has zero side effects and returns the stable conflict |
 | Task active slot vs concurrent accept/cancel | Existing task invariants hold |
 | Terminal immutability | Any transition out of a terminal state fails |
+| Startup failure vs cancel | Exactly one caller-owned failure/cancel transaction wins; the loser leaves no partial Stage/Run/Operation/Event/Outbox state |
 | Partial commit | None observed under injection at any position |
 
 Stop conditions: any synchronous execution in the route; any parent-run
@@ -882,9 +927,14 @@ already-cancelled returns the current Operation, completed/failed returns
 Related regressions: v2 route suites, full server suite, shared contract
 tests.
 
-Failure injection: cancel route mid-transition injection; no partial
-commit; operation left in a consistent state; an already-accepted cancel
-Operation follows class C1 failure recording.
+Failure injection: inject at every cancel-transaction position; any failure
+rolls back the target Operation transition, bound Run/Stage transitions,
+Runtime Events, and Outbox rows together. After rollback the target
+Operation and bound Run retain their transaction-before state. The endpoint
+has no Class A, creates or accepts no Cancel Operation, and transaction
+failure never uses C1 to record a second Operation. An already-cancelled
+target returns the current resource per M3-TD-27; completed/failed targets
+return `OPERATION_NOT_CANCELLABLE`.
 
 Concurrency race evidence: cancel vs terminal transition on the same
 operation — exactly one wins.
@@ -896,8 +946,9 @@ from M3-TD-27 cancel semantics; any progress persistence or population
 Rollback boundary: revert the route module and mount line; data preserved.
 
 Independent review gate: Operation != Run in API shape; events query uses
-correlationId binding only; cancel semantics match M3-TD-27; progress
-omitted per M3-TD-28.
+correlationId binding only; cancel semantics match M3-TD-27; no second
+Cancel Operation exists. No second cancel Operation exists: cancel rollback
+preserves target Operation and Run state; progress is omitted per M3-TD-28.
 
 Commit boundary: one ordinary commit, only allowlisted files, e.g.
 `feat: add M3 operation routes and event query`.
@@ -922,16 +973,40 @@ Exact proposed file allowlist (proposal, not authorization):
 Dependencies: P3A, P3B-1, P3B-2, P3C-0A, P3C-0B, P3C-1, and P3D all
 accepted (P3B-1 and P3B-2 each with their own independent review).
 
-Required integrated evidence: queued-run lifecycle end to end (create ->
-202 start acceptance -> engine claim of the execution-authorized run ->
-deterministic stage walk -> terminal state -> Operation terminal state ->
-events query), the full race matrix under integrated conditions, idempotent
-replay of the original 202 Operation snapshot after later state changes,
-and the failure classes demonstrated end to end (acceptance failure leaves
-nothing; claim failure rolls back together; pre-start failure recording via
-C1 in a separate explicit transaction; post-start outcomes mapped exactly
-per M3-TD-29 via C2 — post-start outcomes never rewrite the completed
-Start Operation; no partial lifecycle state).
+Required integrated evidence freezes the following order for Start:
+
+Create Run
+-> HTTP 202 Start acceptance
+-> Engine execution-authorized claim
+-> Atomic startup completion:
+   Stage running
+   Run running
+   Start Operation completed
+-> Remaining deterministic Stage execution
+-> Run terminal outcome
+-> Verify completed Start Operation unchanged
+-> Operation Events query
+
+Retry has a separate integrated flow:
+
+Failed Parent
+-> HTTP 202 Retry acceptance
+-> Child graph + Retry Operation + Idempotency atomically created
+-> Engine claim via `run.retry` authorization
+-> Atomic startup completion:
+   Child Run running
+   Retry Operation completed
+-> Child Run later terminal outcome
+-> Verify completed Retry Operation unchanged
+-> Verify Parent unchanged
+-> Verify Operation Events exclude Child creation Events
+
+The full race matrix and idempotent replay of the original 202 snapshots
+are demonstrated after later state changes. Failure evidence separately
+covers success startup completion, C1a, C1b, A1, A2, Class B, and C2
+post-start non-rewrite; cancel endpoint evidence proves that no second
+Cancel Operation exists. The sequence never maps a Run terminal outcome to
+a later Operation terminal transition.
 
 Start Operation terminal mapping tests (single approved direction per
 M3-TD-29):
@@ -950,8 +1025,10 @@ stop instead of expanding scope.
 Rollback boundary: docs and tests revertible as one package; durable
 evidence preserved.
 
-Independent review gate: cross-stage consistency, evidence completeness,
-and boundary discipline reviewed before any P3 closeout claim.
+Independent review gate: cross-stage consistency, the exact Start and Retry
+ordering above, success/C1a/C1b/A1/A2/B/C2 evidence, cancel no-second-
+Operation evidence, replay stability, and boundary discipline reviewed
+before any P3 closeout claim.
 
 Commit boundary: ordinary commits, docs/tests only, e.g.
 `test: add M3 P3 integrated verification` and

@@ -51,7 +51,7 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-26 | Operation correlation identity | For every newly created non-create Operation, correlationId = operation.id. The Operation ID and correlationId are generated and persisted in the same creation transaction; correlationId is unique and immutable; idempotent replay returns the original Operation, so the correlationId never changes. The historical run.create rule (correlationId = run.id) is preserved without migrating old records. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
 | M3-TD-27 | Operation cancel semantics | POST /api/operations/:operationId/cancel cancels the target non-terminal Operation and its bound Task-domain Run atomically in one caller-owned transaction. Cancellable statuses are exactly queued, running, waiting_approval, and paused; terminal conflicts fail closed. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
 | M3-TD-28 | Operation progress in M3 | P3 does not persist or populate ApiOperation.progress. GET /api/operations/:operationId omits progress; no derived, estimated, or fake value is returned. Progress is a Post-M3 contract and data-source decision. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
-| M3-TD-29 | Start Operation completion package | The run.start Operation is a Start command tracker, not a Run lifetime projection. Its `running -> completed` transition must commit in the same caller-owned transaction as the first startup Stage `starting -> running`, `stage.started`, the Run `starting -> running`, `run.started`, and both Outbox rows; `completedAt` uses the transaction timestamp and no independent Operation Event is written. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
+| M3-TD-29 | Start Operation completion package | The run.start Operation is a Start command tracker, not a Run lifetime projection. Its `running -> completed` transition must commit in the same caller-owned transaction as the first startup Stage `starting -> running`, `stage.started`, the Run `starting -> running`, `run.started`, and both Outbox rows; `completedAt` uses the transaction timestamp and no independent Operation Event is written. Pre-start closure is split into C1a (claim commit not achieved: full Class B rollback, no automatic failure terminal) and C1b (after claim, before `run.started`: atomic Stage/Run/Operation failure closure). | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
 | M3-TD-30 | Retry child run activation package | Retry is accepted only for a Parent Run in `failed` at the expected version; it creates a Child Run and immediately authorizes that Child Run for Engine execution. `run.retry -> HTTP 202 + Operation-only immutable replay envelope`; creation Events keep `correlationId = childRun.id`, execution Events after `run.dequeued` use `operation.id`, and the Parent Run is never reset or modified. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
 
 M3-TD-26 through M3-TD-30 are APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. They resolve the five P3 Owner Decision candidates (formerly OD-P3-01 through OD-P3-05) recorded in the P3 preplanning documents.
@@ -243,7 +243,8 @@ boundary; the current governance status is recorded in section 5 below.
 
 - **Owner and record time:** M3 technical owner; 2026-08-04.
 - **Selected contract:** the `run.start` Operation is a Start command
-  tracker, not a Run lifetime projection. The same atomic startup-completion
+  tracker, not a Run lifetime projection. The same caller-owned atomic
+  startup-completion
   seam is used by a claimed `run.retry` Operation; M3-TD-29 freezes the
   Start mapping and M3-TD-30 applies the same composition to Retry. The
   Operation is `queued` after acceptance, `running` after Engine claim, and
@@ -267,12 +268,50 @@ boundary; the current governance status is recorded in section 5 below.
   12. Commit all writes together; any failure rolls back all twelve-step
       state, Event, Outbox, and Operation writes. Operation completion does
       not create an independent Runtime Event or `operation_events` row.
-  Pre-start outcomes remain separate: an execution error before the Run
-  enters `running` marks the Operation `failed` with the ApiProblem in the
-  C1 failure-record transaction, and cancellation before `running` marks it
-  `cancelled`. Post-start Stage/Run failure, cancellation, or completion
-  never rewrites a completed Operation. Idempotency replay always returns
-  the immutable queued Operation snapshot saved at HTTP 202 acceptance; it
+  A transaction-attempt failure (injection error, SQLite error, version
+  conflict, or concurrent loss) rolls back the entire transaction to its
+  starting state; it does not automatically mark the Operation `failed` and
+  is not a business terminal outcome. The caller classifies the stable
+  error as retryable, a competition loss, or an unrecoverable business
+  failure.
+  C1a — failure before claim commit: Class B rolls back completely; the Run
+  remains `queued`, the Operation remains `queued`, and no `run.dequeued`,
+  Runtime Event, or Outbox partial write remains. A version conflict or
+  competition loss never marks the Operation failed. Only when the caller
+  classifies an irrecoverable command failure may a separate transaction
+  mark the still-queued Operation `failed`.
+  C1b — failure after claim and before `run.started`: when the Operation is
+  `running`, the Run is `starting`, and the first startup Stage is
+  `starting`, the caller-owned failure closure is:
+  1. Re-read and validate the Operation: type `run.start` or `run.retry`,
+     status `running`, expected version, and valid bindings.
+  2. Re-read and validate the Run at `starting` and its expected version.
+  3. Re-read and validate the startup Stage at `starting` and its expected
+     version.
+  4. Transition the Stage `starting -> failed`.
+  5. Append `stage.failed`.
+  6. Insert the Stage Outbox row.
+  7. Transition the Run `starting -> failed`.
+  8. Append `run.failed`.
+  9. Insert the Run Outbox row.
+  10. Transition the Operation `running -> failed`.
+  11. Write the serialized ApiProblem, use the same transaction timestamp
+      for `completedAt`, and leave `result` absent.
+  12. Commit all writes together; any failure rolls back all Stage, Run,
+      Event, Outbox, and Operation writes. Operation failure creates no
+      independent Runtime Event or `operation_events` row.
+  If the failure occurs before the first Stage enters `starting`, the same
+  caller-owned transaction discipline transitions the Run
+  `starting -> failed`, appends `run.failed`, inserts the Run Outbox row,
+  and transitions the Operation `running -> failed` together; it does not
+  fabricate `stage.failed`, leaves not-yet-started Stages in their valid
+  lifecycle states, and emits no Stage Event without a legal transition
+  owner. C1b never commits `run.failed` before Operation failure, updates
+  only the Operation, or updates only the Run. Start and Retry use the same
+  failure closure, and ApiProblem `runId`/`operationId` bindings must agree.
+  C2 post-start Stage/Run failure, cancellation, or completion never
+  rewrites a completed Operation. Idempotency replay always returns the
+  immutable queued Operation snapshot saved at HTTP 202 acceptance; it
   never re-reads the current Operation or varies with current state. GET
   Operation returns current state while replay returns the original
   response. The "Start Operation tracks the Run to its terminal state"
@@ -283,17 +322,20 @@ boundary; the current governance status is recorded in section 5 below.
   execution length.
 - **Affected stages:** P3B-1 (claim boundary), P3B-2 (execution),
   P3C-0A (replay), P3C-1 (acceptance), P3E (integrated evidence).
-- **Evidence threshold:** the exact twelve-step caller-owned transaction
-  with Stage/Run/Operation expected-version guards, both Runtime Events and
-  both Outbox rows; atomic rollback at every failure position; Start and
-  Retry composition tests; pre-start failure/cancellation mapping;
-  post-start non-rewrite proofs; result shape; acceptance-time replay
-  stability; no committed `Run=running` + `Operation=running` intermediate
-  state.
+- **Evidence threshold:** the exact twelve-step success and C1b failure
+  caller-owned transactions with Stage/Run/Operation expected-version
+  guards, both Runtime Events and both Outbox rows; C1a full-rollback proof;
+  failure rollback at every position; no automatic failed marking on
+  transaction-attempt failure; Start and Retry composition tests;
+  pre-start failure/cancellation mapping; post-start non-rewrite proofs;
+  result shape; acceptance-time replay stability; no committed
+  `Run=running` + `Operation=running`, `Run=failed` + `Operation=running`,
+  or `Run=starting` + `Operation=failed` intermediate state.
 - **Stop/no-go:** any split commit between `run.started` and Operation
-  completion; any post-start rewrite of a completed Start or Retry
-  Operation; a mutable Run snapshot in the result; an independent
-  Operation Event; or replay that varies with current state.
+  completion or between `run.failed` and Operation failure; any post-start
+  rewrite of a completed Start or Retry Operation; automatic failed marking
+  from transaction rollback; a mutable Run snapshot in the result; an
+  independent Operation Event; or replay that varies with current state.
 - **Rollback boundary:** docs-only decision record; an implementation
   revert removes the mapping wiring; stored rows are preserved.
 - **Re-review trigger:** any proposal to track Run lifetime in the Start
@@ -337,8 +379,8 @@ boundary; the current governance status is recorded in section 5 below.
   authorize a claim. Operation lifecycle is `queued` after acceptance,
   `running` after claim, and `completed` only through the same twelve-step
   atomic startup-completion transaction as M3-TD-29 when the Child Run
-  enters `running`; pre-start error/cancellation uses the separate C1
-  failure-record transaction; later Child Run failure/cancel/completion
+  enters `running`; C1a/C1b uses the same failure closure as M3-TD-29 for
+  pre-start error/cancellation; later Child Run failure/cancel/completion
   never rewrites a completed Retry Operation. Result is
   `resourceType = "run"`, `resourceId = childRun.id`, with `data` omitted.
   P3C-0B registers `run.retry` at HTTP 202 and uses the Operation-only
