@@ -425,13 +425,69 @@ function state(fixture: Fixture): { run: unknown; stages: unknown[]; operation: 
 
 function parentRunRow(fixture: Fixture): unknown {
   return fixture.db.prepare(
-    'SELECT id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin, next_event_sequence, started_at, completed_at, created_by, created_at, updated_at, version, recovery_required FROM runs WHERE id = ?',
+    `SELECT ${RUN_PERSISTENCE_COLUMNS.join(', ')} FROM runs WHERE id = ?`,
   ).get(PARENT_RUN_ID);
 }
 
 function assertHealthy(fixture: Fixture): void {
   assert.equal((fixture.db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
   assert.deepEqual(fixture.db.prepare('PRAGMA foreign_key_check').all(), []);
+}
+
+const RUN_PERSISTENCE_COLUMNS = [
+  'id', 'workspace_id', 'task_id', 'parent_run_id', 'root_run_id', 'status', 'reason', 'origin',
+  'objective', 'failure_code', 'failure_message', 'cancellation_requested_at', 'next_event_sequence',
+  'started_at', 'completed_at', 'created_by', 'created_at', 'updated_at', 'version', 'recovery_required',
+] as const;
+
+const STAGE_PERSISTENCE_COLUMNS = [
+  'id', 'workspace_id', 'run_id', 'run_snapshot_id', 'workflow_stage_key', 'name', 'sequence', 'attempt',
+  'status', 'failure_code', 'failure_message', 'started_at', 'completed_at', 'created_at', 'updated_at', 'version',
+] as const;
+
+const OPERATION_PERSISTENCE_COLUMNS = [
+  'id', 'type', 'status', 'workspace_id', 'aggregate_type', 'aggregate_id', 'run_id', 'correlation_id',
+  'result_json', 'error_json', 'created_at', 'started_at', 'completed_at', 'updated_at', 'version',
+] as const;
+
+const RUNTIME_EVENT_PERSISTENCE_COLUMNS = [
+  'id', 'schema_version', 'type', 'workspace_id', 'task_id', 'run_id', 'stage_id', 'agent_id',
+  'provider_config_id', 'provider_session_id', 'process_id', 'worktree_id', 'artifact_id',
+  'approval_request_id', 'conversation_id', 'message_id', 'sequence', 'timestamp', 'source',
+  'correlation_id', 'causation_id', 'parent_event_id', 'severity', 'visibility', 'durability',
+  'payload_json', 'metadata_json', 'created_at',
+] as const;
+
+const OUTBOX_PERSISTENCE_COLUMNS = [
+  'id', 'event_id', 'topic', 'aggregate_type', 'aggregate_id', 'payload_json', 'status', 'attempts',
+  'available_at', 'published_at', 'last_error', 'lease_owner', 'lease_expires_at', 'version', 'created_at',
+] as const;
+
+interface FullPersistenceSnapshot {
+  readonly runRows: readonly unknown[];
+  readonly stageRows: readonly unknown[];
+  readonly operationRows: readonly unknown[];
+  readonly runtimeEventRows: readonly unknown[];
+  readonly outboxRows: readonly unknown[];
+}
+
+function fullPersistenceSnapshot(fixture: Fixture): FullPersistenceSnapshot {
+  const runRows = fixture.db.prepare(
+    `SELECT ${RUN_PERSISTENCE_COLUMNS.join(', ')} FROM runs WHERE id = ? ORDER BY id ASC`,
+  ).all(RUN_ID);
+  const stageRows = fixture.db.prepare(
+    `SELECT ${STAGE_PERSISTENCE_COLUMNS.join(', ')} FROM run_stages WHERE run_id = ? ORDER BY sequence ASC, id ASC`,
+  ).all(RUN_ID);
+  const operationRows = fixture.db.prepare(
+    `SELECT ${OPERATION_PERSISTENCE_COLUMNS.join(', ')} FROM operations WHERE run_id = ? ORDER BY created_at ASC, id ASC`,
+  ).all(RUN_ID);
+  const runtimeEventRows = fixture.db.prepare(
+    `SELECT ${RUNTIME_EVENT_PERSISTENCE_COLUMNS.join(', ')} FROM runtime_events WHERE run_id = ? ORDER BY sequence ASC, id ASC`,
+  ).all(RUN_ID);
+  const outboxRows = fixture.db.prepare(
+    `SELECT ${OUTBOX_PERSISTENCE_COLUMNS.join(', ')} FROM outbox_messages WHERE aggregate_id = ? ORDER BY created_at ASC, id ASC`,
+  ).all(RUN_ID);
+  return { runRows, stageRows, operationRows, runtimeEventRows, outboxRows };
 }
 
 interface StartupRaceWorkerData {
@@ -441,6 +497,9 @@ interface StartupRaceWorkerData {
   readonly runId: string;
   readonly side: 'success' | 'failure';
   readonly gate: SharedArrayBuffer;
+  readonly expectedRunVersion: number;
+  readonly expectedStageVersion: number;
+  readonly expectedOperationVersion: number;
 }
 
 interface StartupRaceWorkerMessage {
@@ -463,15 +522,19 @@ function runStartupRaceWorker(data: StartupRaceWorkerData): void {
   const commitControl: CommitControl = { failMessage: null };
   try {
     const composition = buildPersistenceComposition(db, commitControl);
-    const runRow = db.prepare('SELECT status FROM runs WHERE id = ?').get(data.runId) as { status: string } | undefined;
-    const stageRow = db.prepare('SELECT status FROM run_stages WHERE run_id = ? ORDER BY sequence ASC, id ASC LIMIT 1').get(data.runId) as { status: string } | undefined;
+    const runRow = db.prepare('SELECT status, version FROM runs WHERE id = ?').get(data.runId) as { status: string; version: number } | undefined;
+    const stageRow = db.prepare('SELECT status, version FROM run_stages WHERE run_id = ? ORDER BY sequence ASC, id ASC LIMIT 1').get(data.runId) as { status: string; version: number } | undefined;
     const authorizations = composition.operationService
       .listByRun(data.workspaceId, data.runId)
       .filter(candidate => candidate.type === 'run.start' || candidate.type === 'run.retry');
     const operation = authorizations.length === 1 ? authorizations[0] : undefined;
-    if (runRow?.status !== 'starting' || stageRow?.status !== 'starting' || operation?.status !== 'running') {
+    if (
+      runRow?.status !== 'starting' || runRow.version !== data.expectedRunVersion
+      || stageRow?.status !== 'starting' || stageRow.version !== data.expectedStageVersion
+      || operation?.status !== 'running' || operation.version !== data.expectedOperationVersion
+    ) {
       throw new Error(
-        `race precondition broken: run=${runRow?.status} stage=${stageRow?.status} operation=${operation?.status}`,
+        `race precondition broken: run=${runRow?.status}@v${runRow?.version} expected starting@v${data.expectedRunVersion}; stage=${stageRow?.status}@v${stageRow?.version} expected starting@v${data.expectedStageVersion}; operation=${operation?.status}@v${operation?.version} expected running@v${data.expectedOperationVersion}`,
       );
     }
     const stageExecutor = new StageExecutor(input => {
@@ -912,11 +975,38 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
       assert.equal((preRace.run as { status: string }).status, 'starting');
       assert.equal((preRace.stages[0] as { status: string }).status, 'starting');
       assert.equal(preRace.operation.status, 'running');
+      const expectedRunVersion = (preRace.run as { version: number }).version;
+      const expectedStageVersion = (preRace.stages[0] as { version: number }).version;
+      const expectedOperationVersion = preRace.operation.version;
+      const preRaceOutboxCount = preRace.outboxes.length;
       const gate = new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT);
-      const base = { mode: 'startup-race' as const, dbPath: databasePath, workspaceId: WORKSPACE_ID, runId: RUN_ID, gate };
+      const base = {
+        mode: 'startup-race' as const,
+        dbPath: databasePath,
+        workspaceId: WORKSPACE_ID,
+        runId: RUN_ID,
+        gate,
+        expectedRunVersion,
+        expectedStageVersion,
+        expectedOperationVersion,
+      };
+      const successWorkerData: StartupRaceWorkerData = { ...base, side: 'success' };
+      const failureWorkerData: StartupRaceWorkerData = { ...base, side: 'failure' };
+      assert.deepEqual(
+        {
+          run: successWorkerData.expectedRunVersion,
+          stage: successWorkerData.expectedStageVersion,
+          operation: successWorkerData.expectedOperationVersion,
+        },
+        {
+          run: failureWorkerData.expectedRunVersion,
+          stage: failureWorkerData.expectedStageVersion,
+          operation: failureWorkerData.expectedOperationVersion,
+        },
+      );
       const results = await Promise.all([
-        spawnStartupRaceWorker({ ...base, side: 'success' }),
-        spawnStartupRaceWorker({ ...base, side: 'failure' }),
+        spawnStartupRaceWorker(successWorkerData),
+        spawnStartupRaceWorker(failureWorkerData),
       ]);
       const winners = results.filter(result => result.ok);
       const losers = results.filter(result => result.ok === false);
@@ -925,10 +1015,17 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
       assert.equal(winners[0]!.outcome, 'progressed');
       const loser = losers[0]!;
       assert.equal(typeof loser.errorCode, 'string');
+      const allowedCompetitionLoserCodes: ReadonlySet<string> = new Set([
+        'RUN_ENGINE_AUTHORIZATION_NOT_RUNNING',
+      ]);
+      assert.ok(
+        allowedCompetitionLoserCodes.has(loser.errorCode ?? ''),
+        `loser errorCode must be exactly one of ${[...allowedCompetitionLoserCodes].join(', ')}, got ${loser.errorCode}: ${loser.errorMessage}`,
+      );
       assert.match(
-        loser.errorCode ?? '',
-        /^(RUN_ENGINE_|LIFECYCLE_|VERSION_CONFLICT)/,
-        `loser must fail with a stable version or state mismatch, got ${loser.errorCode}: ${loser.errorMessage}`,
+        loser.errorMessage ?? '',
+        /is (completed|failed), expected running/,
+        `loser errorMessage must describe the authorization state mismatch, got ${loser.errorMessage}`,
       );
       const winnerSide = results[0]!.ok ? 'success' : 'failure';
       console.log(`startup race evidence: winner=${winnerSide} loserErrorCode=${loser.errorCode ?? 'unknown'}`);
@@ -936,24 +1033,27 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
       const run = current.run as { status: string; version: number };
       const stage0 = current.stages[0] as { status: string };
       const operation = current.operation;
-      const lastTwoEventTypes = (current.events as Array<{ type: string }>).slice(-2).map(event => event.type);
+      const lastTwoEvents = (current.events as Array<{ type: string; sequence: number; correlation_id: string }>).slice(-2);
+      const terminalOutcomeEventsAligned = lastTwoEvents.length === 2
+        && lastTwoEvents[0]!.sequence + 1 === lastTwoEvents[1]!.sequence
+        && lastTwoEvents.every(event => event.correlation_id === fixture.operation.id);
       const isCompleteSuccess = run.status === 'running'
         && stage0.status === 'running'
         && operation.status === 'completed'
-        && lastTwoEventTypes.length === 2
-        && lastTwoEventTypes[0] === 'stage.started'
-        && lastTwoEventTypes[1] === 'run.started'
-        && current.outboxes.length === 5;
+        && terminalOutcomeEventsAligned
+        && lastTwoEvents[0]!.type === 'stage.started'
+        && lastTwoEvents[1]!.type === 'run.started'
+        && current.outboxes.length === preRaceOutboxCount + 2;
       const isCompleteFailure = run.status === 'failed'
         && stage0.status === 'failed'
         && operation.status === 'failed'
-        && lastTwoEventTypes.length === 2
-        && lastTwoEventTypes[0] === 'stage.failed'
-        && lastTwoEventTypes[1] === 'run.failed'
-        && current.outboxes.length === 5;
+        && terminalOutcomeEventsAligned
+        && lastTwoEvents[0]!.type === 'stage.failed'
+        && lastTwoEvents[1]!.type === 'run.failed'
+        && current.outboxes.length === preRaceOutboxCount + 2;
       assert.ok(
         isCompleteSuccess !== isCompleteFailure,
-        `final state must be exactly one complete outcome, got run=${run.status} stage=${stage0.status} operation=${operation.status} events=${JSON.stringify(lastTwoEventTypes)}`,
+        `final state must be exactly one complete outcome, got run=${run.status} stage=${stage0.status} operation=${operation.status} events=${JSON.stringify(lastTwoEvents)}`,
       );
       assert.equal(stage0.status === 'running' && run.status === 'failed', false);
       assert.equal(stage0.status === 'failed' && run.status === 'running', false);
@@ -972,14 +1072,16 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
       const fixture = createFixture();
       try {
         dispatchToStarting(fixture);
-        const before = state(fixture);
+        const beforeBusinessState = state(fixture);
+        const beforePersistence = fullPersistenceSnapshot(fixture);
         injectionCase.arm(fixture);
         assert.throws(
           () => fixture.engine.dispatch({ workspaceId: WORKSPACE_ID, runId: RUN_ID }),
           error => error instanceof Error && error.message === injectionCase.message,
         );
         const after = state(fixture);
-        assert.deepEqual(after, before);
+        assert.deepEqual(after, beforeBusinessState);
+        assert.deepEqual(fullPersistenceSnapshot(fixture), beforePersistence);
         assert.equal((after.run as { status: string }).status, 'starting');
         assert.equal(after.operation.status, 'running');
         assert.equal((after.stages[0] as { status: string }).status, 'starting');
@@ -1000,14 +1102,16 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
       });
       try {
         dispatchToStarting(fixture);
-        const before = state(fixture);
+        const beforeBusinessState = state(fixture);
+        const beforePersistence = fullPersistenceSnapshot(fixture);
         injectionCase.arm(fixture);
         assert.throws(
           () => fixture.engine.dispatch({ workspaceId: WORKSPACE_ID, runId: RUN_ID }),
           error => error instanceof Error && error.message === injectionCase.message,
         );
         const after = state(fixture);
-        assert.deepEqual(after, before);
+        assert.deepEqual(after, beforeBusinessState);
+        assert.deepEqual(fullPersistenceSnapshot(fixture), beforePersistence);
         assert.equal((after.run as { status: string }).status, 'starting');
         assert.equal(after.operation.status, 'running');
         assert.equal((after.stages[0] as { status: string }).status, 'starting');
@@ -1025,14 +1129,16 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
     test(`C1a claim rollback at ${injectionCase.name} never auto-records an Operation failure`, () => {
       const fixture = createFixture();
       try {
-        const before = state(fixture);
+        const beforeBusinessState = state(fixture);
+        const beforePersistence = fullPersistenceSnapshot(fixture);
         injectionCase.arm(fixture);
         assert.throws(
           () => fixture.engine.tick({ workspaceId: WORKSPACE_ID, runId: RUN_ID }),
           error => error instanceof Error && error.message === injectionCase.message,
         );
         const after = state(fixture);
-        assert.deepEqual(after, before);
+        assert.deepEqual(after, beforeBusinessState);
+        assert.deepEqual(fullPersistenceSnapshot(fixture), beforePersistence);
         assert.equal((after.run as { status: string }).status, 'queued');
         assert.equal(after.operation.status, 'queued');
         assert.equal(after.operation.error, undefined);
