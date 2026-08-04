@@ -182,7 +182,11 @@ boundary; the current governance status is recorded in section 5 below.
   validate the bound Run; conditionally transition the Operation to
   `cancelled` by expected status/version; cancel the Run and all
   non-terminal Stages through the P2 transaction core; write the Runtime
-  Events and Outbox rows; commit all or roll back all.
+  Events and Outbox rows; commit all or roll back all. For cancellation
+  before or during startup, the result is Operation `cancelled`, bound Run
+  `cancelled`, every affected non-terminal Stage `cancelled`, one
+  `stage.cancelled` per affected Stage, and `run.cancelled`; cancellation
+  does not produce Operation/Run/Stage `failed` or `stage.failed`.
   `cancelRunWithinTransaction` must not be bypassed and Stage cancellation
   logic must not be copied. Terminal behavior: a target already `cancelled`
   returns the current cancelled Operation with zero new side effects; a
@@ -200,8 +204,8 @@ boundary; the current governance status is recorded in section 5 below.
 - **Rationale:** cancel is a command against the Run aggregate, so the
   Operation and its bound Run must resolve in one transaction; anything
   weaker either strands the Run or falsifies the command record.
-- **Affected stages:** P3D (route), P3C-1 (race matrix), P3B-2 (cancel
-  during execution).
+- **Affected stages:** P3D (route, caller-owned composition, and all
+  Operation cancel races). P3C-1 does not own Operation Cancel.
 - **Evidence threshold:** atomic cancel transaction tests; the terminal
   behavior matrix (already-cancelled, completed, failed, incompatible Run
   state); cancel-vs-complete race proof; no partial Event/Outbox writes.
@@ -279,8 +283,16 @@ boundary; the current governance status is recorded in section 5 below.
   Runtime Event, or Outbox partial write remains. A version conflict or
   competition loss never marks the Operation failed. Only when the caller
   classifies an irrecoverable command failure may a separate transaction
-  mark the still-queued Operation `failed`.
-  C1b — failure after claim and before `run.started`: when the Operation is
+  mark the still-queued Operation `failed`; that record must persist the
+  serialized ApiProblem, leave `result` absent, set `completedAt` from the
+  same transaction timestamp, guard the expected status and version, leave
+  the Run unchanged, and create no Runtime Event or Outbox row.
+  C1b Stage-starting closure depends on the independently accepted P3B-2A
+  `startup-failure` contract. Until P3B-2A is accepted, P3B-2B must not
+  implement this Stage/Run Event combination. This is a specific supplement
+  to the historical M3-TD-25 ordering contract; M3-TD-01 through M3-TD-25
+  are not rewritten.
+  When the Operation is
   `running`, the Run is `starting`, and the first startup Stage is
   `starting`, the caller-owned failure closure is:
   1. Re-read and validate the Operation: type `run.start` or `run.retry`,
@@ -300,6 +312,14 @@ boundary; the current governance status is recorded in section 5 below.
   12. Commit all writes together; any failure rolls back all Stage, Run,
       Event, Outbox, and Operation writes. Operation failure creates no
       independent Runtime Event or `operation_events` row.
+  The Stage-starting branch uses the P3B-2A multi-event ordering name
+  `startup-failure` with exactly `stage.failed -> run.failed`,
+  `stageMultiplicity=single`, `stageOrdering=none`,
+  `contiguousRunSequence=true`, `independentOutboxPerEvent=true`, and
+  `atomicCurrentStateEventOutbox=true`. If no Stage has entered `starting`,
+  the existing single-event contract remains: Run `starting -> failed`,
+  Primary Event `run.failed`, Additional Event none; `stage.failed` is not
+  fabricated.
   If the failure occurs before the first Stage enters `starting`, the same
   caller-owned transaction discipline transitions the Run
   `starting -> failed`, appends `run.failed`, inserts the Run Outbox row,
@@ -320,14 +340,16 @@ boundary; the current governance status is recorded in section 5 below.
   command record; tracking the whole Run would duplicate the Run
   projection, break replay immutability, and couple command lifecycle to
   execution length.
-- **Affected stages:** P3B-1 (claim boundary), P3B-2 (execution),
-  P3C-0A (replay), P3C-1 (acceptance), P3E (integrated evidence).
+- **Affected stages:** P3B-1 (claim boundary), P3B-2A (contract alignment),
+  P3B-2B (execution), P3C-0A (replay), P3C-1 (acceptance), and P3E
+  (integrated evidence).
 - **Evidence threshold:** the exact twelve-step success and C1b failure
   caller-owned transactions with Stage/Run/Operation expected-version
   guards, both Runtime Events and both Outbox rows; C1a full-rollback proof;
   failure rollback at every position; no automatic failed marking on
   transaction-attempt failure; Start and Retry composition tests;
-  pre-start failure/cancellation mapping; post-start non-rewrite proofs;
+  pre-start startup-failure mapping; cancellation remains owned by M3-TD-27
+  in P3D; post-start non-rewrite proofs;
   result shape; acceptance-time replay stability; no committed
   `Run=running` + `Operation=running`, `Run=failed` + `Operation=running`,
   or `Run=starting` + `Operation=failed` intermediate state.
@@ -380,7 +402,8 @@ boundary; the current governance status is recorded in section 5 below.
   `running` after claim, and `completed` only through the same twelve-step
   atomic startup-completion transaction as M3-TD-29 when the Child Run
   enters `running`; C1a/C1b uses the same failure closure as M3-TD-29 for
-  pre-start error/cancellation; later Child Run failure/cancel/completion
+  unrecoverable pre-start startup error; user cancellation follows M3-TD-27
+  in P3D and is not C1a/C1b; later Child Run failure/cancel/completion
   never rewrites a completed Retry Operation. Result is
   `resourceType = "run"`, `resourceId = childRun.id`, with `data` omitted.
   P3C-0B registers `run.retry` at HTTP 202 and uses the Operation-only
@@ -474,6 +497,7 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 - M3 P3 preplanning: MERGED via PR #21.
 - M3 P3 owner decision freeze: technical direction correction under
   independent review; P3/P3A implementation remains NOT AUTHORIZED.
+- P3B-2A CONTRACT ALIGNMENT: PLANNED — NOT AUTHORIZED.
 - Unresolved P3 Owner Decision candidates: 0.
 - Approved P3 decisions: 5.
 - M3-TD sequence ends at M3-TD-30; no later decision exists or is authorized.
