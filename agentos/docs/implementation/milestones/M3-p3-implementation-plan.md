@@ -1,9 +1,9 @@
 # M3 P3 Implementation Plan — Run Engine, Workflow Executor and Operation
 
-Status: PREPLANNING ONLY — P3 IMPLEMENTATION NOT AUTHORIZED — P3A IMPLEMENTATION NOT AUTHORIZED — PREPLANNING PR NOT YET AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: PREPLANNING ONLY — P3 IMPLEMENTATION NOT AUTHORIZED — P3A IMPLEMENTATION NOT AUTHORIZED — PREPLANNING PR #21 MERGED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
-This plan decomposes M3 P3 into stages P3A, P3B-1, P3B-2, P3C-0A, P3C-0B,
-P3C-1, P3D, and P3E. It is a planning artifact only: no stage below is
+This plan decomposes M3 P3 into stages P3A, P3B-1, P3B-2A, P3B-2B,
+P3C-0A, P3C-0B, P3C-1, P3D, and P3E. It is a planning artifact only: no stage below is
 authorized, and no file allowlist below is an authorization to edit. Each
 stage becomes executable only when explicitly authorized in a future
 instruction, after the preceding stage's independent review gate is
@@ -12,9 +12,9 @@ accepted.
 Companion document: `docs/implementation/milestones/M3-p3-current-state-audit.md`
 (baseline `3728d670ce0f5c16d07819e65cddbc0bb4c6c5b2`).
 
-Remediation 1 (Start Authorization and Transaction Composition) added the
+Remediation 1 (Execution Authorization and Transaction Composition) added the
 frozen atomic claim transaction (section 2), the caller-owned transaction
-seam (section 3), the P3B-1/P3B-2 split, the failure transaction classes,
+seam (section 3), the P3B-1/P3B-2A/P3B-2B split, the failure transaction classes,
 and the nine required claim/eligibility tests.
 
 Remediation 2 (Operation Idempotency and Seam Ownership) corrected the seam
@@ -26,9 +26,18 @@ Remediation 3 (Retry Idempotency Ownership and Start Operation Completion
 Gate) split P3C-0 into P3C-0A (Start Operation Idempotency Replay) and
 P3C-0B (Retry Operation Idempotency Closure), made P3C-1 a two-portion
 stage with directed dependencies, extended OD-P3-04 into a five-question
-package that gates P3B-2, froze the P3B-1 claim boundary, and split failure
-class C into C1 (pre-start command failure) and C2 (post-start execution
-outcome).
+package that gates P3B-2B, froze the P3B-1 claim boundary, and split failure
+class C into C1a (before claim commit), C1b (after claim and before
+`run.started`), and C2 (post-start execution outcome).
+
+Owner Decision Freeze (2026-08-04): the five P3 Owner Decision candidates
+OD-P3-01 through OD-P3-05 are resolved as approved technical directions
+M3-TD-26 through M3-TD-30 in
+`docs/implementation/milestones/M3-owner-decisions.md`. All stage
+dependencies below reference the frozen M3-TD decisions; no Owner Decision
+candidate remains undecided. This approval is technical direction only —
+APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. P3 and
+P3A implementation remain NOT AUTHORIZED.
 
 ## 1. Preconditions and Frozen Contracts
 
@@ -42,16 +51,22 @@ Preconditions (verified at baseline):
   `run.retry` and `http_status BETWEEN 200 AND 299`; no Migration 014 is
   planned. Any discovery that the schema is insufficient must stop the
   stage and record `SCHEMA BLOCKER — OWNER DECISION REQUIRED`.
+- Current P2C transition/event alignment maps Run `starting -> failed` to a
+  single `run.failed` Event, and the current `M3MultiEventOrderingContract`
+  does not contain `startup-failure`. This is a P3B-2A Contract Alignment
+  Gate, not a Schema Blocker. P3B-2B must not infer or implement the missing
+  Stage/Run multi-event contract before P3B-2A is independently accepted.
 
 Frozen contracts (restated; P3 must not redefine them):
 
 - Queue Record = `runs(status='queued')`.
 - A queued Run is necessary but not sufficient for Engine execution; Engine
-  claim requires a queued, binding-valid `run.start` Operation (Start
-  authorization, Gap Matrix item 20).
+  claim requires a queued, binding-valid authorization Operation — type
+  `run.start`, or type `run.retry` per M3-TD-30 — with exactly one valid
+  non-terminal authorization Operation per Run (execution authorization, Gap
+  Matrix item 20).
 - `run.create` and `run.cancel` Operations never authorize an Engine claim;
-  `run.retry` claim authorization is gated by OD-P3-05 and is forbidden
-  until that decision is approved.
+  `run.retry` is an Engine claim authorization marker per M3-TD-30.
 - Operation tracks only Task-domain Run commands; types exactly
   `run.create`, `run.start`, `run.cancel`, `run.retry`; statuses exactly
   `queued`, `running`, `waiting_approval`, `paused`, `completed`, `failed`,
@@ -69,20 +84,20 @@ real CLI execution, Worktree runtime, Policy, Approval implementation,
 SSE/Replay, OpenAPI completion, Web cutover, Legacy retirement, production
 migration/restore/cutover, and anything M4+.
 
-Owner Decision candidates that gate specific stages (from the audit,
-section 6): OD-P3-01 (correlationId generation, gates P3B-1 claim emission
-and P3C-1), OD-P3-02 (cancel semantics, gates P3D), OD-P3-03 (progress
-usage, gates P3D), OD-P3-04 (start completion timing package, gates P3B-2
-terminal mapping and P3C-1), OD-P3-05 (retry activation package, gates
-P3C-0B and the P3C-1 retry portion). A stage that depends on an undecided
-candidate must not start its dependent portion.
+Resolved Owner Decisions that bind specific stages (frozen in
+`docs/implementation/milestones/M3-owner-decisions.md`; audit section 6):
+M3-TD-26 (correlationId identity, binds P3B-1 claim emission and P3C-1),
+M3-TD-27 (cancel semantics, binds P3D), M3-TD-28 (progress omitted, binds
+P3D), M3-TD-29 (Start Operation completion package, binds P3B-2A contract
+alignment, P3B-2B terminal mapping, and P3C-1), M3-TD-30 (retry activation package, binds P3C-0B and
+the P3C-1 retry portion). No Owner Decision candidate remains undecided.
 
 ## 2. Frozen Atomic Claim Transaction (Cross-Stage Constraint)
 
 Engine claim MUST be completed inside one caller-owned outer transaction:
 
 1. Re-read the queued run.
-2. Re-read the queued `run.start` Operation.
+2. Re-read the queued authorization Operation (`run.start`, or `run.retry` per M3-TD-30).
 3. Validate workspace/run/aggregate/correlation binding.
 4. Conditionally transition Operation `queued -> running`.
 5. Transition Run `queued -> starting` through `LifecycleTransactionService`.
@@ -100,7 +115,8 @@ Binding rules:
 - Claim must not be simulated by two independent transactions.
 - Nested transactions must not be used.
 - Claim never transitions the Operation to `completed`, `failed`, or
-  `cancelled`; terminal mapping is owned by OD-P3-04-gated stages.
+  `cancelled`; terminal mapping is owned by the M3-TD-29-bound stages
+  (P3B-2B, after the P3B-2A contract gate).
 
 ## 3. Caller-Owned Transaction Seam (Cross-Stage Constraint)
 
@@ -169,14 +185,14 @@ Exact proposed file allowlist (proposal, not authorization):
 - `apps/server/src/store/OperationRepository.test.ts` (new)
 - `apps/server/src/services/OperationService.test.ts` (new)
 
-Dependencies: P2 core (merged); no Owner Decision required for the
-persistence layer itself.
+Dependencies: P2 core (merged); the persistence layer applies the frozen
+M3-TD-26 correlationId rule and has no undecided Owner Decision gate.
 
 RED tests: repository/service absent — importing them fails; no writer for
 `operations` exists.
 
 GREEN tests: insert/read round-trip; identity-immutability trigger rejects
-identity-field update; `correlation_id` uniqueness enforced; conditional
+identity-field update; `correlation_id` uniqueness enforced; `correlationId = operation.id` for newly created non-create Operations (M3-TD-26); conditional
 update loses cleanly on stale version; terminal states reject further
 transitions; `error_json` round-trips a serialized ApiProblem; invalid
 status/type rejected by CHECK; repository writes join a caller-owned
@@ -191,11 +207,14 @@ rollback rolls back the Operation write, that an outer commit commits it,
 that the service never secretly opens an independent transaction, and that
 `integrity_check`/`foreign_key_check` stay clean. Cross-aggregate
 Operation/Run/Event/Outbox full-rollback evidence belongs only to P3B-1.
-Recording `failed` on an already-accepted Operation is a separate, explicit
-failure-record transaction (class C1); it is never folded into a rolled-back
-transaction, and evidence is worded as "no partial lifecycle state; an
-accepted Operation may persist as durable failure evidence" — never as "all
-Operation behavior rolls back to zero".
+Recording `failed` on an already-accepted Operation is permitted only after
+the caller classifies an irrecoverable C1a command failure and the Operation
+is still queued; it is a separate, explicit failure-record transaction and
+is never folded into a rolled-back transaction. C1b failure is owned by the
+P3B-2B atomic failure seam, not by an Operation-only update. Evidence is
+worded as "no partial lifecycle state; an accepted Operation may persist as
+durable failure evidence" — never as "all Operation behavior rolls back to
+zero".
 
 Concurrency race evidence: two conditional updates at the same expected
 version — exactly one succeeds.
@@ -232,14 +251,16 @@ P3A determinations (from the audit, binding for P3A):
   `running`; terminal command outcome -> one of `completed`/`failed`/
   `cancelled`). `waiting_approval`/`paused` remain unused in P3A and are
   reserved.
-- Cancel semantics (OD-P3-02), progress usage (OD-P3-03), correlationId
-  generation for non-create operations (OD-P3-01), start completion timing
-  (OD-P3-04), and retry activation semantics (OD-P3-05) are explicitly OUT
-  of P3A.
+- correlationId generation follows M3-TD-26 and is applied by P3A:
+  `correlationId = operation.id` for every newly created non-create
+  Operation, generated and persisted in the creation transaction. Cancel
+  semantics (M3-TD-27), progress usage (M3-TD-28), start completion timing
+  (M3-TD-29), and retry activation semantics (M3-TD-30) are consumed by
+  later stages and remain OUT of P3A.
 
-## 5. Stage P3B-1 — Start-Authorized Claim and Transaction Composition
+## 5. Stage P3B-1 — Execution-Authorized Claim and Transaction Composition
 
-Goal: the Start-authorization eligibility selector, the atomic
+Goal: the execution-authorization eligibility selector, the atomic
 Operation/Run claim, and the lifecycle-side caller-owned seam. The
 transaction seam, claim, Workflow Executor, and Stage Executor must not be
 delivered as one giant commit; P3B-1 is its own independent review
@@ -255,7 +276,7 @@ competition evidence.
 
 P3B-1 claim boundary (frozen): the claim performs only Operation
 `queued -> running`, Run `queued -> starting`, `run.dequeued`, and the
-Outbox row — atomically. P3B-1 must not transition the `run.start`
+Outbox row — atomically. P3B-1 must not transition the claimed
 Operation to `completed`, `failed`, or `cancelled`.
 
 Authorized scope (when authorized):
@@ -263,24 +284,27 @@ Authorized scope (when authorized):
 - Minimal additive caller-owned Run transition entry point on
   `LifecycleTransactionService` (e.g. `transitionRunWithinTransaction`;
   section 3).
-- Eligibility selector: queued run + queued, binding-valid `run.start`
-  Operation; fail closed on duplicates.
+- Eligibility selector: queued Run + exactly one queued, binding-valid
+  authorization Operation (`run.start` or `run.retry` per M3-TD-30); zero
+  eligible authorization is a tick no-op, and duplicates or coexisting
+  authorizations fail closed.
 - `RunEngine` claim path composing the frozen atomic claim transaction
   (section 2); explicit test-controlled ticks only.
-- Competing-claim and no-start-operation no-op tests.
+- Competing-claim, no-eligible-authorization no-op, and authorization
+  binding tests.
 
-Forbidden scope: Workflow/Stage execution (P3B-2); background timers,
+Forbidden scope: Workflow/Stage execution (P3B-2B); background timers,
 server startup loops, auto-scan; ProcessManager, ProviderAdapter, CLI
 execution, Worktree runtime, Policy, Approval implementation; HTTP routes;
 `recovery_required` writes; any scheduler table; any direct repository
 writes bypassing events/outbox; nested transactions; two-transaction claim
-simulation; any Start Operation terminal transition.
+simulation; any claimed authorization Operation terminal transition.
 
 Exact proposed file allowlist (proposal, not authorization):
 
 - `apps/server/src/services/LifecycleTransactionService.ts` (minimal
   additive modification only)
-- `apps/server/src/services/m3-p3b1-start-authorized-claim.test.ts` (new;
+- `apps/server/src/services/m3-p3b1-execution-authorized-claim.test.ts` (new;
   exact final proposal for the seam/claim targeted tests, following the
   phase-named convention evidenced by
   `apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts` and
@@ -296,30 +320,33 @@ Exact proposed file allowlist (proposal, not authorization):
 - `apps/server/src/services/run-engine/RunEngine.ts` (new)
 - `apps/server/src/services/run-engine/RunEngine.test.ts` (new)
 
-Dependencies: P3A accepted; OD-P3-01 (correlationId generation for
-`run.start`) decided before the claim event is emitted.
+Dependencies: P3A accepted; M3-TD-26 applied (`correlationId = operation.id`)
+before the claim event is emitted.
 
 RED tests: no eligibility selector, no claim path, no caller-owned seam;
 a queued run is never advanced.
 
 GREEN tests (the nine required claim/eligibility proofs):
 
-1. Created run without a Start Operation: repeated Engine ticks leave it
-   `queued`; no `run.dequeued`; no new Outbox row.
+1. A queued Run without any eligible authorization Operation: repeated
+   Engine ticks leave it `queued`; no `run.dequeued`; no new Outbox row.
 2. A `run.create` Operation does not authorize claim.
 3. Queued run + queued `run.start` Operation: the run can be claimed;
    Operation and Run change in the same transaction; the `run.dequeued`
    event carries the Operation correlationId.
 4. Competing Engine claims: exactly one winner; the loser leaves zero
    partial writes.
-5. Duplicate active (non-terminal) `run.start` Operations for one run:
-   fail closed, no arbitrary choice.
+5. Duplicate or coexisting active (non-terminal) authorization Operations
+   for one run (`run.start` and/or `run.retry`): fail closed, no arbitrary
+   choice.
 6. Operation transition failure during claim: Run/Event/Outbox writes all
    roll back.
 7. Run/Event/Outbox failure during claim: the Operation transition rolls
    back.
-8. A `run.retry` Operation does not authorize claim while OD-P3-05 is
-   unapproved.
+8. Queued run + queued `run.retry` Operation: the run can be claimed
+   identically per M3-TD-30; Operation and Run change in the same
+   transaction; the `run.dequeued` event carries the retry Operation
+   correlationId.
 9. P3B-1 registers no background loop and no wall-clock timer.
 
 Related regressions: LifecycleTransactionService suites, P2C-2A/P2C-2B
@@ -332,30 +359,117 @@ Operation/Run/Event/Outbox; integrity checks clean; no partial lifecycle
 state.
 
 Concurrency race evidence: competing claims with identical expected
-status/version — exactly one commits; duplicate active Start Operation
-detection under concurrency fails closed.
+status/version — exactly one commits; duplicate or coexisting active
+authorization Operation detection under concurrency fails closed.
 
 Stop conditions: eligibility evaluated without Operation binding; an
-arbitrary Operation selected; a background loop, timer, or scheduler table
-requested; claim simulated by two transactions; nested transactions;
-executor scope requested; a Start Operation terminal transition requested.
+arbitrary Operation selected; a generic selector restricted to one
+authorization type; a background loop, timer, or scheduler table requested;
+claim simulated by two transactions; nested transactions; executor scope
+requested; a claimed authorization Operation terminal transition requested.
 
 Rollback boundary: revert the seam modification and the run-engine package
 as one package; runs, Operations, events, and outbox rows are preserved
 (no data reset).
 
-Independent review gate: single-writer ownership of Start-authorized queued
-runs; transaction core exclusivity; the seam reuses existing lifecycle
-rules (no second implementation); all nine GREEN proofs; no timers; the
-claim boundary (no terminal Operation transition) upheld.
+Independent review gate: single-writer ownership of execution-authorized
+queued Runs; transaction core exclusivity; the seam reuses existing
+lifecycle rules (no second implementation); all nine GREEN proofs; no
+timers; the claim boundary (no terminal Operation transition) upheld.
 
 Commit boundary: one ordinary commit, only allowlisted files, e.g.
-`feat: add M3 start-authorized claim and transaction composition`.
+`feat: add M3 execution-authorized claim and transaction composition`.
 
-## 6. Stage P3B-2 — Deterministic Workflow and Stage Execution
+## 6. Stage P3B-2A — Startup Failure Event Contract Alignment
+
+Goal: align and freeze the Shared, Runtime Specification, Transition/Event
+Matrix, and multi-event ordering contract required by C1b. This stage is
+specification/shared contract alignment only; it does not implement the
+Engine, Workflow Executor, Stage Executor, Lifecycle transaction seam,
+Operation terminal transition, Server Runtime, Migration, Registry, API, or
+Web behavior.
+
+Current contract facts:
+
+- The current P2C Transition/Event Matrix defines Run `starting -> failed`
+  with one Primary Event, `run.failed`, and no Additional Event.
+- The current `M3MultiEventOrderingContract` does not contain the ordering
+  name `startup-failure`.
+- Consequently the C1b Stage-starting combination is not yet registered in
+  the Shared/Specification layer. P3B-2B must not infer or bypass it.
+- This is a Contract Alignment Gate, not a Schema Blocker; Migration 014 is
+  neither required nor authorized.
+
+Frozen contract to align and verify:
+
+Branch A — Stage has entered `starting`:
+
+- Multi-event ordering name: `startup-failure`.
+- Exact Event order: `stage.failed -> run.failed`.
+- `stageMultiplicity=single`.
+- `stageOrdering=none`.
+- `contiguousRunSequence=true`.
+- `independentOutboxPerEvent=true`.
+- `atomicCurrentStateEventOutbox=true`.
+
+Branch B — no Stage has entered `starting`:
+
+- Run `starting -> failed`.
+- Primary Event: `run.failed`.
+- Additional Event: none.
+- `stage.failed` must not be fabricated.
+
+Operation `running -> failed` may join the same caller-owned outer
+transaction, but Operation produces no Runtime Event and therefore does not
+alter the Runtime Event ordering. Both branches remain distinct from user
+cancellation, which follows M3-TD-27 and is not C1a/C1b.
+
+Future proposed allowlist (specification/shared alignment only):
+
+```text
+agentos/packages/shared/src/types/m3-lifecycle-transition-contracts.ts
+agentos/packages/shared/m3-runtime.test.ts
+agentos/docs/Runtime-Specification/02-Runtime-Lifecycle.md
+agentos/docs/Runtime-Specification/03-Event-Model.md
+agentos/docs/implementation/milestones/M3-p2c-transition-event-matrix.md
+```
+
+No Server Runtime, Migration, Registry, API, or Web file belongs to P3B-2A.
+
+Dependencies: P3B-1 accepted. P3B-2A is independently reviewed before
+P3B-2B can begin; this dependency graph does not authorize implementation
+or parallel work.
+
+RED/GREEN contract evidence: the current ordering registry rejects
+`startup-failure`; the future alignment tests register and validate both
+branches, exact order, multiplicity, ordering, contiguous sequence,
+independent Outbox, and atomic Current State/Event/Outbox attributes; the
+Branch B single `run.failed` contract remains unchanged.
+
+Stop conditions: any request for Server Runtime, Engine/Executor,
+Lifecycle/Operation implementation, Migration 014, Registry/API/Web work,
+or any attempt to let P3B-2B implement the Branch A combination before
+independent acceptance.
+
+Rollback boundary: revert the five specification/shared alignment files as
+one docs-and-contract package; no runtime data or production database is
+changed.
+
+Independent review gate: Shared types, Runtime Specifications, Transition/
+Event Matrix, and `M3MultiEventOrderingContract` agree exactly; Branch A
+and Branch B are both covered; no M3-TD-01..25 historical wording is
+rewritten; no implementation authorization is implied.
+
+Commit boundary: one ordinary docs/specification/shared-contract commit,
+only the proposed allowlist, e.g. `feat: align M3 startup failure event
+contract`.
+
+## 7. Stage P3B-2B — Deterministic Workflow and Atomic Startup Outcomes
 
 Goal: deterministic workflow graph traversal, stage orchestration, and the
-deterministic mock Stage Executor with completion/failure/skip behavior.
+deterministic mock Stage Executor with completion/failure/skip behavior,
+including the atomic startup-completion transaction that closes a claimed
+Start or Retry Operation.
 
 Authorized scope (when authorized):
 
@@ -364,12 +478,26 @@ Authorized scope (when authorized):
 - `StageExecutor` (mock stage runner seam; stage lifecycle via
   `transitionStage`; `skipped` propagation on failure/cancel per spec).
 - Engine dispatch integration on top of the P3B-1 claim.
-- Start Operation terminal mapping strictly per the approved OD-P3-04.
+- Start Operation terminal mapping strictly per M3-TD-29.
+- Minimal additive caller-owned completion seam on
+  `LifecycleTransactionService`: `completeRunStartupWithinTransaction` or
+  an equivalent seam. The existing `completeRunStartup()` convenience
+  wrapper may remain, but it must reuse this seam.
+- Minimal additive caller-owned failure seam on
+  `LifecycleTransactionService`: `failRunStartupWithinTransaction` or an
+  equivalent seam. It must reuse the same Stage/Run/Event/Outbox rules and
+  must not copy a second lifecycle implementation.
+- Minimal additive Operation transaction composition through the P3A
+  `OperationService` and `OperationRepository` seams, only as required to
+  complete or fail the Operation inside the same outer transaction.
 - Unit/integration tests with an injected transaction core.
 
 Forbidden scope: everything forbidden in P3B-1; additionally any change to
-the claim transaction or eligibility selector (owned by P3B-1), and any
-Start Operation terminal mapping before OD-P3-04 is approved.
+the claim transaction or eligibility selector (owned by P3B-1), any
+Operation Cancel implementation or race (owned by P3D), and any
+Start Operation terminal mapping deviating from M3-TD-29; any modification
+to Shared Contract, Runtime Specification, or Transition/Event Matrix
+files; or any runtime implementation before P3B-2A is accepted.
 
 Exact proposed file allowlist (proposal, not authorization):
 
@@ -377,57 +505,131 @@ Exact proposed file allowlist (proposal, not authorization):
 - `apps/server/src/services/run-engine/StageExecutor.ts` (new)
 - `apps/server/src/services/run-engine/RunEngine.ts` (additive dispatch
   integration only)
+- `apps/server/src/services/LifecycleTransactionService.ts` (minimal
+  additive caller-owned completion seam only)
+- `apps/server/src/services/OperationService.ts` (minimal additive
+  transaction-composition support only)
+- `apps/server/src/store/OperationRepository.ts` (minimal additive
+  transaction-composition support only)
+- `apps/server/src/services/m3-p3b2-atomic-startup-completion.test.ts` (new;
+  exact targeted completion-atomicity proposal)
 - `apps/server/src/services/run-engine/*.test.ts` (new, additive)
 
-Dependencies: P3B-1 independent review accepted; OD-P3-04 decided before
-any Start Operation terminal mapping is implemented.
+Dependencies: P3B-1 and P3B-2A independent reviews accepted; the atomic
+startup completion/failure mappings follow M3-TD-29 and use the same
+composition for `run.start` and `run.retry` per M3-TD-30.
 
 RED tests: no executor exists; a claimed run has no stage progress.
 
 GREEN tests: executor honors `dependsOn` order exactly; failure marks
-downstream stages `skipped` per spec; cancel during execution resolves
-through `cancelRunWithinTransaction`; completion drives
-`completeRunStartup`/`completeRun` through the transaction core; every
-transition emits event + outbox in the same transaction.
+downstream stages `skipped` per spec; ordinary transitions emit Event +
+Outbox in the same transaction. Any cancellation boundary is consumed from
+the P3D-owned M3-TD-27 path and is not implemented here. The
+startup-completion targeted test
+`m3-p3b2-atomic-startup-completion.test.ts` proves:
 
-OD-P3-04 option test sets (planned in pairs; only the approved option is
-executed at implementation time, and this plan does not pre-select one):
+The successful path leaves Operation `completed`, Run `running`, and the
+first startup Stage `running`, with no committed Run=`running` /
+Operation=`running` intermediate state. The same targeted test proves:
 
-- Option set 1 — Start Operation completes at the start transition: a later
+1. Transaction-attempt injection failure rolls back completely and does not
+   automatically mark the Operation `failed`.
+2. C1b with a Stage already `starting` leaves Stage=`failed`, Run=`failed`,
+   Operation=`failed`, with complete Events and Outbox rows in one
+   transaction.
+3. Failure before the Stage enters `starting` emits no fabricated Stage
+   Event and fails Run and Operation together.
+4. Operation failure write failure rolls back Stage/Run/Event/Outbox.
+5. Stage/Run/Event/Outbox failure rolls back Operation failure.
+6. Stale-version startup success/failure race has exactly one winner.
+7. `run.start` and `run.retry` use the same failure seam.
+8. No committed state exists with Run=`failed` + Operation=`running` or
+   Run=`starting` + Operation=`failed`.
+
+The exact twelve-step startup-completion sequence is:
+
+1. Re-read and validate the claimed Operation: type `run.start` or
+   `run.retry`, status `running`, expected version, and valid bindings.
+2. Re-read and validate the Run at status `starting` and its expected
+   version.
+3. Re-read and validate the first startup Stage at status `starting` and
+   its expected version.
+4. Transition the Stage `starting -> running`.
+5. Append `stage.started`.
+6. Insert the Stage Outbox row.
+7. Transition the Run `starting -> running`.
+8. Append `run.started`.
+9. Insert the Run Outbox row.
+10. Transition the Operation `running -> completed`.
+11. Write `resourceType = "run"`, `resourceId = runId`, omit `data`, and
+    set `completedAt` from the same transaction timestamp.
+12. Commit all writes together; any failure rolls back all state, Event,
+    Outbox, and Operation writes. Operation completion creates no
+    independent Runtime Event or `operation_events` row.
+
+Start Operation terminal mapping tests (single approved direction per
+M3-TD-29):
+
+- The Start Operation completes when the Run commits `run.started`; a later
   Run failure or cancellation does not rewrite the completed Operation.
-- Option set 2 — Start Operation tracks the Run: a later terminal outcome
-  updates the Operation exactly per the approved mapping.
+- REJECTED alternative: "Start Operation tracks the Run to terminal" — a
+  later terminal outcome updating the Operation is not implemented.
 
 Related regressions: LifecycleTransactionService suites, P2C-2A/P2C-2B
 suites, P3B-1 claim tests, migration suites.
 
-Failure injection: inject at each event-call position in stage transition
-and completion paths; assert zero partial commits, run left in a consistent
-claimable or terminal state, integrity checks clean; pre-start failures
-follow class C1 (separate explicit failure-record transaction); post-start
-execution outcomes follow class C2 — the Start Operation's terminal mapping
-is decided entirely by OD-P3-04.
+Failure injection covers both caller-owned seams. A transaction-attempt
+failure (injection, SQLite error, version conflict, or concurrency loss)
+rolls back to the transaction's starting state and does not automatically
+mark an Operation `failed`; the caller classifies retry, competition loss,
+or business failure. C1a covers failure before claim commit: Class B rolls
+back Run/Operation/Event/Outbox and leaves Run/Operation queued with no
+`run.dequeued` partial write. Only an explicitly classified irrecoverable
+command failure may use a separate expected status/version-guarded
+transaction to mark the still-queued Operation `failed`; it persists the
+serialized ApiProblem, leaves `result` absent, uses the same transaction
+timestamp for `completedAt`, leaves the Run unchanged, and writes no
+Runtime Event or Outbox row. C1b covers failure after claim and before
+`run.started`: with a starting Stage, Stage/Run/Operation failure and both
+failure Events/Outbox rows commit atomically; before a Stage enters
+`starting`, no `stage.failed` is fabricated and Run/Operation failure still
+commits together. Inject at every Stage/Run/Event/Outbox/Operation position;
+assert zero partial commits, integrity checks clean, and no committed
+Run=`failed` + Operation=`running` or Run=`starting` + Operation=`failed`.
+Post-start execution outcomes follow class C2 per M3-TD-29 — post-start
+outcomes never rewrite the completed Start or Retry Operation.
 
-Concurrency race evidence: cancel-during-dispatch; stale-version dispatch
-loss. Losers fail cleanly with no state corruption.
+Concurrency evidence: stale-version startup success/failure dispatch loss;
+losers fail cleanly with no state corruption, and transaction-attempt
+rollback is not recorded as business failure. All cancel races belong to
+P3D.
 
 Stop conditions: executor needs any M4 surface; engine bypasses the
 transaction core; claim logic modified; engine writes `recovery_required`;
-OD-P3-04 undecided when any Start Operation terminal mapping is reached.
+the success or failure seam duplicates Stage/Run/Event/Outbox logic;
+startup success/failure is split across transactions; transaction-attempt
+rollback automatically marks an Operation failed; or any deviation from
+the M3-TD-29 terminal mapping for a Start or Retry Operation.
 
-Rollback boundary: revert the executor package; claim composition (P3B-1)
-stays; runs, events, and outbox rows are preserved (no data reset).
+Rollback boundary: revert the executor package and minimal completion seam
+as one package; claim composition (P3B-1) stays; runs, events, Operations,
+and Outbox rows are preserved (no data reset).
 
 Independent review gate: determinism proof; skip propagation; no M4
-imports; P3B-1 boundary respected; terminal mapping matches the approved
-OD-P3-04 exactly.
+imports; P3B-1 boundary respected; caller-owned success and failure seams
+reuse the transaction core; twelve-step success and C1a/C1b rollback proofs
+pass; Start and Retry composition match M3-TD-29/M3-TD-30 exactly; no
+committed invalid intermediate state.
 
 Commit boundary: one ordinary commit, only allowlisted files, e.g.
 `feat: add M3 deterministic workflow and stage execution`.
 
-P3B requirements (binding for P3B-1 and P3B-2):
+P3B requirements (binding for P3B-1 and P3B-2B; P3B-2A is the separate
+contract gate):
 
-- The engine claims only `runs(status='queued')` that are Start-authorized.
+- The engine claims only `runs(status='queued')` that have exactly one
+  execution authorization: a queued, binding-valid `run.start` or
+  `run.retry` Operation.
 - Every state write goes through `LifecycleTransactionService`.
 - The executor is deterministic and mock-driven; no CLI, no ProcessManager.
 - Tick-driven: work advances on explicit ticks (test-controlled), not on
@@ -435,7 +637,7 @@ P3B requirements (binding for P3B-1 and P3B-2):
 - Claim, dispatch, and outcome recording each carry injection points and
   concurrency guards.
 
-## 7. Stage P3C-0A — Start Operation Idempotency Replay
+## 8. Stage P3C-0A — Start Operation Idempotency Replay
 
 Goal: without adding routes, creating Operations, or starting runs, make
 the existing Idempotency layer able to durably store and canonically replay
@@ -479,6 +681,8 @@ Frozen design:
   response.
 - Replay must return the original saved HTTP status and the original
   Operation snapshot.
+- The replay snapshot is the acceptance-time immutable queued Operation
+  snapshot (M3-TD-29).
 - Canonical JSON and the result hash continue to cover the complete
   envelope.
 - The parser must be exact-shape and fail-closed.
@@ -490,7 +694,7 @@ insert/read, and canonical replay.
 
 Dependencies: P3A accepted (the idempotency layer joins caller-owned
 transactions through the same seam discipline). P3C-0A does not depend on
-OD-P3-05.
+M3-TD-30.
 
 RED tests: `run.start` is not a registered idempotency operation; 202 is
 rejected; no Operation envelope variant exists; replay of an Operation
@@ -536,20 +740,19 @@ fail-closed parser; immutable snapshot; 202 support limited to `run.start`.
 Commit boundary: one ordinary commit, only allowlisted files, e.g.
 `feat: add M3 start operation idempotency replay`.
 
-## 8. Stage P3C-0B — Retry Operation Idempotency Closure
+## 9. Stage P3C-0B — Retry Operation Idempotency Closure
 
-Goal: close the `run.retry` idempotency contract exactly per the approved
-OD-P3-05, as its own commit and independent review boundary. Authorized
-only after OD-P3-05 is approved.
+Goal: close the `run.retry` idempotency contract exactly per M3-TD-30, as
+its own commit and independent review boundary.
 
 Authorized scope (when authorized):
 
 - Register `run.retry` as a TypeScript idempotency operation.
-- Establish the HTTP status mapping frozen by OD-P3-05.
-- Establish the stable replay envelope matching the OD-P3-05 response
-  shape: if the approved response carries both the Child Run and the
-  Operation, P3C-0B must define a dedicated stable Retry Result Envelope
-  rather than force-reusing the Operation-only Start envelope.
+- Establish the M3-TD-30 HTTP status mapping: `run.retry -> HTTP 202`.
+- Establish the M3-TD-30 Operation-only immutable replay envelope: the
+  acceptance-time queued Retry Operation snapshot; the Operation's `runId`
+  already carries the Child Run ID; no combined Child Run + Operation
+  envelope is defined.
 - Repository insert/read, service store/resolve, and canonical JSON/hash
   support; parser exact-shape and fail-closed; same-key replay returns the
   original status and the original snapshot without re-reading the current
@@ -558,8 +761,8 @@ Authorized scope (when authorized):
 
 Forbidden scope: any Migration, Registry, Route, `TaskRunService`, or
 Operation-implementation change; a result schema version 2; any database
-change; any change to legacy operation/envelope behavior; any work before
-OD-P3-05 is approved.
+change; any change to legacy operation/envelope behavior; any deviation
+from the M3-TD-30 shape.
 
 Exact proposed file allowlist (proposal, not authorization): the same
 idempotency files as P3C-0A —
@@ -572,13 +775,13 @@ idempotency files as P3C-0A —
 - plus, only if evidence requires it, the same single optional file
   `apps/server/src/idempotency/types.test.ts` (additive cases).
 
-Dependencies: OD-P3-05 approved; P3C-0A accepted (shared contract
+Dependencies: M3-TD-30 (approved); P3C-0A accepted (shared contract
 discipline).
 
 RED tests: `run.retry` is not a registered idempotency operation; no retry
 replay envelope exists.
 
-GREEN tests: `run.retry` round-trip at the OD-P3-05-frozen status;
+GREEN tests: `run.retry` round-trip at the M3-TD-30-frozen HTTP 202 status; same key + same hash returns the original 202; same key + different hash returns 409;
 repository persists and returns the original status; replay returns the
 original snapshot; later Child Run or Operation state changes do not affect
 the saved replay; canonical JSON/hash stable; tampered result rejected;
@@ -594,53 +797,69 @@ transaction; rollback/commit fidelity; integrity checks clean).
 Concurrency race evidence: same-key concurrent `storeSuccess` — exactly one
 insert wins.
 
-Stop conditions: OD-P3-05 not approved; the approved shape is deviated
-from; the Operation-only Start envelope is force-reused for a combined
-Child Run + Operation response; any route or Operation-implementation
+Stop conditions: the M3-TD-30 shape is deviated from; a combined Child Run
++ Operation envelope is introduced; any route or Operation-implementation
 change is requested.
 
 Rollback boundary: revert the additive retry registration as one package;
 stored rows preserved.
 
-Independent review gate: exact match to the approved OD-P3-05 shape;
-fail-closed parser; immutable snapshot; legacy compatibility; no DB change.
+Independent review gate: exact match to the M3-TD-30 shape; fail-closed
+parser; immutable snapshot; legacy compatibility; no DB change.
 
 Commit boundary: one ordinary commit, only allowlisted files, e.g.
 `feat: add M3 retry operation idempotency closure`.
 
-## 9. Stage P3C-1 — Async Start, Cancel Race, Child Retry
+## 10. Stage P3C-1 — Async Start and Child Retry
 
-Goal: the asynchronous Start contract, Operation-level cancel/complete race
-resolution, and retry-as-child-run, all idempotent. P3C-1 has two
+Goal: the asynchronous Start contract and retry-as-child-run, all
+idempotent. P3C-1 has two
 independently enterable dependent portions:
 
 - Start portion: depends on P3C-0A (not on P3C-0B).
-- Retry portion: depends on OD-P3-05 and P3C-0B, and must not modify the
+- Retry portion: depends on M3-TD-30 and P3C-0B, and must not modify the
   idempotency core files itself.
 
 Authorized scope (when authorized):
 
 - Start route returning HTTP 202 + Operation (additive; v2/Legacy
-  untouched). The route runs the command acceptance transaction (class A):
+  untouched). The route runs the Start acceptance transaction (class A1):
   it atomically commits the queued `run.start` Operation and the
   Idempotency success/replay response, using the P3C-0A `run.start` + 202 +
   immutable Operation replay envelope. It does not start the run and does
   not write `run.dequeued`; Engine eligibility begins only after this
   commit.
 - `run.start` consumer wired through `IdempotencyService` (Start portion);
-  `run.retry` consumer wired only in the Retry portion after OD-P3-05 and
-  P3C-0B.
+  `run.retry` consumer wired only in the Retry portion after P3C-0B, per
+  M3-TD-30.
 - Retry service path creating child runs via `RunRepository.insert`
-  lineage. Retry activation wiring is blocked by OD-P3-05: until approved,
-  the retry child stays queued and non-executable and `run.retry` is not a
-  claim marker.
+  lineage. Retry is accepted only when the Parent Run is `failed` at the
+  expected Parent version. Parent `queued`, `starting`, `running`,
+  `waiting_approval`, `paused`, `completed`, or `cancelled` returns stable
+  409 `RUN_NOT_RETRYABLE`; stale expected version returns a stable conflict
+  with zero side effects. Same-key replay returns the original response;
+  concurrent different-key Retry requests can create only one valid Child.
+  Per M3-TD-30 the Retry acceptance transaction (class A2) atomically
+  creates the Child Run and lineage, Snapshot, Child Run graph/stages,
+  queued `run.retry` Operation, Idempotency success/replay record, and all
+  creation Event/Outbox rows; the queued `run.retry` Operation immediately
+  authorizes Engine execution — no separate Start command is required, and
+  the Parent Run is never reset or modified.
+- Creation Event correlation remains the P2C-2C-1 contract: the Retry
+  Operation uses `correlationId = operation.id`; Child Run `run.created` and
+  every `stage.created` use `correlationId = childRun.id`;
+  `stage.created.causationId` and `parentEventId` continue to point to the
+  `run.created` Event ID; callers cannot override Creation Event
+  correlationId. From Engine claim `run.dequeued` onward, execution Events
+  driven by the Retry Operation use `operation.id`.
 - Route and race tests.
 
 Forbidden scope: synchronous start execution in the route handler;
 resetting/mutating the parent run on retry; replacing v2 or Legacy
 collections; Web changes; Operation cancel route (P3D); event query route
-(P3D); granting Engine eligibility to `run.create`/`run.cancel`/`run.retry`
-Operations; any change to the idempotency core files
+(P3D); granting Engine eligibility to `run.create`/`run.cancel`
+Operations; accepting Retry for a non-failed Parent; any change to the
+idempotency core files
 (`apps/server/src/idempotency/types.ts`,
 `apps/server/src/services/IdempotencyService.ts`,
 `apps/server/src/store/IdempotencyRepository.ts` and their tests), which
@@ -657,8 +876,8 @@ Exact proposed file allowlist (proposal, not authorization):
 - `apps/server/src/index.ts` (one additive mount line)
 
 Dependencies: P3A accepted; P3B-1 accepted; Start portion: P3C-0A accepted,
-OD-P3-01 and OD-P3-04 decided; Retry portion: additionally P3C-0B accepted
-and OD-P3-05 approved before any retry dependent code starts.
+M3-TD-26 and M3-TD-29 applied; Retry portion: additionally P3C-0B accepted,
+per M3-TD-30.
 
 RED tests: no start route; no `run.start`/`run.retry` idempotency consumer;
 no retry caller.
@@ -669,34 +888,32 @@ P3C-0A envelope; the run remains queued until the engine claims it; same
 idempotency key replays the original Operation (original 202 and original
 snapshot); different key on an already-started run is rejected per
 contract; retry creates a child run with correct
-`root_run_id`/`parent_run_id` and the old run untouched; retry child is
-not Engine-eligible while OD-P3-05 is undecided.
+`root_run_id`/`parent_run_id` and the old run untouched; the retry child is
+immediately Engine-eligible via its queued `run.retry` Operation per
+M3-TD-30 — no separate Start command. Retry tests also prove failed-Parent
+eligibility, stable `RUN_NOT_RETRYABLE` for every non-failed Parent status,
+stale-version zero side effects, one winner under concurrent Retry, exact
+creation-versus-execution correlation, and exclusion of creation Events from
+the Operation Events query.
 
 Related regressions: v2 route suites, idempotency suites, TaskRunService
-suites, P3B-1 claim tests, P3C-0A replay tests, full server suite.
+suites, P3B-1 claim tests, P3C-0A replay tests, full server suite. Operation
+Cancel and all cancel-race regressions belong exclusively to P3D.
 
 Failure injection (distinct transaction classes):
 
-- Class A (command acceptance): throw between the Operation insert and the
-  idempotency success write — no Operation row, no idempotency success row,
-  run stays queued.
-- Class B (engine claim): inherited from P3B-1 — any failure rolls back
-  Operation/Run/Event/Outbox together.
-- Class C1 (pre-start command failure): the Operation was durably accepted
-  via A, but the claim/start transaction fails before the Run enters
-  `starting` — first roll back the failed lifecycle transaction in full,
-  then mark the Operation `failed` with the serialized ApiProblem in a
-  separate, explicit failure-record transaction. C1 holds under both
-  OD-P3-04 options.
-- Class C2 (post-start execution outcome): after the Run has entered
-  `starting` or `running` — Stage failure, Run failure, Run cancellation,
-  or Run completion — whether the Start Operation becomes `completed`,
-  `failed`, `cancelled`, or stays `completed` is decided entirely by
-  OD-P3-04. Never write unconditionally that a later execution failure
-  marks the accepted Start Operation failed.
-- Evidence wording: no partial lifecycle state; an accepted Operation may
-  persist as durable failure evidence. Never worded as "all Operation
-  behavior rolls back to zero".
+- Class A1 (Start acceptance): inject between the queued `run.start`
+  Operation insert and the Idempotency success write — no Start Operation,
+  no Idempotency Success, and the existing Run stays queued.
+- Class A2 (Retry acceptance): inject at Child Run insert, Snapshot insert,
+  Stage insert, `run.created`, any `stage.created`, any Outbox insert,
+  Retry Operation insert, and Idempotency Success. Every injection leaves:
+  no Child Run, no Snapshot, no Stage, no Creation Event, no Outbox, no
+  Retry Operation, and no Idempotency Success; the Parent Run is unchanged.
+Acceptance failure injection in P3C-1 is limited to A1 and A2. Claim,
+startup success/failure, post-start C2, and all cancellation failure/race
+semantics are owned by P3B-1, P3B-2B, and P3D respectively; P3C-1 does not
+restate or implement those seams.
 
 Concurrency race evidence (race matrix, all required):
 
@@ -704,34 +921,34 @@ Concurrency race evidence (race matrix, all required):
 |------|------------------|
 | Start vs start (same idempotency key) | Replay of the original Operation; no second transition |
 | Start vs start (different key, run already started) | Contract rejection (409-class), no state change |
-| Claim vs cancel on a queued run | Exactly one wins; loser fails cleanly |
-| Cancel vs complete | Exactly one terminal state; single terminal event |
-| Stale version dispatch | Conditional update loses; no overwrite |
-| Retry vs terminal parent state | Rejected per contract; parent untouched |
-| Task active slot vs concurrent accept/cancel | Existing task invariants hold |
+| Retry vs Parent failure transition | A request observing expected `failed` + version can create one Child; a request observing non-`failed` or a stale version has zero side effects and returns the stable conflict |
+| Stale version acceptance | Conditional idempotency/Parent-version update loses; no overwrite or second Child |
 | Terminal immutability | Any transition out of a terminal state fails |
-| Partial commit | None observed under injection at any position |
+| Partial acceptance commit | None observed under A1/A2 injection at any acceptance position |
 
 Stop conditions: any synchronous execution in the route; any parent-run
-mutation on retry; OD-P3-01, OD-P3-04, or OD-P3-05 still undecided when the
-dependent code is reached; acceptance transaction writing lifecycle events;
+mutation on retry; any deviation from M3-TD-26, M3-TD-29, or M3-TD-30 when
+the dependent code is reached; acceptance transaction writing lifecycle
+events;
 any edit to the idempotency core files owned by P3C-0A/P3C-0B; enabling the
 `run.retry` consumer without P3C-0B.
 
 Rollback boundary: revert route + wiring as one package; operations, runs,
 events preserved (no data reset).
 
-Independent review gate: Create != Start; 202 contract; acceptance/claim/
-failure-record transaction separation; idempotent replay via the P3C-0A
-envelope; race matrix evidence; retry lineage; Start/Retry portion
-dependencies and the OD-P3-05 boundary respected.
+Independent review gate: Create != Start; 202 contract; A1/A2 acceptance
+atomicity and rollback; idempotent replay via the P3C-0A/P3C-0B envelopes;
+Start-vs-start and Retry/Parent race evidence; failed-Parent retry lineage;
+creation-versus-execution correlation boundary; Operation Events exclusion;
+Start/Retry portion dependencies and the M3-TD-30 retry activation contract
+respected. Operation Cancel and every Cancel race remain P3D-owned.
 
 Commit boundary: ordinary commits per portion, only allowlisted files, e.g.
 `feat: add M3 async start operation acceptance` (Start portion) and
-`feat: add M3 cancel race and child retry` (Retry portion); the Retry
-portion commit requires OD-P3-05 approved and P3C-0B accepted.
+`feat: add M3 child retry acceptance` (Retry portion); the Retry
+portion commit requires P3C-0B accepted (M3-TD-30 applied).
 
-## 10. Stage P3D — Operation Routes and Event Query
+## 11. Stage P3D — Operation Routes, Atomic Cancel and Event Query
 
 Goal: the canonical top-level Operation endpoints, additive to existing
 collections.
@@ -741,8 +958,13 @@ Authorized scope (when authorized):
 - `GET /api/operations/:operationId`
 - `GET /api/operations/:operationId/events` — authorize the Operation first,
   then query `runtime_events` by its `runId` + `correlationId`, ascending
-  `sequence`; no `operation_events` store.
+  `sequence`; no `operation_events` store. For `run.retry`, this result does
+  not include Child Run creation Events; it begins with Events correlated to
+  the Retry Operation, such as `run.dequeued`. Retry acceptance remains
+  observable through the Operation resource and Idempotency record.
 - `POST /api/operations/:operationId/cancel`
+- `OperationService` caller-owned atomic cancel orchestration; the Route
+  remains a thin adapter and does not compose the transaction directly.
 - Route tests.
 
 Forbidden scope: replacing v2/Legacy collections; SSE/Replay; OpenAPI
@@ -752,41 +974,96 @@ Exact proposed file allowlist (proposal, not authorization):
 
 - `apps/server/src/routes/operations.ts` (new)
 - `apps/server/src/routes/operations.test.ts` (new)
+- `apps/server/src/services/OperationService.ts` (minimal additive cancel
+  orchestration only)
+- `apps/server/src/services/OperationService.test.ts` (additive cases only)
+- `apps/server/src/store/OperationRepository.ts` (only if exact evidence
+  proves the existing conditional update is insufficient; minimal additive
+  change)
+- `apps/server/src/store/OperationRepository.test.ts` (additive cases only)
 - `apps/server/src/index.ts` (one additive mount line)
 
-Dependencies: P3A and P3C-1 accepted; OD-P3-02 (cancel semantics) decided;
-OD-P3-03 (progress usage) decided before any `GET` response includes
-progress.
+Parent-worktree spelling of the same proposed allowlist:
+
+```text
+agentos/apps/server/src/routes/operations.ts
+agentos/apps/server/src/routes/operations.test.ts
+agentos/apps/server/src/services/OperationService.ts
+agentos/apps/server/src/services/OperationService.test.ts
+agentos/apps/server/src/store/OperationRepository.ts
+agentos/apps/server/src/store/OperationRepository.test.ts
+agentos/apps/server/src/index.ts
+```
+
+Dependencies: P3A accepted; P3B-1 accepted; P3B-2B accepted; P3C-1
+accepted; cancel semantics follow M3-TD-27; `GET` responses omit progress
+per M3-TD-28. P3D must not modify `LifecycleTransactionService`; P2 already
+provides `cancelRunWithinTransaction`. If it is insufficient, stop and
+re-open review instead of expanding scope.
 
 RED tests: no `/api/operations/*` routes exist.
 
 GREEN tests: unified `operationId` parameter across the three endpoints;
-get-by-id shape matches `ApiOperation`; events endpoint returns ascending
-sequence and 404/authorization failure modes; cancel endpoint enforces
-decided semantics and terminal-state rejection.
+get-by-id shape matches `ApiOperation` and omits progress per M3-TD-28;
+events endpoint returns ascending sequence and 404/authorization failure
+modes; cancel endpoint enforces M3-TD-27 semantics — atomic cancel of the
+target non-terminal Operation and its bound Task-domain Run, cancellable
+statuses exactly `queued`/`running`/`waiting_approval`/`paused`,
+already-cancelled returns the current Operation, completed/failed returns
+409-class `OPERATION_NOT_CANCELLABLE` — and terminal-state rejection.
+Before or during startup, cancellation leaves Operation/Run cancelled, emits one
+`stage.cancelled` per affected non-terminal Stage followed by `run.cancelled`,
+and never emits `stage.failed` or marks Operation/Run failed.
 
 Related regressions: v2 route suites, full server suite, shared contract
 tests.
 
-Failure injection: cancel route mid-transition injection; no partial
-commit; operation left in a consistent state; an already-accepted cancel
-Operation follows class C1 failure recording.
+Failure injection: inject at every cancel-transaction position; any failure
+rolls back the target Operation transition, bound Run/Stage transitions,
+Runtime Events, and Outbox rows together. After rollback the target
+Operation and bound Run retain their transaction-before state. The endpoint
+has no Class A, creates or accepts no Cancel Operation, and transaction
+failure never uses C1 to record a second Operation. An already-cancelled
+target returns the current resource per M3-TD-27; completed/failed targets
+return `OPERATION_NOT_CANCELLABLE`.
 
-Concurrency race evidence: cancel vs terminal transition on the same
-operation — exactly one wins.
+P3D race evidence (all required):
 
-Stop conditions: an `operation_events` store is requested; OD-P3-02 or
-OD-P3-03 undecided when the dependent code is reached.
+1. Claim vs cancel — exactly one wins.
+2. Startup completion vs cancel — exactly one wins.
+3. Startup failure closure vs cancel — exactly one wins.
+4. Cancel vs already-terminal Operation — stable terminal response.
+5. Concurrent duplicate cancel — exactly one transition.
+6. Already-cancelled returns the current Operation with zero new side
+   effects.
+7. Completed/failed returns `OPERATION_NOT_CANCELLABLE`.
+8. Any loser leaves zero partial Stage/Run/Operation/Event/Outbox writes.
+
+The Route remains thin. `OperationService` owns one outer transaction:
+
+1. Open one caller-owned outer transaction.
+2. Re-read the target Operation.
+3. Validate cancellable status/version/binding.
+4. Conditionally transition the target Operation to `cancelled`.
+5. Call `cancelRunWithinTransaction`.
+6. Write all affected Stage/Run Events and Outbox rows.
+7. Commit all or roll back all. No second Cancel Operation exists.
+
+Stop conditions: an `operation_events` store is requested; any deviation
+from M3-TD-27 cancel semantics; any progress persistence or population
+(M3-TD-28 forbids it).
 
 Rollback boundary: revert the route module and mount line; data preserved.
 
 Independent review gate: Operation != Run in API shape; events query uses
-correlationId binding only; cancel semantics match the Owner Decision.
+correlationId binding only; cancel semantics match M3-TD-27; no second
+Cancel Operation exists. No second cancel Operation exists: cancel rollback
+preserves target Operation and Run state; progress is omitted per M3-TD-28.
 
 Commit boundary: one ordinary commit, only allowlisted files, e.g.
 `feat: add M3 operation routes and event query`.
 
-## 11. Stage P3E — Integrated Verification and Closeout
+## 12. Stage P3E — Integrated Verification and Closeout
 
 Goal: integrated evidence across all prior stages and a closeout record.
 
@@ -803,26 +1080,53 @@ Exact proposed file allowlist (proposal, not authorization):
   `apps/server/src/routes/` (new, additive)
 - `docs/implementation/milestones/M3-p3-*-closeout.md` (new, docs only)
 
-Dependencies: P3A, P3B-1, P3B-2, P3C-0A, P3C-0B, P3C-1, and P3D all
-accepted (P3B-1 and P3B-2 each with their own independent review).
+Dependencies: P3A, P3B-1, P3B-2A, P3B-2B, P3C-0A, P3C-0B, P3C-1, and
+P3D all accepted (P3B-1, P3B-2A, and P3B-2B each have their own
+independent review; P3D owns atomic cancel).
 
-Required integrated evidence: queued-run lifecycle end to end (create ->
-202 start acceptance -> engine claim of the Start-authorized run ->
-deterministic stage walk -> terminal state -> Operation terminal state ->
-events query), the full race matrix under integrated conditions, idempotent
-replay of the original 202 Operation snapshot after later state changes,
-and the failure classes demonstrated end to end (acceptance failure leaves
-nothing; claim failure rolls back together; pre-start failure recording via
-C1 in a separate explicit transaction; post-start outcomes mapped exactly
-per the approved OD-P3-04 via C2; no partial lifecycle state).
+Required integrated evidence freezes the following order for Start:
 
-OD-P3-04 option test sets (planned in pairs; only the approved option is
-executed at implementation time, and this plan does not pre-select one):
+Create Run
+-> HTTP 202 Start acceptance
+-> Engine execution-authorized claim
+-> Atomic startup completion:
+   Stage running
+   Run running
+   Start Operation completed
+-> Remaining deterministic Stage execution
+-> Run terminal outcome
+-> Verify completed Start Operation unchanged
+-> Operation Events query
 
-- Option set 1 — Start Operation completes at the start transition: a later
+Retry has a separate integrated flow:
+
+Failed Parent
+-> HTTP 202 Retry acceptance
+-> Child graph + Retry Operation + Idempotency atomically created
+-> Engine claim via `run.retry` authorization
+-> Atomic startup completion:
+   Child Run running
+   Retry Operation completed
+-> Child Run later terminal outcome
+-> Verify completed Retry Operation unchanged
+-> Verify Parent unchanged
+-> Verify Operation Events exclude Child creation Events
+
+The full race matrix and idempotent replay of the original 202 snapshots
+are demonstrated after later state changes. Failure evidence separately
+covers success startup completion, startup failure, C1a, C1b, A1, A2, Class
+B, and C2 post-start non-rewrite. P3E also verifies M3-TD-27 atomic cancel,
+all P3D cancel races, and that no second Cancel Operation exists. The
+sequence never maps a Run terminal outcome to a later Operation terminal
+transition.
+
+Start Operation terminal mapping tests (single approved direction per
+M3-TD-29):
+
+- The Start Operation completes when the Run commits `run.started`; a later
   Run failure or cancellation does not rewrite the completed Operation.
-- Option set 2 — Start Operation tracks the Run: a later terminal outcome
-  updates the Operation exactly per the approved mapping.
+- REJECTED alternative: "Start Operation tracks the Run to terminal" — a
+  later terminal outcome updating the Operation is not implemented.
 
 Related regressions: full server suite, agent-core suite, migration suites,
 shared suites, web suite and builds per the standing gate list.
@@ -833,14 +1137,16 @@ stop instead of expanding scope.
 Rollback boundary: docs and tests revertible as one package; durable
 evidence preserved.
 
-Independent review gate: cross-stage consistency, evidence completeness,
-and boundary discipline reviewed before any P3 closeout claim.
+Independent review gate: cross-stage consistency, the exact Start and Retry
+ordering above, success/C1a/C1b/A1/A2/B/C2 evidence, cancel no-second-
+Operation evidence, replay stability, and boundary discipline reviewed
+before any P3 closeout claim.
 
 Commit boundary: ordinary commits, docs/tests only, e.g.
 `test: add M3 P3 integrated verification` and
 `docs: close out M3 P3`.
 
-## 12. Cross-Stage Standing Rules
+## 13. Cross-Stage Standing Rules
 
 - Every stage: ordinary commits only; no amend, rebase, reset, or
   force-push; no PR unless separately authorized; main stays clean.
@@ -854,19 +1160,30 @@ Commit boundary: ordinary commits, docs/tests only, e.g.
   migrations must remain identical.
 - Real `.agentos` databases are never read, copied, or modified by any
   stage; tests use file-backed temporary databases only.
+- P3B-2A is the sole owner of the `startup-failure` Shared/Specification/
+  Transition Matrix alignment. P3B-2B may only consume its accepted
+  contract and may not modify those files. P3B-2A is PLANNED — NOT
+  AUTHORIZED.
+- C1a/C1b describe unrecoverable startup failure only. User cancellation always
+  follows M3-TD-27 in P3D and never enters C1a/C1b; P3C-1 owns no Operation
+  Cancel route or Cancel race.
 - The frozen atomic claim transaction (section 2) and the caller-owned
   transaction seam (section 3) bind every stage that touches claim,
   lifecycle transitions, or Operation writes.
 - Stage dependencies are directed gates, not a mechanical serial order:
-  P3C-0A may start once P3A is accepted; P3B-1 depends on P3A + OD-P3-01;
-  P3B-2 depends on P3B-1 + OD-P3-04; P3C-0B depends on OD-P3-05; the P3C-1
-  Start portion depends on P3C-0A + P3B-1 + OD-P3-01/OD-P3-04; the P3C-1
-  Retry portion additionally depends on P3C-0B + OD-P3-05. This freezes the
-  dependency graph only; it does not authorize parallel implementation.
+  P3C-0A may start once P3A is accepted; P3B-1 depends on P3A + M3-TD-26;
+  P3B-2A depends on P3B-1; P3B-2B depends on P3B-1 + P3B-2A + M3-TD-29;
+  P3C-0B depends on M3-TD-30; the P3C-1
+  Start portion depends on P3C-0A + P3B-1 + M3-TD-26/M3-TD-29; the P3C-1
+  Retry portion additionally depends on P3C-0B + M3-TD-30; P3D depends on
+  P3A + P3B-1 + P3B-2B + P3C-1 and owns all Operation Cancel races; P3E
+  depends on P3B-2A + P3B-2B + P3D. This freezes the dependency graph only;
+  it does not authorize parallel implementation.
 
 Schema conclusion: SCHEMA BLOCKER: NONE.
 Migration 014 is not required or authorized.
+P3B-2A CONTRACT ALIGNMENT: PLANNED — NOT AUTHORIZED.
 
 This plan authorizes nothing. P3 implementation remains NOT AUTHORIZED.
-P3A implementation remains NOT AUTHORIZED. The preplanning PR is NOT YET
-AUTHORIZED.
+P3A implementation remains NOT AUTHORIZED. The preplanning PR (PR #21) is
+MERGED.
