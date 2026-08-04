@@ -29,6 +29,7 @@ export const ENTITY_ID_PREFIXES = {
   artifact: 'artifact',
   extension: 'ext',
   idempotency: 'idem',
+  operation: 'op',
 } as const;
 
 export type EntityIdKind = keyof typeof ENTITY_ID_PREFIXES;
