@@ -355,13 +355,86 @@ with any completed Start history, fails closed with
 `500 RUN_START_STATE_INCONSISTENT`. Failed/cancelled history is terminal and
 does not authorize execution; no Start row may be selected arbitrarily.
 
-### A1 ordering and composition
+### A1 ordering, side effects, rollback, and composition
 
-The frozen order is: opaque locator; request/expectedVersion validation;
-optional Idempotency-Key normalization; `prepare()` outside the transaction;
-`BEGIN IMMEDIATE`; `resolve()` as the first Run/Operation domain action;
-immediate original-snapshot replay; and only then Run status/version and full
-Start-history guards. Locator resolution does not inspect Run status/version.
+The keyed A1 acceptance order is frozen without omitted or implicit steps:
+
+1. Read the opaque `runId` from the canonical path.
+2. Call the read-only `RunRepository.findWorkspaceIdByOpaqueId(runId)` locator.
+3. If the locator finds no Run, return `404 RUN_NOT_FOUND`.
+4. Validate that the request body is a plain JSON object.
+5. Reject every unknown body field.
+6. Validate optional `expectedVersion`: it may be absent; when present it must
+   be a positive safe integer; `null`, zero, negative, fractional, string,
+   `NaN`, and values outside the safe-integer range return the stable
+   `400 VALIDATION_FAILED`.
+7. Parse and normalize the optional `Idempotency-Key`.
+8. Construct the fingerprint with `operation = run.start`, the locator's
+   `workspaceId`, `pathParams = { runId }`, `domainInput = {}`, and
+   `expectedVersion` supplied or `null`.
+9. Call `IdempotencyService.prepare()` outside the transaction.
+10. Begin the caller-owned `BEGIN IMMEDIATE` transaction.
+11. Make `IdempotencyService.resolve()` the first Run/Operation domain action
+    inside the transaction.
+12. If resolve returns replay, do not read the current Run or Operation, do not
+    execute version/status/Start-history guards, and immediately return the
+    saved original HTTP 202 queued Operation snapshot.
+13. On a miss, read the workspace-scoped Run.
+14. If the Run is absent, return `404 RUN_NOT_FOUND`.
+15. If supplied, execute the exact `expectedVersion` guard.
+16. Require the Run status to be `queued`.
+17. Read complete history with
+    `OperationService.listByRun(workspaceId, runId)`.
+18. Filter the history to `type === 'run.start'`.
+19. Apply the complete frozen Start-history matrix.
+20. Call `OperationService.createWithinTransaction()` to create the unique
+    queued `run.start` Operation.
+21. Validate the new Operation: `type = run.start`, `status = queued`, the
+    resolved workspace, `aggregateType = run`, `aggregateId = runId`, the
+    correct `runId`, `correlationId = operation.id`, and `version = 1`.
+22. Construct the schemaVersion 1 Operation replay envelope.
+23. Call `IdempotencyService.storeSuccess()` with HTTP status 202 and the
+    acceptance-time original queued Operation snapshot.
+24. Commit.
+25. Only after a successful commit return HTTP 202 with top-level
+    `{ "operation": ... }`; the internal result is `replayed = false`.
+
+The no-key order is separately frozen:
+
+1. Read the opaque `runId` from the canonical path.
+2. Resolve the workspace with the read-only locator.
+3. If the locator finds no Run, return `404 RUN_NOT_FOUND`.
+4. Validate the body, reject unknown fields, and validate optional
+   `expectedVersion`.
+5. Begin the caller-owned `BEGIN IMMEDIATE` transaction.
+6. Read the workspace-scoped Run.
+7. Apply the optional `expectedVersion` guard.
+8. Require the Run status to be `queued`.
+9. Read complete history through `OperationService.listByRun()`.
+10. Apply the complete frozen Start-history matrix.
+11. Create the queued Start Operation with
+    `OperationService.createWithinTransaction()`.
+12. Commit.
+13. Return HTTP 202 with `{ "operation": ... }`.
+
+The no-key path creates no Idempotency Record and does not set
+`Idempotency-Replayed`.
+
+No Run/Operation domain guard may run between `prepare()` and `BEGIN IMMEDIATE`.
+The locator is routing resolution only; it is not a Run status/version guard.
+
+A1 Acceptance never mutates Run status or version, mutates Task, writes
+`run.dequeued`, writes any Runtime Event, writes Outbox or Dead Letter rows,
+calls `RunEngine.tick()` or `RunEngine.dispatch()`, calls WorkflowExecutor or
+StageExecutor, starts a Provider or subprocess, waits synchronously for
+`starting`/`running`, changes the Start Operation to `running`/`completed`,
+triggers Retry, or creates Migration 014. After successful acceptance the Run
+is still `queued` at the same version, the Start Operation is `queued` at
+version 1, Task is unchanged, and no Runtime Event or Outbox row is added.
+
+Any failure after Operation insert and before Commit rolls back the new Start
+Operation and Idempotency Success Record, leaving the Run queued at the same
+version, Task unchanged, and with no new Runtime Event or Outbox row.
 
 The future route creates IdempotencyService through
 `createOptionalIdempotencyService(store)`, creates a route-local TaskRunService
