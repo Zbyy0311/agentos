@@ -121,7 +121,7 @@ export interface RecordPreClaimFailureInput {
 }
 
 function isExecutionAuthorization(operation: ApiOperation): boolean {
-  return (operation.type === 'run.start' || operation.type === 'run.retry')
+  return operation.type === 'run.start'
     && (
       operation.status === 'queued'
       || operation.status === 'running'
@@ -131,7 +131,7 @@ function isExecutionAuthorization(operation: ApiOperation): boolean {
 }
 
 function isExecutionAuthorizationType(type: string): type is OperationType {
-  return type === 'run.start' || type === 'run.retry';
+  return type === 'run.start';
 }
 
 function isRunAuthorization(operation: ApiOperation): boolean {
@@ -687,7 +687,7 @@ export class RunEngine {
     if (authorizations.length !== 1) {
       throw new RunEngineError(
         'RUN_ENGINE_AUTHORIZATION_AMBIGUOUS',
-        `Run ${run.id} has ${authorizations.length} run.start/run.retry operations`,
+        `Run ${run.id} has ${authorizations.length} run.start operations`,
       );
     }
     const operation = authorizations[0]!;
@@ -795,7 +795,7 @@ export class RunEngine {
     if (authorizations.length > 1) {
       throw new RunEngineError(
         'RUN_ENGINE_AUTHORIZATION_AMBIGUOUS',
-        `Run ${run.id} has ${authorizations.length} active execution authorizations`,
+        `Run ${run.id} has ${authorizations.length} active run.start execution authorizations`,
       );
     }
 

@@ -7,6 +7,7 @@ import { isMainThread, parentPort, Worker, workerData } from 'node:worker_thread
 import test from 'node:test';
 import type {
   ApiOperation,
+  ApiProblem,
   RuntimeEventDraft,
   RuntimeEventEnvelope,
 } from '@agentos/shared';
@@ -49,6 +50,20 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 };
 
 const NOW = '2026-08-04T12:00:00.000Z';
+
+function preClaimProblem(workspaceId: string, runId: string, operationId: string): ApiProblem {
+  return {
+    type: 'https://agentos.dev/problems/pre-claim-failed',
+    title: 'Pre-claim failed',
+    status: 502,
+    code: 'PRE_CLAIM_FAILED',
+    detail: 'The injected pre-claim failure is test-only.',
+    instance: `/runs/${runId}`,
+    requestId: 'request-run-engine-test',
+    retryable: false,
+    context: { workspaceId, runId, operationId },
+  };
+}
 
 interface SeedIds {
   readonly workspaceId: string;
@@ -245,6 +260,17 @@ function transitionOperationToRunning(fixture: FixtureBase, operation: ApiOperat
     operationId: operation.id,
     expectedVersion: operation.version,
     to: 'running',
+  });
+}
+
+function transitionOperationToCompleted(fixture: FixtureBase, operation: ApiOperation): ApiOperation {
+  const running = transitionOperationToRunning(fixture, operation);
+  return fixture.operationService.transition({
+    workspaceId: fixture.workspaceId,
+    operationId: running.id,
+    expectedVersion: running.version,
+    to: 'completed',
+    result: { resourceType: 'run', resourceId: fixture.runId },
   });
 }
 
@@ -523,18 +549,61 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && parentPort) {
     });
   });
 
-  test('unique queued run.retry claims an existing Child Run with Operation correlation identity', async () => {
+  test('queued Child with only queued run.retry is a repeatable no-op with no claim writes', async () => {
     await withFixture(async fixture => {
-      const authorization = createOperation(fixture, 'run.retry');
+      const retryOperation = createOperation(fixture, 'run.retry');
+      const beforeRun = runState(fixture);
+      const beforeOperations = operationState(fixture);
+      assert.deepEqual(fixture.engine.tick({ workspaceId: fixture.workspaceId, runId: fixture.runId }), {
+        outcome: 'noop',
+        reason: 'no-authorization',
+        runId: fixture.runId,
+      });
+      assert.deepEqual(fixture.engine.tick({ workspaceId: fixture.workspaceId, runId: fixture.runId }), {
+        outcome: 'noop',
+        reason: 'no-authorization',
+        runId: fixture.runId,
+      });
+      assert.equal(operationState(fixture).find(item => item.id === retryOperation.id)?.status, 'queued');
+      assertNoClaimWrites(fixture, beforeRun, beforeOperations);
+    }, { retryRun: true });
+  });
+
+  test('queued Child with completed v3 run.retry remains a no-op and immutable', async () => {
+    await withFixture(async fixture => {
+      const retryOperation = transitionOperationToCompleted(fixture, createOperation(fixture, 'run.retry'));
+      const beforeRun = runState(fixture);
+      const beforeOperations = operationState(fixture);
+      assert.deepEqual(fixture.engine.tick({ workspaceId: fixture.workspaceId, runId: fixture.runId }), {
+        outcome: 'noop',
+        reason: 'no-authorization',
+        runId: fixture.runId,
+      });
+      assert.deepEqual(operationState(fixture).find(item => item.id === retryOperation.id), {
+        id: retryOperation.id,
+        type: 'run.retry',
+        status: 'completed',
+        version: 3,
+        result: { resourceType: 'run', resourceId: fixture.runId },
+        error: undefined,
+      });
+      assertNoClaimWrites(fixture, beforeRun, beforeOperations);
+    }, { retryRun: true });
+  });
+
+  test('queued Child with Retry plus Start claims only the queued run.start', async () => {
+    await withFixture(async fixture => {
+      const retryOperation = transitionOperationToCompleted(fixture, createOperation(fixture, 'run.retry'));
+      const startOperation = createOperation(fixture, 'run.start');
       const result = fixture.engine.tick({ workspaceId: fixture.workspaceId, runId: fixture.runId });
       assert.equal(result.outcome, 'claimed');
       if (result.outcome !== 'claimed') return;
-      assert.equal(result.operation.id, authorization.id);
-      assert.equal(result.operation.status, 'running');
+      assert.equal(result.operation.id, startOperation.id);
+      assert.equal(result.operation.type, 'run.start');
+      assert.equal(result.event.correlationId, startOperation.id);
+      assert.equal(operationState(fixture).find(item => item.id === retryOperation.id)?.status, 'completed');
+      assert.equal(operationState(fixture).find(item => item.id === startOperation.id)?.status, 'running');
       assert.equal(result.run.status, 'starting');
-      assert.equal(result.event.type, 'run.dequeued');
-      assert.equal(result.event.correlationId, authorization.id);
-      assert.notEqual(result.event.correlationId, fixture.runId);
       assert.equal(result.outbox.eventId, result.event.id);
       assertIntegrity(fixture.db);
     }, { retryRun: true });
@@ -560,8 +629,6 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && parentPort) {
   test('duplicate and coexisting active authorizations fail closed without choosing by order', async () => {
     const combinations: Array<{ first: OperationType; second: OperationType; runningSecond?: boolean }> = [
       { first: 'run.start', second: 'run.start' },
-      { first: 'run.retry', second: 'run.retry' },
-      { first: 'run.start', second: 'run.retry' },
       { first: 'run.start', second: 'run.start', runningSecond: true },
     ];
     for (const combination of combinations) {
@@ -579,27 +646,6 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && parentPort) {
         assertNoClaimWrites(fixture, beforeRun, beforeOperations);
       });
     }
-    await withFixture(async fixture => {
-      createOperation(fixture, 'run.start');
-      createOperation(fixture, 'run.retry');
-      const engine = createEngine(fixture, {
-        operationService: {
-          listByRun: (workspaceId, runId) => fixture.operationService
-            .listByRun(workspaceId, runId)
-            .reverse(),
-          transitionWithinTransaction: fixture.operationService.transitionWithinTransaction.bind(fixture.operationService),
-        },
-      });
-      assert.throws(
-        () => engine.tick({ workspaceId: fixture.workspaceId, runId: fixture.runId }),
-        error => error instanceof RunEngineError
-          && error.code === 'RUN_ENGINE_AUTHORIZATION_AMBIGUOUS',
-      );
-      assert.deepEqual(eventsForRun(fixture), []);
-      assert.deepEqual(outboxesForRun(fixture), []);
-      assert.equal(runState(fixture).status, 'queued');
-      assertIntegrity(fixture.db);
-    });
   });
 
   test('single active authorization that is already running fails closed', async () => {
@@ -850,6 +896,26 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && parentPort) {
       fixture.db.close();
       rmSync(root, { recursive: true, force: true });
     }
+  });
+
+  test('recordPreClaimFailure rejects run.retry as an Engine authorization', async () => {
+    await withFixture(async fixture => {
+      const retryOperation = createOperation(fixture, 'run.retry');
+      const beforeRun = runState(fixture);
+      const beforeOperations = operationState(fixture);
+      assert.throws(
+        () => fixture.engine.recordPreClaimFailure({
+          workspaceId: fixture.workspaceId,
+          runId: fixture.runId,
+          operationId: retryOperation.id,
+          expectedOperationVersion: retryOperation.version,
+          problem: preClaimProblem(fixture.workspaceId, fixture.runId, retryOperation.id),
+        }),
+        error => error instanceof RunEngineError
+          && error.code === 'RUN_ENGINE_AUTHORIZATION_BINDING_INVALID',
+      );
+      assertNoClaimWrites(fixture, beforeRun, beforeOperations);
+    }, { retryRun: true });
   });
 
   test('P3B-2B explicit dispatch remains separate from the P3B-1 tick claim', async () => {

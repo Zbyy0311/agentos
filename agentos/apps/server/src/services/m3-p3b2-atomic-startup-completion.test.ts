@@ -64,8 +64,6 @@ const RUN_ID = 'run-p3b2-test';
 const PARENT_RUN_ID = 'run-p3b2-parent';
 const STAGE_KEYS = ['codex_manager', 'kimi_worker', 'opencode_reviewer', 'codex_final_review'];
 
-type StartupOperationType = 'run.start' | 'run.retry';
-
 const AGENT_SNAPSHOT: AgentSnapshotV1 = {
   agentId: 'agent-p3b2-test',
   name: 'P3B-2B Agent',
@@ -147,8 +145,7 @@ function problemFor(operationId: string, stageId?: string): ApiProblem {
   };
 }
 
-function snapshotPayload(operationType: StartupOperationType): RunSnapshotPayloadV2 {
-  const isRetry = operationType === 'run.retry';
+function snapshotPayload(isRetry: boolean): RunSnapshotPayloadV2 {
   return {
     schemaVersion: 2,
     capturedAt: NOW,
@@ -312,23 +309,24 @@ interface Fixture extends PersistenceComposition {
   readonly db: Database;
   readonly engine: RunEngine;
   readonly operation: ApiOperation;
+  readonly retryOperation?: ApiOperation;
   readonly commitControl: CommitControl;
   close(): void;
 }
 
 interface FixtureOptions {
-  readonly operationType?: StartupOperationType;
+  readonly retryRun?: boolean;
+  readonly includeCompletedRetryOperation?: boolean;
   readonly outcome?: () => StageExecutorResult;
   readonly databasePath?: string;
 }
 
 function createFixture(options: FixtureOptions = {}): Fixture {
-  const operationType = options.operationType ?? 'run.start';
+  const isRetry = options.retryRun === true;
   const outcome = options.outcome ?? ((): StageExecutorResult => ({ outcome: 'active' }));
   const db = new DatabaseSync(options.databasePath ?? ':memory:');
   db.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;');
   new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
-  const isRetry = operationType === 'run.retry';
   const parentSeeding = isRetry
     ? `INSERT INTO runs (
         id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin,
@@ -358,7 +356,7 @@ function createFixture(options: FixtureOptions = {}): Fixture {
     workspaceId: WORKSPACE_ID,
     runId: RUN_ID,
     workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
-    payload: snapshotPayload(operationType),
+    payload: snapshotPayload(isRetry),
   });
   STAGE_KEYS.forEach((workflowStageKey, index) => {
     composition.runStageRepository.insertInitial({
@@ -369,7 +367,25 @@ function createFixture(options: FixtureOptions = {}): Fixture {
       sequence: index + 1,
     });
   });
-  const operation = composition.operationService.create({ workspaceId: WORKSPACE_ID, runId: RUN_ID, type: operationType });
+  const operation = composition.operationService.create({ workspaceId: WORKSPACE_ID, runId: RUN_ID, type: 'run.start' });
+  const retryOperation = options.includeCompletedRetryOperation
+    ? (() => {
+      const queued = composition.operationService.create({ workspaceId: WORKSPACE_ID, runId: RUN_ID, type: 'run.retry' });
+      const running = composition.operationService.transition({
+        workspaceId: WORKSPACE_ID,
+        operationId: queued.id,
+        expectedVersion: queued.version,
+        to: 'running',
+      });
+      return composition.operationService.transition({
+        workspaceId: WORKSPACE_ID,
+        operationId: running.id,
+        expectedVersion: running.version,
+        to: 'completed',
+        result: { resourceType: 'run', resourceId: RUN_ID },
+      });
+    })()
+    : undefined;
   const stageExecutor = new StageExecutor(input => {
     const result = outcome();
     if (result.outcome !== 'failed') return result;
@@ -386,6 +402,7 @@ function createFixture(options: FixtureOptions = {}): Fixture {
     db,
     engine: buildEngine(db, composition, commitControl, stageExecutor),
     operation,
+    retryOperation,
     commitControl,
     close: () => db.close(),
   };
@@ -397,7 +414,7 @@ function dispatchToStarting(fixture: Fixture): void {
   fixture.engine.dispatch({ workspaceId: WORKSPACE_ID, runId: RUN_ID });
 }
 
-function state(fixture: Fixture): { run: unknown; stages: unknown[]; operation: ApiOperation; events: unknown[]; outboxes: unknown[] } {
+function state(fixture: Fixture): { run: unknown; stages: unknown[]; operation: ApiOperation; retryOperation?: ApiOperation; events: unknown[]; outboxes: unknown[] } {
   const runRow = fixture.db.prepare('SELECT status, version, next_event_sequence FROM runs WHERE id = ?').get(RUN_ID) as {
     status: string;
     version: number;
@@ -418,6 +435,9 @@ function state(fixture: Fixture): { run: unknown; stages: unknown[]; operation: 
     run: { status: runRow.status, version: runRow.version, next_event_sequence: runRow.next_event_sequence },
     stages: stageRows.map(row => ({ workflow_stage_key: row.workflow_stage_key, status: row.status, version: row.version })),
     operation: fixture.operationService.findById(WORKSPACE_ID, fixture.operation.id),
+    retryOperation: fixture.retryOperation === undefined
+      ? undefined
+      : fixture.operationService.findById(WORKSPACE_ID, fixture.retryOperation.id),
     events: eventRows.map(row => ({ type: row.type, sequence: row.sequence, timestamp: row.timestamp, correlation_id: row.correlation_id })),
     outboxes: fixture.db.prepare('SELECT event_id FROM outbox_messages WHERE aggregate_id = ? ORDER BY created_at ASC, id ASC').all(RUN_ID),
   };
@@ -526,7 +546,7 @@ function runStartupRaceWorker(data: StartupRaceWorkerData): void {
     const stageRow = db.prepare('SELECT status, version FROM run_stages WHERE run_id = ? ORDER BY sequence ASC, id ASC LIMIT 1').get(data.runId) as { status: string; version: number } | undefined;
     const authorizations = composition.operationService
       .listByRun(data.workspaceId, data.runId)
-      .filter(candidate => candidate.type === 'run.start' || candidate.type === 'run.retry');
+      .filter(candidate => candidate.type === 'run.start');
     const operation = authorizations.length === 1 ? authorizations[0] : undefined;
     if (
       runRow?.status !== 'starting' || runRow.version !== data.expectedRunVersion
@@ -876,15 +896,20 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
     }
   });
 
-  test('Retry startup success completes the twelve-step atomic outcome for the Child Run with Parent untouched', () => {
-    const fixture = createFixture({ operationType: 'run.retry' });
+  test('Retry Child startup requires an independent Start Operation and preserves completed Retry Operation', () => {
+    const fixture = createFixture({ retryRun: true, includeCompletedRetryOperation: true });
     try {
       const parentBefore = parentRunRow(fixture);
-      assert.equal(fixture.operation.type, 'run.retry');
+      const retryBefore = fixture.retryOperation;
+      assert.ok(retryBefore);
+      assert.equal(fixture.operation.type, 'run.start');
       assert.equal(fixture.operation.aggregateType, 'run');
       assert.equal(fixture.operation.aggregateId, RUN_ID);
       assert.equal(fixture.operation.runId, RUN_ID);
       assert.equal(fixture.operation.correlationId, fixture.operation.id);
+      assert.equal(retryBefore.type, 'run.retry');
+      assert.equal(retryBefore.status, 'completed');
+      assert.equal(retryBefore.version, 3);
       dispatchToStarting(fixture);
       const result = fixture.engine.dispatch({ workspaceId: WORKSPACE_ID, runId: RUN_ID });
       assert.ok(result);
@@ -893,9 +918,10 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
       assert.equal((current.stages[0] as { status: string; version: number }).status, 'running');
       assert.equal((current.stages[0] as { status: string; version: number }).version, 4);
       assert.equal(current.operation.status, 'completed');
-      assert.equal(current.operation.type, 'run.retry');
+      assert.equal(current.operation.type, 'run.start');
       assert.deepEqual(current.operation.result, { resourceType: 'run', resourceId: RUN_ID });
       assert.equal(current.operation.error, undefined);
+      assert.deepEqual(current.retryOperation, retryBefore);
       assert.deepEqual(current.events.slice(-2), [
         { type: 'stage.started', sequence: 4, timestamp: NOW, correlation_id: fixture.operation.id },
         { type: 'run.started', sequence: 5, timestamp: NOW, correlation_id: fixture.operation.id },
@@ -908,20 +934,24 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
     }
   });
 
-  test('Retry C1b Branch A atomically fails Child Stage, Child Run, and Retry operation with Parent untouched', () => {
+  test('Retry C1b Branch A is driven by Start and leaves completed Retry Operation unchanged', () => {
     const fixture = createFixture({
-      operationType: 'run.retry',
+      retryRun: true,
+      includeCompletedRetryOperation: true,
       outcome: () => ({ outcome: 'failed', problem: PROBLEM, phase: 'provider-start', retryScheduled: false }),
     });
     try {
       const parentBefore = parentRunRow(fixture);
+      const retryBefore = fixture.retryOperation;
+      assert.ok(retryBefore);
       dispatchToStarting(fixture);
       fixture.engine.dispatch({ workspaceId: WORKSPACE_ID, runId: RUN_ID });
       const current = state(fixture);
       assert.equal((current.run as { status: string }).status, 'failed');
       assert.equal((current.stages[0] as { status: string }).status, 'failed');
       assert.equal(current.operation.status, 'failed');
-      assert.equal(current.operation.type, 'run.retry');
+      assert.equal(current.operation.type, 'run.start');
+      assert.deepEqual(current.retryOperation, retryBefore);
       assert.deepEqual(current.events.slice(-2), [
         { type: 'stage.failed', sequence: 4, timestamp: NOW, correlation_id: fixture.operation.id },
         { type: 'run.failed', sequence: 5, timestamp: NOW, correlation_id: fixture.operation.id },
@@ -934,10 +964,12 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
     }
   });
 
-  test('Retry C1b Branch B fails only Child Run and Retry operation before any Stage enters starting', () => {
-    const fixture = createFixture({ operationType: 'run.retry' });
+  test('Retry C1b Branch B is driven by Start before any Stage enters starting', () => {
+    const fixture = createFixture({ retryRun: true, includeCompletedRetryOperation: true });
     try {
       const parentBefore = parentRunRow(fixture);
+      const retryBefore = fixture.retryOperation;
+      assert.ok(retryBefore);
       fixture.engine.tick({ workspaceId: WORKSPACE_ID, runId: RUN_ID });
       fixture.engine.dispatch({
         workspaceId: WORKSPACE_ID,
@@ -948,7 +980,8 @@ if (!isMainThread && currentWorkerData?.mode === 'startup-race' && parentPort) {
       assert.equal((current.run as { status: string }).status, 'failed');
       assert.ok(current.stages.every(stage => (stage as { status: string }).status === 'pending'));
       assert.equal(current.operation.status, 'failed');
-      assert.equal(current.operation.type, 'run.retry');
+      assert.equal(current.operation.type, 'run.start');
+      assert.deepEqual(current.retryOperation, retryBefore);
       assert.deepEqual(current.events, [
         { type: 'run.dequeued', sequence: 1, timestamp: NOW, correlation_id: fixture.operation.id },
         { type: 'run.failed', sequence: 2, timestamp: NOW, correlation_id: fixture.operation.id },

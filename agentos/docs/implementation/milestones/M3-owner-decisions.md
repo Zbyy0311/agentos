@@ -1,12 +1,12 @@
 # AgentOS M3 Owner Decision Register
 
-Technical direction status: APPROVED BY INDEPENDENT TECHNICAL REVIEW — IMPLEMENTATION STILL NOT AUTHORIZED.
+Technical direction status: APPROVED BY INDEPENDENT TECHNICAL REVIEW — M3-TD-30 Option A alignment is authorized only by the current remediation.
 
-P3 decision freeze status: P3 IMPLEMENTATION NOT AUTHORIZED — P3A IMPLEMENTATION NOT AUTHORIZED — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED — REMOTE CHECKS UNAVAILABLE — NOT PASS — SCHEMA BLOCKER: NONE — Migration 014 is not required or authorized.
+P3 decision freeze status: P3C-0B Post-Merge Remediation 1 is authorized; P3C-1, P3D, and Production Cutover remain NOT AUTHORIZED / NOT STARTED — REMOTE CHECKS UNAVAILABLE — NOT PASS — SCHEMA BLOCKER: NONE — Migration 014 is not required or authorized.
 
 Final P0 documentation merge gate: COMPLETE (historical; superseded by the merged P1, P2, and P3 preplanning records).
 
-Baseline: origin/main at 481a9743539dfe7d86308a4cce8098fc080b469b
+Baseline: origin/main at 82bee50416caff28caf5511be68420cf0ebb0805
 
 This register separates the approved M3 technical contract from deferred Production Cutover and Legacy Retirement decisions. A technical approval is not authorization to modify code, create DDL, migrate data, change production behavior, restore, delete, change the Web default, or start any M3 implementation phase without explicit authorization.
 
@@ -52,9 +52,9 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-27 | Operation cancel semantics | POST /api/operations/:operationId/cancel cancels the target non-terminal Operation and its bound Task-domain Run atomically in one caller-owned transaction. Cancellable statuses are exactly queued, running, waiting_approval, and paused; terminal conflicts fail closed. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
 | M3-TD-28 | Operation progress in M3 | P3 does not persist or populate ApiOperation.progress. GET /api/operations/:operationId omits progress; no derived, estimated, or fake value is returned. Progress is a Post-M3 contract and data-source decision. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
 | M3-TD-29 | Start Operation completion package | The run.start Operation is a Start command tracker, not a Run lifetime projection. Its `running -> completed` transition must commit in the same caller-owned transaction as the first startup Stage `starting -> running`, `stage.started`, the Run `starting -> running`, `run.started`, and both Outbox rows; `completedAt` uses the transaction timestamp and no independent Operation Event is written. Pre-start closure is split into C1a (claim commit not achieved: full Class B rollback, no automatic failure terminal) and C1b (after claim, before `run.started`: atomic Stage/Run/Operation failure closure). | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
-| M3-TD-30 | Retry child run activation package | Retry is accepted only for a Parent Run in `failed` at the expected version; it creates a Child Run and immediately authorizes that Child Run for Engine execution. `run.retry -> HTTP 202 + Operation-only immutable replay envelope`; creation Events keep `correlationId = childRun.id`, execution Events after `run.dequeued` use `operation.id`, and the Parent Run is never reset or modified. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
+| M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | APPROVED; Option A alignment is implemented only by the current remediation. |
 
-M3-TD-26 through M3-TD-30 are APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. They resolve the five P3 Owner Decision candidates (formerly OD-P3-01 through OD-P3-05) recorded in the P3 preplanning documents.
+M3-TD-26 through M3-TD-30 are approved technical direction. M3-TD-30 is now aligned to Option A by this remediation; P3C-1 remains separately unauthorized. They resolve the five P3 Owner Decision candidates (formerly OD-P3-01 through OD-P3-05) recorded in the P3 preplanning documents.
 
 M3-TD-01 through M3-TD-25 retain their historical contract wording. Any P1/P2
 implementation boundary recorded in those rows is a historical phase
@@ -247,15 +247,15 @@ boundary; the current governance status is recorded in section 5 below.
 
 - **Owner and record time:** M3 technical owner; 2026-08-04.
 - **Selected contract:** the `run.start` Operation is a Start command
-  tracker, not a Run lifetime projection. The same caller-owned atomic
-  startup-completion
-  seam is used by a claimed `run.retry` Operation; M3-TD-29 freezes the
-  Start mapping and M3-TD-30 applies the same composition to Retry. The
-  Operation is `queued` after acceptance, `running` after Engine claim, and
-  `completed` only in the transaction that commits startup completion.
+  tracker, not a Run lifetime projection. The caller-owned atomic
+  startup-completion seam applies to a claimed `run.start` Operation;
+  M3-TD-29 freezes the Start mapping, while M3-TD-30 keeps the completed
+  Retry Operation outside Engine authorization and startup completion. The
+  Start Operation is `queued` after acceptance, `running` after Engine claim,
+  and `completed` only in the transaction that commits startup completion.
   The frozen twelve-step sequence is:
-  1. Re-read and validate the claimed Operation: type `run.start` or
-     `run.retry`, status `running`, expected version, and valid bindings.
+   1. Re-read and validate the claimed Operation: type `run.start`, status
+      `running`, expected version, and valid bindings.
   2. Re-read and validate the Run at status `starting` and its expected
      version.
   3. Re-read and validate the first startup Stage at status `starting` and
@@ -295,8 +295,8 @@ boundary; the current governance status is recorded in section 5 below.
   When the Operation is
   `running`, the Run is `starting`, and the first startup Stage is
   `starting`, the caller-owned failure closure is:
-  1. Re-read and validate the Operation: type `run.start` or `run.retry`,
-     status `running`, expected version, and valid bindings.
+   1. Re-read and validate the Operation: type `run.start`, status `running`,
+      expected version, and valid bindings.
   2. Re-read and validate the Run at `starting` and its expected version.
   3. Re-read and validate the startup Stage at `starting` and its expected
      version.
@@ -327,8 +327,9 @@ boundary; the current governance status is recorded in section 5 below.
   fabricate `stage.failed`, leaves not-yet-started Stages in their valid
   lifecycle states, and emits no Stage Event without a legal transition
   owner. C1b never commits `run.failed` before Operation failure, updates
-  only the Operation, or updates only the Run. Start and Retry use the same
-  failure closure, and ApiProblem `runId`/`operationId` bindings must agree.
+  only the Operation, or updates only the Run. Start uses this failure
+  closure; a completed Retry Operation is not rewritten, and ApiProblem
+  `runId`/`operationId` bindings must agree.
   C2 post-start Stage/Run failure, cancellation, or completion never
   rewrites a completed Operation. Idempotency replay always returns the
   immutable queued Operation snapshot saved at HTTP 202 acceptance; it
@@ -347,7 +348,7 @@ boundary; the current governance status is recorded in section 5 below.
   caller-owned transactions with Stage/Run/Operation expected-version
   guards, both Runtime Events and both Outbox rows; C1a full-rollback proof;
   failure rollback at every position; no automatic failed marking on
-  transaction-attempt failure; Start and Retry composition tests;
+  transaction-attempt failure; Start composition and Retry immutability tests;
   pre-start startup-failure mapping; cancellation remains owned by M3-TD-27
   in P3D; post-start non-rewrite proofs;
   result shape; acceptance-time replay stability; no committed
@@ -355,7 +356,8 @@ boundary; the current governance status is recorded in section 5 below.
   or `Run=starting` + `Operation=failed` intermediate state.
 - **Stop/no-go:** any split commit between `run.started` and Operation
   completion or between `run.failed` and Operation failure; any post-start
-  rewrite of a completed Start or Retry Operation; automatic failed marking
+  rewrite of a completed Start Operation or completed Retry Operation;
+  automatic failed marking
   from transaction rollback; a mutable Run snapshot in the result; an
   independent Operation Event; or replay that varies with current state.
 - **Rollback boundary:** docs-only decision record; an implementation
@@ -366,82 +368,43 @@ boundary; the current governance status is recorded in section 5 below.
 ### M3-TD-30 Retry child run activation package
 
 - **Owner and record time:** M3 technical owner; 2026-08-04.
-- **Selected contract:** Option B is approved, with a strict failed-Parent
-  boundary. `run.retry` is accepted only when the Parent Run status is
-  `failed` at the expected Parent version. Parent `queued`, `starting`,
-  `running`, `waiting_approval`, `paused`, `completed`, and `cancelled`
-  return stable 409 `RUN_NOT_RETRYABLE`; the Parent is never modified. A
-  matching failed Parent can create one Child; a stale version or a
-  non-failed Parent creates no side effects. Same-key replay returns the
-  original response, while concurrent different-key Retry requests allow
-  only one valid Child and fail the others with a stable state conflict.
-  Option B then creates a Child Run and immediately authorizes that Child
-  Run for Engine execution; a separate Start command is not required.
-  The endpoint returns HTTP 202 with a queued `run.retry` Operation bound
-  to the new Child Run: `aggregateId = childRun.id`, `runId = childRun.id`,
-  and `correlationId = operation.id`.
-  The A2 acceptance transaction atomically creates the Child Run with
-  lineage, the Child Run graph/stages, the queued `run.retry` Operation,
-  the Idempotency success/replay record, and the creation Event/Outbox
-  rows. Failure at Child Run insert, Snapshot insert, Stage insert,
-  `run.created`, any `stage.created`, any Outbox insert, Retry Operation
-  insert, or Idempotency Success leaves no Child Run, Snapshot, Stage,
-  creation Event, Outbox, Retry Operation, or Idempotency Success, and
-  leaves the Parent unchanged.
-  Creation correlation remains the P2C-2C-1 contract: Retry Operation
-  correlationId = operation.id; Child Run `run.created` and every
-  `stage.created` use `correlationId = childRun.id`; each
-  `stage.created.causationId` and `parentEventId` continue to point to the
-  `run.created` Event ID; callers cannot override Creation Event
-  correlationId. From Engine claim `run.dequeued` onward, execution Events
-  driven by the Retry Operation use `operation.id`.
-  Engine eligibility requires exactly one valid non-terminal queued
-  authorization Operation; a queued `run.retry` is valid, coexisting or
-  multiple authorizations fail closed, and `run.create`/`run.cancel` never
-  authorize a claim. Operation lifecycle is `queued` after acceptance,
-  `running` after claim, and `completed` only through the same twelve-step
-  atomic startup-completion transaction as M3-TD-29 when the Child Run
-  enters `running`; C1a/C1b uses the same failure closure as M3-TD-29 for
-  unrecoverable pre-start startup error; user cancellation follows M3-TD-27
-  in P3D and is not C1a/C1b; later Child Run failure/cancel/completion
-  never rewrites a completed Retry Operation. Result is
-  `resourceType = "run"`, `resourceId = childRun.id`, with `data` omitted.
-  P3C-0B registers `run.retry` at HTTP 202 and uses the Operation-only
-  immutable acceptance-time queued Retry Operation snapshot; the
-  Operation's `runId` provides the Child Run ID, so no combined Child Run +
-  Operation envelope is used; replay never re-reads current state; same
-  key + same hash returns the original 202 and same key + different hash
-  returns 409.
-  `GET /api/operations/:operationId/events` does not include the Child Run
-  creation Events for `run.retry`; it begins with Events correlated to the
-  Retry Operation, such as `run.dequeued`. Retry acceptance remains
-  observable through the Operation resource and idempotency record. No
-  automatic provider retry policy is introduced.
-- **Rationale:** retry is an explicit operator command against a failed
-  Parent Run; requiring a second Start would duplicate the command without
-  adding safety, since the A2 acceptance transaction already establishes
-  the full Child graph and authorization atomically while preserving the
-  Parent's terminal history.
-- **Affected stages:** P3B-1 (selector), P3C-0B (replay closure), P3C-1
-  (retry portion).
+- **Selected contract:** Option A is approved. Retry is accepted only when
+  the Parent Run status is `failed` at the expected Parent version. Parent
+  `queued`, `starting`, `running`, `waiting_approval`, `paused`,
+  `completed`, and `cancelled` return stable 409 `RUN_NOT_RETRYABLE`; the
+  Parent is never modified. A matching failed Parent creates one queued
+  Child; a stale version or non-failed Parent creates no side effects.
+  Retry does not authorize Engine execution and does not claim, dispatch,
+  or complete the Child. A separate queued `run.start` Operation is the
+  only Engine authorization.
+  The acceptance response is HTTP 201. The Retry Operation is completed at
+  version 3 in the acceptance transaction, and the dedicated schemaVersion
+  1 replay envelope contains the original queued Child Run snapshot and the
+  original completed Retry Operation snapshot. Same-key replay returns that
+  immutable response; later Child or Operation state changes do not alter it.
+  The Parent remains unchanged and no automatic provider retry policy is
+  introduced.
+- **Rationale:** the Retry command creates durable Child metadata while a
+  separate Start command explicitly grants execution authorization. This
+  keeps creation and execution boundaries distinct and prevents a completed
+  Retry Operation from becoming an Engine claim marker.
+- **Affected stages:** P3B-1 (selector), P3B-2B (Start-driven Child
+  startup), P3C-0B (replay closure), and the future P3C-1 Retry portion.
 - **Evidence threshold:** failed-Parent and expected-version guards;
   non-failed Parent 409 matrix; concurrent Retry race; A2 failure injection
   at every Child/Snapshot/Stage/Event/Outbox/Operation/Idempotency write;
-  exact creation-versus-execution correlation boundary; selector
-  acceptance of exactly one authorization; fail-closed on coexisting
-  authorizations; twelve-step atomic startup completion for Start and
-  Retry; replay stability; parent immutability; operation-event query
-  exclusion of creation Events.
+  Retry-only Engine no-op with zero writes; completed Retry Operation
+  immutability; independent Start claim and Start correlation; replay
+  stability; Parent immutability; operation-event query exclusion.
 - **Stop/no-go:** retry accepted for a non-failed or stale Parent; any
-  retry without lineage; a combined Child Run + Operation envelope; any
-  Parent mutation; creation Events using operation.id; execution Events
-  after `run.dequeued` using childRun.id; split startup completion; an
-  independent Operation Event; authorization ambiguity (zero or multiple
-  valid authorizations).
+  Parent mutation; a combined or Operation-only replay envelope; Retry
+  returning 202; Retry authorizing or dispatching the Child; execution
+  Events using the Retry Operation ID; or a second implicit Start path.
 - **Rollback boundary:** docs-only decision record; an implementation
   revert removes the retry path as one package; stored rows are preserved.
-- **Re-review trigger:** any proposal requiring a separate Start for retry
-  children, a combined envelope, or a provider retry policy.
+- **Re-review trigger:** any proposal removing the separate Start command,
+  changing HTTP 201, changing the dual-snapshot replay shape, or adding a
+  provider retry policy.
 
 ## 3. API compatibility record
 
@@ -489,14 +452,15 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 ## 5. P0 closure and current authorization status
 
 - Technical direction: APPROVED BY INDEPENDENT TECHNICAL REVIEW.
-- Implementation: STILL NOT AUTHORIZED.
+- P3C-0B Post-Merge Remediation 1: AUTHORIZED only for the six-file
+  Option A alignment allowlist; no P3C-1 production flow is authorized.
 - Final independent P0 review: COMPLETE (historical).
 - P0 docs-only merge gate: COMPLETE (historical; P1, P2, and the P3 preplanning package have since merged).
 - M3 P1: IMPLEMENTED AND MERGED.
 - M3 P2: IMPLEMENTED AND MERGED.
 - M3 P3 preplanning: MERGED via PR #21.
-- M3 P3 owner decision freeze: technical direction correction under
-  independent review; P3/P3A implementation remains NOT AUTHORIZED.
+- M3 P3 owner decision freeze: M3-TD-30 is aligned to Option A; P3C-1 and
+  later implementation remain NOT AUTHORIZED.
 - P3B-2A CONTRACT ALIGNMENT: PLANNED — NOT AUTHORIZED.
 - Unresolved P3 Owner Decision candidates: 0.
 - Approved P3 decisions: 5.
