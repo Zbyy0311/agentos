@@ -649,7 +649,8 @@ The following historical decisions remain recorded but do not block the M3 Lifec
   later implementation remain NOT AUTHORIZED.
 - M3 P3C-1 Start pre-implementation blockers: CLOSED (docs-only); Start
   production implementation remains NOT AUTHORIZED.
-- P3B-2A CONTRACT ALIGNMENT: PLANNED — NOT AUTHORIZED.
+- P3B-2A CONTRACT ALIGNMENT: COMPLETED AND MERGED via PR #25; this historical
+  completion does not authorize P3C-1 Start implementation.
 - Unresolved P3 Owner Decision candidates: 0.
 - Approved P3 decisions: 5.
 - M3-TD sequence ends at M3-TD-30; no later decision exists or is authorized.

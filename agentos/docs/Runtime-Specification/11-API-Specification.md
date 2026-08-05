@@ -1840,18 +1840,39 @@ object，未知字段返回：
 出现时必须是正的 safe integer；`null`、0、负数、小数、字符串、`NaN`
 和超出 safe integer 范围的值均返回 `400 VALIDATION_FAILED`。
 
-Preconditions：
+### Acceptance Preconditions
 
-- status = queued；
-- Snapshot valid；
-- Provider valid；
-- Policy Snapshot；
-- Isolation Plan；
-- no duplicate start.
+The A1 HTTP Start Acceptance transaction checks only:
+
+- the opaque `runId` resolves to its owning workspace;
+- the Run exists;
+- an optional `expectedVersion` matches;
+- the Run status is `queued`;
+- the complete `run.start` Operation history matrix permits creation;
+- the request, Idempotency, and concurrency contracts are satisfied.
+
+### Deferred Engine/Startup Validation
+
+The following validations are not executed inside the A1 HTTP acceptance
+transaction:
+
+- Snapshot and Run binding validation;
+- Workflow definition and RunStage binding validation;
+- dependency graph validation;
+- Stage eligibility;
+- Provider, Process, and CLI startup validation;
+- Policy and Isolation runtime enforcement.
 
 For the current M3 persistent Task-domain Run, the initial status is
 `queued`; `created` is not a current `V2RunStatus`, and Start Acceptance only
 accepts `queued`.
+
+HTTP 202 means only that the Start Operation was atomically accepted and
+queued. It does not mean that Snapshot, Provider, Policy, Isolation, or actual
+execution has passed. Engine claim/startup failures use the frozen C1a/C1b
+contracts. Idempotency replay does not re-run Engine or startup validation.
+The keyed 25-step and no-key 13-step A1 orders recorded in the M3 authority
+documents remain unchanged.
 
 ### Success Response
 
