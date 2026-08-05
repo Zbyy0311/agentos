@@ -1,14 +1,14 @@
 # M3 P3 Current-State Audit
 
-Status: PREPLANNING ONLY — P3 IMPLEMENTATION NOT AUTHORIZED — P3A IMPLEMENTATION NOT AUTHORIZED — PREPLANNING PR #21 MERGED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: POST-MERGE REMEDIATION 1 — M3-TD-30 OPTION A ALIGNMENT IN PROGRESS — P3C-1 AND LATER NOT AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
-This document is a read-only audit of the post-P2 codebase against the M3 P3
+This document is the current-state audit of the post-P2/P3C-0B codebase against the M3 P3
 scope (Run Engine, Workflow Executor and Operation) defined in
 `docs/implementation/milestones/M3-lifecycle-event-api-implementation-plan.md`.
-It records what exists, what is missing, and where each gap belongs. It does
-not authorize, start, or design any production implementation beyond the
-planning level, and it does not change any code, test, migration, or registry
-file.
+It records what exists, what is missing, and where each gap belongs. This
+remediation authorizes only the six-file Option A alignment package; it does
+not authorize P3C-1 production routes, Child creation, Migration 014, or
+Production Cutover.
 
 Remediation 1 (Execution Authorization and Transaction Composition) updates
 items 3.1/3.4, expands the Gap Matrix from 19 to 20 items, tightens section
@@ -25,22 +25,31 @@ Gate) splits P3C-0 into P3C-0A/P3C-0B, extends OD-P3-04, and splits failure
 class C into C1a (before claim commit), C1b (after claim and before
 `run.started`), and C2. Audit item statuses and counts remain unchanged.
 
+Post-Merge Remediation 1 aligns the current RunEngine authorization selector,
+Owner Decision, audit, and implementation plan to Option A. Retry creates a
+queued Child, does not authorize Engine execution, returns HTTP 201, and
+requires a separate `run.start`. P3C-1 and later implementation remain NOT
+AUTHORIZED.
+
 Owner Decision Freeze (2026-08-04): the five P3 Owner Decision candidates
 OD-P3-01 through OD-P3-05 are resolved as approved technical directions
 M3-TD-26 through M3-TD-30 in
 `docs/implementation/milestones/M3-owner-decisions.md`. Section 6 is now a
 resolved-decision record; unresolved candidates: 0; approved P3 decisions:
+SUPERSEDED / HISTORICAL - NOT CURRENT CONTRACT: the pre-remediation
+authorization wording below is retained only as audit history.
 5. Audit item statuses and counts remain unchanged. This approval is
 APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. P3 and
 P3A implementation remain NOT AUTHORIZED.
 
 ## 1. Baseline
 
-- Audited baseline (main / origin/main): `3728d670ce0f5c16d07819e65cddbc0bb4c6c5b2`
-- P2 implementation merge (PR #19): `7a6c41710af5d4c58ef9acd6a9484b9deb341c6b`
+- Audited baseline (main / origin/main): `82bee50416caff28caf5511be68420cf0ebb0805`
+- P2/P3C-0B implementation merge (PR #28): `82bee50416caff28caf5511be68420cf0ebb0805`
 - P2 implementation source head: `14b722614c947c920915dccc5807e7469e604096`
 - Pre-P2 main: `417f5f9c329d32cf75d0ea5a7d797fdb355d3593`
-- PR state at audit time: PR #19 MERGED, PR #20 (P2 post-merge closeout) MERGED.
+- PR state at audit time: PR #28 MERGED; source branch remains available for
+  this remediation's frozen base.
 - Migration registry: exactly 001–013 in
   `apps/server/src/migrations/default-registry.ts`; no Migration 014 exists and
   none is proposed by this audit.
@@ -52,11 +61,10 @@ P3A implementation remain NOT AUTHORIZED.
 
 ## 2. Method
 
-Read-only inspection of the baseline tree: schema migrations, services,
-repositories, routes, shared contracts, and existing tests. No file was
-created, modified, or deleted in production or test code. No database was
-migrated. No test suite was executed for this audit; test evidence cited
-below refers to test files as they exist at the baseline.
+Inspection of the frozen base tree and the remediation worktree: schema
+migrations, services, repositories, routes, shared contracts, and existing
+tests. No database was migrated. Only the allowlisted RunEngine, test, and
+M3 planning/decision files may change in this remediation.
 
 ## 3. Current-State Audit (15 items)
 
@@ -78,8 +86,9 @@ is a separate concern and is audited as item 3.4.
 Note (Remediation 1): `queued` is necessary but not sufficient for Engine
 execution. The execution-authorization eligibility rule is recorded in item
 3.4 and Gap Matrix item 20: a queued Run requires exactly one valid,
-non-terminal queued authorization Operation of type `run.start` or
-`run.retry`.
+  non-terminal queued `run.start` Operation. A queued or completed
+  `run.retry` is not an Engine authorization and produces no-op/no-
+  authorization with no claim writes.
 
 ### 3.2 P2 Transaction Core — IMPLEMENTED
 
@@ -144,10 +153,10 @@ Finding 1 (Remediation 1) — Execution authorization / Engine eligibility gap:
   started runs and break the frozen `Create Run != Start Run` contract.
 
 Engine eligibility must additionally require exactly one queued,
-binding-valid authorization Operation associated with the run, whose type is
-`run.start` or `run.retry`. Zero eligible authorization Operations is a tick
-no-op; multiple or coexisting valid authorizations fail closed. The frozen
-rule set is Gap Matrix item 20. `run.create` and `run.cancel` never
+binding-valid `run.start` Operation associated with the run. A queued or
+completed `run.retry` is never eligible and is a tick no-op with no writes.
+Multiple or coexisting Start Operations fail closed. The frozen rule set is
+Gap Matrix item 20. `run.create`, `run.cancel`, and `run.retry` never
 authorize execution, and workspace/run/aggregate/correlation bindings must
 all agree.
 
@@ -294,6 +303,21 @@ retry lineage tests.
 
 ## 4. Gap Matrix (20 items)
 
+Current Option A override for the retry and authorization cells below:
+
+- `run.retry` is never an Engine claim marker. Retry-only and completed-Retry
+  cases are `noop/no-authorization` with zero Run/Event/Outbox/sequence
+  changes.
+- A queued Child becomes eligible only through one binding-valid queued
+  `run.start` Operation. A Child with completed v3 Retry Operation plus Start
+  is claimed by Start, and all execution Event correlation uses the Start
+  Operation ID.
+- P3C-0B is merged as HTTP 201 with the dedicated schemaVersion 1 envelope
+  containing the queued Child snapshot and completed Retry Operation v3
+  snapshot. Any pre-remediation wording in the matrix that says Retry is an
+  Engine authorization, returns 202, or uses an Operation-only envelope is
+  SUPERSEDED / HISTORICAL - NOT CURRENT CONTRACT.
+
 Each row: current evidence, required target, proposed implementation
 category, dependency, test evidence, stop condition, and rollback boundary.
 Categories reference the stage split proposed in
@@ -303,9 +327,9 @@ authorized work.
 
 | # | Gap | Current evidence | Required target | Category | Depends on | Test evidence | Stop condition | Rollback boundary |
 |---|-----|------------------|-----------------|----------|------------|---------------|----------------|-------------------|
-| 1 | Persistent queue ownership | `runs(status='queued')` exists; no owner | Exactly one component (Run Engine) may claim queued runs, and only execution-authorized ones (item 20); queued alone never suffices. An execution-authorized Run has exactly one valid, non-terminal queued authorization Operation of type `run.start` or `run.retry`, with all bindings consistent | P3B-1 | P3A, #20 | Ownership unit test: only the engine mutates claimed runs; a tick without an eligible authorization Operation is a no-op; multiple/coexisting authorizations fail closed | Any second writer to queued runs appears; the engine claims a run with no eligible authorization Operation, with inconsistent binding, or with more than one valid authorization | Revert engine as one package; queue rows untouched |
-| 2 | Run claim/dequeue | No claim path | Atomic claim in one caller-owned outer transaction: re-read queued Run and exactly one queued authorization Operation (`run.start` or `run.retry`), validate workspace/run/aggregate/correlation binding, conditional Operation `queued -> running`, Run `queued -> starting` via `LifecycleTransactionService`, `run.dequeued` with the Operation correlationId, Outbox row; commit all or roll back all | P3B-1 | #1, #6, #20 | Two competing claims, exactly one succeeds; zero eligible authorization is a no-op; duplicate/coexisting authorization fails closed; the loser leaves zero partial Operation/Run/Event/Outbox writes | Claim requires a new table, two independent transactions, or nested transactions, or bypasses the transaction core; selector is restricted to one authorization type | Revert claim path; no data reset |
-| 3 | Run Engine | Absent (3.3) | Tick-driven engine advancing execution-authorized claimed runs via `LifecycleTransactionService` only; explicit test-controlled ticks, no background timer, server startup loop, or auto-scan | P3B-1 | #2 | Engine unit tests with an injected transaction core; no-timer/no-loop proof; no-eligible-authorization no-op proof | Engine calls repositories directly, bypasses events/outbox, selects an arbitrary authorization, or a background loop or wall-clock timer is requested | Revert engine package |
+| 1 | Persistent queue ownership | `runs(status='queued')` exists; no owner | Exactly one component (Run Engine) may claim queued runs, and only execution-authorized ones (item 20); queued alone never suffices. An execution-authorized Run has exactly one valid, non-terminal queued `run.start` Operation with all bindings consistent | P3B-1 | P3A, #20 | Ownership unit test: only the engine mutates claimed runs; a tick without an eligible authorization Operation is a no-op; multiple/coexisting Start authorizations fail closed | Any second writer to queued runs appears; the engine claims a run with no eligible authorization Operation, with inconsistent binding, or with more than one valid authorization | Revert engine as one package; queue rows untouched |
+| 2 | Run claim/dequeue | No claim path | Atomic claim in one caller-owned outer transaction: re-read queued Run and exactly one queued `run.start` Operation, validate workspace/run/aggregate/correlation binding, conditional Operation `queued -> running`, Run `queued -> starting` via `LifecycleTransactionService`, `run.dequeued` with the Start Operation correlationId, Outbox row; commit all or roll back all. A queued `run.retry` is ignored and cannot claim | P3B-1 | #1, #6, #20 | Two competing Start claims, exactly one succeeds; Retry-only and zero authorization are repeatable no-ops; duplicate Start authorizations fail closed; the loser leaves zero partial Operation/Run/Event/Outbox writes | Claim requires a new table, two independent transactions, or nested transactions, or bypasses the transaction core; selector accepts `run.retry`; a generic Operation is chosen | Revert claim path; no data reset |
+| 3 | Run Engine | RunEngine implementation exists in the remediation worktree | Tick-driven engine advances only a queued Run with exactly one binding-valid queued `run.start`; queued or completed `run.retry` returns `noop/no-authorization` with no Run/Event/Outbox/sequence change; explicit test-controlled ticks only, no background timer, server startup loop, or auto-scan | P3B-1 | #2 | Engine unit tests cover Retry-only no-op, completed Retry immutability, independent Start claim, binding failures, rollback, and competition | Engine calls repositories directly, bypasses events/outbox, selects Retry, or a background loop or wall-clock timer is requested | Revert engine package |
 | 4 | Startup failure Event contract and deterministic Workflow Executor | Absent (3.5); current P2C matrix has no `startup-failure` multi-event ordering | P3B-2A first aligns Shared/Runtime Specification/Transition Matrix with `startup-failure` = `stage.failed -> run.failed` and its exact ordering attributes; P3B-2B then consumes that contract for deterministic snapshot graph traversal and mock execution; no provider runtime | P3B-2A/P3B-2B | P3B-1; P3B-2A before P3B-2B | Contract alignment tests for Branch A/Branch B; then snapshot-graph traversal and deterministic ordering tests | P3B-2B implements `stage.failed -> run.failed` before P3B-2A acceptance; executor needs ProcessManager/ProviderAdapter/CLI; a schema change is requested | Revert the alignment or executor package; no runtime data reset |
 | 5 | Stage orchestration | Absent (3.6) | P3B-2B drives Stage lifecycle through `transitionStage`; `skipped` propagation on failure/cancel per the accepted contract; P3B-2A owns only specification/shared alignment | P3B-2B | P3B-1 + P3B-2A | Contract-consistent Stage transition and skip-propagation tests | Stage writes bypass Event/Outbox; P3B-2B modifies Shared/Specification/Event Matrix; Stage failure ordering is inferred rather than consumed | Revert orchestration; stage rows preserved |
 | 6 | Operation persistence/lifecycle | Schema complete; repo/service absent (3.7) | `OperationRepository` + `OperationService` writing/reading `operations` with version optimistic locking | P3A | P2 core | Repository CRUD, identity-immutability trigger, version conflict tests | Operation status vocabulary diverges from the frozen 7 | Revert repo/service; table and rows preserved |
@@ -313,16 +337,16 @@ authorized work.
 | 8 | Duplicate Start | `run.start` idempotency schema-accepted, no consumer (3.9) | Same idempotency key replays the original Operation; different key on an already-started run is rejected per contract; multiple non-terminal `run.start` Operations for the same run fail closed with no arbitrary choice | P3C-1 | #7 | Same-key replay test; different-key rejection test; duplicate-active-Operation fail-closed test | Duplicate start mutates the run twice; an arbitrary Operation is selected | Revert start idempotency wiring |
 | 9 | Start failure rollback | Failure-injection harness exists (3.15) | Contract alignment comes first in P3B-2A: Branch A registers `startup-failure` = `stage.failed -> run.failed` with single stage, no stage ordering, contiguous Run sequence, independent Outbox per Event, and atomic Current State/Event/Outbox; Branch B retains single `run.failed` with no Additional Event when no Stage has entered `starting`. Only after that gate does P3B-2B implement A1/A2/B/C1a/C1b/C2: A1 leaves no Operation or Idempotency Success and Run queued; A2 leaves no Child artifacts and Parent unchanged; B/C1a roll back or classify correctly; C1b atomically fails Stage/Run/Operation or, before Stage `starting`, fails Run/Operation without fabricating `stage.failed`; C2 never rewrites a completed Start/Retry Operation | P3B-2A/P3B-2B | #7, P3B-1, M3-TD-29 | P3B-2A Branch A/Branch B contract tests; P3B-2B injection at every A1/A2/B/C1b Stage/Run/Event/Outbox/Operation position; C1a no-auto-failed proof; failure-vs-cancel evidence belongs to P3D; C2 non-rewrite and integrity checks | Runtime implements startup-failure before alignment; transaction rollback misclassified as business failure; automatic failed marking after claim-attempt rollback; split Run/Operation failure closure; fabricated Stage Event; post-start rewrite | Revert alignment/runtime package; preserve durable evidence, no data reset |
 | 10 | Cancel/complete race | Atomic transitions + version guard exist (3.10) | P3D Operation cancel ownership resolves claim-vs-cancel, startup-completion-vs-cancel, startup-failure-closure-vs-cancel, and cancel-vs-terminal races to exactly one caller-owned winner with no partial Stage/Run/Operation/Event/Outbox writes | P3D | #6, M3-TD-27, P3B-2B, P3C-1 | P3D race matrix: Claim vs cancel; startup completion vs cancel; startup failure closure vs cancel; cancel vs already-terminal Operation; duplicate cancel; loser zero-partial-write proof | Any Cancel race assigned to P3C-1; cancellation is incorrectly routed through C1a/C1b; two terminal outcomes or silent overwrite | Revert P3D cancel handling; events preserved |
-| 11 | Retry child Run | Lineage computation exists; no caller (3.11) | Per M3-TD-30: Retry is accepted only when the Parent Run is `failed` at the expected version; all other Parent statuses return stable 409 `RUN_NOT_RETRYABLE`; a valid request creates a child run (new id, correct parentRunId/rootRunId lineage), never resets or modifies the Parent, and the A2 acceptance transaction atomically creates the child graph, Snapshot, queued `run.retry` Operation (aggregateId = runId = childRun.id, correlationId = operation.id), idempotency record, and creation Event/Outbox. Creation Events use `correlationId = childRun.id`; execution Events after `run.dequeued` use `operation.id`; the child is immediately execution-authorized — no separate Start command; the `run.retry` idempotency closure is owned by P3C-0B | P3C-1 | #6, M3-TD-30, P3C-0B | A2 injection at Child/Snapshot/Stage/Creation Event/Outbox/Retry Operation/Idempotency Success leaves no Child Run, Snapshot, Stage, creation Event, Outbox, Retry Operation, or Idempotency Success and leaves the Parent unchanged; valid failed Parent creates one child; stale/non-failed Parent has zero side effects | Retry mutates or resets the Parent; accepts a non-failed Parent; creation Event uses operation.id; execution Event after `run.dequeued` uses childRun.id; a combined Child Run + Operation envelope; P3C-1 modifies idempotency core files | Revert retry path |
-| 12 | Operation events query | `runtime_events` index `(run_id, correlation_id, sequence)` exists | `GET /api/operations/:operationId/events` authorizes the Operation, then reads Events by runId + correlationId ascending sequence; for `run.retry`, the result does not include Child Run creation Events and begins with Retry-Operation-correlated Events such as `run.dequeued`; no `operation_events` store | P3D | #6 | Query test: ordering, authorization failure, empty set, and Retry creation-Event exclusion | An `operation_events` table or store appears; the query includes Child Run creation Events for `run.retry` | Revert route |
+| 11 | Retry child Run | Lineage computation exists; no caller (3.11) | Per M3-TD-30 Option A: Retry is accepted only when the Parent Run is `failed` at the expected version; all other Parent statuses return stable 409 `RUN_NOT_RETRYABLE`; a valid request creates a queued Child Run (new id, correct parentRunId/rootRunId lineage), never resets or modifies the Parent, and the A2 acceptance transaction atomically creates the child graph, Snapshot, completed v3 `run.retry` Operation, idempotency record, and creation Event/Outbox. Retry returns HTTP 201 with the dedicated schemaVersion 1 Child + Retry Operation envelope. The Child becomes execution-eligible only after a separate queued `run.start`; execution Events use the Start Operation ID. | P3C-1 | #6, M3-TD-30, P3C-0B | A2 injection at Child/Snapshot/Stage/Creation Event/Outbox/Retry Operation/Idempotency Success leaves no Child Run, Snapshot, Stage, creation Event, Outbox, Retry Operation, or Idempotency Success and leaves the Parent unchanged; valid failed Parent creates one queued Child; stale/non-failed Parent has zero side effects; Retry-only Engine tick is a no-op and Start-driven Child execution uses Start correlation | Retry mutates or resets the Parent; accepts a non-failed Parent; creation Event uses operation.id; Retry claims or dispatches the Child; a combined or Operation-only envelope; P3C-1 modifies idempotency core files | Revert retry path |
+| 12 | Operation events query | `runtime_events` index `(run_id, correlation_id, sequence)` exists | `GET /api/operations/:operationId/events` authorizes the Operation, then reads Events by runId + correlationId ascending sequence; `run.start` execution results are correlated to the Start Operation, while `run.retry` does not authorize or produce execution-correlated Events before a separate Start; no `operation_events` store | P3D | #6 | Query test: ordering, authorization failure, empty set, Start correlation, and no Retry-execution correlation | An `operation_events` table or store appears; the query treats Retry metadata as an execution authorization or includes Child creation Events as Retry execution | Revert route |
 | 13 | Operation cancel | `cancelRunWithinTransaction` exists; no operation binding | Per M3-TD-27: `POST /api/operations/:operationId/cancel` directly operates on the target non-terminal Operation (statuses `queued`/`running`/`waiting_approval`/`paused`) and its bound Task-domain Run in one caller-owned transaction through the P2 core; it has no Class A and creates/accepts no second Cancel Operation; already-`cancelled` returns the current Operation with zero new side effects; `completed`/`failed` returns 409-class `OPERATION_NOT_CANCELLABLE`; incompatible Run state fails closed; before/during startup cancellation produces Operation/Run cancelled, `stage.cancelled` × N for affected non-terminal Stages, and `run.cancelled`, never Operation/Run/Stage failed; any failure rolls back target Operation, Run/Stage, Event, and Outbox changes to their transaction-before state and never uses C1 to record another Operation. No second cancel Operation exists | P3D | #10, M3-TD-27 | P3D cancel tests include the terminal matrix, Claim vs cancel, startup completion vs cancel, startup failure closure vs cancel, duplicate cancel, no-second-Operation, and failure injection with no partial Event/Outbox writes | A second Cancel Operation; an Operation-row-only cancel; a Class A or C1 failure record for cancel; bypassing the transaction core; split rollback | Revert route |
 | 14 | Task reconciliation | Tasks hold active run linkage via accept/cancel/reopen | Engine/executor outcomes reconcile task active-slot state through existing v2 paths | P3C-1 | #5 | Task slot reconciliation test on run terminal states | Reconciliation bypasses existing task invariants | Revert reconciliation |
-| 15 | Idempotency coverage | 6 consumers wired; the DB accepts `run.start`/`run.retry` and 200–299, but the TypeScript contract (6-operation list, 200/201-only statuses, Task/Run-only envelope, exact-shape parser) cannot store or replay an Operation command response (3.9) | Backward-compatible schemaVersion 1 extension with no DB change and no result schema version 2, split into two review boundaries: P3C-0A — `run.start` TypeScript operation registration, 202 HTTP status support, immutable Operation replay snapshot DTO and envelope variant, canonical JSON/hash/parser support over the full envelope, exact original HTTP status replay, Operation envelope corruption rejection, legacy 6 operations keep their exact status and envelope behavior; P3C-0B — `run.retry` registration per M3-TD-30: HTTP status fixed at 202, the Operation-only immutable replay envelope (no combined Child Run + Operation envelope), same-key replay of the original status and acceptance-time snapshot | P3C-0A (start), P3C-0B (retry closure) | P3A; P3C-0B additionally M3-TD-30 | 12 required tests for P3C-0A: `run.start` 202 Operation envelope round-trip; repository persists and returns the original 202; replay returns the original Operation snapshot; later Operation state changes do not affect the saved replay; canonical JSON/hash stable; tampered result JSON/hash rejected; wrong operation/envelope pair rejected; wrong operation/http-status pair rejected; legacy 6 statuses unchanged; legacy Task/Run envelopes still parse; unknown envelope variant fails closed; repository/service join a caller-owned transaction. P3C-0B mirrors these for `run.retry` per the M3-TD-30 shape | A route, Operation creation, or run start is added; the DB is changed; replay re-reads the current Operation or Child Run; a legacy envelope or status changes; the retry envelope deviates from M3-TD-30 | Revert the idempotency extension; stored rows preserved |
+| 15 | Idempotency coverage | 6 consumers wired; the DB accepts `run.start`/`run.retry` and 200–299, but the TypeScript contract (6-operation list, 200/201-only statuses, Task/Run-only envelope, exact-shape parser) cannot store or replay an Operation command response (3.9) | Backward-compatible schemaVersion 1 extension with no DB change and no result schema version 2, split into two review boundaries: P3C-0A — `run.start` TypeScript operation registration, 202 HTTP status support, immutable Operation replay snapshot DTO and envelope variant, canonical JSON/hash/parser support over the full envelope, exact original HTTP status replay, Operation envelope corruption rejection, legacy 6 operations keep their exact status and envelope behavior; P3C-0B — `run.retry` registration per M3-TD-30 Option A: HTTP status fixed at 201, dedicated immutable `body.run` queued Child + `body.operation` completed v3 Retry Operation envelope, same-key replay of the original status and acceptance-time snapshots | P3C-0A (start), P3C-0B (retry closure) | P3A; P3C-0B additionally M3-TD-30 | 12 required tests for P3C-0A: `run.start` 202 Operation envelope round-trip; repository persists and returns the original 202; replay returns the original Operation snapshot; later Operation state changes do not affect the saved replay; canonical JSON/hash stable; tampered result JSON/hash rejected; wrong operation/envelope pair rejected; wrong operation/http-status pair rejected; legacy 6 statuses unchanged; legacy Task/Run envelopes still parse; unknown envelope variant fails closed; repository/service join a caller-owned transaction. P3C-0B mirrors these for the 201 queued Child + completed v3 Retry Operation dual snapshot, including replay stability and exact-shape rejection | A route, Operation creation, or run start is added; the DB is changed; replay re-reads the current Operation or Child Run; a legacy envelope or status changes; the retry envelope deviates from M3-TD-30 | Revert the idempotency extension; stored rows preserved |
 | 16 | `recovery_required` interaction | Column and setting paths exist from P2 | P3 transitions leave the flag semantics unchanged; startup recovery continues to own it | P3B-1/P3C-1 | P2 core | Regression: flag set/clear paths unchanged | P3 code writes the flag directly | Revert offending path |
 | 17 | Legacy/v2 compatibility | Both paths green at baseline (3.13) | All P3 additions are additive; Legacy bridge and v2 collections keep passing | All stages | None (standing constraint) | Full server suite green each stage | Any Legacy/v2 regression | Revert the offending stage package |
 | 18 | M4 boundary | No provider runtime in scope | No ProcessManager, ProviderAdapter, CLI execution, Worktree runtime, Policy, or Approval implementation enters P3 | All stages | None (standing constraint) | Dependency scan: no imports of M4 surfaces | Any M4 surface is touched | Revert the offending change |
 | 19 | correlationId generation for non-create operations | Mechanism exists; rule frozen by M3-TD-26 (3.14) | M3-TD-26: `correlationId = operation.id` for every newly created non-create Operation, generated and persisted in the creation transaction, UNIQUE and immutable; the claim `run.dequeued` event carries the claimed Operation's correlationId; the historical `run.create` rule (`correlationId = run.id`) is preserved | P3A (apply), P3B-1/P3C-1 (use) | M3-TD-26 | Uniqueness and association tests; claim event correlationId equals the claimed Operation's; replay stability; a duplicate command never creates a second Operation/correlationId | A second correlationId for one Operation; a mutable or derived correlationId | Revert generation wiring |
-| 20 | Execution authorization and Engine claim eligibility | Queued runs are enumerable via `listByWorkspace({status:'queued'})`; no marker distinguishes created-only from execution-authorized runs (3.4) | Frozen rules: (1) a `run.create` Operation never authorizes Engine execution; (2) the Engine claims only a Run with status `queued` that has exactly one associated queued authorization Operation — type `run.start` or `run.retry` — with consistent workspaceId/runId/aggregateId/correlationId bindings and a unique immutable correlationId; (3) with no eligible authorization Operation the Engine tick returns no-op; (4) coexisting or multiple valid authorization Operations fail closed, never an arbitrary choice; (5) P3B implements explicit, test-controlled ticks only — no background timer, server startup loop, or auto-scan; (6) a Run gains eligibility only after an acceptance transaction commits the queued authorization Operation; (7) `run.cancel` and `run.create` Operations are never claim markers; (8) a queued `run.retry` is a claim marker per M3-TD-30 | P3B-1 (selector/claim), P3C-1 (grant) | P3A, M3-TD-26 | Required tests: Run without an eligible authorization Operation stays queued across repeated ticks with no `run.dequeued` and no new Outbox; `run.create` does not authorize claim; queued Run + queued `run.start` is claimed with Operation and Run changed in one transaction and the Event carrying the Operation correlationId; queued Run + queued `run.retry` is claimed identically (M3-TD-30); zero authorization is a no-op; competing Engine claims produce exactly one winner; a Run with both Start and Retry (or multiple) authorizations fails closed; Operation-transition failure during claim rolls back Run/Event/Outbox; Run/Event/Outbox failure during claim rolls back the Operation transition; P3B-1 registers no background loop or wall-clock timer | Eligibility reads Runs without Operation binding; an arbitrary Operation is chosen; a generic selector accepts only one authorization type; a scheduler table, background loop, or auto-scan appears | Revert selector/claim package; Runs, Operations, and Events preserved |
+| 20 | Execution authorization and Engine claim eligibility | Queued runs are enumerable via `listByWorkspace({status:'queued'})`; no marker distinguishes created-only from execution-authorized runs (3.4) | Frozen rules: (1) a `run.create` Operation never authorizes Engine execution; (2) the Engine claims only a Run with status `queued` that has exactly one associated queued, binding-valid `run.start` Operation with consistent workspaceId/runId/aggregateId/correlationId bindings and a unique immutable correlationId; (3) with no eligible Start authorization, including queued or completed `run.retry`, the Engine tick returns repeatable no-op with no writes; (4) multiple valid Start authorizations fail closed, never an arbitrary choice; (5) P3B implements explicit, test-controlled ticks only — no background timer, server startup loop, or auto-scan; (6) a Run gains eligibility only after an acceptance transaction commits the queued Start Operation; (7) `run.cancel`, `run.create`, and `run.retry` Operations are never claim markers | P3B-1 (selector/claim), P3C-1 (grant) | P3A, M3-TD-26 | Required tests: Run without an eligible authorization Operation stays queued across repeated ticks with no `run.dequeued` and no new Outbox; `run.create` does not authorize claim; queued Run + queued `run.start` is claimed with Operation and Run changed in one transaction and the Event carrying the Start Operation correlationId; queued or completed `run.retry` is a no-op with zero claim writes; competing Engine claims produce exactly one winner; a Run with multiple Start authorizations fails closed; Operation-transition failure during claim rolls back Run/Event/Outbox; Run/Event/Outbox failure during claim rolls back the Operation transition; P3B-1 registers no background loop or wall-clock timer | Eligibility reads Runs without Operation binding; an arbitrary Operation is chosen; a selector accepts `run.retry`; a scheduler table, background loop, or auto-scan appears | Revert selector/claim package; Runs, Operations, and Events preserved |
 
 ## 5. Schema Verification
 
@@ -341,9 +365,9 @@ The P3 scope was checked against the live schema (Migrations 001–013):
 Conclusion: Migration 012 (with 001–011 and 013) is sufficient for the
 entire P3 scope, including the `operations` table required for execution
 authorization and Engine claim eligibility (Gap Matrix item 20). The
-schema permits only `run.start` and `run.retry` as authorization types for
-this selector; binding consistency and the exactly-one rule remain runtime
-contracts.
+schema permits both `run.start` and `run.retry` as Operation values, while
+the current Engine selector authorizes only `run.start`; binding consistency
+and the exactly-one Start rule remain runtime contracts.
 
 SCHEMA BLOCKER: NONE. Migration 014 is not required or authorized. (Had any
 insufficiency been found, this audit would have recorded
@@ -385,6 +409,11 @@ AUTHORIZED.
   data omitted; idempotency replay always returns the acceptance-time
   immutable queued Operation snapshot. The alternative "Start Operation
   tracks the Run to terminal" is REJECTED.
+Current M3-TD-30 / P3C-0B alignment: Option A is current. Retry returns
+HTTP 201, persists a queued Child plus completed v3 Retry Operation in the
+dedicated schemaVersion 1 envelope, and requires a separate queued
+`run.start` for Engine execution. The historical Option B wording below is
+SUPERSEDED / HISTORICAL - NOT CURRENT CONTRACT.
 - OD-P3-05 -> M3-TD-30 — Retry Child Run Activation (Option B approved):
   Retry is accepted only for a Parent Run in `failed` at the expected
   version; all other Parent statuses return stable 409
@@ -441,6 +470,13 @@ implementation.
   Create != Start; Retry creates a child Run and never resets the old Run.
 - All transitions go through the P2 transaction core; State/Event/Outbox in
   one transaction; no `operation_events` store.
+- Current Option A authorization rule: only a binding-valid queued
+  `run.start` can claim a queued Run. A queued or completed `run.retry` is
+  never a claim marker and produces no-op/no-authorization with no writes.
+  A Child requires a separate Start command.
+SUPERSEDED / HISTORICAL - NOT CURRENT CONTRACT: the legacy mixed
+`run.start`/`run.retry` selector wording in the following bullet is retained
+only for audit traceability.
 - A queued Run is necessary but not sufficient for Engine execution; Engine
   claim requires exactly one queued, binding-valid authorization Operation —
   type `run.start` or `run.retry` — with consistent workspaceId, runId,
@@ -465,5 +501,6 @@ implementation.
 - Remote Checks: UNAVAILABLE — NOT PASS (standing wording for this
   environment).
 
-This audit changes nothing and authorizes nothing. P3 implementation remains
-NOT AUTHORIZED. P3A implementation remains NOT AUTHORIZED. The preplanning PR (PR #21) is MERGED.
+This audit records the completed Option A authorization alignment only. P3C-1
+and later implementation remain NOT AUTHORIZED. The preplanning PR (PR #21)
+and P3C-0B merge (PR #28) are MERGED.
