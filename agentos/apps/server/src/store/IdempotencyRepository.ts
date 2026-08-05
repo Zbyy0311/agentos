@@ -76,6 +76,24 @@ function assertOperationStatusPair(operation: IdempotencyOperation, httpStatus: 
   return httpStatus as IdempotencyHttpStatus;
 }
 
+function assertEnvelopeWorkspace(envelope: IdempotencyResultEnvelopeV1, workspaceId: string): void {
+  if (envelope.operation === 'run.retry') {
+    if (
+      envelope.body.run.workspaceId !== envelope.body.operation.workspaceId
+      || envelope.body.operation.workspaceId !== workspaceId
+    ) {
+      invalid();
+    }
+    return;
+  }
+  const envelopeWorkspaceId = 'task' in envelope.body
+    ? envelope.body.task.workspaceId
+    : 'run' in envelope.body
+      ? envelope.body.run.workspaceId
+      : envelope.body.operation.workspaceId;
+  if (envelopeWorkspaceId !== workspaceId) invalid();
+}
+
 function assertExactRowShape(row: unknown): IdempotencyRow {
   if (!isPlainRecord(row)) invalid();
   const keys = Object.keys(row);
@@ -143,6 +161,7 @@ export class IdempotencyRepository {
     if (row.result_json !== canonical) invalid();
     const envelope: IdempotencyResultEnvelopeV1 = parseIdempotencyResultEnvelopeV1(parsedJson);
     if (envelope.operation !== rowOperation) invalid();
+    assertEnvelopeWorkspace(envelope, row.workspace_id);
     if (row.result_hash !== recomputedHash) invalid();
     const createdAt = assertIsoTimestamp(row.created_at);
 
@@ -185,6 +204,7 @@ export class IdempotencyRepository {
       invalid();
     }
     if (parsed.operation !== operation) invalid();
+    assertEnvelopeWorkspace(parsed, input.workspaceId);
 
     this.db.prepare(`
       INSERT INTO idempotency_records (

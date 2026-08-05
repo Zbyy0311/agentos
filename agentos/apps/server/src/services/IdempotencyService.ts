@@ -8,13 +8,14 @@ import {
   type IdempotencyOperation,
   type IdempotencyRecord,
   type IdempotencyResultEnvelopeV1,
+  parseIdempotencyResultEnvelopeV1,
 } from '../idempotency/types.js';
 import {
   hashIdempotencyRequest,
   hashNormalizedIdempotencyKey,
 } from '../idempotency/fingerprint.js';
 
-export type LegacyIdempotencyOperation = Exclude<IdempotencyOperation, 'run.start'>;
+export type LegacyIdempotencyOperation = Exclude<IdempotencyOperation, 'run.start' | 'run.retry'>;
 
 export interface PreparedIdempotency<TOperation extends IdempotencyOperation = LegacyIdempotencyOperation> {
   readonly operation: TOperation;
@@ -27,10 +28,12 @@ export type IdempotencyResolution<TOperation extends IdempotencyOperation = Lega
   | { kind: 'miss' }
   | {
       kind: 'replay';
-      httpStatus: TOperation extends 'run.start' ? 202 : 200 | 201;
+      httpStatus: TOperation extends 'run.start' ? 202 : TOperation extends 'run.retry' ? 201 : 200 | 201;
       envelope: TOperation extends 'run.start'
         ? Extract<IdempotencyResultEnvelopeV1, { operation: 'run.start' }>
-        : Exclude<IdempotencyResultEnvelopeV1, { operation: 'run.start' }>;
+        : TOperation extends 'run.retry'
+          ? Extract<IdempotencyResultEnvelopeV1, { operation: 'run.retry' }>
+          : Exclude<IdempotencyResultEnvelopeV1, { operation: 'run.start' | 'run.retry' }>;
     };
 
 export interface PrepareIdempotencyInput {
@@ -70,6 +73,20 @@ export class IdempotencyService {
     },
   ): PreparedIdempotency<'run.start'> | undefined;
 
+  prepare(
+    input: PrepareIdempotencyInput & {
+      operation: 'run.retry';
+      fingerprintInput: FingerprintInput & { operation: 'run.retry' };
+    },
+  ): PreparedIdempotency<'run.retry'> | undefined;
+
+  prepare(
+    input: PrepareIdempotencyInput & {
+      operation: 'run.start' | 'run.retry';
+      fingerprintInput: FingerprintInput & { operation: 'run.start' | 'run.retry' };
+    },
+  ): PreparedIdempotency<'run.start' | 'run.retry'> | undefined;
+
   prepare(input: PrepareIdempotencyInput): PreparedIdempotency | undefined;
 
   prepare(input: PrepareIdempotencyInput): PreparedIdempotency<IdempotencyOperation> | undefined {
@@ -91,8 +108,9 @@ export class IdempotencyService {
   }
 
   resolve(prepared: PreparedIdempotency<'run.start'>): IdempotencyResolution<'run.start'>;
+  resolve(prepared: PreparedIdempotency<'run.retry'>): IdempotencyResolution<'run.retry'>;
+  resolve(prepared: PreparedIdempotency<'run.start' | 'run.retry'>): IdempotencyResolution<'run.start' | 'run.retry'>;
   resolve(prepared: PreparedIdempotency): IdempotencyResolution;
-  resolve(prepared: PreparedIdempotency<IdempotencyOperation>): IdempotencyResolution<IdempotencyOperation>;
   resolve(prepared: PreparedIdempotency<IdempotencyOperation>): IdempotencyResolution<IdempotencyOperation> {
     const record = this.repository.findVerifiedByScope(
       prepared.workspaceId,
@@ -121,14 +139,24 @@ export class IdempotencyService {
     if (input.httpStatus !== IDEMPOTENCY_HTTP_STATUS[input.prepared.operation]) {
       throw new IdempotencyRecordInvalidError();
     }
-    if (input.envelope.operation !== input.prepared.operation) {
+    const envelope = parseIdempotencyResultEnvelopeV1(input.envelope);
+    if (envelope.operation !== input.prepared.operation) {
       throw new IdempotencyRecordInvalidError();
     }
-    const envelopeWorkspaceId = 'task' in input.envelope.body
-      ? input.envelope.body.task.workspaceId
-      : 'run' in input.envelope.body
-        ? input.envelope.body.run.workspaceId
-        : input.envelope.body.operation.workspaceId;
+    if (envelope.operation === 'run.retry') {
+      const { run, operation } = envelope.body;
+      if (
+        run.workspaceId !== operation.workspaceId
+        || operation.workspaceId !== input.prepared.workspaceId
+      ) {
+        throw new IdempotencyRecordInvalidError();
+      }
+    }
+    const envelopeWorkspaceId = 'task' in envelope.body
+      ? envelope.body.task.workspaceId
+      : 'run' in envelope.body
+        ? envelope.body.run.workspaceId
+        : envelope.body.operation.workspaceId;
     if (envelopeWorkspaceId !== input.prepared.workspaceId) {
       throw new IdempotencyRecordInvalidError();
     }
@@ -138,7 +166,7 @@ export class IdempotencyService {
       operation: input.prepared.operation,
       keyHash: input.prepared.keyHash,
       requestHash: input.prepared.requestHash,
-      envelope: input.envelope,
+      envelope,
       httpStatus: input.httpStatus,
       createdAt: new Date().toISOString(),
     });

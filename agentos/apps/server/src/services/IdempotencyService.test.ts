@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import type { ApiOperation, Task } from '@agentos/shared';
+import type { ApiOperation, Run, Task } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -25,11 +25,11 @@ import {
   IDEMPOTENCY_HTTP_STATUS,
   IDEMPOTENCY_OPERATIONS,
   buildOperationResultEnvelopeV1,
+  buildRetryResultEnvelopeV1,
   buildRunResultEnvelopeV1,
   buildTaskResultEnvelopeV1,
   parseIdempotencyResultEnvelopeV1,
   type FingerprintInput,
-  type IdempotencyOperation,
 } from '../idempotency/types.js';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import {
@@ -37,10 +37,9 @@ import {
   IdempotencyService,
   type PreparedIdempotency,
 } from './IdempotencyService.js';
-import { IdempotencyFingerprintError, IdempotencyKeyValidationError } from '../idempotency/fingerprint.js';
+import { IdempotencyKeyValidationError } from '../idempotency/fingerprint.js';
 import { IdempotencyRecordInvalidError } from '../idempotency/types.js';
 import { OperationService } from './OperationService.js';
-import type { Run } from '@agentos/shared';
 
 const NOW = '2026-01-01T00:00:00.000Z';
 const KEY = 'p2-service-key-1';
@@ -122,6 +121,47 @@ function makeStartOperation(overrides: Partial<ApiOperation> = {}): ApiOperation
   };
 }
 
+function makeRetryChildRun(overrides: Partial<Run> = {}): Run {
+  return {
+    id: 'run_00000000000000000000000002',
+    workspaceId: 'ws-1',
+    taskId: 'task_00000000000000000000000001',
+    parentRunId: 'run_00000000000000000000000001',
+    rootRunId: 'run_00000000000000000000000001',
+    status: 'queued',
+    reason: 'retry',
+    origin: 'v2_api',
+    nextEventSequence: 1,
+    createdBy: 'tester',
+    createdAt: NOW,
+    updatedAt: NOW,
+    version: 1,
+    ...overrides,
+  };
+}
+
+function makeRetryOperation(overrides: Partial<ApiOperation> = {}): ApiOperation {
+  return {
+    id: 'operation_00000000000000000000000002',
+    type: 'run.retry',
+    status: 'completed',
+    workspaceId: 'ws-1',
+    aggregateType: 'run',
+    aggregateId: 'run_00000000000000000000000001',
+    runId: 'run_00000000000000000000000001',
+    correlationId: 'operation_00000000000000000000000002',
+    result: {
+      resourceType: 'run',
+      resourceId: 'run_00000000000000000000000002',
+    },
+    createdAt: NOW,
+    startedAt: '2026-01-01T00:00:00.001Z',
+    completedAt: '2026-01-01T00:00:00.002Z',
+    version: 3,
+    ...overrides,
+  };
+}
+
 function makeFingerprint(overrides: Partial<FingerprintInput> = {}): FingerprintInput {
   return {
     operation: 'task.create',
@@ -130,6 +170,16 @@ function makeFingerprint(overrides: Partial<FingerprintInput> = {}): Fingerprint
     domainInput: { title: 'task title' },
     expectedVersion: null,
     ...overrides,
+  };
+}
+
+function makeRetryFingerprint(): FingerprintInput & { operation: 'run.retry' } {
+  return {
+    operation: 'run.retry',
+    workspaceId: 'ws-1',
+    pathParams: { runId: 'run_00000000000000000000000001' },
+    domainInput: { reason: 'retry' },
+    expectedVersion: 1,
   };
 }
 
@@ -579,7 +629,7 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
     }
   });
 
-  it('SVC-20 registers run.start as the only new idempotency operation', () => {
+  it('SVC-20 registers run.start and run.retry after the six Legacy operations', () => {
     assert.deepEqual(IDEMPOTENCY_OPERATIONS, [
       'task.create',
       'run.create',
@@ -588,8 +638,8 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
       'task.cancel',
       'task.reopen',
       'run.start',
+      'run.retry',
     ]);
-    assert.equal((IDEMPOTENCY_OPERATIONS as readonly string[]).includes('run.retry'), false);
     assert.deepEqual(IDEMPOTENCY_HTTP_STATUS, {
       'task.create': 201,
       'run.create': 201,
@@ -598,6 +648,7 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
       'task.cancel': 200,
       'task.reopen': 200,
       'run.start': 202,
+      'run.retry': 201,
     });
   });
 
@@ -723,7 +774,7 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
     }
   });
 
-  it('SVC-24 restricts HTTP 202 to run.start and rejects run.retry', () => {
+  it('SVC-24 restricts HTTP 202 to run.start and HTTP 201 to run.retry', () => {
     const db = migratedDb();
     try {
       insertWorkspace(db, 'ws-1');
@@ -738,13 +789,243 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
       const startEnvelope = buildOperationResultEnvelopeV1('run.start', makeStartOperation());
       assert.throws(() => service.storeSuccess({ prepared: startPrepared, httpStatus: 200, envelope: startEnvelope }), IdempotencyRecordInvalidError);
       assert.throws(() => service.storeSuccess({ prepared: startPrepared, httpStatus: 201, envelope: startEnvelope }), IdempotencyRecordInvalidError);
-      const unsupportedOperation = 'run.retry' as IdempotencyOperation;
-      assert.throws(() => service.prepare({
-        operation: unsupportedOperation,
+      const retryPrepared = service.prepare({
+        operation: 'run.retry',
         workspaceId: 'ws-1',
         normalizedKey: `${KEY}-retry`,
-        fingerprintInput: makeFingerprint({ operation: unsupportedOperation }),
-      }), IdempotencyFingerprintError);
+        fingerprintInput: makeRetryFingerprint(),
+      });
+      assert.ok(retryPrepared);
+      const retryEnvelope = buildRetryResultEnvelopeV1(
+        'run.retry',
+        makeRetryChildRun(),
+        makeRetryOperation(),
+      );
+      assert.throws(
+        () => service.storeSuccess({ prepared: retryPrepared, httpStatus: 200, envelope: retryEnvelope }),
+        IdempotencyRecordInvalidError,
+      );
+      assert.throws(
+        () => service.storeSuccess({ prepared: retryPrepared, httpStatus: 202, envelope: retryEnvelope }),
+        IdempotencyRecordInvalidError,
+      );
+      const record = service.storeSuccess({ prepared: retryPrepared, httpStatus: 201, envelope: retryEnvelope });
+      assert.equal(record.httpStatus, 201);
+      const replay = service.resolve(retryPrepared);
+      assert.equal(replay.kind, 'replay');
+      if (replay.kind === 'replay') assert.equal(replay.httpStatus, 201);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-27 builds and parses a dedicated exact Retry result envelope', () => {
+    const childRun = makeRetryChildRun();
+    const retryOperation = makeRetryOperation();
+    const envelope = buildRetryResultEnvelopeV1('run.retry', childRun, retryOperation);
+    assert.deepEqual(Object.keys(envelope).sort(), ['body', 'operation', 'schemaVersion']);
+    assert.deepEqual(Object.keys(envelope.body).sort(), ['operation', 'run']);
+    assert.deepEqual(Object.keys(envelope.body.run).sort(), [
+      'createdAt', 'createdBy', 'id', 'nextEventSequence', 'origin', 'parentRunId',
+      'reason', 'rootRunId', 'status', 'taskId', 'updatedAt', 'version', 'workspaceId',
+    ]);
+    assert.deepEqual(Object.keys(envelope.body.operation).sort(), [
+      'aggregateId', 'aggregateType', 'completedAt', 'correlationId', 'createdAt', 'id',
+      'result', 'runId', 'startedAt', 'status', 'type', 'version', 'workspaceId',
+    ]);
+    assert.deepEqual(envelope, {
+      schemaVersion: 1,
+      operation: 'run.retry',
+      body: {
+        run: {
+          id: childRun.id,
+          workspaceId: childRun.workspaceId,
+          taskId: childRun.taskId,
+          parentRunId: childRun.parentRunId,
+          rootRunId: childRun.rootRunId,
+          status: 'queued',
+          reason: 'retry',
+          origin: childRun.origin,
+          nextEventSequence: 1,
+          createdBy: childRun.createdBy,
+          createdAt: NOW,
+          updatedAt: NOW,
+          version: 1,
+        },
+        operation: {
+          id: retryOperation.id,
+          type: 'run.retry',
+          status: 'completed',
+          workspaceId: 'ws-1',
+          aggregateType: 'run',
+          aggregateId: 'run_00000000000000000000000001',
+          runId: 'run_00000000000000000000000001',
+          correlationId: retryOperation.id,
+          result: { resourceType: 'run', resourceId: childRun.id },
+          createdAt: NOW,
+          startedAt: '2026-01-01T00:00:00.001Z',
+          completedAt: '2026-01-01T00:00:00.002Z',
+          version: 3,
+        },
+      },
+    });
+    const parsed = parseIdempotencyResultEnvelopeV1(JSON.parse(JSON.stringify(envelope)));
+    assert.deepEqual(parsed, envelope);
+    assert.equal(envelope.body.run.status, 'queued');
+    assert.equal(envelope.body.run.reason, 'retry');
+    assert.equal(envelope.body.operation.status, 'completed');
+    assert.equal(envelope.body.operation.version, 3);
+    for (const field of ['startedAt', 'completedAt', 'failureCode', 'failureMessage', 'cancellationRequestedAt']) {
+      assert.equal(field in envelope.body.run, false);
+    }
+    for (const field of ['data', 'error', 'progress', 'updatedAt']) {
+      assert.equal(field in envelope.body.operation, false);
+    }
+
+    const sourceChild = { ...childRun };
+    const sourceOperation = {
+      ...retryOperation,
+      result: { resourceType: 'run', resourceId: childRun.id },
+    };
+    const detached = buildRetryResultEnvelopeV1('run.retry', sourceChild, sourceOperation);
+    sourceChild.status = 'running';
+    sourceOperation.status = 'running';
+    sourceOperation.version = 4;
+    sourceOperation.result.resourceId = 'run_other';
+    assert.equal(detached.body.run.status, 'queued');
+    assert.equal(detached.body.operation.status, 'completed');
+    assert.equal(detached.body.operation.version, 3);
+    assert.equal(detached.body.operation.result.resourceId, childRun.id);
+  });
+
+  it('SVC-28 rejects Retry builder and parser variants fail closed', () => {
+    const childRun = makeRetryChildRun();
+    const retryOperation = makeRetryOperation();
+    const envelope = buildRetryResultEnvelopeV1('run.retry', childRun, retryOperation);
+    const invalidValues: unknown[] = [
+      { ...envelope, schemaVersion: 2 },
+      { ...envelope, operation: 'run.start' },
+      { ...envelope, body: { run: envelope.body.run } },
+      { ...envelope, body: { operation: envelope.body.operation } },
+      { ...envelope, body: { ...envelope.body, extra: true } },
+      { ...envelope, body: { ...envelope.body, run: { ...envelope.body.run, status: 'running' } } },
+      { ...envelope, body: { ...envelope.body, run: { ...envelope.body.run, reason: 'initial' } } },
+      { ...envelope, body: { ...envelope.body, run: { ...envelope.body.run, parentRunId: undefined } } },
+      { ...envelope, body: { ...envelope.body, run: { ...envelope.body.run, id: envelope.body.run.parentRunId } } },
+      { ...envelope, body: { ...envelope.body, operation: { ...envelope.body.operation, status: 'running' } } },
+      { ...envelope, body: { ...envelope.body, operation: { ...envelope.body.operation, version: 2 } } },
+      { ...envelope, body: { ...envelope.body, operation: { ...envelope.body.operation, runId: 'run_other' } } },
+      { ...envelope, body: { ...envelope.body, operation: { ...envelope.body.operation, result: { resourceType: 'run', resourceId: 'run_other' } } } },
+      { ...envelope, body: { ...envelope.body, operation: { ...envelope.body.operation, data: {} } } },
+      { ...envelope, body: { ...envelope.body, operation: { ...envelope.body.operation, startedAt: '2026-01-02T00:00:00.000Z' } } },
+    ];
+    for (const value of invalidValues) assert.throws(
+      () => parseIdempotencyResultEnvelopeV1(value),
+      IdempotencyRecordInvalidError,
+    );
+    assert.throws(
+      () => buildRetryResultEnvelopeV1('run.retry', makeRetryChildRun({ status: 'running' }), retryOperation),
+      IdempotencyRecordInvalidError,
+    );
+    assert.throws(
+      () => buildRetryResultEnvelopeV1('run.retry', makeRetryChildRun(), makeRetryOperation({ version: 2 })),
+      IdempotencyRecordInvalidError,
+    );
+    assert.throws(
+      () => buildRetryResultEnvelopeV1(
+        'run.retry',
+        makeRetryChildRun(),
+        makeRetryOperation({ result: { resourceType: 'run', resourceId: 'run_other' } }),
+      ),
+      IdempotencyRecordInvalidError,
+    );
+  });
+
+  it('SVC-29 replays immutable Retry snapshots and validates all workspace bindings', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      const prepared = service.prepare({
+        operation: 'run.retry',
+        workspaceId: 'ws-1',
+        normalizedKey: `${KEY}-retry-snapshot`,
+        fingerprintInput: makeRetryFingerprint(),
+      });
+      assert.ok(prepared);
+      const childRun = makeRetryChildRun();
+      const retryOperation = {
+        ...makeRetryOperation(),
+        result: { resourceType: 'run', resourceId: 'run_00000000000000000000000002' },
+      };
+      const envelope = buildRetryResultEnvelopeV1('run.retry', childRun, retryOperation);
+      service.storeSuccess({ prepared, httpStatus: 201, envelope });
+      childRun.status = 'running';
+      childRun.version = 2;
+      retryOperation.status = 'running';
+      retryOperation.version = 4;
+      const replay = service.resolve(prepared);
+      assert.equal(replay.kind, 'replay');
+      if (replay.kind === 'replay') {
+        assert.equal(replay.httpStatus, 201);
+        assert.equal(replay.envelope.body.run.status, 'queued');
+        assert.equal(replay.envelope.body.run.version, 1);
+        assert.equal(replay.envelope.body.operation.status, 'completed');
+        assert.equal(replay.envelope.body.operation.version, 3);
+        assert.equal(replay.envelope.body.operation.result.resourceId, 'run_00000000000000000000000002');
+      }
+      const mismatched = JSON.parse(JSON.stringify(envelope));
+      mismatched.body.operation.workspaceId = 'ws-2';
+      assert.throws(
+        () => service.storeSuccess({ prepared, httpStatus: 201, envelope: mismatched }),
+        IdempotencyRecordInvalidError,
+      );
+      const malformed = JSON.parse(JSON.stringify(envelope));
+      delete malformed.body.run;
+      assert.throws(
+        () => service.storeSuccess({ prepared, httpStatus: 201, envelope: malformed }),
+        IdempotencyRecordInvalidError,
+      );
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-30 keeps Retry persistence inside the caller-owned transaction', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      const prepared = service.prepare({
+        operation: 'run.retry',
+        workspaceId: 'ws-1',
+        normalizedKey: `${KEY}-retry-transaction`,
+        fingerprintInput: makeRetryFingerprint(),
+      });
+      assert.ok(prepared);
+      const envelope = buildRetryResultEnvelopeV1('run.retry', makeRetryChildRun(), makeRetryOperation());
+      assert.throws(() => {
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          service.storeSuccess({ prepared, httpStatus: 201, envelope });
+          throw new Error('expected-retry-rollback');
+        } catch (error) {
+          db.exec('ROLLBACK');
+          throw error;
+        }
+      }, /expected-retry-rollback/);
+      assert.equal(service.resolve(prepared).kind, 'miss');
+      db.exec('BEGIN IMMEDIATE');
+      service.storeSuccess({ prepared, httpStatus: 201, envelope });
+      db.exec('COMMIT');
+      const replay = service.resolve(prepared);
+      assert.equal(replay.kind, 'replay');
+      if (replay.kind === 'replay') {
+        assert.equal(replay.httpStatus, 201);
+        assert.deepEqual(replay.envelope, envelope);
+      }
+      assert.equal((db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     } finally {
       db.close();
     }
