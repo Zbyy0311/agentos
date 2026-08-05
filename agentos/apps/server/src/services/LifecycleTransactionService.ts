@@ -1,9 +1,11 @@
 import {
+  M3_MULTI_EVENT_ORDERING_CONTRACTS,
   getM3RunTransitionEventContract,
   getM3StageTransitionEventContract,
 } from '@agentos/shared';
 import type {
   AgentSnapshotV1,
+  ApiProblem,
   ApprovalCategory,
   ApprovalResolutionDecision,
   ApprovalRiskLevel,
@@ -30,6 +32,7 @@ import {
   RunRepository,
   type RunLifecycleTransitionWithinTransactionInput,
 } from '../store/RunRepository.js';
+import { isValidApiProblem } from '../store/OperationRepository.js';
 import {
   RunStageRepository,
   type RunStageLifecycleTransitionWithinTransactionInput,
@@ -207,6 +210,30 @@ export interface CompleteRunStartupInput extends StageCompositeInput {
   readonly workflowSnapshotVersion?: number;
   readonly policySnapshotVersion?: number;
   readonly baseCommit?: string;
+}
+
+interface StartupFailureInputBase extends CompositeLifecycleInputBase {
+  readonly runId: string;
+  readonly phase: string;
+  readonly problem: ApiProblem;
+}
+
+export interface StartupFailureWithStageInput extends StartupFailureInputBase {
+  readonly stageId: string;
+  readonly expectedStageVersion: number;
+}
+
+export interface StartupFailureWithoutStageInput extends StartupFailureInputBase {
+  readonly stageId?: never;
+  readonly expectedStageVersion?: never;
+}
+
+export type FailRunStartupInput = StartupFailureWithStageInput | StartupFailureWithoutStageInput;
+
+export interface StartStageInput extends StageCompositeInput {
+  readonly runId: string;
+  readonly agentSnapshot: AgentSnapshotV1;
+  readonly providerSnapshot: ProviderConfigurationSnapshotV1;
 }
 
 interface RequestApprovalFields {
@@ -528,28 +555,216 @@ export class LifecycleTransactionService {
 
   completeRunStartup(input: CompleteRunStartupInput): CompositeLifecycleTransactionResult {
     this.validateCompleteRunStartupInput(input);
+    return this.dependencies.runInTransaction(() => this.completeRunStartupWithinTransaction(input));
+  }
+
+  completeRunStartupWithinTransaction(input: CompleteRunStartupInput): CompositeLifecycleTransactionResult {
+    this.validateCompleteRunStartupInput(input);
     const expectedRunVersion = this.expectedRunVersion(input);
     const expectedStageVersion = this.expectedStageVersion(input);
+    const run = this.requireRun(input.workspaceId, input.runId);
+    const stage = this.requireStage(input.workspaceId, input.runId, input.stageId);
+    this.assertExpectedRunState(run, 'starting');
+    this.assertExpectedStageState(stage, 'starting');
+    this.assertSingleStartupStage(input.workspaceId, input.runId, stage.id);
+    this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+    this.assertExpectedVersion('run_stages', stage.id, stage.version, expectedStageVersion);
+    const timestamp = this.transactionTimestamp();
 
-    return this.dependencies.runInTransaction(() => {
-      const run = this.requireRun(input.workspaceId, input.runId);
+    const nextStage = this.dependencies.runStageRepository.transitionLifecycleWithinTransaction({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      stageId: stage.id,
+      expectedVersion: expectedStageVersion,
+      expectedFrom: 'starting',
+      to: 'running',
+      timestamp,
+    });
+    const stageEvent = this.appendEvent(
+      run,
+      nextStage,
+      'stage.started',
+      timestamp,
+      input.correlationId,
+      input.causationId,
+      input.parentEventId,
+      input.metadata,
+      {
+        workflowStageKey: nextStage.workflowStageKey,
+        name: nextStage.name,
+        attempt: nextStage.attempt,
+        agentSnapshot: input.agentSnapshot,
+        providerSnapshot: input.providerSnapshot,
+      },
+    );
+    const stageOutbox = this.insertOutbox(stageEvent, timestamp);
+
+    const nextRun = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      expectedVersion: expectedRunVersion,
+      expectedFrom: 'starting',
+      to: 'running',
+      timestamp,
+    });
+    const runEvent = this.appendEvent(
+      nextRun,
+      undefined,
+      'run.started',
+      timestamp,
+      input.correlationId,
+      input.causationId,
+      input.parentEventId,
+      input.metadata,
+      {
+        startedAt: timestamp,
+        ...(input.workflowSnapshotVersion === undefined ? {} : { workflowSnapshotVersion: input.workflowSnapshotVersion }),
+        ...(input.policySnapshotVersion === undefined ? {} : { policySnapshotVersion: input.policySnapshotVersion }),
+        ...(input.baseCommit === undefined ? {} : { baseCommit: input.baseCommit }),
+      },
+    );
+    const runOutbox = this.insertOutbox(runEvent, timestamp);
+    return this.compositeResult(input.workspaceId, input.runId, [stageEvent, runEvent], [stageOutbox, runOutbox]);
+  }
+
+  failRunStartup(input: FailRunStartupInput): CompositeLifecycleTransactionResult {
+    this.validateFailRunStartupInput(input);
+    return this.dependencies.runInTransaction(() => this.failRunStartupWithinTransaction(input));
+  }
+
+  failRunStartupWithinTransaction(input: FailRunStartupInput): CompositeLifecycleTransactionResult {
+    this.validateFailRunStartupInput(input);
+    this.assertStartupFailureOrderingContract();
+    const expectedRunVersion = this.expectedRunVersion(input);
+    const run = this.requireRun(input.workspaceId, input.runId);
+    this.assertExpectedRunState(run, 'starting');
+    this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+    this.assertProblemBinding(input);
+    const timestamp = this.transactionTimestamp();
+    const failure = {
+      errorCode: input.problem.code,
+      message: input.problem.detail,
+      phase: input.phase,
+      retryable: input.problem.retryable,
+    };
+
+    if (input.stageId !== undefined) {
+      const expectedStageVersion = this.expectedStageVersion(input);
       const stage = this.requireStage(input.workspaceId, input.runId, input.stageId);
-      this.assertExpectedRunState(run, 'starting');
       this.assertExpectedStageState(stage, 'starting');
-      this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+      this.assertSingleStartupStage(input.workspaceId, input.runId, stage.id);
       this.assertExpectedVersion('run_stages', stage.id, stage.version, expectedStageVersion);
-      const timestamp = this.transactionTimestamp();
-
       const nextStage = this.dependencies.runStageRepository.transitionLifecycleWithinTransaction({
         workspaceId: input.workspaceId,
         runId: input.runId,
         stageId: stage.id,
         expectedVersion: expectedStageVersion,
         expectedFrom: 'starting',
+        to: 'failed',
+        timestamp,
+        failureCode: failure.errorCode,
+        failureMessage: failure.message,
+      });
+      const stageEvent = this.appendEvent(
+        run,
+        nextStage,
+        'stage.failed',
+        timestamp,
+        input.correlationId,
+        input.causationId,
+        input.parentEventId,
+        input.metadata,
+        {
+          attempt: nextStage.attempt,
+          errorCode: failure.errorCode,
+          message: failure.message,
+          retryable: failure.retryable,
+          retryScheduled: false,
+        },
+      );
+      const stageOutbox = this.insertOutbox(stageEvent, timestamp);
+      const nextRun = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        expectedVersion: expectedRunVersion,
+        expectedFrom: 'starting',
+        to: 'failed',
+        timestamp,
+        failureCode: failure.errorCode,
+        failureMessage: failure.message,
+      });
+      const runEvent = this.appendEvent(
+        nextRun,
+        undefined,
+        'run.failed',
+        timestamp,
+        input.correlationId,
+        input.causationId,
+        input.parentEventId,
+        input.metadata,
+        { ...failure, stageId: nextStage.id },
+      );
+      const runOutbox = this.insertOutbox(runEvent, timestamp);
+      return this.compositeResult(
+        input.workspaceId,
+        input.runId,
+        [stageEvent, runEvent],
+        [stageOutbox, runOutbox],
+      );
+    }
+
+    const stages = this.dependencies.runStageRepository.listByRun(input.workspaceId, input.runId);
+    if (stages.some(stage => stage.status === 'starting' || stage.status === 'running' || stage.startedAt !== undefined)) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_STATE_MISMATCH',
+        `Run ${run.id} has a Stage that already entered startup`,
+      );
+    }
+    const nextRun = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      expectedVersion: expectedRunVersion,
+      expectedFrom: 'starting',
+      to: 'failed',
+      timestamp,
+      failureCode: failure.errorCode,
+      failureMessage: failure.message,
+    });
+    const runEvent = this.appendEvent(
+      nextRun,
+      undefined,
+      'run.failed',
+      timestamp,
+      input.correlationId,
+      input.causationId,
+      input.parentEventId,
+      input.metadata,
+      failure,
+    );
+    const runOutbox = this.insertOutbox(runEvent, timestamp);
+    return this.compositeResult(input.workspaceId, input.runId, [runEvent], [runOutbox]);
+  }
+
+  startStage(input: StartStageInput): StageLifecycleTransitionResult {
+    this.validateStartStageInput(input);
+    return this.dependencies.runInTransaction(() => {
+      const run = this.requireRun(input.workspaceId, input.runId);
+      const stage = this.requireStage(input.workspaceId, input.runId, input.stageId);
+      this.assertExpectedRunState(run, 'running');
+      this.assertExpectedStageState(stage, 'starting');
+      this.assertExpectedVersion('runs', run.id, run.version, input.expectedRunVersion);
+      this.assertExpectedVersion('run_stages', stage.id, stage.version, input.expectedStageVersion);
+      const timestamp = this.transactionTimestamp();
+      const nextStage = this.dependencies.runStageRepository.transitionLifecycleWithinTransaction({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        stageId: input.stageId,
+        expectedVersion: input.expectedStageVersion,
+        expectedFrom: 'starting',
         to: 'running',
         timestamp,
       });
-      const stageEvent = this.appendEvent(
+      const event = this.appendEvent(
         run,
         nextStage,
         'stage.started',
@@ -566,34 +781,13 @@ export class LifecycleTransactionService {
           providerSnapshot: input.providerSnapshot,
         },
       );
-      const stageOutbox = this.insertOutbox(stageEvent, timestamp);
-
-      const nextRun = this.dependencies.runRepository.transitionLifecycleWithinTransaction({
-        workspaceId: input.workspaceId,
-        runId: input.runId,
-        expectedVersion: expectedRunVersion,
-        expectedFrom: 'starting',
-        to: 'running',
-        timestamp,
-      });
-      const runEvent = this.appendEvent(
-        nextRun,
-        undefined,
-        'run.started',
-        timestamp,
-        input.correlationId,
-        input.causationId,
-        input.parentEventId,
-        input.metadata,
-        {
-          startedAt: timestamp,
-          ...(input.workflowSnapshotVersion === undefined ? {} : { workflowSnapshotVersion: input.workflowSnapshotVersion }),
-          ...(input.policySnapshotVersion === undefined ? {} : { policySnapshotVersion: input.policySnapshotVersion }),
-          ...(input.baseCommit === undefined ? {} : { baseCommit: input.baseCommit }),
-        },
-      );
-      const runOutbox = this.insertOutbox(runEvent, timestamp);
-      return this.compositeResult(input.workspaceId, input.runId, [stageEvent, runEvent], [stageOutbox, runOutbox]);
+      const outbox = this.insertOutbox(event, timestamp);
+      return {
+        run: this.requireRun(input.workspaceId, input.runId),
+        stage: nextStage,
+        event,
+        outbox,
+      };
     });
   }
 
@@ -1415,6 +1609,68 @@ export class LifecycleTransactionService {
     this.validateOptionalString(input.baseCommit, 'baseCommit');
   }
 
+  private validateFailRunStartupInput(input: FailRunStartupInput): void {
+    this.validateCompositeCommonInput(input);
+    this.validateRunId(input.runId);
+    if (!isNonBlankString(input.phase)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'phase is required');
+    }
+    if (!isValidApiProblem(input.problem)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'startup failure problem is malformed');
+    }
+    if (input.stageId === undefined) {
+      if (input.expectedStageVersion !== undefined) {
+        throw new LifecycleTransactionError(
+          'LIFECYCLE_VALIDATION_FAILED',
+          'expectedStageVersion is not allowed without stageId',
+        );
+      }
+      return;
+    }
+    this.validateRunAndStageIds(input.runId, input.stageId);
+    this.expectedStageVersion(input);
+  }
+
+  private validateStartStageInput(input: StartStageInput): void {
+    this.validateCompositeCommonInput(input);
+    this.validateRunAndStageIds(input.runId, input.stageId);
+    this.expectedStageVersion(input);
+    if (!isRecord(input.agentSnapshot) || !isRecord(input.providerSnapshot)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'stage startup snapshots are required');
+    }
+  }
+
+  private assertStartupFailureOrderingContract(): void {
+    const contract = M3_MULTI_EVENT_ORDERING_CONTRACTS.find(item => item.name === 'startup-failure');
+    if (
+      !contract
+      || contract.events.join(',') !== 'stage.failed,run.failed'
+      || contract.stageMultiplicity !== 'single'
+      || contract.stageOrdering !== 'none'
+      || !contract.contiguousRunSequence
+      || !contract.independentOutboxPerEvent
+      || !contract.atomicCurrentStateEventOutbox
+    ) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        'Shared startup-failure ordering contract is invalid',
+      );
+    }
+  }
+
+  private assertProblemBinding(input: FailRunStartupInput): void {
+    const context = input.problem.context;
+    if (
+      !context
+      || context.runId !== input.runId
+      || context.operationId !== input.correlationId
+      || (context.workspaceId !== undefined && context.workspaceId !== input.workspaceId)
+      || (input.stageId === undefined ? context.stageId !== undefined : context.stageId !== input.stageId)
+    ) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'startup failure Stage binding is invalid');
+    }
+  }
+
   private validateRequestApprovalInput(input: RequestApprovalInput): void {
     this.validateCompositeCommonInput(input);
     this.validateRunId(input.runId);
@@ -1745,6 +2001,21 @@ export class LifecycleTransactionService {
       throw new LifecycleTransactionError(
         'LIFECYCLE_STATE_MISMATCH',
         `Stage ${stage.id} is ${stage.status}, expected ${expectedFrom}`,
+      );
+    }
+  }
+
+  private assertSingleStartupStage(workspaceId: string, runId: string, stageId: string): void {
+    const stages = this.dependencies.runStageRepository.listByRun(workspaceId, runId);
+    const startingStages = stages.filter(stage => stage.status === 'starting');
+    if (
+      startingStages.length !== 1
+      || startingStages[0]?.id !== stageId
+      || stages.some(stage => stage.status === 'running')
+    ) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_STATE_MISMATCH',
+        `Run ${runId} does not have exactly one startup Stage ${stageId}`,
       );
     }
   }

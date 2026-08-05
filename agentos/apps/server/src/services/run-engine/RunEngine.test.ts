@@ -851,4 +851,21 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && parentPort) {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  test('P3B-2B explicit dispatch remains separate from the P3B-1 tick claim', async () => {
+    await withFixture(async fixture => {
+      const authorization = createOperation(fixture, 'run.start');
+      assert.equal(typeof fixture.engine.dispatch, 'function');
+      const result = fixture.engine.tick({ workspaceId: fixture.workspaceId, runId: fixture.runId });
+      assert.equal(result.outcome, 'claimed');
+      assert.equal(runState(fixture).status, 'starting');
+      assert.equal(fixture.operationService.findById(fixture.workspaceId, authorization.id).status, 'running');
+      assert.deepEqual(
+        fixture.db.prepare('SELECT status FROM run_stages WHERE run_id = ? ORDER BY sequence ASC').all(fixture.runId),
+        [],
+      );
+      assert.equal(eventsForRun(fixture).length, 1);
+      assert.equal(outboxesForRun(fixture).length, 1);
+    });
+  });
 }
