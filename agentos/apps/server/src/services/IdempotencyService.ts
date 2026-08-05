@@ -1,8 +1,10 @@
 import type { IdempotencyRepository } from '../store/IdempotencyRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import {
+  IDEMPOTENCY_HTTP_STATUS,
   IdempotencyRecordInvalidError,
   type FingerprintInput,
+  type IdempotencyHttpStatus,
   type IdempotencyOperation,
   type IdempotencyRecord,
   type IdempotencyResultEnvelopeV1,
@@ -12,19 +14,23 @@ import {
   hashNormalizedIdempotencyKey,
 } from '../idempotency/fingerprint.js';
 
-export interface PreparedIdempotency {
-  readonly operation: IdempotencyOperation;
+export type LegacyIdempotencyOperation = Exclude<IdempotencyOperation, 'run.start'>;
+
+export interface PreparedIdempotency<TOperation extends IdempotencyOperation = LegacyIdempotencyOperation> {
+  readonly operation: TOperation;
   readonly workspaceId: string;
   readonly keyHash: string;
   readonly requestHash: string;
 }
 
-export type IdempotencyResolution =
+export type IdempotencyResolution<TOperation extends IdempotencyOperation = LegacyIdempotencyOperation> =
   | { kind: 'miss' }
   | {
       kind: 'replay';
-      httpStatus: 200 | 201;
-      envelope: IdempotencyResultEnvelopeV1;
+      httpStatus: TOperation extends 'run.start' ? 202 : 200 | 201;
+      envelope: TOperation extends 'run.start'
+        ? Extract<IdempotencyResultEnvelopeV1, { operation: 'run.start' }>
+        : Exclude<IdempotencyResultEnvelopeV1, { operation: 'run.start' }>;
     };
 
 export interface PrepareIdempotencyInput {
@@ -35,8 +41,8 @@ export interface PrepareIdempotencyInput {
 }
 
 export interface StoreSuccessInput {
-  prepared: PreparedIdempotency;
-  httpStatus: 200 | 201;
+  prepared: PreparedIdempotency<IdempotencyOperation>;
+  httpStatus: IdempotencyHttpStatus;
   envelope: IdempotencyResultEnvelopeV1;
 }
 
@@ -57,7 +63,16 @@ export class IdempotencyKeyReusedError extends Error {
 export class IdempotencyService {
   constructor(private readonly repository: IdempotencyRepository) {}
 
-  prepare(input: PrepareIdempotencyInput): PreparedIdempotency | undefined {
+  prepare(
+    input: PrepareIdempotencyInput & {
+      operation: 'run.start';
+      fingerprintInput: FingerprintInput & { operation: 'run.start' };
+    },
+  ): PreparedIdempotency<'run.start'> | undefined;
+
+  prepare(input: PrepareIdempotencyInput): PreparedIdempotency | undefined;
+
+  prepare(input: PrepareIdempotencyInput): PreparedIdempotency<IdempotencyOperation> | undefined {
     if (input.normalizedKey === undefined) return undefined;
     if (
       input.operation !== input.fingerprintInput.operation
@@ -75,7 +90,10 @@ export class IdempotencyService {
     };
   }
 
-  resolve(prepared: PreparedIdempotency): IdempotencyResolution {
+  resolve(prepared: PreparedIdempotency<'run.start'>): IdempotencyResolution<'run.start'>;
+  resolve(prepared: PreparedIdempotency): IdempotencyResolution;
+  resolve(prepared: PreparedIdempotency<IdempotencyOperation>): IdempotencyResolution<IdempotencyOperation>;
+  resolve(prepared: PreparedIdempotency<IdempotencyOperation>): IdempotencyResolution<IdempotencyOperation> {
     const record = this.repository.findVerifiedByScope(
       prepared.workspaceId,
       prepared.operation,
@@ -100,7 +118,7 @@ export class IdempotencyService {
   }
 
   storeSuccess(input: StoreSuccessInput): IdempotencyRecord {
-    if (input.httpStatus !== 200 && input.httpStatus !== 201) {
+    if (input.httpStatus !== IDEMPOTENCY_HTTP_STATUS[input.prepared.operation]) {
       throw new IdempotencyRecordInvalidError();
     }
     if (input.envelope.operation !== input.prepared.operation) {
@@ -108,7 +126,9 @@ export class IdempotencyService {
     }
     const envelopeWorkspaceId = 'task' in input.envelope.body
       ? input.envelope.body.task.workspaceId
-      : input.envelope.body.run.workspaceId;
+      : 'run' in input.envelope.body
+        ? input.envelope.body.run.workspaceId
+        : input.envelope.body.operation.workspaceId;
     if (envelopeWorkspaceId !== input.prepared.workspaceId) {
       throw new IdempotencyRecordInvalidError();
     }

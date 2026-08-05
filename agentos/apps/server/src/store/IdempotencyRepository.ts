@@ -2,23 +2,16 @@ import type { TransactionDatabase } from './Transaction.js';
 import { isValidEntityId } from './Identity.js';
 import { canonicalizeJson, hashCanonicalJson } from '../snapshots/canonicalJson.js';
 import {
+  IDEMPOTENCY_HTTP_STATUS,
   IDEMPOTENCY_OPERATIONS,
   IdempotencyRecordInvalidError,
   parseIdempotencyResultEnvelopeV1,
   type IdempotencyOperation,
+  type IdempotencyHttpStatus,
   type IdempotencyRecord,
   type IdempotencyResultEnvelopeV1,
   type InsertCompletedIdempotencyRecord,
 } from '../idempotency/types.js';
-
-const OPERATION_HTTP_STATUS: Readonly<Record<IdempotencyOperation, 200 | 201>> = {
-  'task.create': 201,
-  'run.create': 201,
-  'run.cancel': 200,
-  'task.accept': 200,
-  'task.cancel': 200,
-  'task.reopen': 200,
-};
 
 const HASH_HEX_64 = /^[0-9a-f]{64}$/;
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
@@ -78,9 +71,9 @@ function assertIsoTimestamp(value: unknown): string {
   return value;
 }
 
-function assertOperationStatusPair(operation: IdempotencyOperation, httpStatus: unknown): 200 | 201 {
-  if (httpStatus !== OPERATION_HTTP_STATUS[operation]) invalid();
-  return httpStatus as 200 | 201;
+function assertOperationStatusPair(operation: IdempotencyOperation, httpStatus: unknown): IdempotencyHttpStatus {
+  if (httpStatus !== IDEMPOTENCY_HTTP_STATUS[operation]) invalid();
+  return httpStatus as IdempotencyHttpStatus;
 }
 
 function assertExactRowShape(row: unknown): IdempotencyRow {
