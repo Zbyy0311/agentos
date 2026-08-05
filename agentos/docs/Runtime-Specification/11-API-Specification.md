@@ -1806,12 +1806,16 @@ POST /api/runs/:runId/start
 
 Preconditions：
 
-- status = created / queued；
+- status = queued；
 - Snapshot valid；
 - Provider valid；
 - Policy Snapshot；
 - Isolation Plan；
 - no duplicate start.
+
+For the current M3 persistent Task-domain Run, the initial status is
+`queued`; `created` is not a current `V2RunStatus`, and Start Acceptance only
+accepts `queued`.
 
 返回 `202`。
 

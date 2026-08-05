@@ -16,7 +16,7 @@ instruction, after the preceding stage's independent review gate is
 accepted.
 
 Companion document: `docs/implementation/milestones/M3-p3-current-state-audit.md`
-(baseline `82bee50416caff28caf5511be68420cf0ebb0805`).
+(current merged main baseline `8477e1f077c86948c9ab872b319365a4ca534b3e`).
 
 Remediation 1 (Execution Authorization and Transaction Composition) added the
 frozen atomic claim transaction (section 2), the caller-owned transaction
@@ -857,6 +857,86 @@ independently enterable dependent portions:
 - Retry portion: depends on M3-TD-30 and P3C-0B, and must not modify the
   idempotency core files itself.
 
+### P3C-1 Start pre-implementation blocker closure (docs-only)
+
+The following contract is frozen for the future Start portion. This closure
+does not implement or authorize a Start route, a Retry route, or any other
+P3C-1 production flow.
+
+#### Canonical Run workspace resolution
+
+The canonical route remains exactly `POST /api/runs/:runId/start`; no
+`workspaceId` path, query, or body field is added. Run IDs are global opaque
+routing identifiers. The future implementation adds only the following
+read-only `RunRepository` locator:
+
+```ts
+findWorkspaceIdByOpaqueId(runId: string): string | undefined
+```
+
+The locator returns only the owning workspace ID. It does not return Run or
+Workspace data, inspect status/version, or mutate state. It is routing
+resolution, not a Run domain guard. A missing Run returns `404 RUN_NOT_FOUND`,
+never `WORKSPACE_NOT_FOUND` from the canonical Start route. After resolution,
+the workspace ID is included in the Idempotency fingerprint and all Run,
+Operation, and Idempotency reads and writes remain workspace-scoped. No global
+unscoped mutation is allowed. The current Local API Write Guard and Server
+Ownership remain the security boundary; multi-user, remote, or workspace-
+principal access requires a new opaque-lookup review.
+
+#### SQLite contention
+
+After production `DatabaseSync` creation and before migrations, `SqliteStore`
+executes `PRAGMA busy_timeout = 5000`; `PRAGMA foreign_keys = ON` remains
+enabled. Normal same-key, different-key, and no-key Start races must converge
+to live `202`, replay `202`, or a stable `409` Start conflict. Raw
+`SQLITE_BUSY`, SQLite messages, SQL, database paths, and lock details never
+reach clients. Timeout exhaustion for a human-held write lock uses only:
+
+```text
+code: RUN_START_BUSY
+status: 503
+message: Run start is temporarily unavailable
+retryable: true
+```
+
+Normal race tests must not use 503 as an expected winner/loser result. The
+generic `Transaction.ts` contract and existing v2 mutation behavior remain
+unchanged.
+
+#### Complete Start Operation history
+
+Start acceptance reads `OperationService.listByRun(workspaceId, runId)` and
+filters `type === 'run.start'`; `listNonTerminalByRunAndType()` alone is not
+enough. The exact matrix is:
+
+- no Start history: create is allowed;
+- all history is `failed`/`cancelled`: create is allowed;
+- one `queued` Start: same-key replay wins and returns the original `202`;
+  different-key or no-key requests return `409 RUN_START_ALREADY_ACTIVE`;
+- multiple non-terminal Starts: `500 RUN_START_AUTHORIZATION_AMBIGUOUS`;
+- queued Run plus `running`, `waiting_approval`, or `paused` Start history, or
+  any `completed` Start history: `500 RUN_START_STATE_INCONSISTENT`;
+- `failed`/`cancelled` history is terminal and is not active authorization;
+- no arbitrary Start Operation selection is permitted.
+
+#### A1 and route/service composition
+
+The future ordering is: opaque locator resolution; request-shape and
+expectedVersion validation; optional Idempotency-Key normalization;
+Idempotency `prepare()` outside the transaction; `BEGIN IMMEDIATE`; `resolve()`
+as the first Run/Operation domain action; immediate replay of the original
+HTTP 202 Operation snapshot; and only then Run status/version and full Start
+history guards. Locator resolution does not inspect Run status/version. Run
+deletion and workspace migration are outside M3 and require a new replay/
+locator review if introduced.
+
+`runLifecycle.ts` creates IdempotencyService through the existing
+`createOptionalIdempotencyService(store)` pattern and creates a route-local
+TaskRunService with that service. `index.ts` adds one `/api` mount only; it
+does not reuse the no-Idempotency TaskRunService instance used by Legacy
+recovery.
+
 Authorized scope (when authorized):
 
 - Start route returning HTTP 202 + Operation (additive; v2/Legacy
@@ -907,15 +987,23 @@ idempotency core files
 `apps/server/src/store/IdempotencyRepository.ts` and their tests), which
 are owned by P3C-0A/P3C-0B.
 
-Exact proposed file allowlist (proposal, not authorization):
+Exact future Start implementation allowlist (proposal, not authorization):
 
-- `apps/server/src/routes/runLifecycle.ts` (new, or equivalent additive
-  route module; final naming at implementation time)
+- `apps/server/src/routes/runLifecycle.ts` (new)
 - `apps/server/src/routes/runLifecycle.test.ts` (new)
-- `apps/server/src/services/TaskRunService.ts` (minimal additive wiring
-  only, if required; no behavioral change to existing methods)
-- `apps/server/src/services/TaskRunService.test.ts` (additive cases only)
-- `apps/server/src/index.ts` (one additive mount line)
+- `apps/server/src/services/TaskRunService.ts`
+- `apps/server/src/services/TaskRunService.test.ts`
+- `apps/server/src/store/SqliteStore.ts`
+- `apps/server/src/store/RunRepository.ts`
+- `apps/server/src/store/__tests__/RunRepository.test.ts`
+- `apps/server/src/index.ts` (one additive `/api` mount line)
+
+Existing `routes/v2Idempotency.ts`, `OperationService.ts`,
+`OperationRepository.ts`, Idempotency Core, and Shared may be imported but are
+not modified. Retry production implementation, Operation Cancel, Event Query/
+SSE, `RunEngine/**`, `LifecycleTransactionService.ts`,
+`RunStageRepository.ts`, Migration/Registry, Web, package/lockfiles, Legacy or
+v2 routes, Conversation EventBus, and Production Cutover remain forbidden.
 
 Dependencies: P3A accepted; P3B-1 accepted; Start portion: P3C-0A accepted,
 M3-TD-26 and M3-TD-29 applied; Retry portion: additionally P3C-0B accepted,
@@ -935,9 +1023,9 @@ P3C-0A envelope; the run remains queued until the engine claims it; same
 idempotency key replays the original Operation (original 202 and original
 snapshot); different key on an already-started run is rejected per
 contract; retry creates a child run with correct
-`root_run_id`/`parent_run_id` and the old run untouched; the retry child is
-immediately Engine-eligible via its queued `run.retry` Operation per
-M3-TD-30 — no separate Start command. Retry tests also prove failed-Parent
+`root_run_id`/`parent_run_id` and the old run untouched; the retry child remains
+queued and requires a separate `run.start` for Engine authorization per
+M3-TD-30. Retry never dispatches the Child. Retry tests also prove failed-Parent
 eligibility, stable `RUN_NOT_RETRYABLE` for every non-failed Parent status,
 stale-version zero side effects, one winner under concurrent Retry, exact
 creation-versus-execution correlation, and exclusion of creation Events from

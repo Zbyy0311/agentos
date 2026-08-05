@@ -6,7 +6,7 @@ P3 decision freeze status: P3C-0B Post-Merge Remediation 1 is authorized; P3C-1,
 
 Final P0 documentation merge gate: COMPLETE (historical; superseded by the merged P1, P2, and P3 preplanning records).
 
-Baseline: origin/main at 82bee50416caff28caf5511be68420cf0ebb0805
+Baseline: origin/main at 8477e1f077c86948c9ab872b319365a4ca534b3e
 
 This register separates the approved M3 technical contract from deferred Production Cutover and Legacy Retirement decisions. A technical approval is not authorization to modify code, create DDL, migrate data, change production behavior, restore, delete, change the Web default, or start any M3 implementation phase without explicit authorization.
 
@@ -427,6 +427,121 @@ M3 does not create operation_events. Non-Run Operation types are deferred to Pos
 
 This decision does not authorize route code, Web changes, Legacy retirement, or a production default switch.
 
+## 3.1 P3C-1 Start pre-implementation blocker closure (docs-only)
+
+Record status: the three P3C-1 Start pre-implementation HIGH blockers are
+CLOSED as a contract-only remediation on 2026-08-06. This record does not add
+a new M3-TD decision, does not change the M3-TD-30 sequence, and does not
+authorize the Start route, Retry portion, P3D, or Production Cutover.
+
+### HIGH-1 — canonical Run workspace resolution
+
+The canonical Start route remains exactly:
+
+```text
+POST /api/runs/:runId/start
+```
+
+The route does not add `workspaceId` to its path, query, or body. Run IDs are
+global opaque routing identifiers. The future Start implementation adds only
+this read-only locator to `RunRepository`:
+
+```ts
+findWorkspaceIdByOpaqueId(runId: string): string | undefined
+```
+
+The locator returns only the owning `workspaceId`; it does not return Run or
+Workspace data, inspect status or version, or mutate state. It is routing
+resolution, not a Run domain guard. A missing Run returns `404 RUN_NOT_FOUND`;
+the canonical Start route never returns `WORKSPACE_NOT_FOUND` for this lookup.
+
+After resolution, the resolved workspace ID is part of the Idempotency
+fingerprint, and every Run, Operation, and Idempotency query and mutation
+remains workspace-scoped. No global unscoped mutation is permitted. The
+current Local API Write Guard and Server Ownership remain the security
+boundary; introducing multi-user, remote, or workspace-principal access
+requires a new opaque-lookup review.
+
+### HIGH-2 — SQLite busy and contention contract
+
+The future production `SqliteStore` construction must execute
+`PRAGMA busy_timeout = 5000` immediately after creating `DatabaseSync` and
+before migrations. `PRAGMA foreign_keys = ON` remains enabled. Normal Start
+contention must converge to `202` live, `202` replay, or a stable `409` Start
+conflict. Raw `SQLITE_BUSY`, SQLite text, SQL, database paths, and lock details
+must never reach a client.
+
+When a human-held write lock exceeds the timeout, the stable response is:
+
+```text
+code: RUN_START_BUSY
+status: 503
+message: Run start is temporarily unavailable
+retryable: true
+```
+
+Normal same-key, different-key, and no-key races must not use 503 as the
+expected winner or loser. The generic `Transaction.ts` contract and existing
+v2 mutation behavior are unchanged.
+
+### HIGH-3 — complete Start Operation history
+
+Start acceptance must read the complete history through
+`OperationService.listByRun(workspaceId, runId)` and then filter
+`type === 'run.start'`. `listNonTerminalByRunAndType()` is insufficient for the
+full decision.
+
+The frozen matrix is:
+
+- no Start history: create is allowed;
+- all historical Start Operations are `failed` or `cancelled`: create is allowed;
+- exactly one `queued` Start: same-key Idempotency replay returns the original
+  `202`; a different key or no key returns `409 RUN_START_ALREADY_ACTIVE`;
+- more than one non-terminal Start: fail closed with
+  `500 RUN_START_AUTHORIZATION_AMBIGUOUS`;
+- a queued Run with `running`, `waiting_approval`, or `paused` Start history,
+  or with any `completed` Start history, fails closed with
+  `500 RUN_START_STATE_INCONSISTENT`;
+- `failed` and `cancelled` are terminal history and never active authorization;
+- no implementation may arbitrarily choose one of multiple Start Operations.
+
+### A1 ordering and route composition
+
+The resolved workspace ID is obtained first without status/version checks.
+Request shape, expectedVersion, and the optional Idempotency-Key are then
+validated; `prepare()` runs outside the transaction; `BEGIN IMMEDIATE` follows;
+`resolve()` is the first Run/Operation domain action inside the transaction;
+replay returns the original `202` Operation snapshot immediately; only a miss
+continues to Run status/version and full Start-history guards. Run deletion and
+workspace migration are outside the M3 contract and require a new replay/
+locator review if introduced.
+
+The future `runLifecycle.ts` route creates its IdempotencyService through the
+existing `createOptionalIdempotencyService(store)` pattern and creates a
+route-local TaskRunService with that service. `index.ts` adds only one `/api`
+mount; it does not reuse the bootstrap TaskRunService instance used by Legacy
+recovery.
+
+### Revised future Start implementation allowlist
+
+This is a proposal, not authorization:
+
+- `apps/server/src/routes/runLifecycle.ts` (new);
+- `apps/server/src/routes/runLifecycle.test.ts` (new);
+- `apps/server/src/services/TaskRunService.ts`;
+- `apps/server/src/services/TaskRunService.test.ts`;
+- `apps/server/src/store/SqliteStore.ts`;
+- `apps/server/src/store/RunRepository.ts`;
+- `apps/server/src/store/__tests__/RunRepository.test.ts`;
+- `apps/server/src/index.ts`.
+
+Existing `routes/v2Idempotency.ts`, `OperationService.ts`,
+`OperationRepository.ts`, Idempotency Core, and Shared may be imported but are
+not modified. Retry production code, Operation Cancel, Event Query/SSE,
+RunEngine, LifecycleTransactionService, RunStageRepository, Migration/
+Registry, Web, package or lockfiles, Legacy/v2 routes, Conversation EventBus,
+and Production Cutover remain forbidden.
+
 ## 4. Deferred Post-M3 Decisions
 
 The following historical decisions remain recorded but do not block the M3 Lifecycle, Event and API Foundation. Every row is NOT AN M3 P1 BLOCKER and NOT AUTHORIZED IN M3.
@@ -461,6 +576,8 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 - M3 P3 preplanning: MERGED via PR #21.
 - M3 P3 owner decision freeze: M3-TD-30 is aligned to Option A; P3C-1 and
   later implementation remain NOT AUTHORIZED.
+- M3 P3C-1 Start pre-implementation blockers: CLOSED (docs-only); Start
+  production implementation remains NOT AUTHORIZED.
 - P3B-2A CONTRACT ALIGNMENT: PLANNED — NOT AUTHORIZED.
 - Unresolved P3 Owner Decision candidates: 0.
 - Approved P3 decisions: 5.
