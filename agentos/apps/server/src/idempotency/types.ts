@@ -18,6 +18,7 @@ export const IDEMPOTENCY_OPERATIONS = Object.freeze([
   'task.cancel',
   'task.reopen',
   'run.start',
+  'run.retry',
 ] as const);
 
 export type IdempotencyOperation = (typeof IDEMPOTENCY_OPERATIONS)[number];
@@ -32,6 +33,7 @@ export const IDEMPOTENCY_HTTP_STATUS: Readonly<Record<IdempotencyOperation, Idem
   'task.cancel': 200,
   'task.reopen': 200,
   'run.start': 202,
+  'run.retry': 201,
 });
 
 export const TASK_RESULT_OPERATIONS = Object.freeze([
@@ -125,10 +127,35 @@ export interface OperationResultEnvelopeV1 extends IdempotencyEnvelopeBaseV1 {
   body: { operation: IdempotencyOperationDtoV1 };
 }
 
+export interface IdempotencyRetryOperationDtoV1 {
+  id: string;
+  type: 'run.retry';
+  status: 'completed';
+  workspaceId: string;
+  aggregateType: 'run';
+  aggregateId: string;
+  runId: string;
+  correlationId: string;
+  result: { resourceType: 'run'; resourceId: string };
+  createdAt: string;
+  startedAt: string;
+  completedAt: string;
+  version: 3;
+}
+
+export interface RetryResultEnvelopeV1 extends IdempotencyEnvelopeBaseV1 {
+  operation: 'run.retry';
+  body: {
+    run: IdempotencyRunDtoV1;
+    operation: IdempotencyRetryOperationDtoV1;
+  };
+}
+
 export type IdempotencyResultEnvelopeV1 =
   | TaskResultEnvelopeV1
   | RunResultEnvelopeV1
-  | OperationResultEnvelopeV1;
+  | OperationResultEnvelopeV1
+  | RetryResultEnvelopeV1;
 
 export interface IdempotencyRecord {
   id: string;
@@ -184,8 +211,47 @@ const OPERATION_DTO_KEYS = Object.freeze([
   'version',
 ] as const);
 
+const RETRY_RUN_DTO_KEYS = Object.freeze([
+  'id',
+  'workspaceId',
+  'taskId',
+  'parentRunId',
+  'rootRunId',
+  'status',
+  'reason',
+  'origin',
+  'nextEventSequence',
+  'createdBy',
+  'createdAt',
+  'updatedAt',
+  'version',
+] as const);
+
+const RETRY_OPERATION_DTO_KEYS = Object.freeze([
+  'id',
+  'type',
+  'status',
+  'workspaceId',
+  'aggregateType',
+  'aggregateId',
+  'runId',
+  'correlationId',
+  'result',
+  'createdAt',
+  'startedAt',
+  'completedAt',
+  'version',
+] as const);
+
+const RETRY_RESULT_KEYS = Object.freeze(['resourceType', 'resourceId'] as const);
+
 function assertNonEmptyString(value: unknown): string {
   if (typeof value !== 'string' || value.length === 0) invalid();
+  return value;
+}
+
+function assertCanonicalTimestamp(value: unknown): string {
+  if (typeof value !== 'string' || !isCanonicalUtcTimestamp(value)) invalid();
   return value;
 }
 
@@ -229,6 +295,112 @@ export function buildOperationResultEnvelopeV1(
     schemaVersion: 1,
     operation,
     body: { operation: { ...dto } },
+  };
+}
+
+function buildRetryRunDto(childRun: Run): IdempotencyRunDtoV1 {
+  if (!isPlainRecord(childRun)) invalid();
+  assertKeySet(childRun, RETRY_RUN_DTO_KEYS, []);
+  const id = assertNonEmptyString(childRun.id);
+  const workspaceId = assertNonEmptyString(childRun.workspaceId);
+  const taskId = assertNonEmptyString(childRun.taskId);
+  const parentRunId = assertNonEmptyString(childRun.parentRunId);
+  const rootRunId = assertNonEmptyString(childRun.rootRunId);
+  const createdBy = assertNonEmptyString(childRun.createdBy);
+  const createdAt = assertCanonicalTimestamp(childRun.createdAt);
+  const updatedAt = assertCanonicalTimestamp(childRun.updatedAt);
+  if (
+    id === parentRunId
+    || childRun.status !== 'queued'
+    || childRun.reason !== 'retry'
+    || !RUN_ORIGINS.includes(childRun.origin)
+    || childRun.nextEventSequence !== 1
+    || childRun.version !== 1
+  ) {
+    invalid();
+  }
+  return {
+    id,
+    workspaceId,
+    taskId,
+    parentRunId,
+    rootRunId,
+    status: 'queued',
+    reason: 'retry',
+    origin: childRun.origin,
+    nextEventSequence: 1,
+    createdBy,
+    createdAt,
+    updatedAt,
+    version: 1,
+  };
+}
+
+function buildRetryOperationDto(
+  retryOperation: ApiOperation,
+  childRun: IdempotencyRunDtoV1,
+): IdempotencyRetryOperationDtoV1 {
+  if (!isPlainRecord(retryOperation)) invalid();
+  assertKeySet(retryOperation, RETRY_OPERATION_DTO_KEYS, []);
+  const id = assertNonEmptyString(retryOperation.id);
+  const workspaceId = assertNonEmptyString(retryOperation.workspaceId);
+  const aggregateId = assertNonEmptyString(retryOperation.aggregateId);
+  const runId = assertNonEmptyString(retryOperation.runId);
+  const correlationId = assertNonEmptyString(retryOperation.correlationId);
+  const createdAt = assertCanonicalTimestamp(retryOperation.createdAt);
+  const startedAt = assertCanonicalTimestamp(retryOperation.startedAt);
+  const completedAt = assertCanonicalTimestamp(retryOperation.completedAt);
+  if (!isPlainRecord(retryOperation.result)) invalid();
+  assertKeySet(retryOperation.result, RETRY_RESULT_KEYS, []);
+  const resourceId = assertNonEmptyString(retryOperation.result.resourceId);
+  if (
+    retryOperation.type !== 'run.retry'
+    || retryOperation.status !== 'completed'
+    || retryOperation.aggregateType !== 'run'
+    || aggregateId !== runId
+    || runId !== childRun.parentRunId
+    || correlationId !== id
+    || retryOperation.result.resourceType !== 'run'
+    || resourceId !== childRun.id
+    || retryOperation.version !== 3
+    || Date.parse(createdAt) > Date.parse(startedAt)
+    || Date.parse(startedAt) > Date.parse(completedAt)
+  ) {
+    invalid();
+  }
+  if (workspaceId !== childRun.workspaceId) invalid();
+  return {
+    id,
+    type: 'run.retry',
+    status: 'completed',
+    workspaceId,
+    aggregateType: 'run',
+    aggregateId,
+    runId,
+    correlationId,
+    result: { resourceType: 'run', resourceId },
+    createdAt,
+    startedAt,
+    completedAt,
+    version: 3,
+  };
+}
+
+export function buildRetryResultEnvelopeV1(
+  operation: 'run.retry',
+  childRun: Run,
+  retryOperation: ApiOperation,
+): RetryResultEnvelopeV1 {
+  if (operation !== 'run.retry') invalid();
+  const run = buildRetryRunDto(childRun);
+  const operationDto = buildRetryOperationDto(retryOperation, run);
+  return {
+    schemaVersion: 1,
+    operation,
+    body: {
+      run: { ...run },
+      operation: { ...operationDto, result: { ...operationDto.result } },
+    },
   };
 }
 
@@ -407,6 +579,90 @@ function parseOperationDto(value: unknown): IdempotencyOperationDtoV1 {
   };
 }
 
+function parseRetryRunDto(value: unknown): IdempotencyRunDtoV1 {
+  if (!isPlainRecord(value)) invalid();
+  assertKeySet(value, RETRY_RUN_DTO_KEYS, []);
+  const id = assertNonEmptyString(value.id);
+  const workspaceId = assertNonEmptyString(value.workspaceId);
+  const taskId = assertNonEmptyString(value.taskId);
+  const parentRunId = assertNonEmptyString(value.parentRunId);
+  const rootRunId = assertNonEmptyString(value.rootRunId);
+  const createdBy = assertNonEmptyString(value.createdBy);
+  const createdAt = assertCanonicalTimestamp(value.createdAt);
+  const updatedAt = assertCanonicalTimestamp(value.updatedAt);
+  if (
+    id === parentRunId
+    || value.status !== 'queued'
+    || value.reason !== 'retry'
+    || !RUN_ORIGINS.includes(value.origin as (typeof RUN_ORIGINS)[number])
+    || value.nextEventSequence !== 1
+    || value.version !== 1
+  ) invalid();
+  return {
+    id,
+    workspaceId,
+    taskId,
+    parentRunId,
+    rootRunId,
+    status: 'queued',
+    reason: 'retry',
+    origin: value.origin as V2RunOrigin,
+    nextEventSequence: 1,
+    createdBy,
+    createdAt,
+    updatedAt,
+    version: 1,
+  };
+}
+
+function parseRetryOperationDto(
+  value: unknown,
+  childRun: IdempotencyRunDtoV1,
+): IdempotencyRetryOperationDtoV1 {
+  if (!isPlainRecord(value)) invalid();
+  assertKeySet(value, RETRY_OPERATION_DTO_KEYS, []);
+  const id = assertNonEmptyString(value.id);
+  const workspaceId = assertNonEmptyString(value.workspaceId);
+  const aggregateId = assertNonEmptyString(value.aggregateId);
+  const runId = assertNonEmptyString(value.runId);
+  const correlationId = assertNonEmptyString(value.correlationId);
+  const createdAt = assertCanonicalTimestamp(value.createdAt);
+  const startedAt = assertCanonicalTimestamp(value.startedAt);
+  const completedAt = assertCanonicalTimestamp(value.completedAt);
+  if (!isPlainRecord(value.result)) invalid();
+  assertKeySet(value.result, RETRY_RESULT_KEYS, []);
+  const resourceId = assertNonEmptyString(value.result.resourceId);
+  if (
+    value.type !== 'run.retry'
+    || value.status !== 'completed'
+    || value.aggregateType !== 'run'
+    || aggregateId !== runId
+    || runId !== childRun.parentRunId
+    || correlationId !== id
+    || value.result.resourceType !== 'run'
+    || resourceId !== childRun.id
+    || value.version !== 3
+    || Date.parse(createdAt) > Date.parse(startedAt)
+    || Date.parse(startedAt) > Date.parse(completedAt)
+  ) invalid();
+  if (workspaceId !== childRun.workspaceId) invalid();
+  return {
+    id,
+    type: 'run.retry',
+    status: 'completed',
+    workspaceId,
+    aggregateType: 'run',
+    aggregateId,
+    runId,
+    correlationId,
+    result: { resourceType: 'run', resourceId },
+    createdAt,
+    startedAt,
+    completedAt,
+    version: 3,
+  };
+}
+
 function assertEnum<T extends string>(value: unknown, allowed: readonly T[]): T {
   if (typeof value !== 'string' || !allowed.includes(value as T)) invalid();
   return value as T;
@@ -491,6 +747,18 @@ export function parseIdempotencyResultEnvelopeV1(
       schemaVersion: 1,
       operation: 'run.start',
       body: { operation: parseOperationDto(value.body.operation) },
+    };
+  }
+  if (operation === 'run.retry') {
+    assertKeySet(value.body, ['run', 'operation'], []);
+    const run = parseRetryRunDto(value.body.run);
+    return {
+      schemaVersion: 1,
+      operation: 'run.retry',
+      body: {
+        run,
+        operation: parseRetryOperationDto(value.body.operation, run),
+      },
     };
   }
   assertKeySet(value.body, ['run'], []);

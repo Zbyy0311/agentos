@@ -5,7 +5,7 @@ import * as fs from 'node:fs';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
-import type { ApiOperation, Task } from '@agentos/shared';
+import type { ApiOperation, Run, Task } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -29,12 +29,15 @@ import { createEntityId } from './Identity.js';
 import { SqliteStore } from './SqliteStore.js';
 import {
   buildOperationResultEnvelopeV1,
+  buildRetryResultEnvelopeV1,
   buildTaskResultEnvelopeV1,
   IdempotencyRecordInvalidError,
   type FingerprintInput,
   type IdempotencyOperation,
+  type IdempotencyResultEnvelopeV1,
   type InsertCompletedIdempotencyRecord,
   type OperationResultEnvelopeV1,
+  type RetryResultEnvelopeV1,
   type TaskResultEnvelopeV1,
 } from '../idempotency/types.js';
 import { hashIdempotencyRequest, hashNormalizedIdempotencyKey } from '../idempotency/fingerprint.js';
@@ -45,6 +48,7 @@ const NOW = '2026-01-01T00:00:00.000Z';
 const HASH64 = 'c'.repeat(64);
 const RAW_KEY = 'raw-key-should-never-persist';
 const START_NORMALIZED_KEY = 'run-start-repository-key';
+const RETRY_NORMALIZED_KEY = 'run-retry-repository-key';
 
 function migratedDb(databasePath = ':memory:'): Db {
   const db = new DatabaseSync(databasePath);
@@ -130,6 +134,51 @@ function makeStartEnvelope() {
   return buildOperationResultEnvelopeV1('run.start', makeStartOperation());
 }
 
+function makeRetryChildRun(overrides: Partial<Run> = {}): Run {
+  return {
+    id: 'run_00000000000000000000000002',
+    workspaceId: 'ws-1',
+    taskId: 'task_00000000000000000000000001',
+    parentRunId: 'run_00000000000000000000000001',
+    rootRunId: 'run_00000000000000000000000001',
+    status: 'queued',
+    reason: 'retry',
+    origin: 'v2_api',
+    nextEventSequence: 1,
+    createdBy: 'tester',
+    createdAt: NOW,
+    updatedAt: NOW,
+    version: 1,
+    ...overrides,
+  };
+}
+
+function makeRetryOperation(overrides: Partial<ApiOperation> = {}): ApiOperation {
+  return {
+    id: 'operation_00000000000000000000000002',
+    type: 'run.retry',
+    status: 'completed',
+    workspaceId: 'ws-1',
+    aggregateType: 'run',
+    aggregateId: 'run_00000000000000000000000001',
+    runId: 'run_00000000000000000000000001',
+    correlationId: 'operation_00000000000000000000000002',
+    result: {
+      resourceType: 'run',
+      resourceId: 'run_00000000000000000000000002',
+    },
+    createdAt: NOW,
+    startedAt: '2026-01-01T00:00:00.001Z',
+    completedAt: '2026-01-01T00:00:00.002Z',
+    version: 3,
+    ...overrides,
+  };
+}
+
+function makeRetryEnvelope(): RetryResultEnvelopeV1 {
+  return buildRetryResultEnvelopeV1('run.retry', makeRetryChildRun(), makeRetryOperation());
+}
+
 function makeStartFingerprintInput(): FingerprintInput & { operation: 'run.start' } {
   return {
     operation: 'run.start',
@@ -151,6 +200,27 @@ function makeStartInput(): InsertCompletedIdempotencyRecord {
     httpStatus: 202,
     createdAt: NOW,
   };
+}
+
+function makeRetryFingerprintInput(): FingerprintInput & { operation: 'run.retry' } {
+  return {
+    operation: 'run.retry',
+    workspaceId: 'ws-1',
+    pathParams: { runId: 'run_00000000000000000000000001' },
+    domainInput: { reason: 'retry' },
+    expectedVersion: 1,
+  };
+}
+
+function makeRetryInput(overrides: Partial<InsertCompletedIdempotencyRecord> = {}): InsertCompletedIdempotencyRecord {
+  return makeInput({
+    operation: 'run.retry',
+    keyHash: hashNormalizedIdempotencyKey(RETRY_NORMALIZED_KEY),
+    requestHash: hashIdempotencyRequest(makeRetryFingerprintInput()),
+    envelope: makeRetryEnvelope(),
+    httpStatus: 201,
+    ...overrides,
+  });
 }
 
 function makeInput(overrides: Partial<InsertCompletedIdempotencyRecord> = {}): InsertCompletedIdempotencyRecord {
@@ -209,30 +279,30 @@ function insertRawRow(
 }
 
 interface IdempotencyRaceWorkerData {
-  readonly mode: 'run-start-race';
+  readonly mode: 'run-start-race' | 'run-retry-race';
   readonly dbPath: string;
   readonly workspaceId: string;
   readonly normalizedKey: string;
-  readonly fingerprintInput: FingerprintInput & { operation: 'run.start' };
+  readonly fingerprintInput: FingerprintInput & { operation: 'run.start' | 'run.retry' };
   readonly keyHash: string;
   readonly requestHash: string;
-  readonly envelope: OperationResultEnvelopeV1;
+  readonly envelope: OperationResultEnvelopeV1 | RetryResultEnvelopeV1;
   readonly gate: SharedArrayBuffer;
 }
 
 interface IdempotencyRaceWorkerMessage {
   readonly outcome: 'winner' | 'loser';
   readonly preparedWorkspaceId: string;
-  readonly preparedOperation: 'run.start';
+  readonly preparedOperation: 'run.start' | 'run.retry';
   readonly preparedKeyHash: string;
   readonly preparedRequestHash: string;
   readonly recordHttpStatus?: number;
-  readonly recordEnvelope?: OperationResultEnvelopeV1;
+  readonly recordEnvelope?: IdempotencyResultEnvelopeV1;
   readonly resultHash?: string;
   readonly errorCode?: string;
   readonly errorMessage?: string;
   readonly replayHttpStatus?: number;
-  readonly replayEnvelope?: OperationResultEnvelopeV1;
+  readonly replayEnvelope?: IdempotencyResultEnvelopeV1;
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -247,15 +317,16 @@ function runIdempotencyRaceWorker(data: IdempotencyRaceWorkerData): void {
   try {
     const repository = new IdempotencyRepository(db);
     const service = new IdempotencyService(repository);
+    const expectedHttpStatus = data.mode === 'run-start-race' ? 202 : 201;
     const prepared = service.prepare({
-      operation: 'run.start',
+      operation: data.fingerprintInput.operation,
       workspaceId: data.workspaceId,
       normalizedKey: data.normalizedKey,
       fingerprintInput: data.fingerprintInput,
     });
     assert.ok(prepared);
     assert.equal(prepared.workspaceId, data.workspaceId);
-    assert.equal(prepared.operation, 'run.start');
+    assert.equal(prepared.operation, data.fingerprintInput.operation);
     assert.equal(prepared.keyHash, data.keyHash);
     assert.equal(prepared.requestHash, data.requestHash);
 
@@ -270,10 +341,10 @@ function runIdempotencyRaceWorker(data: IdempotencyRaceWorkerData): void {
     try {
       const record = service.storeSuccess({
         prepared,
-        httpStatus: 202,
+        httpStatus: expectedHttpStatus,
         envelope: data.envelope,
       });
-      if (record.envelope.operation !== 'run.start') throw new Error('expected run.start winner envelope');
+      if (record.envelope.operation !== data.fingerprintInput.operation) throw new Error('unexpected winner envelope');
       parentPort!.postMessage({
         outcome: 'winner',
         preparedWorkspaceId: prepared.workspaceId,
@@ -291,7 +362,7 @@ function runIdempotencyRaceWorker(data: IdempotencyRaceWorkerData): void {
       assert.equal(message, 'UNIQUE constraint failed: idempotency_records.workspace_id, idempotency_records.operation, idempotency_records.key_hash');
       const resolution = service.resolve(prepared);
       assert.equal(resolution.kind, 'replay');
-      if (resolution.kind !== 'replay') throw new Error('expected run.start replay after unique-scope loss');
+      if (resolution.kind !== 'replay') throw new Error('expected replay after unique-scope loss');
       parentPort!.postMessage({
         outcome: 'loser',
         preparedWorkspaceId: prepared.workspaceId,
@@ -330,7 +401,11 @@ function spawnIdempotencyRaceWorker(data: IdempotencyRaceWorkerData): Promise<Id
 
 const currentWorkerData = workerData as IdempotencyRaceWorkerData | undefined;
 
-if (!isMainThread && currentWorkerData?.mode === 'run-start-race' && parentPort) {
+if (
+  !isMainThread
+  && (currentWorkerData?.mode === 'run-start-race' || currentWorkerData?.mode === 'run-retry-race')
+  && parentPort
+) {
   runIdempotencyRaceWorker(currentWorkerData);
 } else {
 
@@ -429,7 +504,10 @@ describe('M2.6 — IdempotencyRepository insert and read', () => {
       const input = makeInput();
       repo.insertCompleted(input);
       assert.ok(repo.findVerifiedByScope('ws-1', 'task.create', input.keyHash));
-      const other = repo.insertCompleted(makeInput({ workspaceId: 'ws-2' }));
+      const other = repo.insertCompleted(makeInput({
+        workspaceId: 'ws-2',
+        envelope: buildTaskResultEnvelopeV1('task.create', makeTask({ workspaceId: 'ws-2' })),
+      }));
       assert.ok(other.id !== input.id);
     } finally {
       db.close();
@@ -971,6 +1049,124 @@ describe('M2.6 — IdempotencyRepository insert and read', () => {
     }
   });
 
+  it('R40 run.retry 201 round trip preserves the dedicated canonical envelope and hash', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const repo = new IdempotencyRepository(db);
+      const input = makeRetryInput();
+      const record = repo.insertCompleted(input);
+      assert.equal(record.operation, 'run.retry');
+      assert.equal(record.httpStatus, 201);
+      assert.equal(record.resultSchemaVersion, 1);
+      assert.deepEqual(record.envelope, input.envelope);
+      assert.equal(record.resultHash, hashCanonicalJson(input.envelope));
+      const row = db.prepare('SELECT result_json, result_hash, result_schema_version, http_status FROM idempotency_records WHERE id = ?').get(input.id) as {
+        result_json: string;
+        result_hash: string;
+        result_schema_version: number;
+        http_status: number;
+      };
+      assert.equal(row.result_json, canonicalizeJson(input.envelope));
+      assert.equal(row.result_hash, hashCanonicalJson(input.envelope));
+      assert.equal(row.result_schema_version, 1);
+      assert.equal(row.http_status, 201);
+      assert.deepEqual(repo.findVerifiedByScope('ws-1', 'run.retry', input.keyHash), record);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('R41 run.retry accepts only 201 and rejects wrong envelope/status pairs', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const repo = new IdempotencyRepository(db);
+      assert.throws(() => repo.insertCompleted(makeRetryInput({ httpStatus: 200 })), IdempotencyRecordInvalidError);
+      assert.throws(() => repo.insertCompleted(makeRetryInput({ httpStatus: 202 })), IdempotencyRecordInvalidError);
+      assert.throws(
+        () => repo.insertCompleted(makeRetryInput({ envelope: makeStartEnvelope(), httpStatus: 201 })),
+        IdempotencyRecordInvalidError,
+      );
+      const mismatched = JSON.parse(JSON.stringify(makeRetryEnvelope()));
+      mismatched.body.run.workspaceId = 'ws-2';
+      assert.throws(
+        () => repo.insertCompleted(makeRetryInput({ envelope: mismatched })),
+        IdempotencyRecordInvalidError,
+      );
+      const raw = rawDb();
+      try {
+        insertWorkspace(raw, 'ws-1');
+        const envelope = makeRetryEnvelope();
+        insertRawRow(raw, {
+          operation: 'run.retry',
+          httpStatus: 202,
+          resultJson: canonicalizeJson(envelope),
+          resultHash: hashCanonicalJson(envelope),
+        });
+        assert.throws(() => new IdempotencyRepository(raw).findVerifiedByScope('ws-1', 'run.retry', HASH64), IdempotencyRecordInvalidError);
+      } finally {
+        raw.close();
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('R42 tampered Retry JSON or hash fails closed without leaking values', () => {
+    const db = rawDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const envelope = makeRetryEnvelope();
+      insertRawRow(db, {
+        operation: 'run.retry',
+        httpStatus: 201,
+        resultJson: canonicalizeJson(envelope),
+        resultHash: 'd'.repeat(64),
+      });
+      assert.throws(() => new IdempotencyRepository(db).findVerifiedByScope('ws-1', 'run.retry', HASH64), IdempotencyRecordInvalidError);
+    } finally {
+      db.close();
+    }
+
+    const jsonDb = rawDb();
+    try {
+      insertWorkspace(jsonDb, 'ws-1');
+      const envelope = makeRetryEnvelope();
+      const tamperedJson = canonicalizeJson({
+        ...envelope,
+        body: { ...envelope.body, operation: { ...envelope.body.operation, result: { resourceType: 'run', resourceId: 'run_other' } } },
+      });
+      insertRawRow(jsonDb, {
+        operation: 'run.retry',
+        httpStatus: 201,
+        resultJson: tamperedJson,
+        resultHash: hashCanonicalJson(JSON.parse(tamperedJson)),
+      });
+      assert.throws(() => new IdempotencyRepository(jsonDb).findVerifiedByScope('ws-1', 'run.retry', HASH64), IdempotencyRecordInvalidError);
+    } finally {
+      jsonDb.close();
+    }
+
+    const workspaceDb = rawDb();
+    try {
+      insertWorkspace(workspaceDb, 'ws-1');
+      const envelope = makeRetryEnvelope();
+      const tamperedWorkspace = JSON.parse(JSON.stringify(envelope));
+      tamperedWorkspace.body.operation.workspaceId = 'ws-2';
+      const resultJson = canonicalizeJson(tamperedWorkspace);
+      insertRawRow(workspaceDb, {
+        operation: 'run.retry',
+        httpStatus: 201,
+        resultJson,
+        resultHash: hashCanonicalJson(tamperedWorkspace),
+      });
+      assert.throws(() => new IdempotencyRepository(workspaceDb).findVerifiedByScope('ws-1', 'run.retry', HASH64), IdempotencyRecordInvalidError);
+    } finally {
+      workspaceDb.close();
+    }
+  });
+
   it('R38 two independent connections produce one run.start unique-scope winner', async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p3c0a-idem-race-'));
     const databasePath = path.join(root, 'idempotency-race.sqlite');
@@ -1047,6 +1243,84 @@ describe('M2.6 — IdempotencyRepository insert and read', () => {
         for (const field of ['progress', 'result', 'error', 'startedAt', 'completedAt', 'updatedAt']) {
           assert.equal(field in operation, false);
         }
+        assert.equal((verify.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
+        assert.deepEqual(verify.prepare('PRAGMA foreign_key_check').all(), []);
+      } finally {
+        verify.close();
+      }
+    } finally {
+      db?.close();
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('R43 two independent connections produce one run.retry unique-scope winner and immutable replay', async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p3c0b-idem-race-'));
+    const databasePath = path.join(root, 'idempotency-retry-race.sqlite');
+    let db: Db | undefined;
+    try {
+      db = migratedDb(databasePath);
+      insertWorkspace(db, 'ws-1');
+      const input = makeRetryInput();
+      const fingerprintInput = makeRetryFingerprintInput();
+      assert.equal(input.keyHash, hashNormalizedIdempotencyKey(RETRY_NORMALIZED_KEY));
+      assert.equal(input.requestHash, hashIdempotencyRequest(fingerprintInput));
+      db.close();
+      db = undefined;
+      const gate = new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT);
+      const workerData: Omit<IdempotencyRaceWorkerData, 'mode'> = {
+        dbPath: databasePath,
+        workspaceId: 'ws-1',
+        normalizedKey: RETRY_NORMALIZED_KEY,
+        fingerprintInput,
+        keyHash: input.keyHash,
+        requestHash: input.requestHash,
+        envelope: makeRetryEnvelope(),
+        gate,
+      };
+      const results = await Promise.all([
+        spawnIdempotencyRaceWorker({ mode: 'run-retry-race', ...workerData }),
+        spawnIdempotencyRaceWorker({ mode: 'run-retry-race', ...workerData }),
+      ]);
+      for (const result of results) {
+        assert.equal(result.preparedWorkspaceId, input.workspaceId);
+        assert.equal(result.preparedOperation, input.operation);
+        assert.equal(result.preparedKeyHash, input.keyHash);
+        assert.equal(result.preparedRequestHash, input.requestHash);
+      }
+      assert.equal(results.filter(result => result.outcome === 'winner').length, 1);
+      assert.equal(results.filter(result => result.outcome === 'loser').length, 1);
+      const winner = results.find(result => result.outcome === 'winner');
+      assert.ok(winner);
+      assert.equal(winner.recordHttpStatus, 201);
+      assert.deepEqual(winner.recordEnvelope, input.envelope);
+      assert.equal(winner.resultHash, hashCanonicalJson(input.envelope));
+      const loser = results.find(result => result.outcome === 'loser');
+      assert.ok(loser);
+      assert.equal(loser.errorCode, 'ERR_SQLITE_ERROR');
+      assert.equal(
+        loser.errorMessage,
+        'UNIQUE constraint failed: idempotency_records.workspace_id, idempotency_records.operation, idempotency_records.key_hash',
+      );
+      assert.equal(loser.replayHttpStatus, 201);
+      assert.deepEqual(loser.replayEnvelope, input.envelope);
+
+      const verify = migratedDb(databasePath);
+      try {
+        const repo = new IdempotencyRepository(verify);
+        const found = repo.findVerifiedByScope('ws-1', 'run.retry', input.keyHash);
+        assert.ok(found);
+        assert.equal(found.httpStatus, 201);
+        assert.equal(found.resultSchemaVersion, 1);
+        assert.deepEqual(found.envelope, input.envelope);
+        assert.equal(found.resultHash, hashCanonicalJson(input.envelope));
+        assert.equal((verify.prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count, 1);
+        if (found.envelope.operation !== 'run.retry') throw new Error('expected run.retry stored envelope');
+        assert.equal(found.envelope.body.run.status, 'queued');
+        assert.equal(found.envelope.body.run.version, 1);
+        assert.equal(found.envelope.body.operation.status, 'completed');
+        assert.equal(found.envelope.body.operation.version, 3);
+        assert.equal(found.envelope.body.operation.result.resourceId, found.envelope.body.run.id);
         assert.equal((verify.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
         assert.deepEqual(verify.prepare('PRAGMA foreign_key_check').all(), []);
       } finally {
