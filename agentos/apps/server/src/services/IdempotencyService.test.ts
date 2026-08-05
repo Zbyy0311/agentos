@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
-import type { Task } from '@agentos/shared';
+import type { ApiOperation, Task } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -22,9 +22,14 @@ import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { IdempotencyRepository } from '../store/IdempotencyRepository.js';
 import {
+  IDEMPOTENCY_HTTP_STATUS,
+  IDEMPOTENCY_OPERATIONS,
+  buildOperationResultEnvelopeV1,
   buildRunResultEnvelopeV1,
   buildTaskResultEnvelopeV1,
+  parseIdempotencyResultEnvelopeV1,
   type FingerprintInput,
+  type IdempotencyOperation,
 } from '../idempotency/types.js';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import {
@@ -32,8 +37,9 @@ import {
   IdempotencyService,
   type PreparedIdempotency,
 } from './IdempotencyService.js';
-import { IdempotencyKeyValidationError } from '../idempotency/fingerprint.js';
+import { IdempotencyFingerprintError, IdempotencyKeyValidationError } from '../idempotency/fingerprint.js';
 import { IdempotencyRecordInvalidError } from '../idempotency/types.js';
+import { OperationService } from './OperationService.js';
 import type { Run } from '@agentos/shared';
 
 const NOW = '2026-01-01T00:00:00.000Z';
@@ -51,6 +57,20 @@ function insertWorkspace(db: Db, id: string): void {
     INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?)
   `).run(id, `ws-${id}`, `/r/${id}`, `/r/${id}`, NOW, NOW, NOW);
+}
+
+function insertQueuedRunFixture(db: Db): void {
+  db.prepare(`
+    INSERT INTO tasks (
+      id, workspace_id, title, status, priority, created_by, created_at, updated_at, version
+    ) VALUES (?, ?, ?, 'open', 'normal', ?, ?, ?, 1)
+  `).run('task-start-replay', 'ws-1', 'start replay task', 'tester', NOW, NOW);
+  db.prepare(`
+    INSERT INTO runs (
+      id, workspace_id, task_id, root_run_id, status, reason, origin,
+      next_event_sequence, created_by, created_at, updated_at, version
+    ) VALUES (?, ?, ?, ?, 'queued', 'initial', 'v2_api', 1, ?, ?, ?, 1)
+  `).run('run-start-replay', 'ws-1', 'task-start-replay', 'run-start-replay', 'tester', NOW, NOW);
 }
 
 function makeTask(overrides: Partial<Task> = {}): Task {
@@ -81,6 +101,22 @@ function makeRun(overrides: Partial<Run> = {}): Run {
     createdBy: 'tester',
     createdAt: NOW,
     updatedAt: NOW,
+    version: 1,
+    ...overrides,
+  };
+}
+
+function makeStartOperation(overrides: Partial<ApiOperation> = {}): ApiOperation {
+  return {
+    id: 'operation_00000000000000000000000001',
+    type: 'run.start',
+    status: 'queued',
+    workspaceId: 'ws-1',
+    aggregateType: 'run',
+    aggregateId: 'run_00000000000000000000000001',
+    runId: 'run_00000000000000000000000001',
+    correlationId: 'operation_00000000000000000000000001',
+    createdAt: NOW,
     version: 1,
     ...overrides,
   };
@@ -538,6 +574,277 @@ describe('M2.6 P2 — IdempotencyService resolve and storeSuccess', () => {
         assert.equal(runResolution.httpStatus, 201);
         assert.deepEqual(runResolution.envelope, runEnvelope);
       }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-20 registers run.start as the only new idempotency operation', () => {
+    assert.deepEqual(IDEMPOTENCY_OPERATIONS, [
+      'task.create',
+      'run.create',
+      'run.cancel',
+      'task.accept',
+      'task.cancel',
+      'task.reopen',
+      'run.start',
+    ]);
+    assert.equal((IDEMPOTENCY_OPERATIONS as readonly string[]).includes('run.retry'), false);
+    assert.deepEqual(IDEMPOTENCY_HTTP_STATUS, {
+      'task.create': 201,
+      'run.create': 201,
+      'run.cancel': 200,
+      'task.accept': 200,
+      'task.cancel': 200,
+      'task.reopen': 200,
+      'run.start': 202,
+    });
+  });
+
+  it('SVC-21 builds and parses an exact queued run.start Operation envelope', () => {
+    const source = makeStartOperation();
+    const envelope = buildOperationResultEnvelopeV1('run.start', source);
+    assert.deepEqual(Object.keys(envelope).sort(), ['body', 'operation', 'schemaVersion']);
+    assert.deepEqual(Object.keys(envelope.body).sort(), ['operation']);
+    assert.deepEqual(Object.keys(envelope.body.operation).sort(), [
+      'aggregateId', 'aggregateType', 'correlationId', 'createdAt', 'id',
+      'runId', 'status', 'type', 'version', 'workspaceId',
+    ]);
+    assert.deepEqual(envelope, {
+      schemaVersion: 1,
+      operation: 'run.start',
+      body: {
+        operation: {
+          id: source.id,
+          type: 'run.start',
+          status: 'queued',
+          workspaceId: source.workspaceId,
+          aggregateType: 'run',
+          aggregateId: source.aggregateId,
+          runId: source.runId,
+          correlationId: source.correlationId,
+          createdAt: NOW,
+          version: 1,
+        },
+      },
+    });
+    assert.equal('progress' in envelope.body.operation, false);
+    assert.equal('result' in envelope.body.operation, false);
+    assert.equal('error' in envelope.body.operation, false);
+    assert.equal('startedAt' in envelope.body.operation, false);
+    assert.equal('completedAt' in envelope.body.operation, false);
+    assert.equal('updatedAt' in envelope.body.operation, false);
+    assert.equal('data' in envelope.body.operation, false);
+
+    const parsed = parseIdempotencyResultEnvelopeV1(JSON.parse(JSON.stringify(envelope)));
+    assert.deepEqual(parsed, envelope);
+    (envelope.body.operation as { id: string }).id = 'mutated-operation';
+    assert.equal(source.id, 'operation_00000000000000000000000001');
+  });
+
+  it('SVC-22 Operation envelope parser rejects variants, binding errors, and forbidden fields', () => {
+    const envelope = buildOperationResultEnvelopeV1('run.start', makeStartOperation());
+    const invalidValues: unknown[] = [
+      { ...envelope, operation: 'run.retry' },
+      { ...envelope, body: { task: envelope.body.operation } },
+      { ...envelope, body: { run: envelope.body.operation } },
+      { ...envelope, body: { operation: { ...envelope.body.operation, status: 'running' } } },
+      { ...envelope, body: { operation: { ...envelope.body.operation, aggregateId: 'run-other' } } },
+      { ...envelope, body: { operation: { ...envelope.body.operation, correlationId: 'operation-other' } } },
+      { ...envelope, body: { operation: { ...envelope.body.operation, progress: {} } } },
+      { ...envelope, body: { operation: { ...envelope.body.operation, version: 2 } } },
+      { ...envelope, schemaVersion: 2 },
+      { ...envelope, body: { operation: { ...envelope.body.operation, type: 'run.create' } } },
+      { ...envelope, operation: 'task.create', body: { operation: envelope.body.operation } },
+      { ...envelope, body: { unknown: envelope.body.operation } },
+      { ...envelope, body: { operation: { ...envelope.body.operation, version: undefined } } },
+    ];
+    for (const value of invalidValues) assert.throws(() => parseIdempotencyResultEnvelopeV1(value), IdempotencyRecordInvalidError);
+    for (const status of ['running', 'completed', 'failed', 'cancelled'] as const) {
+      assert.throws(
+        () => buildOperationResultEnvelopeV1('run.start', makeStartOperation({ status })),
+        IdempotencyRecordInvalidError,
+      );
+    }
+    assert.throws(
+      () => buildOperationResultEnvelopeV1('run.start', makeStartOperation({ type: 'run.create' })),
+      IdempotencyRecordInvalidError,
+    );
+    assert.throws(
+      () => buildOperationResultEnvelopeV1('run.start', makeStartOperation({ aggregateId: 'run-other' })),
+      IdempotencyRecordInvalidError,
+    );
+    assert.throws(
+      () => buildOperationResultEnvelopeV1('run.start', { ...makeStartOperation(), progress: { percent: 0 } }),
+      IdempotencyRecordInvalidError,
+    );
+  });
+
+  it('SVC-23 stores and replays the acceptance-time queued run.start snapshot after source mutation', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      const prepared = service.prepare({
+        operation: 'run.start',
+        workspaceId: 'ws-1',
+        normalizedKey: `${KEY}-start`,
+        fingerprintInput: makeFingerprint({ operation: 'run.start' }),
+      });
+      assert.ok(prepared);
+      const source = { ...makeStartOperation() };
+      const envelope = buildOperationResultEnvelopeV1('run.start', source);
+      service.storeSuccess({ prepared, httpStatus: 202, envelope });
+      source.status = 'running';
+      source.version = 2;
+      const resolution = service.resolve(prepared);
+      assert.equal(resolution.kind, 'replay');
+      if (resolution.kind === 'replay') {
+        assert.equal(resolution.httpStatus, 202);
+        assert.deepEqual(resolution.envelope, {
+          schemaVersion: 1,
+          operation: 'run.start',
+          body: { operation: {
+            id: source.id,
+            type: 'run.start',
+            status: 'queued',
+            workspaceId: 'ws-1',
+            aggregateType: 'run',
+            aggregateId: source.aggregateId,
+            runId: source.runId,
+            correlationId: source.correlationId,
+            createdAt: NOW,
+            version: 1,
+          } },
+        });
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-24 restricts HTTP 202 to run.start and rejects run.retry', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      const startPrepared = service.prepare({
+        operation: 'run.start',
+        workspaceId: 'ws-1',
+        normalizedKey: `${KEY}-status`,
+        fingerprintInput: makeFingerprint({ operation: 'run.start' }),
+      });
+      assert.ok(startPrepared);
+      const startEnvelope = buildOperationResultEnvelopeV1('run.start', makeStartOperation());
+      assert.throws(() => service.storeSuccess({ prepared: startPrepared, httpStatus: 200, envelope: startEnvelope }), IdempotencyRecordInvalidError);
+      assert.throws(() => service.storeSuccess({ prepared: startPrepared, httpStatus: 201, envelope: startEnvelope }), IdempotencyRecordInvalidError);
+      const unsupportedOperation = 'run.retry' as IdempotencyOperation;
+      assert.throws(() => service.prepare({
+        operation: unsupportedOperation,
+        workspaceId: 'ws-1',
+        normalizedKey: `${KEY}-retry`,
+        fingerprintInput: makeFingerprint({ operation: unsupportedOperation }),
+      }), IdempotencyFingerprintError);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-25 replays the acceptance snapshot after a real OperationService transition', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      insertQueuedRunFixture(db);
+      const operationService = new OperationService(db, { now: () => NOW });
+      const operation = operationService.create({ workspaceId: 'ws-1', runId: 'run-start-replay', type: 'run.start' });
+      const service = makeService(db);
+      const prepared = service.prepare({
+        operation: 'run.start',
+        workspaceId: 'ws-1',
+        normalizedKey: `${KEY}-real-operation`,
+        fingerprintInput: {
+          operation: 'run.start',
+          workspaceId: 'ws-1',
+          pathParams: { runId: 'run-start-replay' },
+          domainInput: {},
+          expectedVersion: 1,
+        },
+      });
+      assert.ok(prepared);
+      const envelope = buildOperationResultEnvelopeV1('run.start', operation);
+      service.storeSuccess({ prepared, httpStatus: 202, envelope });
+      const running = operationService.transition({
+        workspaceId: 'ws-1',
+        operationId: operation.id,
+        expectedVersion: operation.version,
+        to: 'running',
+      });
+      const completed = operationService.transition({
+        workspaceId: 'ws-1',
+        operationId: operation.id,
+        expectedVersion: running.version,
+        to: 'completed',
+        result: { resourceType: 'run', resourceId: 'run-start-replay' },
+      });
+      assert.equal(completed.status, 'completed');
+      assert.equal(completed.version, 3);
+      const resolution = service.resolve(prepared);
+      assert.equal(resolution.kind, 'replay');
+      if (resolution.kind === 'replay') {
+        assert.equal(resolution.httpStatus, 202);
+        const replayed = resolution.envelope.body.operation;
+        assert.equal(replayed.type, 'run.start');
+        assert.equal(replayed.status, 'queued');
+        assert.equal(replayed.version, 1);
+        assert.equal('startedAt' in replayed, false);
+        assert.equal('completedAt' in replayed, false);
+        assert.equal('result' in replayed, false);
+        assert.equal('error' in replayed, false);
+        assert.deepEqual(replayed, envelope.body.operation);
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('SVC-26 keeps run.start persistence inside a caller-owned transaction', () => {
+    const db = migratedDb();
+    try {
+      insertWorkspace(db, 'ws-1');
+      const service = makeService(db);
+      const prepared = service.prepare({
+        operation: 'run.start',
+        workspaceId: 'ws-1',
+        normalizedKey: `${KEY}-transaction`,
+        fingerprintInput: makeFingerprint({ operation: 'run.start' }),
+      });
+      assert.ok(prepared);
+      const envelope = buildOperationResultEnvelopeV1('run.start', makeStartOperation());
+
+      assert.throws(() => {
+        db.exec('BEGIN IMMEDIATE');
+        try {
+          service.storeSuccess({ prepared, httpStatus: 202, envelope });
+          throw new Error('expected-service-rollback');
+        } catch (error) {
+          db.exec('ROLLBACK');
+          throw error;
+        }
+      }, /expected-service-rollback/);
+      assert.equal(service.resolve(prepared).kind, 'miss');
+
+      db.exec('BEGIN IMMEDIATE');
+      service.storeSuccess({ prepared, httpStatus: 202, envelope });
+      db.exec('COMMIT');
+      const replay = service.resolve(prepared);
+      assert.equal(replay.kind, 'replay');
+      if (replay.kind === 'replay') {
+        assert.equal(replay.httpStatus, 202);
+        assert.deepEqual(replay.envelope, envelope);
+      }
+      const integrity = db.prepare('PRAGMA integrity_check').get() as { integrity_check: string };
+      assert.equal(integrity.integrity_check, 'ok');
+      assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
     } finally {
       db.close();
     }

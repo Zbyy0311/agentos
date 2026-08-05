@@ -1,4 +1,5 @@
 import type {
+  ApiOperation,
   Run,
   Task,
   V2RunOrigin,
@@ -7,6 +8,7 @@ import type {
   V2TaskPriority,
   V2TaskStatus,
 } from '@agentos/shared';
+import { isCanonicalUtcTimestamp } from '../store/CanonicalTimestamp.js';
 
 export const IDEMPOTENCY_OPERATIONS = Object.freeze([
   'task.create',
@@ -15,9 +17,22 @@ export const IDEMPOTENCY_OPERATIONS = Object.freeze([
   'task.accept',
   'task.cancel',
   'task.reopen',
+  'run.start',
 ] as const);
 
 export type IdempotencyOperation = (typeof IDEMPOTENCY_OPERATIONS)[number];
+
+export type IdempotencyHttpStatus = 200 | 201 | 202;
+
+export const IDEMPOTENCY_HTTP_STATUS: Readonly<Record<IdempotencyOperation, IdempotencyHttpStatus>> = Object.freeze({
+  'task.create': 201,
+  'run.create': 201,
+  'run.cancel': 200,
+  'task.accept': 200,
+  'task.cancel': 200,
+  'task.reopen': 200,
+  'run.start': 202,
+});
 
 export const TASK_RESULT_OPERATIONS = Object.freeze([
   'task.create',
@@ -92,7 +107,28 @@ export interface RunResultEnvelopeV1 extends IdempotencyEnvelopeBaseV1 {
   body: { run: IdempotencyRunDtoV1 };
 }
 
-export type IdempotencyResultEnvelopeV1 = TaskResultEnvelopeV1 | RunResultEnvelopeV1;
+export interface IdempotencyOperationDtoV1 {
+  id: string;
+  type: 'run.start';
+  status: 'queued';
+  workspaceId: string;
+  aggregateType: 'run';
+  aggregateId: string;
+  runId: string;
+  correlationId: string;
+  createdAt: string;
+  version: 1;
+}
+
+export interface OperationResultEnvelopeV1 extends IdempotencyEnvelopeBaseV1 {
+  operation: 'run.start';
+  body: { operation: IdempotencyOperationDtoV1 };
+}
+
+export type IdempotencyResultEnvelopeV1 =
+  | TaskResultEnvelopeV1
+  | RunResultEnvelopeV1
+  | OperationResultEnvelopeV1;
 
 export interface IdempotencyRecord {
   id: string;
@@ -103,7 +139,7 @@ export interface IdempotencyRecord {
   resultSchemaVersion: 1;
   envelope: IdempotencyResultEnvelopeV1;
   resultHash: string;
-  httpStatus: 200 | 201;
+  httpStatus: IdempotencyHttpStatus;
   createdAt: string;
 }
 
@@ -114,7 +150,7 @@ export interface InsertCompletedIdempotencyRecord {
   keyHash: string;
   requestHash: string;
   envelope: IdempotencyResultEnvelopeV1;
-  httpStatus: 200 | 201;
+  httpStatus: IdempotencyHttpStatus;
   createdAt: string;
 }
 
@@ -133,6 +169,67 @@ export class IdempotencyRecordInvalidError extends Error {
     super('Idempotency record is invalid');
     this.name = 'IdempotencyRecordInvalidError';
   }
+}
+
+const OPERATION_DTO_KEYS = Object.freeze([
+  'id',
+  'type',
+  'status',
+  'workspaceId',
+  'aggregateType',
+  'aggregateId',
+  'runId',
+  'correlationId',
+  'createdAt',
+  'version',
+] as const);
+
+function assertNonEmptyString(value: unknown): string {
+  if (typeof value !== 'string' || value.length === 0) invalid();
+  return value;
+}
+
+function assertOperationSnapshot(value: ApiOperation): IdempotencyOperationDtoV1 {
+  if (!isPlainRecord(value)) invalid();
+  assertKeySet(value, OPERATION_DTO_KEYS, []);
+  const id = assertNonEmptyString(value.id);
+  const type = value.type;
+  const status = value.status;
+  const workspaceId = assertNonEmptyString(value.workspaceId);
+  const aggregateType = value.aggregateType;
+  const aggregateId = assertNonEmptyString(value.aggregateId);
+  const runId = assertNonEmptyString(value.runId);
+  const correlationId = assertNonEmptyString(value.correlationId);
+  const createdAt = value.createdAt;
+  const version = value.version;
+  if (type !== 'run.start' || status !== 'queued' || aggregateType !== 'run') invalid();
+  if (aggregateId !== runId || correlationId !== id) invalid();
+  if (typeof createdAt !== 'string' || !isCanonicalUtcTimestamp(createdAt)) invalid();
+  if (version !== 1) invalid();
+  return {
+    id,
+    type: 'run.start',
+    status: 'queued',
+    workspaceId,
+    aggregateType: 'run',
+    aggregateId,
+    runId,
+    correlationId,
+    createdAt,
+    version: 1,
+  };
+}
+
+export function buildOperationResultEnvelopeV1(
+  operation: 'run.start',
+  value: ApiOperation,
+): OperationResultEnvelopeV1 {
+  const dto = assertOperationSnapshot(value);
+  return {
+    schemaVersion: 1,
+    operation,
+    body: { operation: { ...dto } },
+  };
 }
 
 export function buildTaskResultEnvelopeV1(
@@ -276,6 +373,40 @@ function assertString(value: unknown): string {
   return value;
 }
 
+function parseOperationDto(value: unknown): IdempotencyOperationDtoV1 {
+  if (!isPlainRecord(value)) invalid();
+  assertKeySet(value, OPERATION_DTO_KEYS, []);
+  const id = assertNonEmptyString(value.id);
+  const workspaceId = assertNonEmptyString(value.workspaceId);
+  const aggregateId = assertNonEmptyString(value.aggregateId);
+  const runId = assertNonEmptyString(value.runId);
+  const correlationId = assertNonEmptyString(value.correlationId);
+  if (
+    value.type !== 'run.start'
+    || value.status !== 'queued'
+    || value.aggregateType !== 'run'
+    || aggregateId !== runId
+    || correlationId !== id
+    || value.version !== 1
+    || typeof value.createdAt !== 'string'
+    || !isCanonicalUtcTimestamp(value.createdAt)
+  ) {
+    invalid();
+  }
+  return {
+    id,
+    type: 'run.start',
+    status: 'queued',
+    workspaceId,
+    aggregateType: 'run',
+    aggregateId,
+    runId,
+    correlationId,
+    createdAt: value.createdAt,
+    version: 1,
+  };
+}
+
 function assertEnum<T extends string>(value: unknown, allowed: readonly T[]): T {
   if (typeof value !== 'string' || !allowed.includes(value as T)) invalid();
   return value as T;
@@ -352,6 +483,14 @@ export function parseIdempotencyResultEnvelopeV1(
       schemaVersion: 1,
       operation: operation as TaskResultOperation,
       body: { task: parseTaskDto(value.body.task) },
+    };
+  }
+  if (operation === 'run.start') {
+    assertKeySet(value.body, ['operation'], []);
+    return {
+      schemaVersion: 1,
+      operation: 'run.start',
+      body: { operation: parseOperationDto(value.body.operation) },
     };
   }
   assertKeySet(value.body, ['run'], []);
