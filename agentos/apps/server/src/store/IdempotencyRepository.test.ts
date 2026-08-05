@@ -31,6 +31,7 @@ import {
   buildOperationResultEnvelopeV1,
   buildTaskResultEnvelopeV1,
   IdempotencyRecordInvalidError,
+  type FingerprintInput,
   type IdempotencyOperation,
   type InsertCompletedIdempotencyRecord,
   type OperationResultEnvelopeV1,
@@ -38,10 +39,12 @@ import {
 } from '../idempotency/types.js';
 import { hashIdempotencyRequest, hashNormalizedIdempotencyKey } from '../idempotency/fingerprint.js';
 import { IdempotencyRepository } from './IdempotencyRepository.js';
+import { IdempotencyService } from '../services/IdempotencyService.js';
 
 const NOW = '2026-01-01T00:00:00.000Z';
 const HASH64 = 'c'.repeat(64);
 const RAW_KEY = 'raw-key-should-never-persist';
+const START_NORMALIZED_KEY = 'run-start-repository-key';
 
 function migratedDb(databasePath = ':memory:'): Db {
   const db = new DatabaseSync(databasePath);
@@ -127,19 +130,23 @@ function makeStartEnvelope() {
   return buildOperationResultEnvelopeV1('run.start', makeStartOperation());
 }
 
+function makeStartFingerprintInput(): FingerprintInput & { operation: 'run.start' } {
+  return {
+    operation: 'run.start',
+    workspaceId: 'ws-1',
+    pathParams: { runId: 'run_00000000000000000000000001' },
+    domainInput: {},
+    expectedVersion: 1,
+  };
+}
+
 function makeStartInput(): InsertCompletedIdempotencyRecord {
   return {
     id: createEntityId('idempotency'),
     workspaceId: 'ws-1',
     operation: 'run.start',
-    keyHash: hashNormalizedIdempotencyKey('run-start-repository-key'),
-    requestHash: hashIdempotencyRequest({
-      operation: 'run.start',
-      workspaceId: 'ws-1',
-      pathParams: { runId: 'run_00000000000000000000000001' },
-      domainInput: {},
-      expectedVersion: 1,
-    }),
+    keyHash: hashNormalizedIdempotencyKey(START_NORMALIZED_KEY),
+    requestHash: hashIdempotencyRequest(makeStartFingerprintInput()),
     envelope: makeStartEnvelope(),
     httpStatus: 202,
     createdAt: NOW,
@@ -205,6 +212,8 @@ interface IdempotencyRaceWorkerData {
   readonly mode: 'run-start-race';
   readonly dbPath: string;
   readonly workspaceId: string;
+  readonly normalizedKey: string;
+  readonly fingerprintInput: FingerprintInput & { operation: 'run.start' };
   readonly keyHash: string;
   readonly requestHash: string;
   readonly envelope: OperationResultEnvelopeV1;
@@ -213,6 +222,12 @@ interface IdempotencyRaceWorkerData {
 
 interface IdempotencyRaceWorkerMessage {
   readonly outcome: 'winner' | 'loser';
+  readonly preparedWorkspaceId: string;
+  readonly preparedOperation: 'run.start';
+  readonly preparedKeyHash: string;
+  readonly preparedRequestHash: string;
+  readonly recordHttpStatus?: number;
+  readonly recordEnvelope?: OperationResultEnvelopeV1;
   readonly resultHash?: string;
   readonly errorCode?: string;
   readonly errorMessage?: string;
@@ -230,6 +245,20 @@ function runIdempotencyRaceWorker(data: IdempotencyRaceWorkerData): void {
   const db = new DatabaseSync(data.dbPath);
   db.exec('PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000');
   try {
+    const repository = new IdempotencyRepository(db);
+    const service = new IdempotencyService(repository);
+    const prepared = service.prepare({
+      operation: 'run.start',
+      workspaceId: data.workspaceId,
+      normalizedKey: data.normalizedKey,
+      fingerprintInput: data.fingerprintInput,
+    });
+    assert.ok(prepared);
+    assert.equal(prepared.workspaceId, data.workspaceId);
+    assert.equal(prepared.operation, 'run.start');
+    assert.equal(prepared.keyHash, data.keyHash);
+    assert.equal(prepared.requestHash, data.requestHash);
+
     const gate = new Int32Array(data.gate);
     const arrived = Atomics.add(gate, 0, 1) + 1;
     if (arrived === 2) {
@@ -238,28 +267,41 @@ function runIdempotencyRaceWorker(data: IdempotencyRaceWorkerData): void {
     }
     while (Atomics.load(gate, 1) === 0) Atomics.wait(gate, 1, 0);
 
-    const repo = new IdempotencyRepository(db);
     try {
-      const record = repo.insertCompleted({
-        id: createEntityId('idempotency'),
-        workspaceId: data.workspaceId,
-        operation: 'run.start',
-        keyHash: data.keyHash,
-        requestHash: data.requestHash,
-        envelope: data.envelope,
+      const record = service.storeSuccess({
+        prepared,
         httpStatus: 202,
-        createdAt: NOW,
+        envelope: data.envelope,
       });
-      parentPort!.postMessage({ outcome: 'winner', resultHash: record.resultHash } satisfies IdempotencyRaceWorkerMessage);
+      if (record.envelope.operation !== 'run.start') throw new Error('expected run.start winner envelope');
+      parentPort!.postMessage({
+        outcome: 'winner',
+        preparedWorkspaceId: prepared.workspaceId,
+        preparedOperation: prepared.operation,
+        preparedKeyHash: prepared.keyHash,
+        preparedRequestHash: prepared.requestHash,
+        recordHttpStatus: record.httpStatus,
+        recordEnvelope: record.envelope,
+        resultHash: record.resultHash,
+      } satisfies IdempotencyRaceWorkerMessage);
     } catch (error) {
-      const replay = repo.findVerifiedByScope(data.workspaceId, 'run.start', data.keyHash);
-      const replayEnvelope = replay?.envelope.operation === 'run.start' ? replay.envelope : undefined;
+      const message = error instanceof Error ? error.message : String(error);
+      const code = errorCode(error);
+      assert.equal(code, 'ERR_SQLITE_ERROR');
+      assert.equal(message, 'UNIQUE constraint failed: idempotency_records.workspace_id, idempotency_records.operation, idempotency_records.key_hash');
+      const resolution = service.resolve(prepared);
+      assert.equal(resolution.kind, 'replay');
+      if (resolution.kind !== 'replay') throw new Error('expected run.start replay after unique-scope loss');
       parentPort!.postMessage({
         outcome: 'loser',
-        errorCode: errorCode(error),
-        errorMessage: error instanceof Error ? error.message : String(error),
-        replayHttpStatus: replay?.httpStatus,
-        replayEnvelope,
+        preparedWorkspaceId: prepared.workspaceId,
+        preparedOperation: prepared.operation,
+        preparedKeyHash: prepared.keyHash,
+        preparedRequestHash: prepared.requestHash,
+        errorCode: code,
+        errorMessage: message,
+        replayHttpStatus: resolution.httpStatus,
+        replayEnvelope: resolution.envelope,
       } satisfies IdempotencyRaceWorkerMessage);
     }
   } finally {
@@ -937,12 +979,17 @@ describe('M2.6 — IdempotencyRepository insert and read', () => {
       db = migratedDb(databasePath);
       insertWorkspace(db, 'ws-1');
       const input = makeStartInput();
+      const fingerprintInput = makeStartFingerprintInput();
+      assert.equal(input.keyHash, hashNormalizedIdempotencyKey(START_NORMALIZED_KEY));
+      assert.equal(input.requestHash, hashIdempotencyRequest(fingerprintInput));
       db.close();
       db = undefined;
       const gate = new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT);
       const workerData: Omit<IdempotencyRaceWorkerData, 'mode'> = {
         dbPath: databasePath,
         workspaceId: 'ws-1',
+        normalizedKey: START_NORMALIZED_KEY,
+        fingerprintInput,
         keyHash: input.keyHash,
         requestHash: input.requestHash,
         envelope: makeStartEnvelope(),
@@ -952,14 +999,25 @@ describe('M2.6 — IdempotencyRepository insert and read', () => {
         spawnIdempotencyRaceWorker({ mode: 'run-start-race', ...workerData }),
         spawnIdempotencyRaceWorker({ mode: 'run-start-race', ...workerData }),
       ]);
+      for (const result of results) {
+        assert.equal(result.preparedWorkspaceId, input.workspaceId);
+        assert.equal(result.preparedOperation, input.operation);
+        assert.equal(result.preparedKeyHash, input.keyHash);
+        assert.equal(result.preparedRequestHash, input.requestHash);
+      }
       assert.equal(results.filter(result => result.outcome === 'winner').length, 1);
       assert.equal(results.filter(result => result.outcome === 'loser').length, 1);
+      const winner = results.find(result => result.outcome === 'winner');
+      assert.ok(winner);
+      assert.equal(winner.recordHttpStatus, 202);
+      assert.deepEqual(winner.recordEnvelope, input.envelope);
+      assert.equal(winner.resultHash, hashCanonicalJson(input.envelope));
       const loser = results.find(result => result.outcome === 'loser');
       assert.ok(loser);
       assert.equal(loser.errorCode, 'ERR_SQLITE_ERROR');
-      assert.match(
-        loser.errorMessage ?? '',
-        /UNIQUE constraint failed: idempotency_records\.workspace_id, idempotency_records\.operation, idempotency_records\.key_hash/,
+      assert.equal(
+        loser.errorMessage,
+        'UNIQUE constraint failed: idempotency_records.workspace_id, idempotency_records.operation, idempotency_records.key_hash',
       );
       assert.equal(loser.replayHttpStatus, 202);
       assert.deepEqual(loser.replayEnvelope, input.envelope);
@@ -970,10 +1028,25 @@ describe('M2.6 — IdempotencyRepository insert and read', () => {
         const found = repo.findVerifiedByScope('ws-1', 'run.start', input.keyHash);
         assert.ok(found);
         assert.equal(found.httpStatus, 202);
+        assert.equal(found.resultSchemaVersion, 1);
+        if (found.envelope.operation !== 'run.start') throw new Error('expected run.start stored envelope');
         assert.deepEqual(found.envelope, input.envelope);
         assert.equal(found.resultHash, hashCanonicalJson(input.envelope));
         assert.equal((verify.prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count, 1);
-        assert.equal((verify.prepare('SELECT result_json FROM idempotency_records WHERE id = ?').get(found.id) as { result_json: string }).result_json, canonicalizeJson(input.envelope));
+        const persisted = verify.prepare('SELECT * FROM idempotency_records WHERE id = ?').get(found.id) as Record<string, unknown>;
+        assert.equal(persisted.result_json, canonicalizeJson(input.envelope));
+        assert.equal(JSON.stringify(persisted).includes(START_NORMALIZED_KEY), false);
+        assert.equal(JSON.stringify(persisted).includes(RAW_KEY), false);
+        const operation = found.envelope.body.operation;
+        assert.equal(operation.type, 'run.start');
+        assert.equal(operation.status, 'queued');
+        assert.equal(operation.version, 1);
+        assert.equal(operation.aggregateType, 'run');
+        assert.equal(operation.aggregateId, operation.runId);
+        assert.equal(operation.correlationId, operation.id);
+        for (const field of ['progress', 'result', 'error', 'startedAt', 'completedAt', 'updatedAt']) {
+          assert.equal(field in operation, false);
+        }
         assert.equal((verify.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
         assert.deepEqual(verify.prepare('PRAGMA foreign_key_check').all(), []);
       } finally {
