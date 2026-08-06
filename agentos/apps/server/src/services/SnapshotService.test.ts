@@ -6,6 +6,7 @@ import type {
   ProviderConfigurationSnapshotV1,
   Run,
   RunSnapshot,
+  RunSnapshotPayloadV2,
   RunStage,
   WorkflowDefinition,
   Workspace,
@@ -139,6 +140,9 @@ function makeDeps(options: {
   now?: () => string;
   onSnapshot?: (payload: unknown) => void;
   onStage?: (key: string) => void;
+  findSnapshot?: () => RunSnapshot;
+  verifySnapshot?: () => boolean;
+  listStages?: () => RunStage[];
 } = {}): SnapshotServiceDeps {
   return {
     workflowDefinitionResolver: {
@@ -146,6 +150,8 @@ function makeDeps(options: {
       resolveUnboundTaskRun: () => options.workflow ?? unboundWorkflow,
     } as never,
     runSnapshotRepository: () => ({
+      findByRunId: () => options.findSnapshot?.(),
+      verifyHash: () => options.verifySnapshot?.() ?? true,
       insert: (input: { payload: unknown; runId: string; workspaceId: string; workflowDefinitionId: string }) => {
         options.onSnapshot?.(input.payload);
         return {
@@ -157,10 +163,11 @@ function makeDeps(options: {
       },
     } as never),
     runStageRepository: () => ({
-      insertInitial: (input: { workflowStageKey: string; sequence: number }) => {
+      listByRun: () => options.listStages?.() ?? [],
+      insertInitial: (input: { workflowStageKey: string; sequence: number; runId?: string; runSnapshotId?: string; workspaceId?: string }) => {
         options.onStage?.(input.workflowStageKey);
         return {
-          id: `stage-${input.sequence}`, workspaceId: 'ws-1', runId: 'run-1', runSnapshotId: 'snapshot-1',
+          id: `stage-${input.sequence}`, workspaceId: input.workspaceId ?? 'ws-1', runId: input.runId ?? 'run-1', runSnapshotId: input.runSnapshotId ?? 'snapshot-1',
           workflowStageKey: input.workflowStageKey, name: input.workflowStageKey, sequence: input.sequence,
           attempt: 1, status: 'pending', createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z', version: 1,
@@ -429,4 +436,242 @@ test('SnapshotService projects only workspace-contained custom directories', () 
     sources: legacySources(),
   }));
   assert.throws(() => outside.resolveLegacy(workspace()), (error: unknown) => error instanceof RunSnapshotFailedError);
+});
+
+test('SnapshotService exposes the two-phase persisted Retry clone seams', () => {
+  const service = new SnapshotService(makeDeps());
+  assert.equal(typeof service.prepareRetryClone, 'function');
+  assert.equal(typeof service.persistRetryClone, 'function');
+});
+
+test('SnapshotService clones persisted V2 Snapshot and Stage Graph without current resolution', () => {
+  const parent: Run = {
+    ...run,
+    id: 'parent-1',
+    reason: 'initial',
+    origin: 'v2_api',
+  };
+  const sourcePayload: RunSnapshotPayloadV2 = {
+    schemaVersion: 2,
+    capturedAt: '2026-01-02T00:00:00.000Z',
+    run: {
+      workspaceId: parent.workspaceId,
+      taskId: parent.taskId,
+      origin: parent.origin,
+      reason: parent.reason,
+      parentRunId: null,
+      rootRunId: parent.rootRunId,
+    },
+    workflow: {
+      definitionId: legacyWorkflow.id,
+      definitionKey: legacyWorkflow.definitionKey,
+      definitionVersion: legacyWorkflow.version,
+      name: legacyWorkflow.name,
+      definitionHash: legacyWorkflow.definitionHash,
+      worktreeMode: 'preferred',
+      stages: [
+        {
+          workflowStageKey: 'first', name: 'first', sequence: 1, dependsOn: [],
+          agent: { ...legacySources()['agent-codex']!, providerConfigId: 'provider-codex' } as never,
+          provider: null,
+        },
+        {
+          workflowStageKey: 'second', name: 'second', sequence: 2, dependsOn: ['first'],
+          agent: null,
+          provider: null,
+        },
+      ],
+    },
+    security: { redactionApplied: true },
+  };
+  const sourceSnapshot: RunSnapshot<RunSnapshotPayloadV2> = {
+    id: 'parent-snapshot',
+    workspaceId: parent.workspaceId,
+    runId: parent.id,
+    workflowDefinitionId: legacyWorkflow.id,
+    snapshotSchemaVersion: 2,
+    payload: sourcePayload,
+    contentHash: 'a'.repeat(64),
+    redactionApplied: true,
+    capturedAt: sourcePayload.capturedAt,
+  };
+  const sourceStages: RunStage[] = [
+    {
+      id: 'parent-stage-1', workspaceId: parent.workspaceId, runId: parent.id,
+      runSnapshotId: sourceSnapshot.id, workflowStageKey: 'first', name: 'first', sequence: 1,
+      attempt: 2, status: 'completed', createdAt: sourcePayload.capturedAt,
+      updatedAt: sourcePayload.capturedAt, version: 4,
+    },
+    {
+      id: 'parent-stage-2', workspaceId: parent.workspaceId, runId: parent.id,
+      runSnapshotId: sourceSnapshot.id, workflowStageKey: 'second', name: 'second', sequence: 2,
+      attempt: 3, status: 'failed', createdAt: sourcePayload.capturedAt,
+      updatedAt: sourcePayload.capturedAt, version: 5,
+    },
+  ];
+  const captured: unknown[] = [];
+  const service = new SnapshotService(makeDeps({
+    now: () => '2026-01-03T00:00:00.000Z',
+    findSnapshot: () => sourceSnapshot,
+    listStages: () => sourceStages,
+    onSnapshot: payload => captured.push(payload),
+  }));
+  const plan = service.prepareRetryClone(parent);
+  const child: Run = {
+    ...parent,
+    id: 'child-1',
+    parentRunId: parent.id,
+    reason: 'retry',
+    nextEventSequence: 1,
+    status: 'queued',
+    version: 1,
+  };
+  const persisted = service.persistRetryClone(child, plan);
+  assert.equal(persisted.snapshot.payload.schemaVersion, 2);
+  assert.equal(persisted.snapshot.payload.capturedAt, '2026-01-03T00:00:00.000Z');
+  assert.equal(persisted.snapshot.payload.run.workspaceId, child.workspaceId);
+  assert.equal(persisted.snapshot.payload.run.parentRunId, parent.id);
+  assert.equal(persisted.snapshot.payload.workflow.worktreeMode, 'preferred');
+  assert.deepEqual(persisted.snapshot.payload.workflow.stages.map(stage => stage.dependsOn), [[], ['first']]);
+  assert.equal(persisted.stages[0]!.attempt, 1);
+  assert.equal(persisted.stages[0]!.status, 'pending');
+  assert.equal(persisted.stages[0]!.version, 1);
+  assert.equal(persisted.stages[0]!.runId, child.id);
+  assert.notEqual(persisted.snapshot.id, sourceSnapshot.id);
+  assert.notEqual(persisted.stages[0]!.id, sourceStages[0]!.id);
+  assert.notEqual(persisted.snapshot.payload.workflow.stages[0]!.agent, sourcePayload.workflow.stages[0]!.agent);
+  assert.equal(captured.length, 1);
+});
+
+function retryCloneFixture(): {
+  parent: Run;
+  snapshot: RunSnapshot<RunSnapshotPayloadV2>;
+  stages: RunStage[];
+} {
+  const parent: Run = {
+    ...run,
+    id: 'retry-parent',
+    origin: 'v2_api',
+    reason: 'initial',
+  };
+  const payload: RunSnapshotPayloadV2 = {
+    schemaVersion: 2,
+    capturedAt: '2026-01-02T00:00:00.000Z',
+    run: {
+      workspaceId: parent.workspaceId,
+      taskId: parent.taskId,
+      origin: parent.origin,
+      reason: parent.reason,
+      parentRunId: null,
+      rootRunId: parent.rootRunId,
+    },
+    workflow: {
+      definitionId: legacyWorkflow.id,
+      definitionKey: legacyWorkflow.definitionKey,
+      definitionVersion: legacyWorkflow.version,
+      name: legacyWorkflow.name,
+      definitionHash: legacyWorkflow.definitionHash,
+      worktreeMode: 'preferred',
+      stages: [
+        { workflowStageKey: 'first', name: 'first', sequence: 1, dependsOn: [], agent: null, provider: null },
+        { workflowStageKey: 'second', name: 'second', sequence: 2, dependsOn: ['first'], agent: null, provider: null },
+      ],
+    },
+    security: { redactionApplied: false },
+  };
+  const snapshot: RunSnapshot<RunSnapshotPayloadV2> = {
+    id: 'retry-parent-snapshot',
+    workspaceId: parent.workspaceId,
+    runId: parent.id,
+    workflowDefinitionId: legacyWorkflow.id,
+    snapshotSchemaVersion: 2,
+    payload,
+    contentHash: 'a'.repeat(64),
+    redactionApplied: false,
+    capturedAt: payload.capturedAt,
+  };
+  const stages: RunStage[] = payload.workflow.stages.map((stage, index) => ({
+    id: `retry-parent-stage-${index + 1}`,
+    workspaceId: parent.workspaceId,
+    runId: parent.id,
+    runSnapshotId: snapshot.id,
+    workflowStageKey: stage.workflowStageKey,
+    name: stage.name,
+    sequence: stage.sequence,
+    attempt: index + 2,
+    status: index === 0 ? 'completed' : 'failed',
+    createdAt: payload.capturedAt,
+    updatedAt: payload.capturedAt,
+    version: index + 3,
+  }));
+  return { parent, snapshot, stages };
+}
+
+test('SnapshotService Retry prepare rejects missing, V1, hash-invalid, and graph-invalid persisted state', () => {
+  const missing = retryCloneFixture();
+  assert.throws(
+    () => new SnapshotService(makeDeps()).prepareRetryClone(missing.parent),
+    (error: unknown) => error instanceof RunSnapshotFailedError,
+  );
+
+  const source = retryCloneFixture();
+  const v1 = structuredClone(source.snapshot) as RunSnapshot;
+  v1.snapshotSchemaVersion = 1;
+  v1.payload = { ...source.snapshot.payload, schemaVersion: 1 } as never;
+  assert.throws(
+    () => new SnapshotService(makeDeps({ findSnapshot: () => v1 })).prepareRetryClone(source.parent),
+    (error: unknown) => error instanceof RunSnapshotFailedError,
+  );
+
+  assert.throws(
+    () => new SnapshotService(makeDeps({ findSnapshot: () => source.snapshot, verifySnapshot: () => false, listStages: () => source.stages })).prepareRetryClone(source.parent),
+    (error: unknown) => error instanceof RunSnapshotFailedError,
+  );
+
+  const graphCases: Array<{ label: string; snapshot: RunSnapshot<RunSnapshotPayloadV2>; stages: RunStage[] }> = [
+    { label: 'missing stage', snapshot: source.snapshot, stages: [source.stages[0]!] },
+    { label: 'extra stage', snapshot: source.snapshot, stages: [...source.stages, { ...source.stages[1]!, id: 'extra-stage', workflowStageKey: 'extra', name: 'extra', sequence: 3 }] },
+    {
+      label: 'duplicate key',
+      snapshot: { ...source.snapshot, payload: { ...source.snapshot.payload, workflow: { ...source.snapshot.payload.workflow, stages: [{ ...source.snapshot.payload.workflow.stages[0]! }, { ...source.snapshot.payload.workflow.stages[1]!, workflowStageKey: 'first', name: 'first' }] } } },
+      stages: source.stages,
+    },
+    {
+      label: 'duplicate sequence',
+      snapshot: { ...source.snapshot, payload: { ...source.snapshot.payload, workflow: { ...source.snapshot.payload.workflow, stages: [{ ...source.snapshot.payload.workflow.stages[0]! }, { ...source.snapshot.payload.workflow.stages[1]!, sequence: 1 }] } } },
+      stages: source.stages,
+    },
+    {
+      label: 'forward dependency',
+      snapshot: { ...source.snapshot, payload: { ...source.snapshot.payload, workflow: { ...source.snapshot.payload.workflow, stages: [{ ...source.snapshot.payload.workflow.stages[0]!, dependsOn: ['second'] }, { ...source.snapshot.payload.workflow.stages[1]! }] } } },
+      stages: source.stages,
+    },
+    {
+      label: 'duplicate dependency',
+      snapshot: { ...source.snapshot, payload: { ...source.snapshot.payload, workflow: { ...source.snapshot.payload.workflow, stages: [{ ...source.snapshot.payload.workflow.stages[0]! }, { ...source.snapshot.payload.workflow.stages[1]!, dependsOn: ['first', 'first'] }] } } },
+      stages: source.stages,
+    },
+  ];
+  for (const item of graphCases) {
+    assert.throws(
+      () => new SnapshotService(makeDeps({ findSnapshot: () => item.snapshot, listStages: () => item.stages })).prepareRetryClone(source.parent),
+      (error: unknown) => error instanceof RunSnapshotFailedError,
+      item.label,
+    );
+  }
+});
+
+test('SnapshotService Retry prepare never resolves current Workflow, Agent, or Provider configuration', () => {
+  const source = retryCloneFixture();
+  let resolverCalls = 0;
+  const service = new SnapshotService({
+    ...makeDeps({ findSnapshot: () => source.snapshot, listStages: () => source.stages }),
+    workflowDefinitionResolver: {
+      resolveLegacyPipeline: () => { resolverCalls += 1; throw new Error('current workflow read'); },
+      resolveUnboundTaskRun: () => { resolverCalls += 1; throw new Error('current workflow read'); },
+    } as never,
+  });
+  const plan = service.prepareRetryClone(source.parent);
+  assert.equal(plan.payload.workflow.definitionId, legacyWorkflow.id);
+  assert.equal(resolverCalls, 0);
 });

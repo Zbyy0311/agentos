@@ -35,6 +35,17 @@ export interface ResolvedRunConfiguration {
   redactionApplied: boolean;
 }
 
+export interface RetryCloneStagePlan {
+  readonly workflowStageKey: string;
+  readonly sequence: number;
+}
+
+export interface PreparedRetryClonePlan {
+  readonly workflowDefinitionId: string;
+  readonly payload: RunSnapshotPayloadV2;
+  readonly stages: readonly RetryCloneStagePlan[];
+}
+
 export interface SnapshotServiceDeps {
   workflowDefinitionResolver: WorkflowDefinitionResolver;
   runSnapshotRepository: () => RunSnapshotRepository;
@@ -241,6 +252,101 @@ function mapPersistedStage(stage: ResolvedStageConfiguration): {
   return { workflowStageKey: stage.workflowStageKey, sequence: stage.sequence };
 }
 
+function validateRetryCloneGraph(
+  parent: Run,
+  snapshot: RunSnapshot<RunSnapshotPayloadV2>,
+  persistedStages: readonly RunStage[],
+): RetryCloneStagePlan[] {
+  const payload = snapshot.payload;
+  if (
+    snapshot.snapshotSchemaVersion !== 2
+    || snapshot.workspaceId !== parent.workspaceId
+    || snapshot.runId !== parent.id
+    || snapshot.workflowDefinitionId !== payload.workflow.definitionId
+    || payload.schemaVersion !== 2
+    || payload.run.workspaceId !== parent.workspaceId
+    || payload.run.taskId !== parent.taskId
+    || payload.run.origin !== parent.origin
+    || payload.run.reason !== parent.reason
+    || payload.run.parentRunId !== (parent.parentRunId ?? null)
+    || payload.run.rootRunId !== parent.rootRunId
+  ) {
+    throw new RunSnapshotFailedError();
+  }
+
+  const payloadKeys = new Set<string>();
+  const payloadSequences = new Set<number>();
+  for (const stage of payload.workflow.stages) {
+    if (
+      typeof stage.workflowStageKey !== 'string'
+      || stage.workflowStageKey.length === 0
+      || stage.name !== stage.workflowStageKey
+      || !Number.isSafeInteger(stage.sequence)
+      || stage.sequence < 1
+      || payloadKeys.has(stage.workflowStageKey)
+      || payloadSequences.has(stage.sequence)
+      || !Array.isArray(stage.dependsOn)
+    ) {
+      throw new RunSnapshotFailedError();
+    }
+    payloadKeys.add(stage.workflowStageKey);
+    payloadSequences.add(stage.sequence);
+  }
+
+  for (const stage of payload.workflow.stages) {
+    const dependencies = new Set<string>();
+    for (let index = 0; index < stage.dependsOn.length; index += 1) {
+      if (!Object.prototype.hasOwnProperty.call(stage.dependsOn, index)) {
+        throw new RunSnapshotFailedError();
+      }
+      const dependency = stage.dependsOn[index];
+      if (
+        typeof dependency !== 'string'
+        || dependency.length === 0
+        || dependencies.has(dependency)
+        || dependency === stage.workflowStageKey
+        || !payloadKeys.has(dependency)
+        || (payload.workflow.stages.find(item => item.workflowStageKey === dependency)?.sequence ?? Number.MAX_SAFE_INTEGER) >= stage.sequence
+      ) {
+        throw new RunSnapshotFailedError();
+      }
+      dependencies.add(dependency);
+    }
+  }
+
+  const persistedByKey = new Map<string, RunStage>();
+  const persistedSequences = new Set<number>();
+  for (const stage of persistedStages) {
+    if (
+      typeof stage.id !== 'string'
+      || stage.id.length === 0
+      || stage.workspaceId !== parent.workspaceId
+      || stage.runId !== parent.id
+      || stage.runSnapshotId !== snapshot.id
+      || stage.name !== stage.workflowStageKey
+      || !Number.isSafeInteger(stage.sequence)
+      || stage.sequence < 1
+      || persistedByKey.has(stage.workflowStageKey)
+      || persistedSequences.has(stage.sequence)
+    ) {
+      throw new RunSnapshotFailedError();
+    }
+    persistedByKey.set(stage.workflowStageKey, stage);
+    persistedSequences.add(stage.sequence);
+  }
+  if (persistedByKey.size !== payload.workflow.stages.length) throw new RunSnapshotFailedError();
+
+  for (const stage of payload.workflow.stages) {
+    const persisted = persistedByKey.get(stage.workflowStageKey);
+    if (!persisted || persisted.sequence !== stage.sequence) throw new RunSnapshotFailedError();
+  }
+
+  return payload.workflow.stages.map(stage => ({
+    workflowStageKey: stage.workflowStageKey,
+    sequence: stage.sequence,
+  }));
+}
+
 export class SnapshotService {
   private readonly now: () => string;
 
@@ -402,6 +508,110 @@ export class SnapshotService {
           runSnapshotId: snapshot.id,
           workflowStageKey: materialized.workflowStageKey,
           sequence: materialized.sequence,
+        }));
+      }
+      return { snapshot, stages };
+    } catch (error) {
+      if (error instanceof RunSnapshotFailedError) throw error;
+      throw new RunSnapshotFailedError(error);
+    }
+  }
+
+  prepareRetryClone(parent: Run): PreparedRetryClonePlan {
+    try {
+      const snapshotRepository = this.deps.runSnapshotRepository();
+      const snapshot = snapshotRepository.findByRunId(parent.workspaceId, parent.id);
+      if (!snapshot || snapshot.payload.schemaVersion !== 2) throw new RunSnapshotFailedError();
+      if (!snapshotRepository.verifyHash(snapshot)) throw new RunSnapshotFailedError();
+      const persistedStages = this.deps.runStageRepository().listByRun(parent.workspaceId, parent.id);
+      const stages = validateRetryCloneGraph(
+        parent,
+        snapshot as RunSnapshot<RunSnapshotPayloadV2>,
+        persistedStages,
+      );
+      return {
+        workflowDefinitionId: snapshot.workflowDefinitionId,
+        payload: structuredClone(snapshot.payload),
+        stages: structuredClone(stages),
+      };
+    } catch (error) {
+      if (error instanceof RunSnapshotFailedError) throw error;
+      throw new RunSnapshotFailedError(error);
+    }
+  }
+
+  persistRetryClone(
+    childRun: Run,
+    prepared: PreparedRetryClonePlan,
+  ): { snapshot: RunSnapshot<RunSnapshotPayloadV2>; stages: RunStage[] } {
+    try {
+      const source = prepared.payload;
+      if (
+        source.schemaVersion !== 2
+        || prepared.workflowDefinitionId !== source.workflow.definitionId
+        || prepared.stages.length !== source.workflow.stages.length
+      ) {
+        throw new RunSnapshotFailedError();
+      }
+      for (const [index, stage] of source.workflow.stages.entries()) {
+        const planned = prepared.stages[index];
+        if (!planned || planned.workflowStageKey !== stage.workflowStageKey || planned.sequence !== stage.sequence) {
+          throw new RunSnapshotFailedError();
+        }
+      }
+
+      const payload: RunSnapshotPayloadV2 = {
+        schemaVersion: 2,
+        capturedAt: this.now(),
+        run: {
+          workspaceId: childRun.workspaceId,
+          taskId: childRun.taskId,
+          origin: childRun.origin,
+          reason: childRun.reason,
+          parentRunId: childRun.parentRunId ?? null,
+          rootRunId: childRun.rootRunId,
+        },
+        workflow: {
+          definitionId: source.workflow.definitionId,
+          definitionKey: source.workflow.definitionKey,
+          definitionVersion: source.workflow.definitionVersion,
+          name: source.workflow.name,
+          definitionHash: source.workflow.definitionHash,
+          worktreeMode: source.workflow.worktreeMode,
+          stages: source.workflow.stages.map(stage => ({
+            workflowStageKey: stage.workflowStageKey,
+            name: stage.name,
+            sequence: stage.sequence,
+            dependsOn: [...stage.dependsOn],
+            agent: stage.agent ? structuredClone(stage.agent) : null,
+            provider: stage.provider ? structuredClone(stage.provider) : null,
+          })),
+        },
+        security: { redactionApplied: source.security.redactionApplied },
+      };
+      scanSnapshotText(
+        payload.workflow.stages.flatMap(stage => [
+          stage.name,
+          ...(stage.agent ? [stage.agent.name, stage.agent.roleTitle, stage.agent.systemPrompt] : []),
+          ...(stage.provider
+            ? [stage.provider.name, stage.provider.adapterId, stage.provider.executable ?? '', stage.provider.model ?? '', ...stage.provider.argsTemplate]
+            : []),
+        ]),
+      );
+      const snapshot = this.deps.runSnapshotRepository().insert({
+        workspaceId: childRun.workspaceId,
+        runId: childRun.id,
+        workflowDefinitionId: prepared.workflowDefinitionId,
+        payload,
+      });
+      const stages: RunStage[] = [];
+      for (const stage of prepared.stages) {
+        stages.push(this.deps.runStageRepository().insertInitial({
+          workspaceId: childRun.workspaceId,
+          runId: childRun.id,
+          runSnapshotId: snapshot.id,
+          workflowStageKey: stage.workflowStageKey,
+          sequence: stage.sequence,
         }));
       }
       return { snapshot, stages };
