@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
@@ -8,7 +9,11 @@ import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { TaskRunService, type TaskRunServiceDeps } from './TaskRunService.js';
 import { LegacyTaskItemImportService } from './LegacyTaskItemImportService.js';
 import { IdempotencyService } from './IdempotencyService.js';
-import type { Workspace } from '@agentos/shared';
+import { OperationService } from './OperationService.js';
+import { OperationRepository } from '../store/OperationRepository.js';
+import type { InsertOperationInput } from '../store/OperationRepository.js';
+import { createEntityId } from '../store/Identity.js';
+import type { Run, Task, Workspace } from '@agentos/shared';
 
 interface Fixture {
   root: string;
@@ -1379,5 +1384,549 @@ test('P432 cross-workspace version guards stay isolated', () => {
     assert.equal(fx.store.taskRepository().findById(fx.workspace.id, taskA.id)!.status, 'open');
   } finally {
     closeV2(fx);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// M3 P3C-1 — async Start Operation acceptance (A1). A1 only atomically
+// accepts and queues a run.start Operation; it never mutates the Run, Task,
+// Runtime Events, Outbox, or Dead Letters, and never touches Engine/Provider.
+// ---------------------------------------------------------------------------
+
+const START_KEY_1 = 'p3c1-start-key-0001';
+const START_KEY_2 = 'p3c1-start-key-0002';
+
+function createQueuedRunForStart(fx: V2Fixture): { task: Task; run: Run } {
+  const task = fx.service.createTask(fx.workspace.id, { title: 'start-target', createdBy: 'test' });
+  const run = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+  assert.equal(run.status, 'queued');
+  assert.equal(run.version, 1);
+  return { task, run };
+}
+
+function tableRowCount(fx: V2Fixture, table: string): number {
+  return (fx.store.getDatabase().prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count;
+}
+
+function startOperationRows(fx: V2Fixture, runId: string): Array<Record<string, unknown>> {
+  return fx.store.getDatabase().prepare(
+    "SELECT * FROM operations WHERE run_id = ? AND type = 'run.start' ORDER BY created_at ASC, id ASC",
+  ).all(runId) as Array<Record<string, unknown>>;
+}
+
+function seedStartOperation(fx: V2Fixture, run: Run): ReturnType<OperationService['createWithinTransaction']> {
+  const operations = new OperationService(fx.store.getDatabase() as never);
+  return operations.createWithinTransaction({ workspaceId: fx.workspace.id, runId: run.id, type: 'run.start' });
+}
+
+function transitionSeededOperation(
+  fx: V2Fixture,
+  operationId: string,
+  expectedVersion: number,
+  to: 'running' | 'completed' | 'failed' | 'cancelled',
+): void {
+  const operations = new OperationService(fx.store.getDatabase() as never);
+  operations.transitionWithinTransaction({
+    workspaceId: fx.workspace.id,
+    operationId,
+    expectedVersion,
+    to,
+    ...(to === 'failed'
+      ? {
+          error: {
+            type: 'about:blank',
+            title: 'seeded failure',
+            status: 500,
+            code: 'SEEDED_FAILURE',
+            detail: 'seeded failure for history matrix',
+            instance: '/test',
+            requestId: 'test',
+            retryable: false,
+          },
+        }
+      : {}),
+  });
+}
+
+function insertNonQueuedNonTerminalStart(
+  fx: V2Fixture,
+  run: Run,
+  status: 'waiting_approval' | 'paused',
+): void {
+  const repository = new OperationRepository(fx.store.getDatabase() as never);
+  const now = new Date().toISOString();
+  const id = createEntityId('operation');
+  const input: InsertOperationInput = {
+    id,
+    type: 'run.start',
+    status,
+    workspaceId: fx.workspace.id,
+    aggregateType: 'run',
+    aggregateId: run.id,
+    runId: run.id,
+    correlationId: id,
+    createdAt: now,
+    updatedAt: now,
+    version: 1,
+    startedAt: now,
+  };
+  repository.insert(input);
+}
+
+function expectStartIdentity(
+  body: { operation: Record<string, unknown> },
+  workspaceId: string,
+  runId: string,
+): void {
+  assert.deepEqual(Object.keys(body), ['operation']);
+  assert.deepEqual(Object.keys(body.operation).sort(), [
+    'aggregateId',
+    'aggregateType',
+    'correlationId',
+    'createdAt',
+    'id',
+    'runId',
+    'status',
+    'type',
+    'version',
+    'workspaceId',
+  ]);
+  assert.match(String(body.operation.id), /^op_[0-9A-HJKM-NP-TV-Z]{26}$/);
+  assert.equal(body.operation.type, 'run.start');
+  assert.equal(body.operation.status, 'queued');
+  assert.equal(body.operation.workspaceId, workspaceId);
+  assert.equal(body.operation.aggregateType, 'run');
+  assert.equal(body.operation.aggregateId, runId);
+  assert.equal(body.operation.runId, runId);
+  assert.equal(body.operation.correlationId, body.operation.id);
+  assert.equal(body.operation.version, 1);
+}
+
+test('P3C1-S01 live no-key start returns 202 with the queued operation and writes no idempotency record', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const result = fx.service.startRunOperationForV2(fx.workspace.id, run.id);
+    assert.equal(result.httpStatus, 202);
+    assert.equal(result.replayed, false);
+    expectStartIdentity(result.body as unknown as { operation: Record<string, unknown> }, fx.workspace.id, run.id);
+    assert.equal(startOperationRows(fx, run.id).length, 1);
+    assert.equal(idempotencyRecordCount(fx), 0);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S02 live keyed start stores an HTTP 202 run.start success record', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const result = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1);
+    assert.equal(result.httpStatus, 202);
+    assert.equal(result.replayed, false);
+    expectStartIdentity(result.body as unknown as { operation: Record<string, unknown> }, fx.workspace.id, run.id);
+    assert.equal(idempotencyRecordCount(fx), 1);
+    assert.deepEqual(idempotencyRows(fx).map(row => ({ ...row })), [{ operation: 'run.start', http_status: 202 }]);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S03 replay returns the original queued snapshot after the operation advanced', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const live = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1);
+    assert.equal(live.replayed, false);
+    const operationId = (live.body as { operation: { id: string } }).operation.id;
+    // The accepted Operation later leaves queued: the replay must still return
+    // the acceptance-time snapshot without reading or rebuilding current state.
+    transitionSeededOperation(fx, operationId, 1, 'running');
+    const replay = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1);
+    assert.equal(replay.httpStatus, 202);
+    assert.equal(replay.replayed, true);
+    assert.deepEqual(replay.body, live.body);
+    const replayOperation = (replay.body as unknown as { operation: Record<string, unknown> }).operation;
+    assert.equal(replayOperation.status, 'queued');
+    assert.equal(replayOperation.version, 1);
+    assert.equal(startOperationRows(fx, run.id).length, 1);
+    assert.equal(idempotencyRecordCount(fx), 1);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S04 same key with a different fingerprint fails with IDEMPOTENCY_KEY_REUSED and no side effects', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const live = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1, 1);
+    assert.equal(live.replayed, false);
+    assert.throws(
+      () => fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1),
+      (error: unknown) => {
+        expectCode(error, 'IDEMPOTENCY_KEY_REUSED');
+        return true;
+      },
+    );
+    assert.equal(startOperationRows(fx, run.id).length, 1);
+    assert.equal(idempotencyRecordCount(fx), 1);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S05 expectedVersion match succeeds and mismatch raises VERSION_CONFLICT before any mutation', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    assert.throws(
+      () => fx.service.startRunOperationForV2(fx.workspace.id, run.id, undefined, run.version + 1),
+      (error: unknown) => {
+        expectCode(error, 'VERSION_CONFLICT');
+        return true;
+      },
+    );
+    assert.equal(startOperationRows(fx, run.id).length, 0);
+    const result = fx.service.startRunOperationForV2(fx.workspace.id, run.id, undefined, run.version);
+    assert.equal(result.httpStatus, 202);
+    // A1 acceptance never mutates the Run: version stays exactly as guarded.
+    assert.equal(fx.store.runRepository().findById(fx.workspace.id, run.id)!.version, run.version);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S06 non-queued run fails with INVALID_RUN_TRANSITION and creates nothing', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    fx.store.runRepository().transitionStatus(fx.workspace.id, run.id, run.version, 'running');
+    for (const key of [undefined, START_KEY_1] as const) {
+      assert.throws(
+        () => fx.service.startRunOperationForV2(fx.workspace.id, run.id, key),
+        (error: unknown) => {
+          expectCode(error, 'INVALID_RUN_TRANSITION');
+          return true;
+        },
+      );
+    }
+    assert.equal(startOperationRows(fx, run.id).length, 0);
+    assert.equal(idempotencyRecordCount(fx), 0);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S07 unknown run fails with RUN_NOT_FOUND', () => {
+  const fx = v2Fixture();
+  try {
+    assert.throws(
+      () => fx.service.startRunOperationForV2(fx.workspace.id, 'run_01J00000000000000000000000'),
+      (error: unknown) => {
+        expectCode(error, 'RUN_NOT_FOUND');
+        return true;
+      },
+    );
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S08 start is allowed when all prior starts are failed terminal history', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const seeded = seedStartOperation(fx, run);
+    transitionSeededOperation(fx, seeded.id, seeded.version, 'failed');
+    const result = fx.service.startRunOperationForV2(fx.workspace.id, run.id);
+    assert.equal(result.httpStatus, 202);
+    assert.equal(startOperationRows(fx, run.id).length, 2);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S09 start is allowed when all prior starts are cancelled terminal history', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const seeded = seedStartOperation(fx, run);
+    transitionSeededOperation(fx, seeded.id, seeded.version, 'cancelled');
+    const result = fx.service.startRunOperationForV2(fx.workspace.id, run.id);
+    assert.equal(result.httpStatus, 202);
+    assert.equal(startOperationRows(fx, run.id).length, 2);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S10 an existing queued start fails with RUN_START_ALREADY_ACTIVE for keyed and no-key callers', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const live = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1);
+    assert.equal(live.replayed, false);
+    for (const key of [undefined, START_KEY_2] as const) {
+      assert.throws(
+        () => fx.service.startRunOperationForV2(fx.workspace.id, run.id, key),
+        (error: unknown) => {
+          expectCode(error, 'RUN_START_ALREADY_ACTIVE');
+          return true;
+        },
+      );
+    }
+    assert.equal(startOperationRows(fx, run.id).length, 1);
+    assert.equal(idempotencyRecordCount(fx), 1);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S11 multiple non-terminal starts fail with RUN_START_AUTHORIZATION_AMBIGUOUS', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    seedStartOperation(fx, run);
+    seedStartOperation(fx, run);
+    assert.throws(
+      () => fx.service.startRunOperationForV2(fx.workspace.id, run.id),
+      (error: unknown) => {
+        expectCode(error, 'RUN_START_AUTHORIZATION_AMBIGUOUS');
+        return true;
+      },
+    );
+    assert.equal(startOperationRows(fx, run.id).length, 2);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S12 a single running start fails with RUN_START_STATE_INCONSISTENT', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const seeded = seedStartOperation(fx, run);
+    transitionSeededOperation(fx, seeded.id, seeded.version, 'running');
+    assert.throws(
+      () => fx.service.startRunOperationForV2(fx.workspace.id, run.id),
+      (error: unknown) => {
+        expectCode(error, 'RUN_START_STATE_INCONSISTENT');
+        return true;
+      },
+    );
+    assert.equal(startOperationRows(fx, run.id).length, 1);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S13 a completed start in history fails with RUN_START_STATE_INCONSISTENT', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    const seeded = seedStartOperation(fx, run);
+    transitionSeededOperation(fx, seeded.id, seeded.version, 'running');
+    transitionSeededOperation(fx, seeded.id, seeded.version + 1, 'completed');
+    assert.throws(
+      () => fx.service.startRunOperationForV2(fx.workspace.id, run.id),
+      (error: unknown) => {
+        expectCode(error, 'RUN_START_STATE_INCONSISTENT');
+        return true;
+      },
+    );
+    assert.equal(startOperationRows(fx, run.id).length, 1);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S14 a waiting_approval start fails with RUN_START_STATE_INCONSISTENT', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    insertNonQueuedNonTerminalStart(fx, run, 'waiting_approval');
+    assert.throws(
+      () => fx.service.startRunOperationForV2(fx.workspace.id, run.id),
+      (error: unknown) => {
+        expectCode(error, 'RUN_START_STATE_INCONSISTENT');
+        return true;
+      },
+    );
+    assert.equal(startOperationRows(fx, run.id).length, 1);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S15 a paused start fails with RUN_START_STATE_INCONSISTENT', () => {
+  const fx = v2Fixture();
+  try {
+    const { run } = createQueuedRunForStart(fx);
+    insertNonQueuedNonTerminalStart(fx, run, 'paused');
+    assert.throws(
+      () => fx.service.startRunOperationForV2(fx.workspace.id, run.id),
+      (error: unknown) => {
+        expectCode(error, 'RUN_START_STATE_INCONSISTENT');
+        return true;
+      },
+    );
+    assert.equal(startOperationRows(fx, run.id).length, 1);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S16 acceptance has no A1 side effects on run, task, events, outbox, or dead letters', () => {
+  const fx = v2Fixture();
+  try {
+    const { task, run } = createQueuedRunForStart(fx);
+    // Run creation itself persists run.created Runtime Event + Outbox rows
+    // (P2C-2C). A1 acceptance must add nothing beyond the queued Operation.
+    const eventsBefore = tableRowCount(fx, 'runtime_events');
+    const outboxBefore = tableRowCount(fx, 'outbox_messages');
+    const deadLettersBefore = tableRowCount(fx, 'dead_letters');
+    const result = fx.service.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1);
+    assert.equal(result.httpStatus, 202);
+    const persistedRun = fx.store.runRepository().findById(fx.workspace.id, run.id)!;
+    assert.equal(persistedRun.status, 'queued');
+    assert.equal(persistedRun.version, run.version);
+    const persistedTask = fx.store.taskRepository().findById(fx.workspace.id, task.id)!;
+    assert.equal(persistedTask.status, task.status);
+    assert.equal(persistedTask.version, task.version);
+    const operation = (result.body as unknown as { operation: Record<string, unknown> }).operation;
+    assert.equal(operation.status, 'queued');
+    assert.equal(operation.version, 1);
+    assert.equal(tableRowCount(fx, 'runtime_events'), eventsBefore);
+    assert.equal(tableRowCount(fx, 'outbox_messages'), outboxBefore);
+    assert.equal(tableRowCount(fx, 'dead_letters'), deadLettersBefore);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S17 a storeSuccess failure rolls back the entire outer transaction', () => {
+  const fx = v2Fixture();
+  try {
+    const { task, run } = createQueuedRunForStart(fx);
+    const eventsBefore = tableRowCount(fx, 'runtime_events');
+    const outboxBefore = tableRowCount(fx, 'outbox_messages');
+    const deadLettersBefore = tableRowCount(fx, 'dead_letters');
+    class FailingStoreSuccessService extends IdempotencyService {
+      override storeSuccess(): never {
+        throw new Error('P3C1_INJECTED_STORE_SUCCESS_FAILURE');
+      }
+    }
+    const failing = new TaskRunService(fx.store, {
+      idempotencyService: new FailingStoreSuccessService(fx.store.idempotencyRepository()),
+    });
+    assert.throws(
+      () => failing.startRunOperationForV2(fx.workspace.id, run.id, START_KEY_1),
+      /P3C1_INJECTED_STORE_SUCCESS_FAILURE/,
+    );
+    // Full rollback: the inserted Operation and the success record are gone.
+    assert.equal(startOperationRows(fx, run.id).length, 0);
+    assert.equal(tableRowCount(fx, 'operations'), 0);
+    assert.equal(idempotencyRecordCount(fx), 0);
+    const persistedRun = fx.store.runRepository().findById(fx.workspace.id, run.id)!;
+    assert.equal(persistedRun.status, 'queued');
+    assert.equal(persistedRun.version, run.version);
+    const persistedTask = fx.store.taskRepository().findById(fx.workspace.id, task.id)!;
+    assert.equal(persistedTask.status, task.status);
+    assert.equal(persistedTask.version, task.version);
+    assert.equal(tableRowCount(fx, 'runtime_events'), eventsBefore);
+    assert.equal(tableRowCount(fx, 'outbox_messages'), outboxBefore);
+    assert.equal(tableRowCount(fx, 'dead_letters'), deadLettersBefore);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S18 a missing OperationService capability fails closed before any mutation', () => {
+  const fx = v2Fixture();
+  try {
+    const { task, run } = createQueuedRunForStart(fx);
+    const depsWithoutCapability: TaskRunServiceDeps = {
+      taskRepository: () => fx.store.taskRepository(),
+      runRepository: () => fx.store.runRepository(),
+      workflowDefinitionRepository: () => fx.store.workflowDefinitionRepository(),
+      runSnapshotRepository: () => fx.store.runSnapshotRepository(),
+      runStageRepository: () => fx.store.runStageRepository(),
+      providerConfigurationRepository: () => fx.store.providerConfigurationRepository(),
+      findAgentSnapshotSource: (workspaceId, agentId) => fx.store.findAgentSnapshotSource(workspaceId, agentId),
+      runInTransaction: fn => fx.store.runInTransaction(fn),
+      lifecycleTransactionService: () => fx.store.lifecycleTransactionService(),
+    };
+    const service = new TaskRunService(depsWithoutCapability, {
+      idempotencyService: new IdempotencyService(fx.store.idempotencyRepository()),
+    });
+    for (const key of [undefined, START_KEY_1] as const) {
+      assert.throws(
+        () => service.startRunOperationForV2(fx.workspace.id, run.id, key),
+        (error: unknown) => {
+          assert.equal((error as { code?: unknown } | null)?.code, undefined);
+          assert.match(String((error as Error).message), /RUN_START_OPERATION_SERVICE_UNAVAILABLE/);
+          return true;
+        },
+      );
+    }
+    assert.equal(tableRowCount(fx, 'operations'), 0);
+    assert.equal(idempotencyRecordCount(fx), 0);
+    const persistedRun = fx.store.runRepository().findById(fx.workspace.id, run.id)!;
+    assert.equal(persistedRun.status, 'queued');
+    assert.equal(persistedRun.version, run.version);
+    assert.equal(fx.store.taskRepository().findById(fx.workspace.id, task.id)!.version, task.version);
+  } finally {
+    closeV2(fx);
+  }
+});
+
+test('P3C1-S19 production SqliteStore enables foreign keys and busy_timeout 5000 with migrations applied', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-p3c1-pragma-'));
+  mkdirSync(join(root, 'workspace'), { recursive: true });
+  writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
+  const store = new SqliteStore(root);
+  try {
+    const db = store.getDatabase();
+    assert.equal((db.prepare('PRAGMA busy_timeout').get() as { timeout: number }).timeout, 5000);
+    assert.equal((db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys, 1);
+    const applied = db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
+    assert.deepEqual(applied.map(row => row.migration_id), [
+      '001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013',
+    ]);
+  } finally {
+    store.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('P3C1-S20 constructor failure closes the database handle and preserves the startup failure boundary', () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-p3c1-ctor-fail-'));
+  mkdirSync(join(root, 'workspace'), { recursive: true });
+  writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [] }), 'utf8');
+  const databasePath = join(root, '.agentos', 'agentos.sqlite');
+  const store = new SqliteStore(root);
+  store.close();
+  const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
+    DatabaseSync: new (path: string) => {
+      exec(sql: string): void;
+      prepare(sql: string): { get(...parameters: unknown[]): unknown; run(...parameters: unknown[]): unknown };
+      close(): void;
+    };
+  };
+  const corruptor = new DatabaseSync(databasePath);
+  corruptor.prepare("UPDATE _schema_migrations SET checksum = 'p3c1-corrupted-checksum' WHERE migration_id = '013'").run();
+  corruptor.close();
+  assert.throws(() => new SqliteStore(root), /checksum/i);
+  // The failed constructor released the handle: another connection can open
+  // and write the database immediately (no lingering lock or handle leak).
+  const probe = new DatabaseSync(databasePath);
+  try {
+    probe.exec('CREATE TABLE IF NOT EXISTS p3c1_constructor_probe (id TEXT)');
+    probe.prepare('INSERT INTO p3c1_constructor_probe (id) VALUES (?)').run('released');
+    assert.equal((probe.prepare('SELECT COUNT(*) AS count FROM p3c1_constructor_probe').get() as { count: number }).count, 1);
+  } finally {
+    probe.close();
+    rmSync(root, { recursive: true, force: true });
   }
 });
