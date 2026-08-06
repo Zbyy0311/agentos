@@ -1687,7 +1687,7 @@ POST /api/tasks/:taskId/restore
 不得直接：
 
 ```json
-PATCH {"status": "completed"}
+{"status": "completed"}
 ```
 
 完成通过 Run Acceptance。
@@ -2008,8 +2008,9 @@ interface RetryRunRequest {
 
 ## 77.1 M3 P3C-1 Retry current contract (Option A)
 
-This is the sole current M3 Retry contract. It is a docs-only closure and does
-not authorize the production route or any Child creation implementation.
+This is the sole current M3 Retry contract candidate under local review. It is
+docs-only and does not authorize the production route or any Child creation
+implementation.
 
 ### Route, scope, and request
 
@@ -2070,6 +2071,50 @@ bindings, the same key/sequence, `attempt = 1`, `status = pending`, and
 `version = 1`; runtime state, output, errors, timestamps, and Parent IDs are
 not copied.
 
+### Replay-miss decision order, Task active slot, and Retry history
+
+After a replay miss, the domain decision order is frozen as:
+
+1. Read the workspace-scoped Parent.
+2. Apply the exact `expectedVersion` guard.
+3. Require Parent status `failed`.
+4. Check structural ambiguity.
+5. Check structural inconsistency.
+6. Check the exact valid completed Retry plus direct Child duplicate.
+7. Check the Task active slot.
+8. Validate the Parent Snapshot V2 and Stage graph.
+9. Perform A2 creation writes.
+
+The Task active statuses are `queued`, `starting`, `running`,
+`waiting_approval`, and `paused`. If the active Run is exactly the direct Child
+whose completed Retry Operation and result binding pass the full duplicate
+validation below, return `409 RUN_RETRY_ALREADY_CREATED`. If the Task has any
+other active Run, return `409 RUN_ACTIVE_EXISTS` with safe message `Task
+already has an active run` and `retryable: false`. A second active Run must
+never be created. A uniqueness race from `RunRepository.insert` maps to the
+same `409 RUN_ACTIVE_EXISTS` and rolls back all preceding A2 writes.
+
+The only eligible create state has zero direct Child rows, zero completed
+Retry Operations, and zero non-terminal Retry Operations; any number of
+`failed` or `cancelled` Retry history rows may remain. A valid completed
+duplicate has exactly one completed `run.retry`, exactly one direct Child, and
+all of these bindings: Operation and Child workspace equal Parent workspace;
+Operation `aggregateId` and `runId` equal Parent ID; Child `parentRunId` equals
+Parent ID; Child `taskId` and `rootRunId` equal the Parent values; Child
+`reason = retry`; Child status is `queued` or a later legal lifecycle status;
+Operation result is `{ resourceType: run, resourceId: Child.id }`; and the
+Operation is `completed` at version 3. Same-key replay occurs before any
+current-state reads. A different key returns `409 RUN_RETRY_ALREADY_CREATED`.
+
+More than one non-terminal Retry, more than one completed Retry, or more than
+one direct Child is structural ambiguity and returns
+`500 RUN_RETRY_STATE_AMBIGUOUS`. A Retry without its Child, a Child without a
+completed Retry, any Operation/result/Parent/Child binding mismatch, a
+queued/running Retry with a Child, a completed Retry not at version 3, a
+completed Retry without the exact result, or invalid direct Child
+workspace/task/root/lineage is structural inconsistency and returns
+`500 RUN_RETRY_STATE_INCONSISTENT`.
+
 ### A2 transaction order
 
 The caller owns one `BEGIN IMMEDIATE` transaction. The exact order is:
@@ -2090,7 +2135,9 @@ The caller owns one `BEGIN IMMEDIATE` transaction. The exact order is:
 11. Read the workspace-scoped Parent.
 12. Apply the exact Parent version guard.
 13. Require Parent status `failed`.
-14. Apply Retry-history and direct-Child fencing.
+14. Apply structural ambiguity, structural inconsistency, the valid completed
+    Retry/direct Child duplicate check, and the Task active-slot check in that
+    exact order.
 15. Read and validate the Parent Snapshot V2 and Stage graph.
 16. Create the Parent-bound queued `run.retry` Operation at version 1.
 17. Transition it to `running` at version 2.
@@ -2118,8 +2165,13 @@ The Retry Operation is Parent-bound with `aggregateType = run`,
 `queued/v1 → running/v2 → completed/v3`; the completed result points to the
 Child. Creation Events use `correlationId = Child.id`; each
 `stage.created.causationId` and `parentEventId` points to Child
-`run.created`. Future execution Events use a separate `run.start` Operation
-ID. Retry creates no Operation Event and no `operation_events` row.
+`run.created`. Future execution Events use the independent `run.start`
+Operation ID. The completed `run.retry` Operation does not authorize
+execution, does not own `run.dequeued`, and creates no independent Operation
+Event. `GET /api/operations/:operationId/events` for `run.retry` queries by the
+Retry Operation's `runId + correlationId` and therefore normally returns an
+empty collection in P3. It must never return Child creation Events or
+independent Start execution Events as Retry Operation Events.
 
 ### HTTP 201 and replay body
 
@@ -2165,15 +2217,19 @@ exposed in the HTTP body. A same-key replay returns the original queued Child
 and completed v3 Operation, sets `Idempotency-Replayed: true`, and never
 depends on later Child/Operation state.
 
-### Retry history, errors, rollback, and concurrency
+### Retry errors, rollback, and concurrency
 
-- No Child plus no history, or only failed/cancelled Retry history: eligible.
-- One valid completed Retry plus one Child: different key returns
-  `409 RUN_RETRY_ALREADY_CREATED`; same key replays before current reads.
-- Queued/running Retry, missing Child, missing completed Retry, or any
-  Snapshot/Stage mismatch: `500 RUN_RETRY_STATE_INCONSISTENT`.
-- Multiple non-terminal Retry Operations or direct Children:
-  `500 RUN_RETRY_AUTHORIZATION_AMBIGUOUS`.
+- No direct Child, no completed Retry, and no non-terminal Retry, with any
+  number of failed/cancelled history rows: eligible.
+- Exactly one valid completed Retry plus exactly one valid direct Child:
+  different key returns `409 RUN_RETRY_ALREADY_CREATED`; same key replays
+  before current reads.
+- More than one non-terminal Retry, more than one completed Retry, or more
+  than one direct Child: `500 RUN_RETRY_STATE_AMBIGUOUS`.
+- Retry/Child existence or binding mismatches: `500
+  RUN_RETRY_STATE_INCONSISTENT`.
+- A different active Run on the Task: `409 RUN_ACTIVE_EXISTS` with safe
+  message `Task already has an active run`.
 - Key reuse with a different fingerprint: `409 IDEMPOTENCY_KEY_REUSED`.
 - Human-held SQLite timeout: `503 RUN_RETRY_BUSY`, message `Run retry is
   temporarily unavailable`, `retryable: true`.
@@ -5681,7 +5737,7 @@ POST /runs/:id/cancel
 
 错误：
 
-```json
+```http
 PATCH /api/runs/run_123
 {
   "status": "completed"

@@ -1160,7 +1160,7 @@ CREATE TABLE tasks (
 
 > **SUPERSEDED / HISTORICAL — NOT CURRENT M3 V2 CONTRACT.** The conceptual
 > schema below is retained for pre-M2.5 compatibility history. The current
-> persisted Run and Retry Child contract is §28A.
+> persisted Run and Retry Child contract is §33A.
 
 ```ts
 interface Run {
@@ -1282,7 +1282,7 @@ CREATE TABLE runs (
 
 > **SUPERSEDED / HISTORICAL — NOT CURRENT M3 V2 CONTRACT.** The conceptual
 > schema below is retained for compatibility history. The current persisted
-> RunStage contract is §28A.
+> RunStage contract is §33A.
 
 ```ts
 interface RunStage {
@@ -1527,6 +1527,25 @@ The persisted HTTP 201 Idempotency envelope is schemaVersion 1 and contains
 the original queued Child Run DTO plus the original completed v3 Operation
 DTO. The discriminator is internal; HTTP exposes only `{run, operation}`.
 Replay is immutable and does not read current Child or Operation state.
+
+### Task active-slot and Retry history boundary
+
+Retry Child creation uses Task active statuses `queued`, `starting`,
+`running`, `waiting_approval`, and `paused`. A valid direct Child already
+bound to exactly one completed version-3 Retry Operation is the duplicate
+case; any other active Run for the Task prevents a second active Child and
+maps to `409 RUN_ACTIVE_EXISTS`. A uniqueness race during insertion has the
+same result and rolls back the transaction.
+
+Creation is eligible only with zero direct Child rows, zero completed Retry
+Operations, and zero non-terminal Retry Operations; any number of failed or
+cancelled Retry history rows may remain. More than one non-terminal Retry,
+completed Retry, or direct Child is ambiguous; missing or mismatched Retry,
+Child, result, workspace, task, root, or lineage bindings are inconsistent.
+After a replay miss, this decision order is Parent read, expectedVersion,
+Parent status `failed`, structural ambiguity, structural inconsistency, valid
+completed Retry/direct Child duplicate, Task active slot, Snapshot/Stage
+validation, and then creation writes.
 
 ## 34. Run Checkpoint
 
