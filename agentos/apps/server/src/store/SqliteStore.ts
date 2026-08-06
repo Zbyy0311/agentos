@@ -71,6 +71,7 @@ import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import { OutboxRepository } from './OutboxRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
 import { LifecycleTransactionService } from '../services/LifecycleTransactionService.js';
+import { OperationService } from '../services/OperationService.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -422,6 +423,7 @@ export class SqliteStore implements Store {
   private readonly outboxRepo: OutboxRepository;
   private readonly deadLetterRepo: DeadLetterRepository;
   private readonly lifecycleTransactionServiceRepo: LifecycleTransactionService;
+  private readonly operationServiceRepo: OperationService;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -430,29 +432,35 @@ export class SqliteStore implements Store {
     const dataDir = join(projectRoot, '.agentos');
     mkdirSync(dataDir, { recursive: true });
     this.database = new DatabaseSync(join(dataDir, 'agentos.sqlite'));
-    this.workspaceRepo = new WorkspaceRepository(this.database as any);
-    this.taskRepo = new TaskRepository(this.database as any);
-    this.runRepo = new RunRepository(this.database as any);
-    this.workflowDefinitionRepo = new WorkflowDefinitionRepository(this.database as any);
-    this.runSnapshotRepo = new RunSnapshotRepository(this.database as any);
-    this.runStageRepo = new RunStageRepository(this.database as any);
-    this.idempotencyRepo = new IdempotencyRepository(this.database as any);
-    this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
-    const runtimeEventRegistry = createM3RuntimeEventRegistry();
-    this.runtimeEventRepo = new RuntimeEventRepository(this.database as any, runtimeEventRegistry);
-    this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
-    this.outboxRepo = new OutboxRepository(this.database as any, this.runtimeEventRepo);
-    this.deadLetterRepo = new DeadLetterRepository(this.database as any);
-    this.lifecycleTransactionServiceRepo = new LifecycleTransactionService({
-      runRepository: this.runRepo,
-      runStageRepository: this.runStageRepo,
-      runtimeEventRepository: this.runtimeEventRepo,
-      runSequenceAllocator: this.runSequenceAllocatorRepo,
-      outboxRepository: this.outboxRepo,
-      runInTransaction: fn => inTransaction(this.database as any, fn),
-    });
     try {
+      // M3 P3C-1: connection pragmas come first — immediately after the
+      // DatabaseSync and before any repository/service composition or
+      // migration — so every later write (migrations included) enforces
+      // foreign keys and waits out lock contention instead of failing busy.
       this.database.exec('PRAGMA foreign_keys = ON');
+      this.database.exec('PRAGMA busy_timeout = 5000');
+      this.workspaceRepo = new WorkspaceRepository(this.database as any);
+      this.taskRepo = new TaskRepository(this.database as any);
+      this.runRepo = new RunRepository(this.database as any);
+      this.workflowDefinitionRepo = new WorkflowDefinitionRepository(this.database as any);
+      this.runSnapshotRepo = new RunSnapshotRepository(this.database as any);
+      this.runStageRepo = new RunStageRepository(this.database as any);
+      this.idempotencyRepo = new IdempotencyRepository(this.database as any);
+      this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
+      const runtimeEventRegistry = createM3RuntimeEventRegistry();
+      this.runtimeEventRepo = new RuntimeEventRepository(this.database as any, runtimeEventRegistry);
+      this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
+      this.outboxRepo = new OutboxRepository(this.database as any, this.runtimeEventRepo);
+      this.deadLetterRepo = new DeadLetterRepository(this.database as any);
+      this.lifecycleTransactionServiceRepo = new LifecycleTransactionService({
+        runRepository: this.runRepo,
+        runStageRepository: this.runStageRepo,
+        runtimeEventRepository: this.runtimeEventRepo,
+        runSequenceAllocator: this.runSequenceAllocatorRepo,
+        outboxRepository: this.outboxRepo,
+        runInTransaction: fn => inTransaction(this.database as any, fn),
+      });
+      this.operationServiceRepo = new OperationService(this.database as any);
       this.runMigrations(dataDir);
       this.migrateAgentEventSequences();
       this.migrateLegacyExecutionRuns();
@@ -512,6 +520,15 @@ export class SqliteStore implements Store {
 
   lifecycleTransactionService(): LifecycleTransactionService {
     return this.lifecycleTransactionServiceRepo;
+  }
+
+  /**
+   * M3 P3C-1 OperationService bound to this store's SQLite handle. Callers
+   * must use createWithinTransaction inside the caller-owned transaction;
+   * the service never opens a nested transaction by itself.
+   */
+  operationService(): OperationService {
+    return this.operationServiceRepo;
   }
 
   /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */
@@ -2523,7 +2540,11 @@ export class SqliteStore implements Store {
   }
 
   private migrateAgentEventSequences(): void {
-    this.database.exec('BEGIN');
+    // M3 P3C-1: BEGIN IMMEDIATE up front. A deferred BEGIN would promote a
+    // SHARED read lock to a write lock mid-transaction, and that promotion
+    // bypasses the busy handler under a foreign writer — an immediate write
+    // lock is what lets busy_timeout = 5000 wait out contention here.
+    this.database.exec('BEGIN IMMEDIATE');
     try {
       const runRows = this.database.prepare(`
         SELECT DISTINCT run_id FROM agent_events ORDER BY run_id ASC

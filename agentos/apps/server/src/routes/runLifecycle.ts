@@ -1,0 +1,258 @@
+import { json, Router, type NextFunction, type Request, type Response } from 'express';
+import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
+import { createOptionalIdempotencyService, parseIdempotencyKey } from './v2Idempotency.js';
+import { V2ValidationError } from './v2Tasks.js';
+
+/**
+ * M3 P3C-1 narrow, sanitized error mapping for the canonical Start
+ * acceptance route. This module owns its mapping and never widens respondV2.
+ */
+const RUN_LIFECYCLE_ERROR_STATUS: Record<string, number> = {
+  VALIDATION_FAILED: 400,
+  RUN_NOT_FOUND: 404,
+  VERSION_CONFLICT: 409,
+  INVALID_RUN_TRANSITION: 409,
+  IDEMPOTENCY_KEY_REUSED: 409,
+  RUN_START_ALREADY_ACTIVE: 409,
+  IDEMPOTENCY_RECORD_INVALID: 500,
+  RUN_START_AUTHORIZATION_AMBIGUOUS: 500,
+  RUN_START_STATE_INCONSISTENT: 500,
+};
+
+const RUN_LIFECYCLE_SAFE_MESSAGE: Record<string, string> = {
+  VERSION_CONFLICT: 'Version conflict',
+  INVALID_RUN_TRANSITION: 'Run is not in a startable state',
+  IDEMPOTENCY_KEY_REUSED: 'Idempotency key was already used with a different request',
+  RUN_START_ALREADY_ACTIVE: 'Run start is already active',
+  IDEMPOTENCY_RECORD_INVALID: 'Idempotency record is invalid',
+  RUN_START_AUTHORIZATION_AMBIGUOUS: 'Run start authorization is ambiguous',
+  RUN_START_STATE_INCONSISTENT: 'Run start state is inconsistent',
+};
+
+/**
+ * Only a genuine SQLite busy/locked timeout maps to 503. node:sqlite errors
+ * carry the SQLite result code in `errcode` (SQLITE_BUSY = 5, SQLITE_LOCKED
+ * = 6, with extended codes in the high bits). Ordinary same-key,
+ * different-key, and no-key contention resolves through resolve or the
+ * history matrix and never reaches this mapping.
+ */
+function isSqliteBusyError(error: unknown): boolean {
+  const errcode = (error as { errcode?: unknown } | null)?.errcode;
+  if (typeof errcode === 'number' && ((errcode & 0xff) === 5 || (errcode & 0xff) === 6)) return true;
+  const message = error instanceof Error ? error.message : String(error);
+  return /database is locked/i.test(message);
+}
+
+function respondRunLifecycle(res: Response, fn: () => { status: number; body: unknown }): void {
+  try {
+    const { status, body } = fn();
+    res.status(status).json(body);
+  } catch (err) {
+    if (isSqliteBusyError(err)) {
+      // Exact frozen contract; never leaks SQLITE_BUSY, SQL, paths, or owners.
+      res.status(503).json({
+        error: 'Run start is temporarily unavailable',
+        code: 'RUN_START_BUSY',
+        retryable: true,
+      });
+      return;
+    }
+    const code = (err as { code?: unknown } | null)?.code;
+    if (typeof code === 'string' && code in RUN_LIFECYCLE_ERROR_STATUS) {
+      res.status(RUN_LIFECYCLE_ERROR_STATUS[code]).json({
+        error: RUN_LIFECYCLE_SAFE_MESSAGE[code] ?? (err as Error).message,
+        code,
+      });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+  }
+}
+
+function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+const START_BODY_ERROR_MESSAGE = 'Request body must be a valid JSON object';
+
+/**
+ * Remote review HIGH-1 / MEDIUM-1: request-local seams keyed by the request
+ * object itself, so no state can leak across requests. The workspaceId is
+ * resolved by the locator middleware before any body parsing and is never
+ * exposed through body/query/response; the raw payload length is recorded by
+ * the scoped parser's verify callback (byte count only — body content is
+ * never retained or logged).
+ */
+const startWorkspaceByRequest = new WeakMap<object, string>();
+const startRawPayloadLengthByRequest = new WeakMap<object, number>();
+
+/**
+ * Known client-side body/parser request errors: malformed JSON, unsupported
+ * or invalid request encoding, and parser body-size request errors.
+ * body-parser marks them with a 4xx status/statusCode and a string `type`;
+ * anything else is an internal error and never reaches the 400 mapping.
+ */
+function isClientBodyParseError(error: unknown): boolean {
+  const candidate = error as { type?: unknown; status?: unknown; statusCode?: unknown } | null;
+  if (!candidate || typeof candidate.type !== 'string') return false;
+  const status = typeof candidate.status === 'number'
+    ? candidate.status
+    : (typeof candidate.statusCode === 'number' ? candidate.statusCode : undefined);
+  return status !== undefined && status >= 400 && status < 500;
+}
+
+function parseStartExpectedVersion(value: unknown): number | undefined {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+    throw new V2ValidationError('expectedVersion must be a positive safe integer');
+  }
+  return value;
+}
+
+function isJsonContentType(contentType: string | undefined): boolean {
+  return typeof contentType === 'string' && /^application\/json(?:\s*;|\s*$)/i.test(contentType.trim());
+}
+
+/**
+ * Scoped body parser for the Start route only — the third middleware in the
+ * chain, after the locator and the query rejection, never first. This router
+ * mounts ahead of the global strict JSON parser, so this non-strict scoped
+ * parser is what lets non-object JSON bodies (null, primitives, arrays)
+ * reach the frozen 400 VALIDATION_FAILED contract instead of a generic
+ * parser-level 400. The verify callback records only the raw payload byte
+ * length per request, so a zero-byte JSON payload is rejected instead of
+ * being normalized into a valid {}.
+ */
+const startBodyParser = json({
+  strict: false,
+  verify: (req, _res, buf) => {
+    startRawPayloadLengthByRequest.set(req, buf.length);
+  },
+});
+
+/**
+ * M3 P3C-1 canonical lifecycle routes. Mounted exactly once at /api in
+ * index.ts, so the final URL is precisely POST /api/runs/:runId/start — no
+ * workspaceId in path, query, or body, and no /v2 prefix. The router owns
+ * its IdempotencyService detection and its route-local TaskRunService.
+ *
+ * Remote review HIGH-1 middleware order (locator-first):
+ *   resolveRunWorkspace → rejectStartQuery → startBodyParser →
+ *   startBodyParserErrorHandler → startHandler.
+ */
+export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
+  const router = Router();
+  const idempotencyService = createOptionalIdempotencyService(store);
+  const service = new TaskRunService(store, {
+    ...(idempotencyService ? { idempotencyService } : {}),
+  });
+
+  /**
+   * Middleware 1 — opaque path runId → single locator call. A miss responds
+   * a safe 404 RUN_NOT_FOUND before any query/body handling; the resolved
+   * workspaceId is stashed request-locally and never re-read by the handler.
+   * SQLite errors flow to the route-local error handler (503/500).
+   */
+  const resolveRunWorkspace = (req: Request, res: Response, next: NextFunction): void => {
+    const { runId } = req.params as { runId: string };
+    let workspaceId: string | undefined;
+    try {
+      workspaceId = store.runRepository().findWorkspaceIdByOpaqueId(runId);
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (workspaceId === undefined) {
+      res.status(404).json({ error: 'Run not found', code: 'RUN_NOT_FOUND' });
+      return;
+    }
+    startWorkspaceByRequest.set(req, workspaceId);
+    next();
+  };
+
+  /** Middleware 2 — any query parameter is rejected before body parsing. */
+  const rejectStartQuery = (req: Request, res: Response, next: NextFunction): void => {
+    if (Object.keys(req.query ?? {}).length > 0) {
+      res.status(400).json({ error: 'Query parameters are not accepted', code: 'VALIDATION_FAILED' });
+      return;
+    }
+    next();
+  };
+
+  /**
+   * Middleware 4 — route-local error mapping for everything raised by the
+   * earlier middlewares (locator SQLite failures included). Known client
+   * body/parser errors collapse to one sanitized 400 VALIDATION_FAILED; a
+   * genuine SQLite busy/locked timeout maps to the frozen 503; unknown
+   * errors map to a safe 500. Raw parser messages never reach the global
+   * error handler, and this handler can only affect this route's chain.
+   */
+  const startBodyParserErrorHandler = (err: unknown, req: Request, res: Response, next: NextFunction): void => {
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    if (isSqliteBusyError(err)) {
+      res.status(503).json({
+        error: 'Run start is temporarily unavailable',
+        code: 'RUN_START_BUSY',
+        retryable: true,
+      });
+      return;
+    }
+    if (isClientBodyParseError(err)) {
+      res.status(400).json({ error: START_BODY_ERROR_MESSAGE, code: 'VALIDATION_FAILED' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+  };
+
+  /**
+   * Middleware 5 — payload-existence, shape, field, and expectedVersion
+   * validation, then Idempotency-Key normalization and the service call.
+   */
+  const startHandler = (req: Request, res: Response): void => respondRunLifecycle(res, () => {
+    const { runId } = req.params as { runId: string };
+    const workspaceId = startWorkspaceByRequest.get(req);
+    if (workspaceId === undefined) {
+      // Programming error — resolveRunWorkspace always runs first.
+      throw new Error('RUN_START_WORKSPACE_CONTEXT_MISSING');
+    }
+    // An absent body carries no JSON content type (the "undefined body"
+    // rejection); a zero-byte JSON payload is rejected via the request-local
+    // raw length instead of being normalized into a valid {}.
+    if (!isJsonContentType(req.headers['content-type'])) {
+      throw new V2ValidationError(START_BODY_ERROR_MESSAGE);
+    }
+    if ((startRawPayloadLengthByRequest.get(req) ?? 0) === 0) {
+      throw new V2ValidationError(START_BODY_ERROR_MESSAGE);
+    }
+    const body: unknown = req.body;
+    if (!isPlainJsonObject(body)) {
+      throw new V2ValidationError(START_BODY_ERROR_MESSAGE);
+    }
+    for (const key of Object.keys(body)) {
+      if (key !== 'expectedVersion') {
+        throw new V2ValidationError('body contains an unknown field');
+      }
+    }
+    const expectedVersion = parseStartExpectedVersion(body.expectedVersion);
+    const normalizedKey = parseIdempotencyKey(req);
+    const result = service.startRunOperationForV2(workspaceId, runId, normalizedKey, expectedVersion);
+    if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+    return { status: result.httpStatus, body: result.body };
+  });
+
+  router.post(
+    '/runs/:runId/start',
+    resolveRunWorkspace,
+    rejectStartQuery,
+    startBodyParser,
+    startBodyParserErrorHandler,
+    startHandler,
+  );
+
+  return router;
+}

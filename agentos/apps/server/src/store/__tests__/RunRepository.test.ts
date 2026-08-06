@@ -438,4 +438,78 @@ describe('RunRepository', () => {
       db.close();
     }
   });
+
+  // -------------------------------------------------------------------------
+  // M3 P3C-1 — opaque Run locator. The locator is the single global read
+  // used by the canonical start route to resolve the owning workspace before
+  // any body validation; every later domain access stays workspace-scoped.
+  // -------------------------------------------------------------------------
+
+  it('L01 returns the owning workspaceId for a queued Run', () => {
+    const { db, runs, tasks } = createDb();
+    try {
+      const task = tasks.insert({ workspaceId: 'ws1', title: 'locator-queued', createdBy: 'tester' });
+      const run = runs.insert({ workspaceId: 'ws1', taskId: task.id, origin: 'v2_api', createdBy: 'tester' });
+      assert.equal(run.status, 'queued');
+      assert.equal(runs.findWorkspaceIdByOpaqueId(run.id), 'ws1');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('L02 returns undefined for an unknown runId', () => {
+    const { db, runs } = createDb();
+    try {
+      assert.equal(runs.findWorkspaceIdByOpaqueId('run_01J00000000000000000000000'), undefined);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('L03 locates the owning workspace across workspaces without a workspace parameter', () => {
+    const { db, runs, tasks } = createDb();
+    try {
+      const taskA = tasks.insert({ workspaceId: 'ws1', title: 'locator-a', createdBy: 'tester' });
+      const runA = runs.insert({ workspaceId: 'ws1', taskId: taskA.id, origin: 'v2_api', createdBy: 'tester' });
+      const taskB = tasks.insert({ workspaceId: 'ws2', title: 'locator-b', createdBy: 'tester' });
+      const runB = runs.insert({ workspaceId: 'ws2', taskId: taskB.id, origin: 'v2_api', createdBy: 'tester' });
+      assert.equal(runs.findWorkspaceIdByOpaqueId(runA.id), 'ws1');
+      assert.equal(runs.findWorkspaceIdByOpaqueId(runB.id), 'ws2');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('L04 returns only the workspaceId for queued, running, and terminal Runs', () => {
+    const { db, runs, tasks } = createDb();
+    try {
+      const task = tasks.insert({ workspaceId: 'ws1', title: 'locator-statuses', createdBy: 'tester' });
+      const queued = runs.insert({ workspaceId: 'ws1', taskId: task.id, origin: 'v2_api', createdBy: 'tester' });
+      assert.equal(runs.findWorkspaceIdByOpaqueId(queued.id), 'ws1');
+      const running = runs.transitionStatus('ws1', queued.id, queued.version, 'running');
+      assert.equal(runs.findWorkspaceIdByOpaqueId(queued.id), 'ws1');
+      const completed = runs.transitionStatus('ws1', queued.id, running.version, 'completed');
+      assert.equal(completed.status, 'completed');
+      assert.equal(runs.findWorkspaceIdByOpaqueId(queued.id), 'ws1');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('L05 locator is a pure read: Run status, version, and row are identical before and after', () => {
+    const { db, runs, tasks } = createDb();
+    try {
+      const task = tasks.insert({ workspaceId: 'ws1', title: 'locator-pure', createdBy: 'tester' });
+      const run = runs.insert({ workspaceId: 'ws1', taskId: task.id, origin: 'v2_api', createdBy: 'tester' });
+      const before = runs.findById('ws1', run.id);
+      const located = runs.findWorkspaceIdByOpaqueId(run.id);
+      const after = runs.findById('ws1', run.id);
+      assert.equal(located, 'ws1');
+      assert.deepEqual(after, before);
+      assert.equal(after!.status, 'queued');
+      assert.equal(after!.version, before!.version);
+    } finally {
+      db.close();
+    }
+  });
 });

@@ -196,6 +196,20 @@ export class RunRepository {
     return row ? mapRow(row) : undefined;
   }
 
+  /**
+   * M3 P3C-1 opaque Run locator: the single global read used by the canonical
+   * start route to resolve the owning workspace from an opaque runId, before
+   * any body validation. Pure read — returns only the owning workspaceId,
+   * never the Run, never reads status/version, never mutates. Every later
+   * Run, Operation, and Idempotency access stays workspace-scoped.
+   */
+  findWorkspaceIdByOpaqueId(runId: string): string | undefined {
+    const row = this.db.prepare(
+      'SELECT workspace_id FROM runs WHERE id = ?',
+    ).get(runId) as { workspace_id: string } | undefined;
+    return row?.workspace_id;
+  }
+
   listByTask(workspaceId: string, taskId: string): Run[] {
     const rows = this.db.prepare(
       'SELECT * FROM runs WHERE workspace_id = ? AND task_id = ? ORDER BY created_at ASC, id ASC',

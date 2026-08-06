@@ -27,12 +27,16 @@ import {
   type ResolvedRunConfiguration,
 } from './SnapshotService.js';
 import { IdempotencyService } from './IdempotencyService.js';
+import { NON_TERMINAL_OPERATION_STATUSES, OperationService } from './OperationService.js';
 import {
+  buildOperationResultEnvelopeV1,
   buildRunResultEnvelopeV1,
   buildTaskResultEnvelopeV1,
   IdempotencyRecordInvalidError,
   type FingerprintInput,
+  type IdempotencyOperationDtoV1,
   type IdempotencyResultEnvelopeV1,
+  type OperationResultEnvelopeV1,
   type RunResultEnvelopeV1,
   type TaskResultEnvelopeV1,
 } from '../idempotency/types.js';
@@ -49,6 +53,13 @@ export interface TaskRunServiceDeps {
   runInTransaction<T>(fn: () => T): T;
   /** Supplied by SqliteStore for the production V2 Run creation path. */
   lifecycleTransactionService(): LifecycleTransactionService;
+  /**
+   * M3 P3C-1: optional OperationService capability bound to the same SQLite
+   * handle (supplied by SqliteStore). Kept optional so existing Legacy/v2
+   * fixtures stay compatible; the Start acceptance path fails closed before
+   * any mutation when the capability is absent.
+   */
+  operationService?(): OperationService;
 }
 
 export interface CreateLegacyRunForBridgeInput {
@@ -81,6 +92,16 @@ export interface TaskRunServiceOptions {
 export interface V2MutationExecutionResult<TBody> {
   httpStatus: 200 | 201;
   body: TBody;
+  replayed: boolean;
+}
+
+/**
+ * M3 P3C-1 Start acceptance result: HTTP 202 with the original queued
+ * run.start Operation snapshot (live and replay share the same body shape).
+ */
+export interface StartOperationExecutionResult {
+  httpStatus: 202;
+  body: { operation: IdempotencyOperationDtoV1 };
   replayed: boolean;
 }
 
@@ -513,6 +534,161 @@ export class TaskRunService {
 
   cancelQueuedRun(workspaceId: string, runId: string): Run {
     return this.deps.runInTransaction(() => this.cancelQueuedRunInTransaction(workspaceId, runId));
+  }
+
+  /**
+   * M3 P3C-1 A1 — async Start Operation acceptance. Atomically accepts and
+   * queues a run.start Operation. It never mutates the Run, Task, Runtime
+   * Events, Outbox, or Dead Letters, and never touches RunEngine,
+   * WorkflowExecutor, StageExecutor, Provider, Process, or CLI surfaces.
+   *
+   * Keyed order: prepare (outside the transaction) → caller-owned
+   * BEGIN IMMEDIATE → resolve as the first domain action → replay | run
+   * read → expectedVersion guard → queued guard → Start history matrix →
+   * createWithinTransaction → envelope → storeSuccess → commit.
+   *
+   * No-key order: BEGIN IMMEDIATE → run read → expectedVersion guard →
+   * queued guard → history matrix → createWithinTransaction → commit.
+   * The no-key path never calls prepare/resolve/storeSuccess, never writes
+   * an Idempotency Record, and never sets the replay header.
+   */
+  startRunOperationForV2(
+    workspaceId: string,
+    runId: string,
+    normalizedKey?: string,
+    expectedVersion?: number,
+  ): StartOperationExecutionResult {
+    assertValidExpectedVersion(expectedVersion);
+    // The OperationService capability check fails closed before prepare,
+    // BEGIN IMMEDIATE, and every mutation.
+    const operationService = this.requireOperationService();
+    if (normalizedKey !== undefined) {
+      const idempotencyService = this.idempotencyService;
+      if (!idempotencyService) throw new IdempotencyRecordInvalidError();
+      const prepared = idempotencyService.prepare({
+        operation: 'run.start',
+        workspaceId,
+        normalizedKey,
+        fingerprintInput: {
+          operation: 'run.start',
+          workspaceId,
+          pathParams: { runId },
+          domainInput: {},
+          expectedVersion: expectedVersion ?? null,
+        },
+      });
+      if (!prepared) throw new IdempotencyRecordInvalidError();
+      return this.deps.runInTransaction(() => {
+        // Resolve is the first Run/Operation domain action inside the
+        // transaction, ahead of every state guard. Replay returns the saved
+        // acceptance-time queued snapshot without reading current state.
+        const resolution = idempotencyService.resolve(prepared);
+        if (resolution.kind === 'replay') {
+          return {
+            httpStatus: 202,
+            body: resolution.envelope.body,
+            replayed: true,
+          };
+        }
+        const envelope = this.acceptRunStartInTransaction(workspaceId, runId, expectedVersion, operationService);
+        idempotencyService.storeSuccess({ prepared, httpStatus: 202, envelope });
+        return { httpStatus: 202, body: envelope.body, replayed: false };
+      });
+    }
+    return this.deps.runInTransaction(() => {
+      const envelope = this.acceptRunStartInTransaction(workspaceId, runId, expectedVersion, operationService);
+      return { httpStatus: 202, body: envelope.body, replayed: false };
+    });
+  }
+
+  /**
+   * In-transaction Start acceptance body. The locator was already applied at
+   * the route boundary; this guard chain is workspace-scoped and never
+   * treats the locator as the domain guard.
+   */
+  private acceptRunStartInTransaction(
+    workspaceId: string,
+    runId: string,
+    expectedVersion: number | undefined,
+    operationService: OperationService,
+  ): OperationResultEnvelopeV1 {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    if (expectedVersion !== undefined && expectedVersion !== run.version) {
+      throw new VersionConflictError('runs', runId, expectedVersion);
+    }
+    if (run.status !== 'queued') {
+      throw domainError('INVALID_RUN_TRANSITION', 'INVALID_RUN_TRANSITION');
+    }
+    const starts = operationService
+      .listByRun(workspaceId, runId)
+      .filter(operation => operation.type === 'run.start');
+    const nonTerminal = starts.filter(
+      operation => (NON_TERMINAL_OPERATION_STATUSES as readonly string[]).includes(operation.status),
+    );
+    // Full Start history matrix with frozen precedence (remote review
+    // MEDIUM-2): multiple non-terminal starts first, then ANY completed
+    // Start (an execution A1 never ran is inconsistent even beside a queued
+    // one), then the single non-terminal classification. failed and
+    // cancelled are always just terminal history.
+    if (nonTerminal.length > 1) {
+      throw domainError('RUN_START_AUTHORIZATION_AMBIGUOUS', 'RUN_START_AUTHORIZATION_AMBIGUOUS');
+    }
+    if (starts.some(operation => operation.status === 'completed')) {
+      throw domainError('RUN_START_STATE_INCONSISTENT', 'RUN_START_STATE_INCONSISTENT');
+    }
+    if (nonTerminal.length === 1) {
+      if (nonTerminal[0]!.status === 'queued') {
+        throw domainError('RUN_START_ALREADY_ACTIVE', 'RUN_START_ALREADY_ACTIVE');
+      }
+      throw domainError('RUN_START_STATE_INCONSISTENT', 'RUN_START_STATE_INCONSISTENT');
+    }
+    const operation = operationService.createWithinTransaction({ workspaceId, runId, type: 'run.start' });
+    if (
+      operation.type !== 'run.start'
+      || operation.status !== 'queued'
+      || operation.workspaceId !== workspaceId
+      || operation.aggregateType !== 'run'
+      || operation.aggregateId !== runId
+      || operation.runId !== runId
+      || operation.correlationId !== operation.id
+      || operation.version !== 1
+    ) {
+      throw new IdempotencyRecordInvalidError();
+    }
+    return buildOperationResultEnvelopeV1('run.start', operation);
+  }
+
+  /**
+   * Narrowest OperationService capability resolution (M3 P3C-1). Optional on
+   * the deps so Legacy/v2 fixtures keep their original shape; Start fails
+   * closed with a plain internal error — the route sanitizes it to a safe
+   * 500 INTERNAL_ERROR, so no new public stable code is invented.
+   */
+  private requireOperationService(): OperationService {
+    let factory: unknown;
+    try {
+      factory = this.deps.operationService;
+    } catch {
+      throw new Error('RUN_START_OPERATION_SERVICE_UNAVAILABLE');
+    }
+    if (typeof factory !== 'function') {
+      throw new Error('RUN_START_OPERATION_SERVICE_UNAVAILABLE');
+    }
+    let service: unknown;
+    try {
+      service = factory.call(this.deps);
+    } catch {
+      throw new Error('RUN_START_OPERATION_SERVICE_UNAVAILABLE');
+    }
+    if (
+      !service
+      || typeof (service as { createWithinTransaction?: unknown }).createWithinTransaction !== 'function'
+      || typeof (service as { listByRun?: unknown }).listByRun !== 'function'
+    ) {
+      throw new Error('RUN_START_OPERATION_SERVICE_UNAVAILABLE');
+    }
+    return service as OperationService;
   }
 
   startRunForBridge(workspaceId: string, runId: string): { run: Run; task: Task } {
