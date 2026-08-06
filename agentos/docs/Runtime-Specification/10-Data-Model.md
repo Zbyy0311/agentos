@@ -1158,6 +1158,10 @@ CREATE TABLE tasks (
 
 ## 28. Run
 
+> **SUPERSEDED / HISTORICAL — NOT CURRENT M3 V2 CONTRACT.** The conceptual
+> schema below is retained for pre-M2.5 compatibility history. The current
+> persisted Run and Retry Child contract is §28A.
+
 ```ts
 interface Run {
   id: string;
@@ -1275,6 +1279,10 @@ CREATE TABLE runs (
 ---
 
 ## 30. Run Stage
+
+> **SUPERSEDED / HISTORICAL — NOT CURRENT M3 V2 CONTRACT.** The conceptual
+> schema below is retained for compatibility history. The current persisted
+> RunStage contract is §28A.
 
 ```ts
 interface RunStage {
@@ -1406,6 +1414,10 @@ CREATE TABLE run_stage_dependencies (
 
 ## 33. Run Attempt Link
 
+> **SUPERSEDED / HISTORICAL — NOT CURRENT M3 V2 CONTRACT.** Current M3 Retry
+> lineage is carried by `runs.parent_run_id` and `runs.root_run_id`; this
+> conceptual link table is not required by the current schema.
+
 用于 Retry、Fallback 和 Review Fix：
 
 ```sql
@@ -1426,6 +1438,95 @@ CREATE TABLE run_attempt_links (
 ```
 
 ---
+
+## 33A. Current M3 V2 Run, Retry Child, Snapshot, and Stage contract
+
+The following is the current data-model contract at the post-PR-#31 main
+baseline. It is the only current M3 Retry model; the historical sections above
+are not an alternate implementation.
+
+### Current Run and Child fields
+
+The current persisted Run has these relevant fields: `id`, `workspaceId`,
+`taskId`, optional `parentRunId`, `rootRunId`, `status`,
+`reason`, `origin`, optional `objective`, optional failure/cancellation fields,
+`nextEventSequence`, optional lifecycle timestamps, `createdBy`, audit
+timestamps, and `version`.
+
+For the Retry Child, the exact values are:
+
+| Field | Value |
+| --- | --- |
+| `workspaceId` | Parent workspace |
+| `taskId` | Parent task |
+| `parentRunId` | Parent ID |
+| `rootRunId` | Parent root ID |
+| `status` | `queued` |
+| `reason` | `retry` |
+| `origin` | `v2_api`, server-owned |
+| `objective` | Parent objective |
+| `createdBy` | Parent persisted `createdBy` |
+| `nextEventSequence` | `1` |
+| `version` | `1` |
+
+The Parent must be `failed` at the requested version. Parent status, version,
+failure data, timestamps, and all other fields remain unchanged. Task status,
+version, and run pointers remain unchanged. Child IDs and timestamps are
+fresh; Child runtime output and terminal fields are empty.
+
+### Current Snapshot V2 clone
+
+The Parent must have one valid persisted `RunSnapshotPayloadV2`. The Retry
+Child does not resolve current configuration and does not silently upgrade a
+V1 Snapshot. A missing, V1, malformed, or graph-mismatched Parent Snapshot is
+`RUN_RETRY_STATE_INCONSISTENT` with no committed side effect.
+
+The Child Snapshot is a new row with a new ID, fresh `capturedAt`, canonical
+JSON, and content hash. Its `workflow` preserves the Parent Snapshot's
+definition identity, version, name, definition hash, `worktreeMode`, ordered
+stages, `dependsOn`, Agent snapshots, Provider snapshots, and security
+redaction result. Its `run` block is remapped to the Child's workspace, task,
+origin, reason, parent, and root IDs. Parent Snapshot ID, runtime state,
+outputs, errors, stage IDs, and old timestamps are never copied.
+
+### Current Child Stage graph
+
+The Parent `RunStage` rows must match the Snapshot V2 stage keys and sequences.
+Each Child Stage gets a new ID, Child Run ID, Child Snapshot ID, identical
+workflow key and sequence, `attempt = 1`, `status = pending`, fresh audit
+timestamps, and `version = 1`. No Parent Stage status, attempt, output,
+failure, lifecycle timestamp, or ID is copied. Dependency metadata remains in
+the immutable Snapshot V2 `workflow.stages[].dependsOn` values; it is not
+re-resolved or rewritten into a mutable current-configuration table.
+
+### Creation Events and Outbox
+
+After Child Run, Snapshot, and Stages exist inside the same A2 transaction,
+the existing graph-event seam appends Child `run.created` followed by ordered
+`stage.created` Events and one matching Outbox row per Event. Creation Event
+correlation is the Child Run ID. Each `stage.created` points by both
+`causationId` and `parentEventId` to Child `run.created`. Future execution
+Events use the independent `run.start` Operation ID. Retry does not create an
+Operation Event.
+
+### Current Retry Operation binding
+
+The Retry Operation is not a Child aggregate. It is Parent-bound:
+
+```text
+type = run.retry
+status: queued/v1 -> running/v2 -> completed/v3
+aggregateType = run
+aggregateId = Parent.id
+runId = Parent.id
+correlationId = operation.id
+result = { resourceType: run, resourceId: Child.id }
+```
+
+The persisted HTTP 201 Idempotency envelope is schemaVersion 1 and contains
+the original queued Child Run DTO plus the original completed v3 Operation
+DTO. The discriminator is internal; HTTP exposes only `{run, operation}`.
+Replay is immutable and does not read current Child or Operation state.
 
 ## 34. Run Checkpoint
 

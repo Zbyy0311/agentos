@@ -2,11 +2,14 @@
 
 Technical direction status: APPROVED BY INDEPENDENT TECHNICAL REVIEW — M3-TD-30 Option A alignment is authorized only by the current remediation.
 
-P3 decision freeze status: P3C-0B Post-Merge Remediation 1 is authorized; P3C-1, P3D, and Production Cutover remain NOT AUTHORIZED / NOT STARTED — REMOTE CHECKS UNAVAILABLE — NOT PASS — SCHEMA BLOCKER: NONE — Migration 014 is not required or authorized.
+P3 decision freeze status: P3C-0B is merged; P3C-1 Start is implemented and
+merged, while P3C-1 Retry production, P3D, and Production Cutover remain NOT
+AUTHORIZED / NOT STARTED — REMOTE CHECKS UNAVAILABLE — NOT PASS — SCHEMA
+BLOCKER: NONE — Migration 014 is not required or authorized.
 
 Final P0 documentation merge gate: COMPLETE (historical; superseded by the merged P1, P2, and P3 preplanning records).
 
-Baseline: origin/main at 8477e1f077c86948c9ab872b319365a4ca534b3e
+Baseline: origin/main at 53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694
 
 This register separates the approved M3 technical contract from deferred Production Cutover and Legacy Retirement decisions. A technical approval is not authorization to modify code, create DDL, migrate data, change production behavior, restore, delete, change the Web default, or start any M3 implementation phase without explicit authorization.
 
@@ -54,7 +57,10 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-29 | Start Operation completion package | The run.start Operation is a Start command tracker, not a Run lifetime projection. Its `running -> completed` transition must commit in the same caller-owned transaction as the first startup Stage `starting -> running`, `stage.started`, the Run `starting -> running`, `run.started`, and both Outbox rows; `completedAt` uses the transaction timestamp and no independent Operation Event is written. Pre-start closure is split into C1a (claim commit not achieved: full Class B rollback, no automatic failure terminal) and C1b (after claim, before `run.started`: atomic Stage/Run/Operation failure closure). | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
 | M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | APPROVED; Option A alignment is implemented only by the current remediation. |
 
-M3-TD-26 through M3-TD-30 are approved technical direction. M3-TD-30 is now aligned to Option A by this remediation; P3C-1 remains separately unauthorized. They resolve the five P3 Owner Decision candidates (formerly OD-P3-01 through OD-P3-05) recorded in the P3 preplanning documents.
+M3-TD-26 through M3-TD-30 are approved technical direction. M3-TD-30 is
+aligned to Option A; Start is implemented, and Retry production remains
+separately unauthorized. They resolve the five P3 Owner Decision candidates
+(formerly OD-P3-01 through OD-P3-05) recorded in the P3 preplanning documents.
 
 M3-TD-01 through M3-TD-25 retain their historical contract wording. Any P1/P2
 implementation boundary recorded in those rows is a historical phase
@@ -429,6 +435,10 @@ This decision does not authorize route code, Web changes, Legacy retirement, or 
 
 ## 3.1 P3C-1 Start pre-implementation blocker closure (docs-only)
 
+> **SUPERSEDED / HISTORICAL — NOT CURRENT IMPLEMENTATION STATUS.** PR #31
+> subsequently implemented and merged the Start Route. This section preserves
+> the earlier contract closure; the current Retry contract is §3.2.
+
 Record status: the three P3C-1 Start pre-implementation HIGH blockers are
 CLOSED as a contract-only remediation on 2026-08-06. This record does not add
 a new M3-TD decision, does not change the M3-TD-30 sequence, and does not
@@ -613,6 +623,347 @@ RunEngine, LifecycleTransactionService, RunStageRepository, Migration/
 Registry, Web, package or lockfiles, Legacy/v2 routes, Conversation EventBus,
 and Production Cutover remain forbidden.
 
+## 3.2 P3C-1 Retry pre-implementation contract closure (docs-only)
+
+Record status: this section closes the P3C-1 Retry Portion contract blockers
+from the post-PR-#31 main baseline `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`.
+It changes only the five allowlisted Markdown documents. It does not add a
+Retry route, Child Run, Operation transition, Snapshot clone, Stage clone,
+Event, Outbox write, Migration, test, or production behavior. Retry
+production implementation, PR creation, P3D, Migration 014, and Production
+Cutover remain unauthorized.
+
+The existing M3-TD-30 Option A decision is the governing technical choice.
+The current Retry contract below is the only current P3C-1 Retry contract.
+Earlier generic Retry DTOs and implementation-time alternatives are
+`SUPERSEDED / HISTORICAL — NOT CURRENT CONTRACT` where they occur in the
+Runtime Specification and plan.
+
+### B1 — Canonical route and workspace resolution
+
+The one canonical endpoint is:
+
+```text
+POST /api/runs/:runId/retry
+```
+
+`runId` is the opaque Parent Run ID. The route does not accept `workspaceId`
+in path, query, or body. It calls the existing read-only
+`RunRepository.findWorkspaceIdByOpaqueId(runId)` locator before query parsing,
+body parsing, header normalization, or business validation. A locator miss is
+`404 RUN_NOT_FOUND`. The locator returns only `workspaceId`; it is not a Run
+status/version guard and performs no mutation. Every later Parent, Child,
+Operation, Snapshot, Stage, and Idempotency access is scoped by the resolved
+workspace ID. No second global Run lookup is permitted.
+
+### B2 — Header and request DTO
+
+`Idempotency-Key` is required exactly once. The existing parser is reused:
+header names are case-insensitive, the value is trimmed, duplicate or
+comma-joined values are rejected, and the raw key is never logged or exposed.
+Missing, duplicate, empty, or invalid values return `400 VALIDATION_FAILED`.
+There is no no-key A2 path in the current contract.
+
+`expectedVersion` is required and must be a positive safe integer representing
+the Parent Run version. The only accepted JSON body is:
+
+```json
+{ "expectedVersion": 3 }
+```
+
+The body must be a non-empty plain JSON object with `Content-Type:
+application/json`. Empty payloads, malformed JSON, `null`, primitives, arrays,
+unknown fields, and any query parameter return `400 VALIDATION_FAILED`.
+The following are not accepted in this M3 DTO: `mode`, `stageId`,
+`providerOverrides`, `reuseTaskMemory`, `reuseWorktree`, `reason`,
+`createdBy`, `requestedBy`, `workspaceId`, `parentRunId`, `operationId`, and
+`correlationId`. The current generic Retry DTO is historical and does not
+coexist with this contract.
+
+### B3 — Child Run lineage and server-owned fields
+
+The Parent must be `failed` at the supplied expected version. The Child is
+created with exactly these values:
+
+| Field | Frozen value |
+| --- | --- |
+| `workspaceId` | Parent `workspaceId` |
+| `taskId` | Parent `taskId` |
+| `parentRunId` | Parent `id` |
+| `rootRunId` | Parent `rootRunId` |
+| `status` | `queued` |
+| `reason` | `retry` |
+| `origin` | `v2_api`, server-owned by this canonical route |
+| `objective` | Parent `objective`, inherited and not client supplied |
+| `createdBy` | Parent `createdBy`, inherited from persisted server-owned data |
+| `nextEventSequence` | `1` |
+| `version` | `1` |
+
+Child ID and all Child timestamps are newly generated by the server. Child
+failure, cancellation, started, completed, and runtime output fields start
+empty. The Parent status, version, failure data, timestamps, and all other
+data remain unchanged. Task status, version, `acceptedRunId`, and
+`pendingResultRunId` remain unchanged. The client cannot provide or override
+any lineage, origin, objective, or creator field.
+
+### B4 — Snapshot and Stage Graph source
+
+Retry uses Option A: it clones the Parent's persisted Snapshot V2 and its
+persisted RunStage graph. It never re-resolves current Workspace, Workflow,
+Agent, Provider, Worktree, or other defaults. A missing Parent Snapshot, a V1
+Parent Snapshot, malformed Snapshot, or a Snapshot/Stage binding mismatch is
+`500 RUN_RETRY_STATE_INCONSISTENT` and has zero side effects; V1 is not
+silently upgraded.
+
+The Child receives a new Snapshot row and a newly computed canonical JSON and
+hash. The cloned payload preserves the V2 workflow definition identity and
+hash, `worktreeMode`, stage `dependsOn`, agent snapshots, provider snapshots,
+and security redaction result. Only the run metadata is remapped to the Child
+and `capturedAt` is newly generated. Parent Snapshot ID, runtime state,
+outputs, errors, stage IDs, and timestamps are never copied.
+
+The Parent graph must match the Snapshot V2 stage keys and sequences. Each
+Child Stage is inserted with a new ID, Child Run ID, Child Snapshot ID,
+matching `workflowStageKey` and `sequence`, `attempt = 1`, `status = pending`,
+fresh server timestamps, and `version = 1`. Stage `dependsOn` remains frozen
+in Snapshot V2; no mutable dependency row or Parent Stage state is copied.
+
+The current code already provides Snapshot V2 validation/canonical hashing,
+`RunStageRepository.insertInitial`, and the V2 creation graph validator. The
+future implementation needs one minimal additive
+`SnapshotService.clonePersistedRun(run, parentSnapshot, parentStages)` seam
+that accepts V2 only, remaps run metadata, refreshes `capturedAt`, inserts the
+new Snapshot, and inserts fresh initial Stages. It must not call a resolver or
+read current configuration.
+
+### B5 — Retry Operation v1 to v3
+
+The Retry Operation is bound to the Parent, not the Child:
+
+```text
+type = run.retry
+aggregateType = run
+aggregateId = Parent.id
+runId = Parent.id
+correlationId = operation.id
+```
+
+Within the same caller-owned A2 transaction it moves exactly:
+
+```text
+queued / version 1
+→ running / version 2
+→ completed / version 3
+```
+
+`OperationService.createWithinTransaction()` creates v1,
+`transitionWithinTransactionAt()` performs each transition with canonical
+server timestamps, and the completed transition writes exactly
+`result = { resourceType: "run", resourceId: Child.id }`. No client timestamp,
+result, status, or correlation value is accepted. The operation is completed
+before `storeSuccess()` and cannot later be rewritten by Engine, Start,
+failure, cancellation, or Child terminal state. Retry creates no
+Operation Event and M3 does not create an `operation_events` table.
+
+### B6 — Complete keyed A2 order
+
+The required and only A2 order is:
+
+1. Read the Parent `runId` path parameter.
+2. Resolve `workspaceId` with the opaque locator.
+3. Return `404 RUN_NOT_FOUND` on locator miss.
+4. Reject query parameters and validate Content-Type, body shape, and the
+   required `expectedVersion`.
+5. Normalize and validate the required `Idempotency-Key`.
+6. Build the fingerprint with `operation = run.retry`, resolved workspace,
+   `pathParams = { runId }`, `domainInput = {}`, and the required version.
+7. Call `IdempotencyService.prepare()` outside the transaction.
+8. Begin caller-owned `BEGIN IMMEDIATE`.
+9. Make `IdempotencyService.resolve()` the first Parent/Child/Operation
+   domain action inside the transaction.
+10. On replay, immediately return the stored original HTTP 201 dual snapshot
+    and do not read current Parent, Child, Operation, Snapshot, or Stage.
+11. On a miss, read the workspace-scoped Parent.
+12. Apply the exact Parent version guard.
+13. Require Parent status `failed`.
+14. Read Retry history and direct Child rows and apply the complete fencing
+    matrix before creating anything.
+15. Read the Parent Snapshot V2 and Stage graph and validate their binding.
+16. Create the Parent-bound queued `run.retry` Operation at version 1.
+17. Transition it to `running` at version 2.
+18. Insert the queued Child Run with the frozen lineage.
+19. Clone and insert the Child Snapshot V2.
+20. Insert all Child initial Stages in Snapshot sequence order.
+21. Append Child `run.created` through the existing graph-event seam.
+22. Append Child `stage.created` Events in the same frozen sequence order.
+23. Insert the matching Outbox row for every creation Event.
+24. Transition Retry Operation to `completed` at version 3.
+25. Write the Child result binding on that completed Operation.
+26. Construct the schemaVersion 1 Retry replay envelope from the acceptance-time
+    Child and completed Operation snapshots.
+27. Call `IdempotencyService.storeSuccess()` with HTTP 201 and that envelope.
+28. Commit.
+29. Return top-level `{ "run": ..., "operation": ... }` only after commit.
+
+No nested transaction, transaction-external Parent guard, replay reread,
+automatic Start, Engine tick, Engine dispatch, or Child dispatch is allowed.
+
+### B7 — Retry history and duplicate Child fencing
+
+The deterministic decision matrix is:
+
+| State observed after replay miss | Result |
+| --- | --- |
+| No direct Child and no Retry history | Eligible to create one Child |
+| Only failed/cancelled Retry history and no Child | Eligible to create one Child |
+| One completed Retry + its one valid Child | `409 RUN_RETRY_ALREADY_CREATED` |
+| Queued/running Retry with no Child | `500 RUN_RETRY_STATE_INCONSISTENT` |
+| Queued/running Retry with a Child | `500 RUN_RETRY_STATE_INCONSISTENT` |
+| Retry Operation exists but Child is missing | `500 RUN_RETRY_STATE_INCONSISTENT` |
+| Child exists but completed Retry is missing | `500 RUN_RETRY_STATE_INCONSISTENT` |
+| More than one non-terminal Retry or more than one direct Child | `500 RUN_RETRY_AUTHORIZATION_AMBIGUOUS` |
+| Same key with a committed success record | Original HTTP 201 replay, before current-state reads |
+| Different key after a valid completed Retry/Child pair | `409 RUN_RETRY_ALREADY_CREATED` |
+| Stale `expectedVersion` | `409 VERSION_CONFLICT`, zero side effects |
+| Parent status other than `failed` | `409 RUN_NOT_RETRYABLE`, zero side effects |
+
+History priority is replay, structural ambiguity, structural inconsistency,
+version, Parent status, then valid duplicate Child. A committed A2 transaction
+cannot expose a partially created Retry Operation, Child, Snapshot, Stage, or
+Event; any such combination is therefore state-inconsistent and fails closed.
+
+### B8 — HTTP 201 response and replay
+
+The live and replay response is HTTP 201 with no internal discriminator:
+
+```json
+{
+  "run": {
+    "id": "run_child_...",
+    "workspaceId": "workspace_...",
+    "taskId": "task_...",
+    "parentRunId": "run_parent_...",
+    "rootRunId": "run_root_...",
+    "status": "queued",
+    "reason": "retry",
+    "origin": "v2_api",
+    "nextEventSequence": 1,
+    "createdBy": "server-owned-parent-value",
+    "createdAt": "...",
+    "updatedAt": "...",
+    "version": 1
+  },
+  "operation": {
+    "id": "op_...",
+    "type": "run.retry",
+    "status": "completed",
+    "workspaceId": "workspace_...",
+    "aggregateType": "run",
+    "aggregateId": "run_parent_...",
+    "runId": "run_parent_...",
+    "correlationId": "op_...",
+    "result": { "resourceType": "run", "resourceId": "run_child_..." },
+    "createdAt": "...",
+    "startedAt": "...",
+    "completedAt": "...",
+    "version": 3
+  }
+}
+```
+
+The persisted Idempotency envelope is schemaVersion 1, but that discriminator
+is internal and is never exposed in the HTTP body. A replay sets
+`Idempotency-Replayed: true` and returns the original acceptance-time queued
+Child and completed v3 Operation forever; later Child Start, Engine, or
+terminal state cannot change it.
+
+### B9 — Event and correlation boundary
+
+The completed Retry Operation uses `correlationId = retryOperation.id`. Child
+`run.created` and every Child `stage.created` use `correlationId = childRun.id`.
+Each `stage.created` has `causationId` and `parentEventId` equal to the Child
+`run.created` Event ID. Future Child execution Events use the independent
+`run.start` Operation ID. The Retry Operation ID never becomes a Child
+execution correlation. Creation Events are not Operation Events and are not
+returned as a Retry-correlation result by the future Operation Events query.
+
+### B10 — Error and SQLite busy contract
+
+The route exposes only this stable error matrix:
+
+| Condition | HTTP | Code | Retryable |
+| --- | ---: | --- | --- |
+| Request/header/query/body validation | 400 | `VALIDATION_FAILED` | false |
+| Parent locator/read miss | 404 | `RUN_NOT_FOUND` | false |
+| Stale Parent version | 409 | `VERSION_CONFLICT` | false |
+| Parent is not failed | 409 | `RUN_NOT_RETRYABLE` | false |
+| Key reused with another fingerprint | 409 | `IDEMPOTENCY_KEY_REUSED` | false |
+| Valid Retry already created | 409 | `RUN_RETRY_ALREADY_CREATED` | false |
+| Multiple authorization candidates | 500 | `RUN_RETRY_AUTHORIZATION_AMBIGUOUS` | false |
+| Invalid or incomplete persisted Retry state | 500 | `RUN_RETRY_STATE_INCONSISTENT` | false |
+| Invalid Idempotency record | 500 | `IDEMPOTENCY_RECORD_INVALID` | false |
+| Human-held SQLite lock exceeds timeout | 503 | `RUN_RETRY_BUSY` | true |
+| Unknown failure | 500 | `INTERNAL_ERROR` | false |
+
+The busy response message is exactly `Run retry is temporarily unavailable`.
+No response may expose SQLite text, SQL, a database path, lock owner, raw
+Idempotency-Key, stack, Parent, Child, or internal payload data.
+
+### B11 — A2 rollback and concurrency proof obligations
+
+Failure injection must cover Retry Operation insert, queued-to-running,
+Child insert, Snapshot insert, every Stage insert, `run.created`, every
+`stage.created`, every Outbox insert, running-to-completed, result binding, and
+Idempotency `storeSuccess`. Every failure before Commit must leave no Child,
+Child Snapshot, Child Stage, creation Event, Outbox, Retry Operation, or
+Idempotency Success record; Parent and Task must be byte-for-byte unchanged.
+
+The required concurrency matrix is: same key produces exactly one live HTTP
+201 and one replay HTTP 201; different keys produce one live HTTP 201 and one
+stable `409 RUN_RETRY_ALREADY_CREATED`; stale version produces zero side
+effects; Parent failure transition versus Retry has one optimistic winner;
+existing Child retry is fenced; human-held SQLite lock returns 503; and a
+normal race never converges through 503. Because the header is required, no-key
+race behavior is explicitly rejected at request validation and is not an A2
+variant.
+
+### B12 — Future implementation allowlist and boundaries
+
+When separately authorized, the Retry production implementation may modify
+only these existing production/test files:
+
+- `apps/server/src/routes/runLifecycle.ts` — add the canonical Retry route,
+  request validation, safe error mapping, and replay header; keep Start path
+  behavior unchanged.
+- `apps/server/src/routes/runLifecycle.test.ts` — add route, replay, error,
+  rollback, and concurrency coverage.
+- `apps/server/src/services/TaskRunService.ts` — add the caller-owned A2
+  orchestration and history/Parent fencing; do not change the Idempotency Core.
+- `apps/server/src/services/TaskRunService.test.ts` — add service-level A2,
+  lineage, failure-injection, and race coverage.
+- `apps/server/src/services/SnapshotService.ts` — add only
+  `clonePersistedRun(run, parentSnapshot, parentStages)` as the V2-only
+  frozen-snapshot clone seam described in B4.
+- `apps/server/src/services/SnapshotService.test.ts` — prove clone identity,
+  fresh Child metadata, fresh IDs/timestamps, and no current-config read.
+
+`OperationService`, `OperationRepository`, `RunRepository`,
+`RunSnapshotRepository`, `RunStageRepository`,
+`LifecycleTransactionService.createRunGraphEventsWithinTransaction()`, and
+the existing Idempotency types/service/repository are reusable as-is. No
+changes are authorized to Shared, Idempotency Core, Migration/Registry,
+Operation implementation, LifecycleTransactionService, RunEngine,
+WorkflowExecutor, StageExecutor, Web, package files, lockfiles, or real
+`.agentos` data. The current docs-only closure itself may modify only the five
+Markdown files named by this task.
+
+### Retry closure non-goals and re-review gate
+
+This closure does not authorize Retry production implementation, a Draft PR,
+P3D, P3E, Migration 014, Production Cutover, Provider/Process/CLI runtime,
+Operation Cancel, Operation Events query, or any database operation. An
+independent docs review is required before implementation authorization.
+
 ## 4. Deferred Post-M3 Decisions
 
 The following historical decisions remain recorded but do not block the M3 Lifecycle, Event and API Foundation. Every row is NOT AN M3 P1 BLOCKER and NOT AUTHORIZED IN M3.
@@ -638,19 +989,23 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 ## 5. P0 closure and current authorization status
 
 - Technical direction: APPROVED BY INDEPENDENT TECHNICAL REVIEW.
-- P3C-0B Post-Merge Remediation 1: AUTHORIZED only for the six-file
-  Option A alignment allowlist; no P3C-1 production flow is authorized.
+- P3C-0B Post-Merge Remediation 1: historical six-file Option A alignment
+  allowlist; it does not authorize Retry production.
 - Final independent P0 review: COMPLETE (historical).
 - P0 docs-only merge gate: COMPLETE (historical; P1, P2, and the P3 preplanning package have since merged).
 - M3 P1: IMPLEMENTED AND MERGED.
 - M3 P2: IMPLEMENTED AND MERGED.
 - M3 P3 preplanning: MERGED via PR #21.
-- M3 P3 owner decision freeze: M3-TD-30 is aligned to Option A; P3C-1 and
-  later implementation remain NOT AUTHORIZED.
-- M3 P3C-1 Start pre-implementation blockers: CLOSED (docs-only); Start
-  production implementation remains NOT AUTHORIZED.
+- M3 P3 owner decision freeze: M3-TD-30 is aligned to Option A; Start is
+  merged, while Retry production and later implementation remain NOT
+  AUTHORIZED.
+- M3 P3C-1 Start production acceptance: IMPLEMENTED AND MERGED via PR #31;
+  the merged Start route is current state and does not authorize Retry.
+- M3 P3C-1 Retry pre-implementation contract closure: this docs-only
+  candidate closes the Retry contract blockers below; Retry production
+  implementation remains NOT AUTHORIZED until independent docs review.
 - P3B-2A CONTRACT ALIGNMENT: COMPLETED AND MERGED via PR #25; this historical
-  completion does not authorize P3C-1 Start implementation.
+  completion does not authorize Retry production implementation.
 - Unresolved P3 Owner Decision candidates: 0.
 - Approved P3 decisions: 5.
 - M3-TD sequence ends at M3-TD-30; no later decision exists or is authorized.

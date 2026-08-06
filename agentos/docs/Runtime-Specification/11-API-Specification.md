@@ -1973,6 +1973,11 @@ interface CancelRunRequest {
 
 ## 77. Run Retry
 
+> **SUPERSEDED / HISTORICAL — NOT CURRENT CONTRACT.** The generic Retry DTO
+> below is retained for compatibility history only. The current M3 P3C-1
+> Retry contract is §77.1 and is the only current Retry request/response
+> contract.
+
 ```text
 POST /api/runs/:runId/retry
 ```
@@ -1998,6 +2003,198 @@ interface RetryRunRequest {
 ```
 
 默认创建 Child Run 和新 Worktree。
+
+---
+
+## 77.1 M3 P3C-1 Retry current contract (Option A)
+
+This is the sole current M3 Retry contract. It is a docs-only closure and does
+not authorize the production route or any Child creation implementation.
+
+### Route, scope, and request
+
+```text
+POST /api/runs/:runId/retry
+```
+
+`runId` is the opaque Parent Run ID. No `workspaceId` is accepted in path,
+query, or body. The route calls the read-only
+`findWorkspaceIdByOpaqueId(runId)` locator before query/body/header validation;
+locator miss is `404 RUN_NOT_FOUND`. All later reads and writes are scoped to
+that workspace.
+
+`Idempotency-Key` is required exactly once. It is case-insensitively found,
+trimmed, validated, and never returned or logged. Missing, duplicate, empty,
+comma-joined, or invalid values return `400 VALIDATION_FAILED`. There is no
+no-key Retry path.
+
+The only accepted request body is a non-empty plain JSON object with
+`Content-Type: application/json`:
+
+```json
+{ "expectedVersion": 3 }
+```
+
+`expectedVersion` is required and must be a positive safe integer for the
+Parent Run. Query parameters, malformed/empty JSON, `null`, arrays,
+primitives, unknown fields, and all of the following fields are rejected with
+`400 VALIDATION_FAILED`: `mode`, `stageId`, `providerOverrides`,
+`reuseTaskMemory`, `reuseWorktree`, `reason`, `createdBy`, `requestedBy`,
+`workspaceId`, `parentRunId`, `operationId`, and `correlationId`.
+
+### Parent and Child contract
+
+The Parent must be `failed` at the exact requested version. A stale version
+returns `409 VERSION_CONFLICT`; every non-failed status returns
+`409 RUN_NOT_RETRYABLE`. Neither the Parent nor its Task is modified.
+
+The Child is server-created with this exact lineage: `workspaceId` and
+`taskId` from the Parent; `parentRunId = Parent.id`; `rootRunId =
+Parent.rootRunId`; `status = queued`; `reason = retry`; `origin = v2_api`;
+`objective = Parent.objective`; `createdBy = Parent.createdBy`;
+`nextEventSequence = 1`; and `version = 1`. IDs and timestamps are fresh.
+The client cannot supply any of these values.
+
+### Snapshot and Stage source
+
+Retry clones the Parent's persisted Snapshot V2 and persisted RunStage graph.
+It never resolves current Workspace, Workflow, Agent, Provider, Worktree, or
+other defaults. A missing/V1/malformed Snapshot or a Snapshot/Stage mismatch
+returns `500 RUN_RETRY_STATE_INCONSISTENT` with zero side effects.
+
+The new Snapshot keeps the V2 workflow identity/hash, `worktreeMode`, stage
+`dependsOn`, Agent/Provider snapshots, and redaction result. It remaps only the
+run metadata to the Child and creates a fresh `capturedAt`, canonical JSON,
+content hash, and row ID. New Child Stages have fresh IDs, Child Run/Snapshot
+bindings, the same key/sequence, `attempt = 1`, `status = pending`, and
+`version = 1`; runtime state, output, errors, timestamps, and Parent IDs are
+not copied.
+
+### A2 transaction order
+
+The caller owns one `BEGIN IMMEDIATE` transaction. The exact order is:
+
+1. Read path Parent `runId`.
+2. Resolve the workspace with `findWorkspaceIdByOpaqueId`.
+3. Return `404 RUN_NOT_FOUND` on locator miss.
+4. Reject query parameters and validate Content-Type, body, and required
+   `expectedVersion`.
+5. Normalize and validate `Idempotency-Key`.
+6. Build the `run.retry` fingerprint from the resolved workspace, path
+   `{runId}`, empty domain input, and the required version.
+7. Call `prepare()` outside the transaction.
+8. Begin `BEGIN IMMEDIATE`.
+9. Call `resolve()` as the first Parent/Child/Operation domain action.
+10. On replay, return the stored original HTTP 201 dual snapshot immediately;
+    do not read current entities.
+11. Read the workspace-scoped Parent.
+12. Apply the exact Parent version guard.
+13. Require Parent status `failed`.
+14. Apply Retry-history and direct-Child fencing.
+15. Read and validate the Parent Snapshot V2 and Stage graph.
+16. Create the Parent-bound queued `run.retry` Operation at version 1.
+17. Transition it to `running` at version 2.
+18. Insert the queued Child Run.
+19. Insert the cloned Child Snapshot.
+20. Insert Child initial Stages in Snapshot sequence order.
+21. Append Child `run.created`.
+22. Append Child `stage.created` Events in that order.
+23. Insert one Outbox row for every creation Event.
+24. Transition Retry Operation to `completed` at version 3.
+25. Write result `{ "resourceType": "run", "resourceId": Child.id }`.
+26. Build the schemaVersion 1 internal replay envelope.
+27. Call `storeSuccess()` with HTTP 201 and the acceptance-time envelope.
+28. Commit.
+29. Return the top-level response only after commit.
+
+Nested transactions, transaction-external Parent guards, replay rereads,
+automatic Start, Engine tick/dispatch, and Child dispatch are forbidden.
+
+### Operation, Event, and correlation contract
+
+The Retry Operation is Parent-bound with `aggregateType = run`,
+`aggregateId = Parent.id`, `runId = Parent.id`, and
+`correlationId = operation.id`. Its only lifecycle is
+`queued/v1 → running/v2 → completed/v3`; the completed result points to the
+Child. Creation Events use `correlationId = Child.id`; each
+`stage.created.causationId` and `parentEventId` points to Child
+`run.created`. Future execution Events use a separate `run.start` Operation
+ID. Retry creates no Operation Event and no `operation_events` row.
+
+### HTTP 201 and replay body
+
+The live response is HTTP 201:
+
+```json
+{
+  "run": {
+    "id": "run_child_...",
+    "workspaceId": "workspace_...",
+    "taskId": "task_...",
+    "parentRunId": "run_parent_...",
+    "rootRunId": "run_root_...",
+    "status": "queued",
+    "reason": "retry",
+    "origin": "v2_api",
+    "nextEventSequence": 1,
+    "createdBy": "server-owned-parent-value",
+    "createdAt": "...",
+    "updatedAt": "...",
+    "version": 1
+  },
+  "operation": {
+    "id": "op_...",
+    "type": "run.retry",
+    "status": "completed",
+    "workspaceId": "workspace_...",
+    "aggregateType": "run",
+    "aggregateId": "run_parent_...",
+    "runId": "run_parent_...",
+    "correlationId": "op_...",
+    "result": { "resourceType": "run", "resourceId": "run_child_..." },
+    "createdAt": "...",
+    "startedAt": "...",
+    "completedAt": "...",
+    "version": 3
+  }
+}
+```
+
+The persisted envelope has internal `schemaVersion: 1`, which is never
+exposed in the HTTP body. A same-key replay returns the original queued Child
+and completed v3 Operation, sets `Idempotency-Replayed: true`, and never
+depends on later Child/Operation state.
+
+### Retry history, errors, rollback, and concurrency
+
+- No Child plus no history, or only failed/cancelled Retry history: eligible.
+- One valid completed Retry plus one Child: different key returns
+  `409 RUN_RETRY_ALREADY_CREATED`; same key replays before current reads.
+- Queued/running Retry, missing Child, missing completed Retry, or any
+  Snapshot/Stage mismatch: `500 RUN_RETRY_STATE_INCONSISTENT`.
+- Multiple non-terminal Retry Operations or direct Children:
+  `500 RUN_RETRY_AUTHORIZATION_AMBIGUOUS`.
+- Key reuse with a different fingerprint: `409 IDEMPOTENCY_KEY_REUSED`.
+- Human-held SQLite timeout: `503 RUN_RETRY_BUSY`, message `Run retry is
+  temporarily unavailable`, `retryable: true`.
+- Unknown failures: sanitized `500 INTERNAL_ERROR`.
+
+Validation is `400 VALIDATION_FAILED`; missing Parent is `404 RUN_NOT_FOUND`;
+stale version is `409 VERSION_CONFLICT`; non-failed Parent is
+`409 RUN_NOT_RETRYABLE`; invalid Idempotency state is
+`500 IDEMPOTENCY_RECORD_INVALID`. No error leaks SQLite text, SQL, paths,
+keys, stack traces, or internal entity data.
+
+Injection at Operation insert/transition, Child, Snapshot, any Stage,
+creation Event, any Outbox, completion/result, or `storeSuccess` must roll
+back the complete A2 transaction: no Child, Snapshot, Stage, Event, Outbox,
+Retry Operation, or Idempotency Success; Parent and Task are unchanged.
+Same-key concurrency has one live 201 and one replay 201; different keys have
+one live 201 and one stable duplicate 409; stale versions have zero side
+effects; Parent-failure races have one optimistic winner; normal races never
+use 503.
+
+This contract is M3 P3C-1 Retry pre-implementation documentation only.
 
 ---
 
