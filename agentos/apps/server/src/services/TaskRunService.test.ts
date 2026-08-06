@@ -1930,3 +1930,78 @@ test('P3C1-S20 constructor failure closes the database handle and preserves the 
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('P3C1-S21 start history matrix enforces the frozen combination precedence', () => {
+  const fx = v2Fixture();
+  try {
+    const seedHistory = (
+      statuses: Array<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>,
+    ): { task: Task; run: Run } => {
+      const { task, run } = createQueuedRunForStart(fx);
+      for (const status of statuses) {
+        const operation = seedStartOperation(fx, run);
+        if (status === 'queued') continue;
+        transitionSeededOperation(fx, operation.id, operation.version, 'running');
+        if (status === 'running') continue;
+        transitionSeededOperation(fx, operation.id, operation.version + 1, status);
+      }
+      return { task, run };
+    };
+    let matrixKeyCounter = 0;
+    const expectRejected = (
+      statuses: Array<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>,
+      code: string,
+    ): void => {
+      const { task, run } = seedHistory(statuses);
+      const seededCount = startOperationRows(fx, run.id).length;
+      // Baselines are taken after seeding: the seeded Run creation itself
+      // writes run.created events, so the rejection guard must prove it adds
+      // nothing on top of the seeded state.
+      const eventsBeforeReject = tableRowCount(fx, 'runtime_events');
+      const outboxBeforeReject = tableRowCount(fx, 'outbox_messages');
+      const deadLettersBeforeReject = tableRowCount(fx, 'dead_letters');
+      matrixKeyCounter += 1;
+      assert.throws(
+        () => fx.service.startRunOperationForV2(fx.workspace.id, run.id, `p3c1-matrix-key-${matrixKeyCounter}`),
+        (error: unknown) => {
+          expectCode(error, code);
+          return true;
+        },
+      );
+      // Rejection wrote nothing: no third operation, no idempotency success,
+      // no events/outbox/dead letters, and Run/Task are untouched.
+      assert.equal(startOperationRows(fx, run.id).length, seededCount);
+      assert.equal(idempotencyRecordCount(fx), 0);
+      assert.equal(tableRowCount(fx, 'runtime_events'), eventsBeforeReject);
+      assert.equal(tableRowCount(fx, 'outbox_messages'), outboxBeforeReject);
+      assert.equal(tableRowCount(fx, 'dead_letters'), deadLettersBeforeReject);
+      const persistedRun = fx.store.runRepository().findById(fx.workspace.id, run.id)!;
+      assert.equal(persistedRun.status, 'queued');
+      assert.equal(persistedRun.version, run.version);
+      const persistedTask = fx.store.taskRepository().findById(fx.workspace.id, task.id)!;
+      assert.equal(persistedTask.status, task.status);
+      assert.equal(persistedTask.version, task.version);
+    };
+    // Frozen precedence: ambiguous > completed > queued active > inconsistent.
+    expectRejected(['queued', 'completed'], 'RUN_START_STATE_INCONSISTENT');
+    expectRejected(['completed', 'failed'], 'RUN_START_STATE_INCONSISTENT');
+    expectRejected(['queued', 'running', 'completed'], 'RUN_START_AUTHORIZATION_AMBIGUOUS');
+    expectRejected(['queued'], 'RUN_START_ALREADY_ACTIVE');
+    expectRejected(['running'], 'RUN_START_STATE_INCONSISTENT');
+    expectRejected(['completed'], 'RUN_START_STATE_INCONSISTENT');
+    // failed/cancelled terminal-only history allows a fresh acceptance.
+    const allowed = seedHistory(['failed', 'cancelled']);
+    const eventsBeforeAllow = tableRowCount(fx, 'runtime_events');
+    const outboxBeforeAllow = tableRowCount(fx, 'outbox_messages');
+    const deadLettersBeforeAllow = tableRowCount(fx, 'dead_letters');
+    const live = fx.service.startRunOperationForV2(fx.workspace.id, allowed.run.id);
+    assert.equal(live.httpStatus, 202);
+    assert.equal(live.replayed, false);
+    assert.equal(startOperationRows(fx, allowed.run.id).length, 3);
+    assert.equal(tableRowCount(fx, 'runtime_events'), eventsBeforeAllow);
+    assert.equal(tableRowCount(fx, 'outbox_messages'), outboxBeforeAllow);
+    assert.equal(tableRowCount(fx, 'dead_letters'), deadLettersBeforeAllow);
+  } finally {
+    closeV2(fx);
+  }
+});

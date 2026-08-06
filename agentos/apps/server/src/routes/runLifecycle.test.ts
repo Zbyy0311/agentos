@@ -35,7 +35,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 // ---------------------------------------------------------------------------
 
 interface StartRaceWorkerData {
-  mode: 'run-start-race';
+  mode: 'run-start-race' | 'store-open-under-lock';
   root: string;
   workspaceId: string;
   runId: string;
@@ -70,6 +70,55 @@ function executeStartRaceWorkerCall(data: StartRaceWorkerData): StartRaceWorkerM
 const currentWorkerData = workerData as StartRaceWorkerData | undefined;
 
 if (!isMainThread && parentPort && currentWorkerData?.mode === 'run-start-race') {
+  // MEDIUM-3: 'ready' means START CALL READY — the store, its migrations,
+  // and the service are fully constructed before the barrier; 'go' fires
+  // only startRunOperationForV2, so the two workers truly race A1.
+  const port = parentPort;
+  const data = currentWorkerData;
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(data.root);
+    const service = new TaskRunService(store, {
+      idempotencyService: new IdempotencyService(store.idempotencyRepository()),
+    });
+    port.postMessage('ready');
+    port.once('message', message => {
+      if (message !== 'go') {
+        store?.close();
+        port.close();
+        return;
+      }
+      let result: StartRaceWorkerMessage;
+      try {
+        const call = service.startRunOperationForV2(data.workspaceId, data.runId, data.key);
+        result = { outcome: 'live', httpStatus: call.httpStatus, replayed: call.replayed, body: call.body };
+      } catch (error) {
+        const code = (error as { code?: unknown } | null)?.code;
+        result = {
+          outcome: 'error',
+          code: typeof code === 'string' ? code : null,
+          message: error instanceof Error ? error.message : String(error),
+        };
+      } finally {
+        store?.close();
+      }
+      port.postMessage(result);
+      port.close();
+    });
+  } catch (error) {
+    store?.close();
+    const code = (error as { code?: unknown } | null)?.code;
+    port.postMessage({
+      outcome: 'error',
+      code: typeof code === 'string' ? code : null,
+      message: error instanceof Error ? error.message : String(error),
+    });
+    port.close();
+  }
+} else if (!isMainThread && parentPort && currentWorkerData?.mode === 'store-open-under-lock') {
+  // R28 keeps constructor-under-lock semantics on this separate mode: the
+  // barrier is signalled first and the SqliteStore constructor runs under
+  // the foreign lock after 'go'.
   const port = parentPort;
   port.postMessage('ready');
   port.once('message', message => {
@@ -95,17 +144,29 @@ function spawnStartRaceWorker(data: StartRaceWorkerData): SpawnedRaceWorker {
     execArgv: ['--import', 'tsx'],
   });
   let resolveReady!: () => void;
+  let rejectReady!: (error: Error) => void;
   let resolveResult!: (message: StartRaceWorkerMessage) => void;
   let rejectResult!: (error: Error) => void;
-  const ready = new Promise<void>(resolvePromise => { resolveReady = resolvePromise; });
+  const ready = new Promise<void>((resolvePromise, rejectPromise) => {
+    resolveReady = resolvePromise;
+    rejectReady = rejectPromise;
+  });
   const result = new Promise<StartRaceWorkerMessage>((resolvePromise, rejectPromise) => {
     resolveResult = resolvePromise;
     rejectResult = rejectPromise;
   });
+  let readySettled = false;
   worker.on('message', message => {
     if (message === 'ready') {
+      readySettled = true;
       resolveReady();
       return;
+    }
+    if (!readySettled) {
+      readySettled = true;
+      rejectReady(new Error(
+        `start race worker failed before signalling ready: ${(message as { message?: string }).message ?? 'unknown'}`,
+      ));
     }
     resolveResult(message as StartRaceWorkerMessage);
   });
@@ -746,7 +807,7 @@ test('P3C1-R28 a store connection waits out a short foreign write lock instead o
   const fx = createRaceFixture();
   const locker = new DatabaseSync(join(fx.root, '.agentos', 'agentos.sqlite'));
   try {
-    const worker = spawnStartRaceWorker({ mode: 'run-start-race', root: fx.root, workspaceId: fx.workspaceId, runId: fx.runId });
+    const worker = spawnStartRaceWorker({ mode: 'store-open-under-lock', root: fx.root, workspaceId: fx.workspaceId, runId: fx.runId });
     await worker.ready;
     locker.exec('BEGIN IMMEDIATE');
     const startedAt = Date.now();
@@ -766,6 +827,154 @@ test('P3C1-R28 a store connection waits out a short foreign write lock instead o
     locker.close();
     closeRaceFixture(fx);
   }
+});
+
+// -------------------------------------------------------------------------
+// Remote review remediation 1 — HIGH-1 locator-first ordering, route-local
+// safe parser mapping, and the MEDIUM-1 zero-byte payload contract.
+// -------------------------------------------------------------------------
+
+test('P3C1-R29 unknown run + malformed JSON keeps 404 precedence over parser errors', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const response = await postStart(fx, 'run_01J00000000000000000000000', { raw: '{"expectedVersion":' });
+    expectErrorBody(response, 404, 'RUN_NOT_FOUND');
+    assert.doesNotMatch(response.text, /SyntaxError|Unexpected token|JSON\.parse|stack|E:\\|C:\\/i);
+    assert.equal(tableRowCount(fx.store, 'operations'), 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-R30 known run + malformed JSON maps to a sanitized 400 VALIDATION_FAILED', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const response = await postStart(fx, fx.runId, { raw: '{"expectedVersion":' });
+    assert.equal(response.status, 400);
+    assert.deepEqual(response.json, {
+      error: 'Request body must be a valid JSON object',
+      code: 'VALIDATION_FAILED',
+    });
+    assert.doesNotMatch(response.text, /SyntaxError|Unexpected token|JSON\.parse|stack|database is locked|E:\\|C:\\/i);
+    assert.equal(tableRowCount(fx.store, 'operations'), 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-R31 a zero-byte JSON payload is rejected and writes nothing', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const runBefore = fx.store.runRepository().findById(fx.workspaceId, fx.runId)!;
+    const taskBefore = fx.store.taskRepository().findById(fx.workspaceId, fx.taskId)!;
+    const response = await postStart(fx, fx.runId, { raw: '' });
+    expectErrorBody(response, 400, 'VALIDATION_FAILED');
+    assert.equal(tableRowCount(fx.store, 'operations'), 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+    const runAfter = fx.store.runRepository().findById(fx.workspaceId, fx.runId)!;
+    const taskAfter = fx.store.taskRepository().findById(fx.workspaceId, fx.taskId)!;
+    assert.deepEqual(
+      { status: runAfter.status, version: runAfter.version },
+      { status: runBefore.status, version: runBefore.version },
+    );
+    assert.deepEqual(
+      { status: taskAfter.status, version: taskAfter.version },
+      { status: taskBefore.status, version: taskBefore.version },
+    );
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-R32 an empty chunked JSON payload is rejected and writes nothing', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const response = await fetch(`${fx.baseApi}/runs/${fx.runId}/start`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: new ReadableStream({ start(controller) { controller.close(); } }),
+      duplex: 'half',
+    } as unknown as RequestInit);
+    const text = await response.text();
+    let json: Record<string, unknown> | null = null;
+    try {
+      json = JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      json = null;
+    }
+    assert.equal(response.status, 400);
+    assert.ok(json !== null);
+    assert.equal(json.code, 'VALIDATION_FAILED');
+    assert.equal(tableRowCount(fx.store, 'operations'), 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-R33 application/json with a charset parameter accepts an explicit {} as 202', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const response = await postStart(fx, fx.runId, { raw: '{}', contentType: 'application/json; charset=utf-8' });
+    assert.equal(response.status, 202);
+    expectOperationBody(response.json, fx.workspaceId, fx.runId);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-R34 a non-JSON content type is rejected and writes nothing', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const response = await postStart(fx, fx.runId, { body: {}, contentType: 'text/plain' });
+    expectErrorBody(response, 400, 'VALIDATION_FAILED');
+    assert.equal(tableRowCount(fx.store, 'operations'), 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-R35 an oversized JSON payload maps to a sanitized 400 VALIDATION_FAILED', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const oversized = '{"pad":"' + 'x'.repeat(160 * 1024) + '"}';
+    const response = await postStart(fx, fx.runId, { raw: oversized });
+    assert.equal(response.status, 400);
+    assert.ok(response.json !== null);
+    assert.equal(response.json.code, 'VALIDATION_FAILED');
+    assert.doesNotMatch(response.text, /too large|entity|stack|E:\\|C:\\/i);
+    assert.equal(tableRowCount(fx.store, 'operations'), 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-R36 start-race workers finish store construction before signalling ready', () => {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const source = readFileSync(join(here, 'runLifecycle.test.ts'), 'utf8');
+  // MEDIUM-3: in the run-start-race worker branch, 'ready' must mean
+  // START CALL READY — the store and service are fully constructed first.
+  const raceBranch = source.indexOf("currentWorkerData?.mode === 'run-start-race'");
+  assert.ok(raceBranch >= 0, 'run-start-race worker branch must exist');
+  const raceSection = source.slice(raceBranch, raceBranch + 3000);
+  const constructIndex = raceSection.indexOf('new SqliteStore(');
+  const readyIndex = raceSection.indexOf("postMessage('ready')");
+  assert.ok(constructIndex >= 0, 'run-start-race worker branch must construct the store itself');
+  assert.ok(readyIndex >= 0, 'run-start-race worker branch must post ready');
+  assert.ok(
+    constructIndex < readyIndex,
+    'run-start-race workers must construct SqliteStore before posting ready',
+  );
+  // R28 keeps constructor-under-lock semantics on a separate worker mode
+  // (referenced twice outside this assertion: the mode guard and the spawn).
+  assert.ok(
+    source.split('store-open-under-lock').length >= 3,
+    'store-open-under-lock worker mode must exist for the constructor lock test',
+  );
 });
 
 }

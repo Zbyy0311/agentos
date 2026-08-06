@@ -626,19 +626,21 @@ export class TaskRunService {
     const nonTerminal = starts.filter(
       operation => (NON_TERMINAL_OPERATION_STATUSES as readonly string[]).includes(operation.status),
     );
-    // Full Start history matrix. Multiple non-terminal starts take priority.
+    // Full Start history matrix with frozen precedence (remote review
+    // MEDIUM-2): multiple non-terminal starts first, then ANY completed
+    // Start (an execution A1 never ran is inconsistent even beside a queued
+    // one), then the single non-terminal classification. failed and
+    // cancelled are always just terminal history.
     if (nonTerminal.length > 1) {
       throw domainError('RUN_START_AUTHORIZATION_AMBIGUOUS', 'RUN_START_AUTHORIZATION_AMBIGUOUS');
+    }
+    if (starts.some(operation => operation.status === 'completed')) {
+      throw domainError('RUN_START_STATE_INCONSISTENT', 'RUN_START_STATE_INCONSISTENT');
     }
     if (nonTerminal.length === 1) {
       if (nonTerminal[0]!.status === 'queued') {
         throw domainError('RUN_START_ALREADY_ACTIVE', 'RUN_START_ALREADY_ACTIVE');
       }
-      throw domainError('RUN_START_STATE_INCONSISTENT', 'RUN_START_STATE_INCONSISTENT');
-    }
-    // failed and cancelled are terminal history; a completed Start makes the
-    // state inconsistent (A1 never executed the Run).
-    if (starts.some(operation => operation.status === 'completed')) {
       throw domainError('RUN_START_STATE_INCONSISTENT', 'RUN_START_STATE_INCONSISTENT');
     }
     const operation = operationService.createWithinTransaction({ workspaceId, runId, type: 'run.start' });
