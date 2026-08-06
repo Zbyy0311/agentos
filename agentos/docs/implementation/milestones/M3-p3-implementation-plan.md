@@ -4,7 +4,7 @@ Status: POST-MERGE BASELINE `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`
 P3C-0B: MERGED
 Option A Alignment: MERGED via PR #29
 P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
-P3C-1 Retry contract: LOCAL DOCS CANDIDATE UNDER INDEPENDENT REVIEW
+P3C-1 Retry contract: APPROVED BY INDEPENDENT TECHNICAL REVIEW
 P3C-1 Retry production: NOT AUTHORIZED
 P3D: NOT AUTHORIZED
 P3E: NOT AUTHORIZED
@@ -14,11 +14,9 @@ Remote Checks: UNAVAILABLE — NOT PASS
 
 Current status override: main contains the merged P3C-1 Start portion from
 PR #31 and the M3-TD-30 Option A alignment is merged via PR #29. This
-docs-only candidate is the P3C-1 Retry contract candidate under local review;
-it does not implement Retry. `run.retry` never authorizes Engine claim; Retry
-returns HTTP 201 and requires a separate `run.start`. The legacy
-pre-remediation status line above is SUPERSEDED / HISTORICAL — NOT CURRENT
-STATUS.
+docs-only contract is approved by independent technical review; it does not
+implement Retry. `run.retry` never authorizes Engine claim; Retry returns HTTP
+201 and requires a separate `run.start`.
 
 This plan decomposes M3 P3 into stages P3A, P3B-1, P3B-2A, P3B-2B,
 P3C-0A, P3C-0B, P3C-1, P3D, and P3E. It is a planning artifact: no
@@ -59,10 +57,9 @@ unimplemented portions. P3C-0B and the P3C-1 Start Portion are merged/current
 evidence; P3C-1 Retry production, P3D, and P3E remain NOT AUTHORIZED.
 
 Current implementation alignment: M3-TD-30 Option A is MERGED via PR #29 and
-is the current contract. The present change is limited to the five Markdown
-files named by the Retry pre-implementation closure. P3C-1 Retry production,
-P3D, and Production Cutover remain NOT AUTHORIZED. The legacy approval wording
-above is SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.
+is the current contract. The present status-remediation change is limited to
+the four allowlisted Markdown files. P3C-1 Retry production, P3D, and
+Production Cutover remain NOT AUTHORIZED.
 
 ## 1. Preconditions and Frozen Contracts
 
@@ -1175,9 +1172,9 @@ portion commit requires P3C-0B accepted (M3-TD-30 applied).
 
 ## 10.1 P3C-1 Retry pre-implementation contract closure (current)
 
-This is the current Retry plan at the post-PR-#31 baseline. It is a
-docs-only contract candidate under local review and is not production
-implementation authorization.
+This is the current Retry plan at the post-PR-#31 baseline. It is an
+approved-by-independent-technical-review documentation contract and is not
+production implementation authorization.
 It supersedes any earlier generic Retry DTO, implementation-time choice, or
 statement that a queued/completed Retry Operation authorizes execution.
 
@@ -1400,7 +1397,8 @@ LifecycleTransaction, and Idempotency Core seams are reused as-is. No Shared,
 Migration/Registry, Idempotency Core, Operation implementation,
 LifecycleTransactionService, RunEngine, WorkflowExecutor, StageExecutor, Web,
 package/lockfile, or real `.agentos` data may be changed. This docs-only
-candidate changes only the five Markdown files and creates no PR.
+status remediation changes only the four allowlisted Markdown files and
+creates no PR.
 
 ## 11. Stage P3D — Operation Routes, Atomic Cancel and Event Query
 

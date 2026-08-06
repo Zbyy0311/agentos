@@ -4,7 +4,7 @@ Status: POST-MERGE MAIN BASELINE `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`
 P3C-0B: MERGED
 Option A Alignment: MERGED via PR #29
 P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
-P3C-1 Retry contract: LOCAL DOCS CANDIDATE UNDER INDEPENDENT REVIEW
+P3C-1 Retry contract: APPROVED BY INDEPENDENT TECHNICAL REVIEW
 P3C-1 Retry production: NOT AUTHORIZED
 P3D: NOT AUTHORIZED
 P3E: NOT AUTHORIZED
@@ -14,8 +14,8 @@ Remote Checks: UNAVAILABLE — NOT PASS
 
 This document is the current-state audit of the AgentOS M3 P3 implementation
 after PR #31 merged the P3C-1 Start portion. It describes the checkout at the
-post-merge main baseline and the docs-only Retry contract closure in this
-candidate. It does not authorize Retry production implementation, P3D, P3E,
+post-merge main baseline and the approved docs-only Retry contract in this
+documentation set. It does not authorize Retry production implementation, P3D, P3E,
 Production Cutover, or any production data operation.
 
 ## 1. Baseline and audit boundary
@@ -25,7 +25,8 @@ Production Cutover, or any production data operation.
 - PR #31 merged the Start portion with ordinary two-parent Merge Commit
   `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`.
 - Current docs closure branch: docs/m3-p3c1-retry-blocker-closure.
-- This candidate has no implementation commit before the docs-only commit.
+- This documentation branch contains no implementation commit; its commits are
+  docs-only.
 - Migration Registry contains exactly 001-013. Migration 014 is absent and is
   neither required nor authorized.
 - Remote Checks: UNAVAILABLE — NOT PASS.
@@ -159,8 +160,8 @@ P3C-0B Retry Idempotency Core provides the HTTP 201 schemaVersion 1 dual
 snapshot and completed v3 Operation shape. The production Retry Route,
 failed-Parent expected-version guard, Child/Snapshot/Stage A2 transaction,
 fencing, creation Event/Outbox composition, and independent Start call chain
-remain unimplemented. This candidate freezes those seams and decisions in the
-five docs; it does not implement them.
+remain unimplemented. This contract record freezes those seams and decisions
+in the five-doc baseline; it does not implement them.
 
 ### 3.12 Canonical Top-Level Run/Operation Routes — PARTIAL
 
@@ -222,7 +223,7 @@ P3E, or Cutover.
 | 8 | Duplicate Start | Start route and immutable replay are implemented; the route rejects active different-key/no-key duplicates per the frozen matrix | Preserve same-key replay and fail-closed active Operation history | P3C-1 Start implemented | 7, 20 | Route and TaskRunService retained evidence | Duplicate route mutates a Run twice or bypasses idempotency | Preserve existing idempotency rows |
 | 9 | Start failure rollback | A1 acceptance rollback and P3B-2B lifecycle rollback evidence are retained after PR #31 | Preserve one caller-owned transaction and zero partial acceptance state | P3C-1 Start implemented; P3B-2B | 2, 7, M3-TD-29 | Combined 119/119; full Server 1341/0/2 | Route acceptance creates partial Operation or lifecycle state | Revert Start package; preserve evidence |
 | 10 | Cancel/complete race | Version guards and lifecycle cancellation foundations exist; Operation-facing race ownership is absent | Implement the P3D Operation Cancel race matrix with one caller-owned winner | P3D not authorized | 6, M3-TD-27, 9 | Existing P2C-2A/2B; future P3D matrix | Two terminal outcomes, split rollback, or Cancel assigned to the wrong class | Preserve Events and state; revert P3D package |
-| 11 | Retry Child | Lineage and P3C-0B immutable Retry metadata exist; no production Retry route or Child A2 transaction exists | Add the B1-B12 candidate: failed-Parent guard, V2 Snapshot clone, Child graph, history/active-slot fencing, Events/Outbox, and independent Start call | P3C-1 Retry docs candidate under local review; production not authorized | 6, M3-TD-30, P3C-0B | Idempotency 108/108; future A2 tests required | Retry metadata drives execution, Parent mutation, active-slot bypass, or partial Child acceptance | Preserve Parent and immutable replay rows |
+| 11 | Retry Child | Lineage and P3C-0B immutable Retry metadata exist; no production Retry route or Child A2 transaction exists | Add the B1-B12 candidate: failed-Parent guard, V2 Snapshot clone, Child graph, history/active-slot fencing, Events/Outbox, and independent Start call | P3C-1 Retry contract approved; production not authorized | 6, M3-TD-30, P3C-0B | Idempotency 108/108; future A2 tests required | Retry metadata drives execution, Parent mutation, active-slot bypass, or partial Child acceptance | Preserve Parent and immutable replay rows |
 | 12 | Operation events query | Runtime Event lookup index and Operation correlation fields exist; canonical query route is absent | Add authorized Operation events query with Start correlation and creation-event exclusion | P3D not authorized | 6, 19 | Future route query matrix | New operation_events store or unauthorized Event exposure | Preserve Runtime Events |
 | 13 | Operation cancel | P2 cancelRunWithinTransaction exists; Operation Cancel route and ownership do not | Add M3-TD-27 Operation Cancel route and transaction orchestration | P3D not authorized | 6, 10 | Existing lifecycle cancellation suite; future P3D suite | Operation-row-only cancellation or second Cancel Operation | Preserve Operation, Run, Stage, Event, and Outbox rows |
 | 14 | Task reconciliation | Existing v2 Task/Run linkage remains present; merged Start is additive and Retry is still a future route | Preserve Task active-slot invariants when Retry production is authorized | P3C-1 Retry not authorized | 5, 7, 11 | Full server compatibility evidence; future Retry race matrix | Reconciliation bypasses existing Task invariants | Revert future wiring; preserve Task state |
@@ -276,8 +277,8 @@ Portion, P3D, P3E, or Production Cutover.
 - P3C-0A Start idempotency replay: merged in the current tree.
 - P3C-0B Retry idempotency closure: merged in the current tree.
 - P3C-1 Start production route: IMPLEMENTED AND MERGED via PR #31.
-- P3C-1 Retry contract: DOCS CANDIDATE UNDER LOCAL REVIEW; Retry production
-  route remains NOT AUTHORIZED.
+- P3C-1 Retry contract: APPROVED BY INDEPENDENT TECHNICAL REVIEW; Retry
+  production route remains NOT AUTHORIZED.
 - P3D Operation routes, query, and Cancel races: NOT AUTHORIZED.
 - P3E integrated verification and Production Cutover: NOT AUTHORIZED.
 
@@ -492,9 +493,9 @@ authorize a production route. The only current contract is also recorded in
 the Owner Decision Register and Runtime/API Specifications; all five documents
 must stay aligned.
 
-Contract blocker count: 12 (`B1`–`B12`) documented in this candidate. The Retry
-contract remains a DOCS CANDIDATE UNDER LOCAL REVIEW; Retry production
-implementation remains NOT AUTHORIZED.
+Contract blocker count: 12 (`B1`–`B12`) documented in this contract record. The
+Retry technical contract is APPROVED BY INDEPENDENT TECHNICAL REVIEW; Retry
+production implementation remains NOT AUTHORIZED.
 
 ### Code seam audit and classification
 
@@ -617,8 +618,9 @@ are reused as-is. Shared, Migration/Registry, Idempotency Core, Operation
 implementation, LifecycleTransactionService, RunEngine, WorkflowExecutor,
 StageExecutor, Web, package/lockfiles, and real `.agentos` data are forbidden.
 
-Retry production implementation, PR creation, P3D/P3E, Migration 014, and
-Production Cutover remain NOT AUTHORIZED. Independent docs review is required.
+Retry production implementation, P3D, P3E, Migration 014, and Production
+Cutover remain NOT AUTHORIZED. Draft PR, Ready, and Merge are separately gated
+repository-governance actions and do not authorize production implementation.
 
 ## Appendix — Historical Pre-P3 Baseline
 

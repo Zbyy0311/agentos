@@ -2008,9 +2008,10 @@ interface RetryRunRequest {
 
 ## 77.1 M3 P3C-1 Retry current contract (Option A)
 
-This is the sole current M3 Retry contract candidate under local review. It is
-docs-only and does not authorize the production route or any Child creation
-implementation.
+This is the sole current M3 Retry contract approved by independent technical
+review. It is a documentation contract only and does not authorize the
+production route, Child creation implementation, P3D, P3E, Migration 014, or
+Production Cutover.
 
 ### Route, scope, and request
 

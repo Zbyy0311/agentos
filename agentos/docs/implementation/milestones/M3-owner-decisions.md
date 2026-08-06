@@ -1,12 +1,12 @@
 # AgentOS M3 Owner Decision Register
 
-Technical direction status: APPROVED BY INDEPENDENT TECHNICAL REVIEW — M3-TD-30 Option A alignment is MERGED via PR #29; this local commit is a Retry contract candidate under review.
+Technical direction status: APPROVED BY INDEPENDENT TECHNICAL REVIEW — M3-TD-30 Option A alignment is MERGED via PR #29; the P3C-1 Retry technical contract is approved. Retry production implementation remains NOT AUTHORIZED.
 
 P3 decision freeze status:
 P3C-0B: MERGED
 Option A Alignment: MERGED via PR #29
 P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
-P3C-1 Retry contract: LOCAL DOCS CANDIDATE UNDER INDEPENDENT REVIEW
+P3C-1 Retry contract: APPROVED BY INDEPENDENT TECHNICAL REVIEW
 P3C-1 Retry production: NOT AUTHORIZED
 P3D: NOT AUTHORIZED
 P3E: NOT AUTHORIZED
@@ -62,7 +62,7 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-27 | Operation cancel semantics | POST /api/operations/:operationId/cancel cancels the target non-terminal Operation and its bound Task-domain Run atomically in one caller-owned transaction. Cancellable statuses are exactly queued, running, waiting_approval, and paused; terminal conflicts fail closed. | TECHNICAL DIRECTION APPROVED. P3D Operation Cancel production implementation remains NOT AUTHORIZED. |
 | M3-TD-28 | Operation progress in M3 | P3 does not persist or populate ApiOperation.progress. GET /api/operations/:operationId omits progress; no derived, estimated, or fake value is returned. Progress is a Post-M3 contract and data-source decision. | Core absence of persisted/populated progress is implemented. The future P3D GET Operation route remains NOT AUTHORIZED. No progress field or projection is authorized. |
 | M3-TD-29 | Start Operation completion package | The run.start Operation is a Start command tracker, not a Run lifetime projection. Its `running -> completed` transition must commit in the same caller-owned transaction as the first startup Stage `starting -> running`, `stage.started`, the Run `starting -> running`, `run.started`, and both Outbox rows; `completedAt` uses the transaction timestamp and no independent Operation Event is written. Pre-start closure is split into C1a (claim commit not achieved: full Class B rollback, no automatic failure terminal) and C1b (after claim, before `run.started`: atomic Stage/Run/Operation failure closure). | IMPLEMENTED AND MERGED through P3B-2A/P3B-2B and the merged Start path. The Start Operation completion contract remains current. No additional Start completion behavior is authorized. |
-| M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | Option A alignment MERGED via PR #29. P3C-0B idempotency closure MERGED. P3C-1 Start Portion MERGED via PR #31. Retry docs contract is a local candidate under independent review. Retry production implementation remains NOT AUTHORIZED. |
+| M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | Option A alignment MERGED via PR #29. P3C-0B idempotency closure MERGED. P3C-1 Start Portion MERGED via PR #31. P3C-1 Retry technical contract APPROVED BY INDEPENDENT TECHNICAL REVIEW. Retry production implementation remains NOT AUTHORIZED. |
 
 > **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** Implementation-boundary
 > text that describes an earlier authorization gate is historical when the
@@ -400,8 +400,8 @@ boundary; the current governance status is recorded in section 5 below.
 
 - **Current implementation status:** Option A alignment MERGED via PR #29.
   P3C-0B idempotency closure MERGED. P3C-1 Start Portion MERGED via PR #31.
-  Retry docs contract is a local candidate under independent review. Retry
-  production implementation remains NOT AUTHORIZED.
+  P3C-1 Retry technical contract APPROVED BY INDEPENDENT TECHNICAL REVIEW.
+  Retry production implementation remains NOT AUTHORIZED.
 - **Owner and record time:** M3 technical owner; 2026-08-04.
 - **Selected contract:** Option A is approved. Retry is accepted only when
   the Parent Run status is `failed` at the expected Parent version. Parent
@@ -468,7 +468,7 @@ This decision does not authorize route code, Web changes, Legacy retirement, or 
 > subsequently implemented and merged the Start Route. This section preserves
 > the earlier contract closure; the current Retry contract is §3.2.
 
- Record status: the three P3C-1 Start pre-implementation HIGH blockers are
+Record status: the three P3C-1 Start pre-implementation HIGH blockers are
 CLOSED as a contract-only remediation on 2026-08-06. This record does not add
 a new M3-TD decision, does not change the M3-TD-30 sequence, and does not
 authorize the Start route, Retry portion, P3D, or Production Cutover.
@@ -654,14 +654,16 @@ and Production Cutover remain forbidden.
 
 ## 3.2 P3C-1 Retry pre-implementation contract closure (docs-only)
 
-Record status: P3C-1 Retry contract is a DOCS CANDIDATE UNDER LOCAL REVIEW;
-this section records the twelve Retry contract blockers from the post-PR-#31
-main baseline `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`.
-It changes only the five allowlisted Markdown documents. It does not add a
-Retry route, Child Run, Operation transition, Snapshot clone, Stage clone,
-Event, Outbox write, Migration, test, or production behavior. Retry
-production implementation, PR creation, P3D, Migration 014, and Production
-Cutover remain unauthorized.
+Record status: APPROVED BY INDEPENDENT TECHNICAL REVIEW. This section freezes
+the twelve Retry contract boundaries from the post-PR-#31 main baseline
+`53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`.
+This status-remediation commit changes only the four allowlisted Markdown
+documents. It does not add a Retry route, Child Run, Operation transition,
+Snapshot clone, Stage clone, Event, Outbox write, Migration, test, or
+production behavior. Retry production implementation, P3D, P3E, Migration
+014, and Production Cutover remain unauthorized. Draft PR, Ready, and Merge
+are separately gated repository-governance actions and do not authorize
+production implementation.
 
 The existing M3-TD-30 Option A decision is the governing technical choice.
 The current Retry contract below is the only current P3C-1 Retry contract.
@@ -1019,12 +1021,13 @@ WorkflowExecutor, StageExecutor, Web, package files, lockfiles, or real
 `.agentos` data. The current docs-only closure itself may modify only the five
 Markdown files named by this task.
 
-### Retry closure non-goals and re-review gate
+### Retry closure non-goals and governance boundary
 
-This closure does not authorize Retry production implementation, a Draft PR,
-P3D, P3E, Migration 014, Production Cutover, Provider/Process/CLI runtime,
-Operation Cancel, Operation Events query, or any database operation. An
-independent docs review is required before implementation authorization.
+This closure does not authorize Retry production implementation, P3D, P3E,
+Migration 014, or Production Cutover. Draft PR, Ready, and Merge are
+separately gated repository-governance actions and do not authorize production
+implementation. Provider/Process/CLI runtime, Operation Cancel, Operation
+Events query, and any database operation also remain unauthorized.
 
 ## 4. Deferred Post-M3 Decisions
 
@@ -1070,12 +1073,12 @@ The following historical decisions remain recorded but do not block the M3 Lifec
   path; the Start Operation completion contract remains current, with no
   additional Start completion behavior authorized.
 - M3-TD-30: Option A alignment MERGED via PR #29; P3C-0B idempotency closure
-  MERGED; P3C-1 Start Portion MERGED via PR #31; Retry docs contract is a local
-  candidate under independent review; Retry production implementation remains
-  NOT AUTHORIZED.
+  MERGED; P3C-1 Start Portion MERGED via PR #31; P3C-1 Retry technical contract
+  APPROVED BY INDEPENDENT TECHNICAL REVIEW; Retry production implementation
+  remains NOT AUTHORIZED.
 - M3 P3C-1 Start production acceptance: IMPLEMENTED AND MERGED via PR #31;
   the merged Start route is current state and does not authorize Retry.
-- M3 P3C-1 Retry contract: DOCS CANDIDATE UNDER LOCAL REVIEW; Retry
+- M3 P3C-1 Retry contract: APPROVED BY INDEPENDENT TECHNICAL REVIEW; Retry
   production remains NOT AUTHORIZED.
 - P3B-2A CONTRACT ALIGNMENT: COMPLETED AND MERGED via PR #25; this historical
   completion does not authorize Retry production implementation.
