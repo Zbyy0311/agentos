@@ -1,33 +1,32 @@
 # M3 P3 Current-State Audit
 
-Status: POST-MERGE REMEDIATION 2 — OPTION A ENGINE AUTHORIZATION ALIGNMENT IMPLEMENTED — CURRENT-STATE AUDIT REFRESH — P3C-1 AND LATER NOT AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: POST-MERGE REMEDIATION 2 — OPTION A ENGINE AUTHORIZATION ALIGNMENT IMPLEMENTED — P3C-1 START BLOCKER CLOSURE (DOCS-ONLY) — P3C-1 AND LATER NOT AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
 This document is the current-state audit of the AgentOS M3 P3 implementation
 at the Option A implementation boundary. It describes the checkout containing
-the merged P3C-0A/P3C-0B foundations and the a578982d RunEngine authorization
+the merged P3C-0A/P3C-0B foundations and the a578982dc31cd8184ac5d7b1ba07454b4600cc70 RunEngine authorization
 alignment. It does not authorize P3C-1, P3D, P3E, Production Cutover, or any
 production route or data operation.
 
 ## 1. Baseline and audit boundary
 
 - Repository: Zbyy0311/agentos.
-- Merged main baseline: 82bee50416caff28caf5511be68420cf0ebb0805.
+- Merged main baseline: 8477e1f077c86948c9ab872b319365a4ca534b3e.
 - Option A implementation: a578982dc31cd8184ac5d7b1ba07454b4600cc70.
 - Expected parent of the Option A implementation: 82bee50416caff28caf5511be68420cf0ebb0805.
 - Audit remediation commit: intentionally not prefilled before commit; the final report records its SHA.
-- Current corrected branch: runtime/m3-p3c0b-option-a-alignment.
-- PR #28 is merged into main with merge commit 82bee50416caff28caf5511be68420cf0ebb0805.
+- Current docs closure branch: docs/m3-p3c1-start-blocker-closure.
+- PR #29 is merged into main with merge commit 8477e1f077c86948c9ab872b319365a4ca534b3e.
 - Migration Registry contains exactly 001-013. Migration 014 is absent and is
   neither required nor authorized.
 - Remote Checks: UNAVAILABLE — NOT PASS.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
-- This remediation changes only this Markdown file. No database was migrated,
-  restored, copied, or modified.
+- This docs-only closure changes only the allowlisted Markdown files. No
+  database was migrated, restored, copied, or modified.
 
 The current evidence is taken from the implementation commit and its local
-targeted evidence. The other five files from Remediation 1 are frozen inputs:
-RunEngine.ts, RunEngine.test.ts, m3-p3b2-atomic-startup-completion.test.ts,
-M3-owner-decisions.md, and M3-p3-implementation-plan.md.
+targeted evidence. Production code, tests, migrations, registries, Shared,
+Web, and Idempotency Core remain frozen inputs to this docs-only closure.
 
 ## 2. Current-state method
 
@@ -270,7 +269,7 @@ authorize parallel implementation.
 
 ## 8. Retained verification evidence
 
-The local evidence retained from a578982d is:
+The local evidence retained from a578982dc31cd8184ac5d7b1ba07454b4600cc70 is:
 
 - RunEngine: 18/18.
 - P3B-2B: 33/33.
@@ -302,6 +301,165 @@ The local evidence retained from a578982d is:
 - No Migration 014, production data operation, restore, deletion, or Cutover is
   authorized.
 - Remote Checks: UNAVAILABLE — NOT PASS.
+
+## 10. P3C-1 Start pre-implementation blocker closure (docs-only)
+
+This section records the contract closure performed from the merged
+`main`/`origin/main` baseline `8477e1f077c86948c9ab872b319365a4ca534b3e`.
+The production canonical Start Route remains MISSING and P3C-1 Start
+implementation remains NOT AUTHORIZED. No code, test, schema, or runtime
+behavior is implied by this closure.
+
+### HIGH-1 — canonical Run workspace resolution
+
+The only future Start path is:
+
+```text
+POST /api/runs/:runId/start
+```
+
+It has no workspace path, query, or body field. Run IDs are global opaque
+routing identifiers. Future implementation adds only the read-only method
+`RunRepository.findWorkspaceIdByOpaqueId(runId): string | undefined`; it returns
+only workspaceId, performs no status/version check, and mutates nothing. A
+missing Run is `404 RUN_NOT_FOUND`, never `WORKSPACE_NOT_FOUND`. Once resolved,
+the workspaceId is included in the Idempotency fingerprint and all Run,
+Operation, and Idempotency access remains workspace-scoped. Local API Write
+Guard and Server Ownership remain the current security boundary.
+
+### HIGH-2 — SQLite busy/contention contract
+
+Production `SqliteStore` must execute `PRAGMA busy_timeout = 5000` after
+`DatabaseSync` creation and before migrations, while retaining
+`PRAGMA foreign_keys = ON`. Normal same-key, different-key, and no-key Start
+races converge to live 202, replay 202, or a stable 409 conflict. Raw
+`SQLITE_BUSY`, SQLite text, SQL, paths, and lock details never reach clients.
+Human-held write-lock timeout is the only 503 case and is frozen as:
+
+```text
+RUN_START_BUSY / 503 / Run start is temporarily unavailable / retryable=true
+```
+
+`Transaction.ts` is unchanged and existing v2 mutation behavior is preserved.
+
+### HIGH-3 — complete Start Operation history
+
+Future acceptance reads `OperationService.listByRun(workspaceId, runId)` and
+filters `type === 'run.start'`; the non-terminal-only query cannot replace the
+full history. No history or all `failed`/`cancelled` history permits creation.
+One queued Start replays the original 202 for the same key and returns
+`409 RUN_START_ALREADY_ACTIVE` for a different or absent key. Multiple
+non-terminal Starts fail closed with `500 RUN_START_AUTHORIZATION_AMBIGUOUS`.
+A queued Run with `running`, `waiting_approval`, or `paused` Start history, or
+with any completed Start history, fails closed with
+`500 RUN_START_STATE_INCONSISTENT`. Failed/cancelled history is terminal and
+does not authorize execution; no Start row may be selected arbitrarily.
+
+### A1 ordering, side effects, rollback, and composition
+
+The keyed A1 acceptance order is frozen without omitted or implicit steps:
+
+1. Read the opaque `runId` from the canonical path.
+2. Call the read-only `RunRepository.findWorkspaceIdByOpaqueId(runId)` locator.
+3. If the locator finds no Run, return `404 RUN_NOT_FOUND`.
+4. Validate that the request body is a plain JSON object.
+5. Reject every unknown body field.
+6. Validate optional `expectedVersion`: it may be absent; when present it must
+   be a positive safe integer; `null`, zero, negative, fractional, string,
+   `NaN`, and values outside the safe-integer range return the stable
+   `400 VALIDATION_FAILED`.
+7. Parse and normalize the optional `Idempotency-Key`.
+8. Construct the fingerprint with `operation = run.start`, the locator's
+   `workspaceId`, `pathParams = { runId }`, `domainInput = {}`, and
+   `expectedVersion` supplied or `null`.
+9. Call `IdempotencyService.prepare()` outside the transaction.
+10. Begin the caller-owned `BEGIN IMMEDIATE` transaction.
+11. Make `IdempotencyService.resolve()` the first Run/Operation domain action
+    inside the transaction.
+12. If resolve returns replay, do not read the current Run or Operation, do not
+    execute version/status/Start-history guards, and immediately return the
+    saved original HTTP 202 queued Operation snapshot.
+13. On a miss, read the workspace-scoped Run.
+14. If the Run is absent, return `404 RUN_NOT_FOUND`.
+15. If supplied, execute the exact `expectedVersion` guard.
+16. Require the Run status to be `queued`.
+17. Read complete history with
+    `OperationService.listByRun(workspaceId, runId)`.
+18. Filter the history to `type === 'run.start'`.
+19. Apply the complete frozen Start-history matrix.
+20. Call `OperationService.createWithinTransaction()` to create the unique
+    queued `run.start` Operation.
+21. Validate the new Operation: `type = run.start`, `status = queued`, the
+    resolved workspace, `aggregateType = run`, `aggregateId = runId`, the
+    correct `runId`, `correlationId = operation.id`, and `version = 1`.
+22. Construct the schemaVersion 1 Operation replay envelope.
+23. Call `IdempotencyService.storeSuccess()` with HTTP status 202 and the
+    acceptance-time original queued Operation snapshot.
+24. Commit.
+25. Only after a successful commit return HTTP 202 with top-level
+    `{ "operation": ... }`; the internal result is `replayed = false`.
+
+The no-key order is separately frozen:
+
+1. Read the opaque `runId` from the canonical path.
+2. Resolve the workspace with the read-only locator.
+3. If the locator finds no Run, return `404 RUN_NOT_FOUND`.
+4. Validate the body, reject unknown fields, and validate optional
+   `expectedVersion`.
+5. Begin the caller-owned `BEGIN IMMEDIATE` transaction.
+6. Read the workspace-scoped Run.
+7. Apply the optional `expectedVersion` guard.
+8. Require the Run status to be `queued`.
+9. Read complete history through `OperationService.listByRun()`.
+10. Apply the complete frozen Start-history matrix.
+11. Create the queued Start Operation with
+    `OperationService.createWithinTransaction()`.
+12. Commit.
+13. Return HTTP 202 with `{ "operation": ... }`.
+
+The no-key path creates no Idempotency Record and does not set
+`Idempotency-Replayed`.
+
+No Run/Operation domain guard may run between `prepare()` and `BEGIN IMMEDIATE`.
+The locator is routing resolution only; it is not a Run status/version guard.
+
+A1 Acceptance never mutates Run status or version, mutates Task, writes
+`run.dequeued`, writes any Runtime Event, writes Outbox or Dead Letter rows,
+calls `RunEngine.tick()` or `RunEngine.dispatch()`, calls WorkflowExecutor or
+StageExecutor, starts a Provider or subprocess, waits synchronously for
+`starting`/`running`, changes the Start Operation to `running`/`completed`,
+triggers Retry, or creates Migration 014. After successful acceptance the Run
+is still `queued` at the same version, the Start Operation is `queued` at
+version 1, Task is unchanged, and no Runtime Event or Outbox row is added.
+
+Any failure after Operation insert and before Commit rolls back the new Start
+Operation and Idempotency Success Record, leaving the Run queued at the same
+version, Task unchanged, and with no new Runtime Event or Outbox row.
+
+The future route creates IdempotencyService through
+`createOptionalIdempotencyService(store)`, creates a route-local TaskRunService
+with it, and is mounted once under `/api` by `index.ts`. It does not reuse the
+no-Idempotency TaskRunService used by Legacy recovery. Run deletion and
+workspace migration require a new replay/locator review and are outside M3.
+
+### Revised future Start allowlist
+
+The proposal, not authorization, is exactly:
+
+- `apps/server/src/routes/runLifecycle.ts` (new);
+- `apps/server/src/routes/runLifecycle.test.ts` (new);
+- `apps/server/src/services/TaskRunService.ts`;
+- `apps/server/src/services/TaskRunService.test.ts`;
+- `apps/server/src/store/SqliteStore.ts`;
+- `apps/server/src/store/RunRepository.ts`;
+- `apps/server/src/store/__tests__/RunRepository.test.ts`;
+- `apps/server/src/index.ts`.
+
+`routes/v2Idempotency.ts`, OperationService, OperationRepository, Idempotency
+Core, and Shared may be imported but not modified. Retry production code,
+Operation Cancel, Event Query/SSE, RunEngine, LifecycleTransactionService,
+RunStageRepository, Migration/Registry, Web, package/lockfiles, Legacy/v2
+routes, Conversation EventBus, and Production Cutover remain forbidden.
 
 ## Appendix — Historical Pre-P3 Baseline
 

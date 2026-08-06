@@ -756,10 +756,12 @@ STORAGE_VERSION_CONFLICT
 
 ### 23.1 Required Operations
 
-以下请求必须支持 `Idempotency-Key`：
+以下操作必须实现 `Idempotency-Key` 支持；Client 是否必须提供由各
+Endpoint 合同决定：
 
 - Create Task；
 - Create Run；
+- Start Run；
 - Send Message；
 - Create Worktree；
 - Start Provider Session；
@@ -1804,16 +1806,146 @@ include=stages,worktrees,providerSessions,processes,approvals,artifacts
 POST /api/runs/:runId/start
 ```
 
-Preconditions：
+这是 canonical Task-domain Run 路径。不得增加 `workspaceId` path
+parameter、query parameter 或 body field。
 
-- status = created / queued；
-- Snapshot valid；
-- Provider valid；
-- Policy Snapshot；
-- Isolation Plan；
-- no duplicate start.
+### Headers
 
-返回 `202`。
+```text
+Idempotency-Key: optional
+```
+
+Client 可以不提供 `Idempotency-Key`。提供时必须遵守 Idempotency Contract；
+“必须支持 Idempotency-Key”不等于每次请求必须提供 Idempotency-Key。
+
+### Request Body
+
+唯一允许的 body 形状为：
+
+```json
+{
+  "expectedVersion": 1
+}
+```
+
+`expectedVersion` 是 optional；空 object `{}` 合法。body 必须是普通 JSON
+object，未知字段返回：
+
+```text
+400 VALIDATION_FAILED
+```
+
+`workspaceId`、`createdBy`、`requestedBy`、`reason`、`operationId`、
+`correlationId`、`runId` 以及任何其他未知字段均禁止。`expectedVersion`
+出现时必须是正的 safe integer；`null`、0、负数、小数、字符串、`NaN`
+和超出 safe integer 范围的值均返回 `400 VALIDATION_FAILED`。
+
+### Acceptance Preconditions
+
+The A1 HTTP Start Acceptance transaction checks only:
+
+- the opaque `runId` resolves to its owning workspace;
+- the Run exists;
+- an optional `expectedVersion` matches;
+- the Run status is `queued`;
+- the complete `run.start` Operation history matrix permits creation;
+- the request, Idempotency, and concurrency contracts are satisfied.
+
+### Deferred Engine/Startup Validation
+
+The following validations are not executed inside the A1 HTTP acceptance
+transaction:
+
+- Snapshot and Run binding validation;
+- Workflow definition and RunStage binding validation;
+- dependency graph validation;
+- Stage eligibility;
+- Provider, Process, and CLI startup validation;
+- Policy and Isolation runtime enforcement.
+
+For the current M3 persistent Task-domain Run, the initial status is
+`queued`; `created` is not a current `V2RunStatus`, and Start Acceptance only
+accepts `queued`.
+
+HTTP 202 means only that the Start Operation was atomically accepted and
+queued. It does not mean that Snapshot, Provider, Policy, Isolation, or actual
+execution has passed. Engine claim/startup failures use the frozen C1a/C1b
+contracts. Idempotency replay does not re-run Engine or startup validation.
+The keyed 25-step and no-key 13-step A1 orders recorded in the M3 authority
+documents remain unchanged.
+
+### Success Response
+
+```text
+202 Accepted
+```
+
+Body 顶层精确为：
+
+```json
+{
+  "operation": {
+    "id": "op_...",
+    "type": "run.start",
+    "status": "queued",
+    "workspaceId": "workspace_...",
+    "aggregateType": "run",
+    "aggregateId": "run_...",
+    "runId": "run_...",
+    "correlationId": "op_...",
+    "createdAt": "2026-08-06T00:00:00.000Z",
+    "version": 1
+  }
+}
+```
+
+`correlationId = operation.id` and `aggregateId = runId`. The queued Operation
+has no `result`, `error`, `startedAt`, or `completedAt`. The response does not
+return the internal Idempotency Envelope, Run snapshot, or Task, and does not
+wait for an Engine claim. The example IDs and timestamp are shape examples,
+not fixed runtime values. A live 202 response does not set
+`Idempotency-Replayed`; its internal result is `replayed = false`.
+
+### Replay Response
+
+For the same Idempotency-Key and the same fingerprint:
+
+```text
+202 Accepted
+Idempotency-Replayed: true
+```
+
+The body remains `{ "operation": { "...original acceptance snapshot..." } }`.
+Replay returns the original acceptance-time queued Operation snapshot even if
+the Operation later becomes `running`, `completed`, `failed`, or `cancelled`.
+It does not call `OperationService.findById()` to rebuild the response, read
+the current Operation or Run, re-run the Start history guard, create a new
+Operation, mutate the original Operation, or expose internal envelope
+top-level fields such as `schemaVersion` or `operation`. The replay header is
+set only on replay.
+
+The same Key with a different fingerprint returns:
+
+```text
+409 IDEMPOTENCY_KEY_REUSED
+```
+
+and creates neither an Operation nor an Idempotency Success Record.
+
+### No-Key Response
+
+Without an Idempotency-Key, success still returns HTTP 202 with the same
+`{ "operation": ... }` shape, does not set `Idempotency-Replayed`, and writes
+no Idempotency Record. Concurrent losers converge to the stable Start conflict
+defined by the lifecycle contract.
+
+Missing Run returns `404 RUN_NOT_FOUND`; invalid request shape or
+`expectedVersion` returns `400 VALIDATION_FAILED`. Start-history conflicts use
+`409 RUN_START_ALREADY_ACTIVE`, ambiguous or inconsistent history fails closed
+with `500 RUN_START_AUTHORIZATION_AMBIGUOUS` or
+`500 RUN_START_STATE_INCONSISTENT`, and a human-held SQLite lock timeout uses
+`503 RUN_START_BUSY` with the safe message `Run start is temporarily
+unavailable` and `retryable = true`.
 
 ---
 

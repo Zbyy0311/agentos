@@ -1170,20 +1170,16 @@ interface Run {
 
   rootRunId: string;
 
+  // Current M3 V2RunStatus; recovery_required is a separate field.
   status:
-    | 'created'
     | 'queued'
-    | 'validating'
-    | 'planning'
-    | 'waiting_approval'
-    | 'preparing'
+    | 'starting'
     | 'running'
+    | 'waiting_approval'
     | 'paused'
-    | 'cancelling'
     | 'completed'
     | 'failed'
-    | 'cancelled'
-    | 'recovery_required';
+    | 'cancelled';
 
   reason:
     | 'initial'
@@ -3329,14 +3325,10 @@ CREATE INDEX idx_active_runs
 ON runs(workspace_id, updated_at)
 WHERE status IN (
   'queued',
-  'validating',
-  'planning',
-  'waiting_approval',
-  'preparing',
+  'starting',
   'running',
-  'paused',
-  'cancelling',
-  'recovery_required'
+  'waiting_approval',
+  'paused'
 );
 ```
 
@@ -3749,14 +3741,10 @@ JOIN tasks t ON t.id = r.task_id
 JOIN workspaces w ON w.id = r.workspace_id
 WHERE r.status IN (
   'queued',
-  'validating',
-  'planning',
-  'waiting_approval',
-  'preparing',
+  'starting',
   'running',
-  'paused',
-  'cancelling',
-  'recovery_required'
+  'waiting_approval',
+  'paused'
 );
 ```
 
