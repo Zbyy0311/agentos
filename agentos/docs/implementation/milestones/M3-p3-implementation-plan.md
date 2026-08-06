@@ -1,14 +1,24 @@
 # M3 P3 Implementation Plan — Run Engine, Workflow Executor and Operation
 
-Status: POST-MERGE BASELINE `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694` — P3C-1 START IMPLEMENTED AND MERGED — P3C-1 RETRY CONTRACT DOCS CANDIDATE UNDER LOCAL REVIEW — RETRY PRODUCTION NOT AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: POST-MERGE BASELINE `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`
+P3C-0B: MERGED
+Option A Alignment: MERGED via PR #29
+P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
+P3C-1 Retry contract: LOCAL DOCS CANDIDATE UNDER INDEPENDENT REVIEW
+P3C-1 Retry production: NOT AUTHORIZED
+P3D: NOT AUTHORIZED
+P3E: NOT AUTHORIZED
+Migration 014: NOT REQUIRED OR AUTHORIZED
+Production Cutover: NOT AUTHORIZED / NOT STARTED
+Remote Checks: UNAVAILABLE — NOT PASS
 
 Current status override: main contains the merged P3C-1 Start portion from
 PR #31 and the M3-TD-30 Option A alignment is merged via PR #29. This
 docs-only candidate is the P3C-1 Retry contract candidate under local review;
 it does not implement Retry. `run.retry` never authorizes Engine claim; Retry
 returns HTTP 201 and requires a separate `run.start`. The legacy
-pre-remediation status line above is SUPERSEDED / HISTORICAL — CURRENT STATUS
-IS SECTION 5.
+pre-remediation status line above is SUPERSEDED / HISTORICAL — NOT CURRENT
+STATUS.
 
 This plan decomposes M3 P3 into stages P3A, P3B-1, P3B-2A, P3B-2B,
 P3C-0A, P3C-0B, P3C-1, P3D, and P3E. It is a planning artifact: no
@@ -52,7 +62,7 @@ Current implementation alignment: M3-TD-30 Option A is MERGED via PR #29 and
 is the current contract. The present change is limited to the five Markdown
 files named by the Retry pre-implementation closure. P3C-1 Retry production,
 P3D, and Production Cutover remain NOT AUTHORIZED. The legacy approval wording
-above is SUPERSEDED / HISTORICAL — CURRENT STATUS IS SECTION 5.
+above is SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.
 
 ## 1. Preconditions and Frozen Contracts
 
@@ -863,7 +873,7 @@ independently enterable dependent portions:
 
 ### P3C-1 Start pre-implementation blocker closure (docs-only)
 
-> **SUPERSEDED / HISTORICAL — CURRENT STATUS IS SECTION 5.** This section
+> **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** This section
 > records the earlier Start contract closure. The Start Route and A1 consumer
 > are now implemented and merged in PR #31. The current Retry contract is
 > §10.1 below; Retry production remains unauthorized.
@@ -1630,6 +1640,6 @@ Migration 014 is not required or authorized.
 P3B-2A CONTRACT ALIGNMENT: PLANNED — NOT AUTHORIZED.
 
 This historical section records the earlier six-file Option A remediation.
-SUPERSEDED / HISTORICAL — CURRENT STATUS IS SECTION 5. P3C-1 Start is merged;
+SUPERSEDED / HISTORICAL — NOT CURRENT STATUS. P3C-1 Start is merged;
 P3C-1 Retry production, P3D, P3E, and Production Cutover remain NOT
 AUTHORIZED. The preplanning PR (PR #21) and P3C-0B merge (PR #28) are MERGED.

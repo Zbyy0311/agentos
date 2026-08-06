@@ -1,6 +1,16 @@
 # M3 P3 Current-State Audit
 
-Status: POST-MERGE MAIN BASELINE `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694` — P3C-1 START IMPLEMENTED AND MERGED — P3C-1 RETRY CONTRACT DOCS CANDIDATE UNDER LOCAL REVIEW — RETRY PRODUCTION NOT AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: POST-MERGE MAIN BASELINE `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`
+P3C-0B: MERGED
+Option A Alignment: MERGED via PR #29
+P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
+P3C-1 Retry contract: LOCAL DOCS CANDIDATE UNDER INDEPENDENT REVIEW
+P3C-1 Retry production: NOT AUTHORIZED
+P3D: NOT AUTHORIZED
+P3E: NOT AUTHORIZED
+Migration 014: NOT REQUIRED OR AUTHORIZED
+Production Cutover: NOT AUTHORIZED / NOT STARTED
+Remote Checks: UNAVAILABLE — NOT PASS
 
 This document is the current-state audit of the AgentOS M3 P3 implementation
 after PR #31 merged the P3C-1 Start portion. It describes the checkout at the
@@ -316,7 +326,7 @@ The retained pre-merge evidence plus PR #31 evidence at main
 
 ## 10. P3C-1 Start pre-implementation blocker closure (docs-only)
 
-> **SUPERSEDED / HISTORICAL — CURRENT STATUS IS SECTION 5.** This
+> **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** This
 > section records the earlier Start contract closure from baseline
 > `8477e1f077c86948c9ab872b319365a4ca534b3e`. PR #31 subsequently merged the
 > Start Route and A1 consumer. The current Retry contract closure is §11.

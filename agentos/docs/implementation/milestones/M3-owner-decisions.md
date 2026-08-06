@@ -2,12 +2,17 @@
 
 Technical direction status: APPROVED BY INDEPENDENT TECHNICAL REVIEW — M3-TD-30 Option A alignment is MERGED via PR #29; this local commit is a Retry contract candidate under review.
 
-P3 decision freeze status: P3C-0B: MERGED — Option A Alignment: MERGED via PR
-#29 — P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31 — P3C-1 Retry
-contract: DOCS CANDIDATE UNDER LOCAL REVIEW — P3C-1 Retry production: NOT
-AUTHORIZED — P3D and Production Cutover remain NOT AUTHORIZED / NOT STARTED —
-REMOTE CHECKS UNAVAILABLE — NOT PASS — SCHEMA BLOCKER: NONE — Migration 014 is
-not required or authorized.
+P3 decision freeze status:
+P3C-0B: MERGED
+Option A Alignment: MERGED via PR #29
+P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
+P3C-1 Retry contract: LOCAL DOCS CANDIDATE UNDER INDEPENDENT REVIEW
+P3C-1 Retry production: NOT AUTHORIZED
+P3D: NOT AUTHORIZED
+P3E: NOT AUTHORIZED
+Migration 014: NOT REQUIRED OR AUTHORIZED
+Production Cutover: NOT AUTHORIZED / NOT STARTED
+Remote Checks: UNAVAILABLE — NOT PASS
 
 Final P0 documentation merge gate: COMPLETE (historical; superseded by the merged P1, P2, and P3 preplanning records).
 
@@ -53,16 +58,22 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-23 | Approval multi-aggregate lifecycle evidence | A Stage-specific `approval.required` may evidence Run and Stage `running → waiting_approval` together. `approval.resolved` may evidence both `waiting_approval → running` transitions only for approve_once, approve_run, or approve_workspace. Rejection/cancellation uses the ordered multi-Event sequences and required runId/stageId/approvalRequestId references. | P2C-0 specification closure only. No approval implementation, API, process cancellation, or database authorization. |
 | M3-TD-24 | Non-terminal Stage cancellation closure | `pending`, `ready`, `starting`, `waiting_approval`, and `running` all map to `stage.cancelled` on Run cancellation. Stage order is `stage.sequence ASC`, then `stage.id ASC`; final `run.cancelled` follows all Stage Events. Terminal Stages have no outgoing edge. | P2C-0 specification closure only. No Process termination, Approval cancellation implementation, or database logic authorization. |
 | M3-TD-25 | Multiple ordered Events in one atomic lifecycle transaction | Multiple Durable Events may share one transaction only with contiguous Run sequence values, one Outbox record per Event, deterministic ordering, and all Current State/Event/Outbox/version writes committed or rolled back together. Frozen sequences include startup completion, Approval failure/cancellation, Run cancellation, and Run completion. | P2C-0 specification closure only. P2C-2 transactional implementation remains NOT AUTHORIZED. |
-| M3-TD-26 | Operation correlation identity | For every newly created non-create Operation, correlationId = operation.id. The Operation ID and correlationId are generated and persisted in the same creation transaction; correlationId is unique and immutable; idempotent replay returns the original Operation, so the correlationId never changes. The historical run.create rule (correlationId = run.id) is preserved without migrating old records. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
-| M3-TD-27 | Operation cancel semantics | POST /api/operations/:operationId/cancel cancels the target non-terminal Operation and its bound Task-domain Run atomically in one caller-owned transaction. Cancellable statuses are exactly queued, running, waiting_approval, and paused; terminal conflicts fail closed. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
-| M3-TD-28 | Operation progress in M3 | P3 does not persist or populate ApiOperation.progress. GET /api/operations/:operationId omits progress; no derived, estimated, or fake value is returned. Progress is a Post-M3 contract and data-source decision. | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
-| M3-TD-29 | Start Operation completion package | The run.start Operation is a Start command tracker, not a Run lifetime projection. Its `running -> completed` transition must commit in the same caller-owned transaction as the first startup Stage `starting -> running`, `stage.started`, the Run `starting -> running`, `run.started`, and both Outbox rows; `completedAt` uses the transaction timestamp and no independent Operation Event is written. Pre-start closure is split into C1a (claim commit not achieved: full Class B rollback, no automatic failure terminal) and C1b (after claim, before `run.started`: atomic Stage/Run/Operation failure closure). | APPROVED TECHNICAL DIRECTION — IMPLEMENTATION STILL NOT AUTHORIZED. |
-| M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | APPROVED; Option A alignment is MERGED via PR #29. The current local candidate closes the Retry contract only. |
+| M3-TD-26 | Operation correlation identity | For every newly created non-create Operation, correlationId = operation.id. The Operation ID and correlationId are generated and persisted in the same creation transaction; correlationId is unique and immutable; idempotent replay returns the original Operation, so the correlationId never changes. The historical run.create rule (correlationId = run.id) is preserved without migrating old records. | IMPLEMENTED AND MERGED as part of the P3A Operation package. The immutable correlation contract remains current. No new Operation type or correlation change is authorized. |
+| M3-TD-27 | Operation cancel semantics | POST /api/operations/:operationId/cancel cancels the target non-terminal Operation and its bound Task-domain Run atomically in one caller-owned transaction. Cancellable statuses are exactly queued, running, waiting_approval, and paused; terminal conflicts fail closed. | TECHNICAL DIRECTION APPROVED. P3D Operation Cancel production implementation remains NOT AUTHORIZED. |
+| M3-TD-28 | Operation progress in M3 | P3 does not persist or populate ApiOperation.progress. GET /api/operations/:operationId omits progress; no derived, estimated, or fake value is returned. Progress is a Post-M3 contract and data-source decision. | Core absence of persisted/populated progress is implemented. The future P3D GET Operation route remains NOT AUTHORIZED. No progress field or projection is authorized. |
+| M3-TD-29 | Start Operation completion package | The run.start Operation is a Start command tracker, not a Run lifetime projection. Its `running -> completed` transition must commit in the same caller-owned transaction as the first startup Stage `starting -> running`, `stage.started`, the Run `starting -> running`, `run.started`, and both Outbox rows; `completedAt` uses the transaction timestamp and no independent Operation Event is written. Pre-start closure is split into C1a (claim commit not achieved: full Class B rollback, no automatic failure terminal) and C1b (after claim, before `run.started`: atomic Stage/Run/Operation failure closure). | IMPLEMENTED AND MERGED through P3B-2A/P3B-2B and the merged Start path. The Start Operation completion contract remains current. No additional Start completion behavior is authorized. |
+| M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | Option A alignment MERGED via PR #29. P3C-0B idempotency closure MERGED. P3C-1 Start Portion MERGED via PR #31. Retry docs contract is a local candidate under independent review. Retry production implementation remains NOT AUTHORIZED. |
 
-M3-TD-26 through M3-TD-30 are approved technical direction. M3-TD-30 is
-aligned to Option A; Start is implemented, and Retry production remains
-separately unauthorized. They resolve the five P3 Owner Decision candidates
-(formerly OD-P3-01 through OD-P3-05) recorded in the P3 preplanning documents.
+> **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** Implementation-boundary
+> text that describes an earlier authorization gate is historical when the
+> corresponding stage has subsequently merged. The current status of
+> M3-TD-26 through M3-TD-30 is recorded individually in their table rows and
+> in section 5. Historical wording must not override those current statuses.
+
+M3-TD-26 through M3-TD-30 are approved technical direction with the
+individual current implementation statuses recorded above and in section 5.
+They resolve the five P3 Owner Decision candidates (formerly OD-P3-01 through
+OD-P3-05) recorded in the P3 preplanning documents.
 
 M3-TD-01 through M3-TD-25 retain their historical contract wording. Any P1/P2
 implementation boundary recorded in those rows is a historical phase
@@ -146,6 +157,9 @@ boundary; the current governance status is recorded in section 5 below.
 
 ### M3-TD-26 Operation correlation identity
 
+- **Current implementation status:** IMPLEMENTED AND MERGED as part of the P3A
+  Operation package. The immutable correlation contract remains current. No
+  new Operation type or correlation change is authorized.
 - **Owner and record time:** M3 technical owner; 2026-08-04.
 - **Selected contract:** For every newly created non-create Operation,
   correlationId = operation.id. This applies to `run.start`, `run.cancel`,
@@ -179,6 +193,8 @@ boundary; the current governance status is recorded in section 5 below.
 
 ### M3-TD-27 Operation cancel semantics
 
+- **Current implementation status:** TECHNICAL DIRECTION APPROVED. P3D
+  Operation Cancel production implementation remains NOT AUTHORIZED.
 - **Owner and record time:** M3 technical owner; 2026-08-04.
 - **Selected contract:** POST /api/operations/:operationId/cancel cancels
   the target non-terminal Operation and its bound Task-domain Run
@@ -227,6 +243,9 @@ boundary; the current governance status is recorded in section 5 below.
 
 ### M3-TD-28 Operation progress in M3
 
+- **Current implementation status:** Core absence of persisted/populated
+  progress is implemented. The future P3D GET Operation route remains NOT
+  AUTHORIZED. No progress field or projection is authorized.
 - **Owner and record time:** M3 technical owner; 2026-08-04.
 - **Selected contract:** P3 does not persist or populate
   ApiOperation.progress. The Repository/Service creates no progress
@@ -253,6 +272,10 @@ boundary; the current governance status is recorded in section 5 below.
 
 ### M3-TD-29 Start Operation completion package
 
+- **Current implementation status:** IMPLEMENTED AND MERGED through
+  P3B-2A/P3B-2B and the merged Start path. The Start Operation completion
+  contract remains current. No additional Start completion behavior is
+  authorized.
 - **Owner and record time:** M3 technical owner; 2026-08-04.
 - **Selected contract:** the `run.start` Operation is a Start command
   tracker, not a Run lifetime projection. The caller-owned atomic
@@ -375,6 +398,10 @@ boundary; the current governance status is recorded in section 5 below.
 
 ### M3-TD-30 Retry child run activation package
 
+- **Current implementation status:** Option A alignment MERGED via PR #29.
+  P3C-0B idempotency closure MERGED. P3C-1 Start Portion MERGED via PR #31.
+  Retry docs contract is a local candidate under independent review. Retry
+  production implementation remains NOT AUTHORIZED.
 - **Owner and record time:** M3 technical owner; 2026-08-04.
 - **Selected contract:** Option A is approved. Retry is accepted only when
   the Parent Run status is `failed` at the expected Parent version. Parent
@@ -437,7 +464,7 @@ This decision does not authorize route code, Web changes, Legacy retirement, or 
 
 ## 3.1 P3C-1 Start pre-implementation blocker closure (docs-only)
 
-> **SUPERSEDED / HISTORICAL — CURRENT STATUS IS SECTION 5.** PR #31
+> **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** PR #31
 > subsequently implemented and merged the Start Route. This section preserves
 > the earlier contract closure; the current Retry contract is §3.2.
 
@@ -1031,9 +1058,21 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 - M3 P1: IMPLEMENTED AND MERGED.
 - M3 P2: IMPLEMENTED AND MERGED.
 - M3 P3 preplanning: MERGED via PR #21.
-- M3 P3 owner decision freeze: M3-TD-30 Option A alignment is MERGED via PR
-  #29; Start is merged, while Retry production and later unimplemented work
-  remain NOT AUTHORIZED.
+- M3-TD-26: IMPLEMENTED AND MERGED as part of the P3A Operation package; the
+  immutable correlation contract remains current and no new Operation type or
+  correlation change is authorized.
+- M3-TD-27: TECHNICAL DIRECTION APPROVED; P3D Operation Cancel production
+  implementation remains NOT AUTHORIZED.
+- M3-TD-28: Core absence of persisted/populated progress is implemented; the
+  future P3D GET Operation route remains NOT AUTHORIZED, and no progress field
+  or projection is authorized.
+- M3-TD-29: IMPLEMENTED AND MERGED through P3B-2A/P3B-2B and the merged Start
+  path; the Start Operation completion contract remains current, with no
+  additional Start completion behavior authorized.
+- M3-TD-30: Option A alignment MERGED via PR #29; P3C-0B idempotency closure
+  MERGED; P3C-1 Start Portion MERGED via PR #31; Retry docs contract is a local
+  candidate under independent review; Retry production implementation remains
+  NOT AUTHORIZED.
 - M3 P3C-1 Start production acceptance: IMPLEMENTED AND MERGED via PR #31;
   the merged Start route is current state and does not authorize Retry.
 - M3 P3C-1 Retry contract: DOCS CANDIDATE UNDER LOCAL REVIEW; Retry
