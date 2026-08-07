@@ -1,6 +1,14 @@
 # M3 P3D：Operation Control Surface 实施计划
 
-> 计划状态：P3D-0 预规划完成；P3D-1/P3D-2/P3D-3 生产实现均未授权。
+> P3D-0 PREPLANNING：COMPLETE。
+>
+> P3D CONTRACT CLOSURE：OWNER APPROVED / DOCUMENTED。
+>
+> P3D-1：DEPENDENCY READY / NOT AUTHORIZED。
+>
+> P3D-2：CONTRACT READY / NOT AUTHORIZED / DEPENDS ON P3D-1 ACCEPTANCE。
+>
+> P3D-3：NOT AUTHORIZED / DEPENDS ON P3D-2。
 >
 > 计划基线：5bfa66d074791cb1e1981968f28c3854d7d55d2a。
 >
@@ -14,17 +22,17 @@
 | --- | --- | --- |
 | 代码基线 | IMPLEMENTED | 从 P3D-0 docs commit 的 exact parent 开始；不得基于漂移的 main、旧 worktree 或未核对 HEAD 实施。 |
 | TD-26 至 TD-30 | IMPLEMENTED | 保持冻结，不重新选择 correlation、cancel、progress、Start completion、Retry Option。 |
-| request contract | MISSING | Owner 必须冻结 Operation Cancel 的 body/header、actor/requestedBy 来源、reason、terminatedProcessIds、worktreePreserved 产生方式及 expectedVersion/ETag 语义。 |
-| waiting_approval lifecycle seam | CONFLICT | Owner 必须确认：提供最小 direct cancellation seam，或明确调整/分层现有 approval cancellation 契约；未确认前 STOP。 |
+| request contract | CONTRACT CLOSED / IMPLEMENTATION MISSING | M3-TD-31 已冻结 exact expectedVersion body、empty query、no ETag、locator/parser、response precedence 与 trusted metadata。 |
+| waiting_approval lifecycle seam | CONTRACT CLOSED / IMPLEMENTATION MISSING | M3-TD-32 已批准 Option C 与 exactly-one unresolved Approval discovery/ordered cancellation；生产 seam 尚不存在。 |
 | schema | NOT REQUIRED | 继续使用 001…013；不得以 Migration 014 规避 service/contract 缺口。 |
-| production authorization | MISSING | 需要单独授权 P3D-1、P3D-2、P3D-3；P3D-0 commit 本身不携带实现授权。 |
+| production authorization | NOT AUTHORIZED | P3D-1、P3D-2、P3D-3 仍需单独授权；Owner contract approval 不携带实现授权。 |
 
 ### 1.2 绝对停止条件
 
 任一条件发生即停止当前 P3D phase，保留 RED 证据与 rollback 状态，不扩大 allowlist：
 
-- Operation request body 或 ETag/expectedVersion 仍靠猜测；
-- waiting_approval 仍只能通过需要 approval decision 的专用入口处理；
+- 实现偏离 M3-TD-31 exact body/query、使用 ETag/If-Match，或接受 client lifecycle metadata；
+- waiting_approval 未通过 M3-TD-32 approval-aware discovery/order，而是直接扩大普通 cancelRunWithinTransaction；
 - 任意一步会拆成独立 transaction，或必须引入第二 SQLite handle/第二 Operation；
 - Operation 已 cancelled 却产生 lifecycle/Event/Outbox side effect；
 - terminal Operation、binding mismatch 或 stale version 未 fail closed；
@@ -61,14 +69,14 @@
 4. GET events 只返回目标 Operation 的 runId + correlationId，顺序为 sequence ASC。
 5. run.start 能读到对应 startup Events；run.retry 不返回 Child creation 或独立 Start Events，并通常返回空集合。
 6. Operation 绑定不一致时 fail closed；不能通过提供另一个 runId/correlationId 读取其他 Run。
-7. route mount 只出现一次，位于 /api，且保持全局 JSON parser 之后的既有 locator-first 设计。
+7. route mount 只出现一次并位于 /api；Operation Router 必须在 global express.json() 前，P3D-1 GET routes 不运行 JSON parser，也不创建 Cancel stub。
 
 ### 2.3 GREEN：最小实现顺序
 
 1. OperationRepository.findWorkspaceIdByOpaqueId(operationId)：只返回 workspaceId，unknown 返回 undefined，不改变任何 row。
 2. OperationService 提供 locator/read seam，继续复用 workspace-scoped findById 与既有 mapper/validation。
 3. 新建 routes/operations.ts：先 locator，再读取；GET events 只接收 URL operationId，不从 HTTP 输入接受 run/correlation。
-4. index.ts 在 /api 精确挂载一次，保留 route-local parser/未知 id precedence。
+4. index.ts 在 global express.json() 前把 Operation Router 精确挂载到 /api；GET 不解析 JSON，P3D-1 不注册 Cancel route。
 5. route-local error map 只暴露稳定 code/status/safe message；未知异常统一 INTERNAL_ERROR。
 
 ### 2.4 回归与停止边界
@@ -88,12 +96,13 @@
 
 - POST /api/operations/:operationId/cancel
 
-推荐 Option B：专用 guarded cancel。它不扩展普通 OperationService.ALLOWED_TRANSITIONS 的所有 caller 语义，而是在一个专用 caller-owned service method 中检查 M3-TD-27 的四类状态、expected status/version、binding 与 terminal fence。
+M3-TD-31/32 已批准 Option C：专用 guarded Operation cancel + approval-aware Lifecycle cancellation seam。普通 OperationService.ALLOWED_TRANSITIONS 不得因为 P3D Cancel 而扩展。
 
 | 方案 | 状态 | 决定 |
 | --- | --- | --- |
-| Option A：直接给普通 transition 表增加 waiting/paused -> cancelled | NOT REQUIRED | 会把所有普通 transition caller 的语义扩大，且可能让 Engine/其他服务绕过 Cancel 专用 guard。 |
-| Option B：cancelWithinTransaction 专用 guard | IMPLEMENTED | 与现有 terminal/version invariants 及 caller-owned transaction 兼容；只由 canonical Operation Cancel 调用。 |
+| Option A：扩大普通 transition table | REJECTED | 会扩大普通 caller 的能力，削弱专用 guard，并可能影响 Engine/adjacent consumers。 |
+| Option B：专用 Operation guard + ordinary cancelRunWithinTransaction | REJECTED AS INCOMPLETE | ordinary seam 拒绝 waiting_approval；扩大它会绕过 Approval ordering。 |
+| Option C：专用 Operation guard + approval-aware Lifecycle seam | OWNER APPROVED / NOT IMPLEMENTED | 合同已闭合；只允许未来获授权的 canonical Operation Cancel 调用。 |
 
 ### 3.2 RED：先锁定原子与状态矩阵
 
@@ -102,29 +111,33 @@
 | 场景 | 必须断言 |
 | --- | --- |
 | queued/running/waiting_approval/paused | 四类 Operation 均只能在契约批准且 bound Run 可取消时进入 cancel path。 |
-| already cancelled | 返回当前 Operation；Operation/Run/Stage/Event/Outbox 全部 zero side effect。 |
-| completed/failed | 409-class OPERATION_NOT_CANCELLABLE；所有 aggregate 保持不变。 |
+| already cancelled | HTTP 200 current ApiOperation；即使 expectedVersion stale 也 zero lifecycle/Event/Outbox side effect。 |
+| completed/failed | matching version 时 409 OPERATION_NOT_CANCELLABLE；所有 aggregate 保持不变。 |
 | unknown | 404 OPERATION_NOT_FOUND；locator precedence 保持。 |
-| binding mismatch | stable conflict/fail closed；不调用 lifecycle，不写 Operation。 |
-| stale Operation version | VERSION_CONFLICT 或获批准的 ETag conflict；不能继续 Run cancellation。 |
-| stale Run version | 同上；Operation 条件更新与 lifecycle 共同回滚。 |
+| exact request | query empty；body 只有 required positive-safe-integer expectedVersion；extra/client metadata/ETag transport 均拒绝。 |
+| binding/Approval mismatch | fail closed、outer rollback、route sanitize 为 INTERNAL_ERROR；不新增 public code。 |
+| stale Operation version | 非 cancelled 状态返回 VERSION_CONFLICT；不能继续 Run cancellation。 |
+| fresh Run version | outer transaction re-read persisted Run.version 并作为 expectedRunVersion；HTTP 不提供该字段。 |
+| waiting_approval | exactly one unresolved approval.required；保持 run/stage/approvalRequestId binding 与 frozen Event order。 |
 | stage Event failure | Operation、Run、Stage、Runtime Event、Outbox、version 全恢复。 |
 | run Event/Outbox failure | 同上，且不存在自动 failed Operation。 |
 | commit failure | 同上；不留下 Operation cancelled 的孤儿状态。 |
-| waiting_approval direct lifecycle seam | 在 owner contract 未解决时测试必须保持 STOP；不得用 v2 defaults 让它“通过”。 |
+| metadata/idempotency | operation_api、[]、true、reason absent；无第二 Operation、无 Idempotency Record、Idempotency-Key 不参与 replay。 |
 
 ### 3.3 GREEN：建议的事务组成
 
-Future OperationService.cancelWithinTransaction 必须由外层 inTransaction/runInTransaction 调用，内部不得开第二个 transaction：
+Future OperationService.cancelWithinTransaction 必须拥有唯一 outer transaction，内部不得开第二个 transaction：
 
-1. locator/authorization 后，在同一个 BEGIN IMMEDIATE 中 workspace-scoped re-read Operation。
-2. 校验 aggregateType=run、aggregateId 等于 runId、workspace 与 correlation binding。
-3. 对 cancelled 做 no-op replay；对 terminal/unsupported status 返回稳定 409；不执行 lifecycle。
-4. workspace-scoped re-read bound Run，校验 Operation/Run 的期望版本及 status compatibility。
-5. 按 Operation expected status/version 条件更新 Operation 为 cancelled；条件更新失败立即抛 conflict。
-6. 调用现有 LifecycleTransactionService.cancelRunWithinTransaction 处理其已覆盖的 Run 状态；waiting_approval 必须等待 owner 批准的最小 seam，不能调用 resolveApprovalToCancellation 伪装成 generic cancel。
-7. P2 lifecycle core 按 stage sequence/id 取消非终态 Stage，写每个 stage.cancelled/Outbox，最后写 run.cancelled/Outbox。
-8. 捕获/传播稳定错误，由外层 rollback；成功后再生成 ApiOperation response。不得创建第二 Operation，不写 operation Event。
+1. Operation Router 在 global express.json() 前完成 locator/workspace authorization，再执行 Cancel route-scoped parser 与 exact validation。
+2. BEGIN IMMEDIATE 后 workspace-scoped re-read Operation，并校验 aggregate/run/workspace/correlation binding。
+3. cancelled 直接 HTTP 200 no-op；该优先级高于 expectedVersion。
+4. 其他状态比较 body.expectedVersion；stale -> VERSION_CONFLICT。
+5. matching-version completed/failed -> OPERATION_NOT_CANCELLABLE；四类可取消状态进入 dedicated guarded update。
+6. 条件更新 Operation 为 cancelled；随后在同一 handle/transaction 内 re-read bound Run，并使用 fresh persisted Run.version。
+7. queued/starting/running/paused Run 可复用 existing core；waiting_approval 进入 approval-aware seam，发现 exactly one unresolved Approval。
+8. waiting_approval 写 approval.resolved(decision=cancel_run, decidedBy=operation_api)，再按 stage.sequence/id 写 stage.cancelled，最后 run.cancelled。
+9. Event sequence contiguous、每 Event 一个 Outbox；Operation/Run/Stages/Events/Outbox/versions/sequences 全成或全回滚。
+10. 成功返回 ApiOperation；不得创建第二 Operation、Operation Event 或 Idempotency Record。
 
 ### 3.4 composition allowlist
 
@@ -132,23 +145,17 @@ Future OperationService.cancelWithinTransaction 必须由外层 inTransaction/ru
 
 - OperationService.ts 接受既有 lifecycle dependency/transaction seam；
 - SqliteStore.ts 以同一 database handle 构造并注入既有 LifecycleTransactionService；
-- OperationRepository.ts 仅补 locator/必要 conditional update seam；
+- LifecycleTransactionService.ts 只增加 approval-aware Operation cancellation seam；
+- m3-p2c2b-composite-lifecycle.test.ts 为 REQUIRED，覆盖 Approval discovery/order/rollback/concurrency；
+- m3-p2c2a-lifecycle-transaction.test.ts 为 REGRESSION ONLY，不改变 single-transition semantics；
+- OperationRepository.ts 仅在 P3D-1 后仍有 cancel-specific conditional update evidence 时 CONDITIONAL；
 - 不新增 OperationControlService、第二数据库连接或隐式 service singleton。
 
-LifecycleTransactionService.ts 默认仍为 FORBIDDEN。若 waiting_approval 缺口不能通过现有 seam 关闭，P3D-2 在这里 STOP，进入 owner review；不能把该文件偷偷加入 REQUIRED。
+LifecycleTransactionService.ts 在 P3D-1 为 FORBIDDEN；在 P3D-2 为 OWNER-APPROVED NARROW REQUIRED SCOPE。不得借机重构 approval APIs、普通 Run lifecycle、startup/completion/failure 或 process runtime。
 
-### 3.5 request/error gate
+### 3.5 已闭合 request/error contract
 
-在 GREEN 前必须有已批准的 request contract：
-
-- canonical body 的字段、是否允许空 body、Content-Type/query 规则；
-- requestedBy 是认证 actor、服务端固定来源还是其他已批准来源；
-- terminatedProcessIds 与 worktreePreserved 如何由受信任 lifecycle/process 结果产生；
-- reason 是否入参、长度与持久化规则；
-- expectedVersion 与 ETag 的 exact transport 语义；
-- binding mismatch、Run terminal/不兼容、busy/unknown 的稳定 codes/status/safe messages。
-
-没有这些批准项，只有 RED/审计可以继续，GREEN 必须 STOP。
+M3-TD-31 已冻结：URL 只含 operationId、query empty、exact body 只有 expectedVersion、no ETag/If-Match、no client lifecycle metadata、trusted server metadata、already-cancelled/stale/terminal precedence，以及仅 VALIDATION_FAILED、OPERATION_NOT_FOUND、VERSION_CONFLICT、OPERATION_NOT_CANCELLABLE、INTERNAL_ERROR 五个 public codes。合同已就绪，但 GREEN 仍必须等待 P3D-2 独立生产授权。
 
 ## 4. P3D-3：Race 与 failure closure
 
@@ -176,52 +183,65 @@ LifecycleTransactionService.ts 默认仍为 FORBIDDEN。若 waiting_approval 缺
 
 - 看到两个 Operation、operation.cancel idempotency、或改变既有 run.cancel idempotency 时停止；
 - RunEngine 需要修改才能证明互斥时停止并请求独立 owner review；优先利用现有 tickWithinTransaction/completeStartup seam；
-- waiting_approval 仍无批准的 generic cancellation seam 时停止；
+- waiting_approval 未使用 M3-TD-32 approval-aware seam、Approval discovery 或 frozen Event order 时停止；
 - 任一 failure injection 产生 partial Current State/Event/Outbox 时停止，不以重试或补偿写掩盖；
 - 要求更改 Migration/Shared/Registry/Web/SSE/OpenAPI 才能通过时停止并扩大授权边界，而不是临时修改。
 
 ## 5. 精确 allowlist 与禁止范围
 
-### 5.1 REQUIRED（获授权后）
+### 5.1 P3D-1 REQUIRED（DEPENDENCY READY / NOT AUTHORIZED）
 
 | 文件 | 允许内容 |
 | --- | --- |
-| apps/server/src/routes/operations.ts | 新增三条 endpoint、locator-first、projection、safe error map。 |
-| apps/server/src/routes/operations.test.ts | 新增 HTTP/read/cancel/race-facing contract tests。 |
-| apps/server/src/services/OperationService.ts | locator facade、Operation DTO seam、Option B caller-owned cancel orchestration。 |
-| apps/server/src/services/OperationService.test.ts | Operation status/identity/version/no-op/rollback 单元与集成覆盖。 |
+| apps/server/src/routes/operations.ts | 只新增两个 GET endpoint、locator-first、projection、safe error map；不得实现 Cancel。 |
+| apps/server/src/routes/operations.test.ts | GET、workspace isolation、Event correlation、no-parser/mount contract tests；不得加入 Cancel behavior。 |
+| apps/server/src/services/OperationService.ts | locator/read facade；不得提前加入 cancel orchestration。 |
+| apps/server/src/services/OperationService.test.ts | locator/read/progress omission tests。 |
 | apps/server/src/store/OperationRepository.ts | opaque-id locator 与仅有证据支持的最小 repository seam。 |
 | apps/server/src/store/OperationRepository.test.ts | locator 的 workspace/unknown/pure-read/isolation 测试。 |
-| apps/server/src/store/SqliteStore.ts | 同一 database handle 下的 service dependency composition。 |
-| apps/server/src/index.ts | /api router 单次 mount，保持 parser 顺序。 |
+| apps/server/src/index.ts | Operation Router 在 global express.json() 前于 /api 单次 mount。 |
 
-### 5.2 CONDITIONAL
+SqliteStore.ts 在 P3D-1 为 FORBIDDEN；当前 operationService accessor 已足够。只有独立 composition evidence 证明必须暴露 Router accessor 时，才可重新分类为 CONDITIONAL。LifecycleTransactionService.ts 在 P3D-1 始终 FORBIDDEN。
 
-- apps/server/src/services/LifecycleTransactionService.ts：默认 FORBIDDEN；只有 owner 批准 waiting_approval 最小 seam 且证明现有 seam 不足时才可重新审查。
-- apps/server/src/store/RuntimeEventRepository.ts：只有独立 security review 要求物理 workspace predicate 时才可改；当前 route 前置授权方案不要求改。
-- apps/server/src/store/RuntimeEventRepository.test.ts：只有需要锁定上述 query security seam 时才新增。
+### 5.2 P3D-2 REQUIRED（CONTRACT READY / NOT AUTHORIZED）
 
-### 5.3 FORBIDDEN
+| 文件 | 允许内容 |
+| --- | --- |
+| apps/server/src/routes/operations.ts | 只增加 M3-TD-31 canonical Cancel route。 |
+| apps/server/src/routes/operations.test.ts | exact request/precedence/error/idempotency HTTP tests。 |
+| apps/server/src/services/OperationService.ts | Option C dedicated guarded cancel 与唯一 outer transaction。 |
+| apps/server/src/services/OperationService.test.ts | four-status/no-op/version/binding/rollback tests。 |
+| apps/server/src/store/SqliteStore.ts | 只做 same-handle Lifecycle/Operation composition。 |
+| apps/server/src/services/LifecycleTransactionService.ts | 只增加 approval-aware Operation cancellation seam。 |
+| apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts | REQUIRED：Approval discovery/resolution、ordered cancellation、rollback、concurrency。 |
 
-Shared/Registry/Migration/014、Web、SSE/replay/OpenAPI completion、RunEngine、runLifecycle、TaskRunService、RunRepository/RunStageRepository lifecycle semantics、ProcessManager/provider/CLI/worktree runtime、非 Run Operation、policy、production cutover，以及任何既有 Markdown（本轮除两份新增文档外）均禁止修改。
+apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts 是 REGRESSION ONLY；不修改 single-transition behavior。OperationRepository.ts/OperationRepository.test.ts 只有 P3D-1 结束后仍出现 cancel-specific conditional-update evidence 时才为 CONDITIONAL。
+
+### 5.3 P3D-3 boundary（NOT AUTHORIZED）
+
+P3D-3 只负责 Claim vs Cancel、Start Completion vs Cancel、Startup Failure vs Cancel、duplicate Cancel、already cancelled、terminal Cancel、two independent SQLite connections、failure injection 与 rollback closure。不得增加新的 product behavior；RunEngine production code 保持 FORBIDDEN。
+
+### 5.4 全阶段 FORBIDDEN
+
+Shared/Registry/Migration 014、Web、SSE/replay/OpenAPI completion、runLifecycle/TaskRunService/v2 behavior、RunRepository/RunStageRepository ordinary semantics、ProcessManager/provider/CLI/worktree runtime、非 Run Operation、policy、production cutover、删除/重命名 run.cancel 或新增 operation.cancel idempotency，均保持 FORBIDDEN。
 
 ## 6. 测试、回归、提交与边界
 
-### 6.1 P3D-0（本轮）
+### 6.1 P3D contract closure（本轮）
 
 | 项目 | 状态 | 边界 |
 | --- | --- | --- |
-| 文档 | IMPLEMENTED | 只新增 current-state audit 与 implementation plan 两份 Markdown。 |
-| 生产代码 | NOT REQUIRED | 不修改 .ts/.tsx/.js/.json/.sql。 |
-| 测试 | IMPLEMENTED | 只读定向测试已在 exact base 上通过 212/212，另行通过 RunStageRepository 9/9；首次环境解析失败已记录。 |
-| schema | NOT REQUIRED | 不创建 Migration 014，不修改 Registry/DDL。 |
-| commit | MISSING | 文档通过范围验证后，才允许一个 docs-only commit：docs: plan M3 P3D operation control surface。 |
-| push/PR | MISSING | commit 后可 push docs/m3-p3d-preplanning 做远程 SHA 核对；不创建 Draft PR。 |
+| 文档 | OWNER AUTHORIZED | 只修改 11-API-Specification.md、M3-owner-decisions.md、M3-p3d-current-state-audit.md、M3-p3d-implementation-plan.md。 |
+| 生产代码/测试 | NOT AUTHORIZED | 不修改任何 .ts/.tsx/.js/.json/.sql；不进入 P3D-1/2/3。 |
+| retained baseline tests | RETAINED EVIDENCE | 212/212 与 RunStageRepository 9/9 来自前一 P3D-0 运行；本次 docs-only closure 不重新运行、不声称新 PASS。 |
+| schema | NOT REQUIRED / NOT AUTHORIZED | Registry 保持 001–013；Migration 014 absent。 |
+| commit | DOCS-ONLY FORWARD | 门禁通过后创建 docs: freeze M3 P3D cancel contract；parent 必须为 7213a50fa1f516d94bcd56bb767cd454631e2c7c。 |
+| push/PR | PUSH ONLY / NO PR | 推送 docs/m3-p3d-preplanning 并核对 remote SHA；不创建 Draft PR。 |
 
 ### 6.2 P3D-1/P3D-2/P3D-3 future commit boundaries
 
 - P3D-1 read surface 应独立于 P3D-2 cancel core，先完成 locator/events contract 与 route tests。
-- P3D-2 只有 request contract、waiting_approval seam、composition gate 全部通过后才能开始；Operation/Run/Stage/Event/Outbox 组合必须在同一 commit/test gate 内闭合。
+- P3D-2 合同已由 M3-TD-31/32 闭合，但只有 P3D-1 acceptance 后且独立授权时才能开始；Operation/Run/Stage/Event/Outbox 组合必须在同一 commit/test gate 内闭合。
 - P3D-3 只负责 cross-connection race/failure closure；不能顺便加入 SSE、Web、migration、policy 或 Engine 功能。
 - 任一 phase fail 时保留失败测试与证据，回滚只允许撤销该 phase 自己的变更；不得 reset/checkout 覆盖用户工作。
 
@@ -246,11 +266,14 @@ Shared/Registry/Migration/014、Web、SSE/replay/OpenAPI completion、RunEngine�
 
 | 项目 | 状态 | 结论 |
 | --- | --- | --- |
-| P3D-0 PREPLANNING | IMPLEMENTED | 审计与计划完成；结果受两个 STOP CONDITION 明确约束。 |
-| P3D-1 PRODUCTION IMPLEMENTATION | NOT REQUIRED | 本轮未授权。 |
-| P3D-2 PRODUCTION IMPLEMENTATION | NOT REQUIRED | 本轮未授权；waiting_approval 与 request contract 未闭合。 |
-| P3D-3 PRODUCTION IMPLEMENTATION | NOT REQUIRED | 本轮未授权。 |
-| P3E | NOT REQUIRED | 未进入、未授权。 |
-| Migration 014 | NOT REQUIRED | 不创建。 |
-| Production cutover | NOT REQUIRED | 不执行。 |
-| Draft PR | NOT REQUIRED | 本轮不创建。 |
+| P3D-0 PREPLANNING | COMPLETE | 当前状态审计与 implementation plan 完成。 |
+| P3D CONTRACT CLOSURE | COMPLETE | M3-TD-31/32 Owner approved/documented；生产代码未实现。 |
+| M3-TD-31 | OWNER APPROVED / NOT IMPLEMENTED | HTTP request/replay contract frozen。 |
+| M3-TD-32 | OWNER APPROVED / NOT IMPLEMENTED | Option C guarded + approval-aware lifecycle contract frozen。 |
+| P3D-1 PRODUCTION IMPLEMENTATION | DEPENDENCY READY / NOT AUTHORIZED | 只允许未来单独授权的两个 GET endpoint。 |
+| P3D-2 PRODUCTION IMPLEMENTATION | CONTRACT READY / NOT AUTHORIZED | DEPENDS ON P3D-1 ACCEPTANCE。 |
+| P3D-3 PRODUCTION IMPLEMENTATION | NOT AUTHORIZED | DEPENDS ON P3D-2；只做 race/failure closure。 |
+| P3E | NOT ENTERED / NOT AUTHORIZED | 未进入。 |
+| Migration 014 | NOT REQUIRED / NOT AUTHORIZED / ABSENT | 不创建。 |
+| Production cutover | NOT AUTHORIZED / NOT STARTED | 不执行。 |
+| Draft PR | NOT CREATED | 本轮不创建。 |
