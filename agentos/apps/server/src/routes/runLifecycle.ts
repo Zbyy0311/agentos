@@ -29,6 +29,34 @@ const RUN_LIFECYCLE_SAFE_MESSAGE: Record<string, string> = {
   RUN_START_STATE_INCONSISTENT: 'Run start state is inconsistent',
 };
 
+const RUN_RETRY_ERROR_STATUS: Record<string, number> = {
+  VALIDATION_FAILED: 400,
+  RUN_NOT_FOUND: 404,
+  VERSION_CONFLICT: 409,
+  RUN_NOT_RETRYABLE: 409,
+  IDEMPOTENCY_KEY_REUSED: 409,
+  RUN_RETRY_ALREADY_CREATED: 409,
+  RUN_ACTIVE_EXISTS: 409,
+  IDEMPOTENCY_RECORD_INVALID: 500,
+  RUN_RETRY_STATE_AMBIGUOUS: 500,
+  RUN_RETRY_STATE_INCONSISTENT: 500,
+  RUN_RETRY_BUSY: 503,
+  INTERNAL_ERROR: 500,
+};
+
+const RUN_RETRY_SAFE_MESSAGE: Record<string, string> = {
+  VALIDATION_FAILED: 'Invalid request',
+  RUN_NOT_FOUND: 'Run not found',
+  VERSION_CONFLICT: 'Version conflict',
+  RUN_NOT_RETRYABLE: 'Run is not retryable',
+  IDEMPOTENCY_KEY_REUSED: 'Idempotency key was already used with a different request',
+  RUN_RETRY_ALREADY_CREATED: 'Retry child already exists',
+  RUN_ACTIVE_EXISTS: 'Task already has an active run',
+  IDEMPOTENCY_RECORD_INVALID: 'Idempotency record is invalid',
+  RUN_RETRY_STATE_AMBIGUOUS: 'Retry state is ambiguous',
+  RUN_RETRY_STATE_INCONSISTENT: 'Retry state is inconsistent',
+};
+
 /**
  * Only a genuine SQLite busy/locked timeout maps to 503. node:sqlite errors
  * carry the SQLite result code in `errcode` (SQLITE_BUSY = 5, SQLITE_LOCKED
@@ -69,6 +97,48 @@ function respondRunLifecycle(res: Response, fn: () => { status: number; body: un
   }
 }
 
+function respondRetry(res: Response, fn: () => { status: number; body: unknown }): void {
+  try {
+    const { status, body } = fn();
+    res.status(status).json(body);
+  } catch (err) {
+    if (isSqliteBusyError(err)) {
+      res.status(503).json({
+        error: 'Run retry is temporarily unavailable',
+        code: 'RUN_RETRY_BUSY',
+        retryable: true,
+      });
+      return;
+    }
+    const code = (err as { code?: unknown } | null)?.code;
+    if (typeof code === 'string' && code in RUN_RETRY_ERROR_STATUS) {
+      const status = RUN_RETRY_ERROR_STATUS[code];
+      if (code === 'RUN_RETRY_BUSY') {
+        res.status(status).json({
+          error: 'Run retry is temporarily unavailable',
+          code,
+          retryable: true,
+        });
+        return;
+      }
+      if (code === 'RUN_ACTIVE_EXISTS') {
+        res.status(status).json({
+          error: 'Task already has an active run',
+          code,
+          retryable: false,
+        });
+        return;
+      }
+      res.status(status).json({
+        error: RUN_RETRY_SAFE_MESSAGE[code] ?? 'Internal server error',
+        code,
+      });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+  }
+}
+
 function isPlainJsonObject(value: unknown): value is Record<string, unknown> {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
   const prototype = Object.getPrototypeOf(value);
@@ -87,6 +157,8 @@ const START_BODY_ERROR_MESSAGE = 'Request body must be a valid JSON object';
  */
 const startWorkspaceByRequest = new WeakMap<object, string>();
 const startRawPayloadLengthByRequest = new WeakMap<object, number>();
+const retryWorkspaceByRequest = new WeakMap<object, string>();
+const retryRawPayloadLengthByRequest = new WeakMap<object, number>();
 
 /**
  * Known client-side body/parser request errors: malformed JSON, unsupported
@@ -129,6 +201,13 @@ const startBodyParser = json({
   strict: false,
   verify: (req, _res, buf) => {
     startRawPayloadLengthByRequest.set(req, buf.length);
+  },
+});
+
+const retryBodyParser = json({
+  strict: false,
+  verify: (req, _res, buf) => {
+    retryRawPayloadLengthByRequest.set(req, buf.length);
   },
 });
 
@@ -252,6 +331,98 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
     startBodyParser,
     startBodyParserErrorHandler,
     startHandler,
+  );
+
+  const resolveRetryWorkspace = (req: Request, res: Response, next: NextFunction): void => {
+    const { runId } = req.params as { runId: string };
+    let workspaceId: string | undefined;
+    try {
+      workspaceId = store.runRepository().findWorkspaceIdByOpaqueId(runId);
+    } catch (error) {
+      next(error);
+      return;
+    }
+    if (workspaceId === undefined) {
+      res.status(404).json({ error: 'Run not found', code: 'RUN_NOT_FOUND' });
+      return;
+    }
+    retryWorkspaceByRequest.set(req, workspaceId);
+    next();
+  };
+
+  const rejectRetryQuery = (req: Request, res: Response, next: NextFunction): void => {
+    if (Object.keys(req.query ?? {}).length > 0) {
+      res.status(400).json({ error: 'Invalid request', code: 'VALIDATION_FAILED' });
+      return;
+    }
+    next();
+  };
+
+  const retryBodyParserErrorHandler = (err: unknown, req: Request, res: Response, next: NextFunction): void => {
+    if (res.headersSent) {
+      next(err);
+      return;
+    }
+    if (isSqliteBusyError(err)) {
+      res.status(503).json({
+        error: 'Run retry is temporarily unavailable',
+        code: 'RUN_RETRY_BUSY',
+        retryable: true,
+      });
+      return;
+    }
+    if (isClientBodyParseError(err)) {
+      res.status(400).json({ error: 'Invalid request', code: 'VALIDATION_FAILED' });
+      return;
+    }
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+  };
+
+  const parseRetryExpectedVersion = (value: unknown): number => {
+    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) {
+      throw new V2ValidationError('expectedVersion must be a positive safe integer');
+    }
+    return value;
+  };
+
+  const retryHandler = (req: Request, res: Response): void => respondRetry(res, () => {
+    const { runId } = req.params as { runId: string };
+    const workspaceId = retryWorkspaceByRequest.get(req);
+    if (workspaceId === undefined) {
+      throw new Error('RUN_RETRY_WORKSPACE_CONTEXT_MISSING');
+    }
+    if (!isJsonContentType(req.headers['content-type'])) {
+      throw new V2ValidationError('Request body must be a valid JSON object');
+    }
+    if ((retryRawPayloadLengthByRequest.get(req) ?? 0) === 0) {
+      throw new V2ValidationError('Request body must be a valid JSON object');
+    }
+    const body: unknown = req.body;
+    if (!isPlainJsonObject(body)) {
+      throw new V2ValidationError('Request body must be a valid JSON object');
+    }
+    for (const key of Object.keys(body)) {
+      if (key !== 'expectedVersion') {
+        throw new V2ValidationError('body contains an unknown field');
+      }
+    }
+    const expectedVersion = parseRetryExpectedVersion(body.expectedVersion);
+    const normalizedKey = parseIdempotencyKey(req);
+    if (normalizedKey === undefined) {
+      throw new V2ValidationError('Idempotency-Key is required');
+    }
+    const result = service.retryRunOperationForV2(workspaceId, runId, normalizedKey, expectedVersion);
+    if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+    return { status: result.httpStatus, body: result.body };
+  });
+
+  router.post(
+    '/runs/:runId/retry',
+    resolveRetryWorkspace,
+    rejectRetryQuery,
+    retryBodyParser,
+    retryBodyParserErrorHandler,
+    retryHandler,
   );
 
   return router;

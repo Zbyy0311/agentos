@@ -24,12 +24,14 @@ import { WorkflowDefinitionResolver } from './WorkflowDefinitionResolver.js';
 import type { LifecycleTransactionService } from './LifecycleTransactionService.js';
 import {
   SnapshotService,
+  RunSnapshotFailedError,
   type ResolvedRunConfiguration,
 } from './SnapshotService.js';
 import { IdempotencyService } from './IdempotencyService.js';
 import { NON_TERMINAL_OPERATION_STATUSES, OperationService } from './OperationService.js';
 import {
   buildOperationResultEnvelopeV1,
+  buildRetryResultEnvelopeV1,
   buildRunResultEnvelopeV1,
   buildTaskResultEnvelopeV1,
   IdempotencyRecordInvalidError,
@@ -37,6 +39,7 @@ import {
   type IdempotencyOperationDtoV1,
   type IdempotencyResultEnvelopeV1,
   type OperationResultEnvelopeV1,
+  type RetryResultEnvelopeV1,
   type RunResultEnvelopeV1,
   type TaskResultEnvelopeV1,
 } from '../idempotency/types.js';
@@ -102,6 +105,12 @@ export interface V2MutationExecutionResult<TBody> {
 export interface StartOperationExecutionResult {
   httpStatus: 202;
   body: { operation: IdempotencyOperationDtoV1 };
+  replayed: boolean;
+}
+
+export interface RetryOperationExecutionResult {
+  httpStatus: 201;
+  body: RetryResultEnvelopeV1['body'];
   replayed: boolean;
 }
 
@@ -179,6 +188,10 @@ function assertValidExpectedVersion(expectedVersion?: number): void {
     throw domainError('VALIDATION_FAILED', 'expectedVersion must be a positive safe integer');
   }
 }
+
+const RETRY_CHILD_LIFECYCLE_STATUSES: readonly Run['status'][] = [
+  'queued', 'starting', 'running', 'waiting_approval', 'paused', 'completed', 'failed', 'cancelled',
+];
 
 export class TaskRunService {
   private readonly snapshotService: SnapshotService;
@@ -602,6 +615,69 @@ export class TaskRunService {
   }
 
   /**
+   * M3 P3C-1 A2 — accepts Retry metadata only. The Parent remains failed and
+   * unchanged; a separate run.start is the only Engine authorization. The
+   * keyed order is prepare (outside) → BEGIN IMMEDIATE → resolve first →
+   * replay | history/guards → Operation/Child/Snapshot/Stage/Event/Outbox →
+   * completed v3 envelope → storeSuccess → commit.
+   */
+  retryRunOperationForV2(
+    workspaceId: string,
+    parentRunId: string,
+    normalizedKey: string,
+    expectedVersion: number,
+  ): RetryOperationExecutionResult {
+    if (
+      typeof expectedVersion !== 'number'
+      || !Number.isSafeInteger(expectedVersion)
+      || expectedVersion <= 0
+    ) {
+      throw domainError('VALIDATION_FAILED', 'expectedVersion must be a positive safe integer');
+    }
+    if (typeof normalizedKey !== 'string' || normalizedKey.length === 0) {
+      throw domainError('VALIDATION_FAILED', 'Idempotency-Key is required');
+    }
+
+    const idempotencyService = this.idempotencyService;
+    if (!idempotencyService) throw new IdempotencyRecordInvalidError();
+    const operationService = this.requireRetryOperationService();
+    const lifecycleTransactionService = this.requireLifecycleTransactionService();
+    this.requireRetrySnapshotService();
+    const prepared = idempotencyService.prepare({
+      operation: 'run.retry',
+      workspaceId,
+      normalizedKey,
+      fingerprintInput: {
+        operation: 'run.retry',
+        workspaceId,
+        pathParams: { runId: parentRunId },
+        domainInput: {},
+        expectedVersion,
+      },
+    });
+    if (!prepared) throw new IdempotencyRecordInvalidError();
+
+    return this.deps.runInTransaction(() => {
+      const resolution = idempotencyService.resolve(prepared);
+      if (resolution.kind === 'replay') {
+        if (resolution.httpStatus !== 201 || resolution.envelope.operation !== 'run.retry') {
+          throw new IdempotencyRecordInvalidError();
+        }
+        return { httpStatus: 201, body: resolution.envelope.body, replayed: true };
+      }
+      const envelope = this.acceptRetryInTransaction(
+        workspaceId,
+        parentRunId,
+        expectedVersion,
+        operationService,
+        lifecycleTransactionService,
+      );
+      idempotencyService.storeSuccess({ prepared, httpStatus: 201, envelope });
+      return { httpStatus: 201, body: envelope.body, replayed: false };
+    });
+  }
+
+  /**
    * In-transaction Start acceptance body. The locator was already applied at
    * the route boundary; this guard chain is workspace-scoped and never
    * treats the locator as the domain guard.
@@ -659,6 +735,191 @@ export class TaskRunService {
     return buildOperationResultEnvelopeV1('run.start', operation);
   }
 
+  private acceptRetryInTransaction(
+    workspaceId: string,
+    parentRunId: string,
+    expectedVersion: number,
+    operationService: OperationService,
+    lifecycleTransactionService: LifecycleTransactionService,
+  ): RetryResultEnvelopeV1 {
+    const parent = this.deps.runRepository().findById(workspaceId, parentRunId);
+    if (!parent) throw new RunNotFoundError(parentRunId);
+    if (parent.version !== expectedVersion) {
+      throw new VersionConflictError('runs', parentRunId, expectedVersion);
+    }
+    if (parent.status !== 'failed') {
+      throw domainError('RUN_NOT_RETRYABLE', 'Run is not retryable');
+    }
+
+    const retryOperations = operationService
+      .listByRun(workspaceId, parent.id)
+      .filter(operation => operation.type === 'run.retry');
+    const nonTerminal = retryOperations.filter(operation => (
+      NON_TERMINAL_OPERATION_STATUSES as readonly string[]
+    ).includes(operation.status));
+    const completed = retryOperations.filter(operation => operation.status === 'completed');
+    const directChildren = this.deps.runRepository()
+      .listByTask(workspaceId, parent.taskId)
+      .filter(run => run.parentRunId === parent.id);
+
+    if (nonTerminal.length > 1 || completed.length > 1 || directChildren.length > 1) {
+      throw domainError('RUN_RETRY_STATE_AMBIGUOUS', 'Retry state is ambiguous');
+    }
+    if (nonTerminal.length > 0) {
+      throw domainError('RUN_RETRY_STATE_INCONSISTENT', 'Retry state is inconsistent');
+    }
+    if (completed.length !== directChildren.length) {
+      if (completed.length > 0 || directChildren.length > 0) {
+        throw domainError('RUN_RETRY_STATE_INCONSISTENT', 'Retry state is inconsistent');
+      }
+    }
+    if (completed.length === 1 && directChildren.length === 1) {
+      if (!this.isValidRetryDuplicate(parent, completed[0]!, directChildren[0]!)) {
+        throw domainError('RUN_RETRY_STATE_INCONSISTENT', 'Retry state is inconsistent');
+      }
+      throw domainError('RUN_RETRY_ALREADY_CREATED', 'Retry child already exists');
+    }
+
+    if (this.deps.runRepository().findActiveByTask(workspaceId, parent.taskId)) {
+      throw domainError('RUN_ACTIVE_EXISTS', 'Task already has an active run');
+    }
+
+    let preparedClone;
+    try {
+      preparedClone = this.snapshotService.prepareRetryClone(parent);
+    } catch (error) {
+      if (error instanceof RunSnapshotFailedError) {
+        throw domainError('RUN_RETRY_STATE_INCONSISTENT', 'Retry state is inconsistent');
+      }
+      throw error;
+    }
+
+    const created = operationService.createWithinTransaction({
+      workspaceId,
+      runId: parent.id,
+      type: 'run.retry',
+    });
+    if (
+      created.type !== 'run.retry'
+      || created.status !== 'queued'
+      || created.workspaceId !== workspaceId
+      || created.aggregateType !== 'run'
+      || created.aggregateId !== parent.id
+      || created.runId !== parent.id
+      || created.correlationId !== created.id
+      || created.version !== 1
+    ) {
+      throw new IdempotencyRecordInvalidError();
+    }
+
+    const running = operationService.transitionWithinTransactionAt({
+      workspaceId,
+      operationId: created.id,
+      expectedVersion: 1,
+      to: 'running',
+    }, new Date().toISOString());
+    if (
+      running.type !== 'run.retry'
+      || running.status !== 'running'
+      || running.version !== 2
+      || running.startedAt === undefined
+      || running.completedAt !== undefined
+    ) {
+      throw new IdempotencyRecordInvalidError();
+    }
+
+    const child = this.deps.runRepository().insert({
+      workspaceId,
+      taskId: parent.taskId,
+      parentRunId: parent.id,
+      origin: 'v2_api',
+      reason: 'retry',
+      objective: parent.objective,
+      createdBy: parent.createdBy,
+    });
+    let persisted;
+    try {
+      persisted = this.snapshotService.persistRetryClone(child, preparedClone);
+    } catch (error) {
+      if (error instanceof RunSnapshotFailedError) {
+        throw domainError('RUN_RETRY_STATE_INCONSISTENT', 'Retry state is inconsistent');
+      }
+      throw error;
+    }
+    lifecycleTransactionService.createRunGraphEventsWithinTransaction(child, persisted.snapshot, persisted.stages);
+
+    const completedOperation = operationService.transitionWithinTransactionAt({
+      workspaceId,
+      operationId: running.id,
+      expectedVersion: 2,
+      to: 'completed',
+      result: { resourceType: 'run', resourceId: child.id },
+    }, new Date().toISOString());
+    if (
+      completedOperation.type !== 'run.retry'
+      || completedOperation.status !== 'completed'
+      || completedOperation.version !== 3
+      || completedOperation.aggregateId !== parent.id
+      || completedOperation.runId !== parent.id
+      || completedOperation.correlationId !== completedOperation.id
+      || completedOperation.result?.resourceType !== 'run'
+      || completedOperation.result.resourceId !== child.id
+      || completedOperation.startedAt === undefined
+      || completedOperation.completedAt === undefined
+    ) {
+      throw new IdempotencyRecordInvalidError();
+    }
+    // The persisted Run row includes M3's internal recoveryRequired column,
+    // while the frozen Retry acceptance DTO deliberately exposes only the
+    // original queued Child fields. Project the already-returned insert
+    // snapshot without rereading or mutating the Child row.
+    const acceptanceChild: Run = {
+      id: child.id,
+      workspaceId: child.workspaceId,
+      taskId: child.taskId,
+      ...(child.parentRunId === undefined ? {} : { parentRunId: child.parentRunId }),
+      rootRunId: child.rootRunId,
+      status: child.status,
+      reason: child.reason,
+      origin: child.origin,
+      nextEventSequence: child.nextEventSequence,
+      createdBy: child.createdBy,
+      createdAt: child.createdAt,
+      updatedAt: child.updatedAt,
+      version: child.version,
+    };
+    return buildRetryResultEnvelopeV1('run.retry', acceptanceChild, completedOperation);
+  }
+
+  private isValidRetryDuplicate(
+    parent: Run,
+    operation: ReturnType<OperationService['listByRun']>[number],
+    child: Run,
+  ): boolean {
+    return (
+      operation.type === 'run.retry'
+      && operation.status === 'completed'
+      && operation.version === 3
+      && operation.workspaceId === parent.workspaceId
+      && operation.aggregateType === 'run'
+      && operation.aggregateId === parent.id
+      && operation.runId === parent.id
+      && operation.correlationId === operation.id
+      && operation.result?.resourceType === 'run'
+      && operation.result.resourceId === child.id
+      && child.id !== parent.id
+      && child.workspaceId === parent.workspaceId
+      && child.taskId === parent.taskId
+      && child.parentRunId === parent.id
+      && child.rootRunId === parent.rootRunId
+      && child.origin === 'v2_api'
+      && child.reason === 'retry'
+      && (RETRY_CHILD_LIFECYCLE_STATUSES as readonly string[]).includes(child.status)
+      && child.objective === parent.objective
+      && child.createdBy === parent.createdBy
+    );
+  }
+
   /**
    * Narrowest OperationService capability resolution (M3 P3C-1). Optional on
    * the deps so Legacy/v2 fixtures keep their original shape; Start fails
@@ -689,6 +950,25 @@ export class TaskRunService {
       throw new Error('RUN_START_OPERATION_SERVICE_UNAVAILABLE');
     }
     return service as OperationService;
+  }
+
+  private requireRetryOperationService(): OperationService {
+    const service = this.requireOperationService();
+    if (typeof (service as { transitionWithinTransactionAt?: unknown }).transitionWithinTransactionAt !== 'function') {
+      throw new Error('RUN_RETRY_OPERATION_SERVICE_UNAVAILABLE');
+    }
+    return service;
+  }
+
+  private requireRetrySnapshotService(): SnapshotService {
+    const service = this.snapshotService as SnapshotService & {
+      prepareRetryClone?: unknown;
+      persistRetryClone?: unknown;
+    };
+    if (typeof service.prepareRetryClone !== 'function' || typeof service.persistRetryClone !== 'function') {
+      throw new Error('RUN_RETRY_SNAPSHOT_SERVICE_UNAVAILABLE');
+    }
+    return this.snapshotService;
   }
 
   startRunForBridge(workspaceId: string, runId: string): { run: Run; task: Task } {

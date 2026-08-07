@@ -13,7 +13,9 @@ import { OperationService } from './OperationService.js';
 import { OperationRepository } from '../store/OperationRepository.js';
 import type { InsertOperationInput } from '../store/OperationRepository.js';
 import { createEntityId } from '../store/Identity.js';
+import { hashIdempotencyRequest } from '../idempotency/fingerprint.js';
 import type { Run, Task, Workspace } from '@agentos/shared';
+import { RunSnapshotFailedError } from './SnapshotService.js';
 
 interface Fixture {
   root: string;
@@ -2003,5 +2005,576 @@ test('P3C1-S21 start history matrix enforces the frozen combination precedence',
     assert.equal(tableRowCount(fx, 'dead_letters'), deadLettersBeforeAllow);
   } finally {
     closeV2(fx);
+  }
+});
+
+test('P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation', () => {
+  const fx = fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'retry-parent', createdBy: 'test' });
+    const created = fx.service.createRun(fx.workspace.id, { taskId: task.id, createdBy: 'test' });
+    let parent = fx.store.runRepository().findById(fx.workspace.id, created.id)!;
+    fx.store.runRepository().transitionStatus(fx.workspace.id, parent.id, parent.version, 'running');
+    parent = fx.store.runRepository().findById(fx.workspace.id, parent.id)!;
+    parent = fx.store.runRepository().transitionStatus(
+      fx.workspace.id,
+      parent.id,
+      parent.version,
+      'failed',
+      { failureCode: 'TEST_FAILURE', failureMessage: 'test failure' },
+    );
+    const service = new TaskRunService(fx.store, {
+      idempotencyService: new IdempotencyService(fx.store.idempotencyRepository()),
+    });
+    const result = service.retryRunOperationForV2(fx.workspace.id, parent.id, 'retry-service-key', parent.version);
+    assert.equal(result.httpStatus, 201);
+    assert.equal(result.replayed, false);
+    assert.equal(result.body.run.status, 'queued');
+    assert.equal(result.body.operation.type, 'run.retry');
+    assert.equal(result.body.operation.status, 'completed');
+    assert.equal(result.body.operation.version, 3);
+  } finally {
+    close(fx);
+  }
+});
+
+function seedFailedParent(fx: Fixture, objective = 'retry objective'): { task: Task; parent: Run } {
+  const task = fx.service.createTask(fx.workspace.id, { title: 'retry-parent', createdBy: 'test' });
+  const created = fx.service.createRun(fx.workspace.id, {
+    taskId: task.id,
+    createdBy: 'test',
+    objective,
+  });
+  let parent = fx.store.runRepository().findById(fx.workspace.id, created.id)!;
+  fx.store.runRepository().transitionStatus(fx.workspace.id, parent.id, parent.version, 'running');
+  parent = fx.store.runRepository().findById(fx.workspace.id, parent.id)!;
+  parent = fx.store.runRepository().transitionStatus(
+    fx.workspace.id,
+    parent.id,
+    parent.version,
+    'failed',
+    { failureCode: 'TEST_FAILURE', failureMessage: 'test failure' },
+  );
+  return { task, parent };
+}
+
+function retryService(fx: Fixture, snapshotService?: object): TaskRunService {
+  return new TaskRunService(fx.store, {
+    idempotencyService: new IdempotencyService(fx.store.idempotencyRepository()),
+    ...(snapshotService === undefined ? {} : { snapshotService: snapshotService as never }),
+  });
+}
+
+function basicTableRowCount(fx: Fixture, table: string): number {
+  return (fx.store.getDatabase().prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count;
+}
+
+function retryDatabaseCounts(fx: Fixture): Record<string, number> {
+  return Object.fromEntries([
+    'runs', 'run_snapshots', 'run_stages', 'operations', 'runtime_events', 'outbox_messages', 'idempotency_records',
+  ].map(table => [table, basicTableRowCount(fx, table)]));
+}
+
+function seedRetryHistory(
+  fx: Fixture,
+  parent: Run,
+  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled',
+  resourceId = 'run_missing',
+): ReturnType<OperationService['create']> {
+  const operations = new OperationService(fx.store.getDatabase() as never);
+  const created = operations.create({ workspaceId: fx.workspace.id, runId: parent.id, type: 'run.retry' });
+  if (status === 'queued') return created;
+  if (status === 'running') {
+    return operations.transition({ workspaceId: fx.workspace.id, operationId: created.id, expectedVersion: 1, to: 'running' });
+  }
+  if (status === 'failed') {
+    return operations.transition({
+      workspaceId: fx.workspace.id,
+      operationId: created.id,
+      expectedVersion: 1,
+      to: 'failed',
+      error: {
+        type: 'about:blank', title: 'seeded failure', status: 500, code: 'SEEDED_FAILURE',
+        detail: 'seeded failure', instance: '/test', requestId: 'test', retryable: false,
+      },
+    });
+  }
+  if (status === 'cancelled') {
+    return operations.transition({ workspaceId: fx.workspace.id, operationId: created.id, expectedVersion: 1, to: 'cancelled' });
+  }
+  const running = operations.transition({ workspaceId: fx.workspace.id, operationId: created.id, expectedVersion: 1, to: 'running' });
+  return operations.transition({
+    workspaceId: fx.workspace.id,
+    operationId: running.id,
+    expectedVersion: 2,
+    to: 'completed',
+    result: { resourceType: 'run', resourceId },
+  });
+}
+
+function seedDirectRetryChild(fx: Fixture, parent: Run, objective = parent.objective): Run {
+  return fx.store.runRepository().insert({
+    workspaceId: parent.workspaceId,
+    taskId: parent.taskId,
+    parentRunId: parent.id,
+    origin: 'v2_api',
+    reason: 'retry',
+    objective,
+    createdBy: parent.createdBy,
+  });
+}
+
+test('P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically', () => {
+  const fx = fixture();
+  try {
+    const { task, parent } = seedFailedParent(fx, 'immutable retry objective');
+    const parentBefore = structuredClone(fx.store.runRepository().findById(fx.workspace.id, parent.id)!);
+    const taskBefore = structuredClone(fx.store.taskRepository().findById(fx.workspace.id, task.id)!);
+    const before = retryDatabaseCounts(fx);
+    const result = retryService(fx).retryRunOperationForV2(
+      fx.workspace.id,
+      parent.id,
+      'retry-fingerprint-key-01',
+      parent.version,
+    );
+    const childId = result.body.run.id;
+    const child = fx.store.runRepository().findById(fx.workspace.id, childId)!;
+    assert.equal(child.workspaceId, parent.workspaceId);
+    assert.equal(child.taskId, parent.taskId);
+    assert.equal(child.parentRunId, parent.id);
+    assert.equal(child.rootRunId, parent.rootRunId);
+    assert.equal(child.status, 'queued');
+    assert.equal(child.reason, 'retry');
+    assert.equal(child.origin, 'v2_api');
+    assert.equal(child.objective, parent.objective);
+    assert.equal(child.createdBy, parent.createdBy);
+    assert.equal(child.version, 1);
+    assert.equal(result.body.run.nextEventSequence, 1);
+    assert.equal(result.body.run.version, 1);
+
+    const operations = fx.store.operationService().listByRun(fx.workspace.id, parent.id).filter(operation => operation.type === 'run.retry');
+    assert.equal(operations.length, 1);
+    const operation = operations[0]!;
+    assert.equal(operation.aggregateType, 'run');
+    assert.equal(operation.aggregateId, parent.id);
+    assert.equal(operation.runId, parent.id);
+    assert.equal(operation.correlationId, operation.id);
+    assert.equal(operation.status, 'completed');
+    assert.equal(operation.version, 3);
+    assert.deepEqual(operation.result, { resourceType: 'run', resourceId: child.id });
+    assert.equal(result.body.operation.version, 3);
+
+    const db = fx.store.getDatabase();
+    const record = db.prepare('SELECT request_hash, http_status FROM idempotency_records').get() as { request_hash: string; http_status: number };
+    assert.equal(record.http_status, 201);
+    assert.equal(record.request_hash, hashIdempotencyRequest({
+      operation: 'run.retry',
+      workspaceId: fx.workspace.id,
+      pathParams: { runId: parent.id },
+      domainInput: {},
+      expectedVersion: parent.version,
+    }));
+    assert.deepEqual(
+      (db.prepare('SELECT type FROM runtime_events WHERE run_id = ? ORDER BY sequence').all(child.id) as Array<{ type: string }>).map(row => row.type),
+      ['run.created'],
+    );
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(child.id) as { count: number }).count, 1);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.start' AND run_id = ?").get(child.id) as { count: number }).count, 0);
+    assert.deepEqual(fx.store.runRepository().findById(fx.workspace.id, parent.id), parentBefore);
+    assert.deepEqual(fx.store.taskRepository().findById(fx.workspace.id, task.id), taskBefore);
+    assert.equal(retryDatabaseCounts(fx).runs, before.runs + 1);
+  } finally {
+    close(fx);
+  }
+});
+
+test('P3C1-RY-S03 Retry replay resolves before every current domain read and is immutable', () => {
+  const fx = fixture();
+  try {
+    const { parent } = seedFailedParent(fx);
+    const service = retryService(fx);
+    const live = service.retryRunOperationForV2(fx.workspace.id, parent.id, 'retry-replay-key-01', parent.version);
+    const childId = live.body.run.id;
+    fx.store.getDatabase().prepare('UPDATE runs SET next_event_sequence = 77 WHERE id = ?').run(childId);
+
+    const runs = fx.store.runRepository();
+    const snapshots = fx.store.runSnapshotRepository();
+    const stages = fx.store.runStageRepository();
+    const operations = fx.store.operationService();
+    const original = {
+      findById: runs.findById,
+      listByTask: runs.listByTask,
+      findActiveByTask: runs.findActiveByTask,
+      findByRunId: snapshots.findByRunId,
+      listByRun: stages.listByRun,
+      operationListByRun: operations.listByRun,
+    };
+    runs.findById = (() => { throw new Error('current Run read after replay'); }) as typeof runs.findById;
+    runs.listByTask = (() => { throw new Error('current Child read after replay'); }) as typeof runs.listByTask;
+    runs.findActiveByTask = (() => { throw new Error('active Run read after replay'); }) as typeof runs.findActiveByTask;
+    snapshots.findByRunId = (() => { throw new Error('Snapshot read after replay'); }) as typeof snapshots.findByRunId;
+    stages.listByRun = (() => { throw new Error('Stage read after replay'); }) as typeof stages.listByRun;
+    operations.listByRun = (() => { throw new Error('Operation read after replay'); }) as typeof operations.listByRun;
+    try {
+      const replay = service.retryRunOperationForV2(fx.workspace.id, parent.id, 'retry-replay-key-01', parent.version);
+      assert.equal(replay.replayed, true);
+      assert.deepEqual(replay.body, live.body);
+    } finally {
+      runs.findById = original.findById;
+      runs.listByTask = original.listByTask;
+      runs.findActiveByTask = original.findActiveByTask;
+      snapshots.findByRunId = original.findByRunId;
+      stages.listByRun = original.listByRun;
+      operations.listByRun = original.operationListByRun;
+    }
+  } finally {
+    close(fx);
+  }
+});
+
+test('P3C1-RY-S04 Retry history matrix distinguishes ambiguity, inconsistency, and terminal-only history', () => {
+  const cases: Array<{ label: string; history: Array<'queued' | 'running' | 'completed' | 'failed' | 'cancelled'>; expected: string }> = [
+    { label: 'one non-terminal', history: ['queued'], expected: 'RUN_RETRY_STATE_INCONSISTENT' },
+    { label: 'multiple non-terminal', history: ['queued', 'running'], expected: 'RUN_RETRY_STATE_AMBIGUOUS' },
+    { label: 'multiple completed', history: ['completed', 'completed'], expected: 'RUN_RETRY_STATE_AMBIGUOUS' },
+    { label: 'completed without Child', history: ['completed'], expected: 'RUN_RETRY_STATE_INCONSISTENT' },
+  ];
+  for (const item of cases) {
+    const fx = fixture();
+    try {
+      const { parent } = seedFailedParent(fx);
+      for (const status of item.history) seedRetryHistory(fx, parent, status);
+      assert.throws(
+        () => retryService(fx).retryRunOperationForV2(fx.workspace.id, parent.id, `retry-history-${item.label.replaceAll(' ', '-')}-01`, parent.version),
+        (error: unknown) => (error as { code?: unknown }).code === item.expected,
+      );
+    } finally {
+      close(fx);
+    }
+  }
+
+  const missingCompleted = fixture();
+  try {
+    const { parent } = seedFailedParent(missingCompleted);
+    seedDirectRetryChild(missingCompleted, parent);
+    assert.throws(
+      () => retryService(missingCompleted).retryRunOperationForV2(missingCompleted.workspace.id, parent.id, 'retry-child-without-op-01', parent.version),
+      (error: unknown) => (error as { code?: unknown }).code === 'RUN_RETRY_STATE_INCONSISTENT',
+    );
+  } finally {
+    close(missingCompleted);
+  }
+
+  const multipleChildren = fixture();
+  try {
+    const { parent } = seedFailedParent(multipleChildren);
+    const first = seedDirectRetryChild(multipleChildren, parent);
+    multipleChildren.store.getDatabase().prepare(
+      "UPDATE runs SET status = 'failed', failure_code = 'SEEDED', failure_message = 'seeded', completed_at = ?, updated_at = ?, version = version + 1 WHERE id = ?",
+    ).run(new Date().toISOString(), new Date().toISOString(), first.id);
+    seedDirectRetryChild(multipleChildren, parent);
+    assert.throws(
+      () => retryService(multipleChildren).retryRunOperationForV2(multipleChildren.workspace.id, parent.id, 'retry-multiple-child-01', parent.version),
+      (error: unknown) => (error as { code?: unknown }).code === 'RUN_RETRY_STATE_AMBIGUOUS',
+    );
+  } finally {
+    close(multipleChildren);
+  }
+
+  const terminalOnly = fixture();
+  try {
+    const { parent } = seedFailedParent(terminalOnly);
+    seedRetryHistory(terminalOnly, parent, 'failed');
+    seedRetryHistory(terminalOnly, parent, 'cancelled');
+    const result = retryService(terminalOnly).retryRunOperationForV2(
+      terminalOnly.workspace.id,
+      parent.id,
+      'retry-terminal-history-01',
+      parent.version,
+    );
+    assert.equal(result.replayed, false);
+    assert.equal(result.body.operation.status, 'completed');
+  } finally {
+    close(terminalOnly);
+  }
+});
+
+test('P3C1-RY-S05 valid duplicate wins after history checks and rejects binding corruption', () => {
+  const valid = fixture();
+  try {
+    const { parent } = seedFailedParent(valid);
+    const child = seedDirectRetryChild(valid, parent);
+    seedRetryHistory(valid, parent, 'completed', child.id);
+    assert.throws(
+      () => retryService(valid).retryRunOperationForV2(valid.workspace.id, parent.id, 'retry-valid-duplicate-01', parent.version),
+      (error: unknown) => (error as { code?: unknown }).code === 'RUN_RETRY_ALREADY_CREATED',
+    );
+  } finally {
+    close(valid);
+  }
+
+  const corrupt = fixture();
+  try {
+    const { parent } = seedFailedParent(corrupt);
+    const child = seedDirectRetryChild(corrupt, parent);
+    seedRetryHistory(corrupt, parent, 'completed', child.id);
+    corrupt.store.getDatabase().prepare(
+      "UPDATE runs SET status = 'failed', failure_code = 'SEEDED', failure_message = 'seeded', completed_at = ?, updated_at = ?, version = version + 1 WHERE id = ?",
+    ).run(new Date().toISOString(), new Date().toISOString(), child.id);
+    const otherRoot = corrupt.service.createRun(corrupt.workspace.id, { taskId: parent.taskId, reason: 'manual', createdBy: 'test' });
+    corrupt.service.cancelQueuedRun(corrupt.workspace.id, otherRoot.id);
+    corrupt.store.getDatabase().prepare('UPDATE runs SET root_run_id = ? WHERE id = ?').run(otherRoot.id, child.id);
+    assert.throws(
+      () => retryService(corrupt).retryRunOperationForV2(corrupt.workspace.id, parent.id, 'retry-corrupt-binding-01', parent.version),
+      (error: unknown) => (error as { code?: unknown }).code === 'RUN_RETRY_STATE_INCONSISTENT',
+    );
+  } finally {
+    close(corrupt);
+  }
+});
+
+test('P3C1-RY-S06 unrelated active Task Run is checked after valid duplicate and blocks A2', () => {
+  const fx = fixture();
+  try {
+    const { parent, task } = seedFailedParent(fx);
+    fx.store.runRepository().insert({ workspaceId: fx.workspace.id, taskId: task.id, origin: 'v2_api', createdBy: 'test' });
+    const before = retryDatabaseCounts(fx);
+    assert.throws(
+      () => retryService(fx).retryRunOperationForV2(fx.workspace.id, parent.id, 'retry-active-service-01', parent.version),
+      (error: unknown) => (error as { code?: unknown }).code === 'RUN_ACTIVE_EXISTS',
+    );
+    assert.deepEqual(retryDatabaseCounts(fx), before);
+    assert.equal(fx.store.runRepository().findById(fx.workspace.id, parent.id)!.status, 'failed');
+  } finally {
+    close(fx);
+  }
+});
+
+test('P3C1-RY-S07 Retry clones persisted V2 legacy Stage Graph and emits only creation Events', () => {
+  const fx = fixture();
+  try {
+    const created = fx.service.createLegacyRunForBridge({
+      workspaceId: fx.workspace.id,
+      legacyTaskId: 'retry-clone-legacy',
+      title: 'retry clone legacy',
+      createdBy: 'legacy_pipeline',
+      objective: 'retry clone objective',
+      workspace: fx.workspace,
+    });
+    fx.service.startRunForBridge(fx.workspace.id, created.run.id);
+    fx.service.failRunForBridge(fx.workspace.id, created.run.id, 'legacy failure');
+    const parent = fx.store.runRepository().findById(fx.workspace.id, created.run.id)!;
+    const parentSnapshot = fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, parent.id)!;
+    const parentStages = fx.store.runStageRepository().listByRun(fx.workspace.id, parent.id);
+    const result = retryService(fx).retryRunOperationForV2(fx.workspace.id, parent.id, 'retry-clone-service-01', parent.version);
+    const child = fx.store.runRepository().findById(fx.workspace.id, result.body.run.id)!;
+    const childSnapshot = fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, child.id)!;
+    const childStages = fx.store.runStageRepository().listByRun(fx.workspace.id, child.id);
+    assert.notEqual(childSnapshot.id, parentSnapshot.id);
+    assert.deepEqual(childSnapshot.payload.workflow, parentSnapshot.payload.workflow);
+    assert.equal(childSnapshot.payload.run.workspaceId, child.workspaceId);
+    assert.equal(childSnapshot.payload.run.taskId, child.taskId);
+    assert.equal(childSnapshot.payload.run.origin, child.origin);
+    assert.equal(childSnapshot.payload.run.reason, child.reason);
+    assert.equal(childSnapshot.payload.run.parentRunId, parent.id);
+    assert.equal(childSnapshot.payload.run.rootRunId, parent.rootRunId);
+    assert.equal(childStages.length, parentStages.length);
+    assert.deepEqual(childStages.map(stage => [stage.workflowStageKey, stage.sequence]), parentStages.map(stage => [stage.workflowStageKey, stage.sequence]));
+    for (const stage of childStages) {
+      assert.equal(stage.runId, child.id);
+      assert.equal(stage.runSnapshotId, childSnapshot.id);
+      assert.equal(stage.attempt, 1);
+      assert.equal(stage.status, 'pending');
+      assert.equal(stage.version, 1);
+      assert.equal(stage.createdAt, stage.updatedAt);
+      assert.equal(parentStages.some(parentStage => parentStage.id === stage.id), false);
+    }
+    const events = fx.store.getDatabase().prepare(
+      'SELECT id, type, correlation_id, causation_id, parent_event_id FROM runtime_events WHERE run_id = ? ORDER BY sequence',
+    ).all(child.id) as Array<Record<string, unknown>>;
+    assert.deepEqual(events.map(event => event.type), [
+      'run.created', 'stage.created', 'stage.created', 'stage.created', 'stage.created',
+    ]);
+    assert.equal(events[0]!.correlation_id, child.id);
+    for (const event of events.slice(1)) {
+      assert.equal(event.causation_id, events[0]!.id);
+      assert.equal(event.parent_event_id, events[0]!.id);
+      assert.equal(event.correlation_id, child.id);
+    }
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(child.id) as { count: number }).count, events.length);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE run_id = ? AND type = 'run.start'").get(parent.id) as { count: number }).count, 0);
+  } finally {
+    close(fx);
+  }
+});
+
+test('P3C1-RY-S08 all Retry capabilities fail closed before Snapshot preparation or Mutation', () => {
+  const cases: Array<{ label: string; make: (fx: Fixture) => TaskRunService }> = [
+    {
+      label: 'idempotency',
+      make: fx => new TaskRunService(fx.store),
+    },
+    {
+      label: 'snapshot',
+      make: fx => retryService(fx, {
+        resolveUnbound: () => { throw new Error('must not resolve current config'); },
+      }),
+    },
+  ];
+  for (const item of cases) {
+    const fx = fixture();
+    try {
+      const { parent } = seedFailedParent(fx);
+      const before = retryDatabaseCounts(fx);
+      assert.throws(
+        () => item.make(fx).retryRunOperationForV2(fx.workspace.id, parent.id, `retry-capability-${item.label}-01`, parent.version),
+        (error: unknown) => {
+          const code = (error as { code?: unknown }).code;
+          return code === 'IDEMPOTENCY_RECORD_INVALID' || code === undefined;
+        },
+      );
+      assert.deepEqual(retryDatabaseCounts(fx), before);
+    } finally {
+      close(fx);
+    }
+  }
+
+  const fx = fixture();
+  try {
+    const { parent } = seedFailedParent(fx);
+    const deps: TaskRunServiceDeps = {
+      taskRepository: () => fx.store.taskRepository(),
+      runRepository: () => fx.store.runRepository(),
+      workflowDefinitionRepository: () => fx.store.workflowDefinitionRepository(),
+      runSnapshotRepository: () => fx.store.runSnapshotRepository(),
+      runStageRepository: () => fx.store.runStageRepository(),
+      providerConfigurationRepository: () => fx.store.providerConfigurationRepository(),
+      findAgentSnapshotSource: (workspaceId, agentId) => fx.store.findAgentSnapshotSource(workspaceId, agentId),
+      runInTransaction: fn => fx.store.runInTransaction(fn),
+      lifecycleTransactionService: () => undefined as never,
+      operationService: () => fx.store.operationService(),
+    };
+    const before = retryDatabaseCounts(fx);
+    assert.throws(
+      () => new TaskRunService(deps, { idempotencyService: new IdempotencyService(fx.store.idempotencyRepository()) })
+        .retryRunOperationForV2(fx.workspace.id, parent.id, 'retry-capability-lifecycle-01', parent.version),
+      (error: unknown) => (error as { code?: unknown }).code === 'RUN_GRAPH_EVENT_SERVICE_UNAVAILABLE',
+    );
+    assert.deepEqual(retryDatabaseCounts(fx), before);
+  } finally {
+    close(fx);
+  }
+});
+
+test('P3C1-RY-S09 every A2 failure injection rolls back Operation, Child, Snapshot, Stage, Event, Outbox, and Idempotency', () => {
+  const injections = [
+    'operation-insert', 'operation-running', 'child-insert', 'snapshot', 'stage',
+    'event', 'outbox', 'operation-completed', 'store-success',
+  ] as const;
+  for (const injection of injections) {
+    const fx = fixture();
+    try {
+      const useLegacyGraph = injection === 'stage' || injection === 'event' || injection === 'outbox';
+      let parent: Run;
+      if (useLegacyGraph) {
+        const created = fx.service.createLegacyRunForBridge({
+          workspaceId: fx.workspace.id,
+          legacyTaskId: `retry-injection-${injection}`,
+          title: 'retry injection',
+          createdBy: 'legacy_pipeline',
+          objective: 'retry injection',
+          workspace: fx.workspace,
+        });
+        fx.service.startRunForBridge(fx.workspace.id, created.run.id);
+        fx.service.failRunForBridge(fx.workspace.id, created.run.id, 'injected parent failure');
+        parent = fx.store.runRepository().findById(fx.workspace.id, created.run.id)!;
+      } else {
+        parent = seedFailedParent(fx).parent;
+      }
+      const taskBefore = structuredClone(fx.store.taskRepository().findById(fx.workspace.id, parent.taskId)!);
+      const parentBefore = structuredClone(parent);
+      const countsBefore = retryDatabaseCounts(fx);
+      const operationService = fx.store.operationService();
+      const runRepository = fx.store.runRepository();
+      const snapshotRepository = fx.store.runSnapshotRepository();
+      const stageRepository = fx.store.runStageRepository();
+      const lifecycle = fx.store.lifecycleTransactionService();
+      const outbox = fx.store.outboxRepository();
+      const runtimeEvents = fx.store.runtimeEventRepository();
+      const idempotency = new IdempotencyService(fx.store.idempotencyRepository());
+      const originals = {
+        createWithinTransaction: operationService.createWithinTransaction,
+        transitionWithinTransactionAt: operationService.transitionWithinTransactionAt,
+        insertRun: runRepository.insert,
+        insertSnapshot: snapshotRepository.insert,
+        insertStage: stageRepository.insertInitial,
+        createGraph: lifecycle.createRunGraphEventsWithinTransaction,
+        insertOutbox: outbox.insertWithinTransaction,
+        appendEvent: runtimeEvents.appendWithinTransaction,
+        storeSuccess: idempotency.storeSuccess,
+      };
+      if (injection === 'operation-insert') {
+        operationService.createWithinTransaction = (input => {
+          if (input.type === 'run.retry') throw new Error('injected operation insert');
+          return originals.createWithinTransaction.call(operationService, input);
+        }) as typeof operationService.createWithinTransaction;
+      }
+      if (injection === 'operation-running' || injection === 'operation-completed') {
+        operationService.transitionWithinTransactionAt = ((input, timestamp) => {
+          if ((injection === 'operation-running' && input.to === 'running') || (injection === 'operation-completed' && input.to === 'completed')) {
+            throw new Error(`injected ${injection}`);
+          }
+          return originals.transitionWithinTransactionAt.call(operationService, input, timestamp);
+        }) as typeof operationService.transitionWithinTransactionAt;
+      }
+      if (injection === 'child-insert') {
+        runRepository.insert = (input => {
+          if (input.reason === 'retry') throw new Error('injected Child insert');
+          return originals.insertRun.call(runRepository, input);
+        }) as typeof runRepository.insert;
+      }
+      if (injection === 'snapshot') {
+        snapshotRepository.insert = (input => {
+          if (input.runId !== parent.id) throw new Error('injected Snapshot insert');
+          return originals.insertSnapshot.call(snapshotRepository, input);
+        }) as typeof snapshotRepository.insert;
+      }
+      if (injection === 'stage') {
+        stageRepository.insertInitial = (input => {
+          if (input.runId !== parent.id) throw new Error('injected Stage insert');
+          return originals.insertStage.call(stageRepository, input);
+        }) as typeof stageRepository.insertInitial;
+      }
+      if (injection === 'event') {
+        runtimeEvents.appendWithinTransaction = (draft => {
+          if (draft.runId !== parent.id) throw new Error('injected Runtime Event append');
+          return originals.appendEvent.call(runtimeEvents, draft);
+        }) as typeof runtimeEvents.appendWithinTransaction;
+      }
+      if (injection === 'outbox') {
+        outbox.insertWithinTransaction = input => {
+          throw new Error(`injected Outbox insert ${input.eventId}`);
+        };
+      }
+      if (injection === 'operation-completed') {
+        // Transition injection above already targets the final v2 -> v3 edge.
+      }
+      if (injection === 'store-success') {
+        idempotency.storeSuccess = (() => { throw new Error('injected storeSuccess'); }) as typeof idempotency.storeSuccess;
+      }
+      assert.throws(
+        () => new TaskRunService(fx.store, { idempotencyService: idempotency }).retryRunOperationForV2(
+          fx.workspace.id,
+          parent.id,
+          `retry-injection-${injection}-01`,
+          parent.version,
+        ),
+      );
+      assert.deepEqual(retryDatabaseCounts(fx), countsBefore, injection);
+      assert.deepEqual(fx.store.runRepository().findById(fx.workspace.id, parent.id), parentBefore, injection);
+      assert.deepEqual(fx.store.taskRepository().findById(fx.workspace.id, parent.taskId), taskBefore, injection);
+    } finally {
+      close(fx);
+    }
   }
 });

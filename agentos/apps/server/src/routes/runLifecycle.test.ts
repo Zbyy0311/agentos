@@ -14,6 +14,8 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { IdempotencyService } from '../services/IdempotencyService.js';
 import { OperationService } from '../services/OperationService.js';
+import { RunActiveExistsError } from '../store/RunRepository.js';
+import type { Run } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -35,11 +37,12 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 // ---------------------------------------------------------------------------
 
 interface StartRaceWorkerData {
-  mode: 'run-start-race' | 'store-open-under-lock';
+  mode: 'run-start-race' | 'run-retry-race' | 'store-open-under-lock';
   root: string;
   workspaceId: string;
   runId: string;
   key?: string;
+  expectedVersion?: number;
 }
 
 type StartRaceWorkerMessage =
@@ -53,7 +56,9 @@ function executeStartRaceWorkerCall(data: StartRaceWorkerData): StartRaceWorkerM
     const service = new TaskRunService(store, {
       idempotencyService: new IdempotencyService(store.idempotencyRepository()),
     });
-    const result = service.startRunOperationForV2(data.workspaceId, data.runId, data.key);
+    const result = data.mode === 'run-retry-race'
+      ? service.retryRunOperationForV2(data.workspaceId, data.runId, data.key ?? '', data.expectedVersion ?? 0)
+      : service.startRunOperationForV2(data.workspaceId, data.runId, data.key);
     return { outcome: 'live', httpStatus: result.httpStatus, replayed: result.replayed, body: result.body };
   } catch (error) {
     const code = (error as { code?: unknown } | null)?.code;
@@ -69,7 +74,7 @@ function executeStartRaceWorkerCall(data: StartRaceWorkerData): StartRaceWorkerM
 
 const currentWorkerData = workerData as StartRaceWorkerData | undefined;
 
-if (!isMainThread && parentPort && currentWorkerData?.mode === 'run-start-race') {
+if (!isMainThread && parentPort && (currentWorkerData?.mode === 'run-start-race' || currentWorkerData?.mode === 'run-retry-race')) {
   // MEDIUM-3: 'ready' means START CALL READY — the store, its migrations,
   // and the service are fully constructed before the barrier; 'go' fires
   // only startRunOperationForV2, so the two workers truly race A1.
@@ -90,7 +95,9 @@ if (!isMainThread && parentPort && currentWorkerData?.mode === 'run-start-race')
       }
       let result: StartRaceWorkerMessage;
       try {
-        const call = service.startRunOperationForV2(data.workspaceId, data.runId, data.key);
+        const call = data.mode === 'run-retry-race'
+          ? service.retryRunOperationForV2(data.workspaceId, data.runId, data.key ?? '', data.expectedVersion ?? 0)
+          : service.startRunOperationForV2(data.workspaceId, data.runId, data.key);
         result = { outcome: 'live', httpStatus: call.httpStatus, replayed: call.replayed, body: call.body };
       } catch (error) {
         const code = (error as { code?: unknown } | null)?.code;
@@ -297,6 +304,45 @@ async function postStart(
     json = null;
   }
   return { status: response.status, text, json, replayedHeader: response.headers.get('idempotency-replayed') };
+}
+
+async function postRetry(
+  fx: RouteFixture,
+  runId: string,
+  options: { body?: unknown; raw?: string; contentType?: string | null; key?: string; query?: string } = {},
+): Promise<StartResponse> {
+  const headers: Record<string, string> = {};
+  const contentType = options.contentType === undefined
+    ? (options.body !== undefined || options.raw !== undefined ? 'application/json' : null)
+    : options.contentType;
+  if (contentType) headers['Content-Type'] = contentType;
+  if (options.key !== undefined) headers['Idempotency-Key'] = options.key;
+  const response = await fetch(`${fx.baseApi}/runs/${runId}/retry${options.query ?? ''}`, {
+    method: 'POST',
+    headers,
+    body: options.raw !== undefined ? options.raw : (options.body !== undefined ? JSON.stringify(options.body) : undefined),
+  });
+  const text = await response.text();
+  let json: Record<string, unknown> | null = null;
+  try {
+    json = JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    json = null;
+  }
+  return { status: response.status, text, json, replayedHeader: response.headers.get('idempotency-replayed') };
+}
+
+function failRouteParent(fx: RouteFixture): Run {
+  let parent = fx.store.runRepository().findById(fx.workspaceId, fx.runId)!;
+  fx.store.runRepository().transitionStatus(fx.workspaceId, parent.id, parent.version, 'running');
+  parent = fx.store.runRepository().findById(fx.workspaceId, parent.id)!;
+  return fx.store.runRepository().transitionStatus(
+    fx.workspaceId,
+    parent.id,
+    parent.version,
+    'failed',
+    { failureCode: 'TEST_FAILURE', failureMessage: 'test failure' },
+  );
 }
 
 function tableRowCount(store: SqliteStore, table: string): number {
@@ -712,6 +758,7 @@ interface RaceFixture {
   root: string;
   store: SqliteStore;
   workspaceId: string;
+  taskId: string;
   runId: string;
 }
 
@@ -723,7 +770,7 @@ function createRaceFixture(): RaceFixture {
     git: false, memory: false, readme: false, docs: false,
   });
   const seeded = buildSeededRun(store, workspace.id);
-  return { root, store, workspaceId: workspace.id, runId: seeded.runId };
+  return { root, store, workspaceId: workspace.id, taskId: seeded.taskId, runId: seeded.runId };
 }
 
 function closeRaceFixture(fx: RaceFixture): void {
@@ -798,6 +845,132 @@ test('P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREA
     const operations = fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.start'").get() as { count: number };
     assert.equal(operations.count, 1);
     assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    closeRaceFixture(fx);
+  }
+});
+
+function failRaceRun(fx: RaceFixture, runId: string): number {
+  let run = fx.store.runRepository().findById(fx.workspaceId, runId)!;
+  if (run.status === 'queued') {
+    fx.store.runRepository().transitionStatus(fx.workspaceId, run.id, run.version, 'running');
+    run = fx.store.runRepository().findById(fx.workspaceId, run.id)!;
+  }
+  const failed = fx.store.runRepository().transitionStatus(
+    fx.workspaceId,
+    run.id,
+    run.version,
+    'failed',
+    { failureCode: 'RACE_FAILURE', failureMessage: 'race failure' },
+  );
+  return failed.version;
+}
+
+interface RetryRaceFixture extends RaceFixture {
+  parentVersion: number;
+  secondRunId?: string;
+  secondParentVersion?: number;
+}
+
+function createRetryRaceFixture(twoParents = false): RetryRaceFixture {
+  const fx = createRaceFixture();
+  const parentVersion = failRaceRun(fx, fx.runId);
+  if (!twoParents) return { ...fx, parentVersion };
+  const service = new TaskRunService(fx.store);
+  const second = service.createRun(fx.workspaceId, {
+    taskId: fx.taskId,
+    reason: 'manual',
+    createdBy: 'race-test',
+  });
+  const secondParentVersion = failRaceRun(fx, second.id);
+  return { ...fx, parentVersion, secondRunId: second.id, secondParentVersion };
+}
+
+async function runRetryRace(
+  fx: RetryRaceFixture,
+  a: { runId: string; expectedVersion: number; key: string },
+  b: { runId: string; expectedVersion: number; key: string },
+): Promise<[StartRaceWorkerMessage, StartRaceWorkerMessage]> {
+  const workerA = spawnStartRaceWorker({
+    mode: 'run-retry-race', root: fx.root, workspaceId: fx.workspaceId,
+    runId: a.runId, expectedVersion: a.expectedVersion, key: a.key,
+  });
+  const workerB = spawnStartRaceWorker({
+    mode: 'run-retry-race', root: fx.root, workspaceId: fx.workspaceId,
+    runId: b.runId, expectedVersion: b.expectedVersion, key: b.key,
+  });
+  await Promise.all([workerA.ready, workerB.ready]);
+  workerA.go();
+  workerB.go();
+  return Promise.all([workerA.result, workerB.result]);
+}
+
+test('P3C1-RY-C01 same Parent + same key has one live 201 and one replay 201', async () => {
+  const fx = createRetryRaceFixture();
+  try {
+    const [a, b] = await runRetryRace(
+      fx,
+      { runId: fx.runId, expectedVersion: fx.parentVersion, key: 'retry-race-same-key-01' },
+      { runId: fx.runId, expectedVersion: fx.parentVersion, key: 'retry-race-same-key-01' },
+    );
+    const messages = [a, b];
+    const live = messages.filter(message => message.outcome === 'live' && !message.replayed);
+    const replay = messages.filter(message => message.outcome === 'live' && message.replayed);
+    assert.equal(live.length, 1);
+    assert.equal(replay.length, 1);
+    assert.equal((live[0] as { httpStatus: number }).httpStatus, 201);
+    assert.equal((replay[0] as { httpStatus: number }).httpStatus, 201);
+    assert.equal(messages.some(message => message.outcome === 'error'), false);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(fx.runId) as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count, 1);
+  } finally {
+    closeRaceFixture(fx);
+  }
+});
+
+test('P3C1-RY-C02 same Parent + different keys has one 201 and one RUN_RETRY_ALREADY_CREATED 409', async () => {
+  const fx = createRetryRaceFixture();
+  try {
+    const [a, b] = await runRetryRace(
+      fx,
+      { runId: fx.runId, expectedVersion: fx.parentVersion, key: 'retry-race-different-a-01' },
+      { runId: fx.runId, expectedVersion: fx.parentVersion, key: 'retry-race-different-b-01' },
+    );
+    const messages = [a, b];
+    const live = messages.filter(message => message.outcome === 'live');
+    const conflicts = messages.filter(message => message.outcome === 'error' && message.code === 'RUN_RETRY_ALREADY_CREATED');
+    assert.equal(live.length, 1);
+    assert.equal(conflicts.length, 1);
+    assert.equal((live[0] as { httpStatus: number }).httpStatus, 201);
+    assert.equal(messages.some(message => message.outcome === 'live' && (message as { httpStatus: number }).httpStatus === 503), false);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(fx.runId) as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count, 1);
+  } finally {
+    closeRaceFixture(fx);
+  }
+});
+
+test('P3C1-RY-C03 same Task + two failed Parents has one 201 and one RUN_ACTIVE_EXISTS 409', async () => {
+  const fx = createRetryRaceFixture(true);
+  try {
+    assert.ok(fx.secondRunId);
+    assert.ok(fx.secondParentVersion);
+    const [a, b] = await runRetryRace(
+      fx,
+      { runId: fx.runId, expectedVersion: fx.parentVersion, key: 'retry-race-task-a-01' },
+      { runId: fx.secondRunId!, expectedVersion: fx.secondParentVersion!, key: 'retry-race-task-b-01' },
+    );
+    const messages = [a, b];
+    const live = messages.filter(message => message.outcome === 'live');
+    const conflicts = messages.filter(message => message.outcome === 'error' && message.code === 'RUN_ACTIVE_EXISTS');
+    assert.equal(live.length, 1);
+    assert.equal(conflicts.length, 1);
+    assert.equal((live[0] as { httpStatus: number }).httpStatus, 201);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE task_id = ? AND status IN (\'queued\',\'starting\',\'running\',\'waiting_approval\',\'paused\')').get(fx.taskId) as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 1);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count, 1);
   } finally {
     closeRaceFixture(fx);
   }
@@ -975,6 +1148,370 @@ test('P3C1-R36 start-race workers finish store construction before signalling re
     source.split('store-open-under-lock').length >= 3,
     'store-open-under-lock worker mode must exist for the constructor lock test',
   );
+});
+
+test('P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201', async () => {
+  const fx = await createRouteFixture();
+  try {
+    let parent = fx.store.runRepository().findById(fx.workspaceId, fx.runId)!;
+    fx.store.runRepository().transitionStatus(fx.workspaceId, parent.id, parent.version, 'running');
+    parent = fx.store.runRepository().findById(fx.workspaceId, parent.id)!;
+    parent = fx.store.runRepository().transitionStatus(
+      fx.workspaceId,
+      parent.id,
+      parent.version,
+      'failed',
+      { failureCode: 'TEST_FAILURE', failureMessage: 'test failure' },
+    );
+    const response = await fetch(`${fx.baseApi}/runs/${parent.id}/retry`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'retry-route-key' },
+      body: JSON.stringify({ expectedVersion: parent.version }),
+    });
+    assert.equal(response.status, 201);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY02 Retry locator precedes malformed body, query, and invalid key validation', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const cases = [
+      { raw: '{', query: '?unexpected=1', key: 'bad' },
+      { raw: 'null', query: '', key: 'bad,key' },
+      { raw: '', query: '?workspaceId=secret', key: '' },
+    ];
+    for (const item of cases) {
+      const response = await postRetry(fx, 'run_01J00000000000000000000000', item);
+      expectErrorBody(response, 404, 'RUN_NOT_FOUND');
+    }
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY03 Retry rejects query parameters before body and key processing', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const response = await postRetry(fx, fx.runId, {
+      body: { expectedVersion: 1 },
+      key: 'retry-query-key-01',
+      query: '?workspaceId=forbidden',
+    });
+    expectErrorBody(response, 400, 'VALIDATION_FAILED');
+    assert.equal(tableRowCount(fx.store, 'operations'), 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY04 Retry enforces the exact JSON body contract', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const cases: Array<{ label: string; options: Parameters<typeof postRetry>[2] }> = [
+      { label: 'missing content type', options: { body: { expectedVersion: 1 }, contentType: null, key: 'retry-body-key-01' } },
+      { label: 'wrong content type', options: { body: { expectedVersion: 1 }, contentType: 'text/plain', key: 'retry-body-key-02' } },
+      { label: 'zero byte', options: { raw: '', key: 'retry-body-key-03' } },
+      { label: 'malformed json', options: { raw: '{"expectedVersion":', key: 'retry-body-key-04' } },
+      { label: 'null', options: { raw: 'null', key: 'retry-body-key-05' } },
+      { label: 'array', options: { raw: '[]', key: 'retry-body-key-06' } },
+      { label: 'string', options: { raw: '"retry"', key: 'retry-body-key-07' } },
+      { label: 'number', options: { raw: '1', key: 'retry-body-key-08' } },
+      { label: 'boolean', options: { raw: 'true', key: 'retry-body-key-09' } },
+      { label: 'missing expectedVersion', options: { body: {}, key: 'retry-body-key-10' } },
+    ];
+    for (const item of cases) {
+      const response = await postRetry(fx, fx.runId, item.options);
+      expectErrorBody(response, 400, 'VALIDATION_FAILED');
+    }
+    for (const value of [null, 0, -1, 1.5, '1', Number.MAX_SAFE_INTEGER + 1]) {
+      const response = await postRetry(fx, fx.runId, {
+        raw: JSON.stringify({ expectedVersion: value }),
+        key: `retry-version-key-${String(cases.length + Number(value === null))}`,
+      });
+      expectErrorBody(response, 400, 'VALIDATION_FAILED');
+    }
+    for (const field of [
+      'mode', 'stageId', 'providerOverrides', 'reuseTaskMemory', 'reuseWorktree', 'reason',
+      'createdBy', 'requestedBy', 'workspaceId', 'parentRunId', 'operationId', 'correlationId',
+    ]) {
+      const response = await postRetry(fx, fx.runId, {
+        body: { expectedVersion: 1, [field]: 'forbidden' },
+        key: `retry-field-${field.slice(0, 12)}-01`,
+      });
+      expectErrorBody(response, 400, 'VALIDATION_FAILED');
+    }
+    assert.equal(tableRowCount(fx.store, 'operations'), 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY05 Retry rejects every missing or malformed Idempotency-Key shape', async () => {
+  const fx = await createRouteFixture();
+  try {
+    for (const [index, key] of [undefined, '', '   ', 'a,b', 'short', 'bad key', '!invalid!'].entries()) {
+      const response = await postRetry(fx, fx.runId, {
+        body: { expectedVersion: 1 },
+        ...(key === undefined ? {} : { key }),
+      });
+      expectErrorBody(response, 400, 'VALIDATION_FAILED');
+      if (key) assert.equal(response.text.includes(key), false, `raw key leaked for case ${index}`);
+    }
+
+    const response = await fetch(`${fx.baseApi}/runs/${fx.runId}/retry`, {
+      method: 'POST',
+      headers: [
+        ['Content-Type', 'application/json'],
+        ['Idempotency-Key', 'retry-duplicate-key-01'],
+        ['idempotency-key', 'retry-duplicate-key-02'],
+      ],
+      body: JSON.stringify({ expectedVersion: 1 }),
+    });
+    const text = await response.text();
+    assert.equal(response.status, 400);
+    assert.doesNotMatch(text, /retry-duplicate-key|SQLITE|database is locked|\.agentos/i);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY06 live and replay return the immutable HTTP 201 acceptance snapshot', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const parent = failRouteParent(fx);
+    const live = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-live-key-0001' });
+    assert.equal(live.status, 201);
+    assert.equal(live.replayedHeader, null);
+    assert.ok(live.json !== null);
+    assert.deepEqual(Object.keys(live.json).sort(), ['operation', 'run']);
+    const liveRun = live.json.run as Record<string, unknown>;
+    const liveOperation = live.json.operation as Record<string, unknown>;
+    assert.deepEqual(Object.keys(liveRun).sort(), [
+      'createdAt', 'createdBy', 'id', 'nextEventSequence', 'origin', 'parentRunId',
+      'reason', 'rootRunId', 'status', 'taskId', 'updatedAt', 'version', 'workspaceId',
+    ]);
+    assert.equal(liveRun.workspaceId, fx.workspaceId);
+    assert.equal(liveRun.taskId, fx.taskId);
+    assert.equal(liveRun.parentRunId, parent.id);
+    assert.equal(liveRun.rootRunId, parent.rootRunId);
+    assert.equal(liveRun.status, 'queued');
+    assert.equal(liveRun.reason, 'retry');
+    assert.equal(liveRun.origin, 'v2_api');
+    assert.equal(liveRun.nextEventSequence, 1);
+    assert.equal(liveRun.version, 1);
+    assert.deepEqual(Object.keys(liveOperation).sort(), [
+      'aggregateId', 'aggregateType', 'completedAt', 'correlationId', 'createdAt', 'id',
+      'result', 'runId', 'startedAt', 'status', 'type', 'version', 'workspaceId',
+    ]);
+    assert.equal(liveOperation.type, 'run.retry');
+    assert.equal(liveOperation.status, 'completed');
+    assert.equal(liveOperation.version, 3);
+    assert.equal(liveOperation.aggregateId, parent.id);
+    assert.equal(liveOperation.runId, parent.id);
+    assert.equal(liveOperation.correlationId, liveOperation.id);
+    assert.deepEqual(liveOperation.result, { resourceId: liveRun.id, resourceType: 'run' });
+
+    const childId = String(liveRun.id);
+    const db = fx.store.getDatabase();
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 1);
+    assert.equal((db.prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry' AND run_id = ?").get(parent.id) as { count: number }).count, 1);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number }).count, 1);
+    const events = db.prepare('SELECT type, correlation_id, causation_id, parent_event_id FROM runtime_events WHERE run_id = ? ORDER BY sequence').all(childId) as Array<Record<string, unknown>>;
+    assert.deepEqual(events.map(event => event.type), ['run.created']);
+    assert.equal(events[0]!.correlation_id, childId);
+    assert.equal(events[0]!.causation_id, null);
+    assert.equal(events[0]!.parent_event_id, null);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(childId) as { count: number }).count, 1);
+
+    db.prepare('UPDATE runs SET next_event_sequence = 99, updated_at = updated_at WHERE id = ?').run(childId);
+    const replay = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-live-key-0001' });
+    assert.equal(replay.status, 201);
+    assert.equal(replay.replayedHeader, 'true');
+    assert.deepEqual(replay.json, live.json);
+    assert.equal((db.prepare('SELECT next_event_sequence FROM runs WHERE id = ?').get(childId) as { next_event_sequence: number }).next_event_sequence, 99);
+    assert.equal((db.prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 1);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY07 Retry preserves locator, version, and failed-Parent guards', async () => {
+  const fx = await createRouteFixture();
+  try {
+    const queued = await postRetry(fx, fx.runId, { body: { expectedVersion: 1 }, key: 'retry-queued-key-01' });
+    expectErrorBody(queued, 409, 'RUN_NOT_RETRYABLE');
+
+    const parent = failRouteParent(fx);
+    const stale = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version - 1 }, key: 'retry-stale-key-01' });
+    expectErrorBody(stale, 409, 'VERSION_CONFLICT');
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 0);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY08 Retry maps duplicate and active-slot races to stable 409 responses', async () => {
+  const first = await createRouteFixture();
+  try {
+    const parent = failRouteParent(first);
+    const live = await postRetry(first, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-duplicate-live-01' });
+    assert.equal(live.status, 201);
+    const duplicate = await postRetry(first, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-duplicate-other-01' });
+    assert.equal(duplicate.status, 409);
+    assert.deepEqual(duplicate.json, {
+      error: 'Retry child already exists',
+      code: 'RUN_RETRY_ALREADY_CREATED',
+    });
+    assert.equal(tableRowCount(first.store, 'idempotency_records'), 1);
+    assert.equal((first.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 1);
+  } finally {
+    await closeRouteFixture(first);
+  }
+
+  const second = await createRouteFixture();
+  try {
+    const parent = failRouteParent(second);
+    second.store.runRepository().insert({
+      workspaceId: second.workspaceId,
+      taskId: second.taskId,
+      origin: 'v2_api',
+      objective: 'active unrelated run',
+      createdBy: 'test',
+    });
+    const active = await postRetry(second, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-active-key-01' });
+    assert.equal(active.status, 409);
+    assert.deepEqual(active.json, {
+      error: 'Task already has an active run',
+      code: 'RUN_ACTIVE_EXISTS',
+      retryable: false,
+    });
+    assert.equal(tableRowCount(second.store, 'idempotency_records'), 0);
+    assert.equal((second.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);
+  } finally {
+    await closeRouteFixture(second);
+  }
+});
+
+test('P3C1-RY09 Retry ambiguity and inconsistency responses remain exact two-field errors', async () => {
+  const ambiguous = await createRouteFixture();
+  try {
+    const parent = failRouteParent(ambiguous);
+    const operations = new OperationService(ambiguous.store.getDatabase() as never);
+    operations.createWithinTransaction({ workspaceId: ambiguous.workspaceId, runId: parent.id, type: 'run.retry' });
+    operations.createWithinTransaction({ workspaceId: ambiguous.workspaceId, runId: parent.id, type: 'run.retry' });
+    const response = await postRetry(ambiguous, parent.id, {
+      body: { expectedVersion: parent.version },
+      key: 'retry-ambiguous-response-01',
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(response.json, {
+      error: 'Retry state is ambiguous',
+      code: 'RUN_RETRY_STATE_AMBIGUOUS',
+    });
+  } finally {
+    await closeRouteFixture(ambiguous);
+  }
+
+  const inconsistent = await createRouteFixture();
+  try {
+    const parent = failRouteParent(inconsistent);
+    new OperationService(inconsistent.store.getDatabase() as never).createWithinTransaction({
+      workspaceId: inconsistent.workspaceId,
+      runId: parent.id,
+      type: 'run.retry',
+    });
+    const response = await postRetry(inconsistent, parent.id, {
+      body: { expectedVersion: parent.version },
+      key: 'retry-inconsistent-response-01',
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(response.json, {
+      error: 'Retry state is inconsistent',
+      code: 'RUN_RETRY_STATE_INCONSISTENT',
+    });
+  } finally {
+    await closeRouteFixture(inconsistent);
+  }
+});
+
+test('P3C1-RY10 a Run active-slot unique conflict returns the exact retryable false response', async () => {
+  const fx = await createRouteFixture();
+  const repository = fx.store.runRepository();
+  const originalInsert = repository.insert;
+  try {
+    const parent = failRouteParent(fx);
+    repository.insert = ((input) => {
+      if (input.reason === 'retry') throw new RunActiveExistsError(parent.taskId);
+      return originalInsert.call(repository, input);
+    }) as typeof repository.insert;
+    const response = await postRetry(fx, parent.id, {
+      body: { expectedVersion: parent.version },
+      key: 'retry-unique-active-response-01',
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(response.json, {
+      error: 'Task already has an active run',
+      code: 'RUN_ACTIVE_EXISTS',
+      retryable: false,
+    });
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    repository.insert = originalInsert;
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY11 an unknown Retry failure remains a sanitized 500 INTERNAL_ERROR', async () => {
+  const fx = await createRouteFixture();
+  const originalOperationService = fx.store.operationService;
+  try {
+    const parent = failRouteParent(fx);
+    fx.store.operationService = (() => {
+      throw new Error('secret SQLite detail C:\\private\\.agentos\\agentos.sqlite');
+    }) as typeof fx.store.operationService;
+    const response = await postRetry(fx, parent.id, {
+      body: { expectedVersion: parent.version },
+      key: 'retry-unknown-response-01',
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(response.json, { error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    assert.doesNotMatch(response.text, /secret|SQLite|private|\.agentos/i);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    fx.store.operationService = originalOperationService;
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY12 genuine SQLite lock timeout maps only to Retry busy', async () => {
+  const fx = await createRouteFixture();
+  const locker = new DatabaseSync(join(fx.root, '.agentos', 'agentos.sqlite'));
+  try {
+    const parent = failRouteParent(fx);
+    locker.exec('BEGIN IMMEDIATE');
+    const response = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-busy-key-01' });
+    assert.equal(response.status, 503);
+    assert.deepEqual(response.json, {
+      error: 'Run retry is temporarily unavailable',
+      code: 'RUN_RETRY_BUSY',
+      retryable: true,
+    });
+    assert.doesNotMatch(response.text, /SQLITE|SQL|database is locked|BEGIN IMMEDIATE|\.agentos/i);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);
+  } finally {
+    locker.exec('ROLLBACK');
+    locker.close();
+    await closeRouteFixture(fx);
+  }
 });
 
 }
