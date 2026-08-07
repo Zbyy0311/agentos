@@ -521,6 +521,19 @@ export class OperationRepository {
     return row === undefined || row === null ? undefined : mapRow(row);
   }
 
+  /**
+   * M3 P3D-1 opaque Operation locator: resolve only the owning workspace from
+   * a global opaque operationId before any query/body handling. Pure read —
+   * returns only workspaceId, never the Operation, never reads status/version,
+   * never mutates. Every later Operation/Event access stays workspace-scoped.
+   */
+  findWorkspaceIdByOpaqueId(operationId: string): string | undefined {
+    const row = this.db.prepare(
+      'SELECT workspace_id FROM operations WHERE id = ?',
+    ).get(operationId) as { workspace_id: string } | undefined;
+    return row?.workspace_id;
+  }
+
   findByCorrelationId(workspaceId: string, correlationId: string): ApiOperation | undefined {
     if (!isNonEmptyString(workspaceId) || !isNonEmptyString(correlationId)) {
       throw new OperationValidationError('workspaceId and correlationId are required');

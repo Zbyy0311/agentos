@@ -12,6 +12,7 @@ import { createTaskRoutes } from './routes/tasks.js';
 import { createV2TaskRoutes } from './routes/v2Tasks.js';
 import { createV2RunRoutes } from './routes/v2Runs.js';
 import { createRunLifecycleRoutes } from './routes/runLifecycle.js';
+import { createOperationRoutes } from './routes/operations.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
 import { createConversationRoutes } from './routes/conversations.js';
@@ -167,6 +168,7 @@ async function bootstrap(): Promise<void> {
     // JSON parser because the route owns a scoped non-strict parser so that
     // non-object JSON bodies reach its frozen VALIDATION_FAILED contract.
     app.use('/api', createRunLifecycleRoutes(store));
+    app.use('/api', createOperationRoutes(store));
     app.use(express.json({ limit: '50mb' }));
 
     app.get('/api/health', (_req, res) => {
