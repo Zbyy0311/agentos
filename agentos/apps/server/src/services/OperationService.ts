@@ -190,6 +190,10 @@ export class OperationService {
     return operation;
   }
 
+  findWorkspaceIdByOpaqueId(operationId: string): string | undefined {
+    return this.repository.findWorkspaceIdByOpaqueId(operationId);
+  }
+
   findByCorrelationId(workspaceId: string, correlationId: string): ApiOperation | undefined {
     return this.repository.findByCorrelationId(workspaceId, correlationId);
   }

@@ -129,6 +129,19 @@ describe('OperationService — identity and creation', () => {
     assert.equal('error' in start, false);
   });
 
+  test('findWorkspaceIdByOpaqueId delegates the opaque locator without changing workspace-scoped reads', () => {
+    const { service } = serviceFixture();
+    const start = service.create({ workspaceId: WORKSPACE_ID, runId: RUN_ID, type: 'run.start' });
+
+    assert.equal(service.findWorkspaceIdByOpaqueId(start.id), WORKSPACE_ID);
+    assert.equal(service.findWorkspaceIdByOpaqueId(createEntityId('operation')), undefined);
+    assert.deepEqual(service.findById(WORKSPACE_ID, start.id), start);
+    assert.throws(
+      () => service.findById('workspace-other', start.id),
+      (error: unknown) => error instanceof OperationNotFoundError && error.code === 'OPERATION_NOT_FOUND',
+    );
+  });
+
   test('callers cannot override canonical identity fields', () => {
     const { db, service } = serviceFixture();
     const operation = service.create({ workspaceId: WORKSPACE_ID, runId: RUN_ID, type: 'run.cancel' });

@@ -169,6 +169,49 @@ describe('OperationRepository', () => {
     assert.equal(repository.findById('other-workspace', input.id), undefined);
   });
 
+  test('findWorkspaceIdByOpaqueId resolves only the owning workspace', () => {
+    const db = migratedDb();
+    seedWorkspaceAndRun(db, OTHER_WORKSPACE_ID, OTHER_TASK_ID, OTHER_RUN_ID);
+    const repository = new OperationRepository(db);
+    const first = repository.insert(operationInput());
+    const other = repository.insert(operationInput({
+      workspaceId: OTHER_WORKSPACE_ID,
+      aggregateId: OTHER_RUN_ID,
+      runId: OTHER_RUN_ID,
+      correlationId: OTHER_RUN_ID,
+    }));
+
+    assert.equal(repository.findWorkspaceIdByOpaqueId(first.id), WORKSPACE_ID);
+    assert.equal(repository.findWorkspaceIdByOpaqueId(other.id), OTHER_WORKSPACE_ID);
+    assert.equal(repository.findWorkspaceIdByOpaqueId(createEntityId('operation')), undefined);
+  });
+
+  test('findWorkspaceIdByOpaqueId is status-independent and does not mutate the Operation row', () => {
+    const db = migratedDb();
+    const repository = new OperationRepository(db);
+    const operations = [
+      repository.insert(operationInput({ type: 'run.start', status: 'queued' })),
+      repository.insert(operationInput({ type: 'run.start', status: 'running', startedAt: NOW })),
+      repository.insert(operationInput({ type: 'run.start', status: 'completed', startedAt: NOW, completedAt: LATER, result: SAMPLE_RESULT })),
+      repository.insert(operationInput({ type: 'run.start', status: 'failed', startedAt: NOW, completedAt: LATER, error: SAMPLE_PROBLEM })),
+      repository.insert(operationInput({ type: 'run.start', status: 'cancelled', completedAt: LATER })),
+    ];
+
+    for (const operation of operations) {
+      const before = repository.findById(WORKSPACE_ID, operation.id);
+      const countBefore = (db.prepare('SELECT COUNT(*) AS count FROM operations WHERE id = ?').get(operation.id) as { count: number }).count;
+
+      assert.equal(repository.findWorkspaceIdByOpaqueId(operation.id), WORKSPACE_ID);
+      assert.equal(repository.findWorkspaceIdByOpaqueId(operation.id), WORKSPACE_ID);
+
+      const after = repository.findById(WORKSPACE_ID, operation.id);
+      const countAfter = (db.prepare('SELECT COUNT(*) AS count FROM operations WHERE id = ?').get(operation.id) as { count: number }).count;
+      assert.deepEqual(after, before);
+      assert.equal(after?.version, before?.version);
+      assert.equal(countAfter, countBefore);
+    }
+  });
+
   test('enforces M3-TD-26 correlation binding before every insert', () => {
     const db = migratedDb();
     const repository = new OperationRepository(db);
