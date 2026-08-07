@@ -121,6 +121,14 @@ function respondRetry(res: Response, fn: () => { status: number; body: unknown }
         });
         return;
       }
+      if (code === 'RUN_ACTIVE_EXISTS') {
+        res.status(status).json({
+          error: 'Task already has an active run',
+          code,
+          retryable: false,
+        });
+        return;
+      }
       res.status(status).json({
         error: RUN_RETRY_SAFE_MESSAGE[code] ?? 'Internal server error',
         code,

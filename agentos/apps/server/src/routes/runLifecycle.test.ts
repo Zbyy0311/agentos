@@ -14,6 +14,7 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { IdempotencyService } from '../services/IdempotencyService.js';
 import { OperationService } from '../services/OperationService.js';
+import { RunActiveExistsError } from '../store/RunRepository.js';
 import type { Run } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
@@ -1362,7 +1363,11 @@ test('P3C1-RY08 Retry maps duplicate and active-slot races to stable 409 respons
     const live = await postRetry(first, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-duplicate-live-01' });
     assert.equal(live.status, 201);
     const duplicate = await postRetry(first, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-duplicate-other-01' });
-    expectErrorBody(duplicate, 409, 'RUN_RETRY_ALREADY_CREATED');
+    assert.equal(duplicate.status, 409);
+    assert.deepEqual(duplicate.json, {
+      error: 'Retry child already exists',
+      code: 'RUN_RETRY_ALREADY_CREATED',
+    });
     assert.equal(tableRowCount(first.store, 'idempotency_records'), 1);
     assert.equal((first.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 1);
   } finally {
@@ -1380,7 +1385,12 @@ test('P3C1-RY08 Retry maps duplicate and active-slot races to stable 409 respons
       createdBy: 'test',
     });
     const active = await postRetry(second, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-active-key-01' });
-    expectErrorBody(active, 409, 'RUN_ACTIVE_EXISTS');
+    assert.equal(active.status, 409);
+    assert.deepEqual(active.json, {
+      error: 'Task already has an active run',
+      code: 'RUN_ACTIVE_EXISTS',
+      retryable: false,
+    });
     assert.equal(tableRowCount(second.store, 'idempotency_records'), 0);
     assert.equal((second.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);
   } finally {
@@ -1388,7 +1398,100 @@ test('P3C1-RY08 Retry maps duplicate and active-slot races to stable 409 respons
   }
 });
 
-test('P3C1-RY09 genuine SQLite lock timeout maps only to Retry busy', async () => {
+test('P3C1-RY09 Retry ambiguity and inconsistency responses remain exact two-field errors', async () => {
+  const ambiguous = await createRouteFixture();
+  try {
+    const parent = failRouteParent(ambiguous);
+    const operations = new OperationService(ambiguous.store.getDatabase() as never);
+    operations.createWithinTransaction({ workspaceId: ambiguous.workspaceId, runId: parent.id, type: 'run.retry' });
+    operations.createWithinTransaction({ workspaceId: ambiguous.workspaceId, runId: parent.id, type: 'run.retry' });
+    const response = await postRetry(ambiguous, parent.id, {
+      body: { expectedVersion: parent.version },
+      key: 'retry-ambiguous-response-01',
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(response.json, {
+      error: 'Retry state is ambiguous',
+      code: 'RUN_RETRY_STATE_AMBIGUOUS',
+    });
+  } finally {
+    await closeRouteFixture(ambiguous);
+  }
+
+  const inconsistent = await createRouteFixture();
+  try {
+    const parent = failRouteParent(inconsistent);
+    new OperationService(inconsistent.store.getDatabase() as never).createWithinTransaction({
+      workspaceId: inconsistent.workspaceId,
+      runId: parent.id,
+      type: 'run.retry',
+    });
+    const response = await postRetry(inconsistent, parent.id, {
+      body: { expectedVersion: parent.version },
+      key: 'retry-inconsistent-response-01',
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(response.json, {
+      error: 'Retry state is inconsistent',
+      code: 'RUN_RETRY_STATE_INCONSISTENT',
+    });
+  } finally {
+    await closeRouteFixture(inconsistent);
+  }
+});
+
+test('P3C1-RY10 a Run active-slot unique conflict returns the exact retryable false response', async () => {
+  const fx = await createRouteFixture();
+  const repository = fx.store.runRepository();
+  const originalInsert = repository.insert;
+  try {
+    const parent = failRouteParent(fx);
+    repository.insert = ((input) => {
+      if (input.reason === 'retry') throw new RunActiveExistsError(parent.taskId);
+      return originalInsert.call(repository, input);
+    }) as typeof repository.insert;
+    const response = await postRetry(fx, parent.id, {
+      body: { expectedVersion: parent.version },
+      key: 'retry-unique-active-response-01',
+    });
+    assert.equal(response.status, 409);
+    assert.deepEqual(response.json, {
+      error: 'Task already has an active run',
+      code: 'RUN_ACTIVE_EXISTS',
+      retryable: false,
+    });
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);
+    assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 0);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    repository.insert = originalInsert;
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY11 an unknown Retry failure remains a sanitized 500 INTERNAL_ERROR', async () => {
+  const fx = await createRouteFixture();
+  const originalOperationService = fx.store.operationService;
+  try {
+    const parent = failRouteParent(fx);
+    fx.store.operationService = (() => {
+      throw new Error('secret SQLite detail C:\\private\\.agentos\\agentos.sqlite');
+    }) as typeof fx.store.operationService;
+    const response = await postRetry(fx, parent.id, {
+      body: { expectedVersion: parent.version },
+      key: 'retry-unknown-response-01',
+    });
+    assert.equal(response.status, 500);
+    assert.deepEqual(response.json, { error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    assert.doesNotMatch(response.text, /secret|SQLite|private|\.agentos/i);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+  } finally {
+    fx.store.operationService = originalOperationService;
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P3C1-RY12 genuine SQLite lock timeout maps only to Retry busy', async () => {
   const fx = await createRouteFixture();
   const locker = new DatabaseSync(join(fx.root, '.agentos', 'agentos.sqlite'));
   try {
