@@ -4,7 +4,7 @@
 
 > Status: Draft  
 > Version: 2.0  
-> Last Updated: 2026-07-19  
+> Last Updated: 2026-08-07
 > Scope: AgentOS v2 HTTP, Realtime and Internal Runtime API Contract  
 > Depends On:
 > - `00-Vision.md`
@@ -19,6 +19,17 @@
 > - `09-Conversation-Runtime.md`
 > - `10-Data-Model.md`
 > Repository: `Zbyy0311/agentos`
+> P3C-0B: MERGED
+> Option A Alignment: MERGED via PR #29
+> P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
+> P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
+> P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
+> P3C-1: COMPLETE
+> M3 current main baseline: `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`
+> P3D / P3E: NOT AUTHORIZED
+> Migration 014: NOT REQUIRED OR AUTHORIZED
+> Production Cutover: NOT AUTHORIZED / NOT STARTED
+> Remote Checks: UNAVAILABLE — NOT PASS
 
 ---
 
@@ -2008,10 +2019,13 @@ interface RetryRunRequest {
 
 ## 77.1 M3 P3C-1 Retry current contract (Option A)
 
-This is the sole current M3 Retry contract approved by independent technical
-review. It is a documentation contract only and does not authorize the
-production route, Child creation implementation, P3D, P3E, Migration 014, or
-Production Cutover.
+This is the current implemented M3 Retry contract. The production acceptance
+path was implemented and merged via PR #33 at
+`de0b88fb0bed4a27cc38318481a0c7ccd47732a9`.
+
+The contract remains authoritative for `POST /api/runs/:runId/retry`. Its
+implementation does not authorize P3D, P3E, Migration 014, RunEngine changes,
+or Production Cutover.
 
 ### Route, scope, and request
 
@@ -2251,7 +2265,9 @@ one live 201 and one stable duplicate 409; stale versions have zero side
 effects; Parent-failure races have one optimistic winner; normal races never
 use 503.
 
-This contract is M3 P3C-1 Retry pre-implementation documentation only.
+This contract is implemented and merged via PR #33. Its implementation does
+not authorize P3D, P3E, Migration 014, RunEngine changes, or Production
+Cutover.
 
 ---
 

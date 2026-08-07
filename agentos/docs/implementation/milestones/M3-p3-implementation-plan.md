@@ -1,11 +1,12 @@
 # M3 P3 Implementation Plan — Run Engine, Workflow Executor and Operation
 
-Status: POST-MERGE BASELINE `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`
+Status: POST-MERGE BASELINE `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`
 P3C-0B: MERGED
 Option A Alignment: MERGED via PR #29
 P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
-P3C-1 Retry contract: APPROVED BY INDEPENDENT TECHNICAL REVIEW
-P3C-1 Retry production: NOT AUTHORIZED
+P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
+P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
+P3C-1: COMPLETE
 P3D: NOT AUTHORIZED
 P3E: NOT AUTHORIZED
 Migration 014: NOT REQUIRED OR AUTHORIZED
@@ -13,10 +14,11 @@ Production Cutover: NOT AUTHORIZED / NOT STARTED
 Remote Checks: UNAVAILABLE — NOT PASS
 
 Current status override: main contains the merged P3C-1 Start portion from
-PR #31 and the M3-TD-30 Option A alignment is merged via PR #29. This
-docs-only contract is approved by independent technical review; it does not
-implement Retry. `run.retry` never authorizes Engine claim; Retry returns HTTP
-201 and requires a separate `run.start`.
+PR #31 and the merged P3C-1 Retry acceptance from PR #33 at
+`de0b88fb0bed4a27cc38318481a0c7ccd47732a9`; the M3-TD-30 Option A alignment
+is merged via PR #29. The Retry contract is implemented/current. `run.retry`
+never authorizes Engine claim; Retry returns HTTP 201 and requires a separate
+`run.start`.
 
 This plan decomposes M3 P3 into stages P3A, P3B-1, P3B-2A, P3B-2B,
 P3C-0A, P3C-0B, P3C-1, P3D, and P3E. It is a planning artifact: no
@@ -27,7 +29,7 @@ only when explicitly authorized in a future instruction, after the preceding
 stage's independent review gate is accepted.
 
 Companion document: `docs/implementation/milestones/M3-p3-current-state-audit.md`
-(current merged main baseline `53b5fc78d5834ed3a5fd5eb1226f2c4e79f30694`).
+(current merged main baseline `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`).
 
 Remediation 1 (Execution Authorization and Transaction Composition) added the
 frozen atomic claim transaction (section 2), the caller-owned transaction
@@ -53,13 +55,13 @@ M3-TD-26 through M3-TD-30 in
 `docs/implementation/milestones/M3-owner-decisions.md`. All stage
 dependencies below reference the frozen M3-TD decisions; no Owner Decision
 candidate remains undecided. This approval is technical direction for the
-unimplemented portions. P3C-0B and the P3C-1 Start Portion are merged/current
-evidence; P3C-1 Retry production, P3D, and P3E remain NOT AUTHORIZED.
+unimplemented portions. P3C-0B, the P3C-1 Start Portion, and the P3C-1 Retry
+acceptance are merged/current evidence; P3D and P3E remain NOT AUTHORIZED.
 
 Current implementation alignment: M3-TD-30 Option A is MERGED via PR #29 and
-is the current contract. The present status-remediation change is limited to
-the four allowlisted Markdown files. P3C-1 Retry production, P3D, and
-Production Cutover remain NOT AUTHORIZED.
+is the current contract. P3C-1 Retry production is IMPLEMENTED AND MERGED via
+PR #33. The present closeout is limited to the five allowlisted Markdown files.
+P3D, P3E, and Production Cutover remain NOT AUTHORIZED.
 
 ## 1. Preconditions and Frozen Contracts
 
@@ -873,7 +875,7 @@ independently enterable dependent portions:
 > **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** This section
 > records the earlier Start contract closure. The Start Route and A1 consumer
 > are now implemented and merged in PR #31. The current Retry contract is
-> §10.1 below; Retry production remains unauthorized.
+> §10.1 below; Retry production was unauthorized at that historical point.
 
 The following contract is frozen for the future Start portion. This closure
 does not implement or authorize a Start route, a Retry route, or any other
@@ -1024,7 +1026,7 @@ does not reuse the no-Idempotency TaskRunService instance used by Legacy
 recovery. Run deletion and workspace migration are outside M3 and require a
 new replay/locator review if introduced.
 
-Authorized scope (when authorized):
+Historical implementation scope and retained boundaries:
 
 - Start route returning HTTP 202 + Operation (additive; v2/Legacy
   untouched). The route runs the Start acceptance transaction (class A1):
@@ -1034,7 +1036,7 @@ Authorized scope (when authorized):
   not write `run.dequeued`; Engine eligibility begins only after this
   commit.
 - `run.start` consumer wired through `IdempotencyService` (Start portion).
-  The future Retry portion consumes the P3C-0B HTTP 201 dual snapshot and
+  The merged Retry portion consumes the P3C-0B HTTP 201 dual snapshot and
   creates a queued Child; it does not grant Engine authorization.
 - Retry service path creating child runs via `RunRepository.insert`
   lineage. Retry is accepted only when the Parent Run is `failed` at the
@@ -1074,7 +1076,7 @@ idempotency core files
 `apps/server/src/store/IdempotencyRepository.ts` and their tests), which
 are owned by P3C-0A/P3C-0B.
 
-Exact future Start implementation allowlist (proposal, not authorization):
+Historical Start implementation scope (PR #31; not a current allowlist):
 
 - `apps/server/src/routes/runLifecycle.ts` (new)
 - `apps/server/src/routes/runLifecycle.test.ts` (new)
@@ -1087,8 +1089,8 @@ Exact future Start implementation allowlist (proposal, not authorization):
 
 Existing `routes/v2Idempotency.ts`, `OperationService.ts`,
 `OperationRepository.ts`, Idempotency Core, and Shared may be imported but are
-not modified. Retry production implementation, Operation Cancel, Event Query/
-SSE, `RunEngine/**`, `LifecycleTransactionService.ts`,
+not modified. PR #33 did not modify Operation Cancel, Event Query/SSE,
+`RunEngine/**`, `LifecycleTransactionService.ts`,
 `RunStageRepository.ts`, Migration/Registry, Web, package/lockfiles, Legacy or
 v2 routes, Conversation EventBus, and Production Cutover remain forbidden.
 
@@ -1170,11 +1172,12 @@ Commit boundary: ordinary commits per portion, only allowlisted files, e.g.
 `feat: add M3 child retry acceptance` (Retry portion); the Retry
 portion commit requires P3C-0B accepted (M3-TD-30 applied).
 
-## 10.1 P3C-1 Retry pre-implementation contract closure (current)
+## 10.1 P3C-1 Retry implemented contract and merge evidence (current)
 
-This is the current Retry plan at the post-PR-#31 baseline. It is an
-approved-by-independent-technical-review documentation contract and is not
-production implementation authorization.
+This is the current Retry implementation record at the post-PR-#33 baseline
+`de0b88fb0bed4a27cc38318481a0c7ccd47732a9`. PR #33 implemented and merged the
+production acceptance path; this closeout records the evidence and does not
+modify production behavior.
 It supersedes any earlier generic Retry DTO, implementation-time choice, or
 statement that a queued/completed Retry Operation authorizes execution.
 
@@ -1226,7 +1229,7 @@ runtime state, output, errors, stage IDs, and timestamps are not copied.
 Each Child Stage has a fresh ID, Child Run/Snapshot binding, the same workflow
 key and sequence, `attempt = 1`, `status = pending`, fresh timestamps, and
 `version = 1`. The current `RunStageRepository.insertInitial` is reused. The
-only future Snapshot seam is the V2-only additive
+implemented Snapshot seam is the V2-only additive
 `SnapshotService.clonePersistedRun(run, parentSnapshot, parentStages)` method;
 it refreshes `capturedAt`, inserts the new Snapshot, and inserts fresh initial
 Stages without invoking a resolver.
@@ -1384,21 +1387,24 @@ Operation/Snapshot/Stage/Event/Outbox/Idempotency row; stale versions have
 zero side effects; Parent-failure races have one optimistic winner; and normal
 races do not use 503.
 
-### Future implementation allowlist
+### Implemented Retry scope and retained authorization boundary
 
-When separately authorized, the future Retry implementation is limited to:
+PR #33 implemented the Retry acceptance path in exactly these six existing
+production/test paths:
 
-- `apps/server/src/routes/runLifecycle.ts` and its existing test file;
-- `apps/server/src/services/TaskRunService.ts` and its existing test file;
-- `apps/server/src/services/SnapshotService.ts` and its existing test file.
+- `agentos/apps/server/src/routes/runLifecycle.ts`
+- `agentos/apps/server/src/routes/runLifecycle.test.ts`
+- `agentos/apps/server/src/services/TaskRunService.ts`
+- `agentos/apps/server/src/services/TaskRunService.test.ts`
+- `agentos/apps/server/src/services/SnapshotService.ts`
+- `agentos/apps/server/src/services/SnapshotService.test.ts`
 
 The existing Operation, Run, Snapshot repository, Stage repository,
 LifecycleTransaction, and Idempotency Core seams are reused as-is. No Shared,
 Migration/Registry, Idempotency Core, Operation implementation,
 LifecycleTransactionService, RunEngine, WorkflowExecutor, StageExecutor, Web,
-package/lockfile, or real `.agentos` data may be changed. This docs-only
-status remediation changes only the four allowlisted Markdown files and
-creates no PR.
+package/lockfile, or real `.agentos` data may be changed. This closeout
+changes only the five allowlisted Markdown files and creates no PR.
 
 ## 11. Stage P3D — Operation Routes, Atomic Cancel and Event Query
 

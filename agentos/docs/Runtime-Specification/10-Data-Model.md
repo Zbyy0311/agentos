@@ -4,7 +4,7 @@
 
 > Status: Draft  
 > Version: 2.0  
-> Last Updated: 2026-07-19  
+> Last Updated: 2026-08-07
 > Scope: AgentOS v2 Canonical Persistent Data Model  
 > Depends On:
 > - `00-Vision.md`
@@ -18,6 +18,17 @@
 > - `08-Policy-Runtime.md`
 > - `09-Conversation-Runtime.md`
 > Repository: `Zbyy0311/agentos`
+> P3C-0B: MERGED
+> Option A Alignment: MERGED via PR #29
+> P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
+> P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
+> P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
+> P3C-1: COMPLETE
+> M3 current main baseline: `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`
+> P3D / P3E: NOT AUTHORIZED
+> Migration 014: NOT REQUIRED OR AUTHORIZED
+> Production Cutover: NOT AUTHORIZED / NOT STARTED
+> Remote Checks: UNAVAILABLE — NOT PASS
 
 ---
 
@@ -1441,9 +1452,10 @@ CREATE TABLE run_attempt_links (
 
 ## 33A. Current M3 V2 Run, Retry Child, Snapshot, and Stage contract
 
-The following is the current data-model contract at the post-PR-#31 main
-baseline. It is the only current M3 Retry model; the historical sections above
-are not an alternate implementation.
+The following is the current data-model contract at the post-PR-#33 main
+baseline `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`. PR #33 implemented and
+merged the Retry acceptance path; this is the only current M3 Retry model, and
+the historical sections above are not an alternate implementation.
 
 ### Current Run and Child fields
 
@@ -1546,6 +1558,16 @@ After a replay miss, this decision order is Parent read, expectedVersion,
 Parent status `failed`, structural ambiguity, structural inconsistency, valid
 completed Retry/direct Child duplicate, Task active slot, Snapshot/Stage
 validation, and then creation writes.
+
+### M3 P3C-1 merge evidence
+
+The Run, Retry Child, Snapshot, Stage, Operation, Event, Outbox, and
+Idempotency bindings in this section are implemented and merged through PR #33
+at `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`. The production implementation
+was limited to the six existing server route/service files recorded by that PR;
+this closeout updates documentation only. P3C-1 is COMPLETE. P3D and P3E
+remain NOT AUTHORIZED, Migration 014 is not required or authorized, and
+Production Cutover is NOT AUTHORIZED / NOT STARTED.
 
 ## 34. Run Checkpoint
 
