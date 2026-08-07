@@ -1,6 +1,6 @@
 # AgentOS M3 Owner Decision Register
 
-Technical direction status: APPROVED BY INDEPENDENT TECHNICAL REVIEW — M3-TD-30 Option A alignment is MERGED via PR #29; the P3C-1 Retry technical contract is implemented and current. Retry production implementation is IMPLEMENTED AND MERGED via PR #33.
+Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / NOT IMPLEMENTED, close the P3D Cancel contract without authorizing production implementation, and await independent P3D Contract Closure remote technical re-review.
 
 P3 decision freeze status:
 P3C-0B: MERGED
@@ -9,15 +9,21 @@ P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
 P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
 P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
 P3C-1: COMPLETE
-P3D: NOT AUTHORIZED
-P3E: NOT AUTHORIZED
-Migration 014: NOT REQUIRED OR AUTHORIZED
+P3D-0 Preplanning: COMPLETE
+P3D Contract Closure: OWNER APPROVED / DOCUMENTED
+M3-TD-31: OWNER APPROVED / NOT IMPLEMENTED
+M3-TD-32: OWNER APPROVED / NOT IMPLEMENTED
+P3D-1: NOT AUTHORIZED
+P3D-2: NOT AUTHORIZED
+P3D-3: NOT AUTHORIZED
+P3E: NOT ENTERED / NOT AUTHORIZED
+Migration 014: NOT REQUIRED / NOT AUTHORIZED / ABSENT
 Production Cutover: NOT AUTHORIZED / NOT STARTED
 Remote Checks: UNAVAILABLE — NOT PASS
 
 Final P0 documentation merge gate: COMPLETE (historical; superseded by the merged P1, P2, and P3 preplanning records).
 
-Baseline: origin/main at de0b88fb0bed4a27cc38318481a0c7ccd47732a9
+Current contract-closure base: origin/main at 5bfa66d074791cb1e1981968f28c3854d7d55d2a
 
 This register separates the approved M3 technical contract from deferred Production Cutover and Legacy Retirement decisions. A technical approval is not authorization to modify code, create DDL, migrate data, change production behavior, restore, delete, change the Web default, or start any M3 implementation phase without explicit authorization.
 
@@ -64,17 +70,20 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-28 | Operation progress in M3 | P3 does not persist or populate ApiOperation.progress. GET /api/operations/:operationId omits progress; no derived, estimated, or fake value is returned. Progress is a Post-M3 contract and data-source decision. | Core absence of persisted/populated progress is implemented. The future P3D GET Operation route remains NOT AUTHORIZED. No progress field or projection is authorized. |
 | M3-TD-29 | Start Operation completion package | The run.start Operation is a Start command tracker, not a Run lifetime projection. Its `running -> completed` transition must commit in the same caller-owned transaction as the first startup Stage `starting -> running`, `stage.started`, the Run `starting -> running`, `run.started`, and both Outbox rows; `completedAt` uses the transaction timestamp and no independent Operation Event is written. Pre-start closure is split into C1a (claim commit not achieved: full Class B rollback, no automatic failure terminal) and C1b (after claim, before `run.started`: atomic Stage/Run/Operation failure closure). | IMPLEMENTED AND MERGED through P3B-2A/P3B-2B and the merged Start path. The Start Operation completion contract remains current. No additional Start completion behavior is authorized. |
 | M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | Option A alignment MERGED via PR #29. P3C-0B idempotency closure MERGED. P3C-1 Start Portion MERGED via PR #31. P3C-1 Retry contract IMPLEMENTED / CURRENT. Retry production implementation IMPLEMENTED AND MERGED via PR #33. |
+| M3-TD-31 | P3D Operation Cancel HTTP Request and Replay Contract | `POST /api/operations/:operationId/cancel` accepts only URL `operationId`, an empty query, and the exact body `{ "expectedVersion": <positive safe integer> }`. The router is locator-first and mounts before global `express.json()`. Already-cancelled is HTTP 200 with zero side effects even when the supplied version is stale; other stale requests are `409 VERSION_CONFLICT`; matching-version completed/failed are `409 OPERATION_NOT_CANCELLABLE`. Server metadata is `operation_api` / empty process IDs / Worktree preserved / no reason. | APPROVED TECHNICAL DIRECTION. OWNER APPROVED / NOT IMPLEMENTED. P3D production implementation remains NOT AUTHORIZED. |
+| M3-TD-32 | P3D Guarded Operation Cancel and Approval-aware Run Cancellation | Option C is approved: a dedicated Operation guarded-cancel seam plus an approval-aware Lifecycle cancellation seam. The ordinary Operation transition table is unchanged. Waiting-approval cancellation discovers exactly one unresolved Approval and preserves `approval.resolved -> stage.cancelled* -> run.cancelled` in the same outer transaction. | APPROVED TECHNICAL DIRECTION. OWNER APPROVED / NOT IMPLEMENTED. P3D production implementation remains NOT AUTHORIZED. |
 
 > **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** Implementation-boundary
 > text that describes an earlier authorization gate is historical when the
 > corresponding stage has subsequently merged. The current status of
-> M3-TD-26 through M3-TD-30 is recorded individually in their table rows and
+> M3-TD-26 through M3-TD-32 is recorded individually in their table rows and
 > in section 5. Historical wording must not override those current statuses.
 
-M3-TD-26 through M3-TD-30 are approved technical direction with the
+M3-TD-26 through M3-TD-32 are approved technical direction with the
 individual current implementation statuses recorded above and in section 5.
-They resolve the five P3 Owner Decision candidates (formerly OD-P3-01 through
-OD-P3-05) recorded in the P3 preplanning documents.
+M3-TD-26 through M3-TD-30 resolve the five P3 Owner Decision candidates
+(formerly OD-P3-01 through OD-P3-05). M3-TD-31 and M3-TD-32 close the missing
+P3D HTTP and approval-aware cancellation details; they do not authorize code.
 
 M3-TD-01 through M3-TD-25 retain their historical contract wording. Any P1/P2
 implementation boundary recorded in those rows is a historical phase
@@ -207,8 +216,13 @@ boundary; the current governance status is recorded in section 5 below.
   validate the bound Run; conditionally transition the Operation to
   `cancelled` by expected status/version; cancel the Run and all
   non-terminal Stages through the P2 transaction core; write the Runtime
-  Events and Outbox rows; commit all or roll back all. For cancellation
-  before or during startup, the result is Operation `cancelled`, bound Run
+  Events and Outbox rows; commit all or roll back all.
+  M3-TD-31 freezes the HTTP request, locator/parser, response-precedence,
+  trusted-metadata, idempotency, and safe-error details. M3-TD-32 freezes
+  Option C, including the dedicated Operation guard and approval-aware
+  waiting-state Lifecycle seam. Those decisions close missing P3D details
+  without reopening this four-status rule. For cancellation before or during
+  startup, the result is Operation `cancelled`, bound Run
   `cancelled`, every affected non-terminal Stage `cancelled`, one
   `stage.cancelled` per affected Stage, and `run.cancelled`; cancellation
   does not produce Operation/Run/Stage `failed` or `stage.failed`.
@@ -217,8 +231,9 @@ boundary; the current governance status is recorded in section 5 below.
   returns the current cancelled Operation with zero new side effects; a
   `completed` or `failed` target returns 409-class
   `OPERATION_NOT_CANCELLABLE`; a non-terminal Operation whose bound Run is
-  in an incompatible terminal state fails closed with a stable state
-  conflict and no silent repair. expectedVersion/ETag prevents
+  in an incompatible terminal state fails closed, rolls back, is sanitized
+  under the M3-TD-31 safe-error boundary, and receives no silent repair.
+  The exact body `expectedVersion` prevents
   cancel-vs-complete overwrite. No `operation.cancel` idempotency
   operation is added; the existing `run.cancel` idempotency envelope is
   unchanged; natural idempotency comes from the target's terminal state
@@ -443,6 +458,154 @@ boundary; the current governance status is recorded in section 5 below.
 - **Re-review trigger:** any proposal removing the separate Start command,
   changing HTTP 201, changing the dual-snapshot replay shape, or adding a
   provider retry policy.
+
+### M3-TD-31 P3D Operation Cancel HTTP Request and Replay Contract
+
+- **Current implementation status:** APPROVED TECHNICAL DIRECTION. OWNER
+  APPROVED / NOT IMPLEMENTED. P3D production implementation remains NOT
+  AUTHORIZED.
+- **Owner and record time:** M3 technical owner; 2026-08-07.
+- **Selected endpoint:** `POST /api/operations/:operationId/cancel`. The URL
+  accepts only `operationId`. The query must be empty. The exact JSON body is
+  `{ "expectedVersion": <positive safe integer> }`, where
+  `expectedVersion` is required and identifies the Operation version. Empty
+  objects, extra fields, zero, negative, non-integer, and unsafe-integer values
+  return `400 VALIDATION_FAILED`. ETag and `If-Match` are not M3 P3D version
+  transports; adding them is a Post-M3 API decision.
+- **Forbidden client metadata:** HTTP input must not accept `workspaceId`,
+  `runId`, `correlationId`, `requestedBy`, `terminatedProcessIds`,
+  `worktreePreserved`, or `reason`. The server supplies
+  `requestedBy = "operation_api"`, `terminatedProcessIds = []`,
+  `worktreePreserved = true`, and no reason. Empty process IDs mean P3D does
+  not claim M4 Process termination. Worktree preservation means no Worktree
+  delete, reset, clean, or mutation. Existing v2 values and behavior remain
+  unchanged.
+- **Locator/parser order:** the Operation router mounts before global
+  `express.json()`. The fixed order is opaque Operation locator, workspace
+  resolution/authorization, route-scoped JSON parser for Cancel, exact
+  query/body validation, then `OperationService`. GET Operation routes use no
+  JSON parser. Unknown Operation returns `404 OPERATION_NOT_FOUND` before
+  malformed JSON, invalid query, invalid version, or extra fields.
+- **Caller-owned transaction precedence:** after locator completion, exactly
+  one `BEGIN IMMEDIATE` transaction re-reads the workspace-scoped Operation,
+  validates aggregate/Run/correlation binding, and then:
+  1. `cancelled` returns HTTP 200 with the current `ApiOperation` and zero
+     lifecycle/Event/Outbox side effects, even when `expectedVersion` is stale;
+  2. every other status compares `expectedVersion`;
+  3. a stale non-cancelled Operation returns `409 VERSION_CONFLICT`;
+  4. matching-version `completed` or `failed` returns
+     `409 OPERATION_NOT_CANCELLABLE`;
+  5. `queued`, `running`, `waiting_approval`, or `paused` enters the dedicated
+     guarded update and approval-aware bound-Run cancellation.
+- **Idempotency/replay:** Cancel creates no second Operation, no
+  `operation.cancel` Operation, and no Idempotency Record. It does not require
+  or consume `Idempotency-Key` and must not imply that the header participates
+  in replay. Existing `run.cancel` vocabulary and v2 idempotency remain
+  unchanged.
+- **Stable public errors:** only `VALIDATION_FAILED`,
+  `OPERATION_NOT_FOUND`, `VERSION_CONFLICT`,
+  `OPERATION_NOT_CANCELLABLE`, and `INTERNAL_ERROR` are frozen for this
+  endpoint. Internal Approval inconsistency fails closed, rolls back, and is
+  sanitized to `INTERNAL_ERROR` without SQL, SQLite, filesystem paths, Event
+  payload internals, or stacks.
+- **Affected stages:** P3D-1 provides the locator/router dependency but does
+  not implement Cancel. P3D-2 implements the contract only after separate
+  authorization. P3D-3 proves race/failure closure without adding behavior.
+- **Evidence threshold:** exact body/query matrices; locator-before-parser
+  precedence; already-cancelled stale-version no-op; stale non-cancelled and
+  terminal conflict matrices; no Idempotency Record or second Operation;
+  trusted metadata and sanitization proofs.
+- **Stop/no-go:** accepting any client lifecycle metadata, query fields,
+  optional/missing version, ETag transport, parser-before-locator ordering,
+  second Operation, or Idempotency side effect.
+- **Rollback boundary:** docs-only contract closure. A future implementation
+  revert removes only the P3D route/service wiring and preserves stored rows.
+- **Re-review trigger:** any new client field/header, new public error code,
+  new Operation type, new Idempotency behavior, or change to response
+  precedence.
+
+### M3-TD-32 P3D Guarded Operation Cancel and Approval-aware Run Cancellation
+
+- **Current implementation status:** APPROVED TECHNICAL DIRECTION. OWNER
+  APPROVED / NOT IMPLEMENTED. P3D production implementation remains NOT
+  AUTHORIZED.
+- **Owner and record time:** M3 technical owner; 2026-08-07.
+- **Option classification:**
+  - **Option A — REJECTED.** Expanding
+    `OperationService.ALLOWED_TRANSITIONS` so waiting/paused can use ordinary
+    transition-to-cancelled would expand every normal transition caller,
+    weaken the Cancel-specific guard, and risk adjacent/Engine behavior.
+  - **Option B — REJECTED AS INCOMPLETE.** A dedicated Operation guard followed
+    by ordinary `cancelRunWithinTransaction()` cannot handle
+    `waiting_approval`; widening that ordinary seam would bypass the frozen
+    Approval Event sequence.
+  - **Option C — APPROVED / NOT IMPLEMENTED.** Use a dedicated Operation
+    guarded-cancel seam plus an approval-aware Lifecycle cancellation seam.
+- **Operation guard:** ordinary `OperationService.ALLOWED_TRANSITIONS` remains
+  unchanged. A future dedicated seam, named `cancelWithinTransaction` or an
+  equivalent implementation name, is callable only from canonical
+  `POST /api/operations/:operationId/cancel`. Its cancellable statuses are
+  exactly `queued`, `running`, `waiting_approval`, and `paused`.
+  `cancelled` is the M3-TD-31 idempotent no-op read; `completed` and `failed`
+  are matching-version `OPERATION_NOT_CANCELLABLE` conflicts.
+- **Outer transaction ownership:** `OperationService` owns exactly one outer
+  `BEGIN IMMEDIATE` transaction. It re-reads and guards Operation, performs the
+  conditional Operation update, then invokes Lifecycle cancellation on the
+  same database handle. Stage updates, Runtime Events, Outbox rows, Run
+  cancellation, versions, and Run sequences commit together or all roll back.
+  A separate Operation transaction, nested lifecycle transaction, or second
+  database connection is forbidden.
+- **Run version:** HTTP carries only Operation `expectedVersion`. The outer
+  transaction freshly reads the bound Run and passes that persisted
+  `Run.version` as `expectedRunVersion` to the lifecycle seam. HTTP must not
+  add `expectedRunVersion`.
+- **Approval-aware waiting state:** for a bound Run at `waiting_approval`, the
+  future Lifecycle seam discovers persisted `approval.required` and
+  `approval.resolved` history and requires exactly one unresolved Approval.
+  The original `runId`, optional `stageId`, and `approvalRequestId` binding
+  must match. Zero, multiple, or inconsistent unresolved approvals fail
+  closed, roll back the outer transaction, and sanitize to
+  `500 INTERNAL_ERROR`; no new public inconsistency code is authorized.
+- **Waiting-approval Event order:** the same outer transaction writes
+  `approval.resolved` with `decision = "cancel_run"` and
+  `decidedBy = "operation_api"`, then `stage.cancelled` for every affected
+  Stage in `stage.sequence ASC, stage.id ASC` order, then `run.cancelled`.
+  Event sequences are contiguous; every Event has exactly one Outbox row.
+  The Run payload uses `requestedBy = "operation_api"`,
+  `terminatedProcessIds = []`, `worktreePreserved = true`, and no reason.
+  `run.cancellation_requested` is not required.
+- **Non-approval Run states:** for `queued`, `starting`, `running`, and
+  `paused`, the approval-aware seam may reuse the existing caller-owned
+  `cancelRunWithinTransaction()` core without changing current v2 behavior.
+- **Future narrow file scope:** `LifecycleTransactionService.ts` is FORBIDDEN
+  in P3D-1 and OWNER-APPROVED NARROW REQUIRED SCOPE in P3D-2 only for the
+  approval-aware Operation cancellation seam. The required lifecycle test is
+  `m3-p2c2b-composite-lifecycle.test.ts` because it owns Approval resolution,
+  cancellation ordering, rollback, and concurrency evidence.
+  `m3-p2c2a-lifecycle-transaction.test.ts` is REGRESSION ONLY because no
+  single-transition behavior changes.
+- **Composition root:** `SqliteStore.ts` is allowed in P3D-2 only to share the
+  existing database handle and transaction ownership between OperationService
+  and LifecycleTransactionService. A new OperationControlService, second
+  database, singleton, or background worker is forbidden.
+- **Affected stages:** P3D-2 implements the guarded Operation and
+  approval-aware lifecycle package only after separate authorization. P3D-3
+  proves claim/completion/startup-failure/duplicate/terminal races and failure
+  rollback without adding product behavior.
+- **Evidence threshold:** four-status Operation matrix; exactly-one unresolved
+  Approval discovery; binding failure; frozen Event order and payloads;
+  contiguous sequences/one Outbox per Event; full rollback at every position;
+  two-connection races; existing v2 behavior unchanged.
+- **Stop/no-go:** expanding the ordinary Operation transition table; direct
+  waiting-approval use of ordinary Run cancel; missing/ambiguous Approval
+  repair; split transactions; second connection; new public inconsistency
+  code; Process/Worktree claims; or adjacent lifecycle refactoring.
+- **Rollback boundary:** docs-only contract closure. A future implementation
+  revert removes the narrow P3D seam/composition while preserving existing v2
+  and stored lifecycle history.
+- **Re-review trigger:** any additional status, changed Approval order,
+  ProcessManager entry, Worktree mutation, lifecycle-wide refactor, or public
+  error expansion.
 
 ## 3. API compatibility record
 
@@ -1051,7 +1214,9 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 
 ## 5. P0 closure and current authorization status
 
-- Technical direction: APPROVED BY INDEPENDENT TECHNICAL REVIEW.
+- Technical direction: M3-TD-01 through M3-TD-30 retain their prior independent
+  technical review status. M3-TD-31/32 are OWNER APPROVED / NOT IMPLEMENTED
+  and await independent P3D Contract Closure remote technical re-review.
 - P3C-0B Post-Merge Remediation 1: historical six-file Option A alignment
   prerequisite; PR #33 contains the six-file Retry production implementation.
 - Final independent P0 review: COMPLETE (historical).
@@ -1074,6 +1239,20 @@ The following historical decisions remain recorded but do not block the M3 Lifec
   MERGED; P3C-1 Start Portion MERGED via PR #31; P3C-1 Retry production
   IMPLEMENTED AND MERGED via PR #33 at
   `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`; the Retry contract is current.
+- M3 P3D-0 Preplanning: COMPLETE.
+- M3 P3D Contract Closure: OWNER APPROVED / DOCUMENTED.
+- M3-TD-31: OWNER APPROVED / NOT IMPLEMENTED. The P3D Operation Cancel HTTP
+  request, locator/parser, response precedence, trusted metadata,
+  idempotency, and safe-error contract is frozen. Production implementation is
+  NOT AUTHORIZED.
+- M3-TD-32: OWNER APPROVED / NOT IMPLEMENTED. Option C, the dedicated guarded
+  Operation cancel plus approval-aware Lifecycle cancellation seam, is frozen.
+  Production implementation is NOT AUTHORIZED.
+- M3 P3D-1 production implementation: DEPENDENCY READY / NOT AUTHORIZED.
+- M3 P3D-2 production implementation: CONTRACT READY / NOT AUTHORIZED /
+  DEPENDS ON P3D-1 ACCEPTANCE.
+- M3 P3D-3 production implementation: NOT AUTHORIZED / DEPENDS ON P3D-2.
+- M3 P3E: NOT ENTERED / NOT AUTHORIZED.
 - M3 P3C-1: COMPLETE.
 - M3 P3C-1 Start production acceptance: IMPLEMENTED AND MERGED via PR #31;
   the merged Start route remains current state.
@@ -1081,11 +1260,11 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 - P3B-2A CONTRACT ALIGNMENT: COMPLETED AND MERGED via PR #25; this historical
   completion does not alter the merged Retry implementation or authorize P3D.
 - Unresolved P3 Owner Decision candidates: 0.
-- Approved P3 decisions: 5.
-- M3-TD sequence ends at M3-TD-30; no later decision exists or is authorized.
+- Approved P3 decisions: 7.
+- M3-TD sequence ends at M3-TD-32. No later decision exists or is authorized.
 - Migration 012: IMPLEMENTED AND MERGED as part of M3 P2.
-- Migration 014: NOT REQUIRED OR AUTHORIZED.
-- Production Cutover: NOT AUTHORIZED.
+- Migration 014: NOT REQUIRED / NOT AUTHORIZED / ABSENT.
+- Production Cutover: NOT AUTHORIZED / NOT STARTED.
 - Production Restore: NOT AUTHORIZED.
 - Legacy API/JSON retirement or deletion: NOT AUTHORIZED.
 

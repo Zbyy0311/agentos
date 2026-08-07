@@ -25,9 +25,13 @@
 > P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
 > P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
 > P3C-1: COMPLETE
-> M3 current main baseline: `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`
-> P3D / P3E: NOT AUTHORIZED
-> Migration 014: NOT REQUIRED OR AUTHORIZED
+> M3 current main baseline: `5bfa66d074791cb1e1981968f28c3854d7d55d2a`
+> P3D-0 PREPLANNING: COMPLETE
+> P3D CONTRACT CLOSURE: OWNER APPROVED / DOCUMENTED
+> M3-TD-31 / M3-TD-32: OWNER APPROVED / NOT IMPLEMENTED
+> P3D-1 / P3D-2 / P3D-3: NOT AUTHORIZED
+> P3E: NOT ENTERED / NOT AUTHORIZED
+> Migration 014: NOT REQUIRED / NOT AUTHORIZED / ABSENT
 > Production Cutover: NOT AUTHORIZED / NOT STARTED
 > Remote Checks: UNAVAILABLE — NOT PASS
 
@@ -1028,6 +1032,150 @@ Run 是工程执行实体。
 Operation 是 API 长命令的跟踪实体。
 
 创建 Run 的 Operation 完成后，Run 仍可能继续运行。
+
+### 33.2 M3 P3D Operation Cancel Contract
+
+> **OWNER-APPROVED CONTRACT / NOT IMPLEMENTED.** This section freezes the M3
+> P3D canonical Operation Cancel contract. The production route does not
+> currently exist, and P3D production implementation remains NOT AUTHORIZED.
+
+The canonical endpoint is exactly:
+
+```text
+POST /api/operations/:operationId/cancel
+```
+
+The URL accepts only `operationId`. The query string must be empty. The client
+must not supply `workspaceId`, `runId`, `correlationId`, `requestedBy`,
+`terminatedProcessIds`, `worktreePreserved`, or `reason` through the path,
+query, or body.
+
+The request body is an exact JSON object:
+
+```json
+{
+  "expectedVersion": 1
+}
+```
+
+`expectedVersion` is required, identifies the Operation version, and must be a
+positive JavaScript safe integer. An empty object, an extra field, a missing
+field, zero, a negative number, a non-integer, or an unsafe integer returns
+`400 VALIDATION_FAILED`. M3 P3D does not accept ETag or `If-Match` as the
+canonical version transport; any future ETag transport is a Post-M3 API
+decision.
+
+Each of these parseable JSON bodies is a validation failure:
+
+```json
+{}
+```
+
+```json
+{
+  "expectedVersion": 1,
+  "reason": "x"
+}
+```
+
+```json
+{
+  "workspaceId": "x",
+  "expectedVersion": 1
+}
+```
+
+```json
+{
+  "expectedVersion": 0
+}
+```
+
+The Operation router must mount before the global `express.json()` middleware.
+The request order is frozen:
+
+1. Resolve the opaque `operationId`.
+2. Resolve and authorize the owning workspace.
+3. For Cancel only, run the route-scoped JSON parser.
+4. Validate the empty query and exact body.
+5. Invoke `OperationService`.
+
+An unknown Operation therefore returns `404 OPERATION_NOT_FOUND` before
+malformed JSON, an invalid query, an invalid `expectedVersion`, or an extra
+body field is considered. GET Operation routes do not run a JSON parser.
+
+After locator completion, Cancel executes in exactly one caller-owned
+`BEGIN IMMEDIATE` transaction. The service precedence is:
+
+1. Workspace-scoped Operation re-read.
+2. Aggregate, Run, workspace, and correlation binding validation.
+3. If the Operation is already `cancelled`, return its current
+   `ApiOperation` with HTTP 200 and zero lifecycle, Event, or Outbox side
+   effects. This no-op takes precedence over a stale `expectedVersion`.
+4. Compare `expectedVersion` for every other status.
+5. Classify the status as cancellable or terminal.
+6. Perform the dedicated guarded Operation update to `cancelled`.
+7. Cancel the bound Run through the approval-aware lifecycle seam.
+8. Commit.
+
+A stale non-cancelled Operation returns `409 VERSION_CONFLICT`. With a matching
+version, `completed` and `failed` return
+`409 OPERATION_NOT_CANCELLABLE`. The guarded cancellable Operation statuses are
+exactly `queued`, `running`, `waiting_approval`, and `paused`.
+
+The server supplies trusted lifecycle metadata; none of it is accepted from
+the client:
+
+```text
+requestedBy = "operation_api"
+terminatedProcessIds = []
+worktreePreserved = true
+reason = undefined
+```
+
+An empty `terminatedProcessIds` means P3D does not claim to terminate an M4
+OS Process. `worktreePreserved = true` means P3D does not delete, reset, clean,
+or otherwise modify a Worktree. Existing v2 Run Cancel metadata and behavior
+remain unchanged.
+
+For a bound Run in `queued`, `starting`, `running`, or `paused`, the
+approval-aware seam may reuse the current caller-owned Run cancellation core.
+For a bound Run in `waiting_approval`, it must discover exactly one unresolved
+`approval.required` from persisted Runtime Event history while preserving the
+original `runId`, optional `stageId`, and `approvalRequestId` binding. Zero,
+multiple, or inconsistent unresolved approvals fail closed, roll back the
+outer transaction, and are sanitized at the route as `500 INTERNAL_ERROR`;
+SQL, SQLite details, paths, Event payload internals, and stacks are never
+returned.
+
+The waiting-approval Event order is frozen:
+
+```text
+approval.resolved (decision = "cancel_run", decidedBy = "operation_api")
+stage.cancelled × N (stage.sequence ASC, then stage.id ASC)
+run.cancelled
+```
+
+Run Event sequences are contiguous, every Event has exactly one Outbox row,
+and all Operation, Run, Stage, Event, Outbox, version, and sequence writes
+commit or roll back together. `run.cancellation_requested` is not a required
+Event.
+
+Success returns HTTP 200 with the current `ApiOperation`. Cancel creates no
+second Operation, no `operation.cancel` Operation, and no new Idempotency
+Record. `Idempotency-Key` is not required or consumed and must not be presented
+as participating in replay. Existing `run.cancel` vocabulary and v2
+idempotency remain unchanged.
+
+The public stable codes frozen for this endpoint are only:
+
+```text
+VALIDATION_FAILED
+OPERATION_NOT_FOUND
+VERSION_CONFLICT
+OPERATION_NOT_CANCELLABLE
+INTERNAL_ERROR
+```
 
 ---
 
