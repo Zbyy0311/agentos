@@ -36,9 +36,12 @@ Cutover, or any production data operation.
   database was migrated, restored, copied, or modified.
 
 The current evidence is taken from merged main, PR #31's retained Start
-evidence, and the read-only code seam audit for Retry. Production code, tests,
-migrations, registries, Shared, Web, and Idempotency Core remain frozen inputs
-to this docs-only closure.
+evidence, PR #33's merged Retry acceptance implementation, and the retained
+local verification evidence recorded by PR #33. This docs-only closeout does
+not rerun those implementation tests.
+
+Production code, tests, migrations, registries, Shared, Web, and Idempotency
+Core are frozen inputs to this docs-only closeout and are not modified here.
 
 ## 2. Current-state method
 
