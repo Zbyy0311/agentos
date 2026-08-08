@@ -4,7 +4,7 @@
 
 > Status: Draft  
 > Version: 2.0  
-> Last Updated: 2026-08-07
+> Last Updated: 2026-08-08
 > Scope: AgentOS v2 HTTP, Realtime and Internal Runtime API Contract  
 > Depends On:
 > - `00-Vision.md`
@@ -25,14 +25,15 @@
 > P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
 > P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
 > P3C-1: COMPLETE
-> M3 current main baseline: `5bfa66d074791cb1e1981968f28c3854d7d55d2a`
+> M3 P3E entry production baseline: `7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`
 > P3D-0 PREPLANNING: COMPLETE
 > P3D CONTRACT CLOSURE: OWNER APPROVED / DOCUMENTED
-> M3-TD-31 / M3-TD-32: OWNER APPROVED / NOT IMPLEMENTED
-> P3D-1 / P3D-2 / P3D-3: NOT AUTHORIZED
-> P3E: NOT ENTERED / NOT AUTHORIZED
+> M3-TD-31 / M3-TD-32: OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37
+> P3D-1 / P3D-2: IMPLEMENTED AND MERGED via PR #36 / PR #37
+> P3D-3: COMPLETE AND MERGED via PR #38
+> P3E integrated verification evidence: COMPLETE (test/docs only, commit `400a3b29697b7185d29df2cb9da0417260549913`; no API production behavior added)
 > Migration 014: NOT REQUIRED / NOT AUTHORIZED / ABSENT
-> Production Cutover: NOT AUTHORIZED / NOT STARTED
+> Production Cutover: NOT PERFORMED / NOT AUTHORIZED
 > Remote Checks: UNAVAILABLE — NOT PASS
 
 ---
@@ -1035,9 +1036,11 @@ Operation 是 API 长命令的跟踪实体。
 
 ### 33.2 M3 P3D Operation Cancel Contract
 
-> **OWNER-APPROVED CONTRACT / NOT IMPLEMENTED.** This section freezes the M3
-> P3D canonical Operation Cancel contract. The production route does not
-> currently exist, and P3D production implementation remains NOT AUTHORIZED.
+> **OWNER-APPROVED CONTRACT / IMPLEMENTED AND MERGED.** This section freezes
+> the M3 P3D canonical Operation Cancel contract. The frozen contract was
+> subsequently implemented and merged: P3D-1 delivered the Operation read
+> surface (PR #36), P3D-2 delivered this atomic Cancel route and orchestration
+> (PR #37), and P3D-3 closed the Cancel race matrix (PR #38).
 
 The canonical endpoint is exactly:
 
