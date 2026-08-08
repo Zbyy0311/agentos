@@ -5,11 +5,16 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test, { afterEach, describe } from 'node:test';
 
-import type { ApiOperation, ApiOperationResult, ApiProblem, M3OperationStatus } from '@agentos/shared';
+import { createM3RuntimeEventRegistry, type ApiOperation, type ApiOperationResult, type ApiProblem, type M3OperationStatus } from '@agentos/shared';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
-import { inTransaction } from '../store/Transaction.js';
+import { OutboxRepository } from '../store/OutboxRepository.js';
+import { RunRepository } from '../store/RunRepository.js';
+import { RunSequenceAllocator } from '../store/RunSequenceAllocator.js';
+import { RunStageRepository } from '../store/RunStageRepository.js';
+import { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
+import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
 import { createEntityId, isValidEntityId } from '../store/Identity.js';
 import { OperationRepository } from '../store/OperationRepository.js';
 import { VersionConflictError } from '../store/Version.js';
@@ -19,6 +24,10 @@ import {
   OperationService,
   OperationValidationError,
 } from './OperationService.js';
+import {
+  LifecycleTransactionService,
+  type LifecycleTransactionServiceOptions,
+} from './LifecycleTransactionService.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -40,6 +49,12 @@ const RUN_ID = 'run-service';
 const NOW = '2026-08-04T00:00:00.000Z';
 const LATER = '2026-08-04T00:00:01.000Z';
 const LATEST = '2026-08-04T00:00:02.000Z';
+const SNAPSHOT_ID = 'snapshot-service-cancel';
+const STAGE_A_ID = 'stage-service-cancel-a';
+const STAGE_B_ID = 'stage-service-cancel-b';
+const APPROVAL_REQUEST_ID = 'approval-service-cancel';
+const SEED_OUTBOX_ID = 'outbox_service_cancel_seed';
+const IDEMPOTENCY_ID = `idem_${'p'.repeat(26)}`;
 
 const SAMPLE_RESULT: ApiOperationResult = {
   resourceType: 'run',
@@ -93,6 +108,333 @@ function seedRun(db: Db): void {
 function serviceFixture(now: () => string = () => NOW): { db: Db; service: OperationService } {
   const db = migratedDb();
   return { db, service: new OperationService(db, { now }) };
+}
+
+function cancelServiceFixture(
+  onCancel: (input: unknown) => unknown = () => undefined,
+  now: () => string = () => NOW,
+): {
+  db: Db;
+  service: OperationService;
+  calls: unknown[];
+} {
+  const db = migratedDb();
+  const calls: unknown[] = [];
+  const lifecycle = {
+    cancelRunForOperationWithinTransaction(input: unknown): unknown {
+      calls.push(input);
+      return onCancel(input);
+    },
+  };
+  const service = new OperationService(db, {
+    now,
+    lifecycleTransactionService: lifecycle,
+  } as never);
+  return { db, service, calls };
+}
+
+type SqlRow = Record<string, unknown>;
+
+interface CancelTransactionTrace {
+  begin: number;
+  commitAttempts: number;
+  commits: number;
+  rollback: number;
+  nestedBegin: number;
+  mutationSql: string[];
+}
+
+interface RealCancelFixture {
+  db: Db;
+  transactionDb: TransactionDatabase;
+  operationId: string;
+  lifecycle: LifecycleTransactionService;
+  operationService: OperationService;
+  trace: CancelTransactionTrace;
+}
+
+interface RealCancelFixtureOptions {
+  readonly failCommit?: boolean;
+  readonly lifecycleOptions?: LifecycleTransactionServiceOptions;
+}
+
+function trackingTransactionDatabase(
+  db: Db,
+  failCommit = false,
+): {
+  transactionDb: TransactionDatabase;
+  trace: CancelTransactionTrace;
+  reset: () => void;
+  setFailCommit: (value: boolean) => void;
+} {
+  const trace: CancelTransactionTrace = {
+    begin: 0,
+    commitAttempts: 0,
+    commits: 0,
+    rollback: 0,
+    nestedBegin: 0,
+    mutationSql: [],
+  };
+  let transactionOpen = false;
+  let shouldFailCommit = failCommit;
+  const transactionDb: TransactionDatabase = {
+    exec(sql: string): void {
+      const statement = sql.trim().toUpperCase();
+      if (statement === 'BEGIN IMMEDIATE') {
+        trace.begin += 1;
+        if (transactionOpen) trace.nestedBegin += 1;
+        db.exec(sql);
+        transactionOpen = true;
+        return;
+      }
+      if (statement === 'COMMIT') {
+        trace.commitAttempts += 1;
+        if (shouldFailCommit) throw new Error('P3D2_COMMIT_FAILURE');
+        db.exec(sql);
+        trace.commits += 1;
+        transactionOpen = false;
+        return;
+      }
+      if (statement === 'ROLLBACK') {
+        trace.rollback += 1;
+        db.exec(sql);
+        transactionOpen = false;
+        return;
+      }
+      db.exec(sql);
+    },
+    prepare(sql: string) {
+      const statement = db.prepare(sql);
+      return {
+        all: (...parameters: unknown[]) => statement.all(...parameters),
+        get: (...parameters: unknown[]) => statement.get(...parameters),
+        run: (...parameters: unknown[]) => {
+          if (transactionOpen && /^(INSERT|UPDATE|DELETE|REPLACE)\b/i.test(sql.trim())) {
+            trace.mutationSql.push(sql.replace(/\s+/g, ' ').trim());
+          }
+          return statement.run(...parameters);
+        },
+      };
+    },
+  };
+  return {
+    transactionDb,
+    trace,
+    reset: () => {
+      trace.begin = 0;
+      trace.commitAttempts = 0;
+      trace.commits = 0;
+      trace.rollback = 0;
+      trace.nestedBegin = 0;
+      trace.mutationSql.length = 0;
+    },
+    setFailCommit: (value: boolean) => {
+      shouldFailCommit = value;
+    },
+  };
+}
+
+function seedRealWaitingApprovalPackage(
+  db: Db,
+  transactionDb: TransactionDatabase,
+  runtimeEventRepository: RuntimeEventRepository,
+  outboxRepository: OutboxRepository,
+): string {
+  const operationId = createEntityId('operation');
+
+  db.prepare(`
+    INSERT INTO run_snapshots (
+      id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version,
+      snapshot_json, content_hash, redaction_applied, captured_at
+    ) VALUES (?, ?, ?, ?, 1, ?, ?, 0, ?)
+  `).run(
+    SNAPSHOT_ID,
+    WORKSPACE_ID,
+    RUN_ID,
+    'workflow_00000000000000000000000002',
+    '{}',
+    '0'.repeat(64),
+    NOW,
+  );
+  db.prepare(`
+    INSERT INTO run_stages (
+      id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name,
+      sequence, attempt, status, started_at, created_at, updated_at, version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1)
+  `).run(STAGE_A_ID, WORKSPACE_ID, RUN_ID, SNAPSHOT_ID, 'stage_a', 'stage_a', 1, 'waiting_approval', NOW, NOW, NOW);
+  db.prepare(`
+    INSERT INTO run_stages (
+      id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name,
+      sequence, attempt, status, started_at, created_at, updated_at, version
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?, 1)
+  `).run(STAGE_B_ID, WORKSPACE_ID, RUN_ID, SNAPSHOT_ID, 'stage_b', 'stage_b', 2, 'running', NOW, NOW, NOW);
+  db.prepare(`
+    UPDATE runs
+    SET status = 'waiting_approval', started_at = ?, completed_at = NULL,
+      cancellation_requested_at = NULL, next_event_sequence = 1, updated_at = ?, version = 1
+    WHERE id = ?
+  `).run(NOW, NOW, RUN_ID);
+  db.prepare(`
+    INSERT INTO operations (
+      id, type, status, workspace_id, aggregate_type, aggregate_id, run_id,
+      correlation_id, result_json, error_json, created_at, started_at,
+      completed_at, updated_at, version
+    ) VALUES (?, 'run.cancel', 'waiting_approval', ?, 'run', ?, ?, ?, NULL, NULL, ?, ?, NULL, ?, 1)
+  `).run(operationId, WORKSPACE_ID, RUN_ID, RUN_ID, operationId, NOW, NOW, NOW);
+  db.prepare(`
+    INSERT INTO idempotency_records (
+      id, workspace_id, operation, key_hash, request_hash, result_schema_version,
+      result_json, result_hash, http_status, created_at
+    ) VALUES (?, ?, 'run.cancel', ?, ?, 1, '{}', ?, 200, ?)
+  `).run(IDEMPOTENCY_ID, WORKSPACE_ID, 'a'.repeat(64), 'b'.repeat(64), 'c'.repeat(64), NOW);
+
+  inTransaction(transactionDb, () => {
+    const event = runtimeEventRepository.appendWithinTransaction({
+      id: createEntityId('event'),
+      schemaVersion: 1,
+      type: 'approval.required',
+      workspaceId: WORKSPACE_ID,
+      taskId: TASK_ID,
+      runId: RUN_ID,
+      stageId: STAGE_A_ID,
+      approvalRequestId: APPROVAL_REQUEST_ID,
+      sequence: 1,
+      timestamp: NOW,
+      correlationId: operationId,
+      payload: {
+        category: 'command',
+        riskLevel: 'medium',
+        title: 'Approve OperationService cancellation fixture',
+        description: 'The real OperationService cancellation fixture needs approval.',
+        requestSummary: { command: 'cancel-test' },
+      },
+    });
+    outboxRepository.insertWithinTransaction({
+      id: SEED_OUTBOX_ID,
+      eventId: event.id,
+      availableAt: NOW,
+      createdAt: NOW,
+    });
+    transactionDb.prepare('UPDATE runs SET next_event_sequence = 2 WHERE id = ?').run(RUN_ID);
+  });
+
+  return operationId;
+}
+
+function realCancelFixture(options: RealCancelFixtureOptions = {}): RealCancelFixture {
+  const db = migratedDb();
+  const tracked = trackingTransactionDatabase(db);
+  const runtimeEventRepository = new RuntimeEventRepository(tracked.transactionDb, createM3RuntimeEventRegistry());
+  const outboxRepository = new OutboxRepository(tracked.transactionDb, runtimeEventRepository, { now: () => NOW });
+  const operationId = seedRealWaitingApprovalPackage(
+    db,
+    tracked.transactionDb,
+    runtimeEventRepository,
+    outboxRepository,
+  );
+  tracked.reset();
+  tracked.setFailCommit(options.failCommit ?? false);
+
+  const runRepository = new RunRepository(tracked.transactionDb);
+  const runStageRepository = new RunStageRepository(tracked.transactionDb);
+  const runSequenceAllocator = new RunSequenceAllocator(tracked.transactionDb);
+  const lifecycle = new LifecycleTransactionService({
+    runRepository,
+    runStageRepository,
+    runtimeEventRepository,
+    runSequenceAllocator,
+    outboxRepository,
+    runInTransaction: fn => inTransaction(tracked.transactionDb, fn),
+  }, {
+    now: () => NOW,
+    ...(options.lifecycleOptions ?? {}),
+  });
+  const operationService = new OperationService(tracked.transactionDb, {
+    now: () => NOW,
+    lifecycleTransactionService: lifecycle,
+  });
+  return {
+    db,
+    transactionDb: tracked.transactionDb,
+    operationId,
+    lifecycle,
+    operationService,
+    trace: tracked.trace,
+  };
+}
+
+function fullCancelSnapshot(fixture: RealCancelFixture): {
+  operations: SqlRow[];
+  runs: SqlRow[];
+  run_stages: SqlRow[];
+  runtime_events: SqlRow[];
+  outbox_messages: SqlRow[];
+  idempotency_records: SqlRow[];
+} {
+  return {
+    operations: fixture.db.prepare('SELECT * FROM operations WHERE id = ? ORDER BY id ASC').all(fixture.operationId) as SqlRow[],
+    runs: fixture.db.prepare('SELECT * FROM runs WHERE id = ? ORDER BY id ASC').all(RUN_ID) as SqlRow[],
+    run_stages: fixture.db.prepare('SELECT * FROM run_stages WHERE run_id = ? ORDER BY sequence ASC, id ASC').all(RUN_ID) as SqlRow[],
+    runtime_events: fixture.db.prepare('SELECT * FROM runtime_events WHERE run_id = ? ORDER BY sequence ASC, id ASC').all(RUN_ID) as SqlRow[],
+    outbox_messages: fixture.db.prepare(`
+      SELECT outbox_messages.*
+      FROM outbox_messages
+      JOIN runtime_events ON runtime_events.id = outbox_messages.event_id
+      WHERE outbox_messages.aggregate_id = ?
+      ORDER BY runtime_events.sequence ASC, outbox_messages.id ASC
+    `).all(RUN_ID) as SqlRow[],
+    idempotency_records: fixture.db.prepare('SELECT * FROM idempotency_records WHERE workspace_id = ? ORDER BY operation ASC, key_hash ASC, id ASC').all(WORKSPACE_ID) as SqlRow[],
+  };
+}
+
+function assertRealWaitingApprovalSeed(fixture: RealCancelFixture): void {
+  const snapshot = fullCancelSnapshot(fixture);
+  const operation = snapshot.operations[0];
+  const run = snapshot.runs[0];
+  assert.equal(snapshot.operations.length, 1);
+  assert.equal(operation?.workspace_id, WORKSPACE_ID);
+  assert.equal(operation?.run_id, RUN_ID);
+  assert.equal(operation?.aggregate_id, RUN_ID);
+  assert.equal(operation?.correlation_id, fixture.operationId);
+  assert.equal(operation?.status, 'waiting_approval');
+  assert.equal(operation?.version, 1);
+  assert.equal(operation?.started_at, NOW);
+  assert.equal(operation?.completed_at, null);
+  assert.equal(run?.status, 'waiting_approval');
+  assert.equal(run?.version, 1);
+  assert.equal(run?.next_event_sequence, 2);
+  assert.equal(snapshot.run_stages.length, 2);
+  assert.deepEqual(snapshot.run_stages.map(stage => [stage.id, stage.status, stage.version]), [
+    [STAGE_A_ID, 'waiting_approval', 1],
+    [STAGE_B_ID, 'running', 1],
+  ]);
+  assert.equal(snapshot.runtime_events.filter(event => event.type === 'approval.required').length, 1);
+  assert.equal(snapshot.runtime_events.filter(event => event.type === 'approval.resolved').length, 0);
+  assert.equal(snapshot.runtime_events[0]?.approval_request_id, APPROVAL_REQUEST_ID);
+  assert.equal(snapshot.runtime_events[0]?.stage_id, STAGE_A_ID);
+  assert.equal(snapshot.outbox_messages.length, 1);
+  assert.equal(snapshot.outbox_messages[0]?.event_id, snapshot.runtime_events[0]?.id);
+  assert.equal(snapshot.idempotency_records.length, 1);
+}
+
+function realCancelInput(fixture: RealCancelFixture): {
+  workspaceId: string;
+  operationId: string;
+  expectedVersion: number;
+} {
+  return { workspaceId: WORKSPACE_ID, operationId: fixture.operationId, expectedVersion: 1 };
+}
+
+function cancelInput(operation: ApiOperation, expectedVersion = operation.version): {
+  workspaceId: string;
+  operationId: string;
+  expectedVersion: number;
+} {
+  return {
+    workspaceId: operation.workspaceId,
+    operationId: operation.id,
+    expectedVersion,
+  };
 }
 
 function assertCode(code: string) {
@@ -453,6 +795,339 @@ describe('OperationService — result/error and transaction invariants', () => {
     assert.equal('progress' in operation, false);
     assert.equal(row.result_json, null);
     assert.equal(row.error_json, null);
+  });
+});
+
+describe('OperationService — dedicated atomic cancel', () => {
+  test('dedicated cancel does not widen ALLOWED_TRANSITIONS', () => {
+    const { db, service } = cancelServiceFixture();
+    const queued = createStart(service);
+    const cancelled = service.cancel(cancelInput(queued));
+    assert.equal(cancelled.status, 'cancelled');
+    assert.equal(cancelled.version, 2);
+
+    const waiting = createStart(service);
+    db.prepare('UPDATE operations SET status = ?, started_at = ?, version = 1 WHERE id = ?')
+      .run('waiting_approval', NOW, waiting.id);
+    assert.throws(
+      () => service.transition({
+        workspaceId: WORKSPACE_ID,
+        operationId: waiting.id,
+        expectedVersion: 1,
+        to: 'cancelled',
+      }),
+      assertCode('INVALID_OPERATION_TRANSITION'),
+    );
+  });
+
+  test('already-cancelled ignores a stale expectedVersion without lifecycle or mutation', () => {
+    const { db, service, calls } = cancelServiceFixture();
+    const operation = createStart(service);
+    db.prepare(`
+      UPDATE operations SET status = 'cancelled', version = 7, completed_at = ?,
+        result_json = NULL, error_json = NULL WHERE id = ?
+    `).run(LATER, operation.id);
+    const before = db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id);
+
+    const current = service.cancel(cancelInput(operation, 1));
+
+    assert.deepEqual(current, service.findById(WORKSPACE_ID, operation.id));
+    assert.deepEqual(db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id), before);
+    assert.deepEqual(calls, []);
+  });
+
+  test('stale non-cancelled Operation raises VERSION_CONFLICT before lifecycle', () => {
+    const { db, service, calls } = cancelServiceFixture();
+    const operation = createStart(service);
+    db.prepare('UPDATE operations SET status = ?, started_at = ?, version = 2 WHERE id = ?')
+      .run('running', NOW, operation.id);
+
+    assert.throws(
+      () => service.cancel(cancelInput(operation, 1)),
+      (error: unknown) => error instanceof VersionConflictError
+        && error.entityType === 'operations'
+        && error.code === 'VERSION_CONFLICT',
+    );
+    assert.equal(service.findById(WORKSPACE_ID, operation.id)?.version, 2);
+    assert.deepEqual(calls, []);
+  });
+
+  test('completed and failed Operations are not cancellable', () => {
+    const completed = cancelServiceFixture();
+    const completedQueued = createStart(completed.service);
+    const completedRunning = completed.service.transition({
+      workspaceId: WORKSPACE_ID,
+      operationId: completedQueued.id,
+      expectedVersion: 1,
+      to: 'running',
+    });
+    const completedOperation = completed.service.transition({
+      workspaceId: WORKSPACE_ID,
+      operationId: completedRunning.id,
+      expectedVersion: 2,
+      to: 'completed',
+      result: SAMPLE_RESULT,
+    });
+    assert.throws(
+      () => completed.service.cancel(cancelInput(completedOperation)),
+      assertCode('OPERATION_NOT_CANCELLABLE'),
+    );
+    assert.deepEqual(completed.calls, []);
+
+    const failed = cancelServiceFixture();
+    const failedOperation = failed.service.transition({
+      workspaceId: WORKSPACE_ID,
+      operationId: createStart(failed.service).id,
+      expectedVersion: 1,
+      to: 'failed',
+      error: sampleProblem(),
+    });
+    assert.throws(
+      () => failed.service.cancel(cancelInput(failedOperation)),
+      assertCode('OPERATION_NOT_CANCELLABLE'),
+    );
+    assert.deepEqual(failed.calls, []);
+  });
+
+  test('all four guarded statuses use the dedicated cancel seam exactly once', () => {
+    for (const status of ['queued', 'running', 'waiting_approval', 'paused'] as const) {
+      const { db, service, calls } = cancelServiceFixture();
+      const operation = createStart(service);
+      if (status !== 'queued') {
+        db.prepare('UPDATE operations SET status = ?, started_at = ?, version = 1 WHERE id = ?')
+          .run(status, NOW, operation.id);
+      }
+
+      const cancelled = service.cancel(cancelInput(operation));
+
+      assert.equal(cancelled.status, 'cancelled');
+      assert.equal(cancelled.version, 2);
+      assert.equal(calls.length, 1);
+      assert.equal('result' in cancelled, false);
+      assert.equal('error' in cancelled, false);
+    }
+  });
+
+  test('OperationService passes only persisted binding to the lifecycle seam', () => {
+    const { service, calls } = cancelServiceFixture();
+    const operation = createStart(service);
+
+    service.cancel(cancelInput(operation));
+
+    assert.deepEqual(calls, [{
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      correlationId: operation.correlationId,
+    }]);
+  });
+
+  test('missing canonical lifecycle dependency fails closed', () => {
+    const { service } = serviceFixture();
+    const operation = createStart(service);
+
+    assert.throws(
+      () => service.cancel(cancelInput(operation)),
+      assertCode('OPERATION_LIFECYCLE_DEPENDENCY_MISSING'),
+    );
+    assert.equal(service.findById(WORKSPACE_ID, operation.id)?.status, 'queued');
+  });
+
+  test('lifecycle failure rolls back the guarded Operation update', () => {
+    const { db, service } = cancelServiceFixture(() => { throw new Error('lifecycle failure'); });
+    const operation = createStart(service);
+    const before = db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id);
+
+    assert.throws(() => service.cancel(cancelInput(operation)), /lifecycle failure/);
+
+    assert.deepEqual(db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id), before);
+  });
+
+  test('cancel increments the Operation version exactly once and keeps result/error null', () => {
+    const { db, service } = cancelServiceFixture();
+    const operation = createStart(service);
+
+    const cancelled = service.cancel(cancelInput(operation));
+    const row = db.prepare('SELECT status, version, result_json, error_json FROM operations WHERE id = ?')
+      .get(operation.id) as { status: string; version: number; result_json: string | null; error_json: string | null };
+
+    assert.equal(cancelled.version, operation.version + 1);
+    assert.deepEqual({ ...row }, { status: 'cancelled', version: 2, result_json: null, error_json: null });
+  });
+
+  test('a COMMIT failure injected through the test database proxy rolls back cancel', () => {
+    const db = migratedDb();
+    let failCommit = false;
+    const proxy = {
+      exec(sql: string): void {
+        if (failCommit && sql === 'COMMIT') throw new Error('COMMIT_FAILURE');
+        db.exec(sql);
+      },
+      prepare: db.prepare.bind(db),
+    };
+    const calls: unknown[] = [];
+    const service = new OperationService(proxy as never, {
+      now: () => NOW,
+      lifecycleTransactionService: {
+        cancelRunForOperationWithinTransaction(input: unknown): void { calls.push(input); },
+      },
+    } as never);
+    const operation = service.create({ workspaceId: WORKSPACE_ID, runId: RUN_ID, type: 'run.start' });
+    const before = db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id);
+    failCommit = true;
+
+    assert.throws(() => service.cancel(cancelInput(operation)), /COMMIT_FAILURE/);
+
+    assert.deepEqual(db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id), before);
+    assert.equal(calls.length, 1);
+  });
+});
+
+describe('OperationService — M3 P3D-2 MEDIUM-1 real cancel rollback evidence', () => {
+  test('P3D-2 MEDIUM-1 Mandatory A — OperationService.cancel rolls back the full package at every Event failure position', () => {
+    const failures = [
+      { position: 1, label: 'approval.resolved Event' },
+      { position: 2, label: 'first stage.cancelled Event' },
+      { position: 3, label: 'middle stage.cancelled Event' },
+      { position: 4, label: 'run.cancelled Event' },
+    ];
+
+    for (const failure of failures) {
+      let eventCalls = 0;
+      const fixture = realCancelFixture({
+        lifecycleOptions: {
+          createEventId: () => {
+            eventCalls += 1;
+            if (eventCalls === failure.position) throw new Error(`P3D2_EVENT_FAILURE_${failure.position}`);
+            return createEntityId('event');
+          },
+        },
+      });
+      assertRealWaitingApprovalSeed(fixture);
+      const before = fullCancelSnapshot(fixture);
+
+      assert.throws(
+        () => fixture.operationService.cancel(realCancelInput(fixture)),
+        new RegExp(`P3D2_EVENT_FAILURE_${failure.position}`),
+        failure.label,
+      );
+
+      assert.equal(eventCalls, failure.position, failure.label);
+      assert.deepEqual(fullCancelSnapshot(fixture), before, failure.label);
+      assert.equal(fixture.trace.begin, 1, failure.label);
+      assert.equal(fixture.trace.commitAttempts, 0, failure.label);
+      assert.equal(fixture.trace.rollback, 1, failure.label);
+      assert.equal(fixture.trace.nestedBegin, 0, failure.label);
+    }
+  });
+
+  test('P3D-2 MEDIUM-1 Mandatory B — OperationService.cancel rolls back the full package at every Outbox failure position', () => {
+    const failures = [
+      { position: 1, label: 'approval.resolved Outbox' },
+      { position: 2, label: 'first stage.cancelled Outbox' },
+      { position: 3, label: 'middle stage.cancelled Outbox' },
+      { position: 4, label: 'run.cancelled Outbox' },
+    ];
+
+    for (const failure of failures) {
+      let outboxCalls = 0;
+      const fixture = realCancelFixture({
+        lifecycleOptions: {
+          createOutboxId: () => {
+            outboxCalls += 1;
+            return outboxCalls === failure.position
+              ? SEED_OUTBOX_ID
+              : `outbox_service_cancel_failure_${failure.position}_${outboxCalls}`;
+          },
+        },
+      });
+      assertRealWaitingApprovalSeed(fixture);
+      const before = fullCancelSnapshot(fixture);
+
+      assert.throws(
+        () => fixture.operationService.cancel(realCancelInput(fixture)),
+        /OUTBOX_PERSISTENCE_FAILED/,
+        failure.label,
+      );
+
+      assert.equal(outboxCalls, failure.position, failure.label);
+      assert.deepEqual(fullCancelSnapshot(fixture), before, failure.label);
+      assert.equal(fixture.trace.begin, 1, failure.label);
+      assert.equal(fixture.trace.commitAttempts, 0, failure.label);
+      assert.equal(fixture.trace.rollback, 1, failure.label);
+      assert.equal(fixture.trace.nestedBegin, 0, failure.label);
+    }
+  });
+
+  test('P3D-2 MEDIUM-1 Mandatory C — real COMMIT failure rolls back OperationService.cancel after real lifecycle writes', () => {
+    const fixture = realCancelFixture({
+      failCommit: true,
+      lifecycleOptions: { createEventId: () => createEntityId('event') },
+    });
+    assertRealWaitingApprovalSeed(fixture);
+    const before = fullCancelSnapshot(fixture);
+
+    assert.throws(
+      () => fixture.operationService.cancel(realCancelInput(fixture)),
+      /P3D2_COMMIT_FAILURE/,
+    );
+
+    assert.deepEqual(fullCancelSnapshot(fixture), before);
+    assert.equal(fixture.trace.begin, 1);
+    assert.equal(fixture.trace.commitAttempts, 1);
+    assert.equal(fixture.trace.commits, 0);
+    assert.equal(fixture.trace.rollback, 1);
+    assert.equal(fixture.trace.nestedBegin, 0);
+    for (const mutation of [
+      /^UPDATE operations\b/i,
+      /^UPDATE run_stages\b/i,
+      /^INSERT INTO runtime_events\b/i,
+      /^INSERT INTO outbox_messages\b/i,
+      /^UPDATE runs\b/i,
+    ]) {
+      assert.ok(fixture.trace.mutationSql.some(sql => mutation.test(sql)), `missing real mutation: ${mutation}`);
+    }
+  });
+
+  test('P3D-2 MEDIUM-1 success ownership — OperationService.cancel owns one transaction for the full waiting_approval cancel', () => {
+    const fixture = realCancelFixture({ lifecycleOptions: { createEventId: () => createEntityId('event') } });
+    assertRealWaitingApprovalSeed(fixture);
+
+    const cancelled = fixture.operationService.cancel(realCancelInput(fixture));
+    const after = fullCancelSnapshot(fixture);
+    const operation = after.operations[0];
+    const run = after.runs[0];
+
+    assert.equal(cancelled.status, 'cancelled');
+    assert.equal(cancelled.version, 2);
+    assert.equal(operation?.status, 'cancelled');
+    assert.equal(operation?.version, 2);
+    assert.equal(run?.status, 'cancelled');
+    assert.equal(run?.version, 2);
+    assert.equal(run?.next_event_sequence, 6);
+    assert.equal(run?.cancellation_requested_at, NOW);
+    assert.deepEqual(after.run_stages.map(stage => [stage.id, stage.status, stage.version]), [
+      [STAGE_A_ID, 'cancelled', 2],
+      [STAGE_B_ID, 'cancelled', 2],
+    ]);
+
+    assert.deepEqual(after.runtime_events.map(event => event.type), [
+      'approval.required', 'approval.resolved', 'stage.cancelled', 'stage.cancelled', 'run.cancelled',
+    ]);
+    assert.deepEqual(after.runtime_events.map(event => event.sequence), [1, 2, 3, 4, 5]);
+    assert.deepEqual(after.runtime_events.slice(1).map(event => event.type), [
+      'approval.resolved', 'stage.cancelled', 'stage.cancelled', 'run.cancelled',
+    ]);
+    assert.equal(after.outbox_messages.length, after.runtime_events.length);
+    assert.deepEqual(
+      after.outbox_messages.map(outbox => outbox.event_id),
+      after.runtime_events.map(event => event.id),
+    );
+    assert.equal(after.idempotency_records.length, 1);
+    assert.equal(fixture.trace.begin, 1);
+    assert.equal(fixture.trace.commitAttempts, 1);
+    assert.equal(fixture.trace.commits, 1);
+    assert.equal(fixture.trace.rollback, 0);
+    assert.equal(fixture.trace.nestedBegin, 0);
   });
 });
 

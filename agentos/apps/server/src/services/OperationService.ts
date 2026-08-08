@@ -20,9 +20,14 @@ import {
   type InsertOperationInput,
   type OperationType,
 } from '../store/OperationRepository.js';
+import type { LifecycleTransactionService } from './LifecycleTransactionService.js';
 
 export interface OperationServiceOptions {
   readonly now?: () => string;
+  readonly lifecycleTransactionService?: Pick<
+    LifecycleTransactionService,
+    'cancelRunForOperationWithinTransaction'
+  >;
 }
 
 export interface CreateOperationInput {
@@ -38,6 +43,12 @@ export interface TransitionOperationInput {
   readonly to: M3OperationStatus;
   readonly result?: ApiOperationResult | null;
   readonly error?: ApiProblem | null;
+}
+
+export interface CancelOperationInput {
+  readonly workspaceId: string;
+  readonly operationId: string;
+  readonly expectedVersion: number;
 }
 
 const TERMINAL_STATUSES: readonly M3OperationStatus[] = ['completed', 'failed', 'cancelled'];
@@ -58,6 +69,33 @@ export class InvalidOperationTransitionError extends Error {
   constructor(from: string, to: string) {
     super(`INVALID_OPERATION_TRANSITION: cannot transition operation from '${from}' to '${to}'`);
     this.name = 'InvalidOperationTransitionError';
+  }
+}
+
+export class OperationNotCancellableError extends Error {
+  readonly code = 'OPERATION_NOT_CANCELLABLE' as const;
+
+  constructor(operationId: string) {
+    super(`Operation ${operationId} is not cancellable`);
+    this.name = 'OperationNotCancellableError';
+  }
+}
+
+export class OperationLifecycleDependencyError extends Error {
+  readonly code = 'OPERATION_LIFECYCLE_DEPENDENCY_MISSING' as const;
+
+  constructor() {
+    super('Operation cancellation lifecycle dependency is missing');
+    this.name = 'OperationLifecycleDependencyError';
+  }
+}
+
+export class OperationIntegrityError extends Error {
+  readonly code = 'OPERATION_INTEGRITY_FAILED' as const;
+
+  constructor(message: string) {
+    super(`OPERATION_INTEGRITY_FAILED: ${message}`);
+    this.name = 'OperationIntegrityError';
   }
 }
 
@@ -89,6 +127,7 @@ function assertTimestamp(value: string): string {
 export class OperationService {
   private readonly repository: OperationRepository;
   private readonly now: () => string;
+  private readonly lifecycleTransactionService: OperationServiceOptions['lifecycleTransactionService'];
 
   constructor(
     private readonly db: TransactionDatabase,
@@ -96,6 +135,7 @@ export class OperationService {
   ) {
     this.repository = new OperationRepository(db);
     this.now = options.now ?? (() => new Date().toISOString());
+    this.lifecycleTransactionService = options.lifecycleTransactionService;
   }
 
   create(input: CreateOperationInput): ApiOperation {
@@ -184,6 +224,61 @@ export class OperationService {
     });
   }
 
+  cancel(input: CancelOperationInput): ApiOperation {
+    return inTransaction(this.db, () => this.cancelWithinTransaction(input));
+  }
+
+  cancelWithinTransaction(input: CancelOperationInput): ApiOperation {
+    if (!isNonEmptyString(input.workspaceId) || !isNonEmptyString(input.operationId)) {
+      throw new OperationValidationError('workspaceId and operationId are required');
+    }
+    assertPositiveVersion(input.expectedVersion);
+
+    let current: ApiOperation | undefined;
+    try {
+      current = this.repository.findById(input.workspaceId, input.operationId);
+    } catch (error) {
+      if (error instanceof OperationValidationError) {
+        throw new OperationIntegrityError('persisted Operation row is invalid');
+      }
+      throw error;
+    }
+    if (!current) throw new OperationNotFoundError(input.operationId);
+    this.assertPersistedBinding(current, input.workspaceId);
+
+    if (current.status === 'cancelled') return current;
+    if (current.version !== input.expectedVersion) {
+      throw new VersionConflictError('operations', input.operationId, input.expectedVersion);
+    }
+    if (current.status === 'completed' || current.status === 'failed') {
+      throw new OperationNotCancellableError(input.operationId);
+    }
+    if (!['queued', 'running', 'waiting_approval', 'paused'].includes(current.status)) {
+      throw new OperationNotCancellableError(input.operationId);
+    }
+    if (!this.lifecycleTransactionService) throw new OperationLifecycleDependencyError();
+
+    const timestamp = assertTimestamp(this.now());
+    const updated = this.repository.update({
+      workspaceId: input.workspaceId,
+      operationId: input.operationId,
+      expectedStatus: current.status,
+      expectedVersion: input.expectedVersion,
+      status: 'cancelled',
+      updatedAt: timestamp,
+      startedAt: current.startedAt ?? null,
+      completedAt: timestamp,
+      result: null,
+      error: null,
+    });
+    this.lifecycleTransactionService.cancelRunForOperationWithinTransaction({
+      workspaceId: current.workspaceId,
+      runId: current.runId,
+      correlationId: current.correlationId,
+    });
+    return updated;
+  }
+
   findById(workspaceId: string, operationId: string): ApiOperation {
     const operation = this.repository.findById(workspaceId, operationId);
     if (!operation) throw new OperationNotFoundError(operationId);
@@ -208,6 +303,19 @@ export class OperationService {
     type: OperationType,
   ): ApiOperation[] {
     return this.repository.listNonTerminalByRunAndType(workspaceId, runId, type);
+  }
+
+  private assertPersistedBinding(operation: ApiOperation, workspaceId: string): void {
+    const expectedCorrelationId = operation.type === 'run.create' ? operation.runId : operation.id;
+    if (
+      operation.workspaceId !== workspaceId
+      || operation.aggregateType !== 'run'
+      || operation.aggregateId !== operation.runId
+      || !isNonEmptyString(operation.runId)
+      || operation.correlationId !== expectedCorrelationId
+    ) {
+      throw new OperationIntegrityError('persisted Operation binding is invalid');
+    }
   }
 
   private assertResultErrorContract(

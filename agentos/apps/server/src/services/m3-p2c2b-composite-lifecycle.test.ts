@@ -17,6 +17,7 @@ import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { inTransaction } from '../store/Transaction.js';
+import { createEntityId } from '../store/Identity.js';
 import { OutboxRepository } from '../store/OutboxRepository.js';
 import { RunRepository } from '../store/RunRepository.js';
 import { RunSequenceAllocator } from '../store/RunSequenceAllocator.js';
@@ -261,17 +262,24 @@ function approvalInput(overrides: Record<string, unknown> = {}): Record<string, 
   });
 }
 
-function seedApprovalRequired(fixture: Fixture, stageId?: string): void {
+function seedApprovalRequired(
+  fixture: Fixture,
+  stageId?: string,
+  approvalRequestId = 'approval-composite-test',
+): void {
+  const sequence = (fixture.db.prepare(
+    'SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM runtime_events WHERE run_id = ?',
+  ).get(RUN_ID) as { next: number }).next;
   const event = inTransaction(fixture.db, () => fixture.runtimeEventRepository.appendWithinTransaction({
-    id: 'evt_01J6J3Z7V6T5C4D3E2F1G0H9K9',
+    id: `evt_${createEntityId('event').slice(4)}`,
     schemaVersion: 1,
     type: 'approval.required',
     workspaceId: WORKSPACE_ID,
     taskId: TASK_ID,
     runId: RUN_ID,
     ...(stageId === undefined ? {} : { stageId }),
-    approvalRequestId: 'approval-composite-test',
-    sequence: 1,
+    approvalRequestId,
+    sequence,
     timestamp: NOW,
     correlationId: 'correlation-composite',
     payload: {
@@ -283,7 +291,54 @@ function seedApprovalRequired(fixture: Fixture, stageId?: string): void {
     },
   }));
   fixture.outboxRepository.insertWithinTransaction({
-    id: 'outbox_seed_approval_required', eventId: event.id, availableAt: NOW, createdAt: NOW,
+    id: `outbox_${event.id}`, eventId: event.id, availableAt: NOW, createdAt: NOW,
+  });
+  fixture.db.prepare('UPDATE runs SET next_event_sequence = ? WHERE id = ?').run(sequence + 1, RUN_ID);
+}
+
+function seedApprovalResolved(
+  fixture: Fixture,
+  approvalRequestId: string,
+  stageId: string | undefined = undefined,
+): void {
+  const sequence = (fixture.db.prepare(
+    'SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM runtime_events WHERE run_id = ?',
+  ).get(RUN_ID) as { next: number }).next;
+  const event = inTransaction(fixture.db, () => fixture.runtimeEventRepository.appendWithinTransaction({
+    id: `evt_${createEntityId('event').slice(4)}`,
+    schemaVersion: 1,
+    type: 'approval.resolved',
+    workspaceId: WORKSPACE_ID,
+    taskId: TASK_ID,
+    runId: RUN_ID,
+    ...(stageId === undefined ? {} : { stageId }),
+    approvalRequestId,
+    sequence,
+    timestamp: NOW,
+    correlationId: 'correlation-composite',
+    payload: { decision: 'cancel_run', decidedBy: 'operator', decidedAt: NOW },
+  }));
+  fixture.outboxRepository.insertWithinTransaction({
+    id: `outbox_${event.id}`, eventId: event.id, availableAt: NOW, createdAt: NOW,
+  });
+  fixture.db.prepare('UPDATE runs SET next_event_sequence = ? WHERE id = ?').run(sequence + 1, RUN_ID);
+}
+
+function prepareOperationExistingOutbox(fixture: Fixture): void {
+  const event = inTransaction(fixture.db, () => fixture.runtimeEventRepository.appendWithinTransaction({
+    id: `evt_${createEntityId('event').slice(4)}`,
+    schemaVersion: 1,
+    type: 'run.dequeued',
+    workspaceId: WORKSPACE_ID,
+    taskId: TASK_ID,
+    runId: RUN_ID,
+    sequence: 1,
+    timestamp: NOW,
+    correlationId: 'existing-operation-cancel',
+    payload: { dequeuedAt: NOW },
+  }));
+  fixture.outboxRepository.insertWithinTransaction({
+    id: 'outbox_existing_composite', eventId: event.id, availableAt: NOW, createdAt: NOW,
   });
   fixture.db.prepare('UPDATE runs SET next_event_sequence = 2 WHERE id = ?').run(RUN_ID);
 }
@@ -295,6 +350,30 @@ function cancellationInput(overrides: Record<string, unknown> = {}): Record<stri
     worktreePreserved: true,
     ...overrides,
   });
+}
+
+function operationCancellationInput(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    workspaceId: WORKSPACE_ID,
+    runId: RUN_ID,
+    correlationId: 'operation-correlation',
+    ...overrides,
+  };
+}
+
+function cancelForOperation(fixture: Fixture, overrides: Record<string, unknown> = {}): CompositeLifecycleTransactionResult {
+  const method = (fixture.service as unknown as {
+    cancelRunForOperationWithinTransaction(input: unknown): CompositeLifecycleTransactionResult;
+  }).cancelRunForOperationWithinTransaction;
+  return inTransaction(fixture.db, () => method.call(fixture.service, operationCancellationInput(overrides)));
+}
+
+function operationCancelStateSnapshot(fixture: Fixture): Record<string, unknown> {
+  return {
+    aggregate: stateSnapshot(fixture),
+    events: fixture.db.prepare('SELECT * FROM runtime_events WHERE run_id = ? ORDER BY sequence ASC').all(RUN_ID),
+    outboxes: fixture.db.prepare('SELECT * FROM outbox_messages ORDER BY id ASC').all(),
+  };
 }
 
 function events(fixture: Fixture): Array<{ type: string; sequence: number; timestamp: string; correlation_id: string; stage_id: string | null }> {
@@ -983,6 +1062,254 @@ test('P2C-2B caller-owned Run cancellation preserves lifecycle order and transac
     assertHealthy(fixture);
   } finally {
     closeFixture(fixture);
+  }
+});
+
+test('P3D-2 operation cancel discovers Run-level and Stage-level unresolved approvals', () => {
+  const runLevel = newFixture();
+  try {
+    setRunStatus(runLevel, 'waiting_approval');
+    setStageStatus(runLevel, STAGE_ID, 'running');
+    seedApprovalRequired(runLevel);
+
+    const result = cancelForOperation(runLevel);
+
+    assert.deepEqual(result.events.map(event => event.type), [
+      'approval.resolved', 'stage.cancelled', 'run.cancelled',
+    ]);
+    assert.equal(result.events[0]?.stageId, undefined);
+    assert.equal(result.events[0]?.approvalRequestId, 'approval-composite-test');
+  } finally {
+    closeFixture(runLevel);
+  }
+
+  const stageLevel = newFixture();
+  try {
+    setRunStatus(stageLevel, 'waiting_approval');
+    setStageStatus(stageLevel, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(stageLevel, STAGE_ID);
+
+    const result = cancelForOperation(stageLevel);
+
+    assert.deepEqual(result.events.map(event => event.type), [
+      'approval.resolved', 'stage.cancelled', 'run.cancelled',
+    ]);
+    assert.equal(result.events[0]?.stageId, STAGE_ID);
+    assert.equal(result.events[0]?.approvalRequestId, 'approval-composite-test');
+  } finally {
+    closeFixture(stageLevel);
+  }
+});
+
+test('P3D-2 approval cancel is ordered, contiguous, metadata-fixed, and one-outbox-per-event', () => {
+  const fixture = newFixture();
+  try {
+    insertStage(fixture, 'stage-z', 3, 'running');
+    insertStage(fixture, 'stage-a', 2, 'pending');
+    insertStage(fixture, 'stage-terminal', 4, 'completed');
+    setRunStatus(fixture, 'waiting_approval');
+    setStageStatus(fixture, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(fixture, STAGE_ID);
+    const before = operationCancelStateSnapshot(fixture);
+
+    const result = cancelForOperation(fixture);
+
+    assert.deepEqual(result.events.map(event => event.type), [
+      'approval.resolved', 'stage.cancelled', 'stage.cancelled', 'stage.cancelled', 'run.cancelled',
+    ]);
+    assert.deepEqual(result.events.slice(1, 4).map(event => event.stageId), [STAGE_ID, 'stage-a', 'stage-z']);
+    assert.deepEqual(result.events.map(event => event.sequence), [2, 3, 4, 5, 6]);
+    assert.ok(result.events.every(event => event.correlationId === 'operation-correlation'));
+    assert.deepEqual(result.events[0]?.payload, {
+      decision: 'cancel_run', decidedBy: 'operation_api', decidedAt: NOW,
+    });
+    assert.deepEqual(result.events.at(-1)?.payload, {
+      requestedBy: 'operation_api', terminatedProcessIds: [], worktreePreserved: true,
+    });
+    assert.equal(result.events.length, result.outboxes.length);
+    assert.deepEqual(result.outboxes.map(outbox => outbox.eventId), result.events.map(event => event.id));
+    assert.equal(result.run.status, 'cancelled');
+    assert.equal(result.run.version, 2);
+    assert.equal(result.run.nextEventSequence, 7);
+    assert.equal(result.stages.find(stage => stage.id === 'stage-terminal')?.status, 'completed');
+    assert.notDeepEqual(operationCancelStateSnapshot(fixture), before);
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('P3D-2 approval history with zero, multiple, duplicate, or inconsistent records fails closed', () => {
+  const cases: Array<{ name: string; prepare: (fixture: Fixture) => void }> = [
+    { name: 'zero unresolved', prepare: () => undefined },
+    {
+      name: 'two unresolved',
+      prepare: fixture => {
+        seedApprovalRequired(fixture, undefined, 'approval-one');
+        seedApprovalRequired(fixture, undefined, 'approval-two');
+      },
+    },
+    {
+      name: 'duplicate required',
+      prepare: fixture => {
+        seedApprovalRequired(fixture, STAGE_ID, 'approval-duplicate');
+        seedApprovalRequired(fixture, STAGE_ID, 'approval-duplicate');
+      },
+    },
+    {
+      name: 'resolved without required',
+      prepare: fixture => seedApprovalResolved(fixture, 'approval-orphan'),
+    },
+    {
+      name: 'wrong stage binding',
+      prepare: fixture => {
+        insertStage(fixture, 'stage-other', 2, 'waiting_approval');
+        seedApprovalRequired(fixture, STAGE_ID, 'approval-wrong-stage');
+        seedApprovalResolved(fixture, 'approval-wrong-stage', 'stage-other');
+      },
+    },
+  ];
+
+  for (const current of cases) {
+    const fixture = newFixture();
+    try {
+      setRunStatus(fixture, 'waiting_approval');
+      setStageStatus(fixture, STAGE_ID, 'waiting_approval');
+      current.prepare(fixture);
+      const before = operationCancelStateSnapshot(fixture);
+      assert.throws(
+        () => cancelForOperation(fixture),
+        (error: unknown) => error instanceof LifecycleTransactionError
+          && error.code === 'LIFECYCLE_APPROVAL_HISTORY_INVALID',
+        current.name,
+      );
+      assert.deepEqual(operationCancelStateSnapshot(fixture), before, current.name);
+    } finally {
+      closeFixture(fixture);
+    }
+  }
+});
+
+test('P3D-2 unsafe unknown approval history fails closed', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'waiting_approval');
+    setStageStatus(fixture, STAGE_ID, 'waiting_approval');
+    const sequence = (fixture.db.prepare(
+      'SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM runtime_events WHERE run_id = ?',
+    ).get(RUN_ID) as { next: number }).next;
+    fixture.db.prepare(`
+      INSERT INTO runtime_events (
+        id, schema_version, type, workspace_id, task_id, run_id, stage_id,
+        agent_id, provider_config_id, provider_session_id, process_id, worktree_id,
+        artifact_id, approval_request_id, conversation_id, message_id, sequence,
+        timestamp, source, correlation_id, causation_id, parent_event_id, severity,
+        visibility, durability, payload_json, metadata_json, created_at
+      ) VALUES (?, 999, 'future.approval.event', ?, ?, ?, ?, NULL, NULL, NULL, NULL, NULL,
+        NULL, NULL, NULL, NULL, ?, ?, 'future', ?, NULL, NULL, 'info', 'public', 'durable', '{}', NULL, ?)
+    `).run(
+      createEntityId('event'), WORKSPACE_ID, TASK_ID, RUN_ID, STAGE_ID, sequence, NOW,
+      'correlation-composite', NOW,
+    );
+    fixture.db.prepare('UPDATE runs SET next_event_sequence = ? WHERE id = ?').run(sequence + 1, RUN_ID);
+    const before = operationCancelStateSnapshot(fixture);
+
+    assert.throws(
+      () => cancelForOperation(fixture),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_HISTORY_INVALID',
+    );
+    assert.deepEqual(operationCancelStateSnapshot(fixture), before);
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('P3D-2 invalid approvalRequestId history fails closed and rolls back', () => {
+  const fixture = newFixture();
+  try {
+    setRunStatus(fixture, 'waiting_approval');
+    setStageStatus(fixture, STAGE_ID, 'waiting_approval');
+    seedApprovalRequired(fixture, STAGE_ID);
+    fixture.db.exec('DROP TRIGGER runtime_events_reject_update');
+    fixture.db.prepare(
+      "UPDATE runtime_events SET approval_request_id = NULL WHERE run_id = ? AND type = 'approval.required'",
+    ).run(RUN_ID);
+    const before = operationCancelStateSnapshot(fixture);
+
+    assert.throws(
+      () => cancelForOperation(fixture),
+      (error: unknown) => error instanceof LifecycleTransactionError
+        && error.code === 'LIFECYCLE_APPROVAL_HISTORY_INVALID',
+    );
+    assert.deepEqual(operationCancelStateSnapshot(fixture), before);
+  } finally {
+    closeFixture(fixture);
+  }
+});
+
+test('P3D-2 operation cancel reuses non-approval caller-owned cancellation for all guarded Run states', () => {
+  for (const status of ['queued', 'starting', 'running', 'paused'] as const) {
+    const fixture = newFixture();
+    try {
+      setRunStatus(fixture, status);
+      setStageStatus(fixture, STAGE_ID, status === 'queued' ? 'pending' : 'running');
+
+      const result = cancelForOperation(fixture);
+
+      assert.equal(result.run.status, 'cancelled');
+      assert.equal(result.events.at(-1)?.type, 'run.cancelled');
+      assert.deepEqual(result.events.at(-1)?.payload, {
+        requestedBy: 'operation_api', terminatedProcessIds: [], worktreePreserved: true,
+      });
+    } finally {
+      closeFixture(fixture);
+    }
+  }
+});
+
+test('P3D-2 operation approval Event and Outbox failures roll back all state', () => {
+  for (const failurePosition of [1, 2, 3]) {
+    let eventCalls = 0;
+    const eventFailure = newFixture(':memory:', {
+      createEventId: () => {
+        eventCalls += 1;
+        if (eventCalls === failurePosition) throw new Error(`P3D2_EVENT_FAILURE_${failurePosition}`);
+        return `evt_01J6J3Z7V6T5C4D3E2F1G0H9${eventCalls.toString(36).padStart(2, '0')}`;
+      },
+    });
+    try {
+      setRunStatus(eventFailure, 'waiting_approval');
+      setStageStatus(eventFailure, STAGE_ID, 'waiting_approval');
+      seedApprovalRequired(eventFailure, STAGE_ID);
+      const before = operationCancelStateSnapshot(eventFailure);
+      assert.throws(() => cancelForOperation(eventFailure), new RegExp(`P3D2_EVENT_FAILURE_${failurePosition}`));
+      assert.deepEqual(operationCancelStateSnapshot(eventFailure), before, `Event ${failurePosition}`);
+      assertHealthy(eventFailure);
+    } finally {
+      closeFixture(eventFailure);
+    }
+
+    let outboxCalls = 0;
+    const outboxFailure = newFixture(':memory:', {
+      createOutboxId: () => {
+        outboxCalls += 1;
+        return outboxCalls === failurePosition
+          ? 'outbox_existing_composite'
+          : `outbox_operation_cancel_${outboxCalls}`;
+      },
+    });
+    try {
+      setRunStatus(outboxFailure, 'waiting_approval');
+      setStageStatus(outboxFailure, STAGE_ID, 'waiting_approval');
+      prepareOperationExistingOutbox(outboxFailure);
+      seedApprovalRequired(outboxFailure, STAGE_ID);
+      const before = operationCancelStateSnapshot(outboxFailure);
+      assert.throws(() => cancelForOperation(outboxFailure), /OUTBOX_PERSISTENCE_FAILED|UNIQUE constraint|could not be persisted/);
+      assert.deepEqual(operationCancelStateSnapshot(outboxFailure), before, `Outbox ${failurePosition}`);
+      assertHealthy(outboxFailure);
+    } finally {
+      closeFixture(outboxFailure);
+    }
   }
 });
 

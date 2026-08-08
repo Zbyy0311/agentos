@@ -149,6 +149,20 @@ async function rawRequest(
   });
 }
 
+async function cancelOperation(
+  fx: RouteFixture,
+  operationId: string,
+  body: string | undefined,
+  suffix = '',
+  headers: Record<string, string> = {},
+): Promise<HttpResult> {
+  return rawRequest(fx, `/operations/${operationId}/cancel${suffix}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    ...(body === undefined ? {} : { body }),
+  });
+}
+
 function createOperation(fx: RouteFixture, type: OperationType = 'run.start'): ApiOperation {
   return fx.store.operationService().create({ workspaceId: fx.workspaceId, runId: fx.runId, type });
 }
@@ -232,6 +246,85 @@ function appendRuntimeEvent(
     correlationId: input.correlationId,
     payload,
   }));
+}
+
+function setRunStatusForCancel(fx: RouteFixture, status: 'queued' | 'running' | 'waiting_approval' | 'paused'): void {
+  const startedAt = status === 'queued' ? null : NOW;
+  fx.store.getDatabase().prepare(`
+    UPDATE runs
+    SET status = ?, version = 1, started_at = ?, completed_at = NULL,
+      cancellation_requested_at = NULL
+    WHERE workspace_id = ? AND id = ?
+  `).run(status, startedAt, fx.workspaceId, fx.runId);
+}
+
+function setOperationStatusForCancel(
+  fx: RouteFixture,
+  operationId: string,
+  status: 'queued' | 'running' | 'waiting_approval' | 'paused',
+  version = 1,
+): void {
+  const startedAt = status === 'queued' ? null : NOW;
+  fx.store.getDatabase().prepare(`
+    UPDATE operations
+    SET status = ?, version = ?, started_at = ?, completed_at = NULL,
+      result_json = NULL, error_json = NULL
+    WHERE workspace_id = ? AND id = ?
+  `).run(status, version, startedAt, fx.workspaceId, operationId);
+}
+
+function appendApprovalRequiredForCancel(fx: RouteFixture, operation: ApiOperation, stageId?: string): void {
+  const sequence = nextSequence(fx, operation.runId);
+  const approvalRequestId = `approval-${operation.id}`;
+  fx.store.runInTransaction(() => {
+    const event = fx.store.runtimeEventRepository().appendWithinTransaction({
+      id: createEntityId('event'),
+      schemaVersion: 1,
+      type: 'approval.required',
+      workspaceId: fx.workspaceId,
+      taskId: fx.taskId,
+      runId: operation.runId,
+      ...(stageId === undefined ? {} : { stageId }),
+      approvalRequestId,
+      sequence,
+      timestamp: NOW,
+      correlationId: operation.correlationId,
+      payload: {
+        category: 'command',
+        riskLevel: 'medium',
+        title: 'Cancel route approval',
+        description: 'The operation cancel route test needs approval.',
+        requestSummary: { operationId: operation.id },
+      },
+    });
+    fx.store.outboxRepository().insertWithinTransaction({
+      id: `outbox_${event.id}`,
+      eventId: event.id,
+      availableAt: NOW,
+      createdAt: NOW,
+    });
+    fx.store.getDatabase().prepare(
+      'UPDATE runs SET next_event_sequence = ? WHERE workspace_id = ? AND id = ?',
+    ).run(sequence + 1, fx.workspaceId, operation.runId);
+  });
+}
+
+function cancelSnapshot(fx: RouteFixture, operationId: string): Record<string, unknown> {
+  const db = fx.store.getDatabase();
+  return {
+    operation: db.prepare('SELECT * FROM operations WHERE workspace_id = ? AND id = ?').get(fx.workspaceId, operationId),
+    run: db.prepare('SELECT * FROM runs WHERE workspace_id = ? AND id = ?').get(fx.workspaceId, fx.runId),
+    stages: db.prepare('SELECT * FROM run_stages WHERE workspace_id = ? AND run_id = ? ORDER BY sequence ASC, id ASC').all(fx.workspaceId, fx.runId),
+    events: db.prepare('SELECT * FROM runtime_events WHERE workspace_id = ? AND run_id = ? ORDER BY sequence ASC').all(fx.workspaceId, fx.runId),
+    outboxes: db.prepare('SELECT * FROM outbox_messages ORDER BY id ASC').all(),
+    idempotency: db.prepare('SELECT COUNT(*) AS count FROM idempotency_records').get(),
+  };
+}
+
+function assertError(result: HttpResult, status: number, code: string): void {
+  assert.equal(result.status, status);
+  assert.ok(result.json !== null && typeof result.json === 'object' && !Array.isArray(result.json));
+  assert.equal((result.json as { code?: unknown }).code, code);
 }
 
 function eventBody(result: HttpResult): Array<Record<string, unknown>> {
@@ -625,19 +718,341 @@ test('R17 workspace, run, and correlation cannot be overridden by headers, body,
   });
 });
 
-test('R18 Router exposes no Cancel route or stub', async () => {
+test('C01 unknown Operation plus malformed JSON resolves locator before parser', async () => {
+  await withFixture(async fx => {
+    const response = await cancelOperation(fx, createEntityId('operation'), '{"broken":');
+    assertError(response, 404, 'OPERATION_NOT_FOUND');
+  });
+});
+
+test('C02 known Operation plus malformed JSON is VALIDATION_FAILED', async () => {
   await withFixture(async fx => {
     const operation = createOperation(fx);
-    const response = await fetch(`${fx.baseApi}/operations/${operation.id}/cancel`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ expectedVersion: operation.version }),
-    });
-    assert.equal(response.status, 404);
+    const response = await cancelOperation(fx, operation.id, '{"broken":');
+    assertError(response, 400, 'VALIDATION_FAILED');
+    assert.equal(/body-parser|SQLite|stack|agentos\.sqlite/i.test(response.text), false);
+  });
+});
 
-    const source = readFileSync(new URL('./operations.ts', import.meta.url), 'utf8');
-    assert.equal(source.includes("router.post("), false);
-    assert.equal(source.includes('/cancel'), false);
+test('C03 zero-byte body is VALIDATION_FAILED', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    assertError(await cancelOperation(fx, operation.id, undefined), 400, 'VALIDATION_FAILED');
+  });
+});
+
+test('C04 null, array, and primitive bodies are VALIDATION_FAILED', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    for (const body of ['null', '[]', 'true', '0', '"version"']) {
+      assertError(await cancelOperation(fx, operation.id, body), 400, 'VALIDATION_FAILED');
+    }
+  });
+});
+
+test('C05 missing expectedVersion is VALIDATION_FAILED', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    assertError(await cancelOperation(fx, operation.id, '{}'), 400, 'VALIDATION_FAILED');
+  });
+});
+
+test('C06 extra body fields are rejected exactly', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    assertError(
+      await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1, workspaceId: fx.workspaceId })),
+      400,
+      'VALIDATION_FAILED',
+    );
+  });
+});
+
+test('C07 expectedVersion rejects the invalid version matrix', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    for (const expectedVersion of [0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1, '1']) {
+      assertError(
+        await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion })),
+        400,
+        'VALIDATION_FAILED',
+      );
+    }
+  });
+});
+
+test('C08 known Operation with a non-empty query is VALIDATION_FAILED', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    assertError(
+      await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }), '?workspaceId=other'),
+      400,
+      'VALIDATION_FAILED',
+    );
+  });
+});
+
+test('C09 unknown Operation remains 404 with invalid query and body', async () => {
+  await withFixture(async fx => {
+    assertError(
+      await cancelOperation(fx, createEntityId('operation'), '{"broken":', '?workspaceId=other'),
+      404,
+      'OPERATION_NOT_FOUND',
+    );
+  });
+});
+
+test('C10 lifecycle identity and metadata fields are never client supplied', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    const fields: Record<string, unknown> = {
+      workspaceId: fx.workspaceId,
+      runId: fx.runId,
+      correlationId: 'client-correlation',
+      requestedBy: 'client',
+      terminatedProcessIds: [],
+      worktreePreserved: true,
+      reason: 'client reason',
+    };
+    for (const field of Object.keys(fields)) {
+      assertError(
+        await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1, [field]: fields[field] })),
+        400,
+        'VALIDATION_FAILED',
+      );
+    }
+  });
+});
+
+test('C11 If-Match cannot replace a missing or invalid expectedVersion', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    assertError(
+      await cancelOperation(fx, operation.id, '{}', '', { 'If-Match': '1' }),
+      400,
+      'VALIDATION_FAILED',
+    );
+    assertError(
+      await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: '1' }), '', { 'If-Match': '1' }),
+      400,
+      'VALIDATION_FAILED',
+    );
+  });
+});
+
+test('C12 valid body expectedVersion governs a conflicting If-Match header', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    const response = await cancelOperation(
+      fx,
+      operation.id,
+      JSON.stringify({ expectedVersion: 1 }),
+      '',
+      { 'If-Match': '"999"' },
+    );
+    assert.equal(response.status, 200);
+    assert.equal((response.json as { data: ApiOperation }).data.status, 'cancelled');
+  });
+});
+
+test('C13 queued Operation cancels atomically', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    assert.equal(response.status, 200);
+    const current = (response.json as { data: ApiOperation }).data;
+    assert.equal(current.status, 'cancelled');
+    assert.equal(current.version, 2);
+    assert.equal('startedAt' in current, false);
+    assert.equal('result' in current, false);
+    assert.equal('error' in current, false);
+  });
+});
+
+test('C14 running Operation cancels and preserves startedAt', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running');
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    assert.equal(response.status, 200);
+    const current = (response.json as { data: ApiOperation }).data;
+    assert.equal(current.status, 'cancelled');
+    assert.equal(current.startedAt, NOW);
+    assert.equal(current.version, 2);
+  });
+});
+
+test('C15 waiting_approval Operation discovers and resolves its approval before cancel', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    setRunStatusForCancel(fx, 'waiting_approval');
+    setOperationStatusForCancel(fx, operation.id, 'waiting_approval');
+    appendApprovalRequiredForCancel(fx, operation);
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    assert.equal(response.status, 200);
+    const current = (response.json as { data: ApiOperation }).data;
+    assert.equal(current.status, 'cancelled');
+    const types = (fx.store.getDatabase().prepare(
+      'SELECT type FROM runtime_events WHERE run_id = ? ORDER BY sequence ASC',
+    ).all(fx.runId) as Array<{ type: string }>).map(row => row.type);
+    assert.equal(types.at(-1), 'run.cancelled');
+    assert.ok(types.includes('approval.resolved'));
+  });
+});
+
+test('C16 paused Operation cancels and preserves startedAt', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    setRunStatusForCancel(fx, 'paused');
+    setOperationStatusForCancel(fx, operation.id, 'paused');
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    assert.equal(response.status, 200);
+    const current = (response.json as { data: ApiOperation }).data;
+    assert.equal(current.status, 'cancelled');
+    assert.equal(current.startedAt, NOW);
+  });
+});
+
+test('C17 already-cancelled Operation is a stale-version no-op without lifecycle', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    fx.store.getDatabase().prepare(`
+      UPDATE operations SET status = 'cancelled', version = 4, completed_at = ?,
+        result_json = NULL, error_json = NULL WHERE id = ?
+    `).run(NOW, operation.id);
+    const before = cancelSnapshot(fx, operation.id);
+    const lifecycle = fx.store.lifecycleTransactionService() as unknown as {
+      cancelRunForOperationWithinTransaction: (input: unknown) => unknown;
+    };
+    Object.defineProperty(lifecycle, 'cancelRunForOperationWithinTransaction', {
+      configurable: true,
+      value: () => { throw new Error('C17 lifecycle must not run'); },
+    });
+    try {
+      const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+      assert.equal(response.status, 200);
+      assert.deepEqual((response.json as { data: ApiOperation }).data, fx.store.operationService().findById(fx.workspaceId, operation.id));
+      assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+    } finally {
+      Reflect.deleteProperty(lifecycle, 'cancelRunForOperationWithinTransaction');
+    }
+  });
+});
+
+test('C18 stale non-cancelled Operation is VERSION_CONFLICT and unchanged', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running', 2);
+    const before = cancelSnapshot(fx, operation.id);
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    assertError(response, 409, 'VERSION_CONFLICT');
+    assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+  });
+});
+
+test('C19 completed Operation is OPERATION_NOT_CANCELLABLE', async () => {
+  await withFixture(async fx => {
+    const operation = completeOperation(fx);
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: operation.version }));
+    assertError(response, 409, 'OPERATION_NOT_CANCELLABLE');
+  });
+});
+
+test('C20 failed Operation is OPERATION_NOT_CANCELLABLE', async () => {
+  await withFixture(async fx => {
+    const operation = failOperation(fx);
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: operation.version }));
+    assertError(response, 409, 'OPERATION_NOT_CANCELLABLE');
+  });
+});
+
+test('C21 missing approval fails closed and rolls back the whole aggregate', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    setRunStatusForCancel(fx, 'waiting_approval');
+    setOperationStatusForCancel(fx, operation.id, 'waiting_approval');
+    const before = cancelSnapshot(fx, operation.id);
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    assertError(response, 500, 'INTERNAL_ERROR');
+    assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+  });
+});
+
+test('C22 persisted Operation binding corruption fails closed and rolls back', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx, 'run.start');
+    fx.store.getDatabase().exec('DROP TRIGGER operations_identity_immutable');
+    fx.store.getDatabase().prepare('UPDATE operations SET type = ? WHERE id = ?').run('run.create', operation.id);
+    const before = cancelSnapshot(fx, operation.id);
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    assertError(response, 500, 'INTERNAL_ERROR');
+    assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+  });
+});
+
+test('C23 injected lifecycle failure after Operation update rolls back Operation', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    const before = cancelSnapshot(fx, operation.id);
+    const lifecycle = fx.store.lifecycleTransactionService() as unknown as {
+      cancelRunForOperationWithinTransaction: (input: unknown) => unknown;
+    };
+    Object.defineProperty(lifecycle, 'cancelRunForOperationWithinTransaction', {
+      configurable: true,
+      value: () => { throw new Error('C23 lifecycle failure'); },
+    });
+    try {
+      const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+      assertError(response, 500, 'INTERNAL_ERROR');
+      assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+    } finally {
+      Reflect.deleteProperty(lifecycle, 'cancelRunForOperationWithinTransaction');
+    }
+  });
+});
+
+test('C24 Idempotency-Key is ignored and not persisted or replayed', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    const before = cancelSnapshot(fx, operation.id);
+    const first = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }), '', { 'Idempotency-Key': 'same-key' });
+    assert.equal(first.status, 200);
+    const after = cancelSnapshot(fx, operation.id);
+    assert.equal((before.idempotency as { count: number }).count, 0);
+    assert.equal((after.idempotency as { count: number }).count, 0);
+  });
+});
+
+test('C25 cancel does not create a second Operation', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    const before = (fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM operations').get() as { count: number }).count;
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    assert.equal(response.status, 200);
+    const after = (fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM operations').get() as { count: number }).count;
+    assert.equal(after, before);
+  });
+});
+
+test('C26 GET Operation remains available after cancel', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    assert.equal((await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }))).status, 200);
+    const response = await getOperation(fx, operation.id);
+    assert.equal(response.status, 200);
+    assert.equal((response.json as { data: ApiOperation }).data.status, 'cancelled');
+  });
+});
+
+test('C27 GET Events remains available with the cancel event stream', async () => {
+  await withFixture(async fx => {
+    const operation = createOperation(fx);
+    assert.equal((await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }))).status, 200);
+    const response = await getEvents(fx, operation.id);
+    assert.equal(response.status, 200);
+    assert.ok(eventBody(response).some(event => event.type === 'run.cancelled'));
   });
 });
 
