@@ -4,7 +4,7 @@
 
 > Status: Draft  
 > Version: 2.0  
-> Last Updated: 2026-08-07
+> Last Updated: 2026-08-08
 > Scope: AgentOS v2 Canonical Persistent Data Model  
 > Depends On:
 > - `00-Vision.md`
@@ -24,10 +24,11 @@
 > P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
 > P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
 > P3C-1: COMPLETE
-> M3 current main baseline: `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`
-> P3D / P3E: NOT AUTHORIZED
-> Migration 014: NOT REQUIRED OR AUTHORIZED
-> Production Cutover: NOT AUTHORIZED / NOT STARTED
+> M3 P3E entry production baseline: `7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`
+> P3D: COMPLETE via PR #36 / PR #37 / PR #38
+> P3E integrated verification evidence: `400a3b29697b7185d29df2cb9da0417260549913` (test/docs only; zero production behavior change)
+> Migration 014: NOT REQUIRED / ABSENT
+> Production Cutover: NOT PERFORMED / NOT AUTHORIZED
 > Remote Checks: UNAVAILABLE — NOT PASS
 
 ---
@@ -1453,7 +1454,9 @@ CREATE TABLE run_attempt_links (
 ## 33A. Current M3 V2 Run, Retry Child, Snapshot, and Stage contract
 
 The following is the current data-model contract at the post-PR-#33 main
-baseline `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`. PR #33 implemented and
+baseline; this model entered at the historical PR #33 baseline
+`de0b88fb0bed4a27cc38318481a0c7ccd47732a9` and remains current at the P3E
+entry production baseline `7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`. PR #33 implemented and
 merged the Retry acceptance path; this is the only current M3 Retry model, and
 the historical sections above are not an alternate implementation.
 
@@ -1565,9 +1568,11 @@ The Run, Retry Child, Snapshot, Stage, Operation, Event, Outbox, and
 Idempotency bindings in this section are implemented and merged through PR #33
 at `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`. The production implementation
 was limited to the six existing server route/service files recorded by that PR;
-this closeout updates documentation only. P3C-1 is COMPLETE. P3D and P3E
-remain NOT AUTHORIZED, Migration 014 is not required or authorized, and
-Production Cutover is NOT AUTHORIZED / NOT STARTED.
+this closeout updates documentation only. P3C-1 is COMPLETE. P3D has since
+COMPLETED via PR #36/#37/#38 and P3E integrated verification evidence is
+complete (test/docs only, commit `400a3b29697b7185d29df2cb9da0417260549913`).
+Migration 014 remains NOT REQUIRED / ABSENT, and Production Cutover is NOT
+PERFORMED / NOT AUTHORIZED.
 
 ## 34. Run Checkpoint
 

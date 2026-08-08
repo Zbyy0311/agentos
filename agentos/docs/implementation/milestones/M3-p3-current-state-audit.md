@@ -1,33 +1,40 @@
 # M3 P3 Current-State Audit
 
-Status: POST-MERGE MAIN BASELINE `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`
+Status: P3E ENTRY PRODUCTION BASELINE `7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`
 P3C-0B: MERGED
 Option A Alignment: MERGED via PR #29
 P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
 P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
 P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
 P3C-1: COMPLETE
-P3D: NOT AUTHORIZED
-P3E: NOT AUTHORIZED
-Migration 014: NOT REQUIRED OR AUTHORIZED
-Production Cutover: NOT AUTHORIZED / NOT STARTED
+P3D: COMPLETE via PR #36 / PR #37 / PR #38
+P3E integrated verification evidence: `400a3b29697b7185d29df2cb9da0417260549913` (test/docs only)
+Migration 014: NOT REQUIRED / ABSENT
+Production Cutover: NOT PERFORMED / NOT AUTHORIZED
 Remote Checks: UNAVAILABLE — NOT PASS
 
 This document is the current-state audit of the AgentOS M3 P3 implementation
-after PR #33 merged the P3C-1 Retry acceptance portion. It describes the
-checkout at the post-merge main baseline and the implemented/current Retry
-contract in this documentation set. It does not authorize P3D, P3E, Production
-Cutover, or any production data operation.
+at the P3E entry production baseline (main after the PR #38 merge) plus the
+test-only P3E integrated verification evidence. It distinguishes the merged
+production implementation baseline from the P3E evidence commit, which adds
+zero production behavior. It does not authorize Production Cutover or any
+production data operation; P3 package merge state is authoritative Git
+history / PR record.
 
 ## 1. Baseline and audit boundary
 
 - Repository: Zbyy0311/agentos.
-- Merged main baseline: `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`.
-- PR #33 merged the Retry acceptance portion with ordinary two-parent Merge
-  Commit `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`.
-- Current docs closure branch: `docs/m3-p3c1-retry-closeout`.
-- This documentation branch contains only the five allowlisted Markdown files;
-  its commit is docs-only.
+- Production implementation baseline: merged main
+  `7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`, the ordinary two-parent Merge
+  Commit of PR #38 (P3D-3 Operation cancel race closure).
+- P3E integrated verification evidence:
+  `400a3b29697b7185d29df2cb9da0417260549913`
+  (`test: add M3 P3 integrated verification`), a test-only commit on branch
+  `runtime/m3-p3e-integrated-verification`; it adds zero production behavior.
+- Historical provenance: PR #33 merged the Retry acceptance portion with
+  ordinary two-parent Merge Commit
+  `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`; PR #36/#37/#38 subsequently
+  merged P3D-1/P3D-2/P3D-3.
 - Migration Registry contains exactly 001-013. Migration 014 is absent and is
   neither required nor authorized.
 - Remote Checks: UNAVAILABLE — NOT PASS.
@@ -150,12 +157,20 @@ run.start and run.retry. The current contract is:
 - P3C-0A and P3C-0B are merged foundations; production route consumers remain
   P3C-1 scope and do not reduce this core item to PARTIAL.
 
-### 3.10 Cancel/Complete Operation Race Closure — PARTIAL
+### 3.10 Cancel/Complete Operation Race Closure — IMPLEMENTED
 
-Optimistic locking, version guards, and part of the lifecycle cancel/complete
-foundation exist. The P3D Operation Cancel orchestration and the complete
-claim-versus-cancel, startup-completion-versus-cancel, startup-failure-versus-
-cancel, duplicate-cancel, and terminal-race matrix are not implemented.
+PR #37 (P3D-2) implements the M3-TD-27/M3-TD-31/M3-TD-32 atomic Operation
+Cancel: the canonical route, guarded Operation cancel, and approval-aware
+Lifecycle cancellation commit Operation, Run, Stage, Runtime Event, and
+Outbox changes in one caller-owned transaction. PR #38 (P3D-3) closes the
+complete race matrix — claim-versus-cancel, startup-completion-versus-cancel,
+startup-failure-versus-cancel, duplicate-cancel, already-cancelled, and
+terminal-race — with exactly one winner per deterministic lock order, no
+partial loser state, B2/C2 losers equal to `VERSION_CONFLICT`, and no second
+Cancel Operation. Evidence: `OperationService.ts`,
+`LifecycleTransactionService.ts`, `operations.test.ts` C13–C27,
+`OperationService.test.ts` cancel rollback suites, `RunEngine.test.ts`
+P3D-3 Race A–D.
 
 ### 3.11 Retry Lineage and Acceptance — IMPLEMENTED
 
@@ -167,12 +182,15 @@ Child/Snapshot/Stage A2 transaction, fencing, creation Event/Outbox
 composition, and independent Start call boundary. The five-doc closeout
 records the merged evidence without changing those seams.
 
-### 3.12 Canonical Top-Level Run/Operation Routes — PARTIAL
+### 3.12 Canonical Top-Level Run/Operation Routes — IMPLEMENTED
 
-The canonical Start and Retry routes are implemented and merged. Operation
-GET, Operation events, and Operation cancel routes remain absent. Existing
-workspace-scoped v2 and Legacy routes do not replace those canonical surfaces.
-SSE and Replay routes are outside this remediation and remain separately gated.
+The canonical Start and Retry routes are implemented and merged. PR #36
+(P3D-1) adds `GET /api/operations/:operationId` and
+`GET /api/operations/:operationId/events`; PR #37 (P3D-2) adds
+`POST /api/operations/:operationId/cancel`; all are mounted in
+`apps/server/src/index.ts` and evidenced by `operations.test.ts` R01–R17 and
+C13–C27. Existing workspace-scoped v2 and Legacy routes remain additive.
+SSE and Replay routes remain outside P3 and separately gated.
 
 ### 3.13 v2 + Legacy Compatibility — IMPLEMENTED
 
@@ -190,19 +208,24 @@ keeps Retry creation Events associated with the Child Run ID and future Child
 execution Events associated with an independent Start Operation ID. The
 runtime_events index (run_id, correlation_id, sequence) exists.
 
-### 3.15 Tests, Fixtures and Failure Injection — PARTIAL
+### 3.15 Tests, Fixtures and Failure Injection — IMPLEMENTED
 
 Implemented evidence includes the merged Start and Retry routes, Operation
 persistence, RunEngine claim, WorkflowExecutor, StageExecutor, startup
 completion/failure, C1a/C1b/C2, Idempotency, rollback, integrity, foreign-key,
 file-backed competition, Retry A2, Child clone, fencing, and Option A Engine
-exclusion. P3D/P3E evidence remains a future gate. This docs-only closeout does
-not run the full Server, Web, or Agent-core suites.
+exclusion. P3D evidence adds the Operation read/cancel route suites, atomic
+cancel rollback fixtures, and the P3D-3 race matrices. P3E integrated
+evidence (test-only commit `400a3b29697b7185d29df2cb9da0417260549913`) adds
+the cross-stage chains P3E-I01/I02 and the C1b Branch B closure plus
+five-position rollback injection matrix P3E-I03. Local execution numbers are
+recorded in `M3-p3-integrated-closeout.md` section G as LOCAL EXECUTION
+EVIDENCE — NOT GITHUB CI.
 
 ### Summary Counts
 
-- IMPLEMENTED: 12
-- PARTIAL: 3
+- IMPLEMENTED: 15
+- PARTIAL: 0
 - MISSING: 0
 - CONTRACT ONLY: 0
 - OUT OF SCOPE: 0
@@ -213,30 +236,33 @@ not run the full Server, Web, or Agent-core suites.
 Each row records current evidence, required target, implementation category,
 dependency, test evidence, stop condition, and rollback boundary. The matrix
 records stage ownership; P3C-1 Retry is merged/current, while P3D, P3E, and
-Cutover remain unauthorized.
+Cutover were previously unauthorized. P3D is now COMPLETE via PR #36/#37/#38
+and P3E integrated verification evidence is complete (test/docs only);
+Production Cutover remains NOT PERFORMED / NOT AUTHORIZED. Previously open
+rows closed by P3D/P3E are recorded as closed below, not deleted.
 
 | # | Gap | Current evidence | Required target | Category | Depends on | Test evidence | Stop condition | Rollback boundary |
 |---|---|---|---|---|---|---|---|---|
-| 1 | Persistent queue ownership | RunEngine is the single current claim owner; queued alone never authorizes execution; only one binding-valid queued run.start qualifies | Preserve single-writer ownership and fail-closed Start selection | P3B-1 implemented | P3A, M3-TD-26 | RunEngine 18/18; P3B-1 4/4 | Any second queued-Run writer or non-Start authorization is introduced | Revert RunEngine package |
+| 1 | Persistent queue ownership | RunEngine is the single current claim owner; queued alone never authorizes execution; only one binding-valid queued run.start qualifies | Preserve single-writer ownership and fail-closed Start selection | P3B-1 implemented | P3A, M3-TD-26 | RunEngine 22/22 (includes P3D-3 Race A–D); P3B-1 4/4 retained | Any second queued-Run writer or non-Start authorization is introduced | Revert RunEngine package |
 | 2 | Run claim/dequeue | Atomic caller-owned Operation, Run, Event, and Outbox claim path exists | Preserve one-transaction claim and binding checks | P3B-1 implemented | 1, P2 core | Claim rollback and competition evidence | Any split claim transaction or arbitrary Operation selection | Preserve durable rows; revert claim seam |
 | 3 | Run Engine | tick(), dispatch(), explicit sync execution, no timer or scheduler, Retry-only noop | Preserve explicit Engine lifecycle and Option A selector | P3B-1/P3B-2B implemented | 1, P2 core | RunEngine and P3B-2B targeted suites | Background loop, scheduler table, or Retry-driven dispatch appears | Revert RunEngine package |
 | 4 | Workflow Executor | WorkflowExecutor validates Snapshot V2, RunStage bindings, deterministic dependency traversal, and cycles | Preserve deterministic snapshot graph execution and fail-closed validation | P3B-2B implemented | P3B-1, P3B-2A | WorkflowExecutor targeted suite | Provider runtime or unvalidated graph traversal enters this boundary | Revert executor package |
 | 5 | Stage orchestration | StageExecutor and lifecycle transitions provide explicit active/completed/failed outcomes and skipped propagation | Preserve deterministic Stage transitions; keep real provider execution in M4 | P3B-2B implemented | 3, 4, P2 core | StageExecutor and P3B-2B suites | Direct state writes, real Provider/Process/CLI runtime, or Event/Outbox bypass | Revert orchestration package |
-| 6 | Operation persistence/lifecycle | OperationRepository and OperationService implement four types, seven statuses, identity immutability, optimistic locking, result/error storage, and caller-owned transactions | Preserve the Operation aggregate and expose it only through separately authorized routes | P3A implemented | P2 core, M3-TD-26 | Operation 34/34 | Identity, status, correlation, or transaction rules diverge | Revert repository/service package |
-| 7 | HTTP 202 Start | PR #31 provides the production Start route, A1 consumer, and HTTP 202 acceptance at the current main baseline | Preserve the merged A1 route and its caller-owned transaction | P3C-1 Start implemented | 6, 15, 20, P3C-0A | Route 36/36; combined 119/119; full Server 1341/0/2 | Start route bypasses locator, replay, or atomicity contract | Revert Start package; preserve queued Runs and replay rows |
+| 6 | Operation persistence/lifecycle | OperationRepository and OperationService implement four types, seven statuses, identity immutability, optimistic locking, result/error storage, and caller-owned transactions; P3D-2 adds atomic guarded cancel through the same aggregate | Preserve the Operation aggregate and expose it only through the authorized routes | P3A implemented; P3D-2 cancel implemented via PR #37 | P2 core, M3-TD-26 | OperationService 29/29; OperationRepository 22/22; operations route 46/46 | Identity, status, correlation, or transaction rules diverge | Revert repository/service package |
+| 7 | HTTP 202 Start | PR #31 provides the production Start route, A1 consumer, and HTTP 202 acceptance; P3E-I01 proves the same HTTP-accepted Operation flows through Engine execution to terminal and immutable replay | Preserve the merged A1 route and its caller-owned transaction | P3C-1 Start implemented | 6, 15, 20, P3C-0A | runLifecycle 51/51; P3E-I01; full Server 1453 total / 1451 pass / 0 fail / 2 skip | Start route bypasses locator, replay, or atomicity contract | Revert Start package; preserve queued Runs and replay rows |
 | 8 | Duplicate Start | Start route and immutable replay are implemented; the route rejects active different-key/no-key duplicates per the frozen matrix | Preserve same-key replay and fail-closed active Operation history | P3C-1 Start implemented | 7, 20 | Route and TaskRunService retained evidence | Duplicate route mutates a Run twice or bypasses idempotency | Preserve existing idempotency rows |
-| 9 | Start failure rollback | A1 acceptance rollback and P3B-2B lifecycle rollback evidence are retained after PR #31 | Preserve one caller-owned transaction and zero partial acceptance state | P3C-1 Start implemented; P3B-2B | 2, 7, M3-TD-29 | Combined 119/119; full Server 1341/0/2 | Route acceptance creates partial Operation or lifecycle state | Revert Start package; preserve evidence |
-| 10 | Cancel/complete race | Version guards and lifecycle cancellation foundations exist; Operation-facing race ownership is absent | Implement the P3D Operation Cancel race matrix with one caller-owned winner | P3D not authorized | 6, M3-TD-27, 9 | Existing P2C-2A/2B; future P3D matrix | Two terminal outcomes, split rollback, or Cancel assigned to the wrong class | Preserve Events and state; revert P3D package |
-| 11 | Retry Child | PR #33 implements and merges the failed-Parent guard, V2 Snapshot clone, Child graph, history/active-slot fencing, Events/Outbox, and independent Start boundary | Preserve the merged B1-B12 behavior and Parent/Task immutability | P3C-1 Retry implemented and merged | 6, M3-TD-30, P3C-0B | Route 51/51; SnapshotService 12/12; TaskRunService 92/92; combined 155/155 | Retry metadata drives execution, Parent mutation, active-slot bypass, or partial Child acceptance | Preserve Parent and immutable replay rows |
-| 12 | Operation events query | Runtime Event lookup index and Operation correlation fields exist; canonical query route is absent | Add authorized Operation events query with Start correlation and creation-event exclusion | P3D not authorized | 6, 19 | Future route query matrix | New operation_events store or unauthorized Event exposure | Preserve Runtime Events |
-| 13 | Operation cancel | P2 cancelRunWithinTransaction exists; Operation Cancel route and ownership do not | Add M3-TD-27 Operation Cancel route and transaction orchestration | P3D not authorized | 6, 10 | Existing lifecycle cancellation suite; future P3D suite | Operation-row-only cancellation or second Cancel Operation | Preserve Operation, Run, Stage, Event, and Outbox rows |
-| 14 | Task reconciliation | Existing v2 Task/Run linkage remains present; merged Start and Retry are additive and Retry active-slot fencing is evidenced | Preserve Task active-slot invariants and the merged Retry fencing | P3C-1 Retry implemented and merged | 5, 7, 11 | TaskRunService 92/92; combined 155/155 | Reconciliation bypasses existing Task invariants | Preserve Task state |
-| 15 | Idempotency coverage | Eight operations, Start 202, Retry 201, schemaVersion 1, immutable envelopes, canonical hash, tamper rejection, and transaction/concurrency evidence are implemented | Keep core immutable while preserving the merged Start/Retry consumers | P3C-0A/P3C-0B implemented; Start and Retry consumers merged | P3A, M3-TD-30 | Idempotency Core unchanged; combined Retry evidence 155/155 | DB change, result schema v2, replay reread, or legacy behavior change | Preserve stored idempotency rows |
+| 9 | Start failure rollback | A1 acceptance rollback and P3B-2B lifecycle rollback evidence are retained after PR #31; P3E-I03 adds the C1b Branch B five-position rollback injection matrix | Preserve one caller-owned transaction and zero partial acceptance state | P3C-1 Start implemented; P3B-2B; P3E-I03 evidence | 2, 7, M3-TD-29 | Combined 119/119 retained; P3E-I03 6 cases; full Server 1453/1451/0/2 | Route acceptance creates partial Operation or lifecycle state | Revert Start package; preserve evidence |
+| 10 | Cancel/complete race | CLOSED: PR #37 implements atomic Operation Cancel ownership; PR #38 closes the complete race matrix with one caller-owned winner per deterministic lock order | Preserve the implemented P3D Operation Cancel race matrix with one caller-owned winner | P3D-2 implemented via PR #37; P3D-3 complete via PR #38 | 6, M3-TD-27, 9 | operations C13–C27; OperationService cancel rollback; RunEngine P3D-3 Race A–D; B2/C2 loser = VERSION_CONFLICT | Two terminal outcomes, split rollback, or Cancel assigned to the wrong class | Preserve Events and state; revert P3D package |
+| 11 | Retry Child | PR #33 implements and merges the failed-Parent guard, V2 Snapshot clone, Child graph, history/active-slot fencing, Events/Outbox, and independent Start boundary; P3E-I02 proves the full retry -> independent start chain | Preserve the merged B1-B12 behavior and Parent/Task immutability | P3C-1 Retry implemented and merged | 6, M3-TD-30, P3C-0B | Route 51/51; SnapshotService 12/12; TaskRunService 92/92; combined 155/155; P3E-I02 | Retry metadata drives execution, Parent mutation, active-slot bypass, or partial Child acceptance | Preserve Parent and immutable replay rows |
+| 12 | Operation events query | CLOSED: PR #36 implements the canonical GET events route with persisted runId/correlationId binding, ascending sequence, unknown-event safety, and creation-event exclusion; P3E-I01/I02 extend it over real execution Events | Preserve the implemented Operation events query with Start correlation and creation-event exclusion | P3D-1 implemented via PR #36 | 6, 19 | operations R11–R15, R17; P3E-I01/I02 HTTP events | New operation_events store or unauthorized Event exposure | Preserve Runtime Events |
+| 13 | Operation cancel | CLOSED: PR #37 implements the M3-TD-27/M3-TD-31/M3-TD-32 Operation Cancel route and transaction orchestration; PR #38 closes its race matrix | Preserve the implemented M3-TD-27 Operation Cancel route and transaction orchestration | P3D-2 implemented via PR #37; P3D-3 complete via PR #38 | 6, 10 | operations C13–C27; OperationService cancel suites; RunEngine P3D-3 Race A–D | Operation-row-only cancellation or second Cancel Operation | Preserve Operation, Run, Stage, Event, and Outbox rows |
+| 14 | Task reconciliation | Existing v2 Task/Run linkage remains present; merged Start and Retry are additive and Retry active-slot fencing is evidenced; P3E-I02 proves Parent/Task immutability across the integrated chain | Preserve Task active-slot invariants and the merged Retry fencing | P3C-1 Retry implemented and merged | 5, 7, 11 | TaskRunService 92/92; combined 155/155; P3E-I02 | Reconciliation bypasses existing Task invariants | Preserve Task state |
+| 15 | Idempotency coverage | Eight operations, Start 202, Retry 201, schemaVersion 1, immutable envelopes, canonical hash, tamper rejection, and transaction/concurrency evidence are implemented; P3E-I01/I02 prove immutable replay after real terminal execution | Keep core immutable while preserving the merged Start/Retry consumers | P3C-0A/P3C-0B implemented; Start and Retry consumers merged | P3A, M3-TD-30 | Idempotency Core unchanged; combined Retry evidence 155/155; P3E-I01/I02 replays | DB change, result schema v2, replay reread, or legacy behavior change | Preserve stored idempotency rows |
 | 16 | recovery_required interaction | Migration 012 column and recovery paths exist; Engine does not write the flag directly | Preserve startup recovery ownership and flag semantics | P3B-1/P3C-1 boundary | P2 core | Full server and migration evidence | P3 code mutates recovery_required directly | Revert offending path |
 | 17 | Legacy/v2 compatibility | Legacy and v2 paths remain present and full server compatibility tests pass | Keep all P3 additions additive | Standing constraint | None | Full server suite | Legacy/v2 regression or Web default switch | Revert offending package |
 | 18 | M4 boundary | No production Provider, ProcessManager, CLI, Worktree, Policy, or Approval runtime is part of this implementation | Keep M4 runtime outside P3 | Standing constraint | None | Dependency scan and build | Any M4 runtime is introduced | Revert offending change |
-| 19 | correlationId generation | Operation IDs and non-create correlation binding are implemented; Start execution uses Start ID; Retry metadata remains separate | Preserve immutable identity and query index semantics | P3A/P3B-1/P3C-0 implemented | M3-TD-26 | Operation and Engine suites | Second or mutable correlation identity appears | Preserve existing rows |
-| 20 | Execution authorization selector | Current selector counts only one binding-valid queued run.start; queued/completed Retry is noop and multiple Start fails closed | Preserve Option A Engine authorization and require independent Start; Start and Retry acceptance routes are implemented | P3B-1 and P3C-1 implemented; Retry never authorizes Engine | 1, 3, M3-TD-30 | RunEngine 18/18; P3B-2B 33/33; Retry combined 155/155 | Any non-Start Operation is used to drive execution or any implicit scheduler appears | Revert selector/claim package |
+| 19 | correlationId generation | Operation IDs and non-create correlation binding are implemented; Start execution uses Start ID; Retry metadata remains separate; P3E-I01/I02 prove correlation isolation over real execution and HTTP queries | Preserve immutable identity and query index semantics | P3A/P3B-1/P3C-0 implemented | M3-TD-26 | Operation and Engine suites; operations R12/R14/R15; P3E-I01/I02 | Second or mutable correlation identity appears | Preserve existing rows |
+| 20 | Execution authorization selector | Current selector counts only one binding-valid queued run.start; queued/completed Retry is noop and multiple Start fails closed; P3E-I02 proves Retry-only tick is no-authorization and independent Start alone claims | Preserve Option A Engine authorization and require independent Start; Start and Retry acceptance routes are implemented | P3B-1 and P3C-1 implemented; Retry never authorizes Engine | 1, 3, M3-TD-30 | RunEngine 22/22; P3B-2B 33/33; Retry combined 155/155; P3E-I02 | Any non-Start Operation is used to drive execution or any implicit scheduler appears | Revert selector/claim package |
 
 ## 5. Schema and contract verification
 
@@ -250,6 +276,10 @@ Cutover remain unauthorized.
   execution; run.retry remains immutable Retry metadata.
 - The merged Start route is evidenced by PR #31 and the merged Retry route by
   PR #33; neither route is inferred from the Idempotency core.
+- The canonical Operation routes are evidenced by PR #36 (GET Operation and
+  GET Operation events), PR #37 (POST Operation cancel), and PR #38 (cancel
+  race closure evidence); the P3E integrated chains are evidenced by the
+  test-only commit `400a3b29697b7185d29df2cb9da0417260549913`.
 
 ## 6. Current P3 Owner Decisions
 
@@ -269,7 +299,9 @@ The current decisions are recorded in M3-owner-decisions.md:
   run.start for Engine execution.
 
 These are technical contract records. The P3C-1 Retry Portion is implemented
-and merged; they do not authorize P3D, P3E, or Production Cutover.
+and merged; P3D is COMPLETE via PR #36/#37/#38 and P3E integrated
+verification evidence is complete (test/docs only). They do not authorize
+Production Cutover.
 
 ## 7. Current stage boundaries
 
@@ -284,15 +316,20 @@ and merged; they do not authorize P3D, P3E, or Production Cutover.
 - P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT; production acceptance
   IMPLEMENTED AND MERGED via PR #33.
 - P3C-1: COMPLETE.
-- P3D Operation routes, query, and Cancel races: NOT AUTHORIZED.
-- P3E integrated verification and Production Cutover: NOT AUTHORIZED.
+- P3D-1 Operation read surface: IMPLEMENTED AND MERGED via PR #36.
+- P3D-2 atomic Operation Cancel: IMPLEMENTED AND MERGED via PR #37.
+- P3D-3 Operation Cancel race closure: COMPLETE AND MERGED via PR #38.
+- P3E integrated verification evidence: COMPLETE (test/docs only, commit
+  `400a3b29697b7185d29df2cb9da0417260549913`).
+- Production Cutover: NOT PERFORMED / NOT AUTHORIZED.
 
 This dependency record documents current state and future gates. It does not
 authorize parallel implementation.
 
 ## 8. Retained verification evidence
 
-The retained pre-merge evidence plus PR #31 and PR #33 evidence at main
+The retained pre-merge evidence plus PR #31 and PR #33 evidence recorded at
+the historical PR #33-era baseline
 `de0b88fb0bed4a27cc38318481a0c7ccd47732a9` is:
 
 - RunEngine: 18/18.
@@ -319,6 +356,22 @@ The retained pre-merge evidence plus PR #31 and PR #33 evidence at main
 - Two full-server skips remain environment-only: the Windows Unix socket
   informational test and the unconfigured AGENTOS_P3_SOURCE_ROOT real-copy
   rehearsal.
+
+The retained P3D evidence (merged via PR #36/#37/#38) is:
+
+- operations route suite: 46/46 (R01–R17 read/events boundary, C13–C27
+  cancel lifecycle).
+- OperationService: 29/29 (including atomic cancel rollback fixtures).
+- RunEngine: 22/22 (including P3D-3 Race A–D both deterministic lock
+  orders; B2/C2 loser = VERSION_CONFLICT).
+
+The P3E integrated verification evidence (test-only commit `400a3b29`,
+LOCAL EXECUTION EVIDENCE — NOT GITHUB CI) is:
+
+- P3E integrated: 8 total, 8 pass, 0 fail, 0 skip, exit 0.
+- Full Server: 1453 total, 1451 pass, 0 fail, 2 skip, exit 0.
+- Agent-core: 123 pass; Shared M3: 25/25; Web: 86/86; builds PASS.
+- WEB TSC: BASELINE REPRODUCED — NOT PASS (7 existing errors; Web diff = 0).
 
 ## 9. Standing constraints
 
@@ -498,8 +551,9 @@ routes, Conversation EventBus, and Production Cutover remain forbidden.
 
 ## 11. P3C-1 Retry implemented contract and merge evidence
 
-This current section records the Retry contract implemented and merged through
-PR #33 at main baseline `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`. The only
+This section records the Retry contract implemented and merged through PR #33
+(historical merge commit `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`; the
+current production baseline is recorded in section 1). The only
 current contract is also recorded in the Owner Decision Register and
 Runtime/API Specifications; all five documents must stay aligned. This
 closeout changes documentation only.
@@ -635,9 +689,12 @@ are reused as-is. Shared, Migration/Registry, Idempotency Core, Operation
 implementation, LifecycleTransactionService, RunEngine, WorkflowExecutor,
 StageExecutor, Web, package/lockfiles, and real `.agentos` data are forbidden.
 
-P3C-1 Retry production is IMPLEMENTED AND MERGED via PR #33. P3D, P3E,
-Migration 014, and Production Cutover remain NOT AUTHORIZED. Draft PR, Ready,
-and Merge are repository-governance actions and do not authorize P3D/P3E or
+P3C-1 Retry production is IMPLEMENTED AND MERGED via PR #33. The P3C-1
+closeout did not authorize P3D, P3E, Migration 014, or Production Cutover;
+P3D has since COMPLETED via PR #36/#37/#38 and P3E integrated verification
+evidence is complete (test/docs only). Migration 014 remains NOT REQUIRED /
+ABSENT and Production Cutover remains NOT PERFORMED / NOT AUTHORIZED. Draft
+PR, Ready, and Merge are repository-governance actions and do not authorize
 Production Cutover.
 
 ## Appendix — Historical Pre-P3 Baseline

@@ -1,24 +1,30 @@
 # M3 P3 Implementation Plan — Run Engine, Workflow Executor and Operation
 
-Status: POST-MERGE BASELINE `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`
+Status: P3E ENTRY PRODUCTION BASELINE `7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`
 P3C-0B: MERGED
 Option A Alignment: MERGED via PR #29
 P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
 P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT
 P3C-1 Retry production: IMPLEMENTED AND MERGED via PR #33
 P3C-1: COMPLETE
-P3D: NOT AUTHORIZED
-P3E: NOT AUTHORIZED
-Migration 014: NOT REQUIRED OR AUTHORIZED
-Production Cutover: NOT AUTHORIZED / NOT STARTED
+P3D: COMPLETE via PR #36 / PR #37 / PR #38
+P3E integrated verification evidence: `400a3b29697b7185d29df2cb9da0417260549913` (test/docs only)
+Migration 014: NOT REQUIRED / ABSENT
+Production Cutover: NOT PERFORMED / NOT AUTHORIZED
 Remote Checks: UNAVAILABLE — NOT PASS
 
-Current status override: main contains the merged P3C-1 Start portion from
-PR #31 and the merged P3C-1 Retry acceptance from PR #33 at
-`de0b88fb0bed4a27cc38318481a0c7ccd47732a9`; the M3-TD-30 Option A alignment
-is merged via PR #29. The Retry contract is implemented/current. `run.retry`
-never authorizes Engine claim; Retry returns HTTP 201 and requires a separate
-`run.start`.
+Current status override: the P3E entry production baseline is main at
+`7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`, the ordinary Merge Commit of
+PR #38. main contains the merged P3C-1 Start portion (PR #31), the merged
+P3C-1 Retry acceptance (PR #33), the M3-TD-30 Option A alignment (PR #29),
+and the complete P3D Operation read surface, atomic Operation Cancel, and
+Cancel race closure (PR #36, PR #37, PR #38). The Retry contract is
+implemented/current. `run.retry` never authorizes Engine claim; Retry returns
+HTTP 201 and requires a separate `run.start`. P3E integrated verification
+evidence is the test/docs-only commit
+`400a3b29697b7185d29df2cb9da0417260549913`; it adds zero production behavior.
+P3 package merge state is authoritative Git history / PR record; this plan
+does not predict a future merge commit.
 
 This plan decomposes M3 P3 into stages P3A, P3B-1, P3B-2A, P3B-2B,
 P3C-0A, P3C-0B, P3C-1, P3D, and P3E. It is a planning artifact: no
@@ -29,7 +35,7 @@ only when explicitly authorized in a future instruction, after the preceding
 stage's independent review gate is accepted.
 
 Companion document: `docs/implementation/milestones/M3-p3-current-state-audit.md`
-(current merged main baseline `de0b88fb0bed4a27cc38318481a0c7ccd47732a9`).
+(P3E entry production baseline `7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`).
 
 Remediation 1 (Execution Authorization and Transaction Composition) added the
 frozen atomic claim transaction (section 2), the caller-owned transaction
@@ -56,12 +62,15 @@ M3-TD-26 through M3-TD-30 in
 dependencies below reference the frozen M3-TD decisions; no Owner Decision
 candidate remains undecided. This approval is technical direction for the
 unimplemented portions. P3C-0B, the P3C-1 Start Portion, and the P3C-1 Retry
-acceptance are merged/current evidence; P3D and P3E remain NOT AUTHORIZED.
+acceptance are merged/current evidence; P3D is COMPLETE via PR #36/#37/#38
+and P3E integrated verification evidence is complete (test/docs only).
 
 Current implementation alignment: M3-TD-30 Option A is MERGED via PR #29 and
 is the current contract. P3C-1 Retry production is IMPLEMENTED AND MERGED via
 PR #33. The present closeout is limited to the five allowlisted Markdown files.
-P3D, P3E, and Production Cutover remain NOT AUTHORIZED.
+P3D is COMPLETE via PR #36/#37/#38; P3E integrated verification and
+documentation closeout are complete as test/docs-only stages. Production
+Cutover remains NOT PERFORMED / NOT AUTHORIZED.
 
 ## 1. Preconditions and Frozen Contracts
 
@@ -1605,6 +1614,43 @@ Commit boundary: ordinary commits, docs/tests only, e.g.
 `test: add M3 P3 integrated verification` and
 `docs: close out M3 P3`.
 
+### Current P3E Verification Evidence
+
+This subsection records execution evidence; it changes no frozen requirement
+above.
+
+P3E entry assessment: GO, with independent remote review PASS. P3E-1 test
+evidence independent remote code review: PASS (BLOCKER/HIGH/MEDIUM/LOW = 0).
+
+Integrated evidence commit `400a3b29697b7185d29df2cb9da0417260549913`
+(`test: add M3 P3 integrated verification`, test-only, exactly one new file
+`apps/server/src/services/m3-p3e-integrated-verification.test.ts`):
+
+- P3E-I01: HTTP 202 Start acceptance -> RunEngine claim of the same
+  HTTP-returned Operation -> atomic startup completion (Stage running, Run
+  running, Start Operation completed v3, `stage.started` before
+  `run.started`) -> deterministic execution to Run completed -> completed
+  Start Operation never rewritten -> HTTP GET Operation (progress absent) and
+  GET Operation Events over real execution Events -> terminal-state HTTP
+  replay returns the original queued/v1 Start snapshot.
+- P3E-I02: HTTP 201 Retry acceptance (queued Child, completed v3 Retry
+  Operation, Parent/Task unchanged, cloned Snapshot V2, fresh pending
+  Stages) -> Retry-only Engine tick is `no-authorization` -> independent
+  HTTP 202 Child Start -> Start-only claim and execution correlation ->
+  Retry Operation unchanged and its Events query empty -> terminal-state
+  immutable Retry (201) and Child Start (202) replays.
+- P3E-I03: C1b Branch B normal closure (Run/Operation fail atomically,
+  `run.failed` only, no fabricated `stage.failed`) plus the five-position
+  rollback injection matrix with full persistence-state equality and
+  integrity/FK evidence.
+
+Retained E4/E5/E6 evidence remains in the merged targeted suites (A1/A2,
+Class B, C1a, C1b Branch A, C2 non-rewrite; P3D Cancel races with B2/C2
+loser = `VERSION_CONFLICT` and no `OPERATION_NOT_CANCELLABLE` race loser;
+Operation read/events boundary R01–R17) and was re-executed as the P3E-1
+regression gate. Full evidence numbers and the integrated closeout claim are
+recorded in `docs/implementation/milestones/M3-p3-integrated-closeout.md`.
+
 ## 13. Cross-Stage Standing Rules
 
 - Every stage: ordinary commits only; no amend, rebase, reset, or
@@ -1621,8 +1667,8 @@ Commit boundary: ordinary commits, docs/tests only, e.g.
   stage; tests use file-backed temporary databases only.
 - P3B-2A is the sole owner of the `startup-failure` Shared/Specification/
   Transition Matrix alignment. P3B-2B may only consume its accepted
-  contract and may not modify those files. P3B-2A is PLANNED — NOT
-  AUTHORIZED.
+  contract and may not modify those files. P3B-2A was accepted and merged
+  via PR #25; the ownership rule remains in force.
 - C1a/C1b describe unrecoverable startup failure only. User cancellation always
   follows M3-TD-27 in P3D and never enters C1a/C1b; P3C-1 owns no Operation
   Cancel route or Cancel race.
@@ -1641,7 +1687,7 @@ Commit boundary: ordinary commits, docs/tests only, e.g.
 
 Schema conclusion: SCHEMA BLOCKER: NONE.
 Migration 014 is not required or authorized.
-P3B-2A CONTRACT ALIGNMENT: PLANNED — NOT AUTHORIZED.
+P3B-2A CONTRACT ALIGNMENT: ACCEPTED AND MERGED via PR #25.
 
 This historical section records the earlier six-file Option A remediation.
 SUPERSEDED / HISTORICAL — NOT CURRENT STATUS. P3C-1 Start is merged;
