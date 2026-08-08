@@ -6,12 +6,16 @@ import { join } from 'node:path';
 import { isMainThread, parentPort, Worker, workerData } from 'node:worker_threads';
 import test from 'node:test';
 import type {
+  AgentSnapshotV1,
   ApiOperation,
   ApiProblem,
+  ProviderConfigurationSnapshotV1,
+  RunSnapshotPayloadV2,
   RuntimeEventDraft,
   RuntimeEventEnvelope,
 } from '@agentos/shared';
 import { createM3RuntimeEventRegistry } from '@agentos/shared';
+import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../../migrations/migrations/013-workflow-creation-metadata-v2.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../../migrations/default-registry.js';
 import { MigrationRunner } from '../../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../../migrations/registry.js';
@@ -25,6 +29,7 @@ import {
 } from '../../store/OutboxRepository.js';
 import { RunRepository } from '../../store/RunRepository.js';
 import { RunSequenceAllocator } from '../../store/RunSequenceAllocator.js';
+import { RunSnapshotRepository } from '../../store/RunSnapshotRepository.js';
 import { RunStageRepository } from '../../store/RunStageRepository.js';
 import { RuntimeEventRepository } from '../../store/RuntimeEventRepository.js';
 import { OperationService } from '../OperationService.js';
@@ -34,6 +39,7 @@ import {
   RunEngineError,
   type RunEngineDependencies,
 } from './RunEngine.js';
+import { StageExecutor } from './StageExecutor.js';
 
 interface Database {
   exec(sql: string): void;
@@ -50,6 +56,108 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 };
 
 const NOW = '2026-08-04T12:00:00.000Z';
+const RACE_STAGE_KEYS = ['codex_manager', 'kimi_worker', 'opencode_reviewer', 'codex_final_review'] as const;
+
+const RACE_AGENT_SNAPSHOT: AgentSnapshotV1 = {
+  agentId: 'agent-p3d3-test',
+  name: 'P3D-3 Agent',
+  role: 'codex',
+  roleTitle: 'Executor',
+  systemPrompt: 'Execute the requested work.',
+  permissions: ['read', 'write'],
+  providerConfigId: 'provider-p3d3-test',
+  enabled: true,
+  version: 1,
+};
+
+const RACE_PROVIDER_SNAPSHOT: ProviderConfigurationSnapshotV1 = {
+  providerConfigId: 'provider-p3d3-test',
+  name: 'P3D-3 Provider',
+  providerType: 'codex',
+  adapterId: 'codex-cli',
+  runtimeMode: 'cli',
+  executable: 'codex',
+  argsTemplate: [],
+  model: 'gpt-5',
+  environmentProfileId: null,
+  secretProfileId: null,
+  workingDirectoryMode: 'worktree',
+  workspaceRelativeWorkingDirectory: null,
+  capabilities: {
+    sessionResume: true,
+    structuredEvents: true,
+    nativeApprovals: true,
+    subagents: true,
+    toolEvents: true,
+    fileEvents: true,
+    usageEvents: true,
+    reasoningStream: true,
+    interactiveInput: true,
+    pause: true,
+    cancellation: true,
+    modelSelection: true,
+    workspaceAwareness: true,
+    nativeSandbox: true,
+    outputContracts: true,
+  },
+  timeoutPolicy: {
+    discoveryTimeoutMs: 1000,
+    validationTimeoutMs: 1000,
+    startupTimeoutMs: 1000,
+    idleTimeoutMs: null,
+    totalTimeoutMs: null,
+    cancelGracePeriodMs: 1000,
+    approvalTimeoutMs: null,
+  },
+  approvalMode: 'disabled',
+  outputMode: 'structured',
+  enabled: true,
+  version: 1,
+};
+
+function startupSnapshotPayload(ids: SeedIds): RunSnapshotPayloadV2 {
+  return {
+    schemaVersion: 2,
+    capturedAt: NOW,
+    run: {
+      workspaceId: ids.workspaceId,
+      taskId: ids.taskId,
+      origin: 'v2_api',
+      reason: 'initial',
+      parentRunId: null,
+      rootRunId: ids.runId,
+    },
+    workflow: {
+      definitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+      definitionKey: 'legacy-pipeline',
+      definitionVersion: 2,
+      name: 'legacy-pipeline-v2',
+      definitionHash: '9ea35ef455c5fefa45d0b28d1433933b2cc6b3fb9e412b4d4452afb7862a6b6d',
+      worktreeMode: 'preferred',
+      stages: [
+        { workflowStageKey: RACE_STAGE_KEYS[0], name: RACE_STAGE_KEYS[0], sequence: 1, agent: RACE_AGENT_SNAPSHOT, provider: RACE_PROVIDER_SNAPSHOT, dependsOn: [] },
+        { workflowStageKey: RACE_STAGE_KEYS[1], name: RACE_STAGE_KEYS[1], sequence: 2, agent: RACE_AGENT_SNAPSHOT, provider: RACE_PROVIDER_SNAPSHOT, dependsOn: [RACE_STAGE_KEYS[0]] },
+        { workflowStageKey: RACE_STAGE_KEYS[2], name: RACE_STAGE_KEYS[2], sequence: 3, agent: RACE_AGENT_SNAPSHOT, provider: RACE_PROVIDER_SNAPSHOT, dependsOn: [RACE_STAGE_KEYS[1]] },
+        { workflowStageKey: RACE_STAGE_KEYS[3], name: RACE_STAGE_KEYS[3], sequence: 4, agent: RACE_AGENT_SNAPSHOT, provider: RACE_PROVIDER_SNAPSHOT, dependsOn: [RACE_STAGE_KEYS[2]] },
+      ],
+    },
+    security: { redactionApplied: false },
+  };
+}
+
+function startupFailureProblem(workspaceId: string, runId: string, operationId: string): ApiProblem {
+  return {
+    type: 'https://agentos.dev/problems/provider-start-failed',
+    title: 'Provider start failed',
+    status: 502,
+    code: 'PROVIDER_START_FAILED',
+    detail: 'The deterministic P3D-3 startup failure is test-only.',
+    instance: `/runs/${runId}`,
+    requestId: 'request-p3d3-startup-failure',
+    retryable: false,
+    context: { workspaceId, runId, operationId },
+  };
+}
 
 function preClaimProblem(workspaceId: string, runId: string, operationId: string): ApiProblem {
   return {
@@ -224,6 +332,40 @@ function createEngine(fixture: FixtureBase, overrides: Partial<RunEngineDependen
   return new RunEngine({ ...dependencies, ...overrides });
 }
 
+function seedStartingStartupGraph(fixture: Fixture): ApiOperation {
+  const runRow = fixture.db.prepare('SELECT task_id FROM runs WHERE id = ?').get(fixture.runId) as { task_id: string };
+  const snapshot = new RunSnapshotRepository(fixture.db).insert({
+    workspaceId: fixture.workspaceId,
+    runId: fixture.runId,
+    workflowDefinitionId: M3_013_LEGACY_WORKFLOW_V2_ID,
+    payload: startupSnapshotPayload({
+      workspaceId: fixture.workspaceId,
+      taskId: runRow.task_id,
+      runId: fixture.runId,
+    }),
+  });
+  const runStageRepository = new RunStageRepository(fixture.db);
+  for (const [index, workflowStageKey] of RACE_STAGE_KEYS.entries()) {
+    runStageRepository.insertInitial({
+      workspaceId: fixture.workspaceId,
+      runId: fixture.runId,
+      runSnapshotId: snapshot.id,
+      workflowStageKey,
+      sequence: index + 1,
+    });
+  }
+  const operation = createOperation(fixture, 'run.start');
+  const engine = createEngine(fixture, {
+    snapshotRepository: new RunSnapshotRepository(fixture.db),
+    runStageRepository,
+    stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
+  });
+  assert.equal(engine.tick({ workspaceId: fixture.workspaceId, runId: fixture.runId }).outcome, 'claimed');
+  assert.equal(engine.dispatch({ workspaceId: fixture.workspaceId, runId: fixture.runId }).outcome, 'progressed');
+  assert.equal(engine.dispatch({ workspaceId: fixture.workspaceId, runId: fixture.runId }).outcome, 'progressed');
+  return fixture.operationService.findById(fixture.workspaceId, operation.id);
+}
+
 function createFixture(databasePath = ':memory:', options: FixtureOptions = {}): Fixture {
   const db = new DatabaseSync(databasePath);
   db.exec('PRAGMA foreign_keys = ON');
@@ -355,6 +497,171 @@ function assertIntegrity(db: Database): void {
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
 }
 
+interface RaceSnapshot {
+  readonly operationCount: number;
+  readonly operation: {
+    readonly id: string;
+    readonly type: string;
+    readonly status: string;
+    readonly version: number;
+    readonly resultJson: string | null;
+    readonly errorJson: string | null;
+    readonly createdAt: string;
+    readonly startedAt: string | null;
+    readonly completedAt: string | null;
+  };
+  readonly run: {
+    readonly status: string;
+    readonly version: number;
+    readonly nextEventSequence: number;
+    readonly startedAt: string | null;
+    readonly completedAt: string | null;
+    readonly cancellationRequestedAt: string | null;
+    readonly failureCode: string | null;
+    readonly failureMessage: string | null;
+  };
+  readonly stages: ReadonlyArray<{
+    readonly id: string;
+    readonly status: string;
+    readonly version: number;
+    readonly sequence: number;
+  }>;
+  readonly events: ReadonlyArray<{
+    readonly id: string;
+    readonly type: string;
+    readonly sequence: number;
+    readonly correlationId: string;
+    readonly stageId: string | null;
+  }>;
+  readonly outboxes: ReadonlyArray<{
+    readonly eventId: string;
+    readonly aggregateId: string;
+  }>;
+  readonly idempotencyCount: number;
+}
+
+function raceSnapshot(db: Database, ids: SeedIds, operationId: string): RaceSnapshot {
+  const operation = db.prepare(`
+    SELECT id, type, status, version, result_json, error_json, created_at, started_at, completed_at
+    FROM operations WHERE workspace_id = ? AND id = ?
+  `).get(ids.workspaceId, operationId) as {
+    id: string;
+    type: string;
+    status: string;
+    version: number;
+    result_json: string | null;
+    error_json: string | null;
+    created_at: string;
+    started_at: string | null;
+    completed_at: string | null;
+  };
+  const operationCount = (db.prepare(
+    'SELECT COUNT(*) AS count FROM operations WHERE workspace_id = ? AND run_id = ?',
+  ).get(ids.workspaceId, ids.runId) as { count: number }).count;
+  const run = db.prepare(`
+    SELECT status, version, next_event_sequence, started_at, completed_at,
+      cancellation_requested_at, failure_code, failure_message
+    FROM runs WHERE workspace_id = ? AND id = ?
+  `).get(ids.workspaceId, ids.runId) as {
+    status: string;
+    version: number;
+    next_event_sequence: number;
+    started_at: string | null;
+    completed_at: string | null;
+    cancellation_requested_at: string | null;
+    failure_code: string | null;
+    failure_message: string | null;
+  };
+  const stages = db.prepare(`
+    SELECT id, status, version, sequence
+    FROM run_stages WHERE workspace_id = ? AND run_id = ? ORDER BY sequence ASC, id ASC
+  `).all(ids.workspaceId, ids.runId) as Array<{
+    id: string;
+    status: string;
+    version: number;
+    sequence: number;
+  }>;
+  const events = db.prepare(`
+    SELECT id, type, sequence, correlation_id, stage_id
+    FROM runtime_events WHERE workspace_id = ? AND run_id = ? ORDER BY sequence ASC
+  `).all(ids.workspaceId, ids.runId) as Array<{
+    id: string;
+    type: string;
+    sequence: number;
+    correlation_id: string;
+    stage_id: string | null;
+  }>;
+  const outboxes = db.prepare(`
+    SELECT event_id, aggregate_id
+    FROM outbox_messages WHERE aggregate_id = ? ORDER BY created_at ASC, id ASC
+  `).all(ids.runId) as Array<{ event_id: string; aggregate_id: string }>;
+  const idempotency = db.prepare('SELECT COUNT(*) AS count FROM idempotency_records').get() as { count: number };
+  return {
+    operationCount,
+    operation: {
+      id: operation.id,
+      type: operation.type,
+      status: operation.status,
+      version: operation.version,
+      resultJson: operation.result_json,
+      errorJson: operation.error_json,
+      createdAt: operation.created_at,
+      startedAt: operation.started_at,
+      completedAt: operation.completed_at,
+    },
+    run: {
+      status: run.status,
+      version: run.version,
+      nextEventSequence: run.next_event_sequence,
+      startedAt: run.started_at,
+      completedAt: run.completed_at,
+      cancellationRequestedAt: run.cancellation_requested_at,
+      failureCode: run.failure_code,
+      failureMessage: run.failure_message,
+    },
+    stages,
+    events: events.map(event => ({
+      id: event.id,
+      type: event.type,
+      sequence: event.sequence,
+      correlationId: event.correlation_id,
+      stageId: event.stage_id,
+    })),
+    outboxes: outboxes.map(outbox => ({
+      eventId: outbox.event_id,
+      aggregateId: outbox.aggregate_id,
+    })),
+    idempotencyCount: idempotency.count,
+  };
+}
+
+function jsonValue(json: string | null): unknown {
+  return json === null ? undefined : JSON.parse(json) as unknown;
+}
+
+function assertRaceConnectionEvidence(
+  results: readonly RaceWorkerMessage[],
+  databasePath: string,
+): void {
+  assert.equal(results.length, 2);
+  assert.equal(new Set(results.map(result => result.databasePath)).size, 1);
+  for (const result of results) {
+    assert.equal(result.databasePath, databasePath);
+    assert.equal(result.foreignKeys, 1);
+    assert.equal(result.busyTimeout, 5000);
+    assert.equal(result.beginCount, 1);
+    assert.equal(result.nestedBeginCount, 0);
+  }
+}
+
+function assertRunEventOutboxAlignment(snapshot: RaceSnapshot): void {
+  assert.equal(snapshot.outboxes.length, snapshot.events.length);
+  assert.deepEqual(
+    snapshot.outboxes.map(outbox => outbox.eventId),
+    snapshot.events.map(event => event.id),
+  );
+}
+
 function assertNoClaimWrites(
   fixture: FixtureBase,
   beforeRun: ReturnType<typeof runState>,
@@ -380,6 +687,221 @@ interface ClaimWorkerMessage {
   readonly reason?: string;
   readonly errorCode?: string;
   readonly errorMessage?: string;
+}
+
+type RaceWorkerMode = 'claim' | 'cancel' | 'startup-complete' | 'startup-fail';
+
+interface RaceWorkerData {
+  readonly mode: RaceWorkerMode;
+  readonly dbPath: string;
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly operationId: string;
+  readonly expectedOperationVersion: number;
+  readonly gate: SharedArrayBuffer;
+}
+
+type RaceWorkerMessageKind = 'ready' | 'begin-attempt' | 'lock-acquired' | 'result';
+
+interface RaceWorkerMessage {
+  readonly kind: RaceWorkerMessageKind;
+  readonly ok: boolean;
+  readonly outcome?: string;
+  readonly reason?: string;
+  readonly errorCode?: string;
+  readonly errorMessage?: string;
+  readonly operationVersion?: number;
+  readonly databasePath?: string;
+  readonly foreignKeys?: number;
+  readonly busyTimeout?: number;
+  readonly beginCount?: number;
+  readonly nestedBeginCount?: number;
+}
+
+class GatedTransactionDatabaseProxy implements Database {
+  private inTransaction = false;
+  private _beginCount = 0;
+  private _nestedBeginCount = 0;
+
+  constructor(
+    private readonly db: Database,
+    private readonly gate: Int32Array,
+  ) {}
+
+  get beginCount(): number {
+    return this._beginCount;
+  }
+
+  get nestedBeginCount(): number {
+    return this._nestedBeginCount;
+  }
+
+  exec(sql: string): void {
+    const normalized = sql.trim().toUpperCase();
+    if (normalized === 'BEGIN IMMEDIATE') {
+      this._beginCount += 1;
+      if (this.inTransaction) this._nestedBeginCount += 1;
+      parentPort!.postMessage({ kind: 'begin-attempt', ok: true, outcome: 'begin-attempt' } satisfies RaceWorkerMessage);
+      this.db.exec(sql);
+      this.inTransaction = true;
+      parentPort!.postMessage({ kind: 'lock-acquired', ok: true, outcome: 'lock-acquired' } satisfies RaceWorkerMessage);
+      while (Atomics.load(this.gate, 1) === 0) Atomics.wait(this.gate, 1, 0);
+      return;
+    }
+    this.db.exec(sql);
+    if (normalized === 'COMMIT' || normalized === 'ROLLBACK') this.inTransaction = false;
+  }
+
+  prepare(sql: string): {
+    all(...parameters: unknown[]): unknown[];
+    get(...parameters: unknown[]): unknown;
+    run(...parameters: unknown[]): unknown;
+  } {
+    return this.db.prepare(sql);
+  }
+
+  close(): void {
+    this.db.close();
+  }
+}
+
+function configureRaceDatabase(db: Database): void {
+  db.exec('PRAGMA foreign_keys = ON');
+  db.exec('PRAGMA busy_timeout = 5000');
+}
+
+function racePragmaEvidence(db: Database): { readonly foreignKeys: number; readonly busyTimeout: number } {
+  const foreignKeys = db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number };
+  const busyTimeout = db.prepare('PRAGMA busy_timeout').get() as { timeout: number };
+  return { foreignKeys: foreignKeys.foreign_keys, busyTimeout: busyTimeout.timeout };
+}
+
+function waitForRaceGate(gate: Int32Array, index: number): void {
+  while (Atomics.load(gate, index) === 0) Atomics.wait(gate, index, 0);
+}
+
+function releaseRaceGate(gate: Int32Array, index: number): void {
+  Atomics.store(gate, index, 1);
+  Atomics.notify(gate, index);
+}
+
+function runRaceWorker(data: RaceWorkerData): void {
+  const db = new DatabaseSync(data.dbPath);
+  configureRaceDatabase(db);
+  const gate = new Int32Array(data.gate);
+  const proxy = new GatedTransactionDatabaseProxy(db, gate);
+  const pragmas = racePragmaEvidence(db);
+  const metadata = {
+    databasePath: data.dbPath,
+    ...pragmas,
+  };
+  try {
+    const runtimeEventRepository = new RuntimeEventRepository(proxy, createM3RuntimeEventRegistry());
+    const outboxRepository = new OutboxRepository(proxy, runtimeEventRepository, { now: () => NOW });
+    const runRepository = new RunRepository(proxy);
+    const runStageRepository = new RunStageRepository(proxy);
+    const lifecycleTransactionService = new LifecycleTransactionService({
+      runRepository,
+      runStageRepository,
+      runtimeEventRepository,
+      runSequenceAllocator: new RunSequenceAllocator(proxy),
+      outboxRepository,
+      runInTransaction: <T>(fn: () => T): T => inTransaction(proxy, fn),
+    }, { now: () => NOW });
+    const operationService = new OperationService(proxy, {
+      now: () => NOW,
+      lifecycleTransactionService,
+    });
+    const engine = new RunEngine({
+      runRepository,
+      operationService,
+      lifecycleTransactionService,
+      runStageRepository,
+      snapshotRepository: new RunSnapshotRepository(proxy),
+      stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
+      runInTransaction: <T>(fn: () => T): T => inTransaction(proxy, fn),
+    });
+    const run = runRepository.findById(data.workspaceId, data.runId);
+    const operation = operationService.findById(data.workspaceId, data.operationId);
+    if (operation.version !== data.expectedOperationVersion) {
+      throw new Error(`race precondition operation version ${operation.version} != ${data.expectedOperationVersion}`);
+    }
+    if (data.mode === 'claim' && (run?.status !== 'queued' || operation.status !== 'queued')) {
+      throw new Error(`race precondition claim run=${run?.status} operation=${operation.status}`);
+    }
+    if (data.mode === 'cancel' && !(
+      (run?.status === 'queued' && operation.status === 'queued')
+      || (run?.status === 'starting' && operation.status === 'running')
+    )) {
+      throw new Error(`race precondition cancel run=${run?.status} operation=${operation.status}`);
+    }
+    if (data.mode !== 'claim' && data.mode !== 'cancel' && (run?.status !== 'starting' || operation.status !== 'running')) {
+      throw new Error(`race precondition startup/cancel run=${run?.status} operation=${operation.status}`);
+    }
+    if (data.mode === 'startup-complete' && runStageRepository.listByRun(data.workspaceId, data.runId).every(stage => stage.status !== 'starting')) {
+      throw new Error('race precondition startup-complete has no starting Stage');
+    }
+    parentPort!.postMessage({ kind: 'ready', ok: true, outcome: 'ready', ...metadata } satisfies RaceWorkerMessage);
+    waitForRaceGate(gate, 0);
+
+    if (data.mode === 'claim') {
+      const result = engine.tick({ workspaceId: data.workspaceId, runId: data.runId });
+      parentPort!.postMessage({
+        kind: 'result',
+        ok: true,
+        outcome: result.outcome,
+        reason: result.outcome === 'noop' ? result.reason : undefined,
+        ...metadata,
+        beginCount: proxy.beginCount,
+        nestedBeginCount: proxy.nestedBeginCount,
+      } satisfies RaceWorkerMessage);
+    } else if (data.mode === 'cancel') {
+      const result = operationService.cancel({
+        workspaceId: data.workspaceId,
+        operationId: data.operationId,
+        expectedVersion: data.expectedOperationVersion,
+      });
+      parentPort!.postMessage({
+        kind: 'result',
+        ok: true,
+        outcome: result.status,
+        operationVersion: result.version,
+        ...metadata,
+        beginCount: proxy.beginCount,
+        nestedBeginCount: proxy.nestedBeginCount,
+      } satisfies RaceWorkerMessage);
+    } else {
+      const result = engine.dispatch({
+        workspaceId: data.workspaceId,
+        runId: data.runId,
+        ...(data.mode === 'startup-fail'
+          ? { startupFailure: { problem: startupFailureProblem(data.workspaceId, data.runId, data.operationId), phase: 'provider-start' } }
+          : {}),
+      });
+      parentPort!.postMessage({
+        kind: 'result',
+        ok: true,
+        outcome: result.outcome,
+        reason: result.outcome === 'noop' ? result.reason : undefined,
+        ...metadata,
+        beginCount: proxy.beginCount,
+        nestedBeginCount: proxy.nestedBeginCount,
+      } satisfies RaceWorkerMessage);
+    }
+  } catch (error) {
+    parentPort!.postMessage({
+      kind: 'result',
+      ok: false,
+      errorCode: errorCode(error),
+      errorMessage: error instanceof Error ? error.message : String(error),
+      ...metadata,
+      beginCount: proxy.beginCount,
+      nestedBeginCount: proxy.nestedBeginCount,
+    } satisfies RaceWorkerMessage);
+  } finally {
+    db.close();
+    parentPort!.close();
+  }
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -445,10 +967,200 @@ function spawnClaimWorker(data: ClaimWorkerData): Promise<ClaimWorkerMessage> {
   });
 }
 
-const currentWorkerData = workerData as ClaimWorkerData | undefined;
+interface RaceWorkerHandle {
+  readonly worker: Worker;
+  readonly waitFor: (kind: RaceWorkerMessageKind) => Promise<RaceWorkerMessage>;
+  readonly start: () => void;
+  readonly release: () => void;
+}
 
-if (!isMainThread && currentWorkerData?.mode === 'claim' && parentPort) {
+function spawnRaceWorker(data: RaceWorkerData): RaceWorkerHandle {
+  const worker = new Worker(new URL('./RunEngine.test.ts', import.meta.url), {
+    workerData: data,
+    execArgv: ['--import', 'tsx'],
+  });
+  const gate = new Int32Array(data.gate);
+  const queue: RaceWorkerMessage[] = [];
+  const waiters = new Map<RaceWorkerMessageKind, Array<{
+    readonly resolve: (message: RaceWorkerMessage) => void;
+    readonly reject: (error: Error) => void;
+  }>>();
+  let workerFailure: Error | undefined;
+  const waitFor = (kind: RaceWorkerMessageKind): Promise<RaceWorkerMessage> => {
+    const queuedIndex = queue.findIndex(message => message.kind === kind);
+    if (queuedIndex >= 0) return Promise.resolve(queue.splice(queuedIndex, 1)[0]!);
+    if (kind !== 'result' && queue.some(message => message.kind === 'result')) {
+      return Promise.reject(new Error(`race worker ended before ${kind}`));
+    }
+    if (workerFailure) return Promise.reject(workerFailure);
+    return new Promise((resolve, reject) => {
+      const kindWaiters = waiters.get(kind) ?? [];
+      kindWaiters.push({ resolve, reject });
+      waiters.set(kind, kindWaiters);
+    });
+  };
+  worker.on('message', rawMessage => {
+    const message = rawMessage as RaceWorkerMessage;
+    if (message.kind === 'result') {
+      for (const [waitingKind, pending] of waiters) {
+        if (waitingKind === 'result') continue;
+        for (const waiter of pending) waiter.reject(new Error(`race worker ended before ${waitingKind}`));
+        waiters.delete(waitingKind);
+      }
+    }
+    const kindWaiters = waiters.get(message.kind);
+    const waiter = kindWaiters?.shift();
+    if (waiter) {
+      waiter.resolve(message);
+    } else {
+      queue.push(message);
+    }
+  });
+  worker.on('error', error => {
+    workerFailure = error;
+    for (const pending of waiters.values()) {
+      for (const waiter of pending) waiter.reject(error);
+    }
+    waiters.clear();
+  });
+  worker.on('exit', code => {
+    if (code !== 0 && workerFailure === undefined) {
+      workerFailure = new Error(`race worker exited with ${code}`);
+    }
+  });
+  return {
+    worker,
+    waitFor,
+    start: () => releaseRaceGate(gate, 0),
+    release: () => releaseRaceGate(gate, 1),
+  };
+}
+
+interface RaceSeed extends SeedIds {
+  readonly root: string;
+  readonly databasePath: string;
+  readonly operation: ApiOperation;
+}
+
+function createRaceSeed(setup: (fixture: Fixture) => ApiOperation): RaceSeed {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-p3d3-'));
+  const databasePath = join(root, 'race.sqlite');
+  const fixture = createFixture(databasePath);
+  try {
+    const operation = setup(fixture);
+    const seed: RaceSeed = {
+      root,
+      databasePath,
+      operation,
+      workspaceId: fixture.workspaceId,
+      taskId: (fixture.db.prepare('SELECT task_id FROM runs WHERE id = ?').get(fixture.runId) as { task_id: string }).task_id,
+      runId: fixture.runId,
+    };
+    fixture.db.close();
+    return seed;
+  } catch (error) {
+    fixture.db.close();
+    rmSync(root, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+async function withRaceSeed<T>(
+  setup: (fixture: Fixture) => ApiOperation,
+  callback: (seed: RaceSeed) => Promise<T>,
+): Promise<T> {
+  const seed = createRaceSeed(setup);
+  try {
+    return await callback(seed);
+  } finally {
+    rmSync(seed.root, { recursive: true, force: true });
+  }
+}
+
+function raceWorkerData(seed: RaceSeed, mode: RaceWorkerMode): RaceWorkerData {
+  return {
+    mode,
+    dbPath: seed.databasePath,
+    workspaceId: seed.workspaceId,
+    runId: seed.runId,
+    operationId: seed.operation.id,
+    expectedOperationVersion: seed.operation.version,
+    gate: new SharedArrayBuffer(2 * Int32Array.BYTES_PER_ELEMENT),
+  };
+}
+
+async function runOrderedRace(
+  seed: RaceSeed,
+  firstMode: RaceWorkerMode,
+  secondMode: RaceWorkerMode,
+): Promise<{ readonly first: RaceWorkerMessage; readonly second: RaceWorkerMessage }> {
+  const first = spawnRaceWorker(raceWorkerData(seed, firstMode));
+  let second: RaceWorkerHandle | undefined;
+  try {
+    await first.waitFor('ready');
+    second = spawnRaceWorker(raceWorkerData(seed, secondMode));
+    await second.waitFor('ready');
+    first.start();
+    await first.waitFor('lock-acquired');
+    second.start();
+    await second.waitFor('begin-attempt');
+    first.release();
+    await second.waitFor('lock-acquired');
+    second.release();
+    const [firstResult, secondResult] = await Promise.all([
+      first.waitFor('result'),
+      second.waitFor('result'),
+    ]);
+    return { first: firstResult, second: secondResult };
+  } finally {
+    first.start();
+    first.release();
+    second?.start();
+    second?.release();
+    await Promise.allSettled([
+      first.worker.terminate(),
+      ...(second === undefined ? [] : [second.worker.terminate()]),
+    ]);
+  }
+}
+
+function withRaceObserver<T>(seed: RaceSeed, callback: (db: Database) => T): T {
+  const db = new DatabaseSync(seed.databasePath);
+  configureRaceDatabase(db);
+  try {
+    return callback(db);
+  } finally {
+    db.close();
+  }
+}
+
+function assertCommonRaceSnapshot(snapshot: RaceSnapshot, seed: RaceSeed): void {
+  assert.equal(snapshot.operationCount, 1);
+  assert.equal(snapshot.operation.id, seed.operation.id);
+  assert.equal(snapshot.operation.type, 'run.start');
+  assert.deepEqual(
+    snapshot.events.map(event => event.sequence),
+    snapshot.events.map((_event, index) => index + 1),
+  );
+  assert.ok(snapshot.events.every(event => event.correlationId === seed.operation.id));
+  assert.ok(snapshot.outboxes.every(outbox => outbox.aggregateId === seed.runId));
+  assertRunEventOutboxAlignment(snapshot);
+  assert.equal(snapshot.idempotencyCount, 0);
+}
+
+function assertNoMixedOperationRunState(snapshot: RaceSnapshot): void {
+  if (snapshot.operation.status === 'cancelled') assert.equal(snapshot.run.status, 'cancelled');
+  if (snapshot.operation.status === 'running') assert.equal(snapshot.run.status, 'starting');
+  if (snapshot.operation.status === 'completed') assert.equal(snapshot.run.status, 'running');
+  if (snapshot.operation.status === 'failed') assert.equal(snapshot.run.status, 'failed');
+}
+
+const currentWorkerData = workerData as ClaimWorkerData | RaceWorkerData | undefined;
+
+if (!isMainThread && currentWorkerData?.mode === 'claim' && !('gate' in currentWorkerData) && parentPort) {
   runClaimWorker(currentWorkerData);
+} else if (!isMainThread && currentWorkerData && 'gate' in currentWorkerData && parentPort) {
+  runRaceWorker(currentWorkerData);
 } else {
   test('RunEngine construction and no tick perform no writes and register no background behavior', async () => {
     await withFixture(async fixture => {
@@ -895,6 +1607,276 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && parentPort) {
     } finally {
       fixture.db.close();
       rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  test('P3D-3 Race A claim versus cancel closes both deterministic lock orders', async () => {
+    const cases: ReadonlyArray<{
+      readonly name: 'A1 cancel-first' | 'A2 claim-first';
+      readonly first: RaceWorkerMode;
+      readonly second: RaceWorkerMode;
+    }> = [
+      { name: 'A1 cancel-first', first: 'cancel', second: 'claim' },
+      { name: 'A2 claim-first', first: 'claim', second: 'cancel' },
+    ];
+    for (const raceCase of cases) {
+      await withRaceSeed(
+        fixture => createOperation(fixture, 'run.start'),
+        async seed => {
+          const results = await runOrderedRace(seed, raceCase.first, raceCase.second);
+          assertRaceConnectionEvidence([results.first, results.second], seed.databasePath);
+          if (raceCase.name === 'A1 cancel-first') {
+            assert.equal(results.first.ok, true);
+            assert.equal(results.first.outcome, 'cancelled');
+            assert.equal(results.second.ok, true);
+            assert.equal(results.second.outcome, 'noop');
+            assert.equal(results.second.reason, 'run-not-queued');
+          } else {
+            assert.equal(results.first.ok, true);
+            assert.equal(results.first.outcome, 'claimed');
+            assert.equal(results.second.ok, false);
+            assert.equal(results.second.errorCode, 'VERSION_CONFLICT');
+          }
+          withRaceObserver(seed, db => {
+            const snapshot = raceSnapshot(db, seed, seed.operation.id);
+            assertCommonRaceSnapshot(snapshot, seed);
+            assert.equal(snapshot.stages.length, 0);
+            if (raceCase.name === 'A1 cancel-first') {
+              assert.equal(snapshot.operation.status, 'cancelled');
+              assert.equal(snapshot.operation.version, 2);
+              assert.equal(snapshot.operation.startedAt, null);
+              assert.equal(snapshot.operation.completedAt, NOW);
+              assert.equal(snapshot.run.status, 'cancelled');
+              assert.equal(snapshot.run.version, 2);
+              assert.equal(snapshot.run.nextEventSequence, 2);
+              assert.equal(snapshot.run.startedAt, null);
+              assert.equal(snapshot.run.completedAt, null);
+              assert.equal(snapshot.run.cancellationRequestedAt, NOW);
+              assert.deepEqual(snapshot.events.map(event => event.type), ['run.cancelled']);
+              assert.equal(snapshot.outboxes.length, 1);
+              assert.equal(jsonValue(snapshot.operation.resultJson), undefined);
+              assert.equal(jsonValue(snapshot.operation.errorJson), undefined);
+            } else {
+              assert.equal(snapshot.operation.status, 'running');
+              assert.equal(snapshot.operation.version, 2);
+              assert.equal(snapshot.operation.startedAt, NOW);
+              assert.equal(snapshot.operation.completedAt, null);
+              assert.equal(snapshot.run.status, 'starting');
+              assert.equal(snapshot.run.version, 2);
+              assert.equal(snapshot.run.nextEventSequence, 2);
+              assert.equal(snapshot.run.startedAt, null);
+              assert.equal(snapshot.run.completedAt, null);
+              assert.equal(snapshot.run.cancellationRequestedAt, null);
+              assert.deepEqual(snapshot.events.map(event => event.type), ['run.dequeued']);
+              assert.equal(snapshot.outboxes.length, 1);
+              assert.equal(jsonValue(snapshot.operation.resultJson), undefined);
+              assert.equal(jsonValue(snapshot.operation.errorJson), undefined);
+            }
+            assertNoMixedOperationRunState(snapshot);
+            assertIntegrity(db);
+          });
+          console.log(`P3D-3 Race A ${raceCase.name}: winner=${raceCase.first} loser=${raceCase.second}`);
+        },
+      );
+    }
+  });
+
+  test('P3D-3 Race B startup completion versus cancel closes both deterministic lock orders', async () => {
+    const cases: ReadonlyArray<{
+      readonly name: 'B1 cancel-first' | 'B2 completion-first';
+      readonly first: RaceWorkerMode;
+      readonly second: RaceWorkerMode;
+    }> = [
+      { name: 'B1 cancel-first', first: 'cancel', second: 'startup-complete' },
+      { name: 'B2 completion-first', first: 'startup-complete', second: 'cancel' },
+    ];
+    for (const raceCase of cases) {
+      await withRaceSeed(seedStartingStartupGraph, async seed => {
+        const results = await runOrderedRace(seed, raceCase.first, raceCase.second);
+        assertRaceConnectionEvidence([results.first, results.second], seed.databasePath);
+        if (raceCase.name === 'B1 cancel-first') {
+          assert.equal(results.first.ok, true);
+          assert.equal(results.first.outcome, 'cancelled');
+          assert.equal(results.second.ok, false);
+          assert.equal(results.second.errorCode, 'RUN_ENGINE_AUTHORIZATION_NOT_RUNNING');
+        } else {
+          assert.equal(results.first.ok, true);
+          assert.equal(results.first.outcome, 'progressed');
+          assert.equal(results.second.ok, false);
+          assert.ok(['VERSION_CONFLICT', 'OPERATION_NOT_CANCELLABLE'].includes(results.second.errorCode ?? ''));
+        }
+        withRaceObserver(seed, db => {
+          const snapshot = raceSnapshot(db, seed, seed.operation.id);
+          assertCommonRaceSnapshot(snapshot, seed);
+          assertNoMixedOperationRunState(snapshot);
+          if (raceCase.name === 'B1 cancel-first') {
+            assert.equal(snapshot.operation.status, 'cancelled');
+            assert.equal(snapshot.operation.version, 3);
+            assert.equal(snapshot.operation.startedAt, NOW);
+            assert.equal(snapshot.operation.completedAt, NOW);
+            assert.equal(snapshot.run.status, 'cancelled');
+            assert.equal(snapshot.run.version, 3);
+            assert.equal(snapshot.run.nextEventSequence, 9);
+            assert.equal(snapshot.run.startedAt, null);
+            assert.equal(snapshot.run.completedAt, null);
+            assert.equal(snapshot.run.cancellationRequestedAt, NOW);
+            assert.deepEqual(snapshot.stages.map(stage => [stage.status, stage.version]), [
+              ['cancelled', 4], ['cancelled', 2], ['cancelled', 2], ['cancelled', 2],
+            ]);
+            assert.deepEqual(snapshot.events.slice(-5).map(event => event.type), [
+              'stage.cancelled', 'stage.cancelled', 'stage.cancelled', 'stage.cancelled', 'run.cancelled',
+            ]);
+            assert.equal(snapshot.events.length, 8);
+            assert.equal(snapshot.outboxes.length, 8);
+            assert.equal(jsonValue(snapshot.operation.resultJson), undefined);
+            assert.equal(jsonValue(snapshot.operation.errorJson), undefined);
+          } else {
+            assert.equal(snapshot.operation.status, 'completed');
+            assert.equal(snapshot.operation.version, 3);
+            assert.equal(snapshot.operation.startedAt, NOW);
+            assert.equal(snapshot.operation.completedAt, NOW);
+            assert.deepEqual(jsonValue(snapshot.operation.resultJson), {
+              resourceType: 'run',
+              resourceId: seed.runId,
+            });
+            assert.equal(jsonValue(snapshot.operation.errorJson), undefined);
+            assert.equal(snapshot.run.status, 'running');
+            assert.equal(snapshot.run.version, 3);
+            assert.equal(snapshot.run.nextEventSequence, 6);
+            assert.equal(snapshot.run.startedAt, NOW);
+            assert.equal(snapshot.run.completedAt, null);
+            assert.equal(snapshot.run.cancellationRequestedAt, null);
+            assert.deepEqual(snapshot.stages.map(stage => [stage.status, stage.version]), [
+              ['running', 4], ['pending', 1], ['pending', 1], ['pending', 1],
+            ]);
+            assert.equal(snapshot.stages[0]?.sequence, 1);
+            assert.deepEqual(snapshot.events.slice(-2).map(event => event.type), ['stage.started', 'run.started']);
+            assert.equal(snapshot.events.length, 5);
+            assert.equal(snapshot.outboxes.length, 5);
+          }
+          assertIntegrity(db);
+        });
+        console.log(`P3D-3 Race B ${raceCase.name}: winner=${raceCase.first} loser=${raceCase.second}`);
+      });
+    }
+  });
+
+  test('P3D-3 Race C startup failure versus cancel closes both deterministic lock orders', async () => {
+    const cases: ReadonlyArray<{
+      readonly name: 'C1 cancel-first' | 'C2 failure-first';
+      readonly first: RaceWorkerMode;
+      readonly second: RaceWorkerMode;
+    }> = [
+      { name: 'C1 cancel-first', first: 'cancel', second: 'startup-fail' },
+      { name: 'C2 failure-first', first: 'startup-fail', second: 'cancel' },
+    ];
+    for (const raceCase of cases) {
+      await withRaceSeed(
+        fixture => {
+          const operation = createOperation(fixture, 'run.start');
+          assert.equal(fixture.engine.tick({ workspaceId: fixture.workspaceId, runId: fixture.runId }).outcome, 'claimed');
+          return fixture.operationService.findById(fixture.workspaceId, operation.id);
+        },
+        async seed => {
+          const results = await runOrderedRace(seed, raceCase.first, raceCase.second);
+          assertRaceConnectionEvidence([results.first, results.second], seed.databasePath);
+          if (raceCase.name === 'C1 cancel-first') {
+            assert.equal(results.first.ok, true);
+            assert.equal(results.first.outcome, 'cancelled');
+            assert.equal(results.second.ok, false);
+            assert.equal(results.second.errorCode, 'RUN_ENGINE_AUTHORIZATION_NOT_RUNNING');
+          } else {
+            assert.equal(results.first.ok, true);
+            assert.equal(results.first.outcome, 'progressed');
+            assert.equal(results.second.ok, false);
+            assert.ok(['VERSION_CONFLICT', 'OPERATION_NOT_CANCELLABLE'].includes(results.second.errorCode ?? ''));
+          }
+          withRaceObserver(seed, db => {
+            const snapshot = raceSnapshot(db, seed, seed.operation.id);
+            assertCommonRaceSnapshot(snapshot, seed);
+            assert.equal(snapshot.stages.length, 0);
+            assertNoMixedOperationRunState(snapshot);
+            if (raceCase.name === 'C1 cancel-first') {
+              assert.equal(snapshot.operation.status, 'cancelled');
+              assert.equal(snapshot.operation.version, 3);
+              assert.equal(snapshot.operation.startedAt, NOW);
+              assert.equal(snapshot.operation.completedAt, NOW);
+              assert.equal(snapshot.run.status, 'cancelled');
+              assert.equal(snapshot.run.version, 3);
+              assert.equal(snapshot.run.nextEventSequence, 3);
+              assert.equal(snapshot.run.startedAt, null);
+              assert.equal(snapshot.run.completedAt, null);
+              assert.equal(snapshot.run.cancellationRequestedAt, NOW);
+              assert.deepEqual(snapshot.events.map(event => event.type), ['run.dequeued', 'run.cancelled']);
+              assert.equal(snapshot.outboxes.length, 2);
+              assert.equal(snapshot.run.failureCode, null);
+              assert.equal(snapshot.run.failureMessage, null);
+              assert.equal(jsonValue(snapshot.operation.resultJson), undefined);
+              assert.equal(jsonValue(snapshot.operation.errorJson), undefined);
+            } else {
+              assert.equal(snapshot.operation.status, 'failed');
+              assert.equal(snapshot.operation.version, 3);
+              assert.equal(snapshot.operation.startedAt, NOW);
+              assert.equal(snapshot.operation.completedAt, NOW);
+              assert.deepEqual(jsonValue(snapshot.operation.errorJson), startupFailureProblem(seed.workspaceId, seed.runId, seed.operation.id));
+              assert.equal(jsonValue(snapshot.operation.resultJson), undefined);
+              assert.equal(snapshot.run.status, 'failed');
+              assert.equal(snapshot.run.version, 3);
+              assert.equal(snapshot.run.nextEventSequence, 3);
+              assert.equal(snapshot.run.startedAt, null);
+              assert.equal(snapshot.run.completedAt, null);
+              assert.equal(snapshot.run.cancellationRequestedAt, null);
+              assert.equal(snapshot.run.failureCode, 'PROVIDER_START_FAILED');
+              assert.equal(snapshot.run.failureMessage, 'The deterministic P3D-3 startup failure is test-only.');
+              assert.deepEqual(snapshot.events.map(event => event.type), ['run.dequeued', 'run.failed']);
+              assert.equal(snapshot.outboxes.length, 2);
+            }
+            assertIntegrity(db);
+          });
+          console.log(`P3D-3 Race C ${raceCase.name}: winner=${raceCase.first} loser=${raceCase.second}`);
+        },
+      );
+    }
+  });
+
+  test('P3D-3 Race D duplicate cancel emits exactly one side-effect package in both caller orders', async () => {
+    for (const callerOrder of ['D1 caller-A-first', 'D2 caller-B-first'] as const) {
+      await withRaceSeed(
+        fixture => createOperation(fixture, 'run.start'),
+        async seed => {
+          const results = await runOrderedRace(seed, 'cancel', 'cancel');
+          assertRaceConnectionEvidence([results.first, results.second], seed.databasePath);
+          assert.equal(results.first.ok, true);
+          assert.equal(results.first.outcome, 'cancelled');
+          assert.equal(results.first.operationVersion, 2);
+          assert.equal(results.second.ok, true);
+          assert.equal(results.second.outcome, 'cancelled');
+          assert.equal(results.second.operationVersion, 2);
+          withRaceObserver(seed, db => {
+            const snapshot = raceSnapshot(db, seed, seed.operation.id);
+            assertCommonRaceSnapshot(snapshot, seed);
+            assert.equal(snapshot.operationCount, 1);
+            assert.equal(snapshot.operation.status, 'cancelled');
+            assert.equal(snapshot.operation.version, 2);
+            assert.equal(snapshot.operation.startedAt, null);
+            assert.equal(snapshot.operation.completedAt, NOW);
+            assert.equal(snapshot.run.status, 'cancelled');
+            assert.equal(snapshot.run.version, 2);
+            assert.equal(snapshot.run.nextEventSequence, 2);
+            assert.deepEqual(snapshot.events.map(event => event.type), ['run.cancelled']);
+            assert.equal(snapshot.outboxes.length, 1);
+            assert.equal(snapshot.stages.length, 0);
+            assert.equal(snapshot.run.cancellationRequestedAt, NOW);
+            assert.equal(snapshot.run.failureCode, null);
+            assert.equal(snapshot.run.failureMessage, null);
+            assert.equal(jsonValue(snapshot.operation.resultJson), undefined);
+            assert.equal(jsonValue(snapshot.operation.errorJson), undefined);
+            assertNoMixedOperationRunState(snapshot);
+            assertIntegrity(db);
+          });
+          console.log(`P3D-3 Race D ${callerOrder}: winner=first-cancel loser=already-cancelled`);
+        },
+      );
     }
   });
 
