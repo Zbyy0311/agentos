@@ -95,6 +95,41 @@ function serviceFixture(now: () => string = () => NOW): { db: Db; service: Opera
   return { db, service: new OperationService(db, { now }) };
 }
 
+function cancelServiceFixture(
+  onCancel: (input: unknown) => unknown = () => undefined,
+  now: () => string = () => NOW,
+): {
+  db: Db;
+  service: OperationService;
+  calls: unknown[];
+} {
+  const db = migratedDb();
+  const calls: unknown[] = [];
+  const lifecycle = {
+    cancelRunForOperationWithinTransaction(input: unknown): unknown {
+      calls.push(input);
+      return onCancel(input);
+    },
+  };
+  const service = new OperationService(db, {
+    now,
+    lifecycleTransactionService: lifecycle,
+  } as never);
+  return { db, service, calls };
+}
+
+function cancelInput(operation: ApiOperation, expectedVersion = operation.version): {
+  workspaceId: string;
+  operationId: string;
+  expectedVersion: number;
+} {
+  return {
+    workspaceId: operation.workspaceId,
+    operationId: operation.id,
+    expectedVersion,
+  };
+}
+
 function assertCode(code: string) {
   return (error: unknown): boolean => error instanceof Error && 'code' in error && error.code === code;
 }
@@ -453,6 +488,190 @@ describe('OperationService — result/error and transaction invariants', () => {
     assert.equal('progress' in operation, false);
     assert.equal(row.result_json, null);
     assert.equal(row.error_json, null);
+  });
+});
+
+describe('OperationService — dedicated atomic cancel', () => {
+  test('dedicated cancel does not widen ALLOWED_TRANSITIONS', () => {
+    const { db, service } = cancelServiceFixture();
+    const queued = createStart(service);
+    const cancelled = service.cancel(cancelInput(queued));
+    assert.equal(cancelled.status, 'cancelled');
+    assert.equal(cancelled.version, 2);
+
+    const waiting = createStart(service);
+    db.prepare('UPDATE operations SET status = ?, started_at = ?, version = 1 WHERE id = ?')
+      .run('waiting_approval', NOW, waiting.id);
+    assert.throws(
+      () => service.transition({
+        workspaceId: WORKSPACE_ID,
+        operationId: waiting.id,
+        expectedVersion: 1,
+        to: 'cancelled',
+      }),
+      assertCode('INVALID_OPERATION_TRANSITION'),
+    );
+  });
+
+  test('already-cancelled ignores a stale expectedVersion without lifecycle or mutation', () => {
+    const { db, service, calls } = cancelServiceFixture();
+    const operation = createStart(service);
+    db.prepare(`
+      UPDATE operations SET status = 'cancelled', version = 7, completed_at = ?,
+        result_json = NULL, error_json = NULL WHERE id = ?
+    `).run(LATER, operation.id);
+    const before = db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id);
+
+    const current = service.cancel(cancelInput(operation, 1));
+
+    assert.deepEqual(current, service.findById(WORKSPACE_ID, operation.id));
+    assert.deepEqual(db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id), before);
+    assert.deepEqual(calls, []);
+  });
+
+  test('stale non-cancelled Operation raises VERSION_CONFLICT before lifecycle', () => {
+    const { db, service, calls } = cancelServiceFixture();
+    const operation = createStart(service);
+    db.prepare('UPDATE operations SET status = ?, started_at = ?, version = 2 WHERE id = ?')
+      .run('running', NOW, operation.id);
+
+    assert.throws(
+      () => service.cancel(cancelInput(operation, 1)),
+      (error: unknown) => error instanceof VersionConflictError
+        && error.entityType === 'operations'
+        && error.code === 'VERSION_CONFLICT',
+    );
+    assert.equal(service.findById(WORKSPACE_ID, operation.id)?.version, 2);
+    assert.deepEqual(calls, []);
+  });
+
+  test('completed and failed Operations are not cancellable', () => {
+    const completed = cancelServiceFixture();
+    const completedQueued = createStart(completed.service);
+    const completedRunning = completed.service.transition({
+      workspaceId: WORKSPACE_ID,
+      operationId: completedQueued.id,
+      expectedVersion: 1,
+      to: 'running',
+    });
+    const completedOperation = completed.service.transition({
+      workspaceId: WORKSPACE_ID,
+      operationId: completedRunning.id,
+      expectedVersion: 2,
+      to: 'completed',
+      result: SAMPLE_RESULT,
+    });
+    assert.throws(
+      () => completed.service.cancel(cancelInput(completedOperation)),
+      assertCode('OPERATION_NOT_CANCELLABLE'),
+    );
+    assert.deepEqual(completed.calls, []);
+
+    const failed = cancelServiceFixture();
+    const failedOperation = failed.service.transition({
+      workspaceId: WORKSPACE_ID,
+      operationId: createStart(failed.service).id,
+      expectedVersion: 1,
+      to: 'failed',
+      error: sampleProblem(),
+    });
+    assert.throws(
+      () => failed.service.cancel(cancelInput(failedOperation)),
+      assertCode('OPERATION_NOT_CANCELLABLE'),
+    );
+    assert.deepEqual(failed.calls, []);
+  });
+
+  test('all four guarded statuses use the dedicated cancel seam exactly once', () => {
+    for (const status of ['queued', 'running', 'waiting_approval', 'paused'] as const) {
+      const { db, service, calls } = cancelServiceFixture();
+      const operation = createStart(service);
+      if (status !== 'queued') {
+        db.prepare('UPDATE operations SET status = ?, started_at = ?, version = 1 WHERE id = ?')
+          .run(status, NOW, operation.id);
+      }
+
+      const cancelled = service.cancel(cancelInput(operation));
+
+      assert.equal(cancelled.status, 'cancelled');
+      assert.equal(cancelled.version, 2);
+      assert.equal(calls.length, 1);
+      assert.equal('result' in cancelled, false);
+      assert.equal('error' in cancelled, false);
+    }
+  });
+
+  test('OperationService passes only persisted binding to the lifecycle seam', () => {
+    const { service, calls } = cancelServiceFixture();
+    const operation = createStart(service);
+
+    service.cancel(cancelInput(operation));
+
+    assert.deepEqual(calls, [{
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      correlationId: operation.correlationId,
+    }]);
+  });
+
+  test('missing canonical lifecycle dependency fails closed', () => {
+    const { service } = serviceFixture();
+    const operation = createStart(service);
+
+    assert.throws(
+      () => service.cancel(cancelInput(operation)),
+      assertCode('OPERATION_LIFECYCLE_DEPENDENCY_MISSING'),
+    );
+    assert.equal(service.findById(WORKSPACE_ID, operation.id)?.status, 'queued');
+  });
+
+  test('lifecycle failure rolls back the guarded Operation update', () => {
+    const { db, service } = cancelServiceFixture(() => { throw new Error('lifecycle failure'); });
+    const operation = createStart(service);
+    const before = db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id);
+
+    assert.throws(() => service.cancel(cancelInput(operation)), /lifecycle failure/);
+
+    assert.deepEqual(db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id), before);
+  });
+
+  test('cancel increments the Operation version exactly once and keeps result/error null', () => {
+    const { db, service } = cancelServiceFixture();
+    const operation = createStart(service);
+
+    const cancelled = service.cancel(cancelInput(operation));
+    const row = db.prepare('SELECT status, version, result_json, error_json FROM operations WHERE id = ?')
+      .get(operation.id) as { status: string; version: number; result_json: string | null; error_json: string | null };
+
+    assert.equal(cancelled.version, operation.version + 1);
+    assert.deepEqual({ ...row }, { status: 'cancelled', version: 2, result_json: null, error_json: null });
+  });
+
+  test('a COMMIT failure injected through the test database proxy rolls back cancel', () => {
+    const db = migratedDb();
+    let failCommit = false;
+    const proxy = {
+      exec(sql: string): void {
+        if (failCommit && sql === 'COMMIT') throw new Error('COMMIT_FAILURE');
+        db.exec(sql);
+      },
+      prepare: db.prepare.bind(db),
+    };
+    const calls: unknown[] = [];
+    const service = new OperationService(proxy as never, {
+      now: () => NOW,
+      lifecycleTransactionService: {
+        cancelRunForOperationWithinTransaction(input: unknown): void { calls.push(input); },
+      },
+    } as never);
+    const operation = service.create({ workspaceId: WORKSPACE_ID, runId: RUN_ID, type: 'run.start' });
+    const before = db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id);
+    failCommit = true;
+
+    assert.throws(() => service.cancel(cancelInput(operation)), /COMMIT_FAILURE/);
+
+    assert.deepEqual(db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id), before);
+    assert.equal(calls.length, 1);
   });
 });
 

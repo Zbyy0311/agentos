@@ -460,7 +460,9 @@ export class SqliteStore implements Store {
         outboxRepository: this.outboxRepo,
         runInTransaction: fn => inTransaction(this.database as any, fn),
       });
-      this.operationServiceRepo = new OperationService(this.database as any);
+      this.operationServiceRepo = new OperationService(this.database as any, {
+        lifecycleTransactionService: this.lifecycleTransactionServiceRepo,
+      });
       this.runMigrations(dataDir);
       this.migrateAgentEventSequences();
       this.migrateLegacyExecutionRuns();
