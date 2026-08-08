@@ -67,7 +67,8 @@ and P3E integrated verification evidence is complete (test/docs only).
 
 Current implementation alignment: M3-TD-30 Option A is MERGED via PR #29 and
 is the current contract. P3C-1 Retry production is IMPLEMENTED AND MERGED via
-PR #33. The present closeout is limited to the five allowlisted Markdown files.
+PR #33. The P3E-2 documentation closeout modifies exactly six independently
+approved Markdown files.
 P3D is COMPLETE via PR #36/#37/#38; P3E integrated verification and
 documentation closeout are complete as test/docs-only stages. Production
 Cutover remains NOT PERFORMED / NOT AUTHORIZED.
