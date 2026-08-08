@@ -1703,7 +1703,7 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && !('gate' in currentW
           assert.equal(results.first.ok, true);
           assert.equal(results.first.outcome, 'progressed');
           assert.equal(results.second.ok, false);
-          assert.ok(['VERSION_CONFLICT', 'OPERATION_NOT_CANCELLABLE'].includes(results.second.errorCode ?? ''));
+          assert.equal(results.second.errorCode, 'VERSION_CONFLICT');
         }
         withRaceObserver(seed, db => {
           const snapshot = raceSnapshot(db, seed, seed.operation.id);
@@ -1756,7 +1756,7 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && !('gate' in currentW
           }
           assertIntegrity(db);
         });
-        console.log(`P3D-3 Race B ${raceCase.name}: winner=${raceCase.first} loser=${raceCase.second}`);
+        console.log(`P3D-3 Race B ${raceCase.name}: winner=${raceCase.first} loser=${raceCase.second} loserError=${results.second.errorCode ?? 'none'}`);
       });
     }
   });
@@ -1789,7 +1789,7 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && !('gate' in currentW
             assert.equal(results.first.ok, true);
             assert.equal(results.first.outcome, 'progressed');
             assert.equal(results.second.ok, false);
-            assert.ok(['VERSION_CONFLICT', 'OPERATION_NOT_CANCELLABLE'].includes(results.second.errorCode ?? ''));
+            assert.equal(results.second.errorCode, 'VERSION_CONFLICT');
           }
           withRaceObserver(seed, db => {
             const snapshot = raceSnapshot(db, seed, seed.operation.id);
@@ -1833,7 +1833,7 @@ if (!isMainThread && currentWorkerData?.mode === 'claim' && !('gate' in currentW
             }
             assertIntegrity(db);
           });
-          console.log(`P3D-3 Race C ${raceCase.name}: winner=${raceCase.first} loser=${raceCase.second}`);
+          console.log(`P3D-3 Race C ${raceCase.name}: winner=${raceCase.first} loser=${raceCase.second} loserError=${results.second.errorCode ?? 'none'}`);
         },
       );
     }
