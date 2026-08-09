@@ -193,3 +193,35 @@ test('P4B R10 preflight from an unknown origin still receives no Idempotency-Key
     assert.equal(response.headers.get('access-control-allow-origin'), null);
   });
 });
+
+function exposedHeaders(response: globalThis.Response): string[] {
+  return (response.headers.get('access-control-expose-headers') ?? '')
+    .split(',')
+    .map(value => value.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+test('P4B HIGH-1 approved-origin response exposes the P4 browser-readable headers', async () => {
+  await withCorsApp(async origin => {
+    const response = await fetch(`${origin}/api/health`, {
+      headers: { Origin: 'http://localhost:3001' },
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:3001');
+    const exposed = exposedHeaders(response);
+    assert.ok(exposed.includes('etag'), `ETag missing from Access-Control-Expose-Headers: ${exposed}`);
+    assert.ok(exposed.includes('x-request-id'), `X-Request-ID missing from Access-Control-Expose-Headers: ${exposed}`);
+    assert.ok(exposed.includes('idempotency-replayed'), `Idempotency-Replayed missing from Access-Control-Expose-Headers: ${exposed}`);
+    assert.notEqual(response.headers.get('access-control-allow-credentials'), 'true');
+  });
+});
+
+test('P4B HIGH-1 unknown-origin response exposes no browser-readable headers', async () => {
+  await withCorsApp(async origin => {
+    const response = await fetch(`${origin}/api/health`, {
+      headers: { Origin: 'https://evil.example' },
+    });
+    assert.equal(response.headers.get('access-control-allow-origin'), null);
+    assert.equal(response.headers.get('access-control-expose-headers'), null);
+  });
+});

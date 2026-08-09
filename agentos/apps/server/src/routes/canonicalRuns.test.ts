@@ -149,18 +149,21 @@ interface ApiResult {
   etag: string | null;
   replayed: string | null;
   requestId: string | null;
+  allowOrigin: string | null;
+  exposeHeaders: string | null;
 }
 
 async function api(
   fx: Fixture,
   method: string,
   path: string,
-  options: { body?: unknown; key?: string; ifMatch?: string } = {},
+  options: { body?: unknown; key?: string; ifMatch?: string; origin?: string } = {},
 ): Promise<ApiResult> {
   const headers: Record<string, string> = {};
   if (options.body !== undefined) headers['Content-Type'] = 'application/json';
   if (options.key !== undefined) headers['Idempotency-Key'] = options.key;
   if (options.ifMatch !== undefined) headers['If-Match'] = options.ifMatch;
+  if (options.origin !== undefined) headers['Origin'] = options.origin;
   const response = await fetch(`${fx.baseApi}${path}`, {
     method,
     headers,
@@ -180,7 +183,16 @@ async function api(
     etag: response.headers.get('etag'),
     replayed: response.headers.get('idempotency-replayed'),
     requestId: response.headers.get('x-request-id'),
+    allowOrigin: response.headers.get('access-control-allow-origin'),
+    exposeHeaders: response.headers.get('access-control-expose-headers'),
   };
+}
+
+function exposedHeaderSet(response: ApiResult): string[] {
+  return (response.exposeHeaders ?? '')
+    .split(',')
+    .map(value => value.trim().toLowerCase())
+    .filter(Boolean);
 }
 
 function assertProblem(body: unknown, status: number, code: string): ApiProblem {
@@ -527,6 +539,53 @@ test('P4B-R06 current-v2 routes remain intact alongside the canonical router', a
     assert.equal(res.status, 201);
     const run = res.json?.run as Record<string, unknown> | undefined;
     assert.equal(run?.taskId, taskId);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4B-R33 approved-origin Get Run exposes ETag and X-Request-ID and the read ETag drives an If-Match cancel', async () => {
+  const fx = await createFixture();
+  try {
+    const origin = 'http://localhost:3001';
+    const get = await api(fx, 'GET', `/runs/${fx.runId}`, { origin });
+    assert.equal(get.status, 200);
+    assert.equal(get.allowOrigin, origin);
+    assert.equal(get.etag, '"v1"');
+    assert.ok(get.requestId, 'X-Request-ID must be present on the response');
+    const exposed = exposedHeaderSet(get);
+    assert.ok(exposed.includes('etag'), `ETag is not readable by the approved-origin browser: ${get.exposeHeaders}`);
+    assert.ok(exposed.includes('x-request-id'), `X-Request-ID is not readable by the approved-origin browser: ${get.exposeHeaders}`);
+    // The browser contract closes only when the exposed ETag can drive If-Match.
+    const cancel = await api(fx, 'POST', `/runs/${fx.runId}/cancel`, { body: {}, ifMatch: get.etag ?? '', origin });
+    assert.equal(cancel.status, 200);
+    const run = cancel.json?.run as Record<string, unknown> | undefined;
+    assert.equal(run?.status, 'cancelled');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4B-R34 approved-origin canonical idempotent replay exposes Idempotency-Replayed to the browser', async () => {
+  const fx = await createFixture();
+  try {
+    const origin = 'http://localhost:3001';
+    const taskId = createAdditionalTask(fx, 'canonical-replay-exposure');
+    const first = await api(fx, 'POST', `/tasks/${taskId}/runs`, { body: {}, key: 'canonical-expose-replay-1', origin });
+    assert.equal(first.status, 201);
+    assert.equal(first.replayed, null);
+    const second = await api(fx, 'POST', `/tasks/${taskId}/runs`, { body: {}, key: 'canonical-expose-replay-1', origin });
+    assert.equal(second.status, 201);
+    assert.equal(second.replayed, 'true');
+    assert.equal(second.allowOrigin, origin);
+    const exposed = exposedHeaderSet(second);
+    assert.ok(
+      exposed.includes('idempotency-replayed'),
+      `Idempotency-Replayed is not readable by the approved-origin browser: ${second.exposeHeaders}`,
+    );
+    const firstRun = first.json?.run as { id?: unknown } | undefined;
+    const secondRun = second.json?.run as { id?: unknown } | undefined;
+    assert.equal(secondRun?.id, firstRun?.id);
   } finally {
     await closeFixture(fx);
   }

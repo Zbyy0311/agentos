@@ -59,6 +59,16 @@ export function createLocalCorsOptions(config: LocalApiSecurityConfig): CorsOpti
       'X-Request-ID',
       'Idempotency-Key',
     ],
+    // M3 P4B Remediation 1 (HIGH-1): approved-origin browser JavaScript
+    // must be able to READ the P4 response headers, otherwise the
+    // ETag -> If-Match precondition chain and the idempotent-replay signal
+    // cannot form a real browser contract. No wildcard; only headers the
+    // P4 surface actually emits are exposed.
+    exposedHeaders: [
+      'ETag',
+      'X-Request-ID',
+      'Idempotency-Replayed',
+    ],
     optionsSuccessStatus: 204,
   };
 }
