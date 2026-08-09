@@ -1,4 +1,5 @@
 import { json, Router, type NextFunction, type Request, type Response } from 'express';
+import { isClientBodyParseError, sendProblem } from '../problemDetails.js';
 import {
   OperationIntegrityError,
   OperationLifecycleDependencyError,
@@ -9,62 +10,49 @@ import type { OperationService } from '../services/OperationService.js';
 import { OperationNotFoundError } from '../store/OperationRepository.js';
 import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { VersionConflictError } from '../store/Version.js';
+import { formatVersionETag } from './versionPrecondition.js';
 
 export interface OperationRouteStore {
   operationService(): OperationService;
   runtimeEventRepository(): RuntimeEventRepository;
 }
 
-const OPERATION_NOT_FOUND = { error: 'Operation not found', code: 'OPERATION_NOT_FOUND' } as const;
-const QUERY_VALIDATION_FAILED = { error: 'Query parameters are not accepted', code: 'VALIDATION_FAILED' } as const;
-const CANCEL_VALIDATION_FAILED = { error: 'Invalid request', code: 'VALIDATION_FAILED' } as const;
-const VERSION_CONFLICT = { error: 'Version conflict', code: 'VERSION_CONFLICT' } as const;
-const NOT_CANCELLABLE = { error: 'Operation is not cancellable', code: 'OPERATION_NOT_CANCELLABLE' } as const;
-const INTERNAL_ERROR = { error: 'Internal server error', code: 'INTERNAL_ERROR' } as const;
-
 function isOperationNotFound(error: unknown): boolean {
   return error instanceof OperationNotFoundError
     || (error as { code?: unknown } | null)?.code === 'OPERATION_NOT_FOUND';
 }
 
-function respondInternalError(res: Response): void {
-  res.status(500).json(INTERNAL_ERROR);
+function respondInternalError(req: Request, res: Response): void {
+  sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
 }
 
-function respondCancelError(res: Response, error: unknown): void {
+function respondCancelError(req: Request, res: Response, error: unknown): void {
   if (isOperationNotFound(error)) {
-    res.status(404).json(OPERATION_NOT_FOUND);
+    sendProblem(req, res, { status: 404, code: 'OPERATION_NOT_FOUND', detail: 'Operation not found' });
     return;
   }
   if (error instanceof OperationNotCancellableError
     || (error as { code?: unknown } | null)?.code === 'OPERATION_NOT_CANCELLABLE') {
-    res.status(409).json(NOT_CANCELLABLE);
+    sendProblem(req, res, { status: 409, code: 'OPERATION_NOT_CANCELLABLE', detail: 'Operation is not cancellable' });
     return;
   }
   if (error instanceof VersionConflictError) {
     if (error.entityType === 'operations') {
-      res.status(409).json(VERSION_CONFLICT);
+      // Frozen P3D contract: the Operation Cancel version transport is the
+      // body expectedVersion only; its conflict mapping stays 409.
+      sendProblem(req, res, { status: 409, code: 'VERSION_CONFLICT', detail: 'Version conflict' });
       return;
     }
-    respondInternalError(res);
+    respondInternalError(req, res);
     return;
   }
   if (error instanceof OperationIntegrityError
     || error instanceof OperationLifecycleDependencyError
     || error instanceof OperationValidationError) {
-    respondInternalError(res);
+    respondInternalError(req, res);
     return;
   }
-  respondInternalError(res);
-}
-
-function isClientBodyParseError(error: unknown): boolean {
-  const candidate = error as { type?: unknown; status?: unknown; statusCode?: unknown } | null;
-  if (!candidate || typeof candidate.type !== 'string') return false;
-  const status = typeof candidate.status === 'number'
-    ? candidate.status
-    : (typeof candidate.statusCode === 'number' ? candidate.statusCode : undefined);
-  return status !== undefined && status >= 400 && status < 500;
+  respondInternalError(req, res);
 }
 
 function isJsonContentType(contentType: string | undefined): boolean {
@@ -98,19 +86,19 @@ export function createOperationRoutes(store: OperationRouteStore): Router {
     try {
       const workspaceId = operationService.findWorkspaceIdByOpaqueId(operationId);
       if (workspaceId === undefined) {
-        res.status(404).json(OPERATION_NOT_FOUND);
+        sendProblem(req, res, { status: 404, code: 'OPERATION_NOT_FOUND', detail: 'Operation not found' });
         return;
       }
        cancelWorkspaceByRequest.set(req, workspaceId);
       next();
     } catch {
-      respondInternalError(res);
+      respondInternalError(req, res);
     }
   };
 
   const rejectQuery = (req: Request, res: Response, next: NextFunction): void => {
     if (Object.keys(req.query ?? {}).length > 0) {
-      res.status(400).json(QUERY_VALIDATION_FAILED);
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Query parameters are not accepted' });
       return;
     }
     next();
@@ -129,21 +117,21 @@ export function createOperationRoutes(store: OperationRouteStore): Router {
       return;
     }
     if (isClientBodyParseError(error)) {
-      res.status(400).json(CANCEL_VALIDATION_FAILED);
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Invalid request' });
       return;
     }
-    respondInternalError(res);
+    respondInternalError(req, res);
   };
 
   const validateCancelRequest = (req: Request, res: Response, next: NextFunction): void => {
     if (Object.keys(req.query ?? {}).length > 0) {
-      res.status(400).json(CANCEL_VALIDATION_FAILED);
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Invalid request' });
       return;
     }
     if (!isJsonContentType(req.headers['content-type'])
       || (cancelRawPayloadLengthByRequest.get(req) ?? 0) === 0
       || !isPlainJsonObject(req.body)) {
-      res.status(400).json(CANCEL_VALIDATION_FAILED);
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Invalid request' });
       return;
     }
     const body = req.body;
@@ -154,7 +142,7 @@ export function createOperationRoutes(store: OperationRouteStore): Router {
       || typeof body.expectedVersion !== 'number'
       || !Number.isSafeInteger(body.expectedVersion)
       || body.expectedVersion < 1) {
-      res.status(400).json(CANCEL_VALIDATION_FAILED);
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Invalid request' });
       return;
     }
     cancelExpectedVersionByRequest.set(req, body.expectedVersion);
@@ -171,19 +159,21 @@ export function createOperationRoutes(store: OperationRouteStore): Router {
       const current = operationService.cancel({ workspaceId, operationId, expectedVersion });
       res.status(200).json({ data: current });
     } catch (error) {
-      respondCancelError(res, error);
+      respondCancelError(req, res, error);
     }
   };
 
   const getOperation = (req: Request, res: Response): void => {
     try {
-      res.status(200).json({ data: getAuthorizedOperation(req) });
+      const operation = getAuthorizedOperation(req);
+      res.setHeader('ETag', formatVersionETag(operation.version));
+      res.status(200).json({ data: operation });
     } catch (error) {
       if (isOperationNotFound(error)) {
-        res.status(404).json(OPERATION_NOT_FOUND);
+        sendProblem(req, res, { status: 404, code: 'OPERATION_NOT_FOUND', detail: 'Operation not found' });
         return;
       }
-      respondInternalError(res);
+      respondInternalError(req, res);
     }
   };
 
@@ -196,10 +186,10 @@ export function createOperationRoutes(store: OperationRouteStore): Router {
       res.status(200).json({ events, hasMore: false });
     } catch (error) {
       if (isOperationNotFound(error)) {
-        res.status(404).json(OPERATION_NOT_FOUND);
+        sendProblem(req, res, { status: 404, code: 'OPERATION_NOT_FOUND', detail: 'Operation not found' });
         return;
       }
-      respondInternalError(res);
+      respondInternalError(req, res);
     }
   };
 

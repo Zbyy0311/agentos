@@ -389,7 +389,8 @@ test('R02 unknown Operation returns 404 OPERATION_NOT_FOUND', async () => {
     const response = await getOperation(fx, createEntityId('operation'));
 
     assert.equal(response.status, 404);
-    assert.deepEqual(response.json, { error: 'Operation not found', code: 'OPERATION_NOT_FOUND' });
+    assertError(response, 404, 'OPERATION_NOT_FOUND');
+    assert.equal((response.json as { detail?: unknown }).detail, 'Operation not found');
   });
 });
 
@@ -398,7 +399,8 @@ test('R03 unknown Operation plus query returns 404 before query validation', asy
     const response = await getOperation(fx, createEntityId('operation'), '?workspaceId=other&bogus=');
 
     assert.equal(response.status, 404);
-    assert.deepEqual(response.json, { error: 'Operation not found', code: 'OPERATION_NOT_FOUND' });
+    assertError(response, 404, 'OPERATION_NOT_FOUND');
+    assert.equal((response.json as { detail?: unknown }).detail, 'Operation not found');
   });
 });
 
@@ -409,7 +411,8 @@ test('R04 known Operation plus any query returns 400 VALIDATION_FAILED', async (
     const response = await getOperation(fx, operation.id, '?workspaceId=other');
 
     assert.equal(response.status, 400);
-    assert.deepEqual(response.json, { error: 'Query parameters are not accepted', code: 'VALIDATION_FAILED' });
+    assertError(response, 400, 'VALIDATION_FAILED');
+    assert.equal((response.json as { detail?: unknown }).detail, 'Query parameters are not accepted');
   });
 });
 
@@ -495,7 +498,8 @@ test('R10 persisted Operation corruption is sanitized as INTERNAL_ERROR', async 
     const response = await getOperation(fx, operation.id);
 
     assert.equal(response.status, 500);
-    assert.deepEqual(response.json, { error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    assertError(response, 500, 'INTERNAL_ERROR');
+    assert.equal((response.json as { detail?: unknown }).detail, 'Internal server error');
     assert.equal(response.text.includes('broken-json'), false);
     assert.equal(/SQLITE|SELECT|UPDATE|stack|agentos-p3d/i.test(response.text), false);
   });
@@ -683,7 +687,8 @@ test('R16 Runtime Event read failure is sanitized as INTERNAL_ERROR', async () =
       const response = await getEvents(fx, operation.id);
 
       assert.equal(response.status, 500);
-      assert.deepEqual(response.json, { error: 'Internal server error', code: 'INTERNAL_ERROR' });
+      assertError(response, 500, 'INTERNAL_ERROR');
+      assert.equal((response.json as { detail?: unknown }).detail, 'Internal server error');
       assert.equal(response.text.includes('SQLITE_READ_FAILED'), false);
       assert.equal(response.text.includes('agentos.sqlite'), false);
       assert.equal(response.text.includes('stack-frame'), false);
@@ -714,7 +719,8 @@ test('R17 workspace, run, and correlation cannot be overridden by headers, body,
 
     const query = await getEvents(fx, operation.id, '?runId=run-override&correlationId=correlation-override');
     assert.equal(query.status, 400);
-    assert.deepEqual(query.json, { error: 'Query parameters are not accepted', code: 'VALIDATION_FAILED' });
+    assertError(query, 400, 'VALIDATION_FAILED');
+    assert.equal((query.json as { detail?: unknown }).detail, 'Query parameters are not accepted');
   });
 });
 

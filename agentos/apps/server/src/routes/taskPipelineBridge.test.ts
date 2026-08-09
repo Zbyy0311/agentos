@@ -7,7 +7,7 @@ import type { AgentStage, TaskItem, TaskLog, Workspace } from '@agentos/shared';
 import { createTaskRoutes, type RunnerFactory } from './tasks.js';
 import { createV2TaskRoutes } from './v2Tasks.js';
 import { createV2RunRoutes } from './v2Runs.js';
-import { createJsonErrorHandler } from '../errorHandler.js';
+import { createProblemErrorHandler } from '../problemDetails.js';
 import { resolveBridgeRunReason, mapLegacyTerminalToRunUpdate } from './taskRunBridge.js';
 import { TaskRunService, BridgeCompensationFailedError, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { TaskRepository } from '../store/TaskRepository.js';
@@ -340,7 +340,7 @@ async function createFixture(
   }));
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(storeDeps as never, manager));
   app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(storeDeps as never, manager));
-  app.use(createJsonErrorHandler());
+  app.use(createProblemErrorHandler());
   const { server, port } = await listenOnFetchSafePort(app);
   return {
     db,

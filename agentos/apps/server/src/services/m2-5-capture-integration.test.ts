@@ -11,7 +11,7 @@ import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { TaskRunService } from './TaskRunService.js';
 import { createTaskRoutes, type RunnerFactory } from '../routes/tasks.js';
 import { createV2TaskRoutes } from '../routes/v2Tasks.js';
-import { createJsonErrorHandler } from '../errorHandler.js';
+import { createProblemErrorHandler } from '../problemDetails.js';
 
 function log(stage: AgentStage): TaskLog {
   return {
@@ -101,7 +101,7 @@ test('production v2 and Legacy routes capture before runtime and use the same re
   });
   app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, manager, { createRunner: runnerFactory }));
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, manager));
-  app.use(createJsonErrorHandler());
+  app.use(createProblemErrorHandler());
   const { server, base } = await listenOnFetchSafePort(app);
   try {
     const taskResponse = await fetch(`${base}/${workspace.id}/v2/tasks`, {
@@ -168,7 +168,7 @@ test('Legacy capture failure returns the fixed Bridge error and leaves JSON/Task
     res.status(204).end();
   });
   app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, manager, { taskRunService: failingService }));
-  app.use(createJsonErrorHandler());
+  app.use(createProblemErrorHandler());
   const { server, base } = await listenOnFetchSafePort(app);
   try {
     const response = await fetch(`${base}/${workspace.id}/tasks/legacy-failure/run`, { method: 'POST' });

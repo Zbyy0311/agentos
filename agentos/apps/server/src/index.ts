@@ -23,7 +23,7 @@ import { createRunRoutes } from './routes/runs.js';
 import { createArtifactRoutes } from './routes/artifacts.js';
 import { createMemoryRoutes } from './routes/memories.js';
 import { createMemoryCandidateRoutes } from './routes/memoryCandidates.js';
-import { createJsonErrorHandler } from './errorHandler.js';
+import { createApiNotFoundHandler, createProblemErrorHandler, createRequestIdMiddleware } from './problemDetails.js';
 import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
 import { TaskRunService } from './services/TaskRunService.js';
@@ -163,6 +163,10 @@ async function bootstrap(): Promise<void> {
 
     app.use(cors(createLocalCorsOptions(security)));
     app.use(createLocalWriteGuard(security));
+    // M3 P4A request-id lifecycle: every API response carries X-Request-ID
+    // (client value echoed only when it is a safe token) so ApiProblem
+    // bodies and logs can be correlated.
+    app.use(createRequestIdMiddleware());
     // M3 P3C-1 canonical lifecycle routes — the single additive /api mount
     // for POST /api/runs/:runId/start. Mounted ahead of the global strict
     // JSON parser because the route owns a scoped non-strict parser so that
@@ -193,7 +197,11 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
     app.use('/api/agents', createAgentRoutes(workspaceManager));
-    app.use(createJsonErrorHandler());
+    // M3 P4A: unknown API routes and unhandled errors are ApiProblem
+    // responses (application/problem+json), never Express HTML or raw
+    // internal messages.
+    app.use('/api', createApiNotFoundHandler());
+    app.use(createProblemErrorHandler());
 
     phase = 'listen';
     httpServer = await listenHttpServer(app, PORT, security.host);
