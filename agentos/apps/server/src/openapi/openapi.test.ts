@@ -17,8 +17,8 @@ import { createOpenApiRoutes } from '../routes/openapi.js';
  *
  * Truth rules under test:
  * - implemented Legacy / current-v2 / canonical paths are represented;
- * - future P5 routes are explicitly marked contract-only and are never
- *   advertised with an implemented (2xx) response;
+ * - P5 Events, Replay and Stream are implemented canonical operations and
+ *   no contract-only-future-p5 marker remains on them;
  * - ApiProblem, Run, and Operation schemas exist;
  * - ETag / If-Match / Idempotency-Key / X-Request-ID are documented.
  */
@@ -204,19 +204,32 @@ test('P4B-R14 implemented legacy and current-v2 families are represented', async
   }
 });
 
-test('P5A-R27 Events and Replay are implemented while Stream remains contract-only without 2xx', async () => {
+test('P5C Events, Replay and Stream are all implemented canonical routes with truthful responses', async () => {
   const fx = await createFixture();
   try {
     const doc = await fetchDocument(fx);
-    for (const path of ['/api/runs/{runId}/events', '/api/runs/{runId}/replay']) {
+    for (const path of ['/api/runs/{runId}/events', '/api/runs/{runId}/replay', '/api/runs/{runId}/stream']) {
       const operation = operationAt(doc, path, 'get');
-      assert.equal(operation['x-agentos-implementation'], 'implemented');
-      assert.ok(Object.keys(operation.responses ?? {}).includes('200'));
+      assert.equal(operation['x-agentos-implementation'], 'implemented', `${path} must be marked implemented`);
+      assert.ok(Object.keys(operation.responses ?? {}).includes('200'), `${path} must advertise a 200 response`);
+      assert.notEqual(operation['x-agentos-implementation'], 'contract-only-future-p5', `${path} must not retain the contract-only marker`);
     }
+
     const stream = operationAt(doc, '/api/runs/{runId}/stream', 'get');
-    assert.equal(stream['x-agentos-implementation'], 'contract-only-future-p5');
-    const responses = Object.keys(stream.responses ?? {});
-    assert.deepEqual(responses, ['404']);
+    const streamParameters = new Map(
+      (stream.parameters ?? []).map(parameter => [String(parameter.name), String(parameter.in)]),
+    );
+    assert.equal(streamParameters.get('runId'), 'path');
+    assert.equal(streamParameters.get('afterSequence'), 'query');
+    assert.equal(streamParameters.get('Last-Event-ID'), 'header');
+
+    const streamResponses = Object.keys(stream.responses ?? {}).sort();
+    assert.deepEqual(streamResponses, ['200', '400', '404']);
+    assert.ok(!streamResponses.includes('410'), '410 CURSOR_EXPIRED must not be advertised');
+    const streamOk = stream.responses?.['200'];
+    assert.ok(streamOk, 'stream must advertise a 200 response');
+    const streamOkContent = streamOk.content as Record<string, unknown> | undefined;
+    assert.ok(streamOkContent?.['text/event-stream'], 'stream 200 must serve text/event-stream');
   } finally {
     await closeFixture(fx);
   }

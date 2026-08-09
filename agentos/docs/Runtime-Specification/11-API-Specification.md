@@ -2618,6 +2618,15 @@ Last-Event-ID
 
 详见 Realtime Part。
 
+M3 已实现行为：
+
+- `Last-Event-ID` 为持久化 Runtime Event ID（`evt_...`），不是 sequence；
+- 有效游标 = `max(校验后的 afterSequence 或 0, 解析出的 Last-Event-ID sequence 或 0)`，仅单调向前；
+- 未知 / 非法格式 / 跨 Run / 跨 Workspace 的 `Last-Event-ID` 一律返回 `400 VALIDATION_FAILED`（错误表示完全一致，不做跨 Run 枚举）；
+- 当前不返回 `410 CURSOR_EXPIRED`（无保留期证据）；
+- SSE 帧格式：`id: <持久化 event.id>` / `event: runtime-event` / `data: <完整 RuntimeEventRecord JSON，单行>` / 空行；未知 Runtime Event 无损保留（`kind` / `raw` / `warning`）；Keepalive 帧为 `event: keepalive` / `data: {"time":"<UTC ISO 毫秒>"}`，无 `id` 且不持久化（不插入 Event）；
+- 断开只关闭订阅，Run 继续运行。
+
 ---
 
 # Part XV — Process APIs

@@ -424,7 +424,7 @@ export interface ResolvedSseCursor {
 export interface RuntimeEventFrame {
   readonly id: string;
   readonly event: 'runtime-event';
-  readonly data: RuntimeEventEnvelope;
+  readonly data: RuntimeEventRecord;
 }
 
 export interface RuntimeKeepaliveFrame {

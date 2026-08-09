@@ -44,6 +44,7 @@ import type {
   RunStreamQuery,
   SseRequestHeaders,
   StartRunBody,
+  UnknownRuntimeEvent,
 } from './src/types/m3-runtime.ts';
 import type { RunReplayResponse } from './src/types/index.ts';
 
@@ -932,6 +933,38 @@ test('uses the discriminated SSE frame contract', () => {
   };
   assert.equal(runtimeFrame.event, 'runtime-event');
   assert.equal(keepalive.event, 'keepalive');
+});
+
+test('RuntimeEventFrame carries UnknownRuntimeEvent losslessly (P5C-R02)', () => {
+  const unknownEvent: UnknownRuntimeEvent = {
+    kind: 'unknown_runtime_event',
+    raw: { future: true, custom: 'p5c' },
+    id: 'evt_p5c_unknown_01',
+    type: 'future.p5c.event',
+    schemaVersion: 1,
+    workspaceId: 'workspace_p5c',
+    runId: 'run_p5c',
+    sequence: 9,
+    timestamp: '2026-08-10T00:00:00.000Z',
+    source: 'system',
+    correlationId: 'corr_p5c',
+    severity: 'info',
+    visibility: 'public',
+    durability: 'durable',
+    payload: { future: true },
+    warning: 'UNKNOWN_EVENT_TYPE',
+  };
+  const frame: RuntimeEventFrame = {
+    id: unknownEvent.id,
+    event: 'runtime-event',
+    data: unknownEvent,
+  };
+  assert.equal(frame.event, 'runtime-event');
+  assert.equal(frame.id, 'evt_p5c_unknown_01');
+  assert.equal(frame.data, unknownEvent);
+  assert.equal(unknownEvent.kind, 'unknown_runtime_event');
+  assert.equal(unknownEvent.warning, 'UNKNOWN_EVENT_TYPE');
+  assert.deepEqual(unknownEvent.raw, { future: true, custom: 'p5c' });
 });
 
 test('associates Operation correlation through the Event envelope', () => {

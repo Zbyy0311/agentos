@@ -275,13 +275,15 @@ test('P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path
   }
 });
 
-test('P5A-R26 Stream remains a P5C future route with truthful 404', async () => {
+test('P5A-R26/P5C Stream is implemented as a canonical SSE route', async () => {
   const fx = await createFixture();
+  const controller = new AbortController();
   try {
-    const result = await getJson(fx, `/runs/${fx.runId}/stream`);
-    assert.equal(result.status, 404);
-    assert.equal(result.body.code, 'NOT_FOUND');
+    const response = await fetch(`${fx.baseApi}/runs/${fx.runId}/stream`, { signal: controller.signal });
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get('content-type') ?? '', /^text\/event-stream/);
   } finally {
+    controller.abort();
     await closeFixture(fx);
   }
 });

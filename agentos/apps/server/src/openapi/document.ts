@@ -9,8 +9,8 @@ import type { ApiProblem, ApiOperation, Run } from '@agentos/shared';
  * Truth rules (P4 freeze):
  * - implemented Legacy, current-v2, and canonical route families are each
  *   marked with `x-agentos-route-family`;
- * - P5A run events and replay are implemented; only the future P5C stream
- *   remains `contract-only-future-p5` and advertises only its truthful 404;
+ * - P5 run events, replay, and stream are implemented; the P5C stream is
+ *   promoted from contract-only to an implemented canonical operation;
  * - no route family is described as migrated or retired;
  * - the Web client default is unchanged (Legacy routes remain live).
  */
@@ -117,6 +117,10 @@ function queryParameter(name: string, description: string, schema: JsonObject): 
   return { name, in: 'query', required: false, description, schema };
 }
 
+function headerParameter(name: string, description: string): JsonObject {
+  return { name, in: 'header', required: false, description, schema: { type: 'string' } };
+}
+
 function problemResponse(status: number, code: string, extra?: string): JsonObject {
   return {
     description: `${code}${extra ? ` — ${extra}` : ''}`,
@@ -137,6 +141,15 @@ function jsonResponse(status: number, description: string, schema: JsonObject, h
   };
 }
 
+function eventStreamResponse(status: number, description: string, schema: JsonObject): JsonObject {
+  return {
+    description,
+    headers: { 'X-Request-ID': X_REQUEST_ID_RESPONSE_HEADER },
+    content: { 'text/event-stream': { schema } },
+    'x-agentos-status': status,
+  };
+}
+
 function jsonBody(schema: JsonObject, required = true): JsonObject {
   return { required, content: { 'application/json': { schema } } };
 }
@@ -150,7 +163,6 @@ const OPERATION_DATA_ENVELOPE_REF: JsonObject = { $ref: '#/components/schemas/Op
 const RETRY_RUN_ENVELOPE_REF: JsonObject = { $ref: '#/components/schemas/RetryRunEnvelope' };
 
 const IMPLEMENTED = 'implemented';
-const P5_CONTRACT_ONLY = 'contract-only-future-p5';
 
 function legacyOperation(summary: string, description: string, extra?: JsonObject): JsonObject {
   return {
@@ -182,19 +194,6 @@ function canonicalOperation(summary: string, description: string, extra?: JsonOb
   };
 }
 
-function p5Operation(summary: string, description: string, parameters: readonly JsonObject[]): JsonObject {
-  return {
-    summary,
-    description: `${description} NOT YET IMPLEMENTED — the production behavior belongs to M3 P5. Today every request to this path returns 404 NOT_FOUND, which is the only response documented here.`,
-    'x-agentos-route-family': 'canonical',
-    'x-agentos-implementation': P5_CONTRACT_ONLY,
-    parameters: [...parameters],
-    responses: {
-      '404': problemResponse(404, 'NOT_FOUND', 'Route not found; the P5 behavior is not implemented'),
-    },
-  };
-}
-
 const WORKSPACE_ID_PARAMETER = pathParameter('workspaceId', 'Workspace identifier');
 const TASK_ID_PARAMETER = pathParameter('taskId', 'Opaque task identifier');
 const RUN_ID_PARAMETER = pathParameter('runId', 'Opaque run identifier');
@@ -217,6 +216,11 @@ const RUN_REPLAY_QUERY_PARAMETERS = [
   queryParameter('stageId', 'Exact Stage identifier filter.', { type: 'string' }),
   queryParameter('includeArtifacts', 'When true, returns an empty safe Artifact index plus an availability warning in P5A.', { type: 'boolean', default: false }),
 ] as const;
+const RUN_STREAM_PARAMETERS = [
+  RUN_ID_PARAMETER,
+  queryParameter('afterSequence', 'Non-negative durable sequence cursor. Defaults to 0.', { type: 'integer', minimum: 0, default: 0 }),
+  headerParameter('Last-Event-ID', 'Persisted Runtime Event ID (evt_...), NOT a sequence.'),
+] as const;
 
 export const OPENAPI_DOCUMENT = {
   openapi: '3.1.0',
@@ -226,11 +230,10 @@ export const OPENAPI_DOCUMENT = {
     description:
       'M3 P4 runtime API contract. Documents the implemented Legacy, current-v2, and canonical '
       + 'top-level Run/Operation route families exactly as served. Legacy and current-v2 routes are '
-      + 'preserved; the Web default is unchanged. P5A implements durable Run Events and Replay; Run Stream remains contract-only.',
+      + 'preserved; the Web default is unchanged. P5 implements durable Run Events, Replay, and the live Run Stream.',
   },
   'x-agentos-implementation-markers': {
     implemented: IMPLEMENTED,
-    contractOnlyFutureP5: P5_CONTRACT_ONLY,
   },
   paths: {
     '/api/workspaces/{workspaceId}/tasks': {
@@ -471,7 +474,14 @@ export const OPENAPI_DOCUMENT = {
       }),
     },
     '/api/runs/{runId}/stream': {
-      get: p5Operation('Stream run events', 'Contract reference (spec §89): live SSE stream with Last-Event-ID resume.', [RUN_ID_PARAMETER]),
+      get: canonicalOperation('Stream run events', 'P5C live Server-Sent Events stream of persisted Runtime Events (spec §89). Resume with the afterSequence query cursor and/or the Last-Event-ID header; when both are present the effective cursor is the greater resolved sequence and the stream only moves monotonically forward. Last-Event-ID resolution does not expose the Event payload.', {
+        parameters: [...RUN_STREAM_PARAMETERS],
+        responses: {
+          '200': eventStreamResponse(200, 'Live Runtime Event stream', { type: 'string', description: 'SSE stream of runtime-event frames with persisted event id plus non-durable keepalive frames.' }),
+          '400': problemResponse(400, 'VALIDATION_FAILED'),
+          '404': problemResponse(404, 'RUN_NOT_FOUND'),
+        },
+      }),
     },
   },
   components: {

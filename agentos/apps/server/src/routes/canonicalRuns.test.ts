@@ -493,17 +493,21 @@ test('P4B-R31 canonical routes do not shadow the frozen Retry route', async () =
   }
 });
 
-test('P4B-R15/P5A-R26 Events and Replay are implemented while Stream stays truthful 404 NOT_FOUND', async () => {
+test('P4B-R15/P5A-R26/P5C Events, Replay and Stream are all implemented canonical routes', async () => {
   const fx = await createFixture();
   try {
     for (const suffix of ['events', 'replay']) {
       const res = await api(fx, 'GET', `/runs/${fx.runId}/${suffix}`);
       assert.equal(res.status, 200, `${suffix} must be implemented in P5A`);
     }
-    const stream = await api(fx, 'GET', `/runs/${fx.runId}/stream`);
-    assert.equal(stream.status, 404, 'stream must remain unimplemented until P5C');
-    assertProblemContentType(stream);
-    assertProblem(stream.json, 404, 'NOT_FOUND');
+    const controller = new AbortController();
+    try {
+      const response = await fetch(`${fx.baseApi}/runs/${fx.runId}/stream`, { signal: controller.signal });
+      assert.equal(response.status, 200, 'stream must be implemented in P5C');
+      assert.match(response.headers.get('content-type') ?? '', /^text\/event-stream/);
+    } finally {
+      controller.abort();
+    }
   } finally {
     await closeFixture(fx);
   }
