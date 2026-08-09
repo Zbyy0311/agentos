@@ -23,6 +23,7 @@ import { SqliteStore } from '../store/SqliteStore.js';
 import { createOperationRoutes } from './operations.js';
 import { createRunLifecycleRoutes } from './runLifecycle.js';
 import { createCanonicalRunRoutes } from './canonicalRuns.js';
+import { createCanonicalRunEventRoutes } from './canonicalRunEvents.js';
 import { createTaskRoutes } from './tasks.js';
 import { createV2RunRoutes } from './v2Runs.js';
 import { createV2TaskRoutes } from './v2Tasks.js';
@@ -104,9 +105,9 @@ async function createFixture(): Promise<Fixture> {
   const security = resolveLocalApiSecurityConfig({});
   const app = express();
   // Mirrors the index.ts order: request-id -> CORS -> local write guard ->
-  // lifecycle/operation routers (scoped parsers) -> global strict JSON
-  // parser -> Legacy/current-v2 routers -> P4B canonical router -> API 404
-  // fallback -> ApiProblem error handler.
+  // lifecycle/operation routers (scoped parsers) -> P5A read-only routes ->
+  // global strict JSON parser -> Legacy/current-v2 routers -> P4B canonical
+  // router -> API 404 fallback -> ApiProblem error handler.
   app.use(createRequestIdMiddleware());
   app.use(cors(createLocalCorsOptions(security)));
   app.use(createLocalWriteGuard(security));
@@ -116,6 +117,7 @@ async function createFixture(): Promise<Fixture> {
   });
   app.use('/api', createRunLifecycleRoutes(store));
   app.use('/api', createOperationRoutes(store));
+  app.use('/api', createCanonicalRunEventRoutes(store));
   app.use(express.json());
   app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, manager, { taskRunService: seeder }));
   app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, manager));
@@ -491,15 +493,17 @@ test('P4B-R31 canonical routes do not shadow the frozen Retry route', async () =
   }
 });
 
-test('P4B-R15 unimplemented P5 run routes stay truthful 404 NOT_FOUND', async () => {
+test('P4B-R15/P5A-R26 Events and Replay are implemented while Stream stays truthful 404 NOT_FOUND', async () => {
   const fx = await createFixture();
   try {
-    for (const suffix of ['events', 'replay', 'stream']) {
+    for (const suffix of ['events', 'replay']) {
       const res = await api(fx, 'GET', `/runs/${fx.runId}/${suffix}`);
-      assert.equal(res.status, 404, `${suffix} must not be implemented in P4B`);
-      assertProblemContentType(res);
-      assertProblem(res.json, 404, 'NOT_FOUND');
+      assert.equal(res.status, 200, `${suffix} must be implemented in P5A`);
     }
+    const stream = await api(fx, 'GET', `/runs/${fx.runId}/stream`);
+    assert.equal(stream.status, 404, 'stream must remain unimplemented until P5C');
+    assertProblemContentType(stream);
+    assertProblem(stream.json, 404, 'NOT_FOUND');
   } finally {
     await closeFixture(fx);
   }

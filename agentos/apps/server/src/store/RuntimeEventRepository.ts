@@ -3,6 +3,9 @@ import type {
   RuntimeEventConsumptionResult,
   RuntimeEventDraft,
   RuntimeEventEnvelope,
+  RuntimeEventSeverity,
+  RuntimeEventSource,
+  RuntimeEventVisibility,
 } from '@agentos/shared';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import type { TransactionDatabase } from './Transaction.js';
@@ -53,6 +56,25 @@ interface RuntimeEventRow {
   payload_json: string;
   metadata_json: string | null;
   created_at: string;
+}
+
+export interface RuntimeEventRunQuery {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly afterSequence: number;
+  readonly beforeSequence?: number;
+  readonly limit: number;
+  readonly types?: readonly string[];
+  readonly stageId?: string;
+  readonly severity?: RuntimeEventSeverity;
+  readonly visibilities?: readonly RuntimeEventVisibility[];
+  readonly source?: RuntimeEventSource;
+  readonly correlationId?: string;
+}
+
+export interface RuntimeEventRunQueryResult {
+  readonly results: readonly RuntimeEventConsumptionResult[];
+  readonly hasMore: boolean;
 }
 
 function toRecord(row: RuntimeEventRow): Record<string, unknown> {
@@ -204,6 +226,85 @@ export class RuntimeEventRepository {
       ORDER BY sequence ASC
     `).all(runId, correlationId) as RuntimeEventRow[];
     return rows.map(row => this.consumeRow(row)!);
+  }
+
+  queryByRun(input: RuntimeEventRunQuery): RuntimeEventRunQueryResult {
+    if (!Number.isSafeInteger(input.afterSequence) || input.afterSequence < 0
+      || !Number.isSafeInteger(input.limit) || input.limit < 1 || input.limit > 200
+      || (input.beforeSequence !== undefined
+        && (!Number.isSafeInteger(input.beforeSequence) || input.beforeSequence < 1))) {
+      throw new RuntimeEventRepositoryError('RUNTIME_EVENT_READ_FAILED', 'Runtime Event query is invalid');
+    }
+
+    const conditions = ["workspace_id = ?", "run_id = ?", "durability = 'durable'", 'sequence > ?'];
+    const parameters: unknown[] = [input.workspaceId, input.runId, input.afterSequence];
+    if (input.beforeSequence !== undefined) {
+      conditions.push('sequence < ?');
+      parameters.push(input.beforeSequence);
+    }
+    if (input.types && input.types.length > 0) {
+      conditions.push(`type IN (${input.types.map(() => '?').join(', ')})`);
+      parameters.push(...input.types);
+    }
+    if (input.stageId !== undefined) {
+      conditions.push('stage_id = ?');
+      parameters.push(input.stageId);
+    }
+    if (input.severity !== undefined) {
+      conditions.push('severity = ?');
+      parameters.push(input.severity);
+    }
+    if (input.visibilities && input.visibilities.length > 0) {
+      conditions.push(`visibility IN (${input.visibilities.map(() => '?').join(', ')})`);
+      parameters.push(...input.visibilities);
+    }
+    if (input.source !== undefined) {
+      conditions.push('source = ?');
+      parameters.push(input.source);
+    }
+    if (input.correlationId !== undefined) {
+      conditions.push('correlation_id = ?');
+      parameters.push(input.correlationId);
+    }
+    parameters.push(input.limit + 1);
+
+    const rows = this.db.prepare(`
+      SELECT * FROM runtime_events
+      WHERE ${conditions.join(' AND ')}
+      ORDER BY sequence ASC
+      LIMIT ?
+    `).all(...parameters) as RuntimeEventRow[];
+    const hasMore = rows.length > input.limit;
+    const page = hasMore ? rows.slice(0, input.limit) : rows;
+    return {
+      results: page.map(row => this.consumeRow(row)!),
+      hasMore,
+    };
+  }
+
+  getRunHighWatermark(workspaceId: string, runId: string): number {
+    const row = this.db.prepare(`
+      SELECT COALESCE(MAX(sequence), 0) AS high_watermark
+      FROM runtime_events
+      WHERE workspace_id = ? AND run_id = ? AND durability = 'durable'
+    `).get(workspaceId, runId) as { high_watermark: number };
+    return row.high_watermark;
+  }
+
+  listRunSequencesInRange(
+    workspaceId: string,
+    runId: string,
+    fromSequence: number,
+    toSequence: number,
+  ): number[] {
+    const rows = this.db.prepare(`
+      SELECT sequence FROM runtime_events
+      WHERE workspace_id = ? AND run_id = ?
+        AND durability = 'durable'
+        AND sequence >= ? AND sequence <= ?
+      ORDER BY sequence ASC
+    `).all(workspaceId, runId, fromSequence, toSequence) as { sequence: number }[];
+    return rows.map(row => row.sequence);
   }
 
   private consumeRow(row: RuntimeEventRow | undefined): RuntimeEventConsumptionResult | undefined {

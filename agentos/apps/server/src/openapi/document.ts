@@ -9,9 +9,8 @@ import type { ApiProblem, ApiOperation, Run } from '@agentos/shared';
  * Truth rules (P4 freeze):
  * - implemented Legacy, current-v2, and canonical route families are each
  *   marked with `x-agentos-route-family`;
- * - future P5 routes (run events / replay / stream) are documented with
- *   `x-agentos-implementation: 'contract-only-future-p5'` and only the 404
- *   they truthfully return today — no 2xx response is advertised;
+ * - P5A run events and replay are implemented; only the future P5C stream
+ *   remains `contract-only-future-p5` and advertises only its truthful 404;
  * - no route family is described as migrated or retired;
  * - the Web client default is unchanged (Legacy routes remain live).
  */
@@ -114,6 +113,10 @@ function pathParameter(name: string, description: string): JsonObject {
   return { name, in: 'path', required: true, description, schema: { type: 'string' } };
 }
 
+function queryParameter(name: string, description: string, schema: JsonObject): JsonObject {
+  return { name, in: 'query', required: false, description, schema };
+}
+
 function problemResponse(status: number, code: string, extra?: string): JsonObject {
   return {
     description: `${code}${extra ? ` — ${extra}` : ''}`,
@@ -196,16 +199,34 @@ const WORKSPACE_ID_PARAMETER = pathParameter('workspaceId', 'Workspace identifie
 const TASK_ID_PARAMETER = pathParameter('taskId', 'Opaque task identifier');
 const RUN_ID_PARAMETER = pathParameter('runId', 'Opaque run identifier');
 const OPERATION_ID_PARAMETER = pathParameter('operationId', 'Opaque operation identifier');
+const RUN_EVENT_QUERY_PARAMETERS = [
+  queryParameter('afterSequence', 'Exclusive lower sequence bound. Defaults to 0.', { type: 'integer', minimum: 0, default: 0 }),
+  queryParameter('beforeSequence', 'Exclusive upper sequence bound.', { type: 'integer', minimum: 1 }),
+  queryParameter('limit', 'Page size. Defaults to 50; maximum 200.', { type: 'integer', minimum: 1, maximum: 200, default: 50 }),
+  queryParameter('types', 'Comma-separated Runtime Event types; trimmed and deduplicated.', { type: 'string' }),
+  queryParameter('stageId', 'Exact Stage identifier filter.', { type: 'string' }),
+  queryParameter('severity', 'Exact Runtime Event severity.', { type: 'string', enum: ['debug', 'info', 'notice', 'warning', 'error', 'critical'] }),
+  queryParameter('visibility', 'public or internal. restricted fails closed with 403 EVENT_VISIBILITY_FORBIDDEN.', { type: 'string', enum: ['public', 'internal', 'restricted'] }),
+  queryParameter('source', 'Exact Runtime Event source.', { type: 'string' }),
+  queryParameter('correlationId', 'Exact correlation identifier filter.', { type: 'string' }),
+] as const;
+const RUN_REPLAY_QUERY_PARAMETERS = [
+  queryParameter('fromSequence', 'Inclusive lower sequence bound. Defaults to 1.', { type: 'integer', minimum: 1, default: 1 }),
+  queryParameter('toSequence', 'Inclusive upper sequence bound. Defaults to the durable high-watermark.', { type: 'integer', minimum: 1 }),
+  queryParameter('types', 'Comma-separated Runtime Event types; trimmed and deduplicated.', { type: 'string' }),
+  queryParameter('stageId', 'Exact Stage identifier filter.', { type: 'string' }),
+  queryParameter('includeArtifacts', 'When true, returns an empty safe Artifact index plus an availability warning in P5A.', { type: 'boolean', default: false }),
+] as const;
 
 export const OPENAPI_DOCUMENT = {
   openapi: '3.1.0',
   info: {
     title: 'AgentOS Runtime API',
-    version: '2.0.0-m3-p4',
+    version: '2.0.0-m3-p5a',
     description:
       'M3 P4 runtime API contract. Documents the implemented Legacy, current-v2, and canonical '
       + 'top-level Run/Operation route families exactly as served. Legacy and current-v2 routes are '
-      + 'preserved; the Web default is unchanged. Future P5 routes are marked contract-only.',
+      + 'preserved; the Web default is unchanged. P5A implements durable Run Events and Replay; Run Stream remains contract-only.',
   },
   'x-agentos-implementation-markers': {
     implemented: IMPLEMENTED,
@@ -428,10 +449,26 @@ export const OPENAPI_DOCUMENT = {
       }),
     },
     '/api/runs/{runId}/events': {
-      get: p5Operation('Get run events', 'Contract reference (spec §86): durable run event page query with afterSequence/beforeSequence/limit/types/stageId/severity/visibility/source/correlationId filters returning a RuntimeEventPage.', [RUN_ID_PARAMETER]),
+      get: canonicalOperation('Get run events', 'P5A durable Runtime Event page from runtime_events. Repository consumption wrappers are never exposed.', {
+        parameters: [RUN_ID_PARAMETER, ...RUN_EVENT_QUERY_PARAMETERS],
+        responses: {
+          '200': jsonResponse(200, 'Durable Runtime Event page', { $ref: '#/components/schemas/RuntimeEventPage' }),
+          '400': problemResponse(400, 'VALIDATION_FAILED'),
+          '403': problemResponse(403, 'EVENT_VISIBILITY_FORBIDDEN'),
+          '404': problemResponse(404, 'RUN_NOT_FOUND'),
+          '422': problemResponse(422, 'INPUT_ENUM_INVALID'),
+        },
+      }),
     },
     '/api/runs/{runId}/replay': {
-      get: p5Operation('Replay run', 'Contract reference (spec §88): deterministic replay projection with fromSequence/toSequence/types/stageId/includeArtifacts filters.', [RUN_ID_PARAMETER]),
+      get: canonicalOperation('Replay run', 'P5A read-only Replay projection from safe persisted Snapshot, Stage and Runtime Event evidence. It never re-executes runtime work.', {
+        parameters: [RUN_ID_PARAMETER, ...RUN_REPLAY_QUERY_PARAMETERS],
+        responses: {
+          '200': jsonResponse(200, 'Read-only Run Replay projection', { $ref: '#/components/schemas/RunReplayResponse' }),
+          '400': problemResponse(400, 'VALIDATION_FAILED'),
+          '404': problemResponse(404, 'RUN_NOT_FOUND'),
+        },
+      }),
     },
     '/api/runs/{runId}/stream': {
       get: p5Operation('Stream run events', 'Contract reference (spec §89): live SSE stream with Last-Event-ID resume.', [RUN_ID_PARAMETER]),
@@ -556,6 +593,133 @@ export const OPENAPI_DOCUMENT = {
         properties: {
           events: { type: 'array', items: { type: 'object' }, description: 'Persisted runtime events bound to this operation correlation, ascending sequence.' },
           hasMore: { type: 'boolean', enum: [false] },
+        },
+      },
+      RuntimeEvent: {
+        type: 'object',
+        required: ['id', 'schemaVersion', 'type', 'workspaceId', 'runId', 'sequence', 'timestamp', 'source', 'correlationId', 'severity', 'visibility', 'durability', 'payload'],
+        properties: {
+          id: { type: 'string' },
+          schemaVersion: { type: 'integer', minimum: 1 },
+          type: { type: 'string' },
+          workspaceId: { type: 'string' },
+          taskId: { type: 'string' },
+          runId: { type: 'string' },
+          stageId: { type: 'string' },
+          agentId: { type: 'string' },
+          providerConfigId: { type: 'string' },
+          providerSessionId: { type: 'string' },
+          processId: { type: 'string' },
+          worktreeId: { type: 'string' },
+          artifactId: { type: 'string' },
+          approvalRequestId: { type: 'string' },
+          conversationId: { type: 'string' },
+          messageId: { type: 'string' },
+          sequence: { type: 'integer', minimum: 1 },
+          timestamp: { type: 'string' },
+          source: {
+            type: 'string',
+            enum: ['run-engine', 'scheduler', 'workflow-executor', 'stage-executor', 'provider-adapter', 'process-manager', 'worktree-manager', 'git-runtime', 'memory-engine', 'policy-engine', 'approval-service', 'artifact-manager', 'usage-aggregator', 'recovery-manager', 'conversation-service', 'extension', 'system'],
+          },
+          correlationId: { type: 'string' },
+          causationId: { type: 'string' },
+          parentEventId: { type: 'string' },
+          severity: { type: 'string', enum: ['debug', 'info', 'notice', 'warning', 'error', 'critical'] },
+          visibility: { type: 'string', enum: ['public', 'internal', 'restricted'] },
+          durability: { type: 'string', enum: ['durable', 'ephemeral'] },
+          payload: {},
+          metadata: { type: 'object' },
+        },
+      },
+      UnknownRuntimeEvent: {
+        type: 'object',
+        required: ['kind', 'raw', 'warning', 'id', 'schemaVersion', 'type', 'workspaceId', 'runId', 'sequence', 'timestamp', 'source', 'correlationId', 'severity', 'visibility', 'durability', 'payload'],
+        properties: {
+          kind: { type: 'string', enum: ['unknown_runtime_event'] },
+          raw: { type: 'object' },
+          warning: { type: 'string', enum: ['UNKNOWN_EVENT_TYPE', 'UNKNOWN_FUTURE_EVENT_SCHEMA'] },
+          id: { type: 'string' },
+          schemaVersion: { type: 'integer', minimum: 1 },
+          type: { type: 'string' },
+          workspaceId: { type: 'string' },
+          taskId: { type: 'string' },
+          runId: { type: 'string' },
+          stageId: { type: 'string' },
+          agentId: { type: 'string' },
+          providerConfigId: { type: 'string' },
+          providerSessionId: { type: 'string' },
+          processId: { type: 'string' },
+          worktreeId: { type: 'string' },
+          artifactId: { type: 'string' },
+          approvalRequestId: { type: 'string' },
+          conversationId: { type: 'string' },
+          messageId: { type: 'string' },
+          sequence: { type: 'integer', minimum: 1 },
+          timestamp: { type: 'string' },
+          source: { type: 'string' },
+          correlationId: { type: 'string' },
+          causationId: { type: 'string' },
+          parentEventId: { type: 'string' },
+          severity: { type: 'string' },
+          visibility: { type: 'string' },
+          durability: { type: 'string' },
+          payload: {},
+          metadata: { type: 'object' },
+        },
+      },
+      RuntimeEventRecord: {
+        anyOf: [
+          { $ref: '#/components/schemas/RuntimeEvent' },
+          { $ref: '#/components/schemas/UnknownRuntimeEvent' },
+        ],
+      },
+      RuntimeEventPage: {
+        type: 'object',
+        required: ['events', 'hasMore'],
+        properties: {
+          events: { type: 'array', items: { $ref: '#/components/schemas/RuntimeEventRecord' }, maxItems: 200 },
+          nextAfterSequence: { type: 'integer', minimum: 1 },
+          hasMore: { type: 'boolean' },
+        },
+      },
+      ReplayArtifactIndexEntry: {
+        type: 'object',
+        required: ['id', 'type', 'title', 'sizeBytes', 'contentAvailable', 'createdAt'],
+        properties: {
+          id: { type: 'string' },
+          type: { type: 'string' },
+          title: { type: 'string' },
+          summary: { type: 'string' },
+          mimeType: { type: 'string' },
+          sizeBytes: { type: 'integer', minimum: 0 },
+          sha256: { type: 'string' },
+          contentAvailable: { type: 'boolean' },
+          createdAt: { type: 'string' },
+        },
+      },
+      ReplayCompatibilityWarning: {
+        type: 'object',
+        required: ['code', 'message'],
+        properties: {
+          code: {
+            type: 'string',
+            enum: ['SNAPSHOT_UNAVAILABLE', 'EVENT_SEQUENCE_GAP', 'UNKNOWN_RUNTIME_EVENT', 'LEGACY_EVENT_HISTORY_UNAVAILABLE', 'ARTIFACT_INDEX_UNAVAILABLE'],
+          },
+          message: { type: 'string' },
+          eventId: { type: 'string' },
+          fromSequence: { type: 'integer', minimum: 1 },
+          toSequence: { type: 'integer', minimum: 1 },
+        },
+      },
+      RunReplayResponse: {
+        type: 'object',
+        required: ['runSnapshot', 'stageSnapshots', 'events', 'artifactIndex', 'compatibilityWarnings'],
+        properties: {
+          runSnapshot: { type: ['object', 'null'], description: 'Safe cloned RunSnapshotPayload projection.' },
+          stageSnapshots: { type: 'array', items: { type: 'object' } },
+          events: { type: 'array', items: { $ref: '#/components/schemas/RuntimeEventRecord' } },
+          artifactIndex: { type: 'array', items: { $ref: '#/components/schemas/ReplayArtifactIndexEntry' } },
+          compatibilityWarnings: { type: 'array', items: { $ref: '#/components/schemas/ReplayCompatibilityWarning' } },
         },
       },
       CreateRunRequest: {

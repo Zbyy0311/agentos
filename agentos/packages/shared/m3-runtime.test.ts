@@ -28,11 +28,15 @@ import type {
   CreateRunBody,
   OperationEventsQuery,
   OperationPathParams,
+  ReplayArtifactIndexEntry,
+  ReplayCompatibilityWarning,
   ResolvedSseCursor,
+  RunReplayQuery,
   RuntimeEventDraft,
   RuntimeEventEnvelope,
   RuntimeEventFrame,
   RuntimeEventPage,
+  RuntimeEventRecord,
   RuntimeKeepaliveFrame,
   RunEventsQuery,
   RunPathParams,
@@ -41,6 +45,7 @@ import type {
   SseRequestHeaders,
   StartRunBody,
 } from './src/types/m3-runtime.ts';
+import type { RunReplayResponse } from './src/types/index.ts';
 
 test('keeps the ProviderType compile-time contract in the Shared test source', () => {
   const validProviderType: RunFailedPayload['providerType'] = 'codex';
@@ -848,6 +853,44 @@ test('uses the Runtime Event Page contract', () => {
     hasMore: true,
   };
   assert.equal(nextPage.nextAfterSequence, 10);
+});
+
+test('uses the P5A Runtime Event wire union and Replay DTO contract', () => {
+  const fixtures = createM3RuntimeEventFixtures();
+  const known: RuntimeEventRecord = fixtures.validRunStartedEvent;
+  const query: RunReplayQuery = {
+    fromSequence: 1,
+    toSequence: 10,
+    types: ['run.started'],
+    stageId: 'stage_fixture_01',
+    includeArtifacts: true,
+  };
+  const warning: ReplayCompatibilityWarning = {
+    code: 'EVENT_SEQUENCE_GAP',
+    message: 'Durable Runtime Event sequence 2 is unavailable.',
+    fromSequence: 2,
+    toSequence: 2,
+  };
+  const artifact: ReplayArtifactIndexEntry = {
+    id: 'artifact_fixture_01',
+    type: 'report',
+    title: 'Replay report',
+    sizeBytes: 0,
+    contentAvailable: false,
+    createdAt: fixtures.validRunStartedEvent.timestamp,
+  };
+  const response: RunReplayResponse = {
+    runSnapshot: null,
+    stageSnapshots: [],
+    events: [known],
+    artifactIndex: [artifact],
+    compatibilityWarnings: [warning],
+  };
+
+  assert.equal(query.fromSequence, 1);
+  assert.equal(response.events[0]?.id, fixtures.validRunStartedEvent.id);
+  assert.equal(response.compatibilityWarnings[0]?.code, 'EVENT_SEQUENCE_GAP');
+  assert.equal(response.artifactIndex[0]?.contentAvailable, false);
 });
 
 test('separates HTTP path, query, header, and body DTOs', () => {

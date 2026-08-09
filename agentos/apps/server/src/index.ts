@@ -14,6 +14,7 @@ import { createV2RunRoutes } from './routes/v2Runs.js';
 import { createRunLifecycleRoutes } from './routes/runLifecycle.js';
 import { createOperationRoutes } from './routes/operations.js';
 import { createCanonicalRunRoutes } from './routes/canonicalRuns.js';
+import { createCanonicalRunEventRoutes } from './routes/canonicalRunEvents.js';
 import { createOpenApiRoutes } from './routes/openapi.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
@@ -177,6 +178,9 @@ async function bootstrap(): Promise<void> {
     // non-object JSON bodies reach its frozen VALIDATION_FAILED contract.
     app.use('/api', createRunLifecycleRoutes(store));
     app.use('/api', createOperationRoutes(store));
+    // M3 P5A read-only Event/Replay routes resolve the opaque Run locator
+    // before query validation and do not consume request bodies.
+    app.use('/api', createCanonicalRunEventRoutes(store));
     app.use(express.json({ limit: '50mb' }));
 
     app.get('/api/health', (_req, res) => {

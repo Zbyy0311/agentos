@@ -204,24 +204,51 @@ test('P4B-R14 implemented legacy and current-v2 families are represented', async
   }
 });
 
-test('P4B-R15 future P5 routes are marked contract-only and never advertise a 2xx response', async () => {
+test('P5A-R27 Events and Replay are implemented while Stream remains contract-only without 2xx', async () => {
   const fx = await createFixture();
   try {
     const doc = await fetchDocument(fx);
-    for (const path of ['/api/runs/{runId}/events', '/api/runs/{runId}/replay', '/api/runs/{runId}/stream']) {
+    for (const path of ['/api/runs/{runId}/events', '/api/runs/{runId}/replay']) {
       const operation = operationAt(doc, path, 'get');
-      assert.equal(
-        operation['x-agentos-implementation'],
-        'contract-only-future-p5',
-        `${path} must be marked as a future P5 contract`,
-      );
-      const responses = Object.keys(operation.responses ?? {});
-      assert.ok(responses.length > 0, `${path} must document its current truthful response`);
-      for (const status of responses) {
-        assert.ok(!status.startsWith('2'), `${path} must not advertise implemented response ${status}`);
-      }
-      assert.ok(responses.includes('404'), `${path} currently returns 404 and must say so`);
+      assert.equal(operation['x-agentos-implementation'], 'implemented');
+      assert.ok(Object.keys(operation.responses ?? {}).includes('200'));
     }
+    const stream = operationAt(doc, '/api/runs/{runId}/stream', 'get');
+    assert.equal(stream['x-agentos-implementation'], 'contract-only-future-p5');
+    const responses = Object.keys(stream.responses ?? {});
+    assert.deepEqual(responses, ['404']);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P5A-R27 OpenAPI documents exact Events/Replay parameters, errors and wire schemas', async () => {
+  const fx = await createFixture();
+  try {
+    const doc = await fetchDocument(fx);
+    const events = operationAt(doc, '/api/runs/{runId}/events', 'get');
+    const eventParameters = (events.parameters ?? []).map(parameter => parameter.name);
+    for (const name of ['runId', 'afterSequence', 'beforeSequence', 'limit', 'types', 'stageId', 'severity', 'visibility', 'source', 'correlationId']) {
+      assert.ok(eventParameters.includes(name), `Events must document ${name}`);
+    }
+    assert.deepEqual(Object.keys(events.responses ?? {}).sort(), ['200', '400', '403', '404', '422']);
+
+    const replay = operationAt(doc, '/api/runs/{runId}/replay', 'get');
+    const replayParameters = (replay.parameters ?? []).map(parameter => parameter.name);
+    for (const name of ['runId', 'fromSequence', 'toSequence', 'types', 'stageId', 'includeArtifacts']) {
+      assert.ok(replayParameters.includes(name), `Replay must document ${name}`);
+    }
+    assert.deepEqual(Object.keys(replay.responses ?? {}).sort(), ['200', '400', '404']);
+    for (const schema of ['RuntimeEvent', 'UnknownRuntimeEvent', 'RuntimeEventRecord', 'RuntimeEventPage', 'ReplayArtifactIndexEntry', 'ReplayCompatibilityWarning', 'RunReplayResponse']) {
+      assert.ok(doc.components?.schemas?.[schema], `OpenAPI must define ${schema}`);
+    }
+    const runtimeEvent = doc.components?.schemas?.RuntimeEvent as Record<string, unknown>;
+    const runtimeEventProperties = runtimeEvent.properties as Record<string, { enum?: unknown[] }>;
+    for (const name of ['agentId', 'providerConfigId', 'providerSessionId', 'processId', 'worktreeId', 'artifactId', 'approvalRequestId', 'conversationId', 'messageId']) {
+      assert.ok(runtimeEventProperties[name], `RuntimeEvent must document ${name}`);
+    }
+    assert.ok(runtimeEventProperties.source?.enum?.includes('system'));
+    assert.ok(runtimeEventProperties.severity?.enum?.includes('critical'));
   } finally {
     await closeFixture(fx);
   }
