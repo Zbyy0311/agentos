@@ -124,6 +124,30 @@ function appendEventAndOutbox(db: Db, id = eventId(1)): { event: RuntimeEventEnv
   return { event, outboxId: `outbox_${id}` };
 }
 
+function classifiedFailureState(
+  completedFailures: number,
+  lastObservedAt = NOW,
+  firstFailedAt = NOW,
+): OutboxFailureStateV1 {
+  return {
+    schemaVersion: 1,
+    completedFailures,
+    firstFailedAt,
+    lastOutcome: 'classified_failure',
+    lastCode: 'DELIVERY_TEMPORARY',
+    lastMessage: 'Runtime event delivery failed',
+    lastObservedAt,
+  };
+}
+
+function classifiedFailureEnvelope(
+  completedFailures: number,
+  lastObservedAt = NOW,
+  firstFailedAt = NOW,
+): string {
+  return serializeOutboxFailureState(classifiedFailureState(completedFailures, lastObservedAt, firstFailedAt));
+}
+
 function assertIntegrity(db: Db): void {
   assert.equal((db.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');
   assert.deepEqual(db.prepare('PRAGMA foreign_key_check').all(), []);
@@ -309,12 +333,16 @@ test('Outbox retry and dead-letter transitions require publishing and clear deli
     const event = eventRepository.appendWithinTransaction(draft());
     repository.insertWithinTransaction({ id: 'outbox_retry', eventId: event.id, availableAt: NOW, createdAt: NOW });
     repository.claimWithinTransaction({ id: 'outbox_retry', expectedVersion: 1, leaseOwner: 'worker', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' });
-    const retry = repository.markRetryWithinTransaction({ id: 'outbox_retry', expectedVersion: 2, expectedLeaseOwner: 'worker', now: NOW, lastError: 'temporary', availableAt: '2026-08-03T00:02:00.000Z' });
+    const retryFailure = classifiedFailureState(1);
+    const retry = repository.markRetryWithinTransaction({ id: 'outbox_retry', expectedVersion: 2, expectedLeaseOwner: 'worker', now: NOW, lastError: serializeOutboxFailureState(retryFailure), availableAt: '2026-08-03T00:02:00.000Z' });
     assert.equal(retry.status, 'retry');
+    assert.deepEqual(parseOutboxFailureState(retry.lastError), retryFailure);
     repository.claimWithinTransaction({ id: 'outbox_retry', expectedVersion: 3, leaseOwner: 'worker', now: '2026-08-03T00:02:00.000Z', leaseExpiresAt: '2026-08-03T00:03:00.000Z' });
-    const dead = repository.markDeadLetterWithinTransaction({ id: 'outbox_retry', expectedVersion: 4, expectedLeaseOwner: 'worker', now: '2026-08-03T00:02:00.000Z', lastError: 'permanent' });
+    const terminalFailure = classifiedFailureState(2, '2026-08-03T00:02:00.000Z');
+    const dead = repository.markDeadLetterWithinTransaction({ id: 'outbox_retry', expectedVersion: 4, expectedLeaseOwner: 'worker', now: '2026-08-03T00:02:00.000Z', lastError: serializeOutboxFailureState(terminalFailure) });
     assert.equal(dead.status, 'dead_letter');
-    assert.throws(() => repository.markRetryWithinTransaction({ id: 'outbox_retry', expectedVersion: 5, expectedLeaseOwner: 'worker', now: '2026-08-03T00:02:00.000Z', lastError: 'again', availableAt: NOW }), /OUTBOX/);
+    assert.deepEqual(parseOutboxFailureState(dead.lastError), terminalFailure);
+    assert.throws(() => repository.markRetryWithinTransaction({ id: 'outbox_retry', expectedVersion: 5, expectedLeaseOwner: 'worker', now: '2026-08-03T00:02:00.000Z', lastError: classifiedFailureEnvelope(3, '2026-08-03T00:02:00.000Z'), availableAt: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_INVALID_TRANSITION');
   } finally {
     db.close();
   }
@@ -332,13 +360,94 @@ test('Outbox lease fencing rejects owner, version and expiry mismatches without 
 
     assert.throws(() => repository.markPublishedWithinTransaction({ id: 'outbox_fence', expectedVersion: 2, expectedLeaseOwner: 'owner-b', now: NOW }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_LEASE_CONFLICT');
     assert.deepEqual({ ...(db.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_fence') as Record<string, unknown>) }, before);
-    assert.throws(() => repository.markDeadLetterWithinTransaction({ id: 'outbox_fence', expectedVersion: 9, expectedLeaseOwner: 'owner-a', now: NOW, lastError: 'stale' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
+    assert.throws(() => repository.markDeadLetterWithinTransaction({ id: 'outbox_fence', expectedVersion: 9, expectedLeaseOwner: 'owner-a', now: NOW, lastError: classifiedFailureEnvelope(1) }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
     assert.deepEqual({ ...(db.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_fence') as Record<string, unknown>) }, before);
-    assert.throws(() => repository.markRetryWithinTransaction({ id: 'outbox_fence', expectedVersion: 2, expectedLeaseOwner: 'owner-a', now: '2026-08-03T00:02:00.000Z', lastError: 'expired', availableAt: '2026-08-03T00:03:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_LEASE_EXPIRED');
+    assert.throws(() => repository.markRetryWithinTransaction({ id: 'outbox_fence', expectedVersion: 2, expectedLeaseOwner: 'owner-a', now: '2026-08-03T00:02:00.000Z', lastError: classifiedFailureEnvelope(1, '2026-08-03T00:02:00.000Z'), availableAt: '2026-08-03T00:03:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_LEASE_EXPIRED');
     assert.deepEqual({ ...(db.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_fence') as Record<string, unknown>) }, before);
     assertIntegrity(db);
   } finally {
     db.close();
+  }
+});
+
+test('P6A MEDIUM-1 M1-M8 retry/dead-letter persistence seams reject non-classified envelopes with zero mutation', async t => {
+  const leaseExpiredEnvelope = serializeOutboxFailureState({
+    schemaVersion: 1,
+    completedFailures: 0,
+    lastOutcome: 'lease_expired',
+    lastCode: 'OUTBOX_LEASE_EXPIRED',
+    lastMessage: 'Outbox delivery lease expired',
+    lastObservedAt: NOW,
+  });
+  const zeroCompletedClassifiedEnvelope = canonicalizeJson({
+    schemaVersion: 1,
+    completedFailures: 0,
+    lastOutcome: 'classified_failure',
+    lastCode: 'DELIVERY_TEMPORARY',
+    lastMessage: 'Runtime event delivery failed',
+    lastObservedAt: NOW,
+  });
+  const cases: ReadonlyArray<{
+    readonly label: string;
+    readonly mutation: 'retry' | 'dead-letter';
+    readonly lastError: string;
+  }> = [
+    { label: 'M1 markRetry rejects plain string last_error', mutation: 'retry', lastError: 'temporary' },
+    { label: 'M2 markDeadLetter rejects plain string last_error', mutation: 'dead-letter', lastError: 'permanent' },
+    { label: 'M3 markRetry rejects malformed JSON', mutation: 'retry', lastError: '{malformed' },
+    { label: 'M4 markDeadLetter rejects malformed JSON', mutation: 'dead-letter', lastError: '{malformed' },
+    { label: 'M5 markRetry rejects lease_expired envelope', mutation: 'retry', lastError: leaseExpiredEnvelope },
+    { label: 'M6 markDeadLetter rejects lease_expired envelope', mutation: 'dead-letter', lastError: leaseExpiredEnvelope },
+    { label: 'M7 markRetry rejects completedFailures zero', mutation: 'retry', lastError: zeroCompletedClassifiedEnvelope },
+    { label: 'M8 markDeadLetter rejects completedFailures zero', mutation: 'dead-letter', lastError: zeroCompletedClassifiedEnvelope },
+  ];
+
+  for (const [index, testCase] of cases.entries()) {
+    await t.test(testCase.label, () => {
+      const db = freshDb();
+      try {
+        const repository = outboxRepository(db);
+        const event = runtimeEventRepository(db).appendWithinTransaction(draft('run_p2b', eventId(80 + index), 80 + index));
+        const outboxId = `outbox_medium_1_${index + 1}`;
+        repository.insertWithinTransaction({ id: outboxId, eventId: event.id, availableAt: NOW, createdAt: NOW });
+        repository.claimWithinTransaction({
+          id: outboxId,
+          expectedVersion: 1,
+          leaseOwner: 'worker-medium-1',
+          now: NOW,
+          leaseExpiresAt: '2026-08-03T00:01:00.000Z',
+        });
+        const snapshot = (): Record<string, unknown> => ({
+          ...(db.prepare('SELECT * FROM outbox_messages WHERE id = ?').get(outboxId) as Record<string, unknown>),
+        });
+        const before = snapshot();
+        const mutate = (): void => {
+          if (testCase.mutation === 'retry') {
+            repository.markRetryWithinTransaction({
+              id: outboxId,
+              expectedVersion: 2,
+              expectedLeaseOwner: 'worker-medium-1',
+              now: NOW,
+              availableAt: '2026-08-03T00:00:30.000Z',
+              lastError: testCase.lastError,
+            });
+            return;
+          }
+          repository.markDeadLetterWithinTransaction({
+            id: outboxId,
+            expectedVersion: 2,
+            expectedLeaseOwner: 'worker-medium-1',
+            now: NOW,
+            lastError: testCase.lastError,
+          });
+        };
+        assert.throws(mutate, (error: unknown) => (error as { code?: string }).code === 'OUTBOX_FAILURE_STATE_INVALID');
+        assert.deepEqual(snapshot(), before);
+        assertIntegrity(db);
+      } finally {
+        db.close();
+      }
+    });
   }
 });
 

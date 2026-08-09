@@ -152,6 +152,18 @@ export function serializeOutboxFailureState(state: OutboxFailureStateV1): string
   }
 }
 
+function validateClassifiedFailureEnvelope(lastError: string): void {
+  const state = parseOutboxFailureState(lastError);
+  if (
+    !state
+    || state.lastOutcome !== 'classified_failure'
+    || state.completedFailures < 1
+    || state.firstFailedAt === undefined
+  ) {
+    throw failureStateError();
+  }
+}
+
 interface OutboxRow {
   id: string;
   event_id: string;
@@ -352,9 +364,7 @@ export class OutboxRepository {
   markRetryWithinTransaction(input: FencedOutboxMutationInput & { readonly lastError: string; readonly availableAt: string }): OutboxMessage {
     this.validateFencingInput(input);
     this.validateTimestamp(input.availableAt, 'availableAt');
-    if (!input.lastError.trim()) {
-      throw new OutboxRepositoryError('OUTBOX_VALIDATION_FAILED', 'lastError is required');
-    }
+    validateClassifiedFailureEnvelope(input.lastError);
     const result = this.db.prepare(`
       UPDATE outbox_messages
       SET status = 'retry', last_error = ?, available_at = ?, published_at = NULL,
@@ -370,9 +380,7 @@ export class OutboxRepository {
 
   markDeadLetterWithinTransaction(input: FencedOutboxMutationInput & { readonly lastError: string }): OutboxMessage {
     this.validateFencingInput(input);
-    if (!input.lastError.trim()) {
-      throw new OutboxRepositoryError('OUTBOX_VALIDATION_FAILED', 'lastError is required');
-    }
+    validateClassifiedFailureEnvelope(input.lastError);
     const result = this.db.prepare(`
       UPDATE outbox_messages
       SET status = 'dead_letter', last_error = ?, lease_owner = NULL,
