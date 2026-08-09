@@ -1,8 +1,8 @@
 # AgentOS M3 Lifecycle, Event and API Foundation Implementation Plan
 
-Status: LOCAL FORMAL GATE PASSED — PENDING INDEPENDENT REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS — P3 NOT AUTHORIZED — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: M3 P5 COMPLETE / ACCEPTED — M3 P6-0 INDEPENDENT REVIEW PASS WITH CONTRACT RECLASSIFICATION — P6A0 DOCS-ONLY TECHNICAL CONTRACT CLOSURE DOCUMENTED — P6 PRODUCTION ENTRY NO-GO PENDING P6A0 INDEPENDENT REMOTE REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
-This plan is the integrated M3 P2 local closeout record. The P2 branch implementation and its local formal verification are complete; independent review, Remote Checks, P3, and Production Cutover remain outside this closeout.
+This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation, Remote Checks, and Production Cutover remain outside this closure.
 
 ## 1. Authoritative contract
 
@@ -50,7 +50,8 @@ M3 is the Lifecycle, Event and API Foundation defined by Runtime Specification 1
 6. Run Engine, Workflow Executor execution, and Start route integration begin only after P2 transaction core.
 7. P4 preserves Legacy and current v2 routes while adding canonical top-level Run/Operation paths; it does not replace the canonical Task Collection.
 8. P5 uses the race-free subscribe/buffer/high-watermark/replay/drain/deduplicate/live handoff.
-9. P7 can propose an ordinary merge for M3 Foundation only; it cannot authorize Production Cutover or Legacy Retirement.
+9. P6 production begins only after P6A0 freezes the delivery, recovery, retry/dead-letter, and Legacy single-execution contracts and that docs package passes independent remote review.
+10. P7 can propose an ordinary merge for M3 Foundation only; it cannot authorize Production Cutover or Legacy Retirement.
 
 ## 3. Pre-P1 and P0 merge gate
 
@@ -619,11 +620,49 @@ Run deterministic SSE integration, concurrent handoff, process-restart, event or
 
 Keep Legacy behavior usable, map it to the canonical Task-domain path, and verify browser disconnect, server restart, Outbox failure, retry, dead letters, and uncertain state.
 
+#### P6-0 independent review classification and P6A0 boundary
+
+The P6-0 read-only assessment previously classified the Outbox sink and restart
+matrix as requiring new Owner decisions. Independent remote review returned:
+
+```text
+M3 P6-0 INDEPENDENT REVIEW:
+PASS WITH CONTRACT RECLASSIFICATION
+
+NEW OWNER DECISION:
+NONE
+```
+
+M3-TD-01, M3-TD-07, M3-TD-18, the authorized P6 uncertainty scope, Runtime
+Lifecycle §42, and Event Model §§48–50 already contain the governing product
+and architectural choices. M3-TD-33 through M3-TD-36 therefore record a
+BOUNDED TECHNICAL CONTRACT CLOSURE rather than a new product/Owner choice.
+P6A0 is docs-only. P6 production implementation remains NOT AUTHORIZED until
+independent remote review accepts this exact docs package.
+
+#### Frozen package order
+
+```text
+P6A0  technical contract closure
+  ↓
+P6A   Outbox reclaim / delivery / retry / dead-letter
+  ↓
+P6B   Task-domain restart / recovery_required / Start Operation recovery
+  ↓
+P6C   Legacy canonical execution / durable projection / disconnect closure
+  ↓
+P6D   integrated verification
+```
+
+Packages execute sequentially to avoid uncontrolled Shared/Lifecycle overlap.
+After P6A0 passes independent review, the next implementation authorization may
+cover P6A only. P6B, P6C, and P6D are not implicitly authorized.
+
 #### Authorized scope
 
 - Legacy POST execute-task mapping to Create Run then Start Run.
 - Legacy status/stage/thinking/done/error projection from persisted v2 Events.
-- Task-domain recovery using the P2-approved recovery_required or Recovery Record representation.
+- Task-domain recovery using the P2-implemented `runs.recovery_required`; no Recovery Record is created.
 - Browser disconnect subscription-only behavior.
 - Outbox at-least-once retry, durable identity deduplication, dead letters, and failure fixtures.
 
@@ -639,7 +678,7 @@ Keep Legacy behavior usable, map it to the canonical Task-domain path, and verif
 
 - Legacy route and bridge categories under apps/server/src/routes/tasks.ts and TaskRunService.
 - Task-domain recovery category and startup recovery integration.
-- OutboxPublisher, retry, dead-letter, and failure categories.
+- OutboxPublisher, RuntimeEventDeliverySink, retry, dead-letter, and failure categories.
 - Legacy mapping, browser disconnect, server restart, duplicate publish, gap, and uncertain-state tests.
 
 #### Required evidence
@@ -647,14 +686,14 @@ Keep Legacy behavior usable, map it to the canonical Task-domain path, and verif
 - Legacy endpoint remains callable and its response/frames correspond to canonical Run/Operation/Event evidence.
 - No double execution path exists.
 - Browser refresh/disconnect leaves Run durable.
-- Restart resumes or marks explicit uncertainty using an existing schema representation.
+- Restart classifies Run, Stage, Start Operation, Approval where applicable, and Runtime Event evidence together; it restores only frozen cases or records explicit uncertainty in `runs.recovery_required`.
 - Outbox retry is at-least-once and duplicate-safe; dead letters retain failure evidence.
 - Legacy JSON, Legacy API, and Web default remain unchanged.
 
 #### RED/GREEN tests
 
 - RED: current Legacy request-bound execution aborts on close and emits direct frames rather than durable v2 projections; current Task-domain restart/outbox chain is incomplete.
-- GREEN: mapping, terminal reconciliation, disconnect, restart, retry, duplicate publish, dead letter, gap, and uncertainty tests pass.
+- GREEN: mapping, terminal reconciliation, disconnect, restart, retry, duplicate publish, dead letter, expired-lease reclaim, Start Operation matrix, gap, and uncertainty tests pass using injected clocks/barriers and no sleep-based correctness.
 
 #### Related regression
 
@@ -665,6 +704,7 @@ Keep Legacy behavior usable, map it to the canonical Task-domain path, and verif
 - P4 route compatibility and P5 durable stream/replay are accepted.
 - P2 recovery representation and Outbox failure contract are available.
 - Independent review confirms Legacy remains usable and no second execution model exists.
+- The P6A0 docs package containing M3-TD-33 through M3-TD-36 is independently accepted before any P6 production branch begins.
 
 #### Stop conditions
 
@@ -688,6 +728,231 @@ Review compatibility mapping, recovery uncertainty, Outbox retry/idempotency, da
 #### L3 Gate requirements
 
 Run fresh/legacy local DB fixtures, controlled process restart, failure injection, targeted suites, typecheck/build, and related regression. No production restore or data access.
+
+#### M3-TD-33 — P6 Task-domain Outbox delivery sink
+
+The frozen durable live-distribution path is:
+
+```text
+OutboxPublisher
+→ RuntimeEventDeliverySink
+→ RuntimeEventNotifier
+```
+
+`RuntimeEventDeliverySink` is a P6 adapter boundary, not an Event Store,
+Conversation EventBus, HTTP/SSE client, or external broker. Its input is the
+exact durable Outbox identity plus persisted Runtime Event identity. It emits
+only `{ runId, sequence, eventId }` after validating persisted evidence; it
+does not trust arbitrary caller payload.
+
+P5 direct post-commit notifier publication remains the low-latency path. P6
+publisher publication is the durable at-least-once wake-up path. Duplicate
+hints are allowed and harmless because `RunStreamService` deduplicates by
+`runId + sequence`. P6 does not change Event Store truth or make request/SSE
+paths read Outbox rows.
+
+`outbox.status = published` means only that the sink synchronously accepted the
+exact durable message for live-distribution dispatch. It does not assert
+browser/Legacy receipt, observation by future subscribers, or Run completion.
+Client delivery remains Event Store + replay + Last-Event-ID. Subscriber
+handler isolation remains unchanged; browser disconnect cannot trigger Outbox
+retry or a Run transition.
+
+At-least-once identities are:
+
+```text
+delivery: outbox.id
+domain Event: event.id
+ordering / stream dedup: runId + sequence
+```
+
+Sink success followed by crash before `markPublished` redelivers the same
+Outbox/Event identities and creates no second Event or Run transition.
+
+#### M3-TD-34 — P6 Task-domain restart and uncertainty contract
+
+`runs.recovery_required` is the only M3 recovery representation. P6B checks
+Run, Run Stage, `run.start` Operation, Approval where applicable, and Runtime
+Event evidence together; Run status alone is insufficient.
+
+| Persisted evidence | Frozen recovery direction |
+| --- | --- |
+| `completed`, `failed`, or `cancelled` Run | Terminal immutable; do not reopen, retry, or execute. |
+| queued Run with no non-terminal Start Operation | Keep queued; do not execute, complete, or fail. |
+| queued Run with exactly one queued Start Operation | `queue-restore`; future worker may reclaim authorization, but P6B does not invoke Provider/AgentRunner. |
+| starting Run with running Start Operation | Reuse M3-TD-29 C1b atomic startup failure closure; do not leave starting or infer success. |
+| running Run with completed Start Operation and unprovable external outcome | Keep running, set `recovery_required = 1`, and do not complete/fail/resume/restart provider. |
+| waiting Run with exactly one coherent unresolved Approval | `approval-restore`; keep waiting and never auto-approve/reject. |
+| waiting Run with incomplete/contradictory Approval evidence | Set `recovery_required = 1`; fail closed. |
+| coherent paused state | Keep paused; do not auto-resume. |
+| paused cross-aggregate inconsistency | Set `recovery_required = 1`. |
+| multiple active Starts, incompatible Start status, or foreign binding | Fail closed; never synthesize completion or create a second Start. |
+
+P6B implements the already specified `run.recovery_attempted`,
+`run.recovered`, and `run.recovery_failed` events in the Shared Registry.
+Queue/approval restore records attempted then recovered with the corresponding
+mode. Uncertain active execution records attempted, atomically sets
+`recovery_required = 1`, and records recovery failed. State/flag/Event/Outbox
+remain transactionally consistent. Process/session/worktree evidence is never
+fabricated.
+
+#### M3-TD-35 — P6 Outbox reclaim, retry, and dead letter
+
+Expired claim recovery is the fenced, no-schema transition:
+
+```text
+publishing + lease_expires_at <= now
+→ retry
+```
+
+It sets `available_at = now`, a stable lease-expired `last_error`, clears lease
+owner/expiry, and increments version while preserving Outbox/Event/topic/
+aggregate/payload/creation identity and `attempts`. A live lease cannot be
+reclaimed.
+
+Completed delivery failures use:
+
+```text
+MAX_COMPLETED_FAILURE_ATTEMPTS = 5
+delay_ms = min(1000 * 2^(attempts - 1), 300000)
+random jitter = none
+clock = injectable
+```
+
+Crash after claim is an unknown delivery outcome. Expired-lease redelivery may
+exceed the nominal completed-failure budget rather than guessing successful
+delivery. Correctness tests use no sleeps.
+
+Outbox `publishing -> dead_letter` and the matching DeadLetter insert execute
+in one caller-owned outer transaction on the same database handle: both commit
+or neither. An Outbox dead-letter state without its DeadLetter row is forbidden.
+
+Startup order is:
+
+```text
+ownership
+→ open/migrate store
+→ synchronous Task-domain recovery
+→ construct and validate OutboxPublisher
+→ compose routes
+→ HTTP listen succeeds
+→ reclaim expired Outbox leases
+→ start OutboxPublisher loop
+```
+
+Background delivery starts only after listen success. Ordinary sink delivery
+failure follows retry/dead-letter policy and never becomes a Run failure.
+
+#### M3-TD-36 — Legacy single execution authority
+
+One Legacy request maps to one canonical Run, one `run.start` Operation, and
+one execution authority. Future `LegacyCanonicalExecutionService` is the sole
+AgentRunner owner for `legacy_pipeline`. It adapts the existing AgentRunner and
+does not introduce M4 ProcessManager/ProviderAdapter or a second executor.
+
+`tasks.ts` retains Legacy validation, canonical command initiation, persisted-
+event projection subscription, heartbeat, and transport cleanup. It no longer
+constructs AgentRunner, owns execution AbortController, directly drives Stages,
+or directly mutates canonical terminal Run state. Canonical Run, Start
+Operation, Stage lifecycle, Runtime Events, and Outbox are execution truth.
+
+The AgentRunner text callback first persists `stream.text_delta`. Pure
+`LegacyRuntimeEventAdapter` then projects persisted `RuntimeEventRecord` values
+to the existing `status`, `stage`, `thinking`, `done`, and `error` frame shapes.
+It owns no state machine and cannot send thinking before persistence.
+
+Legacy disconnect performs only:
+
+```text
+unsubscribe
+→ stop heartbeat
+→ close Legacy transport
+```
+
+It does not abort AgentRunner, cancel Run/Operation, or kill a process. Only an
+explicit Cancel command may change execution state. P6C reuses the accepted P5
+RunStreamService handoff and does not switch Web or retire Legacy JSON/API.
+
+#### Candidate P6A scope
+
+```text
+apps/server/src/store/OutboxRepository.ts
+apps/server/src/services/RuntimeEventDeliverySink.ts       [new]
+apps/server/src/services/OutboxPublisher.ts                [new]
+apps/server/src/store/SqliteStore.ts
+apps/server/src/index.ts
+
+OutboxRepository tests
+RuntimeEventDeliverySink tests
+OutboxPublisher tests
+P6A crash/reclaim fixture
+```
+
+`RuntimeEventNotifier.ts` is zero-diff unless a future RED test proves its
+accepted public seam is insufficient. P6A creates no migration.
+
+#### Candidate P6B scope
+
+```text
+apps/server/src/store/RunRepository.ts
+apps/server/src/services/LifecycleTransactionService.ts
+apps/server/src/services/TaskRunRecoveryService.ts          [new]
+apps/server/src/services/OperationService.ts                 [only if required]
+apps/server/src/taskRecovery.ts
+apps/server/src/index.ts
+
+packages/shared/src/types/m3-runtime.ts
+packages/shared/src/types/m3-runtime-registry.ts
+packages/shared/src/types/m3-runtime-fixtures.ts
+packages/shared/m3-runtime.test.ts
+
+RunRepository recovery tests
+TaskRunRecoveryService tests
+taskRecovery tests
+```
+
+Conversation aggregate `runRecovery.ts` is forbidden.
+
+#### Candidate P6C scope
+
+```text
+apps/server/src/routes/tasks.ts
+apps/server/src/services/TaskRunService.ts
+apps/server/src/services/LifecycleTransactionService.ts
+apps/server/src/services/LegacyCanonicalExecutionService.ts   [new]
+apps/server/src/services/LegacyRuntimeEventAdapter.ts          [new]
+apps/server/src/index.ts
+
+packages/shared/src/types/m3-runtime.ts
+packages/shared/src/types/m3-runtime-registry.ts
+packages/shared/src/types/m3-runtime-fixtures.ts
+packages/shared/m3-runtime.test.ts
+
+taskPipelineBridge tests
+LegacyCanonicalExecutionService tests
+LegacyRuntimeEventAdapter tests
+Legacy disconnect tests
+```
+
+P6C includes no M4 ProcessManager/ProviderAdapter and no Web switch.
+
+#### Candidate P6D scope
+
+```text
+apps/server/src/services/m3-p6-integrated-verification.test.ts [new]
+docs/implementation/milestones/M3-p6-integrated-closeout.md    [new]
+docs/implementation/milestones/M3-lifecycle-event-api-implementation-plan.md
+```
+
+P6D contains no production code unless a separately reviewed remediation is
+authorized.
+
+#### P6 production entry after P6A0
+
+P6 production entry remains NO-GO until independent remote review verifies the
+P6A0 docs package. A passing P6A0 review may authorize P6A only. It does not
+authorize P6B, P6C, P6D, Migration 014, Production Cutover, Legacy retirement,
+or a Web default switch.
 
 ### P7 — Consolidated Formal Gate, Draft PR, Ordinary Merge and Closeout
 
@@ -776,7 +1041,7 @@ The future planning package must cover:
 5. Durable operations with operations.run_id or equivalent aggregate reference, operations.correlation_id, and immutable unique correlation_id.
 6. run_stages rebuild/extension from pending-only to M3 lifecycle, including failure_code/failure_message and started_at/completed_at while preserving the existing version column for optimistic version-checked updates; no duplicate version column.
 7. idempotency_records.operation values run.start, run.retry, and finally approved M3 commands.
-8. Recovery representation: runs.recovery_required or a separate Recovery Record, chosen before P6.
+8. Recovery representation: `runs.recovery_required`, selected and implemented before P6; no separate Recovery Record.
 9. Task-domain sequence allocation through runs.next_event_sequence.
 10. Event append-only and Outbox immutable/concurrency constraints, with immutable identity/payload fields and controlled delivery-field updates.
 11. Operation lifecycle, result, ApiProblem, aggregate reference, workspaceId, aggregateType=run, aggregateId/runId, timestamps, and version fields.
@@ -809,11 +1074,21 @@ Current status:
 - P2B: COMPLETE.
 - P2C-0: COMPLETE.
 - P2C-1: COMPLETE.
-- P2C-2: LOCAL FORMAL GATE PASSED.
-- P2 overall: LOCAL FORMAL GATE PASSED — PENDING INDEPENDENT REVIEW.
+- P2C-2: COMPLETE / ACCEPTED.
+- P2 overall: COMPLETE / ACCEPTED.
+- P3: COMPLETE / MERGED.
+- P4: COMPLETE / ACCEPTED.
+- P5: COMPLETE / ACCEPTED through P5C at
+  `a1cbb2868f9da215fab058b4176d70a3b382831d`.
+- P6-0 independent review: PASS WITH CONTRACT RECLASSIFICATION.
+- P6A0 technical contract closure: DOCUMENTED; awaiting independent remote
+  review before any P6 production authorization.
+- New P6 user Owner Decision: NONE.
+- P6 production entry: NO-GO.
+- P6A/P6B/P6C/P6D: NOT ENTERED.
+- Migration 014: NOT CREATED / NOT REQUIRED.
 - Remote Checks: UNAVAILABLE — NOT PASS.
-- P3: NOT AUTHORIZED.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
 
-This document does not claim a merge, Remote CI success, P3 authorization,
-Production readiness, or Production Cutover.
+This P6A0 update does not claim a P6 production implementation, P6A entry,
+merge, Remote CI success, Production readiness, or Production Cutover.
