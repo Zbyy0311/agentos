@@ -74,6 +74,8 @@ import { LifecycleTransactionService } from '../services/LifecycleTransactionSer
 import { OperationService } from '../services/OperationService.js';
 import { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
 import { RunStreamService } from '../services/RunStreamService.js';
+import { RuntimeEventDeliverySink } from '../services/RuntimeEventDeliverySink.js';
+import { OutboxPublisher, type OutboxPublisherRuntimeOptions } from '../services/OutboxPublisher.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -532,6 +534,20 @@ export class SqliteStore implements Store {
 
   deadLetterRepository(): DeadLetterRepository {
     return this.deadLetterRepo;
+  }
+
+  createOutboxPublisher(options: OutboxPublisherRuntimeOptions): OutboxPublisher {
+    const deliverySink = new RuntimeEventDeliverySink({
+      outboxRepository: this.outboxRepo,
+      runtimeEventNotifier: this.runtimeEventNotifier,
+    });
+    return new OutboxPublisher({
+      ...options,
+      outboxRepository: this.outboxRepo,
+      deadLetterRepository: this.deadLetterRepo,
+      deliverySink,
+      runInTransaction: fn => inTransaction(this.database as any, fn),
+    });
   }
 
   lifecycleTransactionService(): LifecycleTransactionService {

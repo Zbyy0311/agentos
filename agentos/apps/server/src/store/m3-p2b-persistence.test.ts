@@ -16,7 +16,13 @@ import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { inTransaction } from './Transaction.js';
 import { RuntimeEventRepository } from './RuntimeEventRepository.js';
 import { RunSequenceAllocator } from './RunSequenceAllocator.js';
-import { OutboxRepository, RUNTIME_EVENT_OUTBOX_TOPIC } from './OutboxRepository.js';
+import {
+  OutboxRepository,
+  RUNTIME_EVENT_OUTBOX_TOPIC,
+  parseOutboxFailureState,
+  serializeOutboxFailureState,
+  type OutboxFailureStateV1,
+} from './OutboxRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import { isValidEntityId } from './Identity.js';
@@ -429,6 +435,217 @@ test('two file connections serialize committed sequence allocation and reject du
     const beforeSecondClaim = { ...(second.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_claim') as Record<string, unknown>) };
     assert.throws(() => secondOutbox.claimWithinTransaction({ id: 'outbox_claim', expectedVersion: 1, leaseOwner: 'worker-2', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
     assert.deepEqual({ ...(second.prepare('SELECT status, attempts, lease_owner, lease_expires_at, version FROM outbox_messages WHERE id = ?').get('outbox_claim') as Record<string, unknown>) }, beforeSecondClaim);
+  } finally {
+    try { second.close(); } finally { ctx.close(); }
+  }
+});
+
+test('P6A failure-state parser and serializer enforce the exact canonical V1 contract', () => {
+  const state: OutboxFailureStateV1 = {
+    schemaVersion: 1,
+    completedFailures: 2,
+    firstFailedAt: NOW,
+    lastOutcome: 'classified_failure',
+    lastCode: 'DELIVERY_TEMPORARY',
+    lastMessage: 'Runtime event delivery failed',
+    lastObservedAt: '2026-08-03T00:01:00.000Z',
+  };
+  const serialized = serializeOutboxFailureState(state);
+  assert.equal(serialized, canonicalizeJson(state));
+  assert.deepEqual(parseOutboxFailureState(serialized), state);
+  assert.equal(parseOutboxFailureState(undefined), undefined);
+
+  const invalid: unknown[] = [
+    null,
+    { ...state, schemaVersion: 2 },
+    { ...state, completedFailures: -1 },
+    { ...state, completedFailures: Number.MAX_SAFE_INTEGER + 1 },
+    { ...state, completedFailures: 0 },
+    {
+      schemaVersion: 1,
+      completedFailures: 2,
+      lastOutcome: 'classified_failure',
+      lastCode: 'DELIVERY_TEMPORARY',
+      lastMessage: 'Runtime event delivery failed',
+      lastObservedAt: NOW,
+    },
+    {
+      schemaVersion: 1,
+      completedFailures: 0,
+      lastOutcome: 'classified_failure',
+      lastCode: 'DELIVERY_TEMPORARY',
+      lastMessage: 'Runtime event delivery failed',
+      lastObservedAt: NOW,
+    },
+    { ...state, lastOutcome: 'lease_expired' },
+    { ...state, firstFailedAt: '2026-08-03T08:00:00.000+08:00' },
+    { ...state, lastOutcome: 'unknown' },
+    { ...state, lastCode: '' },
+    { ...state, lastCode: 'x'.repeat(129) },
+    { ...state, lastMessage: 'x'.repeat(513) },
+    { ...state, lastMessage: 'unsafe\nmessage' },
+    { ...state, lastObservedAt: 'not-a-time' },
+    { ...state, extra: true },
+  ];
+  for (const value of invalid) {
+    assert.throws(() => parseOutboxFailureState(canonicalizeJson(value)), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_FAILURE_STATE_INVALID');
+  }
+  assert.throws(() => parseOutboxFailureState('{not-json'), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_FAILURE_STATE_INVALID');
+  assert.throws(() => parseOutboxFailureState(JSON.stringify(state, null, 2)), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_FAILURE_STATE_INVALID');
+  assert.deepEqual(parseOutboxFailureState(serializeOutboxFailureState({
+    schemaVersion: 1,
+    completedFailures: 0,
+    lastOutcome: 'lease_expired',
+    lastCode: 'OUTBOX_LEASE_EXPIRED',
+    lastMessage: 'Outbox delivery lease expired',
+    lastObservedAt: NOW,
+  })), {
+    schemaVersion: 1,
+    completedFailures: 0,
+    lastOutcome: 'lease_expired',
+    lastCode: 'OUTBOX_LEASE_EXPIRED',
+    lastMessage: 'Outbox delivery lease expired',
+    lastObservedAt: NOW,
+  });
+});
+
+test('P6A A01/A03-A08 expired reclaim preserves evidence, increments version, clears lease, and is due now', () => {
+  const db = freshDb();
+  try {
+    const repository = outboxRepository(db);
+    const events = runtimeEventRepository(db);
+    const event = events.appendWithinTransaction(draft('run_p2b', eventId(70)));
+    repository.insertWithinTransaction({ id: 'outbox_expired', eventId: event.id, availableAt: NOW, createdAt: NOW });
+    const claimed = repository.claimWithinTransaction({
+      id: 'outbox_expired', expectedVersion: 1, leaseOwner: 'worker-a', now: NOW,
+      leaseExpiresAt: '2026-08-03T00:01:00.000Z',
+    });
+    const priorState: OutboxFailureStateV1 = {
+      schemaVersion: 1,
+      completedFailures: 2,
+      firstFailedAt: '2026-08-02T23:58:00.000Z',
+      lastOutcome: 'classified_failure',
+      lastCode: 'DELIVERY_TEMPORARY',
+      lastMessage: 'Runtime event delivery failed',
+      lastObservedAt: NOW,
+    };
+    db.prepare('UPDATE outbox_messages SET last_error = ? WHERE id = ?').run(serializeOutboxFailureState(priorState), claimed.id);
+
+    assert.deepEqual(repository.listExpiredPublishing('2026-08-03T00:00:59.999Z'), []);
+    assert.deepEqual(repository.listExpiredPublishing('2026-08-03T00:01:00.000Z').map(item => item.id), ['outbox_expired']);
+    const reclaimed = repository.reclaimExpiredWithinTransaction({
+      id: claimed.id,
+      expectedVersion: claimed.version,
+      now: '2026-08-03T00:01:00.000Z',
+    });
+    assert.equal(reclaimed.status, 'retry');
+    assert.equal(reclaimed.availableAt, '2026-08-03T00:01:00.000Z');
+    assert.equal(reclaimed.attempts, 1);
+    assert.equal(reclaimed.version, claimed.version + 1);
+    assert.equal(reclaimed.leaseOwner, undefined);
+    assert.equal(reclaimed.leaseExpiresAt, undefined);
+    assert.equal(reclaimed.publishedAt, undefined);
+    assert.equal(reclaimed.id, claimed.id);
+    assert.equal(reclaimed.eventId, claimed.eventId);
+    assert.equal(reclaimed.aggregateId, claimed.aggregateId);
+    assert.equal(reclaimed.createdAt, claimed.createdAt);
+    assert.deepEqual(parseOutboxFailureState(reclaimed.lastError), {
+      ...priorState,
+      lastOutcome: 'lease_expired',
+      lastCode: 'OUTBOX_LEASE_EXPIRED',
+      lastMessage: 'Outbox delivery lease expired',
+      lastObservedAt: '2026-08-03T00:01:00.000Z',
+    });
+  } finally {
+    db.close();
+  }
+});
+
+test('P6A A02/A09/A10 reclaim refuses live leases, stale versions, and malformed evidence without mutation', () => {
+  const db = freshDb();
+  try {
+    const repository = outboxRepository(db);
+    const events = runtimeEventRepository(db);
+    const event = events.appendWithinTransaction(draft('run_p2b', eventId(71)));
+    repository.insertWithinTransaction({ id: 'outbox_reclaim_fence', eventId: event.id, availableAt: NOW, createdAt: NOW });
+    const claimed = repository.claimWithinTransaction({
+      id: 'outbox_reclaim_fence', expectedVersion: 1, leaseOwner: 'worker-a', now: NOW,
+      leaseExpiresAt: '2026-08-03T00:01:00.000Z',
+    });
+    const snapshot = (): Record<string, unknown> => ({ ...(db.prepare('SELECT * FROM outbox_messages WHERE id = ?').get(claimed.id) as Record<string, unknown>) });
+    const beforeLive = snapshot();
+    assert.throws(() => repository.reclaimExpiredWithinTransaction({ id: claimed.id, expectedVersion: claimed.version, now: '2026-08-03T00:00:59.999Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_LEASE_CONFLICT');
+    assert.deepEqual(snapshot(), beforeLive);
+    assert.throws(() => repository.reclaimExpiredWithinTransaction({ id: claimed.id, expectedVersion: 1, now: '2026-08-03T00:01:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
+    assert.deepEqual(snapshot(), beforeLive);
+
+    db.prepare('UPDATE outbox_messages SET last_error = ? WHERE id = ?').run('{malformed', claimed.id);
+    const beforeMalformed = snapshot();
+    assert.throws(() => repository.reclaimExpiredWithinTransaction({ id: claimed.id, expectedVersion: claimed.version, now: '2026-08-03T00:01:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_FAILURE_STATE_INVALID');
+    assert.deepEqual(snapshot(), beforeMalformed);
+  } finally {
+    db.close();
+  }
+});
+
+test('P6A F05 five claim crashes reclaim without exhausting the classified-failure budget', () => {
+  const db = freshDb();
+  try {
+    const repository = outboxRepository(db);
+    const event = runtimeEventRepository(db).appendWithinTransaction(draft('run_p2b', eventId(73)));
+    repository.insertWithinTransaction({ id: 'outbox_five_crashes', eventId: event.id, availableAt: NOW, createdAt: NOW });
+    let row = repository.findById('outbox_five_crashes')!;
+    let now = NOW;
+    for (let crash = 1; crash <= 5; crash += 1) {
+      const leaseExpiresAt = new Date(Date.parse(now) + 1_000).toISOString();
+      row = repository.claimWithinTransaction({
+        id: row.id,
+        expectedVersion: row.version,
+        leaseOwner: `crashed-worker-${crash}`,
+        now,
+        leaseExpiresAt,
+      });
+      row = repository.reclaimExpiredWithinTransaction({
+        id: row.id,
+        expectedVersion: row.version,
+        now: leaseExpiresAt,
+      });
+      now = leaseExpiresAt;
+    }
+    assert.equal(row.status, 'retry');
+    assert.equal(row.attempts, 5);
+    assert.deepEqual(parseOutboxFailureState(row.lastError), {
+      schemaVersion: 1,
+      completedFailures: 0,
+      lastOutcome: 'lease_expired',
+      lastCode: 'OUTBOX_LEASE_EXPIRED',
+      lastMessage: 'Outbox delivery lease expired',
+      lastObservedAt: now,
+    });
+    assert.equal(new DeadLetterRepository(db).listBySource('outbox', row.id).length, 0);
+  } finally {
+    db.close();
+  }
+});
+
+test('P6A two-connection reclaim fencing rejects stale owner completion and permits the new owner', () => {
+  const ctx = fileDb();
+  const second = new DatabaseSync(ctx.path);
+  second.exec('PRAGMA foreign_keys = ON');
+  try {
+    const first = outboxRepository(ctx.db);
+    const secondRepository = outboxRepository(second);
+    const event = runtimeEventRepository(ctx.db).appendWithinTransaction(draft('run_p2b', eventId(72)));
+    first.insertWithinTransaction({ id: 'outbox_reclaim_race', eventId: event.id, availableAt: NOW, createdAt: NOW });
+    const claimA = first.claimWithinTransaction({ id: 'outbox_reclaim_race', expectedVersion: 1, leaseOwner: 'worker-a', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' });
+    assert.throws(() => secondRepository.claimWithinTransaction({ id: claimA.id, expectedVersion: 1, leaseOwner: 'worker-b', now: NOW, leaseExpiresAt: '2026-08-03T00:01:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
+    const reclaimed = secondRepository.reclaimExpiredWithinTransaction({ id: claimA.id, expectedVersion: claimA.version, now: '2026-08-03T00:01:00.000Z' });
+    assert.equal(reclaimed.status, 'retry');
+    assert.throws(() => first.markPublishedWithinTransaction({ id: claimA.id, expectedVersion: claimA.version, expectedLeaseOwner: 'worker-a', now: '2026-08-03T00:01:00.000Z' }), (error: unknown) => (error as { code?: string }).code === 'OUTBOX_VERSION_CONFLICT');
+    const claimB = secondRepository.claimWithinTransaction({ id: claimA.id, expectedVersion: reclaimed.version, leaseOwner: 'worker-b', now: '2026-08-03T00:01:00.000Z', leaseExpiresAt: '2026-08-03T00:02:00.000Z' });
+    assert.equal(claimB.leaseOwner, 'worker-b');
+    const published = secondRepository.markPublishedWithinTransaction({ id: claimB.id, expectedVersion: claimB.version, expectedLeaseOwner: 'worker-b', now: '2026-08-03T00:01:30.000Z' });
+    assert.equal(published.status, 'published');
   } finally {
     try { second.close(); } finally { ctx.close(); }
   }

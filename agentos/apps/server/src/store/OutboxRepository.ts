@@ -6,6 +6,18 @@ import { RuntimeEventRepository } from './RuntimeEventRepository.js';
 import type { TransactionDatabase } from './Transaction.js';
 
 export const RUNTIME_EVENT_OUTBOX_TOPIC = 'runtime-events';
+const FAILURE_CODE_MAX_LENGTH = 128;
+const FAILURE_MESSAGE_MAX_LENGTH = 512;
+
+export interface OutboxFailureStateV1 {
+  readonly schemaVersion: 1;
+  readonly completedFailures: number;
+  readonly firstFailedAt?: string;
+  readonly lastOutcome: 'classified_failure' | 'lease_expired';
+  readonly lastCode: string;
+  readonly lastMessage: string;
+  readonly lastObservedAt: string;
+}
 
 export type OutboxStatus = 'pending' | 'publishing' | 'published' | 'retry' | 'dead_letter';
 
@@ -49,6 +61,12 @@ export interface FencedOutboxMutationInput {
   readonly now: string;
 }
 
+export interface ReclaimExpiredOutboxInput {
+  readonly id: string;
+  readonly expectedVersion: number;
+  readonly now: string;
+}
+
 export class OutboxRepositoryError extends Error {
   constructor(
     readonly code:
@@ -62,11 +80,75 @@ export class OutboxRepositoryError extends Error {
       | 'OUTBOX_NOT_AVAILABLE'
       | 'OUTBOX_LEASE_CONFLICT'
       | 'OUTBOX_LEASE_EXPIRED'
+      | 'OUTBOX_FAILURE_STATE_INVALID'
       | 'OUTBOX_INVALID_TRANSITION',
     message: string,
   ) {
     super(`${code}: ${message}`);
     this.name = 'OutboxRepositoryError';
+  }
+}
+
+function failureStateError(): OutboxRepositoryError {
+  return new OutboxRepositoryError('OUTBOX_FAILURE_STATE_INVALID', 'Persisted Outbox failure state is invalid');
+}
+
+function isSanitizedFailureMessage(value: unknown): value is string {
+  return typeof value === 'string'
+    && value.length <= FAILURE_MESSAGE_MAX_LENGTH
+    && !/[\u0000-\u001f\u007f]/u.test(value);
+}
+
+function validateFailureState(value: unknown): asserts value is OutboxFailureStateV1 {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) throw failureStateError();
+  const state = value as Record<string, unknown>;
+  const expectedKeys = state.completedFailures === 0
+    ? ['completedFailures', 'lastCode', 'lastMessage', 'lastObservedAt', 'lastOutcome', 'schemaVersion']
+    : ['completedFailures', 'firstFailedAt', 'lastCode', 'lastMessage', 'lastObservedAt', 'lastOutcome', 'schemaVersion'];
+  if (Object.keys(state).sort().join('\n') !== expectedKeys.sort().join('\n')) throw failureStateError();
+  if (state.schemaVersion !== 1) throw failureStateError();
+  if (!Number.isSafeInteger(state.completedFailures) || (state.completedFailures as number) < 0) throw failureStateError();
+  if (state.completedFailures === 0) {
+    if ('firstFailedAt' in state) throw failureStateError();
+  } else if (typeof state.firstFailedAt !== 'string' || !isCanonicalUtcTimestamp(state.firstFailedAt)) {
+    throw failureStateError();
+  }
+  if (state.lastOutcome !== 'classified_failure' && state.lastOutcome !== 'lease_expired') throw failureStateError();
+  if (
+    typeof state.lastCode !== 'string'
+    || state.lastCode.length < 1
+    || state.lastCode.length > FAILURE_CODE_MAX_LENGTH
+    || !/^[A-Z][A-Z0-9_]*$/u.test(state.lastCode)
+  ) throw failureStateError();
+  if (!isSanitizedFailureMessage(state.lastMessage)) throw failureStateError();
+  if (state.lastOutcome === 'classified_failure' && state.completedFailures === 0) throw failureStateError();
+  if (state.lastOutcome === 'lease_expired' && (
+    state.lastCode !== 'OUTBOX_LEASE_EXPIRED'
+    || state.lastMessage !== 'Outbox delivery lease expired'
+  )) throw failureStateError();
+  if (typeof state.lastObservedAt !== 'string' || !isCanonicalUtcTimestamp(state.lastObservedAt)) throw failureStateError();
+}
+
+export function parseOutboxFailureState(lastError: string | undefined): OutboxFailureStateV1 | undefined {
+  if (lastError === undefined) return undefined;
+  try {
+    const parsed = JSON.parse(lastError) as unknown;
+    validateFailureState(parsed);
+    if (canonicalizeJson(parsed) !== lastError) throw failureStateError();
+    return parsed;
+  } catch (error) {
+    if (error instanceof OutboxRepositoryError && error.code === 'OUTBOX_FAILURE_STATE_INVALID') throw error;
+    throw failureStateError();
+  }
+}
+
+export function serializeOutboxFailureState(state: OutboxFailureStateV1): string {
+  try {
+    validateFailureState(state);
+    return canonicalizeJson(state);
+  } catch (error) {
+    if (error instanceof OutboxRepositoryError && error.code === 'OUTBOX_FAILURE_STATE_INVALID') throw error;
+    throw failureStateError();
   }
 }
 
@@ -171,6 +253,20 @@ export class OutboxRepository {
     return rows.map(row => this.mapRow(row)!);
   }
 
+  listExpiredPublishing(now: string = this.now(), limit = 100): OutboxMessage[] {
+    this.validateTimestamp(now, 'now');
+    if (!Number.isSafeInteger(limit) || limit < 1) {
+      throw new OutboxRepositoryError('OUTBOX_VALIDATION_FAILED', 'limit must be a positive safe integer');
+    }
+    const rows = this.db.prepare(`
+      SELECT * FROM outbox_messages
+      WHERE status = 'publishing' AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?
+      ORDER BY lease_expires_at ASC, created_at ASC, id ASC
+      LIMIT ?
+    `).all(now, limit) as OutboxRow[];
+    return rows.map(row => this.mapRow(row)!);
+  }
+
   claimWithinTransaction(input: ClaimOutboxMessageInput): OutboxMessage {
     this.validateVersion(input.expectedVersion);
     this.validateTimestamp(input.now, 'now');
@@ -191,6 +287,48 @@ export class OutboxRepository {
     if (result.changes !== 1) {
       throw this.transitionError(input.id, input.expectedVersion, input.now, undefined, 'claim');
     }
+    return this.findById(input.id)!;
+  }
+
+  reclaimExpiredWithinTransaction(input: ReclaimExpiredOutboxInput): OutboxMessage {
+    this.validateVersion(input.expectedVersion);
+    this.validateTimestamp(input.now, 'now');
+    if (!input.id.trim()) throw new OutboxRepositoryError('OUTBOX_VALIDATION_FAILED', 'reclaim id is required');
+
+    const row = this.db.prepare(`
+      SELECT status, version, lease_expires_at, last_error
+      FROM outbox_messages WHERE id = ?
+    `).get(input.id) as Pick<OutboxRow, 'status' | 'version' | 'lease_expires_at' | 'last_error'> | undefined;
+    if (!row) throw new OutboxRepositoryError('OUTBOX_NOT_FOUND', 'Outbox message was not found');
+    if (row.version !== input.expectedVersion) {
+      throw new OutboxRepositoryError('OUTBOX_VERSION_CONFLICT', 'Outbox message version does not match');
+    }
+    if (row.status !== 'publishing') {
+      throw new OutboxRepositoryError('OUTBOX_INVALID_TRANSITION', 'Outbox message cannot reclaim from its current state');
+    }
+    if (!row.lease_expires_at || Date.parse(row.lease_expires_at) > Date.parse(input.now)) {
+      throw new OutboxRepositoryError('OUTBOX_LEASE_CONFLICT', 'Outbox message does not have an expired lease');
+    }
+
+    const previous = parseOutboxFailureState(optionalValue(row.last_error));
+    const nextState: OutboxFailureStateV1 = {
+      schemaVersion: 1,
+      completedFailures: previous?.completedFailures ?? 0,
+      ...(previous?.firstFailedAt === undefined ? {} : { firstFailedAt: previous.firstFailedAt }),
+      lastOutcome: 'lease_expired',
+      lastCode: 'OUTBOX_LEASE_EXPIRED',
+      lastMessage: 'Outbox delivery lease expired',
+      lastObservedAt: input.now,
+    };
+    const lastError = serializeOutboxFailureState(nextState);
+    const result = this.db.prepare(`
+      UPDATE outbox_messages
+      SET status = 'retry', available_at = ?, published_at = NULL, last_error = ?,
+          lease_owner = NULL, lease_expires_at = NULL, version = version + 1
+      WHERE id = ? AND status = 'publishing' AND version = ?
+        AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?
+    `).run(input.now, lastError, input.id, input.expectedVersion, input.now) as { changes: number };
+    if (result.changes !== 1) throw this.reclaimTransitionError(input);
     return this.findById(input.id)!;
   }
 
@@ -357,5 +495,18 @@ export class OutboxRepository {
       return new OutboxRepositoryError('OUTBOX_LEASE_EXPIRED', 'Outbox lease has expired');
     }
     return new OutboxRepositoryError('OUTBOX_INVALID_TRANSITION', 'Outbox message cannot ' + action + ' from its current state');
+  }
+
+  private reclaimTransitionError(input: ReclaimExpiredOutboxInput): OutboxRepositoryError {
+    const row = this.db.prepare(`
+      SELECT status, version, lease_expires_at FROM outbox_messages WHERE id = ?
+    `).get(input.id) as Pick<OutboxRow, 'status' | 'version' | 'lease_expires_at'> | undefined;
+    if (!row) return new OutboxRepositoryError('OUTBOX_NOT_FOUND', 'Outbox message was not found');
+    if (row.version !== input.expectedVersion) return new OutboxRepositoryError('OUTBOX_VERSION_CONFLICT', 'Outbox message version does not match');
+    if (row.status !== 'publishing') return new OutboxRepositoryError('OUTBOX_INVALID_TRANSITION', 'Outbox message cannot reclaim from its current state');
+    if (!row.lease_expires_at || Date.parse(row.lease_expires_at) > Date.parse(input.now)) {
+      return new OutboxRepositoryError('OUTBOX_LEASE_CONFLICT', 'Outbox message does not have an expired lease');
+    }
+    return new OutboxRepositoryError('OUTBOX_INVALID_TRANSITION', 'Outbox message cannot reclaim from its current state');
   }
 }

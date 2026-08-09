@@ -117,6 +117,7 @@ function closeHttpServer(server: HttpServer): Promise<void> {
 let ownership: ServerOwnership | undefined;
 let store: SqliteStore | undefined;
 let httpServer: HttpServer | undefined;
+let stopOutboxPublisher: (() => void) | undefined;
 let stopRetention: (() => void) | undefined;
 let shuttingDown = false;
 
@@ -147,6 +148,12 @@ async function bootstrap(): Promise<void> {
     }
 
     phase = 'services';
+    const outboxPublisher = store.createOutboxPublisher({
+      workerId: `server:${serverInstanceId}`,
+      onError: error => {
+        diagLog(`OUTBOX_PUBLISHER_ERROR code=${error.code}${error.outboxId === undefined ? '' : ` outboxId=${error.outboxId}`}`);
+      },
+    });
     const eventBus = new EventBus(
       draft => store!.appendAgentEvent(draft),
       (error, event) => {
@@ -228,6 +235,8 @@ async function bootstrap(): Promise<void> {
     diagLog(`SERVER_LISTEN pid=${process.pid} instanceId=${serverInstanceId} port=${PORT}`);
 
     // Background side effects start only after ownership + recovery + listen succeeded.
+    outboxPublisher.reclaimExpired();
+    stopOutboxPublisher = outboxPublisher.start();
     void worktreeManager.reconcile().catch(error => diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
     try {
       const result = retentionService.run();
@@ -258,6 +267,9 @@ async function bootstrap(): Promise<void> {
       console.error(`[AgentOS Server] startup failed: ${code}`);
     }
     diagLog(`STARTUP_ABORTED code=${code} pid=${process.pid} instanceId=${serverInstanceId} phase=${phase}`);
+    if (stopOutboxPublisher) {
+      try { stopOutboxPublisher(); } catch { /* best effort */ }
+    }
     if (stopRetention) {
       try { stopRetention(); } catch { /* best effort */ }
     }
@@ -278,6 +290,9 @@ async function shutdown(signal: string, exitCode: number): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   diagLog(`SIGNAL=${signal} pid=${process.pid} instanceId=${serverInstanceId}`);
+  if (stopOutboxPublisher) {
+    try { stopOutboxPublisher(); } catch { /* best effort */ }
+  }
   if (stopRetention) {
     try { stopRetention(); } catch { /* best effort */ }
   }
