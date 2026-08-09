@@ -1,6 +1,6 @@
 # AgentOS M3 Owner Decision Register
 
-Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / IMPLEMENTED AND MERGED: the P3D Cancel contract they closed was subsequently implemented through P3D-2 (PR #37) and race-closed through P3D-3 (PR #38). M3-TD-33 through M3-TD-36 are the P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE recorded after the P6-0 independent review reclassified the remaining delivery, recovery, retry/dead-letter, and Legacy execution questions as requiring no new user Owner Decision. P6 production implementation remains NOT AUTHORIZED pending independent remote review of the P6A0 docs package.
+Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / IMPLEMENTED AND MERGED: the P3D Cancel contract they closed was subsequently implemented through P3D-2 (PR #37) and race-closed through P3D-3 (PR #38). M3-TD-33 through M3-TD-36 are the P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE recorded after the P6-0 independent review reclassified the remaining delivery, recovery, retry/dead-letter, and Legacy execution questions as requiring no new user Owner Decision. Independent remote review of P6A0 commit `67e06e12088c6f369763bc5241ea10cc35876da8` returned CHANGES REQUIRED — HIGH-1 because total claim attempts could not durably reconstruct completed classified delivery failures or DeadLetter `firstFailedAt`. The forward remediation below closes that technical evidence gap without a new Owner decision or schema change. P6 production implementation remains NOT AUTHORIZED pending independent remote re-review.
 
 M3 current decision and contract status:
 P3C-0B: MERGED
@@ -15,8 +15,10 @@ M3-TD-31: OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37
 M3-TD-32: OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37
 M3-TD-33 through M3-TD-36: P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE / DOCUMENTED
 P6-0 independent review: PASS WITH CONTRACT RECLASSIFICATION
+P6A0 independent remote review: CHANGES REQUIRED — HIGH-1
+P6A0 HIGH-1 remediation: DOCUMENTED / AWAITING INDEPENDENT REMOTE RE-REVIEW
 New P6 user Owner Decision: NONE
-P6 production entry: NO-GO — AWAITING P6A0 INDEPENDENT REMOTE REVIEW
+P6 production entry: NO-GO — AWAITING P6A0 INDEPENDENT REMOTE RE-REVIEW
 P3D-1: IMPLEMENTED AND MERGED via PR #36
 P3D-2: IMPLEMENTED AND MERGED via PR #37
 P3D-3: COMPLETE AND MERGED via PR #38
@@ -78,7 +80,7 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-32 | P3D Guarded Operation Cancel and Approval-aware Run Cancellation | Option C is approved: a dedicated Operation guarded-cancel seam plus an approval-aware Lifecycle cancellation seam. The ordinary Operation transition table is unchanged. Waiting-approval cancellation discovers exactly one unresolved Approval and preserves `approval.resolved -> stage.cancelled* -> run.cancelled` in the same outer transaction. | APPROVED TECHNICAL DIRECTION. OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37 (P3D-2). |
 | M3-TD-33 | P6 Task-domain Outbox delivery sink | `OutboxPublisher -> RuntimeEventDeliverySink -> RuntimeEventNotifier` is the P6 durable live-distribution wake-up path. The sink accepts only exact persisted Outbox/Event identity and emits `{ runId, sequence, eventId }`; it is not an Event Store, Conversation EventBus, HTTP/SSE client, or external broker. `published` means synchronous sink acceptance, not browser consumption or Run completion. | BOUNDED TECHNICAL CONTRACT CLOSURE / DOCUMENTED IN P6A0. NO NEW USER OWNER DECISION. P6 PRODUCTION IMPLEMENTATION NOT AUTHORIZED pending P6A0 independent remote review. |
 | M3-TD-34 | P6 Task-domain restart and uncertainty contract | `runs.recovery_required` is the only M3 recovery representation. Recovery classifies Run, Run Stage, `run.start` Operation, Approval where applicable, and Runtime Event evidence together. Terminal Runs remain immutable; queued authorization may be restored; post-claim/pre-start uses the existing M3-TD-29 C1b failure closure; uncertain active execution stays `running` with `recovery_required = 1`; coherent approvals/paused state remain waiting/paused; impossible combinations fail closed. | Same P6A0 status. No Recovery Record or Migration 014. Never guess success or blindly restart provider execution. |
-| M3-TD-35 | P6 Outbox crash, retry, and dead-letter policy | An expired `publishing` lease is conditionally reclaimed to `retry` while preserving immutable identity/payload and attempts. Completed delivery failures use deterministic exponential backoff, maximum five completed failure attempts, 300-second cap, injectable clock, and no random jitter. Outbox dead-letter transition and DeadLetter insert share one outer transaction. | Same P6A0 status. Crash-after-claim is an unknown delivery outcome and may require redelivery beyond the nominal completed-failure budget. |
+| M3-TD-35 | P6 Outbox crash, retry, and dead-letter policy | An expired `publishing` lease is conditionally reclaimed to `retry` while preserving immutable identity/payload and attempts. `attempts` is total delivery claims, not completed failures. Canonical `OutboxFailureStateV1` in existing mutable `last_error` durably records completed classified failures, immutable first failure time, and latest classified/lease-expired outcome. Completed failures alone drive the five-failure budget and deterministic backoff. Outbox dead-letter transition and DeadLetter insert share one outer transaction with exact stable evidence mapping. | P6A0 HIGH-1 FORWARD REMEDIATION / DOCUMENTED. NO NEW USER OWNER DECISION; NO SCHEMA CHANGE OR MIGRATION 014. P6A NOT AUTHORIZED pending independent remote re-review. |
 | M3-TD-36 | Legacy canonical mapping execution ownership | One Legacy request creates one canonical Run, one `run.start` Operation, and one execution authority. `LegacyCanonicalExecutionService` is the sole AgentRunner owner for `legacy_pipeline`; `tasks.ts` owns validation, command initiation, persisted-event projection subscription, and transport cleanup only. Thinking is persisted as `stream.text_delta` before pure Legacy projection. Disconnect unsubscribes without aborting execution or cancelling Run/Operation. | Same P6A0 status. No second executor, M4 ProcessManager/ProviderAdapter, Web switch, Legacy retirement, or route-owned lifecycle state machine. |
 
 > **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** Implementation-boundary
@@ -742,50 +744,136 @@ boundary; the current governance status is recorded in section 5 below.
 
 ### M3-TD-35 P6 Outbox crash, retry, and dead-letter policy
 
-- **Classification:** BOUNDED TECHNICAL CONTRACT CLOSURE under M3-TD-07; no
-  new user Owner Decision and no schema migration.
+- **Classification and review finding:** BOUNDED TECHNICAL IMPLEMENTATION
+  CONTRACT under M3-TD-07; no new user Owner Decision. Independent review of
+  P6A0 commit `67e06e12088c6f369763bc5241ea10cc35876da8`
+  found one HIGH issue: current durable `outbox_messages.attempts` increments
+  on every `pending/retry -> publishing` claim, so it cannot distinguish a
+  completed classified sink failure from a claim followed by process crash and
+  expired lease. It therefore cannot reconstruct the completed-failure budget
+  or DeadLetter `firstFailedAt`.
+- **No-schema closure:** P6A adds no column, table, Entity ID kind, or Migration
+  014. Migration registry remains exactly 001–013. Existing mutable
+  `outbox_messages.last_error TEXT` stores a P6-internal versioned failure-state
+  envelope. This envelope is not a public API.
+- **Durable envelope:** canonical JSON serialization in `last_error` has this
+  semantic shape:
+
+  ```ts
+  interface OutboxFailureStateV1 {
+    readonly schemaVersion: 1;
+    readonly completedFailures: number;
+    readonly firstFailedAt?: string;
+    readonly lastOutcome: 'classified_failure' | 'lease_expired';
+    readonly lastCode: string;
+    readonly lastMessage: string;
+    readonly lastObservedAt: string;
+  }
+  ```
+
+  `schemaVersion` is exactly 1. `completedFailures` is a non-negative safe
+  integer. `firstFailedAt` is present iff `completedFailures > 0` and remains
+  immutable after the first classified failure. All timestamps are canonical
+  UTC ISO 8601 with milliseconds. `lastCode` is stable, non-empty, and
+  sanitized; `lastMessage` is sanitized bounded diagnostic text. Stack traces,
+  SQL, database paths, secrets, and arbitrary sink objects are forbidden.
+- **NULL and parser semantics:** `last_error IS NULL` means exactly
+  `completedFailures = 0` with no `firstFailedAt` and no prior observed failure
+  state. P6A parses and validates schema version, exact fields, integer range,
+  conditional timestamp presence, canonical timestamps, code, message, and
+  outcome before mutation. A malformed persisted state fails closed; it is never
+  reset, guessed, discarded, marked published, or exposed raw. The durable
+  message remains for manual or future reviewed remediation. A stable internal
+  error code may be defined in the bounded P6A implementation.
+- **Claim semantics:** claim continues to perform `attempts = attempts + 1`.
+  `attempts` is formally TOTAL DELIVERY CLAIM ATTEMPTS and includes claims that
+  later publish successfully, end in classified failure, or have unknown crash
+  outcomes. It never directly drives completed-failure exhaustion.
+- **Classified delivery failure:** only a sink invocation that returns or raises
+  a classified failure while the publisher still owns a valid lease increments
+  `completedFailures`. The first such failure sets `firstFailedAt = now`;
+  later failures preserve it. Every classified failure writes
+  `lastOutcome = 'classified_failure'`, the stable classified `lastCode`,
+  sanitized `lastMessage`, and `lastObservedAt = now`. Retryable failure with
+  `completedFailures < 5` transitions to retry; non-retryable failure or
+  `completedFailures = 5` transitions to dead letter.
 - **Expired lease transition:** a row at `publishing` with
-  `lease_expires_at <= now` is conditionally reclaimed to `retry`. The mutation
-  sets `available_at = now`, a stable lease-expired `last_error`, clears
-  `lease_owner` and `lease_expires_at`, and increments `version`. The fenced
-  update checks identity, current status, expected version, and expiry.
-- **Preserved fields:** reclaim preserves `id`, `event_id`, topic, aggregate
-  identity, canonical payload, `created_at`, and `attempts`. It never takes
-  over a live lease or rewrites message/domain identity.
-- **Completed-failure policy:** `MAX_COMPLETED_FAILURE_ATTEMPTS = 5`. Retry
-  delay is `min(1000 * 2^(attempts - 1), 300000)` milliseconds: 1s, 2s, 4s,
-  8s, 16s, continuing to a 300s cap. M3 uses no random jitter. Clock is
-  injectable and correctness tests use no sleeps.
-- **Unknown delivery outcome:** crash after claim may occur before or after
-  sink acceptance. Expired-lease redelivery is required rather than guessing
-  delivery success and may exceed the nominal completed-failure budget. The
-  budget counts completed, classified delivery failures, not unknown
-  crash/lease outcomes.
-- **Dead-letter atomicity:** `publishing -> dead_letter` and the matching
-  DeadLetter insert execute in one caller-owned outer transaction on the same
-  database handle. Both commit or neither commits. DeadLetter identity and
-  payload derive from stable Outbox/Event evidence; an Outbox dead-letter state
-  without its DeadLetter row is forbidden.
+  `lease_expires_at <= now` is conditionally reclaimed to `retry`. Reclaim
+  preserves `completedFailures`, `firstFailedAt`, and `attempts`; writes
+  `lastOutcome = 'lease_expired'`, `lastCode = 'OUTBOX_LEASE_EXPIRED'`, a stable
+  sanitized lease-expired message, and `lastObservedAt = now`; sets
+  `available_at = now`; clears lease owner/expiry; and increments version. The
+  fenced update checks identity, current status, expected version, and expiry.
+  It never takes over a live lease or rewrites message/domain identity.
+- **Unknown outcome:** lease expiry is neither a classified failure nor proof
+  of successful delivery. When `completedFailures = 0`, reclaim leaves
+  `firstFailedAt` absent. Repeated lease crashes may make `attempts > 5` without
+  exhausting the five completed-failure budget and never directly dead-letter.
+- **Retry budget and backoff:** `MAX_COMPLETED_FAILURE_ATTEMPTS = 5` is evaluated
+  only from `OutboxFailureStateV1.completedFailures`, never `attempts`. Retry
+  delay is `min(1000 * 2^(completedFailures - 1), 300000)` milliseconds. The
+  first through fourth completed retryable failures schedule 1s, 2s, 4s, and
+  8s; the fifth is exhausted and dead-letters. M3 uses no random jitter. Clock
+  is injectable and correctness tests use no sleeps. Lease-expired reclaim is
+  immediately available and applies no classified-failure backoff.
+- **DeadLetter evidence mapping:** terminal delivery failure inserts exactly:
+  `sourceType = 'outbox'`, `sourceId = outbox.id`, and
+  `target = 'runtime-events'`. Safe canonical payload metadata is
+  `{ outboxId: outbox.id, eventId: outbox.eventId,
+  runId: outbox.aggregateId, topic: outbox.topic }`; arbitrary caller or Event
+  payload is not copied and no new Runtime Event is created.
+- **DeadLetter timestamps and attempts:** `firstFailedAt` is the immutable
+  envelope `firstFailedAt`; `lastFailedAt` is the current classified terminal
+  failure time; `attempts = outbox.attempts` and therefore means total claim
+  attempts. Dead-letter entry requires `completedFailures >= 1` and a valid
+  `firstFailedAt`; otherwise it fails closed. Outbox creation, claim, lease
+  expiry, or restart time must not be substituted for first failure time.
+- **DeadLetter retryability and error:** an explicitly non-retryable sink
+  failure writes `retryable = false`. A retryable failure exhausted at five
+  completed failures writes `retryable = true`; this field describes the
+  underlying failure classification, not whether automatic retries remain.
+  `errorCode` and `errorMessage` are the final classified stable code and
+  sanitized message. `OUTBOX_LEASE_EXPIRED` never becomes the final DeadLetter
+  error; lease expiry only reclaims to retry.
+- **DeadLetter identity:** no stricter production identity convention exists in
+  the current repository, so P6A freezes deterministic internal ID
+  `deadletter:<outbox.id>`. This provides one terminal DeadLetter record per
+  Outbox message and fences transaction replay without modifying `Identity.ts`.
+- **Dead-letter atomicity:** `markDeadLetterWithinTransaction` and
+  `DeadLetterRepository.insertWithinTransaction` execute inside one
+  `store.runInTransaction(...)` on the same database handle. Both commit or
+  both roll back. An Outbox dead-letter state without its DeadLetter row, or a
+  duplicate terminal record, is forbidden.
 - **Publisher startup boundary:** construct and validate publisher dependencies
   after ownership, store open/migration, and synchronous Task-domain recovery.
   Routes are composed and HTTP listen must succeed before reclaiming expired
   leases and starting the publisher loop. Background delivery never begins
   before listen success. Ordinary delivery failure follows retry/dead-letter
   policy and is not a Run failure.
-- **Evidence threshold:** expired-lease crash fixture; fencing/version races;
-  deterministic backoff with injected clock; unknown-outcome redelivery;
-  sink-failure classification; atomic dead-letter rollback at every write;
-  listen-success startup barrier; and clean loop shutdown.
+- **Evidence threshold:** P6A-F01 claim increments `attempts` but not completed
+  failures; P6A-F02 first classified failure freezes `firstFailedAt`; P6A-F03
+  later classified failure preserves it; P6A-F04 claim crash/reclaim preserves
+  completed failures; P6A-F05 five lease crashes do not exhaust the budget;
+  P6A-F06 completed failure count drives backoff; P6A-F07 fifth retryable
+  completed failure dead-letters; P6A-F08 first non-retryable failure
+  dead-letters; P6A-F09 DeadLetter first failure time is exact; P6A-F10 malformed
+  persisted state fails closed; P6A-F11 Outbox/DeadLetter writes roll back
+  together. All use injected clocks/barriers and no sleeps. Fencing/version
+  races, sink classification, listen-success startup barrier, and clean loop
+  shutdown remain required.
 - **Stop/no-go:** reclaiming unexpired lease, resetting attempts, changing
-  immutable fields, random/sleep-based correctness, split dead-letter writes,
-  marking published without sink acceptance, delivery before listen, or
-  converting delivery failure into Run failure.
+  immutable fields, using `attempts` as the completed-failure count, losing or
+  guessing `firstFailedAt`, accepting malformed state, copying arbitrary
+  payload, random/sleep-based correctness, split dead-letter writes, marking
+  published without sink acceptance, delivery before listen, or converting
+  delivery failure into Run failure.
 - **Rollback boundary:** stop/revert publisher and reclaim wiring while
   preserving Outbox/DeadLetter rows, immutable identity, Event Store, and P5
   live/replay behavior.
-- **Re-review trigger:** retry budget or jitter changes, new delivery outcome
-  classes, concurrent publisher topology, external broker, schema change, or a
-  different startup side-effect boundary.
+- **Re-review trigger:** envelope schema change, retry budget or jitter changes,
+  new delivery outcome classes, different DeadLetter identity/evidence mapping,
+  concurrent publisher topology, external broker, schema change, or a different
+  startup side-effect boundary.
 
 ### M3-TD-36 Legacy canonical mapping execution ownership
 
@@ -1498,8 +1586,10 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 - M3 P5: COMPLETE / ACCEPTED through P5C at
   `a1cbb2868f9da215fab058b4176d70a3b382831d`.
 - M3 P6-0 independent review: PASS WITH CONTRACT RECLASSIFICATION.
-- M3 P6A0 technical contract closure: DOCUMENTED; production implementation
-  remains NO-GO pending independent remote review of this docs package.
+- M3 P6A0 independent remote review: CHANGES REQUIRED — HIGH-1 on commit
+  `67e06e12088c6f369763bc5241ea10cc35876da8`.
+- M3 P6A0 HIGH-1 durable failure evidence remediation: DOCUMENTED; production
+  implementation remains NO-GO pending independent remote re-review.
 - New P6 user Owner Decision: NONE.
 - P6A/P6B/P6C/P6D: NOT ENTERED.
 - P3B-2A CONTRACT ALIGNMENT: COMPLETED AND MERGED via PR #25; this historical
