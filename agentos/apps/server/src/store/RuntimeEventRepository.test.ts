@@ -3,9 +3,13 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createM3RuntimeEventRegistry, type RuntimeEventDraft, type RuntimeEventEnvelope } from '@agentos/shared';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { TaskRunService } from '../services/TaskRunService.js';
+import { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
+import { RuntimeEventRepository } from './RuntimeEventRepository.js';
 import { SqliteStore } from './SqliteStore.js';
+import { inTransaction } from './Transaction.js';
 
 function fixture(): { store: SqliteStore; root: string; workspaceId: string; taskId: string; runId: string; stageId: string } {
   const root = mkdtempSync(join(tmpdir(), 'agentos-p5a-runtime-events-'));
@@ -177,6 +181,70 @@ test('P5A-R03 queryByRun is workspace scoped', () => {
     assert.deepEqual(page.results, []);
     assert.equal(page.hasMore, false);
     assert.equal(fx.store.runtimeEventRepository().getRunHighWatermark('workspace_missing', fx.runId), 0);
+  } finally {
+    close(fx);
+  }
+});
+
+function knownDraft(fx: ReturnType<typeof fixture>, sequence: number): RuntimeEventDraft {
+  const seed = fx.store.runtimeEventRepository()
+    .findDurableByWorkspaceRunAndSequence(fx.workspaceId, fx.runId, 1)?.event as RuntimeEventEnvelope;
+  return {
+    ...seed,
+    id: `evt_${String(sequence).padStart(26, '0')}`,
+    sequence,
+    correlationId: `corr_p5b_${sequence}`,
+  };
+}
+
+test('P5B-G06/G07/G08 Runtime Event hints register after insert and publish FIFO only after commit', () => {
+  const fx = fixture();
+  try {
+    const notifier = new RuntimeEventNotifier();
+    const hints: Array<{ runId: string; sequence: number; eventId: string }> = [];
+    notifier.subscribe(fx.runId, hint => hints.push(hint));
+    const repository = new RuntimeEventRepository(
+      fx.store.getDatabase(),
+      createM3RuntimeEventRegistry(),
+      notifier,
+    );
+
+    const before = (fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runtime_events').get() as { count: number }).count;
+    assert.throws(() => repository.appendWithinTransaction(knownDraft(fx, 2)), /active transaction/);
+    assert.equal(
+      (fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runtime_events').get() as { count: number }).count,
+      before,
+      'configured notifier must fail before an accidental autocommit insert',
+    );
+
+    inTransaction(fx.store.getDatabase(), () => {
+      repository.appendWithinTransaction(knownDraft(fx, 2));
+      repository.appendWithinTransaction(knownDraft(fx, 3));
+      repository.appendWithinTransaction(knownDraft(fx, 4));
+      assert.deepEqual(hints, [], 'no hint may publish before COMMIT');
+    });
+    assert.deepEqual(hints.map(hint => hint.sequence), [2, 3, 4]);
+    assert.deepEqual(hints[0], {
+      runId: fx.runId,
+      sequence: 2,
+      eventId: 'evt_00000000000000000000000002',
+    });
+
+    assert.throws(() => inTransaction(fx.store.getDatabase(), () => {
+      repository.appendWithinTransaction(knownDraft(fx, 5));
+      throw new Error('later transaction failure');
+    }));
+    assert.equal(repository.findDurableByWorkspaceRunAndSequence(fx.workspaceId, fx.runId, 5), undefined);
+    assert.deepEqual(hints.map(hint => hint.sequence), [2, 3, 4]);
+
+    assert.equal(
+      repository.findDurableByWorkspaceRunAndSequence('workspace_missing', fx.runId, 2),
+      undefined,
+    );
+    assert.equal(
+      repository.findDurableByWorkspaceRunAndSequence(fx.workspaceId, fx.runId, 2)?.event.id,
+      'evt_00000000000000000000000002',
+    );
   } finally {
     close(fx);
   }

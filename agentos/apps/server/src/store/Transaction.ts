@@ -7,6 +7,24 @@ export interface TransactionDatabase {
   };
 }
 
+export type AfterCommitCallback = () => void;
+
+const afterCommitQueues = new WeakMap<TransactionDatabase, AfterCommitCallback[]>();
+
+export function isTransactionActive(db: TransactionDatabase): boolean {
+  return afterCommitQueues.has(db);
+}
+
+export function registerAfterCommit(
+  db: TransactionDatabase,
+  callback: AfterCommitCallback,
+): boolean {
+  const queue = afterCommitQueues.get(db);
+  if (!queue) return false;
+  queue.push(callback);
+  return true;
+}
+
 /**
  * Execute a synchronous callback inside BEGIN IMMEDIATE / COMMIT.
  * On failure: ROLLBACK, re-throws with preserved cause.
@@ -20,8 +38,13 @@ export function inTransaction<T>(
   } catch (err) {
     throw err; // lock acquisition failures pass through
   }
+
+  const afterCommit: AfterCommitCallback[] = [];
+  afterCommitQueues.set(db, afterCommit);
+
+  let result: T;
   try {
-    const result = fn();
+    result = fn();
 
     // Reject async callbacks — they'd COMMIT before the promise settles.
     if (
@@ -34,11 +57,28 @@ export function inTransaction<T>(
         'inTransaction only supports synchronous callbacks. An async function was passed.',
       );
     }
-
-    db.exec('COMMIT');
-    return result;
   } catch (err) {
+    afterCommitQueues.delete(db);
     try { db.exec('ROLLBACK'); } catch { /* best-effort rollback */ }
     throw err;
   }
+
+  try {
+    db.exec('COMMIT');
+  } catch (err) {
+    afterCommitQueues.delete(db);
+    try { db.exec('ROLLBACK'); } catch { /* best-effort rollback */ }
+    throw err;
+  }
+
+  afterCommitQueues.delete(db);
+  for (const callback of afterCommit) {
+    try {
+      callback();
+    } catch {
+      // The transaction is already permanently committed. A notification
+      // callback is isolated from both the caller and later callbacks.
+    }
+  }
+  return result;
 }

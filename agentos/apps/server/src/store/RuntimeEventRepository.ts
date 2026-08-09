@@ -8,7 +8,8 @@ import type {
   RuntimeEventVisibility,
 } from '@agentos/shared';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
-import type { TransactionDatabase } from './Transaction.js';
+import type { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
+import { isTransactionActive, registerAfterCommit, type TransactionDatabase } from './Transaction.js';
 import { isValidEntityId } from './Identity.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 
@@ -115,6 +116,7 @@ export class RuntimeEventRepository {
   constructor(
     private readonly db: TransactionDatabase,
     private readonly registry: CentralRuntimeEventRegistry,
+    private readonly notifier?: RuntimeEventNotifier,
   ) {}
 
   appendWithinTransaction<TPayload>(draft: RuntimeEventDraft<TPayload>): RuntimeEventEnvelope<TPayload> {
@@ -147,6 +149,13 @@ export class RuntimeEventRepository {
       throw new RuntimeEventRepositoryError(
         'RUNTIME_EVENT_PERSISTENCE_FAILED',
         error instanceof Error ? error.message : 'Runtime Event JSON serialization failed',
+      );
+    }
+
+    if (this.notifier && !isTransactionActive(this.db)) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'Runtime Event notification requires an active transaction',
       );
     }
 
@@ -195,6 +204,21 @@ export class RuntimeEventRepository {
         'Runtime Event could not be persisted',
       );
     }
+    if (this.notifier) {
+      const registered = registerAfterCommit(this.db, () => {
+        this.notifier!.publish({
+          runId: event.runId,
+          sequence: event.sequence,
+          eventId: event.id,
+        });
+      });
+      if (!registered) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Runtime Event notification could not be registered',
+        );
+      }
+    }
     return event;
   }
 
@@ -208,6 +232,17 @@ export class RuntimeEventRepository {
     return this.consumeRow(this.db.prepare(`
       SELECT * FROM runtime_events WHERE run_id = ? AND sequence = ?
     `).get(runId, sequence) as RuntimeEventRow | undefined);
+  }
+
+  findDurableByWorkspaceRunAndSequence(
+    workspaceId: string,
+    runId: string,
+    sequence: number,
+  ): RuntimeEventConsumptionResult | undefined {
+    return this.consumeRow(this.db.prepare(`
+      SELECT * FROM runtime_events
+      WHERE workspace_id = ? AND run_id = ? AND sequence = ? AND durability = 'durable'
+    `).get(workspaceId, runId, sequence) as RuntimeEventRow | undefined);
   }
 
   listByRunAfterSequence(runId: string, afterSequence: number): RuntimeEventConsumptionResult[] {
