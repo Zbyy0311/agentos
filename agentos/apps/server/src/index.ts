@@ -13,6 +13,8 @@ import { createV2TaskRoutes } from './routes/v2Tasks.js';
 import { createV2RunRoutes } from './routes/v2Runs.js';
 import { createRunLifecycleRoutes } from './routes/runLifecycle.js';
 import { createOperationRoutes } from './routes/operations.js';
+import { createCanonicalRunRoutes } from './routes/canonicalRuns.js';
+import { createOpenApiRoutes } from './routes/openapi.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
 import { createConversationRoutes } from './routes/conversations.js';
@@ -197,6 +199,14 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager, { taskRunService }));
     app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, workspaceManager));
+    // M3 P4B canonical top-level Run compatibility routes and the Basic
+    // OpenAPI document. Mounted after the global strict JSON parser (the
+    // same body-contract seam as the v2 routers) and after the more
+    // specific /api/runs/:runId/preferences route, before the API 404
+    // fallback. Legacy, current-v2, and the frozen Start/Retry/Operation
+    // routes are preserved unchanged.
+    app.use('/api', createCanonicalRunRoutes(store, workspaceManager));
+    app.use('/api', createOpenApiRoutes());
     app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
     app.use('/api/agents', createAgentRoutes(workspaceManager));
     // M3 P4A: unknown API routes and unhandled errors are ApiProblem

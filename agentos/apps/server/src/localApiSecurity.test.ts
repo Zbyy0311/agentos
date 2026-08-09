@@ -158,3 +158,38 @@ test('P4A HIGH-1 preflight from an unknown origin is not authorized', async () =
     assert.equal(response.headers.get('access-control-allow-origin'), null);
   });
 });
+
+test('P4B R10 approved-origin preflight authorizes Idempotency-Key and preserves the P4A headers', async () => {
+  await withCorsApp(async origin => {
+    const response = await fetch(`${origin}/api/health`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'http://localhost:3001',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type, If-Match, X-Request-ID, Idempotency-Key',
+      },
+    });
+    assert.equal(response.status, 204);
+    assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:3001');
+    const headers = allowedHeaders(response);
+    assert.ok(headers.includes('idempotency-key'), `Idempotency-Key missing from ${headers}`);
+    assert.ok(headers.includes('content-type'), `Content-Type missing from ${headers}`);
+    assert.ok(headers.includes('if-match'), `If-Match missing from ${headers}`);
+    assert.ok(headers.includes('x-request-id'), `X-Request-ID missing from ${headers}`);
+    assert.notEqual(response.headers.get('access-control-allow-credentials'), 'true');
+  });
+});
+
+test('P4B R10 preflight from an unknown origin still receives no Idempotency-Key authorization', async () => {
+  await withCorsApp(async origin => {
+    const response = await fetch(`${origin}/api/health`, {
+      method: 'OPTIONS',
+      headers: {
+        Origin: 'https://evil.example',
+        'Access-Control-Request-Method': 'POST',
+        'Access-Control-Request-Headers': 'Content-Type, Idempotency-Key',
+      },
+    });
+    assert.equal(response.headers.get('access-control-allow-origin'), null);
+  });
+});

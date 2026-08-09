@@ -47,6 +47,8 @@ export function createLocalCorsOptions(config: LocalApiSecurityConfig): CorsOpti
     // headers; without them an approved-origin preflight rejects the
     // request before the 412/precondition contract can run. Existing
     // allowed headers are preserved; no wildcard.
+    // M3 P4B: Idempotency-Key is the browser contract header for the
+    // idempotent command routes (create/cancel/start/retry).
     allowedHeaders: [
       'Content-Type',
       'Accept',
@@ -55,6 +57,7 @@ export function createLocalCorsOptions(config: LocalApiSecurityConfig): CorsOpti
       'X-Requested-With',
       'If-Match',
       'X-Request-ID',
+      'Idempotency-Key',
     ],
     optionsSuccessStatus: 204,
   };
