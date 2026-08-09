@@ -161,12 +161,14 @@ async function bootstrap(): Promise<void> {
     const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
     const PORT = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
 
+    // M3 P4A request-id lifecycle runs ahead of the CORS / write-guard
+    // termination boundary, so even a security rejection carries the stable
+    // X-Request-ID header that its ApiProblem body references. Every API
+    // response carries X-Request-ID (client value echoed only when it is a
+    // safe token) so ApiProblem bodies and logs can be correlated.
+    app.use(createRequestIdMiddleware());
     app.use(cors(createLocalCorsOptions(security)));
     app.use(createLocalWriteGuard(security));
-    // M3 P4A request-id lifecycle: every API response carries X-Request-ID
-    // (client value echoed only when it is a safe token) so ApiProblem
-    // bodies and logs can be correlated.
-    app.use(createRequestIdMiddleware());
     // M3 P3C-1 canonical lifecycle routes — the single additive /api mount
     // for POST /api/runs/:runId/start. Mounted ahead of the global strict
     // JSON parser because the route owns a scoped non-strict parser so that

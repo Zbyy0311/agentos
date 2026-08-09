@@ -1,11 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import cors from 'cors';
 import express from 'express';
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { ApiProblem } from '@agentos/shared';
+import {
+  createLocalCorsOptions,
+  createLocalWriteGuard,
+  resolveLocalApiSecurityConfig,
+} from '../localApiSecurity.js';
 import {
   createApiNotFoundHandler,
   createProblemErrorHandler,
@@ -78,8 +84,13 @@ async function createFixture(): Promise<Fixture> {
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
   const workspace = manager.create('Contract', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+  const security = resolveLocalApiSecurityConfig({});
   const app = express();
+  // Mirrors the index.ts order: request-id -> CORS -> local write guard ->
+  // API routers -> ApiProblem fallback/error handling.
   app.use(createRequestIdMiddleware());
+  app.use(cors(createLocalCorsOptions(security)));
+  app.use(createLocalWriteGuard(security));
   app.head('/__test_fetch_port_probe', (_req, res) => {
     res.setHeader('Connection', 'close');
     res.status(204).end();
@@ -451,6 +462,57 @@ test('P4A operation cancel keeps the frozen body-only P3D contract (If-Match is 
     // Body path keeps the frozen 409 VERSION_CONFLICT mapping even when an
     // If-Match header is present; the header is not evaluated on this route.
     assert.notEqual(staleBody.status, 412);
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4A MEDIUM-1 local write guard rejection is an ApiProblem carrying the chain requestId', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTask(fx);
+    const runId = await createRun(fx, taskId);
+    const response = await fetch(`${fx.origin}/api/workspaces/${fx.workspaceId}/v2/runs/${runId}/cancel`, {
+      method: 'POST',
+      headers: {
+        Origin: 'https://evil.example',
+        'Content-Type': 'application/json',
+        'If-Match': '"v1"',
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.status, 403);
+    assertProblemContentType(response);
+    const problem = assertProblem(await response.json(), 403, 'origin_not_allowed');
+    assert.equal(problem.retryable, false);
+    const requestId = response.headers.get('x-request-id');
+    assert.ok(requestId && requestId.length > 0, 'X-Request-ID header must exist on the security rejection');
+    assert.equal(problem.requestId, requestId);
+    assert.ok(!problem.detail.includes('evil.example'), 'rejected Origin must not be exposed');
+    // The guard terminated the request before any route ran.
+    assert.equal(fx.store.runRepository().findById(fx.workspaceId, runId)?.status, 'queued');
+  } finally {
+    await closeFixture(fx);
+  }
+});
+
+test('P4A HIGH-1 approved-origin browser request with If-Match still reaches the 412 contract', async () => {
+  const fx = await createFixture();
+  try {
+    const taskId = await createTask(fx);
+    const runId = await createRun(fx, taskId);
+    const response = await fetch(`${fx.origin}/api/workspaces/${fx.workspaceId}/v2/runs/${runId}/cancel`, {
+      method: 'POST',
+      headers: {
+        Origin: 'http://localhost:3001',
+        'Content-Type': 'application/json',
+        'If-Match': '"v99"',
+      },
+      body: JSON.stringify({}),
+    });
+    assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost:3001');
+    assert.equal(response.status, 412);
+    assertProblem(await response.json(), 412, 'STORAGE_VERSION_CONFLICT');
   } finally {
     await closeFixture(fx);
   }

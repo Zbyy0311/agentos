@@ -1,6 +1,7 @@
 import { isIP } from 'node:net';
-import type { RequestHandler } from 'express';
+import type { Request, RequestHandler } from 'express';
 import type { CorsOptions } from 'cors';
+import { sendProblem } from './problemDetails.js';
 
 export interface LocalApiSecurityConfig {
   host: string;
@@ -42,7 +43,19 @@ export function createLocalCorsOptions(config: LocalApiSecurityConfig): CorsOpti
     },
     credentials: false,
     methods: ['GET', 'HEAD', 'OPTIONS', 'POST', 'PATCH', 'PUT', 'DELETE'],
-    allowedHeaders: ['Content-Type', 'Accept', 'Authorization', 'Last-Event-ID', 'X-Requested-With'],
+    // M3 P4A HIGH-1: If-Match / X-Request-ID are the P4A browser contract
+    // headers; without them an approved-origin preflight rejects the
+    // request before the 412/precondition contract can run. Existing
+    // allowed headers are preserved; no wildcard.
+    allowedHeaders: [
+      'Content-Type',
+      'Accept',
+      'Authorization',
+      'Last-Event-ID',
+      'X-Requested-With',
+      'If-Match',
+      'X-Request-ID',
+    ],
     optionsSuccessStatus: 204,
   };
 }
@@ -60,7 +73,7 @@ export function createLocalWriteGuard(config: LocalApiSecurityConfig): RequestHa
         next();
         return;
       }
-      denyOrigin(res);
+      denyOrigin(req, res);
       return;
     }
 
@@ -69,7 +82,7 @@ export function createLocalWriteGuard(config: LocalApiSecurityConfig): RequestHa
       return;
     }
 
-    denyOrigin(res);
+    denyOrigin(req, res);
   };
 }
 
@@ -89,8 +102,19 @@ export function isLoopbackAddress(address: string | undefined): boolean {
   return isIP(normalized) === 4 && normalized.startsWith('127.');
 }
 
-function denyOrigin(res: Parameters<RequestHandler>[1]): void {
-  res.status(403).json({ error: 'origin_not_allowed', code: 'origin_not_allowed' });
+/**
+ * M3 P4A MEDIUM-1: the local write guard rejection is an ApiProblem. The
+ * stable code `origin_not_allowed` is preserved verbatim; the rejected
+ * Origin and the remote address are never exposed in the response.
+ */
+function denyOrigin(req: Request, res: Parameters<RequestHandler>[1]): void {
+  sendProblem(req, res, {
+    status: 403,
+    code: 'origin_not_allowed',
+    title: 'Forbidden',
+    detail: 'Origin is not allowed',
+    retryable: false,
+  });
 }
 
 function securityError(code: string, message: string): Error & { code: string } {

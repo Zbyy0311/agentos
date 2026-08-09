@@ -13,11 +13,39 @@ import { createWorkspaceRoutes } from './routes/workspaces.js';
 import { createConversationRoutes } from './routes/conversations.js';
 import { createPreferenceRoutes } from './routes/preferences.js';
 import { createLocalCorsOptions, createLocalWriteGuard, resolveLocalApiSecurityConfig } from './localApiSecurity.js';
+import { createRequestIdMiddleware } from './problemDetails.js';
+
+/**
+ * M3 P4A MEDIUM-1: the local write guard rejection is an ApiProblem. The
+ * stable code `origin_not_allowed` is preserved verbatim; the requestId in
+ * the body matches the X-Request-ID response header, and neither the
+ * rejected Origin nor the remote address is reflected.
+ */
+async function assertOriginDeniedProblem(response: globalThis.Response): Promise<void> {
+  assert.equal(response.status, 403);
+  const contentType = response.headers.get('content-type') ?? '';
+  assert.ok(contentType.startsWith('application/problem+json'), `expected application/problem+json, got ${contentType}`);
+  const body = await response.json() as Record<string, unknown>;
+  assert.equal(body.status, 403);
+  assert.equal(body.code, 'origin_not_allowed');
+  assert.equal(body.retryable, false);
+  assert.equal(typeof body.type, 'string');
+  assert.equal(typeof body.title, 'string');
+  assert.equal(typeof body.detail, 'string');
+  assert.equal(typeof body.instance, 'string');
+  assert.equal(typeof body.requestId, 'string');
+  const requestId = response.headers.get('x-request-id');
+  assert.ok(requestId && requestId.length > 0, 'X-Request-ID header must exist on the security rejection');
+  assert.equal(body.requestId, requestId);
+  const serialized = JSON.stringify(body);
+  assert.ok(!serialized.includes('evil.example'), 'rejected Origin must not be reflected');
+}
 
 async function startTestServer() {
   const app = express();
   const config = resolveLocalApiSecurityConfig({});
   let writeCalls = 0;
+  app.use(createRequestIdMiddleware());
   app.use(cors(createLocalCorsOptions(config)));
   app.use(createLocalWriteGuard(config));
   app.use(express.json());
@@ -41,8 +69,7 @@ test('allowed Origin can write while evil Origin is rejected before the route ha
     assert.equal(allowed.headers.get('access-control-allow-origin'), 'http://localhost:3001');
 
     const evil = await fetch(`${baseUrl}/api/write`, { method: 'POST', headers: { Origin: 'https://evil.example', 'Content-Type': 'application/json' }, body: '{}' });
-    assert.equal(evil.status, 403);
-    assert.deepEqual(await evil.json(), { error: 'origin_not_allowed', code: 'origin_not_allowed' });
+    await assertOriginDeniedProblem(evil);
     assert.equal(getWriteCalls(), 1);
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
@@ -104,6 +131,7 @@ test('protects the existing workspace, agent, conversation, and preference write
   };
   const app = express();
   const config = resolveLocalApiSecurityConfig({});
+  app.use(createRequestIdMiddleware());
   app.use(cors(createLocalCorsOptions(config)));
   app.use(createLocalWriteGuard(config));
   app.use(express.json({ limit: '50mb' }));
@@ -123,8 +151,7 @@ test('protects the existing workspace, agent, conversation, and preference write
 
     const createPayload = { name: 'New Workspace', rootPath: join(root, 'created-workspace'), git: false, memory: false, docs: false, readme: false };
     const blockedWorkspace = await fetch(`${base}/api/workspaces`, { method: 'POST', headers: evilHeaders, body: JSON.stringify(createPayload) });
-    assert.equal(blockedWorkspace.status, 403);
-    assert.deepEqual(await blockedWorkspace.json(), { error: 'origin_not_allowed', code: 'origin_not_allowed' });
+    await assertOriginDeniedProblem(blockedWorkspace);
     assert.equal(manager.list().length, 1);
 
     const createdWorkspace = await fetch(`${base}/api/workspaces`, { method: 'POST', headers: jsonHeaders, body: JSON.stringify(createPayload) });
