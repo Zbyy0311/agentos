@@ -1,6 +1,6 @@
 # AgentOS M3 Lifecycle, Event and API Foundation — Final Closeout
 
-Status: M3 FOUNDATION IMPLEMENTATION COMPLETE — M3 FINAL CLOSEOUT PROPOSED — AWAITING INDEPENDENT REMOTE RE-REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS
+Status: M3 FOUNDATION IMPLEMENTATION COMPLETE — M3 FINAL CLOSEOUT PACKAGE ACCEPTED — INDEPENDENT REMOTE RE-REVIEW PASS — PR #41 READY FOR REVIEW — AWAITING ORDINARY MERGE — REMOTE CHECKS UNAVAILABLE — NOT PASS
 
 ## 1. Closure Verdict
 
@@ -327,6 +327,32 @@ These are independent review gates, not GitHub APPROVED reviews. Final
 dispositions: P6D independent remote re-review PASS, P6 ACCEPTED / CLOSED,
 P7 post-merge independent remote review PASS.
 
+Final closeout review history:
+
+```text
+Initial Final Closeout Review:
+CHANGES REQUIRED
+
+MEDIUM-1:
+stale current-status evidence
+CLOSED
+
+MEDIUM-2:
+missing Final Accepted Refs ledger
+CLOSED
+
+Evidence Consistency Remediation:
+e6bf2a7f2d86ab0cd2748994df6dadd0864289f3
+
+Independent Remote Re-review:
+PASS
+
+Final Closeout Package:
+ACCEPTED
+```
+
+This is an independent external review gate, not a GitHub APPROVED review.
+
 ## 16. Remote Checks
 
 ```text
@@ -384,9 +410,18 @@ No M4 branch is created by this closeout.
 M3 FOUNDATION IMPLEMENTATION:
 COMPLETE
 
-M3 FOUNDATION:
-FINAL CLOSEOUT PROPOSED
+M3 FINAL CLOSEOUT PACKAGE:
+ACCEPTED
 
-M3 FINAL CLOSEOUT:
-AWAITING INDEPENDENT REMOTE RE-REVIEW
+M3 FINAL CLOSEOUT INDEPENDENT REMOTE RE-REVIEW:
+PASS
+
+PR #41:
+READY FOR REVIEW / AWAITING ORDINARY MERGE
+
+M3 REPOSITORY FINAL CLOSEOUT:
+NOT YET MERGED
+
+M3:
+NOT YET FORMALLY COMPLETE
 ```
