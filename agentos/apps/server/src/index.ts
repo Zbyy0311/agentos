@@ -13,6 +13,9 @@ import { createV2TaskRoutes } from './routes/v2Tasks.js';
 import { createV2RunRoutes } from './routes/v2Runs.js';
 import { createRunLifecycleRoutes } from './routes/runLifecycle.js';
 import { createOperationRoutes } from './routes/operations.js';
+import { createCanonicalRunRoutes } from './routes/canonicalRuns.js';
+import { createCanonicalRunEventRoutes } from './routes/canonicalRunEvents.js';
+import { createOpenApiRoutes } from './routes/openapi.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
 import { createConversationRoutes } from './routes/conversations.js';
@@ -23,10 +26,11 @@ import { createRunRoutes } from './routes/runs.js';
 import { createArtifactRoutes } from './routes/artifacts.js';
 import { createMemoryRoutes } from './routes/memories.js';
 import { createMemoryCandidateRoutes } from './routes/memoryCandidates.js';
-import { createJsonErrorHandler } from './errorHandler.js';
+import { createApiNotFoundHandler, createProblemErrorHandler, createRequestIdMiddleware } from './problemDetails.js';
 import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
 import { TaskRunService } from './services/TaskRunService.js';
+import { LegacyCanonicalExecutionService } from './services/LegacyCanonicalExecutionService.js';
 import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 import { PreferenceService } from './services/PreferenceService.js';
 import { RetentionService } from './services/RetentionService.js';
@@ -114,6 +118,7 @@ function closeHttpServer(server: HttpServer): Promise<void> {
 let ownership: ServerOwnership | undefined;
 let store: SqliteStore | undefined;
 let httpServer: HttpServer | undefined;
+let stopOutboxPublisher: (() => void) | undefined;
 let stopRetention: (() => void) | undefined;
 let shuttingDown = false;
 
@@ -144,6 +149,18 @@ async function bootstrap(): Promise<void> {
     }
 
     phase = 'services';
+    const legacyCanonicalExecutionService = new LegacyCanonicalExecutionService(
+      store,
+      taskRunService,
+      store.lifecycleTransactionService(),
+      store.operationService(),
+    );
+    const outboxPublisher = store.createOutboxPublisher({
+      workerId: `server:${serverInstanceId}`,
+      onError: error => {
+        diagLog(`OUTBOX_PUBLISHER_ERROR code=${error.code}${error.outboxId === undefined ? '' : ` outboxId=${error.outboxId}`}`);
+      },
+    });
     const eventBus = new EventBus(
       draft => store!.appendAgentEvent(draft),
       (error, event) => {
@@ -161,6 +178,12 @@ async function bootstrap(): Promise<void> {
     const parsedPort = Number.parseInt(process.env.PORT ?? '3000', 10);
     const PORT = Number.isInteger(parsedPort) && parsedPort > 0 ? parsedPort : 3000;
 
+    // M3 P4A request-id lifecycle runs ahead of the CORS / write-guard
+    // termination boundary, so even a security rejection carries the stable
+    // X-Request-ID header that its ApiProblem body references. Every API
+    // response carries X-Request-ID (client value echoed only when it is a
+    // safe token) so ApiProblem bodies and logs can be correlated.
+    app.use(createRequestIdMiddleware());
     app.use(cors(createLocalCorsOptions(security)));
     app.use(createLocalWriteGuard(security));
     // M3 P3C-1 canonical lifecycle routes — the single additive /api mount
@@ -169,6 +192,9 @@ async function bootstrap(): Promise<void> {
     // non-object JSON bodies reach its frozen VALIDATION_FAILED contract.
     app.use('/api', createRunLifecycleRoutes(store));
     app.use('/api', createOperationRoutes(store));
+    // M3 P5A read-only Event/Replay routes resolve the opaque Run locator
+    // before query validation and do not consume request bodies.
+    app.use('/api', createCanonicalRunEventRoutes(store));
     app.use(express.json({ limit: '50mb' }));
 
     app.get('/api/health', (_req, res) => {
@@ -188,12 +214,28 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, workspaceManager));
     app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
-    app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager, { taskRunService }));
+    app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager, {
+      taskRunService,
+      legacyCanonicalExecutionService,
+      runStreamService: store.runStreamService(),
+    }));
     app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, workspaceManager));
+    // M3 P4B canonical top-level Run compatibility routes and the Basic
+    // OpenAPI document. Mounted after the global strict JSON parser (the
+    // same body-contract seam as the v2 routers) and after the more
+    // specific /api/runs/:runId/preferences route, before the API 404
+    // fallback. Legacy, current-v2, and the frozen Start/Retry/Operation
+    // routes are preserved unchanged.
+    app.use('/api', createCanonicalRunRoutes(store, workspaceManager));
+    app.use('/api', createOpenApiRoutes());
     app.use('/api/workspaces/:workspaceId/git', createGitRoutes(workspaceManager));
     app.use('/api/agents', createAgentRoutes(workspaceManager));
-    app.use(createJsonErrorHandler());
+    // M3 P4A: unknown API routes and unhandled errors are ApiProblem
+    // responses (application/problem+json), never Express HTML or raw
+    // internal messages.
+    app.use('/api', createApiNotFoundHandler());
+    app.use(createProblemErrorHandler());
 
     phase = 'listen';
     httpServer = await listenHttpServer(app, PORT, security.host);
@@ -204,6 +246,8 @@ async function bootstrap(): Promise<void> {
     diagLog(`SERVER_LISTEN pid=${process.pid} instanceId=${serverInstanceId} port=${PORT}`);
 
     // Background side effects start only after ownership + recovery + listen succeeded.
+    outboxPublisher.reclaimExpired();
+    stopOutboxPublisher = outboxPublisher.start();
     void worktreeManager.reconcile().catch(error => diagLog(`WORKTREE_RECONCILE_ERROR error=${error instanceof Error ? error.message : String(error)}`));
     try {
       const result = retentionService.run();
@@ -234,6 +278,9 @@ async function bootstrap(): Promise<void> {
       console.error(`[AgentOS Server] startup failed: ${code}`);
     }
     diagLog(`STARTUP_ABORTED code=${code} pid=${process.pid} instanceId=${serverInstanceId} phase=${phase}`);
+    if (stopOutboxPublisher) {
+      try { stopOutboxPublisher(); } catch { /* best effort */ }
+    }
     if (stopRetention) {
       try { stopRetention(); } catch { /* best effort */ }
     }
@@ -254,6 +301,9 @@ async function shutdown(signal: string, exitCode: number): Promise<void> {
   if (shuttingDown) return;
   shuttingDown = true;
   diagLog(`SIGNAL=${signal} pid=${process.pid} instanceId=${serverInstanceId}`);
+  if (stopOutboxPublisher) {
+    try { stopOutboxPublisher(); } catch { /* best effort */ }
+  }
   if (stopRetention) {
     try { stopRetention(); } catch { /* best effort */ }
   }

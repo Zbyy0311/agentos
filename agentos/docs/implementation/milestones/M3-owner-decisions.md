@@ -1,8 +1,8 @@
 # AgentOS M3 Owner Decision Register
 
-Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / IMPLEMENTED AND MERGED: the P3D Cancel contract they closed was subsequently implemented through P3D-2 (PR #37) and race-closed through P3D-3 (PR #38).
+Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / IMPLEMENTED AND MERGED: the P3D Cancel contract they closed was subsequently implemented through P3D-2 (PR #37) and race-closed through P3D-3 (PR #38). M3-TD-33 through M3-TD-36 are the P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE recorded after the P6-0 independent review reclassified the remaining delivery, recovery, retry/dead-letter, and Legacy execution questions as requiring no new user Owner Decision. Independent remote review of P6A0 commit `67e06e12088c6f369763bc5241ea10cc35876da8` returned CHANGES REQUIRED — HIGH-1 because total claim attempts could not durably reconstruct completed classified delivery failures or DeadLetter `firstFailedAt`. The forward remediation below closes that technical evidence gap without a new Owner decision or schema change. P6 production implementation remains NOT AUTHORIZED pending independent remote re-review.
 
-P3 decision freeze status:
+M3 current decision and contract status:
 P3C-0B: MERGED
 Option A Alignment: MERGED via PR #29
 P3C-1 Start Portion: IMPLEMENTED AND MERGED via PR #31
@@ -13,6 +13,12 @@ P3D-0 Preplanning: COMPLETE
 P3D Contract Closure: OWNER APPROVED / DOCUMENTED
 M3-TD-31: OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37
 M3-TD-32: OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37
+M3-TD-33 through M3-TD-36: P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE / DOCUMENTED
+P6-0 independent review: PASS WITH CONTRACT RECLASSIFICATION
+P6A0 independent remote review: CHANGES REQUIRED — HIGH-1
+P6A0 HIGH-1 remediation: DOCUMENTED / AWAITING INDEPENDENT REMOTE RE-REVIEW
+New P6 user Owner Decision: NONE
+P6 production entry: NO-GO — AWAITING P6A0 INDEPENDENT REMOTE RE-REVIEW
 P3D-1: IMPLEMENTED AND MERGED via PR #36
 P3D-2: IMPLEMENTED AND MERGED via PR #37
 P3D-3: COMPLETE AND MERGED via PR #38
@@ -72,11 +78,15 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | Option A alignment MERGED via PR #29. P3C-0B idempotency closure MERGED. P3C-1 Start Portion MERGED via PR #31. P3C-1 Retry contract IMPLEMENTED / CURRENT. Retry production implementation IMPLEMENTED AND MERGED via PR #33. |
 | M3-TD-31 | P3D Operation Cancel HTTP Request and Replay Contract | `POST /api/operations/:operationId/cancel` accepts only URL `operationId`, an empty query, and the exact body `{ "expectedVersion": <positive safe integer> }`. The router is locator-first and mounts before global `express.json()`. Already-cancelled is HTTP 200 with zero side effects even when the supplied version is stale; other stale requests are `409 VERSION_CONFLICT`; matching-version completed/failed are `409 OPERATION_NOT_CANCELLABLE`. Server metadata is `operation_api` / empty process IDs / Worktree preserved / no reason. | APPROVED TECHNICAL DIRECTION. OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37 (P3D-2); race closure evidence via PR #38 (P3D-3). |
 | M3-TD-32 | P3D Guarded Operation Cancel and Approval-aware Run Cancellation | Option C is approved: a dedicated Operation guarded-cancel seam plus an approval-aware Lifecycle cancellation seam. The ordinary Operation transition table is unchanged. Waiting-approval cancellation discovers exactly one unresolved Approval and preserves `approval.resolved -> stage.cancelled* -> run.cancelled` in the same outer transaction. | APPROVED TECHNICAL DIRECTION. OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37 (P3D-2). |
+| M3-TD-33 | P6 Task-domain Outbox delivery sink | `OutboxPublisher -> RuntimeEventDeliverySink -> RuntimeEventNotifier` is the P6 durable live-distribution wake-up path. The sink accepts only exact persisted Outbox/Event identity and emits `{ runId, sequence, eventId }`; it is not an Event Store, Conversation EventBus, HTTP/SSE client, or external broker. `published` means synchronous sink acceptance, not browser consumption or Run completion. | BOUNDED TECHNICAL CONTRACT CLOSURE / DOCUMENTED IN P6A0. NO NEW USER OWNER DECISION. P6 PRODUCTION IMPLEMENTATION NOT AUTHORIZED pending P6A0 independent remote review. |
+| M3-TD-34 | P6 Task-domain restart and uncertainty contract | `runs.recovery_required` is the only M3 recovery representation. Recovery classifies Run, Run Stage, `run.start` Operation, Approval where applicable, and Runtime Event evidence together. Terminal Runs remain immutable; queued authorization may be restored; post-claim/pre-start uses the existing M3-TD-29 C1b failure closure; uncertain active execution stays `running` with `recovery_required = 1`; coherent approvals/paused state remain waiting/paused; impossible combinations fail closed. | Same P6A0 status. No Recovery Record or Migration 014. Never guess success or blindly restart provider execution. |
+| M3-TD-35 | P6 Outbox crash, retry, and dead-letter policy | An expired `publishing` lease is conditionally reclaimed to `retry` while preserving immutable identity/payload and attempts. `attempts` is total delivery claims, not completed failures. Canonical `OutboxFailureStateV1` in existing mutable `last_error` durably records completed classified failures, immutable first failure time, and latest classified/lease-expired outcome. Completed failures alone drive the five-failure budget and deterministic backoff. Outbox dead-letter transition and DeadLetter insert share one outer transaction with exact stable evidence mapping. | P6A0 HIGH-1 FORWARD REMEDIATION / DOCUMENTED. NO NEW USER OWNER DECISION; NO SCHEMA CHANGE OR MIGRATION 014. P6A NOT AUTHORIZED pending independent remote re-review. |
+| M3-TD-36 | Legacy canonical mapping execution ownership | One Legacy request creates one canonical Run, one `run.start` Operation, and one execution authority. `LegacyCanonicalExecutionService` is the sole AgentRunner owner for `legacy_pipeline`; `tasks.ts` owns validation, command initiation, persisted-event projection subscription, and transport cleanup only. Thinking is persisted as `stream.text_delta` before pure Legacy projection. Disconnect unsubscribes without aborting execution or cancelling Run/Operation. | Same P6A0 status. No second executor, M4 ProcessManager/ProviderAdapter, Web switch, Legacy retirement, or route-owned lifecycle state machine. |
 
 > **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** Implementation-boundary
 > text that describes an earlier authorization gate is historical when the
 > corresponding stage has subsequently merged. The current status of
-> M3-TD-26 through M3-TD-32 is recorded individually in their table rows and
+> M3-TD-26 through M3-TD-36 is recorded individually in their table rows and
 > in section 5. Historical wording must not override those current statuses.
 
 M3-TD-26 through M3-TD-32 are approved technical direction with the
@@ -84,6 +94,9 @@ individual current implementation statuses recorded above and in section 5.
 M3-TD-26 through M3-TD-30 resolve the five P3 Owner Decision candidates
 (formerly OD-P3-01 through OD-P3-05). M3-TD-31 and M3-TD-32 close the missing
 P3D HTTP and approval-aware cancellation details; they do not authorize code.
+M3-TD-33 through M3-TD-36 are the P6A0 bounded technical closure, require no
+new user Owner Decision, and remain production-unimplemented pending review of
+this docs package.
 
 M3-TD-01 through M3-TD-25 retain their historical contract wording. Any P1/P2
 implementation boundary recorded in those rows is a historical phase
@@ -609,6 +622,306 @@ boundary; the current governance status is recorded in section 5 below.
 - **Re-review trigger:** any additional status, changed Approval order,
   ProcessManager entry, Worktree mutation, lifecycle-wide refactor, or public
   error expansion.
+
+### M3-TD-33 P6 Task-domain Outbox delivery sink
+
+- **Classification and record time:** BOUNDED TECHNICAL CONTRACT CLOSURE after
+  P6-0 independent review; 2026-08-10. The review reclassifies the earlier
+  `NEW OWNER DECISION REQUIRED` finding as `NO NEW USER OWNER DECISION` because
+  M3-TD-01, M3-TD-07, the P6 authorized scope, and Event Model §§48–50 already
+  approve Task-domain Event/Outbox/Stream ownership and durable at-least-once
+  delivery. P6 production implementation remains NOT AUTHORIZED until this
+  P6A0 docs package passes independent remote review.
+- **Selected sink boundary:** the only P6 `runtime-events` delivery chain is
+  `OutboxPublisher -> RuntimeEventDeliverySink -> RuntimeEventNotifier`.
+  `RuntimeEventDeliverySink` is a new adapter boundary. It is not a new Event
+  Store, Conversation EventBus, HTTP/SSE client, external broker, or second
+  source of Runtime Events.
+- **Trusted input:** the publisher supplies the exact durable Outbox message
+  identity together with the persisted Runtime Event identity. The sink must
+  resolve or validate against persisted Outbox/Event evidence and must not
+  trust an arbitrary caller-provided event payload. Its live-distribution hint
+  is exactly `{ runId, sequence, eventId }`.
+- **P5/P6 separation:** P5 direct post-commit `RuntimeEventNotifier`
+  publication remains the low-latency path. P6 publisher-to-sink notification
+  is the durable at-least-once wake-up path. Both may emit the same hint.
+  `RunStreamService` continues to deduplicate by `runId + sequence`, so duplicate
+  hints are harmless. Event Store truth, replay, Last-Event-ID, and the P5
+  subscribe/buffer/high-watermark/replay/drain/live handoff remain unchanged.
+  Request and SSE handlers do not read Outbox rows.
+- **Meaning of `published`:** `outbox.status = published` means only that
+  `RuntimeEventDeliverySink` synchronously accepted the exact durable message
+  for live-distribution dispatch. It does not mean a browser consumed it, a
+  Legacy client received it, all future subscribers observed it, or the Run
+  completed. Client delivery remains an Event Store + replay + Last-Event-ID
+  responsibility.
+- **Subscriber failure boundary:** current `RuntimeEventNotifier` subscriber
+  isolation remains authoritative. An individual subscriber/client handler
+  failure cannot fail a Run, mutate an Event, or retry a lifecycle transition.
+  P6 Outbox retry/dead-letter applies only to publisher/sink delivery failure,
+  never to browser disconnect.
+- **At-least-once identity:** delivery identity is `outbox.id`; domain Event
+  identity is `event.id`; ordering and stream dedup identity is
+  `runId + sequence`. Sink success followed by process crash before
+  `markPublished` legally redelivers the same Outbox/Event identities. It must
+  not create a second Runtime Event, second Run transition, or second domain
+  Event identity.
+- **Evidence threshold:** trusted persisted-evidence validation; duplicate-hint
+  proof through `RunStreamService`; crash-after-sink-before-publish redelivery;
+  subscriber isolation; no Outbox reads in request/SSE paths; and exact
+  `published` semantics.
+- **Stop/no-go:** Conversation EventBus reuse, external broker, caller payload
+  trust, browser-delivery acknowledgment, marking published after read alone,
+  second Event append, or any Run-state retry caused by subscriber failure.
+- **Rollback boundary:** revert only P6 publisher/sink composition while
+  preserving Event Store, Outbox rows, P5 direct notifier behavior, replay, and
+  durable history.
+- **Re-review trigger:** a different sink, external infrastructure, changed
+  `published` meaning, removal of P5 low-latency notification, changed dedup
+  identity, or any client acknowledgment entering Outbox state.
+
+### M3-TD-34 P6 Task-domain restart and uncertainty contract
+
+- **Classification and representation:** BOUNDED TECHNICAL CONTRACT CLOSURE;
+  no new user Owner Decision. `runs.recovery_required` is the only M3 recovery
+  representation. P6 does not create a Recovery Record or Migration 014.
+- **Evidence set:** P6B recovery classification examines the Run, Run Stage,
+  bound `run.start` Operation, Approval where applicable, and persisted Runtime
+  Event evidence together. Run status alone is insufficient. Process,
+  provider-session, or worktree booleans may be recorded only when backed by
+  evidence actually inspectable in M3; they are never fabricated.
+- **Terminal matrix:** `completed`, `failed`, and `cancelled` are immutable.
+  Recovery does not reopen, retry, or execute them.
+- **Queued without authorization:** `Run = queued` with no non-terminal
+  `run.start` Operation remains an ordinary queued Run. It stays queued and is
+  not automatically executed, completed, or failed.
+- **Queued with authorization:** `Run = queued` with exactly one queued
+  `run.start` Operation is `queue-restore`. Persistent Start authorization may
+  be reclaimed by the future execution worker. P6B itself must not blindly
+  invoke Provider or AgentRunner.
+- **Starting with claimed Start:** `Run = starting` with a running `run.start`
+  Operation is the M3-TD-29 C1b post-claim/pre-`run.started` failure window.
+  P6B reuses the existing startup failure closure so Stage, Run, Start
+  Operation, Runtime Event, and Outbox failure evidence commit atomically. It
+  does not leave the Run starting or infer success.
+- **Running:** `Run = running` with completed `run.start` remains running when
+  M3 cannot prove external execution outcome; recovery atomically sets
+  `recovery_required = 1` with recovery evidence. It does not complete, fail,
+  resume, or restart provider execution.
+- **Waiting approval:** a waiting Run with exactly one persisted unresolved
+  Approval and coherent Run/Stage/Approval evidence is `approval-restore` and
+  remains `waiting_approval`. Recovery never auto-approves or rejects. Missing,
+  multiple, mismatched, or contradictory evidence sets
+  `recovery_required = 1` and fails closed.
+- **Paused:** coherent persisted paused state remains paused and is not
+  auto-resumed. Cross-aggregate inconsistency sets `recovery_required = 1`.
+- **Impossible combinations:** multiple non-terminal Start Operations, queued
+  Run with completed Start, starting Run without a compatible active Start,
+  or foreign/mismatched Operation binding fail closed. Recovery does not
+  synthesize completed state or create a second Start Operation.
+- **Recovery Events:** Runtime Specification events
+  `run.recovery_attempted`, `run.recovered`, and `run.recovery_failed` are
+  implemented in the Shared Registry by P6B; they are not a new Event design.
+  Successful queue restore writes attempted then recovered with
+  `queue-restore`; successful approval restore writes attempted then recovered
+  with `approval-restore`; uncertain active execution writes attempted, sets
+  `recovery_required = 1`, and writes recovery failed. Required
+  State/flag/Event/Outbox changes commit in the same outer transaction.
+- **Evidence threshold:** deterministic fixtures for every Run/Start Operation
+  combination; exactly-one approval proof; M3-TD-29 C1b reuse; terminal
+  immutability; full rollback injection; no guessed external evidence; and
+  Conversation `agent_runs` recovery unchanged.
+- **Stop/no-go:** status-only classification, guessed success, blind provider
+  resume/restart, second Start, Recovery Record, Migration 014, direct
+  repository state writes without Event/Outbox, or reuse of Conversation
+  `runRecovery.ts`.
+- **Rollback boundary:** revert P6 Task-domain recovery wiring and shared
+  recovery-event implementation while preserving stored Run/Event/Outbox
+  evidence and the separate Conversation recovery aggregate.
+- **Re-review trigger:** ProcessManager/ProviderAdapter entry, a new recovery
+  representation, new automatic resume behavior, changed Start Operation
+  semantics, or any terminal reopening policy.
+
+### M3-TD-35 P6 Outbox crash, retry, and dead-letter policy
+
+- **Classification and review finding:** BOUNDED TECHNICAL IMPLEMENTATION
+  CONTRACT under M3-TD-07; no new user Owner Decision. Independent review of
+  P6A0 commit `67e06e12088c6f369763bc5241ea10cc35876da8`
+  found one HIGH issue: current durable `outbox_messages.attempts` increments
+  on every `pending/retry -> publishing` claim, so it cannot distinguish a
+  completed classified sink failure from a claim followed by process crash and
+  expired lease. It therefore cannot reconstruct the completed-failure budget
+  or DeadLetter `firstFailedAt`.
+- **No-schema closure:** P6A adds no column, table, Entity ID kind, or Migration
+  014. Migration registry remains exactly 001–013. Existing mutable
+  `outbox_messages.last_error TEXT` stores a P6-internal versioned failure-state
+  envelope. This envelope is not a public API.
+- **Durable envelope:** canonical JSON serialization in `last_error` has this
+  semantic shape:
+
+  ```ts
+  interface OutboxFailureStateV1 {
+    readonly schemaVersion: 1;
+    readonly completedFailures: number;
+    readonly firstFailedAt?: string;
+    readonly lastOutcome: 'classified_failure' | 'lease_expired';
+    readonly lastCode: string;
+    readonly lastMessage: string;
+    readonly lastObservedAt: string;
+  }
+  ```
+
+  `schemaVersion` is exactly 1. `completedFailures` is a non-negative safe
+  integer. `firstFailedAt` is present iff `completedFailures > 0` and remains
+  immutable after the first classified failure. All timestamps are canonical
+  UTC ISO 8601 with milliseconds. `lastCode` is stable, non-empty, and
+  sanitized; `lastMessage` is sanitized bounded diagnostic text. Stack traces,
+  SQL, database paths, secrets, and arbitrary sink objects are forbidden.
+- **NULL and parser semantics:** `last_error IS NULL` means exactly
+  `completedFailures = 0` with no `firstFailedAt` and no prior observed failure
+  state. P6A parses and validates schema version, exact fields, integer range,
+  conditional timestamp presence, canonical timestamps, code, message, and
+  outcome before mutation. A malformed persisted state fails closed; it is never
+  reset, guessed, discarded, marked published, or exposed raw. The durable
+  message remains for manual or future reviewed remediation. A stable internal
+  error code may be defined in the bounded P6A implementation.
+- **Claim semantics:** claim continues to perform `attempts = attempts + 1`.
+  `attempts` is formally TOTAL DELIVERY CLAIM ATTEMPTS and includes claims that
+  later publish successfully, end in classified failure, or have unknown crash
+  outcomes. It never directly drives completed-failure exhaustion.
+- **Classified delivery failure:** only a sink invocation that returns or raises
+  a classified failure while the publisher still owns a valid lease increments
+  `completedFailures`. The first such failure sets `firstFailedAt = now`;
+  later failures preserve it. Every classified failure writes
+  `lastOutcome = 'classified_failure'`, the stable classified `lastCode`,
+  sanitized `lastMessage`, and `lastObservedAt = now`. Retryable failure with
+  `completedFailures < 5` transitions to retry; non-retryable failure or
+  `completedFailures = 5` transitions to dead letter.
+- **Expired lease transition:** a row at `publishing` with
+  `lease_expires_at <= now` is conditionally reclaimed to `retry`. Reclaim
+  preserves `completedFailures`, `firstFailedAt`, and `attempts`; writes
+  `lastOutcome = 'lease_expired'`, `lastCode = 'OUTBOX_LEASE_EXPIRED'`, a stable
+  sanitized lease-expired message, and `lastObservedAt = now`; sets
+  `available_at = now`; clears lease owner/expiry; and increments version. The
+  fenced update checks identity, current status, expected version, and expiry.
+  It never takes over a live lease or rewrites message/domain identity.
+- **Unknown outcome:** lease expiry is neither a classified failure nor proof
+  of successful delivery. When `completedFailures = 0`, reclaim leaves
+  `firstFailedAt` absent. Repeated lease crashes may make `attempts > 5` without
+  exhausting the five completed-failure budget and never directly dead-letter.
+- **Retry budget and backoff:** `MAX_COMPLETED_FAILURE_ATTEMPTS = 5` is evaluated
+  only from `OutboxFailureStateV1.completedFailures`, never `attempts`. Retry
+  delay is `min(1000 * 2^(completedFailures - 1), 300000)` milliseconds. The
+  first through fourth completed retryable failures schedule 1s, 2s, 4s, and
+  8s; the fifth is exhausted and dead-letters. M3 uses no random jitter. Clock
+  is injectable and correctness tests use no sleeps. Lease-expired reclaim is
+  immediately available and applies no classified-failure backoff.
+- **DeadLetter evidence mapping:** terminal delivery failure inserts exactly:
+  `sourceType = 'outbox'`, `sourceId = outbox.id`, and
+  `target = 'runtime-events'`. Safe canonical payload metadata is
+  `{ outboxId: outbox.id, eventId: outbox.eventId,
+  runId: outbox.aggregateId, topic: outbox.topic }`; arbitrary caller or Event
+  payload is not copied and no new Runtime Event is created.
+- **DeadLetter timestamps and attempts:** `firstFailedAt` is the immutable
+  envelope `firstFailedAt`; `lastFailedAt` is the current classified terminal
+  failure time; `attempts = outbox.attempts` and therefore means total claim
+  attempts. Dead-letter entry requires `completedFailures >= 1` and a valid
+  `firstFailedAt`; otherwise it fails closed. Outbox creation, claim, lease
+  expiry, or restart time must not be substituted for first failure time.
+- **DeadLetter retryability and error:** an explicitly non-retryable sink
+  failure writes `retryable = false`. A retryable failure exhausted at five
+  completed failures writes `retryable = true`; this field describes the
+  underlying failure classification, not whether automatic retries remain.
+  `errorCode` and `errorMessage` are the final classified stable code and
+  sanitized message. `OUTBOX_LEASE_EXPIRED` never becomes the final DeadLetter
+  error; lease expiry only reclaims to retry.
+- **DeadLetter identity:** no stricter production identity convention exists in
+  the current repository, so P6A freezes deterministic internal ID
+  `deadletter:<outbox.id>`. This provides one terminal DeadLetter record per
+  Outbox message and fences transaction replay without modifying `Identity.ts`.
+- **Dead-letter atomicity:** `markDeadLetterWithinTransaction` and
+  `DeadLetterRepository.insertWithinTransaction` execute inside one
+  `store.runInTransaction(...)` on the same database handle. Both commit or
+  both roll back. An Outbox dead-letter state without its DeadLetter row, or a
+  duplicate terminal record, is forbidden.
+- **Publisher startup boundary:** construct and validate publisher dependencies
+  after ownership, store open/migration, and synchronous Task-domain recovery.
+  Routes are composed and HTTP listen must succeed before reclaiming expired
+  leases and starting the publisher loop. Background delivery never begins
+  before listen success. Ordinary delivery failure follows retry/dead-letter
+  policy and is not a Run failure.
+- **Evidence threshold:** P6A-F01 claim increments `attempts` but not completed
+  failures; P6A-F02 first classified failure freezes `firstFailedAt`; P6A-F03
+  later classified failure preserves it; P6A-F04 claim crash/reclaim preserves
+  completed failures; P6A-F05 five lease crashes do not exhaust the budget;
+  P6A-F06 completed failure count drives backoff; P6A-F07 fifth retryable
+  completed failure dead-letters; P6A-F08 first non-retryable failure
+  dead-letters; P6A-F09 DeadLetter first failure time is exact; P6A-F10 malformed
+  persisted state fails closed; P6A-F11 Outbox/DeadLetter writes roll back
+  together. All use injected clocks/barriers and no sleeps. Fencing/version
+  races, sink classification, listen-success startup barrier, and clean loop
+  shutdown remain required.
+- **Stop/no-go:** reclaiming unexpired lease, resetting attempts, changing
+  immutable fields, using `attempts` as the completed-failure count, losing or
+  guessing `firstFailedAt`, accepting malformed state, copying arbitrary
+  payload, random/sleep-based correctness, split dead-letter writes, marking
+  published without sink acceptance, delivery before listen, or converting
+  delivery failure into Run failure.
+- **Rollback boundary:** stop/revert publisher and reclaim wiring while
+  preserving Outbox/DeadLetter rows, immutable identity, Event Store, and P5
+  live/replay behavior.
+- **Re-review trigger:** envelope schema change, retry budget or jitter changes,
+  new delivery outcome classes, different DeadLetter identity/evidence mapping,
+  concurrent publisher topology, external broker, schema change, or a different
+  startup side-effect boundary.
+
+### M3-TD-36 Legacy canonical mapping execution ownership
+
+- **Classification:** BOUNDED TECHNICAL CONTRACT CLOSURE under the already
+  approved P6 Legacy mapping and single-execution invariant; no new user Owner
+  Decision. P6C remains NOT AUTHORIZED until sequential P6 package gates allow
+  it.
+- **Single authority:** one Legacy request creates one canonical Run, one
+  `run.start` Operation, and one execution authority.
+  `LegacyCanonicalExecutionService` is the only AgentRunner owner for a
+  `legacy_pipeline` Run. It is an adapter for the existing AgentRunner, not a
+  second execution model.
+- **Route boundary:** `tasks.ts` performs Legacy request validation, canonical
+  command initiation, Legacy projection subscription, heartbeat/transport
+  cleanup, and response framing. It does not construct AgentRunner, own an
+  execution AbortController, drive Stages, or directly set canonical terminal
+  Run state.
+- **Canonical truth:** the Legacy bridge advances from a Run mirror to
+  canonical Run + Start Operation + Stage lifecycle + Runtime Events + Outbox.
+  Every execution state change is supported by canonical lifecycle evidence.
+  Route-owned Legacy state machine and canonical execution worker may never
+  execute together.
+- **Thinking and projection:** the existing AgentRunner public text callback
+  first persists `stream.text_delta`; only then may pure
+  `LegacyRuntimeEventAdapter` project the persisted `RuntimeEventRecord` to the
+  existing Legacy `thinking` frame. The same pure adapter projects persisted
+  Events to the existing `status`, `stage`, `done`, and `error` frame shapes.
+  It owns no second Run state machine and never sends first/persists later.
+- **Disconnect:** client disconnect unsubscribes the persisted-event projection,
+  stops heartbeat, and closes Legacy transport. It does not abort AgentRunner,
+  cancel Run/Operation, or kill a process. Only an explicit Cancel command may
+  change Run execution state.
+- **Scope boundary:** no M4 ProcessManager/ProviderAdapter, Web default switch,
+  Legacy API/JSON retirement, production Cutover, or second replay/live
+  algorithm. P6C reuses the accepted P5 `RunStreamService` handoff.
+- **Evidence threshold:** exact existing HTTP/SSE compatibility; one execution
+  counter under concurrent requests; canonical Start/Stage/Event/Outbox
+  evidence; thinking persist-before-project; disconnect without abort/cancel;
+  replay/live no-gap/no-duplicate proof; and Legacy JSON/Web behavior retained.
+- **Stop/no-go:** route-owned AgentRunner, request-owned execution abort,
+  direct bridge terminal mutation, direct thinking-before-persist, second
+  executor, M4 component, second stream handoff, or Legacy/Web retirement.
+- **Rollback boundary:** revert P6C mapping/projection/execution adapter while
+  preserving the callable Legacy route, Legacy source JSON, canonical durable
+  history, and P5 stream/replay implementation.
+- **Re-review trigger:** another execution owner, ProviderAdapter/ProcessManager
+  entry, Legacy frame shape change, new public cancellation semantics, Web
+  default change, or retirement/data-migration scope.
 
 ## 3. API compatibility record
 
@@ -1223,7 +1536,11 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 
 - Technical direction: M3-TD-01 through M3-TD-30 retain their prior independent
   technical review status. M3-TD-31/32 are OWNER APPROVED / IMPLEMENTED AND
-  MERGED via PR #37; race closure evidence via PR #38.
+  MERGED via PR #37; race closure evidence via PR #38. M3-TD-33 through
+  M3-TD-36 are the P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE documented after
+  P6-0 independent review reclassified the remaining questions as requiring no
+  new user Owner Decision. P6 production implementation is not authorized
+  pending P6A0 independent remote review.
 - P3C-0B Post-Merge Remediation 1: historical six-file Option A alignment
   prerequisite; PR #33 contains the six-file Retry production implementation.
 - Final independent P0 review: COMPLETE (historical).
@@ -1266,12 +1583,22 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 - M3 P3C-1 Start production acceptance: IMPLEMENTED AND MERGED via PR #31;
   the merged Start route remains current state.
 - M3 P3C-1 Retry contract: IMPLEMENTED CONTRACT / CURRENT.
+- M3 P5: COMPLETE / ACCEPTED through P5C at
+  `a1cbb2868f9da215fab058b4176d70a3b382831d`.
+- M3 P6-0 independent review: PASS WITH CONTRACT RECLASSIFICATION.
+- M3 P6A0 independent remote review: CHANGES REQUIRED — HIGH-1 on commit
+  `67e06e12088c6f369763bc5241ea10cc35876da8`.
+- M3 P6A0 HIGH-1 durable failure evidence remediation: DOCUMENTED; production
+  implementation remains NO-GO pending independent remote re-review.
+- New P6 user Owner Decision: NONE.
+- P6A/P6B/P6C/P6D: NOT ENTERED.
 - P3B-2A CONTRACT ALIGNMENT: COMPLETED AND MERGED via PR #25; this historical
   completion does not alter the merged Retry implementation. P3D has since
   COMPLETED via PR #36/#37/#38.
 - Unresolved P3 Owner Decision candidates: 0.
 - Approved P3 decisions: 7.
-- M3-TD sequence ends at M3-TD-32. No later decision exists or is authorized.
+- M3-TD sequence ends at M3-TD-36. M3-TD-33 through M3-TD-36 are bounded P6
+  technical directions only; they do not authorize production implementation.
 - Migration 012: IMPLEMENTED AND MERGED as part of M3 P2.
 - Migration 014: NOT REQUIRED / NOT AUTHORIZED / ABSENT.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.

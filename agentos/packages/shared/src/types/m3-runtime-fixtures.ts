@@ -11,6 +11,9 @@ import type {
   RunCreatedPayload,
   RunDequeuedPayload,
   RunFailedPayload,
+  RunRecoveryAttemptedPayload,
+  RunRecoveredPayload,
+  RunRecoveryFailedPayload,
   RunPausedPayload,
   RunQueuedPayload,
   RunResumedPayload,
@@ -25,6 +28,8 @@ import type {
   StageSkippedPayload,
   StageStartingPayload,
   StageStartedPayload,
+  TextCompletedPayload,
+  TextDeltaPayload,
 } from './m3-runtime-registry.js';
 import type { AgentSnapshotV1, ProviderConfigurationSnapshotV1 } from './index.js';
 import type { V2RunReason, WorktreeMode } from './m3-runtime-contracts.js';
@@ -122,6 +127,10 @@ export interface M3RuntimeEventFixtureSet {
   readonly validRunCancelledEvent: RuntimeEventEnvelope<RunCancelledPayload>;
   readonly validRunCompletedEvent: RuntimeEventEnvelope<RunCompletedPayload>;
   readonly validRunFailedEvent: RuntimeEventEnvelope<RunFailedPayload>;
+  readonly validRunRecoveryAttemptedEvent: RuntimeEventEnvelope<RunRecoveryAttemptedPayload>;
+  readonly validRunRecoveredEvent: RuntimeEventEnvelope<RunRecoveredPayload>;
+  readonly validRunRecoveredEvents: readonly RuntimeEventEnvelope<RunRecoveredPayload>[];
+  readonly validRunRecoveryFailedEvent: RuntimeEventEnvelope<RunRecoveryFailedPayload>;
   readonly validStageCreatedEvent: RuntimeEventEnvelope<StageCreatedPayload>;
   readonly validStageReadyEvent: RuntimeEventEnvelope<StageReadyPayload>;
   readonly validStageStartingEvent: RuntimeEventEnvelope<StageStartingPayload>;
@@ -135,17 +144,32 @@ export interface M3RuntimeEventFixtureSet {
   readonly validApprovalRequiredEvent: RuntimeEventEnvelope<ApprovalRequiredPayload>;
   readonly validRunOnlyApprovalRequiredEvent: RuntimeEventEnvelope<ApprovalRequiredPayload>;
   readonly validApprovalResolvedEvent: RuntimeEventEnvelope<ApprovalResolvedPayload>;
+  readonly validTextDeltaEvent: RuntimeEventEnvelope<TextDeltaPayload>;
+  readonly validTextCompletedEvent: RuntimeEventEnvelope<TextCompletedPayload>;
   readonly invalidPayloads: readonly RuntimeEventDraft[];
   readonly invalidPayload: RuntimeEventDraft;
   readonly invalidReason: RuntimeEventDraft;
   readonly invalidWorktreeMode: RuntimeEventDraft;
   readonly invalidUnknownWorktreeMode: RuntimeEventDraft;
+  readonly invalidRecoveryPreviousStatus: RuntimeEventDraft;
+  readonly invalidRecoveryMode: RuntimeEventDraft;
+  readonly invalidRecoveryBooleans: readonly RuntimeEventDraft[];
+  readonly invalidRecoveryUnknownField: RuntimeEventDraft;
+  readonly invalidRecoveryRequiredOmissions: readonly RuntimeEventDraft[];
   readonly invalidStageSnapshot: RuntimeEventDraft;
   readonly invalidStageEnvelope: RuntimeEventDraft;
   readonly invalidNonCanonicalTimestamp: RuntimeEventDraft;
   readonly invalidUnexpectedStageId: RuntimeEventDraft;
   readonly invalidMissingApprovalRequestId: RuntimeEventDraft;
   readonly invalidSource: RuntimeEventDraft;
+  readonly invalidTextDeltaChannel: RuntimeEventDraft;
+  readonly invalidTextDeltaMissingDelta: RuntimeEventDraft;
+  readonly invalidTextDeltaExtraField: RuntimeEventDraft;
+  readonly invalidTextCompletedChannel: RuntimeEventDraft;
+  readonly invalidTextCompletedCharacterCounts: readonly RuntimeEventDraft[];
+  readonly invalidTextCompletedMissingCharacterCount: RuntimeEventDraft;
+  readonly invalidTextCompletedExtraField: RuntimeEventDraft;
+  readonly invalidTextType: RuntimeEventDraft;
   readonly unregisteredCoreEvent: RuntimeEventDraft;
   readonly invalidSchemaVersion: RuntimeEventDraft;
   readonly unknownSameVersionEvent: RuntimeEventDraft;
@@ -234,6 +258,33 @@ export function createM3RuntimeEventFixtures(
     { errorCode: 'FIXTURE_FAILURE', message: 'Fixture failure', phase: 'test', retryable: false },
     { id: 'evt_fixture_10', sequence: 10 },
   );
+  const validRunRecoveryAttemptedEvent = publish<RunRecoveryAttemptedPayload>(
+    'run.recovery_attempted',
+    {
+      previousStatus: 'running',
+      processFound: true,
+      providerSessionFound: false,
+      worktreeFound: true,
+    },
+    { id: 'evt_fixture_30', sequence: 30 },
+  );
+  const validRunRecoveredEvents = (
+    ['process-reattach', 'provider-session-resume', 'queue-restore', 'approval-restore'] as const
+  ).map((recoveryMode, index) => publish<RunRecoveredPayload>(
+    'run.recovered',
+    { recoveryMode },
+    { id: `evt_fixture_recovered_${index + 1}`, sequence: 31 + index },
+  ));
+  const validRunRecoveredEvent = validRunRecoveredEvents[0]!;
+  const validRunRecoveryFailedEvent = publish<RunRecoveryFailedPayload>(
+    'run.recovery_failed',
+    {
+      errorCode: 'RECOVERY_UNCERTAIN',
+      message: 'External execution outcome is unavailable.',
+      retryableAsNewRun: true,
+    },
+    { id: 'evt_fixture_35', sequence: 35 },
+  );
   const validStageCreatedEvent = publish<StageCreatedPayload>(
     'stage.created',
     { workflowStageKey: 'plan', name: 'Plan', sequence: 1, dependsOn: [] },
@@ -311,6 +362,16 @@ export function createM3RuntimeEventFixtures(
     { decision: 'approve_once', decidedBy: 'fixture', decidedAt: '2026-08-02T00:00:21.000Z' },
     { id: 'evt_fixture_21', sequence: 21, stageId: 'stage_fixture_01', approvalRequestId: 'approval_fixture_01' },
   );
+  const validTextDeltaEvent = publish<TextDeltaPayload>(
+    'stream.text_delta',
+    { channel: 'assistant', delta: '', blockId: 'block_fixture_01' },
+    { id: 'evt_fixture_22', sequence: 22, stageId: 'stage_fixture_01' },
+  );
+  const validTextCompletedEvent = publish<TextCompletedPayload>(
+    'stream.text_completed',
+    { channel: 'assistant', blockId: 'block_fixture_01', artifactId: 'artifact_fixture_01', characterCount: 0 },
+    { id: 'evt_fixture_23', sequence: 23 },
+  );
 
   const validEvents: readonly RuntimeEventEnvelope[] = [
     validRunCreatedEvent,
@@ -322,6 +383,9 @@ export function createM3RuntimeEventFixtures(
     validRunCancelledEvent,
     validRunCompletedEvent,
     validRunFailedEvent,
+    validRunRecoveryAttemptedEvent,
+    validRunRecoveredEvent,
+    validRunRecoveryFailedEvent,
     validStageCreatedEvent,
     validStageReadyEvent,
     validStageStartingEvent,
@@ -334,6 +398,8 @@ export function createM3RuntimeEventFixtures(
     validStageSkippedEvent,
     validApprovalRequiredEvent,
     validApprovalResolvedEvent,
+    validTextDeltaEvent,
+    validTextCompletedEvent,
   ];
 
   const invalidPayloads = validEvents.map((event, index) => ({
@@ -376,6 +442,171 @@ export function createM3RuntimeEventFixtures(
     { dequeuedAt: '2026-08-02T00:00:25.000Z' },
     { id: 'evt_fixture_invalid_source', sequence: 25, source: 'run-engine' },
   );
+  const invalidTextDeltaChannel = baseDraft(
+    'stream.text_delta',
+    { channel: 'tool', delta: 'fixture' },
+    { id: 'evt_fixture_invalid_text_delta_channel', sequence: 26 },
+  );
+  const invalidTextDeltaMissingDelta = baseDraft(
+    'stream.text_delta',
+    { channel: 'assistant' },
+    { id: 'evt_fixture_invalid_text_delta_missing_delta', sequence: 27 },
+  );
+  const invalidTextCompletedChannel = baseDraft(
+    'stream.text_completed',
+    { channel: '', characterCount: 0 },
+    { id: 'evt_fixture_invalid_text_completed_channel', sequence: 28 },
+  );
+  const invalidTextType = baseDraft(
+    'stream.text_unknown',
+    { channel: 'assistant', characterCount: 0 },
+    { id: 'evt_fixture_invalid_text_type', sequence: 29 },
+  );
+  const withPayloadField = (
+    event: RuntimeEventEnvelope,
+    field: string,
+    value: unknown,
+    id: string,
+  ): RuntimeEventDraft => ({
+    ...event,
+    id,
+    payload: {
+      ...(event.payload as Record<string, unknown>),
+      [field]: value,
+    },
+  });
+  const withoutPayloadField = (
+    event: RuntimeEventEnvelope,
+    field: string,
+    id: string,
+  ): RuntimeEventDraft => {
+    const payload = { ...(event.payload as Record<string, unknown>) };
+    delete payload[field];
+    return { ...event, id, payload };
+  };
+  const invalidTextDeltaExtraField = withPayloadField(
+    validTextDeltaEvent,
+    'unexpectedStreamField',
+    true,
+    'evt_fixture_invalid_text_delta_extra_field',
+  );
+  const invalidTextCompletedCharacterCounts: readonly RuntimeEventDraft[] = [
+    withPayloadField(
+      validTextCompletedEvent,
+      'characterCount',
+      -1,
+      'evt_fixture_invalid_text_completed_negative_count',
+    ),
+    withPayloadField(
+      validTextCompletedEvent,
+      'characterCount',
+      1.5,
+      'evt_fixture_invalid_text_completed_fractional_count',
+    ),
+    withPayloadField(
+      validTextCompletedEvent,
+      'characterCount',
+      Number.MAX_SAFE_INTEGER + 1,
+      'evt_fixture_invalid_text_completed_unsafe_count',
+    ),
+  ];
+  const invalidTextCompletedMissingCharacterCount = withoutPayloadField(
+    validTextCompletedEvent,
+    'characterCount',
+    'evt_fixture_invalid_text_completed_missing_count',
+  );
+  const invalidTextCompletedExtraField = withPayloadField(
+    validTextCompletedEvent,
+    'unexpectedStreamField',
+    true,
+    'evt_fixture_invalid_text_completed_extra_field',
+  );
+  const invalidRecoveryPreviousStatus = withPayloadField(
+    validRunRecoveryAttemptedEvent,
+    'previousStatus',
+    'created',
+    'evt_fixture_invalid_recovery_status',
+  );
+  const invalidRecoveryMode = withPayloadField(
+    validRunRecoveredEvent,
+    'recoveryMode',
+    'unsupported-mode',
+    'evt_fixture_invalid_recovery_mode',
+  );
+  const invalidRecoveryBooleans: readonly RuntimeEventDraft[] = [
+    withPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'processFound',
+      'true',
+      'evt_fixture_invalid_recovery_process_boolean',
+    ),
+    withPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'providerSessionFound',
+      1,
+      'evt_fixture_invalid_recovery_provider_boolean',
+    ),
+    withPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'worktreeFound',
+      null,
+      'evt_fixture_invalid_recovery_worktree_boolean',
+    ),
+    withPayloadField(
+      validRunRecoveryFailedEvent,
+      'retryableAsNewRun',
+      'false',
+      'evt_fixture_invalid_recovery_retryable_boolean',
+    ),
+  ];
+  const invalidRecoveryUnknownField = withPayloadField(
+    validRunRecoveredEvent,
+    'unexpectedRecoveryField',
+    true,
+    'evt_fixture_invalid_recovery_unknown_field',
+  );
+  const invalidRecoveryRequiredOmissions: readonly RuntimeEventDraft[] = [
+    withoutPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'previousStatus',
+      'evt_fixture_missing_recovery_previous_status',
+    ),
+    withoutPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'processFound',
+      'evt_fixture_missing_recovery_process_found',
+    ),
+    withoutPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'providerSessionFound',
+      'evt_fixture_missing_recovery_provider_session_found',
+    ),
+    withoutPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'worktreeFound',
+      'evt_fixture_missing_recovery_worktree_found',
+    ),
+    withoutPayloadField(
+      validRunRecoveredEvent,
+      'recoveryMode',
+      'evt_fixture_missing_recovery_mode',
+    ),
+    withoutPayloadField(
+      validRunRecoveryFailedEvent,
+      'errorCode',
+      'evt_fixture_missing_recovery_error_code',
+    ),
+    withoutPayloadField(
+      validRunRecoveryFailedEvent,
+      'message',
+      'evt_fixture_missing_recovery_message',
+    ),
+    withoutPayloadField(
+      validRunRecoveryFailedEvent,
+      'retryableAsNewRun',
+      'evt_fixture_missing_recovery_retryable',
+    ),
+  ];
 
   const unknownSameVersionEvent = {
     ...baseDraft(
@@ -448,6 +679,10 @@ export function createM3RuntimeEventFixtures(
     validRunCancelledEvent,
     validRunCompletedEvent,
     validRunFailedEvent,
+    validRunRecoveryAttemptedEvent,
+    validRunRecoveredEvent,
+    validRunRecoveredEvents,
+    validRunRecoveryFailedEvent,
     validStageCreatedEvent,
     validStageReadyEvent,
     validStageStartingEvent,
@@ -461,6 +696,8 @@ export function createM3RuntimeEventFixtures(
     validApprovalRequiredEvent,
     validRunOnlyApprovalRequiredEvent,
     validApprovalResolvedEvent,
+    validTextDeltaEvent,
+    validTextCompletedEvent,
     invalidPayloads,
     invalidPayload: baseDraft(
       'stage.started',
@@ -498,6 +735,11 @@ export function createM3RuntimeEventFixtures(
       worktreeMode: 'experimental' as WorktreeMode,
       createdBy: 'fixture',
     }),
+    invalidRecoveryPreviousStatus,
+    invalidRecoveryMode,
+    invalidRecoveryBooleans,
+    invalidRecoveryUnknownField,
+    invalidRecoveryRequiredOmissions,
     invalidStageSnapshot: baseDraft(
       'stage.started',
       {
@@ -524,6 +766,14 @@ export function createM3RuntimeEventFixtures(
     invalidUnexpectedStageId,
     invalidMissingApprovalRequestId,
     invalidSource,
+    invalidTextDeltaChannel,
+    invalidTextDeltaMissingDelta,
+    invalidTextDeltaExtraField,
+    invalidTextCompletedChannel,
+    invalidTextCompletedCharacterCounts,
+    invalidTextCompletedMissingCharacterCount,
+    invalidTextCompletedExtraField,
+    invalidTextType,
     unregisteredCoreEvent: baseDraft(
       'run.unregistered',
       {

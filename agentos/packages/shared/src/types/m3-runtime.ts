@@ -57,6 +57,7 @@ export const RUNTIME_EVENT_DOMAINS = Object.freeze([
   'run',
   'stage',
   'approval',
+  'stream',
 ] as const);
 
 export type RuntimeEventDomain = (typeof RUNTIME_EVENT_DOMAINS)[number];
@@ -71,6 +72,9 @@ export const M3_RUNTIME_EVENT_TYPES = Object.freeze([
   'run.cancelled',
   'run.completed',
   'run.failed',
+  'run.recovery_attempted',
+  'run.recovered',
+  'run.recovery_failed',
   'stage.created',
   'stage.ready',
   'stage.starting',
@@ -83,6 +87,8 @@ export const M3_RUNTIME_EVENT_TYPES = Object.freeze([
   'stage.skipped',
   'approval.required',
   'approval.resolved',
+  'stream.text_delta',
+  'stream.text_completed',
 ] as const);
 
 export type M3RuntimeEventType = (typeof M3_RUNTIME_EVENT_TYPES)[number];
@@ -231,6 +237,12 @@ export interface UnknownRuntimeEvent {
   readonly warning: 'UNKNOWN_EVENT_TYPE' | 'UNKNOWN_FUTURE_EVENT_SCHEMA';
 }
 
+/**
+ * Public Runtime Event wire record. Repository consumption discriminators are
+ * internal and must never leak through the HTTP contract.
+ */
+export type RuntimeEventRecord = RuntimeEventEnvelope | UnknownRuntimeEvent;
+
 export interface ApiProblemFieldError {
   readonly field?: string;
   readonly code: string;
@@ -343,6 +355,45 @@ export interface RunEventsQuery {
   readonly correlationId?: string;
 }
 
+export interface RunReplayQuery {
+  readonly fromSequence?: number;
+  readonly toSequence?: number;
+  readonly types?: readonly string[];
+  readonly stageId?: string;
+  readonly includeArtifacts?: boolean;
+}
+
+export type ReplayCompatibilityWarningCode =
+  | 'SNAPSHOT_UNAVAILABLE'
+  | 'EVENT_SEQUENCE_GAP'
+  | 'UNKNOWN_RUNTIME_EVENT'
+  | 'LEGACY_EVENT_HISTORY_UNAVAILABLE'
+  | 'ARTIFACT_INDEX_UNAVAILABLE';
+
+export interface ReplayCompatibilityWarning {
+  readonly code: ReplayCompatibilityWarningCode;
+  readonly message: string;
+  readonly eventId?: string;
+  readonly fromSequence?: number;
+  readonly toSequence?: number;
+}
+
+/**
+ * Path-free, content-free future Task-domain Artifact projection. P5A does
+ * not populate this from the Legacy/Conversation runtime_artifacts table.
+ */
+export interface ReplayArtifactIndexEntry {
+  readonly id: string;
+  readonly type: string;
+  readonly title: string;
+  readonly summary?: string;
+  readonly mimeType?: string;
+  readonly sizeBytes: number;
+  readonly sha256?: string;
+  readonly contentAvailable: boolean;
+  readonly createdAt: string;
+}
+
 export interface OperationResponse {
   readonly data: ApiOperation;
 }
@@ -356,7 +407,7 @@ export interface OperationEventsQuery {
 }
 
 export interface RuntimeEventPage {
-  readonly events: readonly RuntimeEventEnvelope[];
+  readonly events: readonly RuntimeEventRecord[];
   readonly nextAfterSequence?: number;
   readonly hasMore: boolean;
 }
@@ -379,7 +430,7 @@ export interface ResolvedSseCursor {
 export interface RuntimeEventFrame {
   readonly id: string;
   readonly event: 'runtime-event';
-  readonly data: RuntimeEventEnvelope;
+  readonly data: RuntimeEventRecord;
 }
 
 export interface RuntimeKeepaliveFrame {

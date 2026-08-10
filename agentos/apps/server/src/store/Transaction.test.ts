@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
-import { inTransaction } from './Transaction.js';
+import { inTransaction, isTransactionActive, registerAfterCommit } from './Transaction.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -96,9 +96,11 @@ describe('inTransaction', () => {
 
   it('rejects async callback and rolls back', () => {
     const db = open();
+    let callbackCount = 0;
     db.prepare('INSERT INTO txn_test (id, val) VALUES (99, ?)').run('before');
     assert.throws(
       () => inTransaction(db, async () => {
+        assert.equal(registerAfterCommit(db, () => { callbackCount += 1; }), true);
         db.prepare('UPDATE txn_test SET val = ? WHERE id = 99').run('async-partial');
         return 42 as any;
       }),
@@ -106,6 +108,7 @@ describe('inTransaction', () => {
     );
     const row = db.prepare('SELECT val FROM txn_test WHERE id = 99').get() as { val: string };
     assert.equal(row.val, 'before');
+    assert.equal(callbackCount, 0);
     db.close();
   });
 
@@ -121,6 +124,76 @@ describe('inTransaction', () => {
     assert.equal(row.val, 'pre-existing'); // rolled back
     const count = (db.prepare('SELECT COUNT(*) AS c FROM txn_test WHERE id = 11').get() as { c: number }).c;
     assert.equal(count, 0);
+    db.close();
+  });
+
+  it('P5B-R01/R02 exposes transaction-local after-commit registration and discards rollback callbacks', () => {
+    const db = open();
+    const observed: string[] = [];
+    inTransaction(db, () => {
+      assert.equal(isTransactionActive(db), true);
+      assert.equal(registerAfterCommit(db, () => observed.push('first')), true);
+      assert.equal(registerAfterCommit(db, () => observed.push('second')), true);
+      assert.deepEqual(observed, []);
+    });
+    assert.deepEqual(observed, ['first', 'second']);
+    assert.equal(isTransactionActive(db), false);
+
+    assert.throws(() => inTransaction(db, () => {
+      assert.equal(registerAfterCommit(db, () => observed.push('rolled-back')), true);
+      throw new Error('rollback');
+    }));
+    assert.deepEqual(observed, ['first', 'second']);
+    db.close();
+  });
+
+  it('P5B-G03 COMMIT failure discards callbacks and propagates the original error', () => {
+    const commitFailure = new Error('commit failed');
+    const statements: string[] = [];
+    const fakeDb = {
+      exec(sql: string) {
+        statements.push(sql);
+        if (sql === 'COMMIT') throw commitFailure;
+      },
+      prepare: () => ({ all: () => [], get: () => undefined, run: () => ({ changes: 1 }) }),
+    };
+    let callbackCount = 0;
+    assert.throws(
+      () => inTransaction(fakeDb, () => {
+        assert.equal(registerAfterCommit(fakeDb, () => { callbackCount += 1; }), true);
+      }),
+      (error: unknown) => error === commitFailure,
+    );
+    assert.deepEqual(statements, ['BEGIN IMMEDIATE', 'COMMIT', 'ROLLBACK']);
+    assert.equal(callbackCount, 0);
+    assert.equal(isTransactionActive(fakeDb), false);
+  });
+
+  it('P5B-G04 callback failure preserves the commit and does not skip later callbacks', () => {
+    const db = open();
+    const observed: string[] = [];
+    const result = inTransaction(db, () => {
+      db.prepare('INSERT INTO txn_test (id, val) VALUES (20, ?)').run('committed');
+      registerAfterCommit(db, () => {
+        observed.push('throws');
+        throw new Error('subscriber failed');
+      });
+      registerAfterCommit(db, () => observed.push('continues'));
+      return 'success';
+    });
+    assert.equal(result, 'success');
+    assert.deepEqual(observed, ['throws', 'continues']);
+    assert.equal(
+      (db.prepare('SELECT val FROM txn_test WHERE id = 20').get() as { val: string }).val,
+      'committed',
+    );
+    db.close();
+  });
+
+  it('P5B registerAfterCommit fails closed outside an active transaction', () => {
+    const db = open();
+    assert.equal(isTransactionActive(db), false);
+    assert.equal(registerAfterCommit(db, () => {}), false);
     db.close();
   });
 });

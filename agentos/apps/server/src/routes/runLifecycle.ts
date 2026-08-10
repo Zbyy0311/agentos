@@ -1,4 +1,5 @@
 import { json, Router, type NextFunction, type Request, type Response } from 'express';
+import { isClientBodyParseError, sendProblem } from '../problemDetails.js';
 import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { createOptionalIdempotencyService, parseIdempotencyKey } from './v2Idempotency.js';
 import { V2ValidationError } from './v2Tasks.js';
@@ -71,41 +72,44 @@ function isSqliteBusyError(error: unknown): boolean {
   return /database is locked/i.test(message);
 }
 
-function respondRunLifecycle(res: Response, fn: () => { status: number; body: unknown }): void {
+function respondRunLifecycle(req: Request, res: Response, fn: () => { status: number; body: unknown }): void {
   try {
     const { status, body } = fn();
     res.status(status).json(body);
   } catch (err) {
     if (isSqliteBusyError(err)) {
       // Exact frozen contract; never leaks SQLITE_BUSY, SQL, paths, or owners.
-      res.status(503).json({
-        error: 'Run start is temporarily unavailable',
+      sendProblem(req, res, {
+        status: 503,
         code: 'RUN_START_BUSY',
+        detail: 'Run start is temporarily unavailable',
         retryable: true,
       });
       return;
     }
     const code = (err as { code?: unknown } | null)?.code;
     if (typeof code === 'string' && code in RUN_LIFECYCLE_ERROR_STATUS) {
-      res.status(RUN_LIFECYCLE_ERROR_STATUS[code]).json({
-        error: RUN_LIFECYCLE_SAFE_MESSAGE[code] ?? (err as Error).message,
+      sendProblem(req, res, {
+        status: RUN_LIFECYCLE_ERROR_STATUS[code],
         code,
+        detail: RUN_LIFECYCLE_SAFE_MESSAGE[code] ?? (err as Error).message,
       });
       return;
     }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
   }
 }
 
-function respondRetry(res: Response, fn: () => { status: number; body: unknown }): void {
+function respondRetry(req: Request, res: Response, fn: () => { status: number; body: unknown }): void {
   try {
     const { status, body } = fn();
     res.status(status).json(body);
   } catch (err) {
     if (isSqliteBusyError(err)) {
-      res.status(503).json({
-        error: 'Run retry is temporarily unavailable',
+      sendProblem(req, res, {
+        status: 503,
         code: 'RUN_RETRY_BUSY',
+        detail: 'Run retry is temporarily unavailable',
         retryable: true,
       });
       return;
@@ -114,28 +118,31 @@ function respondRetry(res: Response, fn: () => { status: number; body: unknown }
     if (typeof code === 'string' && code in RUN_RETRY_ERROR_STATUS) {
       const status = RUN_RETRY_ERROR_STATUS[code];
       if (code === 'RUN_RETRY_BUSY') {
-        res.status(status).json({
-          error: 'Run retry is temporarily unavailable',
+        sendProblem(req, res, {
+          status,
           code,
+          detail: 'Run retry is temporarily unavailable',
           retryable: true,
         });
         return;
       }
       if (code === 'RUN_ACTIVE_EXISTS') {
-        res.status(status).json({
-          error: 'Task already has an active run',
+        sendProblem(req, res, {
+          status,
           code,
+          detail: 'Task already has an active run',
           retryable: false,
         });
         return;
       }
-      res.status(status).json({
-        error: RUN_RETRY_SAFE_MESSAGE[code] ?? 'Internal server error',
+      sendProblem(req, res, {
+        status,
         code,
+        detail: RUN_RETRY_SAFE_MESSAGE[code] ?? 'Internal server error',
       });
       return;
     }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
   }
 }
 
@@ -159,21 +166,6 @@ const startWorkspaceByRequest = new WeakMap<object, string>();
 const startRawPayloadLengthByRequest = new WeakMap<object, number>();
 const retryWorkspaceByRequest = new WeakMap<object, string>();
 const retryRawPayloadLengthByRequest = new WeakMap<object, number>();
-
-/**
- * Known client-side body/parser request errors: malformed JSON, unsupported
- * or invalid request encoding, and parser body-size request errors.
- * body-parser marks them with a 4xx status/statusCode and a string `type`;
- * anything else is an internal error and never reaches the 400 mapping.
- */
-function isClientBodyParseError(error: unknown): boolean {
-  const candidate = error as { type?: unknown; status?: unknown; statusCode?: unknown } | null;
-  if (!candidate || typeof candidate.type !== 'string') return false;
-  const status = typeof candidate.status === 'number'
-    ? candidate.status
-    : (typeof candidate.statusCode === 'number' ? candidate.statusCode : undefined);
-  return status !== undefined && status >= 400 && status < 500;
-}
 
 function parseStartExpectedVersion(value: unknown): number | undefined {
   if (value === undefined) return undefined;
@@ -244,7 +236,7 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
       return;
     }
     if (workspaceId === undefined) {
-      res.status(404).json({ error: 'Run not found', code: 'RUN_NOT_FOUND' });
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'Run not found' });
       return;
     }
     startWorkspaceByRequest.set(req, workspaceId);
@@ -254,7 +246,7 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
   /** Middleware 2 — any query parameter is rejected before body parsing. */
   const rejectStartQuery = (req: Request, res: Response, next: NextFunction): void => {
     if (Object.keys(req.query ?? {}).length > 0) {
-      res.status(400).json({ error: 'Query parameters are not accepted', code: 'VALIDATION_FAILED' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Query parameters are not accepted' });
       return;
     }
     next();
@@ -274,25 +266,26 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
       return;
     }
     if (isSqliteBusyError(err)) {
-      res.status(503).json({
-        error: 'Run start is temporarily unavailable',
+      sendProblem(req, res, {
+        status: 503,
         code: 'RUN_START_BUSY',
+        detail: 'Run start is temporarily unavailable',
         retryable: true,
       });
       return;
     }
     if (isClientBodyParseError(err)) {
-      res.status(400).json({ error: START_BODY_ERROR_MESSAGE, code: 'VALIDATION_FAILED' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: START_BODY_ERROR_MESSAGE });
       return;
     }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
   };
 
   /**
    * Middleware 5 — payload-existence, shape, field, and expectedVersion
    * validation, then Idempotency-Key normalization and the service call.
    */
-  const startHandler = (req: Request, res: Response): void => respondRunLifecycle(res, () => {
+  const startHandler = (req: Request, res: Response): void => respondRunLifecycle(req, res, () => {
     const { runId } = req.params as { runId: string };
     const workspaceId = startWorkspaceByRequest.get(req);
     if (workspaceId === undefined) {
@@ -343,7 +336,7 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
       return;
     }
     if (workspaceId === undefined) {
-      res.status(404).json({ error: 'Run not found', code: 'RUN_NOT_FOUND' });
+      sendProblem(req, res, { status: 404, code: 'RUN_NOT_FOUND', detail: 'Run not found' });
       return;
     }
     retryWorkspaceByRequest.set(req, workspaceId);
@@ -352,7 +345,7 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
 
   const rejectRetryQuery = (req: Request, res: Response, next: NextFunction): void => {
     if (Object.keys(req.query ?? {}).length > 0) {
-      res.status(400).json({ error: 'Invalid request', code: 'VALIDATION_FAILED' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Invalid request' });
       return;
     }
     next();
@@ -364,18 +357,19 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
       return;
     }
     if (isSqliteBusyError(err)) {
-      res.status(503).json({
-        error: 'Run retry is temporarily unavailable',
+      sendProblem(req, res, {
+        status: 503,
         code: 'RUN_RETRY_BUSY',
+        detail: 'Run retry is temporarily unavailable',
         retryable: true,
       });
       return;
     }
     if (isClientBodyParseError(err)) {
-      res.status(400).json({ error: 'Invalid request', code: 'VALIDATION_FAILED' });
+      sendProblem(req, res, { status: 400, code: 'VALIDATION_FAILED', detail: 'Invalid request' });
       return;
     }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
   };
 
   const parseRetryExpectedVersion = (value: unknown): number => {
@@ -385,7 +379,7 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
     return value;
   };
 
-  const retryHandler = (req: Request, res: Response): void => respondRetry(res, () => {
+  const retryHandler = (req: Request, res: Response): void => respondRetry(req, res, () => {
     const { runId } = req.params as { runId: string };
     const workspaceId = retryWorkspaceByRequest.get(req);
     if (workspaceId === undefined) {

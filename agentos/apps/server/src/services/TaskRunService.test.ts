@@ -2402,7 +2402,7 @@ test('P3C1-RY-S07 Retry clones persisted V2 legacy Stage Graph and emits only cr
       assert.equal(event.correlation_id, child.id);
     }
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM outbox_messages WHERE aggregate_id = ?').get(child.id) as { count: number }).count, events.length);
-    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE run_id = ? AND type = 'run.start'").get(parent.id) as { count: number }).count, 0);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE run_id = ? AND type = 'run.start'").get(parent.id) as { count: number }).count, 1);
   } finally {
     close(fx);
   }

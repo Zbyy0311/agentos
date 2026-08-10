@@ -3048,12 +3048,16 @@ data: {"schemaVersion":1,"type":"tool.started",...}
 
 Server：
 
-1. 验证 Run；
-2. 验证访问权限；
-3. 查询 `sequence > afterSequence`；
-4. 按顺序发送历史 Event；
-5. 订阅实时 Event；
-6. 发送 Keepalive。
+1. 验证 Run 与游标（cursor）；
+2. 订阅实时 Event 并缓冲新到的 Event 提示；
+3. 捕获 durable 高水位（high-watermark）；
+4. 按顺序重放（replay）高水位以内的历史 Event；
+5. 排空缓冲中高水位以上的 Event 提示；
+6. 按 `runId + sequence` 去重；
+7. 进入 Live；
+8. 发送 Keepalive。
+
+该顺序保证重放与实时订阅之间无竞态（race-free）。断开只关闭订阅，不取消 Run（见 51.4）。
 
 ### 51.3 Keepalive
 

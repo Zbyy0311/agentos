@@ -1,6 +1,11 @@
 import type { V2RunStatus } from './m3-run-status.js';
 import type { V2RunReason, WorktreeMode } from './m3-runtime-contracts.js';
-import type { M3StageStatus } from './m3-runtime.js';
+import type {
+  M3StageStatus,
+  ReplayArtifactIndexEntry,
+  ReplayCompatibilityWarning,
+  RuntimeEventRecord,
+} from './m3-runtime.js';
 
 export type TaskStatus = 'pending' | 'running' | 'reviewing' | 'completed' | 'failed' | 'cancelled';
 
@@ -951,6 +956,14 @@ export interface RunStage {
   createdAt: string;
   updatedAt: string;
   version: number;
+}
+
+export interface RunReplayResponse {
+  readonly runSnapshot: RunSnapshotPayload | null;
+  readonly stageSnapshots: readonly RunStage[];
+  readonly events: readonly RuntimeEventRecord[];
+  readonly artifactIndex: readonly ReplayArtifactIndexEntry[];
+  readonly compatibilityWarnings: readonly ReplayCompatibilityWarning[];
 }
 
 export * from './m3-runtime.js';

@@ -14,8 +14,10 @@ import type {
   ProviderTypeV1,
   V2TaskPriority,
 } from './index.js';
+import type { M3RunStatus } from './m3-run-status.js';
 import type { V2RunReason, WorktreeMode } from './m3-runtime-contracts.js';
 import {
+  M3_RUN_STATUSES,
   RUNTIME_EVENT_DURABILITIES,
   RUNTIME_EVENT_DOMAINS,
   RUNTIME_EVENT_SEVERITIES,
@@ -516,6 +518,27 @@ export interface RunFailedPayload {
   readonly debugArtifactId?: string;
 }
 
+export interface RunRecoveryAttemptedPayload {
+  readonly previousStatus: M3RunStatus;
+  readonly processFound: boolean;
+  readonly providerSessionFound: boolean;
+  readonly worktreeFound: boolean;
+}
+
+export interface RunRecoveredPayload {
+  readonly recoveryMode:
+    | 'process-reattach'
+    | 'provider-session-resume'
+    | 'queue-restore'
+    | 'approval-restore';
+}
+
+export interface RunRecoveryFailedPayload {
+  readonly errorCode: string;
+  readonly message: string;
+  readonly retryableAsNewRun: boolean;
+}
+
 export interface StageCreatedPayload {
   readonly workflowStageKey: string;
   readonly name: string;
@@ -609,6 +632,21 @@ export interface ApprovalResolvedPayload {
   readonly decidedBy: string;
   readonly decidedAt: string;
   readonly modifiedRequest?: Record<string, unknown>;
+}
+
+export type TextDeltaChannel = 'assistant' | 'analysis-summary' | 'status' | 'review' | 'system';
+
+export interface TextDeltaPayload {
+  readonly channel: TextDeltaChannel;
+  readonly delta: string;
+  readonly blockId?: string;
+}
+
+export interface TextCompletedPayload {
+  readonly channel: string;
+  readonly blockId?: string;
+  readonly artifactId?: string;
+  readonly characterCount: number;
 }
 
 function hasLifecycleString(value: Record<string, unknown>, key: string): boolean {
@@ -844,6 +882,38 @@ export function isRunFailedPayload(value: unknown): value is RunFailedPayload {
   );
 }
 
+export function isRunRecoveryAttemptedPayload(value: unknown): value is RunRecoveryAttemptedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['previousStatus', 'processFound', 'providerSessionFound', 'worktreeFound'])
+    && hasValue(M3_RUN_STATUSES, value.previousStatus)
+    && typeof value.processFound === 'boolean'
+    && typeof value.providerSessionFound === 'boolean'
+    && typeof value.worktreeFound === 'boolean'
+  );
+}
+
+export function isRunRecoveredPayload(value: unknown): value is RunRecoveredPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['recoveryMode'])
+    && hasValue(
+      ['process-reattach', 'provider-session-resume', 'queue-restore', 'approval-restore'],
+      value.recoveryMode,
+    )
+  );
+}
+
+export function isRunRecoveryFailedPayload(value: unknown): value is RunRecoveryFailedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['errorCode', 'message', 'retryableAsNewRun'])
+    && hasLifecycleString(value, 'errorCode')
+    && hasLifecycleString(value, 'message')
+    && typeof value.retryableAsNewRun === 'boolean'
+  );
+}
+
 export function isStageCreatedPayload(value: unknown): value is StageCreatedPayload {
   if (!isRecord(value)) return false;
   return (
@@ -952,6 +1022,29 @@ export function isApprovalResolvedPayload(value: unknown): value is ApprovalReso
     && hasLifecycleString(value, 'decidedBy')
     && hasLifecycleCanonicalTimestamp(value, 'decidedAt')
     && hasOptionalRecord(value, 'modifiedRequest')
+  );
+}
+
+export function isTextDeltaPayload(value: unknown): value is TextDeltaPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['channel', 'delta', 'blockId'])
+    && hasValue(['assistant', 'analysis-summary', 'status', 'review', 'system'], value.channel)
+    && typeof value.delta === 'string'
+    && hasOptionalLifecycleString(value, 'blockId')
+  );
+}
+
+export function isTextCompletedPayload(value: unknown): value is TextCompletedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['channel', 'blockId', 'artifactId', 'characterCount'])
+    && hasLifecycleString(value, 'channel')
+    && hasOptionalLifecycleString(value, 'blockId')
+    && hasOptionalLifecycleString(value, 'artifactId')
+    && typeof value.characterCount === 'number'
+    && Number.isSafeInteger(value.characterCount)
+    && value.characterCount >= 0
   );
 }
 
@@ -1099,6 +1192,54 @@ export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
     },
     forbidsStageId: true,
     validatePayload: isRunFailedPayload,
+  },
+  {
+    type: 'run.recovery_attempted',
+    domain: 'run',
+    description: 'Recovery inspection began for a Task-domain Run.',
+    schemaVersion: 1,
+    source: 'recovery-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['previousStatus', 'processFound', 'providerSessionFound', 'worktreeFound'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunRecoveryAttemptedPayload,
+  },
+  {
+    type: 'run.recovered',
+    domain: 'run',
+    description: 'A Task-domain Run was recovered using a confirmed recovery mode.',
+    schemaVersion: 1,
+    source: 'recovery-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['recoveryMode'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunRecoveredPayload,
+  },
+  {
+    type: 'run.recovery_failed',
+    domain: 'run',
+    description: 'Recovery of a Task-domain Run failed closed with a classified outcome.',
+    schemaVersion: 1,
+    source: 'recovery-manager',
+    defaultSeverity: 'error',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['errorCode', 'message', 'retryableAsNewRun'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunRecoveryFailedPayload,
   },
   {
     type: 'stage.created',
@@ -1291,6 +1432,36 @@ export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
       optional: ['modifiedRequest'],
     },
     validatePayload: isApprovalResolvedPayload,
+  },
+  {
+    type: 'stream.text_delta',
+    domain: 'stream',
+    description: 'A stage executor emitted a text stream delta.',
+    schemaVersion: 1,
+    source: 'stage-executor',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['channel', 'delta'],
+      optional: ['blockId'],
+    },
+    validatePayload: isTextDeltaPayload,
+  },
+  {
+    type: 'stream.text_completed',
+    domain: 'stream',
+    description: 'A stage executor completed a text stream block.',
+    schemaVersion: 1,
+    source: 'stage-executor',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['channel', 'characterCount'],
+      optional: ['blockId', 'artifactId'],
+    },
+    validatePayload: isTextCompletedPayload,
   },
 ];
 

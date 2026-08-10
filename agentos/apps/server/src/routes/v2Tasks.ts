@@ -1,9 +1,16 @@
 import { Router, type Request, type Response } from 'express';
 import type { V2RunReason, V2TaskPriority, V2TaskStatus } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { sendProblem } from '../problemDetails.js';
 import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { TaskNotFoundError } from '../store/TaskRepository.js';
 import { createOptionalIdempotencyService, parseIdempotencyKey } from './v2Idempotency.js';
+import {
+  formatVersionETag,
+  isVersionConflictError,
+  resolveVersionPrecondition,
+  StorageVersionConflictError,
+} from './versionPrecondition.js';
 
 const V2_TASK_PRIORITIES: readonly V2TaskPriority[] = ['low', 'normal', 'high', 'critical'];
 const V2_RUN_REASONS: readonly V2RunReason[] = ['initial', 'retry', 'resume-fallback', 'review-fix', 'provider-comparison', 'manual'];
@@ -34,6 +41,7 @@ const V2_ERROR_STATUS: Record<string, number> = {
   RUN_SNAPSHOT_FAILED: 500,
   IDEMPOTENCY_KEY_REUSED: 409,
   IDEMPOTENCY_RECORD_INVALID: 500,
+  STORAGE_VERSION_CONFLICT: 412,
 };
 
 const V2_SAFE_ERROR_MESSAGE: Record<string, string> = {
@@ -44,6 +52,20 @@ const V2_SAFE_ERROR_MESSAGE: Record<string, string> = {
   IDEMPOTENCY_KEY_REUSED: 'Idempotency key was already used with a different request',
   IDEMPOTENCY_RECORD_INVALID: 'Idempotency record is invalid',
   VERSION_CONFLICT: 'Version conflict',
+  STORAGE_VERSION_CONFLICT: 'The resource was changed by another request',
+};
+
+/**
+ * M3 P4A deterministic dual mapping: a header-sourced (If-Match)
+ * precondition failure is 412 STORAGE_VERSION_CONFLICT and carries the
+ * spec-defined retry guidance; a body-sourced expectedVersion failure
+ * stays 409 VERSION_CONFLICT.
+ */
+const V2_PROBLEM_EXTRAS: Record<string, { retryable?: boolean; suggestedAction?: string }> = {
+  STORAGE_VERSION_CONFLICT: {
+    retryable: true,
+    suggestedAction: 'Reload the resource and retry with the latest ETag.',
+  },
 };
 
 export class WorkspaceNotFoundError extends Error {
@@ -69,18 +91,28 @@ export function requireV2Workspace(req: Request, workspaceManager: WorkspaceMana
   return workspaceId;
 }
 
-/** Uniform v2 error contract: { error, code }; unknown failures are sanitized to INTERNAL_ERROR. */
-export function respondV2(res: Response, fn: () => { status: number; body: unknown }): void {
+/**
+ * Uniform v2 contract: success bodies pass through unchanged; failures are
+ * ApiProblem responses (application/problem+json) with the stable code and
+ * sanitized detail preserved. Unknown failures are sanitized to
+ * INTERNAL_ERROR.
+ */
+export function respondV2(req: Request, res: Response, fn: () => { status: number; body: unknown }): void {
   try {
     const { status, body } = fn();
     res.status(status).json(body);
   } catch (err) {
     const code = (err as { code?: unknown } | null)?.code;
     if (typeof code === 'string' && code in V2_ERROR_STATUS) {
-      res.status(V2_ERROR_STATUS[code]).json({ error: V2_SAFE_ERROR_MESSAGE[code] ?? (err as Error).message, code });
+      sendProblem(req, res, {
+        status: V2_ERROR_STATUS[code],
+        code,
+        detail: V2_SAFE_ERROR_MESSAGE[code] ?? (err as Error).message,
+        ...(V2_PROBLEM_EXTRAS[code] ?? {}),
+      });
       return;
     }
-    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    sendProblem(req, res, { status: 500, code: 'INTERNAL_ERROR', detail: 'Internal server error' });
   }
 }
 
@@ -108,7 +140,7 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
     ...(idempotencyService ? { idempotencyService } : {}),
   });
 
-  router.get('/tasks', (req: Request, res: Response) => respondV2(res, () => {
+  router.get('/tasks', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const status = optionalString(req.query.status);
     if (status && !V2_TASK_STATUSES.includes(status as V2TaskStatus)) {
@@ -119,7 +151,7 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
     return { status: 200, body: { tasks } };
   }));
 
-  router.post('/tasks', (req: Request, res: Response) => respondV2(res, () => {
+  router.post('/tasks', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const body = req.body ?? {};
     const title = optionalString(body.title);
@@ -140,15 +172,16 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
     return { status: result.httpStatus, body: result.body };
   }));
 
-  router.get('/tasks/:taskId', (req: Request, res: Response) => respondV2(res, () => {
+  router.get('/tasks/:taskId', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
     const task = store.taskRepository().findById(workspaceId, taskId);
     if (!task) throw new TaskNotFoundError(taskId);
+    res.setHeader('ETag', formatVersionETag(task.version));
     return { status: 200, body: { task } };
   }));
 
-  router.post('/tasks/:taskId/runs', (req: Request, res: Response) => respondV2(res, () => {
+  router.post('/tasks/:taskId/runs', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
     const body = req.body ?? {};
@@ -170,7 +203,7 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
     return { status: result.httpStatus, body: result.body };
   }));
 
-  router.get('/tasks/:taskId/runs', (req: Request, res: Response) => respondV2(res, () => {
+  router.get('/tasks/:taskId/runs', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
     if (!store.taskRepository().findById(workspaceId, taskId)) throw new TaskNotFoundError(taskId);
@@ -178,37 +211,58 @@ export function createV2TaskRoutes(store: TaskRunServiceDeps, workspaceManager: 
     return { status: 200, body: { runs } };
   }));
 
-  router.post('/tasks/:taskId/accept', (req: Request, res: Response) => respondV2(res, () => {
+  router.post('/tasks/:taskId/accept', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
     const body = req.body ?? {};
     const runId = optionalString(body.runId);
     if (!runId) throw new V2ValidationError('runId is required');
-    const expectedVersion = parseOptionalExpectedVersion(body.expectedVersion);
+    const precondition = resolveVersionPrecondition(req, parseOptionalExpectedVersion(body.expectedVersion));
     const normalizedKey = parseIdempotencyKey(req);
-    const result = service.acceptRunForV2(workspaceId, taskId, runId, normalizedKey, expectedVersion);
-    if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
-    return { status: result.httpStatus, body: result.body };
+    try {
+      const result = service.acceptRunForV2(workspaceId, taskId, runId, normalizedKey, precondition.expectedVersion);
+      if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      return { status: result.httpStatus, body: result.body };
+    } catch (error) {
+      if (precondition.fromHeader && isVersionConflictError(error)) {
+        throw new StorageVersionConflictError('The task was changed by another request');
+      }
+      throw error;
+    }
   }));
 
-  router.post('/tasks/:taskId/cancel', (req: Request, res: Response) => respondV2(res, () => {
+  router.post('/tasks/:taskId/cancel', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
-    const expectedVersion = parseOptionalExpectedVersion((req.body ?? {}).expectedVersion);
+    const precondition = resolveVersionPrecondition(req, parseOptionalExpectedVersion((req.body ?? {}).expectedVersion));
     const normalizedKey = parseIdempotencyKey(req);
-    const result = service.cancelTaskForV2(workspaceId, taskId, normalizedKey, expectedVersion);
-    if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
-    return { status: result.httpStatus, body: result.body };
+    try {
+      const result = service.cancelTaskForV2(workspaceId, taskId, normalizedKey, precondition.expectedVersion);
+      if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      return { status: result.httpStatus, body: result.body };
+    } catch (error) {
+      if (precondition.fromHeader && isVersionConflictError(error)) {
+        throw new StorageVersionConflictError('The task was changed by another request');
+      }
+      throw error;
+    }
   }));
 
-  router.post('/tasks/:taskId/reopen', (req: Request, res: Response) => respondV2(res, () => {
+  router.post('/tasks/:taskId/reopen', (req: Request, res: Response) => respondV2(req, res, () => {
     const workspaceId = requireV2Workspace(req, workspaceManager);
     const { taskId } = req.params as { taskId: string };
-    const expectedVersion = parseOptionalExpectedVersion((req.body ?? {}).expectedVersion);
+    const precondition = resolveVersionPrecondition(req, parseOptionalExpectedVersion((req.body ?? {}).expectedVersion));
     const normalizedKey = parseIdempotencyKey(req);
-    const result = service.reopenTaskForV2(workspaceId, taskId, normalizedKey, expectedVersion);
-    if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
-    return { status: result.httpStatus, body: result.body };
+    try {
+      const result = service.reopenTaskForV2(workspaceId, taskId, normalizedKey, precondition.expectedVersion);
+      if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+      return { status: result.httpStatus, body: result.body };
+    } catch (error) {
+      if (precondition.fromHeader && isVersionConflictError(error)) {
+        throw new StorageVersionConflictError('The task was changed by another request');
+      }
+      throw error;
+    }
   }));
 
   return router;

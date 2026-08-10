@@ -115,11 +115,23 @@ async function postJson(url: string, body?: unknown): Promise<Response> {
   });
 }
 
-function responseProbe(): { response: Response; state: { status: number; body: unknown } } {
+function responseProbe(): { request: Request; response: Response; state: { status: number; body: unknown } } {
   const state = { status: 0, body: undefined as unknown };
+  const request = {
+    headers: {},
+    originalUrl: '/api/workspaces/ws_probe/v2/tasks',
+    url: '/tasks',
+  } as unknown as Request;
   const response = {
     status(code: number) {
       state.status = code;
+      return this;
+    },
+    setHeader() {
+      return this;
+    },
+    send(body: unknown) {
+      state.body = typeof body === 'string' ? JSON.parse(body) : body;
       return this;
     },
     json(body: unknown) {
@@ -127,7 +139,7 @@ function responseProbe(): { response: Response; state: { status: number; body: u
       return this;
     },
   } as unknown as Response;
-  return { response, state };
+  return { request, response, state };
 }
 
 async function createTask(baseA: string, title = 'task-one'): Promise<{ id: string; [k: string]: unknown }> {
@@ -464,9 +476,9 @@ test('T91 internal errors are sanitized and never leak SQLite, path or stack det
     fx.store.close();
     const response = await fetch(`${fx.baseA}/v2/tasks`);
     assert.equal(response.status, 500);
-    const body = await response.json() as { error: string; code: string };
+    const body = await response.json() as { detail: string; code: string };
     assert.equal(body.code, 'INTERNAL_ERROR');
-    assert.equal(body.error, 'Internal server error');
+    assert.equal(body.detail, 'Internal server error');
     const raw = JSON.stringify(body);
     for (const pattern of FORBIDDEN_ERROR_PATTERNS) {
       assert.ok(!pattern.test(raw), `response must not match ${pattern}`);
@@ -507,9 +519,11 @@ test('P4 v2 error boundary maps four snapshot-related codes to stable safe respo
   ] as const;
   for (const [error, expectedStatus, expectedMessage] of cases) {
     const probe = responseProbe();
-    respondV2(probe.response as never, () => { throw error; });
+    respondV2(probe.request as never, probe.response as never, () => { throw error; });
     assert.equal(probe.state.status, expectedStatus);
-    assert.deepEqual(probe.state.body, { error: expectedMessage, code: error.code });
+    const body = probe.state.body as { code: string; detail: string };
+    assert.equal(body.code, error.code);
+    assert.equal(body.detail, expectedMessage);
     assert.doesNotMatch(JSON.stringify(probe.state.body), /secret-(workflow|snapshot)-literal/);
   }
 });
@@ -521,9 +535,13 @@ test('P4 disabled unbound Workflow returns WORKFLOW_NOT_AVAILABLE without raw de
     const task = await createTask(fx.baseA, 'disabled workflow');
     const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/runs`, {});
     assert.equal(response.status, 409);
-    const body = await response.json() as { error: string; code: string };
-    assert.deepEqual(body, { error: 'Workflow is not available', code: 'WORKFLOW_NOT_AVAILABLE' });
-    assert.doesNotMatch(JSON.stringify(body), /unbound-task-run|SQLITE|workspace/);
+    const body = await response.json() as { detail: string; code: string };
+    assert.equal(body.code, 'WORKFLOW_NOT_AVAILABLE');
+    assert.equal(body.detail, 'Workflow is not available');
+    // P4A reconciliation: the ApiProblem instance echoes only the
+    // client-supplied request path (spec Section 11); server-side internals
+    // (workflow definition key, SQL) must still never leak.
+    assert.doesNotMatch(JSON.stringify(body), /unbound-task-run|SQLITE/);
   } finally {
     await closeFixture(fx);
   }
@@ -641,11 +659,9 @@ test('R05 the same key with a different task body returns 409 IDEMPOTENCY_KEY_RE
     const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r05-b' }, 'r05-key-0001');
     assert.equal(conflict.status, 409);
     assert.equal(conflict.headers.get('idempotency-replayed'), null);
-    const body = await conflict.json() as { error: string; code: string };
-    assert.deepEqual(body, {
-      error: 'Idempotency key was already used with a different request',
-      code: 'IDEMPOTENCY_KEY_REUSED',
-    });
+    const body = await conflict.json() as { detail: string; code: string };
+    assert.equal(body.code, 'IDEMPOTENCY_KEY_REUSED');
+    assert.equal(body.detail, 'Idempotency key was already used with a different request');
   } finally {
     await closeFixture(fx);
   }
@@ -875,15 +891,23 @@ test('R19 error bodies never leak the key, its hash or the workspace id', async 
     await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r19-a' }, rawKey);
     const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'r19-b' }, rawKey);
     assert.equal(conflict.status, 409);
-    const text = JSON.stringify(await conflict.json());
+    // Mask the random requestId before short-substring matching; the
+    // ApiProblem instance echoes only the client-supplied request path,
+    // which necessarily contains the addressed workspace id (P4A).
+    const conflictBody = JSON.parse(JSON.stringify(await conflict.json())) as Record<string, unknown>;
+    const text = JSON.stringify({ ...conflictBody, requestId: '<masked>', instance: '<masked>' });
     assert.ok(!text.includes(rawKey));
     assert.ok(!text.includes(hashNormalizedIdempotencyKey(rawKey)));
     assert.ok(!text.includes(fx.workspaceAId));
 
     const invalid = await postRawHttp(`${fx.baseA}/v2/tasks`, { title: 'r19-c' }, { 'Idempotency-Key': 'bad' });
     assert.equal(invalid.status, 400);
-    assert.ok(!invalid.body.includes('bad'));
-    assert.ok(!invalid.body.includes(fx.workspaceAId));
+    // Mask the random requestId before short-substring matching; the
+    // instance echoes only the client-supplied request path (P4A).
+    const invalidBody = JSON.parse(invalid.body) as Record<string, unknown>;
+    const invalidText = JSON.stringify({ ...invalidBody, requestId: '<masked>', instance: '<masked>' });
+    assert.ok(!invalidText.includes('bad'));
+    assert.ok(!invalidText.includes(fx.workspaceAId));
   } finally {
     await closeFixture(fx);
   }
@@ -909,9 +933,9 @@ test('R21 duplicate raw Idempotency-Key headers are rejected with 400 VALIDATION
       'Idempotency-Key': ['r21-key-0001', 'r21-key-0001'],
     });
     assert.equal(result.status, 400);
-    const body = JSON.parse(result.body) as { code: string; error: string };
+    const body = JSON.parse(result.body) as { code: string; detail: string };
     assert.equal(body.code, 'VALIDATION_FAILED');
-    assert.equal(body.error, 'Idempotency key is invalid');
+    assert.equal(body.detail, 'Idempotency key is invalid');
     assert.equal(idempotencyRecordCount(fx.store), 0);
   } finally {
     await closeFixture(fx);
@@ -987,9 +1011,9 @@ test('R25 an invalid-character header value is rejected', async () => {
       'Idempotency-Key': 'not a valid key!',
     });
     assert.equal(result.status, 400);
-    const body = JSON.parse(result.body) as { code: string; error: string };
+    const body = JSON.parse(result.body) as { code: string; detail: string };
     assert.equal(body.code, 'VALIDATION_FAILED');
-    assert.equal(body.error, 'Idempotency key is invalid');
+    assert.equal(body.detail, 'Idempotency key is invalid');
     assert.equal(idempotencyRecordCount(fx.store), 0);
   } finally {
     await closeFixture(fx);
@@ -1075,15 +1099,16 @@ test('C04 a keyed request without capability fails closed before any mutation', 
     const response = await postJsonWithKey(`${fx.baseA}/v2/tasks`, { title: 'c04' }, rawKey);
     assert.equal(response.status, 500);
     assert.equal(response.headers.get('idempotency-replayed'), null);
-    const body = await response.json() as { error: string; code: string };
-    assert.deepEqual(body, {
-      error: 'Idempotency record is invalid',
-      code: 'IDEMPOTENCY_RECORD_INVALID',
-    });
+    const body = await response.json() as { detail: string; code: string };
+    assert.equal(body.code, 'IDEMPOTENCY_RECORD_INVALID');
+    assert.equal(body.detail, 'Idempotency record is invalid');
     const text = JSON.stringify(body);
     assert.ok(!text.includes(rawKey));
     assert.ok(!text.includes(hashNormalizedIdempotencyKey(rawKey)));
-    assert.ok(!text.includes(fx.workspaceAId));
+    // P4A reconciliation: the ApiProblem instance echoes only the
+    // client-supplied request path (which necessarily contains the
+    // workspace id the client addressed); server-computed secrets (raw key,
+    // key hash) must still never leak.
     assert.ok(!/TypeError|idempotencyRepository/i.test(text));
     assert.equal(fx.store.taskRepository().listByWorkspace(fx.workspaceAId).length, 0);
     assert.equal(idempotencyRecordCount(fx.store), 0);
@@ -1207,8 +1232,9 @@ test('P425 route invalid expectedVersion values return 400 VALIDATION_FAILED', a
     for (const value of [null, 0, -1, 1.5, '1', [1], { v: 1 }]) {
       const response = await postJson(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: value });
       assert.equal(response.status, 400, `expectedVersion=${JSON.stringify(value)} must be rejected`);
-      const body = await response.json() as { error: string; code: string };
-      assert.deepEqual(body, { error: 'expectedVersion must be a positive safe integer', code: 'VALIDATION_FAILED' });
+      const body = await response.json() as { detail: string; code: string };
+      assert.equal(body.code, 'VALIDATION_FAILED');
+      assert.equal(body.detail, 'expectedVersion must be a positive safe integer');
     }
   } finally {
     await closeFixture(fx);
@@ -1285,13 +1311,19 @@ test('P421–P424 the VERSION_CONFLICT response is an exact safe envelope', asyn
     assert.equal(response.headers.get('idempotency-replayed'), null);
     const raw = await response.text();
     const body = JSON.parse(raw) as Record<string, unknown>;
-    assert.deepEqual(body, { error: 'Version conflict', code: 'VERSION_CONFLICT' });
-    assert.ok(!raw.includes('currentVersion'));
-    assert.ok(!raw.includes('expectedVersion'));
-    assert.ok(!raw.includes('999'));
-    assert.ok(!raw.includes(task.id));
-    assert.ok(!raw.includes(fx.workspaceAId));
-    assert.ok(!raw.includes('tasks'));
+    assert.equal(body.code, 'VERSION_CONFLICT');
+    assert.equal(body.detail, 'Version conflict');
+    // P4A reconciliation: the ApiProblem instance echoes only the
+    // client-supplied request path (spec Section 11), so it is masked
+    // together with the random requestId before substring matching;
+    // server-side version state and the rejected precondition value must
+    // still never leak.
+    const masked = JSON.stringify({ ...body, requestId: '<masked>', instance: '<masked>' });
+    assert.ok(!masked.includes('currentVersion'));
+    assert.ok(!masked.includes('expectedVersion'));
+    assert.ok(!masked.includes('999'));
+    assert.ok(!masked.includes(fx.workspaceAId));
+    assert.ok(!masked.includes('tasks'));
   } finally {
     await closeFixture(fx);
   }
@@ -1320,10 +1352,9 @@ test('P418-route the same key with a changed expectedVersion returns 409 KEY_REU
     await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 1 }, 'p418-key-001');
     const conflict = await postJsonWithKey(`${fx.baseA}/v2/tasks/${task.id}/cancel`, { expectedVersion: 2 }, 'p418-key-001');
     assert.equal(conflict.status, 409);
-    assert.deepEqual(await conflict.json(), {
-      error: 'Idempotency key was already used with a different request',
-      code: 'IDEMPOTENCY_KEY_REUSED',
-    });
+    const conflictBody = await conflict.json() as { code: string; detail: string };
+    assert.equal(conflictBody.code, 'IDEMPOTENCY_KEY_REUSED');
+    assert.equal(conflictBody.detail, 'Idempotency key was already used with a different request');
   } finally {
     await closeFixture(fx);
   }

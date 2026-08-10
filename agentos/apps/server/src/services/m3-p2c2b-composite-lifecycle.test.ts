@@ -1654,3 +1654,78 @@ test('P2C-2B same-file concurrency permits only one composite cancellation', asy
     rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
 });
+
+test('P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state', () => {
+  const fixture = newFixture();
+  fixture.db.exec(`
+    UPDATE runs SET status = 'running', version = 7 WHERE id = '${RUN_ID}';
+    UPDATE run_stages SET status = 'running', version = 9 WHERE id = '${STAGE_ID}';
+  `);
+  try {
+    const beforeRun = fixture.runRepository.findById(WORKSPACE_ID, RUN_ID)!;
+    const beforeStage = fixture.runStageRepository.findById(WORKSPACE_ID, RUN_ID, STAGE_ID)!;
+    const delta = fixture.service.recordTextStreamEvent({
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      stageId: STAGE_ID,
+      agentId: AGENT_SNAPSHOT.agentId,
+      providerConfigId: PROVIDER_SNAPSHOT.providerConfigId,
+      correlationId: 'operation-p6c-stream',
+      type: 'stream.text_delta',
+      payload: { channel: 'assistant', delta: '' },
+    });
+    const completed = fixture.service.recordTextStreamEvent({
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      stageId: STAGE_ID,
+      agentId: AGENT_SNAPSHOT.agentId,
+      providerConfigId: PROVIDER_SNAPSHOT.providerConfigId,
+      correlationId: 'operation-p6c-stream',
+      type: 'stream.text_completed',
+      payload: { channel: 'assistant', characterCount: 0 },
+    });
+
+    assert.equal(delta.event.type, 'stream.text_delta');
+    assert.equal(delta.event.source, 'stage-executor');
+    assert.equal(delta.event.visibility, 'public');
+    assert.equal(delta.event.durability, 'durable');
+    assert.equal(delta.event.stageId, STAGE_ID);
+    assert.equal(delta.event.agentId, AGENT_SNAPSHOT.agentId);
+    assert.equal(delta.event.providerConfigId, PROVIDER_SNAPSHOT.providerConfigId);
+    assert.equal(completed.event.type, 'stream.text_completed');
+    assert.deepEqual([delta.event.sequence, completed.event.sequence], [1, 2]);
+    assert.equal(fixture.outboxRepository.findByEventId(delta.event.id)?.eventId, delta.event.id);
+    assert.equal(fixture.outboxRepository.findByEventId(completed.event.id)?.eventId, completed.event.id);
+
+    const afterRun = fixture.runRepository.findById(WORKSPACE_ID, RUN_ID)!;
+    const afterStage = fixture.runStageRepository.findById(WORKSPACE_ID, RUN_ID, STAGE_ID)!;
+    assert.equal(afterRun.status, beforeRun.status);
+    assert.equal(afterRun.version, beforeRun.version);
+    assert.equal(afterStage.status, beforeStage.status);
+    assert.equal(afterStage.version, beforeStage.version);
+
+    const beforeFailureSequence = afterRun.nextEventSequence;
+    const originalInsert = fixture.outboxRepository.insertWithinTransaction.bind(fixture.outboxRepository);
+    fixture.outboxRepository.insertWithinTransaction = (() => {
+      throw new Error('injected P6C Outbox failure');
+    }) as typeof fixture.outboxRepository.insertWithinTransaction;
+    assert.throws(() => fixture.service.recordTextStreamEvent({
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      stageId: STAGE_ID,
+      correlationId: 'operation-p6c-stream',
+      type: 'stream.text_delta',
+      payload: { channel: 'assistant', delta: 'rollback' },
+    }), /injected P6C Outbox failure/);
+    fixture.outboxRepository.insertWithinTransaction = originalInsert;
+    assert.equal(fixture.runRepository.findById(WORKSPACE_ID, RUN_ID)?.nextEventSequence, beforeFailureSequence);
+    assert.equal(fixture.runtimeEventRepository.queryByRun({
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      afterSequence: 0,
+      limit: 20,
+    }).results.length, 2);
+  } finally {
+    fixture.db.close();
+  }
+});

@@ -3,33 +3,40 @@ import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, mkdirSync, appendFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Store } from '../store/Store.js';
+import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import { AgentRunner, AGENT_CONFIGS, STAGE_ROLE_MAP } from '@agentos/agent-core';
+import { AGENT_CONFIGS, STAGE_ROLE_MAP } from '@agentos/agent-core';
 import type { AgentStage, TaskItem, TaskLog, Workspace } from '@agentos/shared';
-import { createSseWriter, startSseHeartbeat } from './sse.js';
-import { applyFinalReviewDecision, getWorkerEvidenceFailure } from './taskPipeline.js';
-import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
+import { startSseHeartbeat } from './sse.js';
+import {
+  TaskRunService,
+  type CreateLegacyRunForBridgeResult,
+  type TaskRunServiceDeps,
+} from '../services/TaskRunService.js';
+import {
+  LegacyCanonicalExecutionService,
+  type LegacyCanonicalExecutionServiceLike,
+  type LegacyPipelineRunner,
+  type LegacyRunnerFactory,
+} from '../services/LegacyCanonicalExecutionService.js';
+import type { RunStreamService } from '../services/RunStreamService.js';
+import {
+  projectLegacyRuntimeEvent,
+  type LegacyRuntimeProjectionContext,
+} from '../services/LegacyRuntimeEventAdapter.js';
 
 /** Minimal structural surface a Store must expose for Bridge persistence (SqliteStore satisfies it). */
-export type PipelineRunner = Pick<AgentRunner, 'runCodexManager' | 'runKimiWorker' | 'runOpenCodeReviewer' | 'runCodexFinalReview'>;
-
-export type RunnerFactory = (
-  workspace: Workspace,
-  taskId: string,
-  taskTitle: string,
-  onChunk: (text: string, done: boolean) => void,
-  opts: { signal: AbortSignal; onActivity: () => void },
-) => PipelineRunner;
+export type PipelineRunner = LegacyPipelineRunner;
+export type RunnerFactory = LegacyRunnerFactory;
 
 export interface TaskRoutesDeps {
-  /** Test-only seam; production default constructs the real AgentRunner. */
+  /** Compatibility test seam; the execution service remains the only runner owner. */
   createRunner?: RunnerFactory;
   /** Bridge persistence; defaults to a TaskRunService over the given Store when capable. */
   taskRunService?: TaskRunService;
+  legacyCanonicalExecutionService?: LegacyCanonicalExecutionServiceLike;
+  runStreamService?: RunStreamService;
 }
-
-const defaultRunnerFactory: RunnerFactory = (workspace, taskId, taskTitle, onChunk, opts) =>
-  new AgentRunner(workspace, taskId, taskTitle, onChunk, opts);
 
 function asTaskRunStore(store: Store): TaskRunServiceDeps | undefined {
   const candidate = store as unknown as Partial<TaskRunServiceDeps>;
@@ -42,14 +49,49 @@ function asTaskRunStore(store: Store): TaskRunServiceDeps | undefined {
     && typeof candidate.providerConfigurationRepository === 'function'
     && typeof candidate.findAgentSnapshotSource === 'function'
     && typeof candidate.runInTransaction === 'function'
+    && typeof candidate.lifecycleTransactionService === 'function'
+    && typeof candidate.operationService === 'function'
   ) {
     return candidate as TaskRunServiceDeps;
   }
   return undefined;
 }
 
+type LegacyExecutionStore = Store & Pick<
+  SqliteStore,
+  | 'runRepository'
+  | 'runSnapshotRepository'
+  | 'runStageRepository'
+  | 'runtimeEventRepository'
+  | 'runStreamService'
+  | 'lifecycleTransactionService'
+  | 'operationService'
+  | 'runInTransaction'
+>;
+
+function asLegacyExecutionStore(store: Store): LegacyExecutionStore | undefined {
+  const candidate = store as Partial<LegacyExecutionStore>;
+  if (
+    typeof candidate.runRepository === 'function'
+    && typeof candidate.runSnapshotRepository === 'function'
+    && typeof candidate.runStageRepository === 'function'
+    && typeof candidate.runtimeEventRepository === 'function'
+    && typeof candidate.runStreamService === 'function'
+    && typeof candidate.lifecycleTransactionService === 'function'
+    && typeof candidate.operationService === 'function'
+    && typeof candidate.runInTransaction === 'function'
+  ) {
+    return candidate as LegacyExecutionStore;
+  }
+  return undefined;
+}
+
 function errorCode(err: unknown): string | undefined {
   return (err as { code?: unknown } | null)?.code as string | undefined;
+}
+
+function diagnosticText(err: unknown): string {
+  return err instanceof Error ? (err.stack ?? err.message) : String(err);
 }
 
 function legacyBridgeGuardMessage(err: unknown): string | undefined {
@@ -67,19 +109,6 @@ function legacyBridgeGuardMessage(err: unknown): string | undefined {
     default:
       return undefined;
   }
-}
-
-class BridgeTerminalSyncFailedError extends Error {
-  readonly code = 'BRIDGE_TERMINAL_SYNC_FAILED' as const;
-
-  constructor(public readonly cause: unknown) {
-    super('BRIDGE_TERMINAL_SYNC_FAILED: bridge persistence failed');
-    this.name = 'BridgeTerminalSyncFailedError';
-  }
-}
-
-function diagnosticText(err: unknown): string {
-  return err instanceof Error ? (err.stack ?? err.message) : String(err);
 }
 
 export function applyStageFailure(task: TaskItem, err: unknown): TaskLog | null {
@@ -115,6 +144,19 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
   const router = Router({ mergeParams: true });
   const bridgeStore = asTaskRunStore(store);
   const taskRunService = deps.taskRunService ?? (bridgeStore ? new TaskRunService(bridgeStore) : undefined);
+  const executionStore = asLegacyExecutionStore(store);
+  const runStreamService = deps.runStreamService ?? executionStore?.runStreamService();
+  const legacyCanonicalExecutionService = deps.legacyCanonicalExecutionService ?? (
+    executionStore && taskRunService
+      ? new LegacyCanonicalExecutionService(
+          executionStore,
+          taskRunService,
+          executionStore.lifecycleTransactionService(),
+          executionStore.operationService(),
+          deps.createRunner,
+        )
+      : undefined
+  );
 
   router.get('/', (req: Request, res: Response) => {
     const { workspaceId } = req.params as { workspaceId: string };
@@ -159,6 +201,9 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     const tasks = store.loadTasks(workspaceId);
     const task = tasks.find(t => t.id === taskId);
     if (!task) return res.status(404).json({ error: 'Task not found' });
+    if (!taskRunService || !runStreamService || !legacyCanonicalExecutionService) {
+      return res.status(500).json({ error: 'Bridge persistence failed' });
+    }
 
     if (
       taskRunService
@@ -185,6 +230,8 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     // M2.4 Bridge step 3: find-or-create v2 Task + queued Run in one SQLite transaction.
     let bridgeRunId: string | undefined;
     let runnerWorkspace = workspace;
+    let bridgeStages: CreateLegacyRunForBridgeResult['stages'] = [];
+    let bridgeResolvedStages: CreateLegacyRunForBridgeResult['resolvedConfiguration']['stages'] = [];
     if (taskRunService) {
       try {
         const bridge = taskRunService.createLegacyRunForBridge({
@@ -202,12 +249,15 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
           || !bridge.runnerWorkspace
           || !bridge.snapshot
           || !bridge.stages
+          || !bridge.startOperation
         ) {
           Object.assign(task, taskBeforeClaim);
           return res.status(500).json({ error: 'Bridge persistence failed' });
         }
         bridgeRunId = bridge.run.id;
         runnerWorkspace = bridge.runnerWorkspace;
+        bridgeStages = bridge.stages;
+        bridgeResolvedStages = bridge.resolvedConfiguration.stages;
       } catch (err) {
         Object.assign(task, taskBeforeClaim);
         const message = legacyBridgeGuardMessage(err);
@@ -216,37 +266,6 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
         return res.status(500).json({ error: 'Bridge persistence failed' });
       }
     }
-    let bridgeTerminalSynced = false;
-    let bridgeTerminalSyncAttempted = false;
-    const syncBridgeTerminal = (sync: () => unknown): void => {
-      bridgeTerminalSyncAttempted = true;
-      try {
-        sync();
-        bridgeTerminalSynced = true;
-      } catch (err) {
-        throw new BridgeTerminalSyncFailedError(err);
-      }
-    };
-    const syncBridgeTerminalSaveFailure = (jsonErr: unknown): never => {
-      if (taskRunService && bridgeRunId) {
-        bridgeTerminalSyncAttempted = true;
-        try {
-          taskRunService.compensateTerminalSaveFailure(workspaceId, bridgeRunId, jsonErr);
-          bridgeTerminalSynced = true;
-        } catch (compensationErr) {
-          const wrapped = new Error('BRIDGE_COMPENSATION_FAILED: bridge terminal compensation failed') as Error & { code: string; originalError: unknown; compensationError: unknown };
-          wrapped.code = 'BRIDGE_COMPENSATION_FAILED';
-          wrapped.originalError = jsonErr;
-          wrapped.compensationError = compensationErr;
-          throw wrapped;
-        }
-      }
-      const stable = new Error('BRIDGE_TERMINAL_SAVE_FAILED: legacy terminal JSON save failed') as Error & { code: string; cause?: unknown };
-      stable.code = 'BRIDGE_TERMINAL_SAVE_FAILED';
-      stable.cause = jsonErr;
-      throw stable;
-    };
-
     task.outputs = [];
     task.error = undefined;
     task.reviewDecision = 'unknown';
@@ -263,9 +282,8 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       throw jsonErr;
     }
 
-    // M2.4 Bridge step 5: JSON claim succeeded → Run queued→running, Task open→in_progress.
-    if (taskRunService && bridgeRunId) {
-      taskRunService.startRunForBridge(workspaceId, bridgeRunId);
+    if (!bridgeRunId || !runStreamService || !legacyCanonicalExecutionService) {
+      return res.status(500).json({ error: 'Bridge persistence failed' });
     }
 
     res.writeHead(200, {
@@ -275,178 +293,80 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
       'X-Accel-Buffering': 'no',
     });
 
-    const sendEvent = createSseWriter(res);
     const stopHeartbeat = startSseHeartbeat(res);
-
-    sendEvent('status', { taskId, status: 'running', currentAgent: null, reviewDecision: 'unknown', reviewBlocked: false });
-
-    const abortController = new AbortController();
-    const signal = abortController.signal;
-    let responseClosed = false;
-
-    let runner: PipelineRunner;
-    const runStage = async (stage: AgentStage, fn: () => Promise<TaskLog>) => {
-      if (signal.aborted) return;
-      task.currentAgent = stage;
-      touchTaskActivity(task);
-      store.saveTask(workspaceId, task);
-      const agentName = getStageAgentName(runnerWorkspace, stage);
-      sendEvent('stage', { stage, agent: agentName, status: 'running' });
-      const log = await fn();
-      if (signal.aborted) return;
-      task.outputs.push(log);
-      touchTaskActivity(task);
-      store.saveTask(workspaceId, task);
-      sendEvent('stage', { stage, status: 'completed', log });
+    let transportClosed = false;
+    let unsubscribe = (): void => {};
+    const cleanup = (endResponse = true): void => {
+      if (transportClosed) return;
+      transportClosed = true;
+      unsubscribe();
+      stopHeartbeat();
+      if (endResponse && !res.writableEnded) {
+        try { res.end(); } catch { /* transport cleanup is isolated */ }
+      }
+    };
+    const writeFrame = (event: string, data: Record<string, unknown>): boolean => {
+      if (transportClosed || res.writableEnded) return false;
+      try {
+        const accepted = res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+        if (!accepted) cleanup();
+        return accepted;
+      } catch {
+        cleanup();
+        return false;
+      }
     };
 
-    void (async () => {
-      runner = (deps.createRunner ?? defaultRunnerFactory)(runnerWorkspace, taskId, task.title, (text, done) => {
-        const stage = task.currentAgent;
-        sendEvent('thinking', {
-          stage: stage ?? 'unknown',
-          agentName: stage ? getStageAgentName(runnerWorkspace, stage) : 'unknown',
-          text,
-          done,
-        });
-      }, {
-        signal,
-        onActivity: () => {
-          touchTaskActivity(task);
-          store.saveTask(workspaceId, task);
-        },
-      });
-
-      try {
-        await runStage('codex_manager', () => runner.runCodexManager());
-        if (signal.aborted) throw new Error('Pipeline cancelled');
-
-        await runStage('kimi_worker', () => runner.runKimiWorker());
-        if (signal.aborted) throw new Error('Pipeline cancelled');
-
-        await runStage('opencode_reviewer', () => runner.runOpenCodeReviewer());
-        if (signal.aborted) throw new Error('Pipeline cancelled');
-
-        const workerLog = task.outputs.find(log => log.stage === 'kimi_worker');
-        if (workerLog && getWorkerEvidenceFailure(workerLog)) {
-          task.reviewBlocked = true;
-          touchTaskActivity(task);
-          store.saveTask(workspaceId, task);
-          sendEvent('status', {
-            taskId,
-            status: 'reviewing',
-            reviewDecision: task.reviewDecision,
-            reviewBlocked: true,
-          });
-        }
-
-        await runStage('codex_final_review', () => runner.runCodexFinalReview());
-        if (signal.aborted) throw new Error('Pipeline cancelled');
-
-        applyFinalReviewDecision(task, task.outputs[task.outputs.length - 1]!);
-        try {
-          store.saveTask(workspaceId, task);
-        } catch (jsonErr) {
-          syncBridgeTerminalSaveFailure(jsonErr);
-        }
-        // M2.4 Bridge step 8 (success): Run running→completed, Task keeps
-        // in_progress and gains pending_result_run_id; never auto-done.
-        if (taskRunService && bridgeRunId && !bridgeTerminalSynced) {
-          syncBridgeTerminal(() => taskRunService.completeRunForBridge(workspaceId, bridgeRunId));
-        }
-
-        sendEvent('status', {
-          taskId,
-          status: task.status,
-          reviewDecision: task.reviewDecision,
-          reviewBlocked: task.reviewBlocked,
-        });
-        sendEvent('done', {
-          taskId,
-          status: task.status,
-          reviewDecision: task.reviewDecision,
-          reviewBlocked: task.reviewBlocked,
-        });
-      } catch (err) {
-        if (err instanceof BridgeTerminalSyncFailedError) throw err;
-        if (signal.aborted) {
-          task.status = 'cancelled';
-          task.currentAgent = null;
-          task.error = '任务的实时连接已关闭，执行已取消。';
-          task.updatedAt = new Date().toISOString();
-          try {
-            store.saveTask(workspaceId, task);
-          } catch (jsonErr) {
-            syncBridgeTerminalSaveFailure(jsonErr);
-          }
-          // M2.4 Bridge step 8 (disconnect cancel): faithfully record the cancelled Run.
-          if (taskRunService && bridgeRunId && !bridgeTerminalSynced && !bridgeTerminalSyncAttempted) {
-            syncBridgeTerminal(() => taskRunService.cancelRunForBridge(workspaceId, bridgeRunId));
-          }
-          sendEvent('status', {
-            taskId,
-            status: 'cancelled',
-            error: 'Cancelled',
-            reviewDecision: task.reviewDecision,
-            reviewBlocked: task.reviewBlocked,
-          });
-          sendEvent('done', {
-            taskId,
-            status: 'cancelled',
-            error: 'Cancelled',
-            reviewDecision: task.reviewDecision,
-            reviewBlocked: task.reviewBlocked,
-          });
-        } else {
-          applyStageFailure(task, err);
-          const message = err instanceof Error ? err.message : String(err);
-          try {
-            store.saveTask(workspaceId, task);
-          } catch (jsonErr) {
-            syncBridgeTerminalSaveFailure(jsonErr);
-          }
-          // M2.4 Bridge step 8 (pipeline failure): Run failed with stable failure code.
-          if (taskRunService && bridgeRunId && !bridgeTerminalSynced && !bridgeTerminalSyncAttempted) {
-            syncBridgeTerminal(() => taskRunService.failRunForBridge(workspaceId, bridgeRunId, message));
-          }
-          sendEvent('status', {
-            taskId,
-            status: 'failed',
-            error: message,
-            reviewDecision: task.reviewDecision,
-            reviewBlocked: task.reviewBlocked,
-          });
-          sendEvent('done', {
-            taskId,
-            status: 'failed',
-            error: message,
-            reviewDecision: task.reviewDecision,
-            reviewBlocked: task.reviewBlocked,
-          });
-        }
-      }
-    })().catch(err => {
-      if (err instanceof BridgeTerminalSyncFailedError) {
-        console.error(`[AgentOS Server] Bridge terminal sync failed: ${diagnosticText(err.cause)}`);
-        if (!responseClosed) {
-          sendEvent('error', { taskId, error: 'Bridge persistence failed' });
-        }
-        return;
-      }
-      console.error(`[AgentOS Server] Unhandled pipeline rejection: ${diagnosticText(err)}`);
-      if (!responseClosed) {
-        sendEvent('error', { taskId, error: 'Pipeline failed' });
-      }
-    }).finally(() => {
-      stopHeartbeat();
-      responseClosed = true;
-      try { res.end(); } catch {}
+    const stageById = Object.fromEntries(bridgeStages.map(stage => {
+      const resolved = bridgeResolvedStages.find(candidate => candidate.workflowStageKey === stage.workflowStageKey);
+      return [stage.id, Object.freeze({
+        stage: stage.workflowStageKey as AgentStage,
+        agentName: resolved?.agent?.name ?? stage.workflowStageKey,
+      })];
+    }));
+    const projectionContext: LegacyRuntimeProjectionContext = Object.freeze({
+      taskId,
+      stageById: Object.freeze(stageById),
     });
 
-    res.on('close', () => {
-      if (responseClosed) return;
-      stopHeartbeat();
-      abortController.abort();
+    res.on('close', () => cleanup(false));
+    try {
+      unsubscribe = runStreamService.subscribe({
+        workspaceId,
+        runId: bridgeRunId,
+        afterSequence: 0,
+        onEvent: event => {
+          const frames = projectLegacyRuntimeEvent(event, projectionContext);
+          let terminal = false;
+          for (const frame of frames) {
+            if (!writeFrame(frame.event, frame.data)) {
+              throw new Error('LEGACY_TRANSPORT_WRITE_FAILED');
+            }
+            if (frame.event === 'done') terminal = true;
+          }
+          if (terminal) cleanup();
+        },
+        onOverflow: () => {
+          writeFrame('error', { taskId, error: 'Stream overflow' });
+          cleanup();
+        },
+      });
+    } catch {
+      writeFrame('error', { taskId, error: 'Pipeline stream failed' });
+      cleanup();
+    }
+
+    void legacyCanonicalExecutionService.execute({
+      workspaceId,
+      legacyTaskId: taskId,
+      runId: bridgeRunId,
+      task,
+      runnerWorkspace,
+    }).catch(() => {
+      if (!transportClosed) {
+        writeFrame('error', { taskId, error: 'Pipeline failed' });
+        cleanup();
+      }
     });
   });
 

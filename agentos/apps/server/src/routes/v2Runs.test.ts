@@ -195,19 +195,17 @@ test('P4 malformed repository read surfaces fail closed instead of synthesizing 
     overrideStoreMethod('runSnapshotRepository', () => ({}));
     const missingSnapshotRead = await fetch(`${fx.baseA}/v2/runs/${created.run.id}`);
     assert.equal(missingSnapshotRead.status, 500);
-    assert.deepEqual(await missingSnapshotRead.json(), {
-      error: 'Internal server error',
-      code: 'INTERNAL_ERROR',
-    });
+    const missingSnapshotBody = await missingSnapshotRead.json() as { code: string; detail: string };
+    assert.equal(missingSnapshotBody.code, 'INTERNAL_ERROR');
+    assert.equal(missingSnapshotBody.detail, 'Internal server error');
 
     overrideStoreMethod('runSnapshotRepository', () => validSnapshotRepository);
     overrideStoreMethod('runStageRepository', () => ({}));
     const missingStageRead = await fetch(`${fx.baseA}/v2/runs/${created.run.id}?include=stages`);
     assert.equal(missingStageRead.status, 500);
-    assert.deepEqual(await missingStageRead.json(), {
-      error: 'Internal server error',
-      code: 'INTERNAL_ERROR',
-    });
+    const missingStageBody = await missingStageRead.json() as { code: string; detail: string };
+    assert.equal(missingStageBody.code, 'INTERNAL_ERROR');
+    assert.equal(missingStageBody.detail, 'Internal server error');
 
     overrideStoreMethod('runStageRepository', () => validStageRepository);
     Reflect.deleteProperty(fx.store, 'runSnapshotRepository');
@@ -593,7 +591,9 @@ test('P401/P402 route run.cancel honors matching and stale expectedVersion', asy
     const runId = await createRunViaApi(fx.baseA, taskId);
     const stale = await postRunCancel(fx.baseA, runId, { expectedVersion: 2 });
     assert.equal(stale.status, 409);
-    assert.deepEqual(await stale.json(), { error: 'Version conflict', code: 'VERSION_CONFLICT' });
+    const staleBody = await stale.json() as { code: string; detail: string };
+    assert.equal(staleBody.code, 'VERSION_CONFLICT');
+    assert.equal(staleBody.detail, 'Version conflict');
     const untouched = fx.store.runRepository().findById(fx.workspaceAId, runId)!;
     assert.equal(untouched.status, 'queued');
     assert.equal(untouched.version, 1);
@@ -617,10 +617,9 @@ test('P425/P427 route run.cancel invalid expectedVersion returns 400, no mutatio
     for (const value of [null, 0, -1, 1.5, '1', [1], { v: 1 }]) {
       const response = await postRunCancel(fx.baseA, runId, { expectedVersion: value }, 'p425-run-key');
       assert.equal(response.status, 400, `expectedVersion=${JSON.stringify(value)} must be rejected`);
-      assert.deepEqual(await response.json(), {
-        error: 'expectedVersion must be a positive safe integer',
-        code: 'VALIDATION_FAILED',
-      });
+      const body = await response.json() as { code: string; detail: string };
+      assert.equal(body.code, 'VALIDATION_FAILED');
+      assert.equal(body.detail, 'expectedVersion must be a positive safe integer');
     }
     const untouched = fx.store.runRepository().findById(fx.workspaceAId, runId)!;
     assert.equal(untouched.status, 'queued');

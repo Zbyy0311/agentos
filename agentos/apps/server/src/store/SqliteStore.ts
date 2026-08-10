@@ -72,6 +72,10 @@ import { OutboxRepository } from './OutboxRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
 import { LifecycleTransactionService } from '../services/LifecycleTransactionService.js';
 import { OperationService } from '../services/OperationService.js';
+import { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
+import { RunStreamService } from '../services/RunStreamService.js';
+import { RuntimeEventDeliverySink } from '../services/RuntimeEventDeliverySink.js';
+import { OutboxPublisher, type OutboxPublisherRuntimeOptions } from '../services/OutboxPublisher.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -418,7 +422,9 @@ export class SqliteStore implements Store {
   private readonly runStageRepo: RunStageRepository;
   private readonly idempotencyRepo: IdempotencyRepository;
   private readonly providerConfigRepo: ProviderConfigurationRepository;
+  private readonly runtimeEventNotifier: RuntimeEventNotifier;
   private readonly runtimeEventRepo: RuntimeEventRepository;
+  private readonly runStreamServiceRepo: RunStreamService;
   private readonly runSequenceAllocatorRepo: RunSequenceAllocator;
   private readonly outboxRepo: OutboxRepository;
   private readonly deadLetterRepo: DeadLetterRepository;
@@ -448,7 +454,13 @@ export class SqliteStore implements Store {
       this.idempotencyRepo = new IdempotencyRepository(this.database as any);
       this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
       const runtimeEventRegistry = createM3RuntimeEventRegistry();
-      this.runtimeEventRepo = new RuntimeEventRepository(this.database as any, runtimeEventRegistry);
+      this.runtimeEventNotifier = new RuntimeEventNotifier();
+      this.runtimeEventRepo = new RuntimeEventRepository(
+        this.database as any,
+        runtimeEventRegistry,
+        this.runtimeEventNotifier,
+      );
+      this.runStreamServiceRepo = new RunStreamService(this.runtimeEventRepo, this.runtimeEventNotifier);
       this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
       this.outboxRepo = new OutboxRepository(this.database as any, this.runtimeEventRepo);
       this.deadLetterRepo = new DeadLetterRepository(this.database as any);
@@ -508,6 +520,10 @@ export class SqliteStore implements Store {
     return this.runtimeEventRepo;
   }
 
+  runStreamService(): RunStreamService {
+    return this.runStreamServiceRepo;
+  }
+
   runSequenceAllocator(): RunSequenceAllocator {
     return this.runSequenceAllocatorRepo;
   }
@@ -518,6 +534,20 @@ export class SqliteStore implements Store {
 
   deadLetterRepository(): DeadLetterRepository {
     return this.deadLetterRepo;
+  }
+
+  createOutboxPublisher(options: OutboxPublisherRuntimeOptions): OutboxPublisher {
+    const deliverySink = new RuntimeEventDeliverySink({
+      outboxRepository: this.outboxRepo,
+      runtimeEventNotifier: this.runtimeEventNotifier,
+    });
+    return new OutboxPublisher({
+      ...options,
+      outboxRepository: this.outboxRepo,
+      deadLetterRepository: this.deadLetterRepo,
+      deliverySink,
+      runInTransaction: fn => inTransaction(this.database as any, fn),
+    });
   }
 
   lifecycleTransactionService(): LifecycleTransactionService {

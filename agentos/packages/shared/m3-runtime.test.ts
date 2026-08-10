@@ -22,17 +22,28 @@ import {
 import {
   createM3RuntimeEventFixtures,
 } from './src/types/m3-runtime-fixtures.ts';
-import type { RunFailedPayload } from './src/types/m3-runtime-registry.ts';
+import type {
+  RunFailedPayload,
+  RunRecoveryAttemptedPayload,
+  RunRecoveredPayload,
+  RunRecoveryFailedPayload,
+  TextCompletedPayload,
+  TextDeltaPayload,
+} from './src/types/m3-runtime-registry.ts';
 import type {
   CancelRunBody,
   CreateRunBody,
   OperationEventsQuery,
   OperationPathParams,
+  ReplayArtifactIndexEntry,
+  ReplayCompatibilityWarning,
   ResolvedSseCursor,
+  RunReplayQuery,
   RuntimeEventDraft,
   RuntimeEventEnvelope,
   RuntimeEventFrame,
   RuntimeEventPage,
+  RuntimeEventRecord,
   RuntimeKeepaliveFrame,
   RunEventsQuery,
   RunPathParams,
@@ -40,7 +51,9 @@ import type {
   RunStreamQuery,
   SseRequestHeaders,
   StartRunBody,
+  UnknownRuntimeEvent,
 } from './src/types/m3-runtime.ts';
+import type { RunReplayResponse } from './src/types/index.ts';
 
 test('keeps the ProviderType compile-time contract in the Shared test source', () => {
   const validProviderType: RunFailedPayload['providerType'] = 'codex';
@@ -48,6 +61,25 @@ test('keeps the ProviderType compile-time contract in the Shared test source', (
   // @ts-expect-error non-canonical ProviderType must not be assignable to RunFailedPayload
   const invalidProviderType: RunFailedPayload['providerType'] = 'not-a-provider';
   void invalidProviderType;
+});
+
+test('keeps the P6B recovery payload type contract in the Shared test source', () => {
+  const attempted: RunRecoveryAttemptedPayload = {
+    previousStatus: 'running',
+    processFound: true,
+    providerSessionFound: false,
+    worktreeFound: true,
+  };
+  const recovered: RunRecoveredPayload = { recoveryMode: 'queue-restore' };
+  const failed: RunRecoveryFailedPayload = {
+    errorCode: 'RECOVERY_UNCERTAIN',
+    message: 'External execution outcome is unavailable.',
+    retryableAsNewRun: true,
+  };
+
+  assert.equal(attempted.previousStatus, 'running');
+  assert.equal(recovered.recoveryMode, 'queue-restore');
+  assert.equal(failed.retryableAsNewRun, true);
 });
 
 function withPayloadField(
@@ -116,8 +148,8 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
   );
 });
 
-test('registers the complete P2C-1 Event set with frozen domains and metadata', () => {
-  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval']);
+test('registers the complete M3 Event set with frozen domains and metadata', () => {
+  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval', 'stream']);
   const expectedTypes = [
     'run.created',
     'run.queued',
@@ -128,6 +160,9 @@ test('registers the complete P2C-1 Event set with frozen domains and metadata', 
     'run.cancelled',
     'run.completed',
     'run.failed',
+    'run.recovery_attempted',
+    'run.recovered',
+    'run.recovery_failed',
     'stage.created',
     'stage.ready',
     'stage.starting',
@@ -140,10 +175,13 @@ test('registers the complete P2C-1 Event set with frozen domains and metadata', 
     'stage.skipped',
     'approval.required',
     'approval.resolved',
+    'stream.text_delta',
+    'stream.text_completed',
   ];
   assert.deepEqual(M3_RUNTIME_EVENT_TYPES, expectedTypes);
+  assert.equal(M3_RUNTIME_EVENT_TYPES.length, 26);
   assert.deepEqual(M3_CORE_EVENT_DEFINITIONS.map(definition => definition.type), expectedTypes);
-  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 21);
+  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 26);
 
   const registry = createM3RuntimeEventRegistry();
   assert.deepEqual(
@@ -157,6 +195,214 @@ test('registers the complete P2C-1 Event set with frozen domains and metadata', 
   assert.equal(registry.get('run.failed')?.defaultSeverity, 'error');
   assert.equal(registry.get('stage.cancelled')?.defaultSeverity, 'notice');
   assert.equal(registry.get('approval.required')?.defaultSeverity, 'notice');
+});
+
+test('registers and strictly validates the P6C stream text Events', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const expected = [
+    {
+      type: 'stream.text_delta',
+      required: ['channel', 'delta'],
+      optional: ['blockId'],
+    },
+    {
+      type: 'stream.text_completed',
+      required: ['channel', 'characterCount'],
+      optional: ['blockId', 'artifactId'],
+    },
+  ] as const;
+
+  for (const item of expected) {
+    const definition = registry.get(item.type);
+    assert.ok(definition, item.type);
+    assert.deepEqual(
+      {
+        schemaVersion: definition.schemaVersion,
+        domain: definition.domain,
+        source: definition.source,
+        defaultVisibility: definition.defaultVisibility,
+        defaultDurability: definition.defaultDurability,
+        requiresStageId: definition.requiresStageId,
+        forbidsStageId: definition.forbidsStageId,
+        payloadSchema: definition.payloadSchema,
+      },
+      {
+        schemaVersion: 1,
+        domain: 'stream',
+        source: 'stage-executor',
+        defaultVisibility: 'public',
+        defaultDurability: 'durable',
+        requiresStageId: undefined,
+        forbidsStageId: undefined,
+        payloadSchema: { required: item.required, optional: item.optional },
+      },
+    );
+  }
+
+  const typedDelta: TextDeltaPayload = { channel: 'analysis-summary', delta: '' };
+  const typedCompleted: TextCompletedPayload = { channel: 'review', characterCount: 0 };
+  assert.equal(typedDelta.delta, '');
+  assert.equal(typedCompleted.characterCount, 0);
+  assert.deepEqual(Object.keys(fixtures.validTextDeltaEvent.payload), ['channel', 'delta', 'blockId']);
+  assert.deepEqual(
+    Object.keys(fixtures.validTextCompletedEvent.payload),
+    ['channel', 'blockId', 'artifactId', 'characterCount'],
+  );
+  assert.equal(fixtures.validTextDeltaEvent.source, 'stage-executor');
+  assert.equal(fixtures.validTextCompletedEvent.source, 'stage-executor');
+  assert.equal(fixtures.validTextDeltaEvent.stageId, 'stage_fixture_01');
+  assert.equal(fixtures.validTextCompletedEvent.stageId, undefined);
+
+  for (const channel of ['assistant', 'analysis-summary', 'status', 'review', 'system'] as const) {
+    const event = registry.publish({
+      ...fixtures.validTextDeltaEvent,
+      id: `evt_fixture_text_delta_${channel}`,
+      payload: { channel, delta: '' },
+    });
+    assert.equal(event.payload.channel, channel);
+  }
+
+  const invalidPayloads = [
+    fixtures.invalidTextDeltaChannel,
+    fixtures.invalidTextDeltaMissingDelta,
+    fixtures.invalidTextDeltaExtraField,
+    fixtures.invalidTextCompletedChannel,
+    fixtures.invalidTextCompletedMissingCharacterCount,
+    fixtures.invalidTextCompletedExtraField,
+    ...fixtures.invalidTextCompletedCharacterCounts,
+  ];
+  for (const invalidPayload of invalidPayloads) {
+    assert.throws(
+      () => registry.publish(invalidPayload),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+    );
+  }
+
+  assert.throws(
+    () => registry.publish(fixtures.invalidTextType),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'UNREGISTERED_CORE_EVENT',
+  );
+  assert.equal(M3_RUNTIME_EVENT_TYPES.includes('stream.text_unknown' as never), false);
+});
+
+test('registers P6B recovery Events with exact metadata and forbids stageId', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const expected = [
+    {
+      type: 'run.recovery_attempted',
+      severity: 'info',
+      required: ['previousStatus', 'processFound', 'providerSessionFound', 'worktreeFound'],
+    },
+    {
+      type: 'run.recovered',
+      severity: 'info',
+      required: ['recoveryMode'],
+    },
+    {
+      type: 'run.recovery_failed',
+      severity: 'error',
+      required: ['errorCode', 'message', 'retryableAsNewRun'],
+    },
+  ] as const;
+
+  for (const item of expected) {
+    const definition = registry.get(item.type);
+    assert.ok(definition, item.type);
+    assert.deepEqual(
+      {
+        schemaVersion: definition.schemaVersion,
+        domain: definition.domain,
+        source: definition.source,
+        defaultSeverity: definition.defaultSeverity,
+        defaultVisibility: definition.defaultVisibility,
+        defaultDurability: definition.defaultDurability,
+        forbidsStageId: definition.forbidsStageId,
+        requiresStageId: definition.requiresStageId,
+        payloadSchema: definition.payloadSchema,
+      },
+      {
+        schemaVersion: 1,
+        domain: 'run',
+        source: 'recovery-manager',
+        defaultSeverity: item.severity,
+        defaultVisibility: 'internal',
+        defaultDurability: 'durable',
+        forbidsStageId: true,
+        requiresStageId: undefined,
+        payloadSchema: { required: item.required, optional: [] },
+      },
+    );
+  }
+});
+
+test('validates P6B recovery payloads, legal modes, strict fields, and stageId rules', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const recoveryEvents = [
+    fixtures.validRunRecoveryAttemptedEvent,
+    fixtures.validRunRecoveredEvent,
+    fixtures.validRunRecoveryFailedEvent,
+  ];
+
+  assert.deepEqual(
+    fixtures.validRunRecoveredEvents.map(event => event.payload.recoveryMode),
+    ['process-reattach', 'provider-session-resume', 'queue-restore', 'approval-restore'],
+  );
+  for (const event of [...recoveryEvents, ...fixtures.validRunRecoveredEvents]) {
+    assert.doesNotThrow(() => registry.publish(event));
+    assert.equal(event.stageId, undefined);
+  }
+  assert.equal(fixtures.validRunRecoveryAttemptedEvent.severity, 'info');
+  assert.equal(fixtures.validRunRecoveredEvent.severity, 'info');
+  assert.equal(fixtures.validRunRecoveryFailedEvent.severity, 'error');
+  assert.equal(fixtures.validRunRecoveryAttemptedEvent.visibility, 'internal');
+  assert.equal(fixtures.validRunRecoveredEvent.visibility, 'internal');
+  assert.equal(fixtures.validRunRecoveryFailedEvent.visibility, 'internal');
+  assert.equal(fixtures.validRunRecoveryAttemptedEvent.durability, 'durable');
+  assert.equal(fixtures.validRunRecoveredEvent.durability, 'durable');
+  assert.equal(fixtures.validRunRecoveryFailedEvent.durability, 'durable');
+
+  for (const event of recoveryEvents) {
+    assert.throws(
+      () => registry.publish({ ...event, stageId: 'stage_fixture_01' }),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'UNEXPECTED_STAGE_ID',
+      `${event.type} must forbid stageId`,
+    );
+  }
+
+  assert.throws(
+    () => registry.publish(fixtures.invalidRecoveryPreviousStatus),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.invalidRecoveryMode),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  for (const invalidBoolean of fixtures.invalidRecoveryBooleans) {
+    assert.throws(
+      () => registry.publish(invalidBoolean),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+    );
+  }
+  assert.throws(
+    () => registry.publish(fixtures.invalidRecoveryUnknownField),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  for (const omittedRequiredField of fixtures.invalidRecoveryRequiredOmissions) {
+    assert.throws(
+      () => registry.publish(omittedRequiredField),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+    );
+  }
 });
 
 test('validates canonical UTC timestamp and source/Envelope reference rules', () => {
@@ -403,8 +649,8 @@ test('covers every registered payload with a valid and an unknown-field invalid 
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
 
-  assert.equal(fixtures.validEvents.length, 21);
-  assert.equal(fixtures.invalidPayloads.length, 21);
+  assert.equal(fixtures.validEvents.length, 26);
+  assert.equal(fixtures.invalidPayloads.length, 26);
   for (const event of fixtures.validEvents) {
     assert.ok(registry.get(event.type), `missing definition for ${event.type}`);
   }
@@ -417,7 +663,7 @@ test('covers every registered payload with a valid and an unknown-field invalid 
   }
 });
 
-test('rejects omission of every required payload field for all 21 registered Events', () => {
+test('rejects omission of every required payload field for all 26 registered Events', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
   const validEvents = new Map(fixtures.validEvents.map(event => [event.type, event]));
@@ -456,7 +702,7 @@ test('rejects omission of every required payload field for all 21 registered Eve
     }
   }
 
-  assert.equal(omissionCount, 58);
+  assert.equal(omissionCount, 70);
 });
 
 test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges', () => {
@@ -539,6 +785,18 @@ test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges',
   assert.equal(M3_RUN_TRANSITION_EVENT_CONTRACTS.some(contract => contract.primaryEvent === 'run.queued'), false);
   assert.equal(M3_RUNTIME_EVENT_TYPES.includes('run.status_changed' as never), false);
   assert.equal(M3_RUNTIME_EVENT_TYPES.includes('stage.status_changed' as never), false);
+  for (const recoveryType of [
+    'run.recovery_attempted',
+    'run.recovered',
+    'run.recovery_failed',
+  ] as const) {
+    assert.equal(
+      [...M3_RUN_TRANSITION_EVENT_CONTRACTS, ...M3_STAGE_TRANSITION_EVENT_CONTRACTS]
+        .some(contract => contract.primaryEvent === recoveryType),
+      false,
+      recoveryType,
+    );
+  }
 });
 
 test('freezes the shared multi-Event ordering contracts', () => {
@@ -832,7 +1090,7 @@ test('rejects unregistered Publish Events and invalid schema versions', () => {
 
 test('keeps Core Event definitions in the production Registry, not the fixture module', async () => {
   const publicExports = await import('./src/index.ts');
-  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 21);
+  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 26);
   assert.equal('createM3RuntimeEventFixtures' in publicExports, false);
 });
 
@@ -848,6 +1106,44 @@ test('uses the Runtime Event Page contract', () => {
     hasMore: true,
   };
   assert.equal(nextPage.nextAfterSequence, 10);
+});
+
+test('uses the P5A Runtime Event wire union and Replay DTO contract', () => {
+  const fixtures = createM3RuntimeEventFixtures();
+  const known: RuntimeEventRecord = fixtures.validRunStartedEvent;
+  const query: RunReplayQuery = {
+    fromSequence: 1,
+    toSequence: 10,
+    types: ['run.started'],
+    stageId: 'stage_fixture_01',
+    includeArtifacts: true,
+  };
+  const warning: ReplayCompatibilityWarning = {
+    code: 'EVENT_SEQUENCE_GAP',
+    message: 'Durable Runtime Event sequence 2 is unavailable.',
+    fromSequence: 2,
+    toSequence: 2,
+  };
+  const artifact: ReplayArtifactIndexEntry = {
+    id: 'artifact_fixture_01',
+    type: 'report',
+    title: 'Replay report',
+    sizeBytes: 0,
+    contentAvailable: false,
+    createdAt: fixtures.validRunStartedEvent.timestamp,
+  };
+  const response: RunReplayResponse = {
+    runSnapshot: null,
+    stageSnapshots: [],
+    events: [known],
+    artifactIndex: [artifact],
+    compatibilityWarnings: [warning],
+  };
+
+  assert.equal(query.fromSequence, 1);
+  assert.equal(response.events[0]?.id, fixtures.validRunStartedEvent.id);
+  assert.equal(response.compatibilityWarnings[0]?.code, 'EVENT_SEQUENCE_GAP');
+  assert.equal(response.artifactIndex[0]?.contentAvailable, false);
 });
 
 test('separates HTTP path, query, header, and body DTOs', () => {
@@ -889,6 +1185,38 @@ test('uses the discriminated SSE frame contract', () => {
   };
   assert.equal(runtimeFrame.event, 'runtime-event');
   assert.equal(keepalive.event, 'keepalive');
+});
+
+test('RuntimeEventFrame carries UnknownRuntimeEvent losslessly (P5C-R02)', () => {
+  const unknownEvent: UnknownRuntimeEvent = {
+    kind: 'unknown_runtime_event',
+    raw: { future: true, custom: 'p5c' },
+    id: 'evt_p5c_unknown_01',
+    type: 'future.p5c.event',
+    schemaVersion: 1,
+    workspaceId: 'workspace_p5c',
+    runId: 'run_p5c',
+    sequence: 9,
+    timestamp: '2026-08-10T00:00:00.000Z',
+    source: 'system',
+    correlationId: 'corr_p5c',
+    severity: 'info',
+    visibility: 'public',
+    durability: 'durable',
+    payload: { future: true },
+    warning: 'UNKNOWN_EVENT_TYPE',
+  };
+  const frame: RuntimeEventFrame = {
+    id: unknownEvent.id,
+    event: 'runtime-event',
+    data: unknownEvent,
+  };
+  assert.equal(frame.event, 'runtime-event');
+  assert.equal(frame.id, 'evt_p5c_unknown_01');
+  assert.equal(frame.data, unknownEvent);
+  assert.equal(unknownEvent.kind, 'unknown_runtime_event');
+  assert.equal(unknownEvent.warning, 'UNKNOWN_EVENT_TYPE');
+  assert.deepEqual(unknownEvent.raw, { future: true, custom: 'p5c' });
 });
 
 test('associates Operation correlation through the Event envelope', () => {

@@ -1,8 +1,8 @@
 # AgentOS M3 Lifecycle, Event and API Foundation Implementation Plan
 
-Status: LOCAL FORMAL GATE PASSED — PENDING INDEPENDENT REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS — P3 NOT AUTHORIZED — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: M3 P5 COMPLETE / ACCEPTED — M3 P6A ACCEPTED — M3 P6B ACCEPTED — M3 P6C ACCEPTED — M3 P6D INTEGRATED VERIFICATION COMPLETE — P6 AWAITING INDEPENDENT INTEGRATED REMOTE REVIEW — P7 NOT ENTERED / NOT AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
-This plan is the integrated M3 P2 local closeout record. The P2 branch implementation and its local formal verification are complete; independent review, Remote Checks, P3, and Production Cutover remain outside this closeout.
+This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation, Remote Checks, and Production Cutover remain outside this closure.
 
 ## 1. Authoritative contract
 
@@ -50,7 +50,8 @@ M3 is the Lifecycle, Event and API Foundation defined by Runtime Specification 1
 6. Run Engine, Workflow Executor execution, and Start route integration begin only after P2 transaction core.
 7. P4 preserves Legacy and current v2 routes while adding canonical top-level Run/Operation paths; it does not replace the canonical Task Collection.
 8. P5 uses the race-free subscribe/buffer/high-watermark/replay/drain/deduplicate/live handoff.
-9. P7 can propose an ordinary merge for M3 Foundation only; it cannot authorize Production Cutover or Legacy Retirement.
+9. P6 production begins only after P6A0 freezes the delivery, recovery, retry/dead-letter, and Legacy single-execution contracts and that docs package passes independent remote review.
+10. P7 can propose an ordinary merge for M3 Foundation only; it cannot authorize Production Cutover or Legacy Retirement.
 
 ## 3. Pre-P1 and P0 merge gate
 
@@ -619,11 +620,58 @@ Run deterministic SSE integration, concurrent handoff, process-restart, event or
 
 Keep Legacy behavior usable, map it to the canonical Task-domain path, and verify browser disconnect, server restart, Outbox failure, retry, dead letters, and uncertain state.
 
+#### P6-0 independent review classification and P6A0 boundary
+
+The P6-0 read-only assessment previously classified the Outbox sink and restart
+matrix as requiring new Owner decisions. Independent remote review returned:
+
+```text
+M3 P6-0 INDEPENDENT REVIEW:
+PASS WITH CONTRACT RECLASSIFICATION
+
+NEW OWNER DECISION:
+NONE
+```
+
+M3-TD-01, M3-TD-07, M3-TD-18, the authorized P6 uncertainty scope, Runtime
+Lifecycle §42, and Event Model §§48–50 already contain the governing product
+and architectural choices. M3-TD-33 through M3-TD-36 therefore record a
+BOUNDED TECHNICAL CONTRACT CLOSURE rather than a new product/Owner choice.
+P6A0 is docs-only. P6 production implementation remains NOT AUTHORIZED until
+independent remote review accepts this exact docs package.
+
+Independent remote review of P6A0 commit
+`67e06e12088c6f369763bc5241ea10cc35876da8` subsequently returned CHANGES
+REQUIRED with exactly one HIGH finding and no blocker/medium/low finding.
+HIGH-1 found that total Outbox claim `attempts` cannot reconstruct completed
+classified failures or DeadLetter `firstFailedAt` after unknown crash/lease
+outcomes. The M3-TD-35 forward remediation below freezes a durable no-schema
+failure envelope and exact DeadLetter evidence mapping. It introduces no new
+Owner decision and does not authorize P6A production implementation.
+
+#### Frozen package order
+
+```text
+P6A0  technical contract closure
+  ↓
+P6A   Outbox reclaim / delivery / retry / dead-letter
+  ↓
+P6B   Task-domain restart / recovery_required / Start Operation recovery
+  ↓
+P6C   Legacy canonical execution / durable projection / disconnect closure
+  ↓
+P6D   integrated verification
+```
+
+Packages execute sequentially to avoid uncontrolled Shared/Lifecycle overlap.
+After P6A0 passes independent review, the next implementation authorization may
+cover P6A only. P6B, P6C, and P6D are not implicitly authorized.
+
 #### Authorized scope
 
 - Legacy POST execute-task mapping to Create Run then Start Run.
 - Legacy status/stage/thinking/done/error projection from persisted v2 Events.
-- Task-domain recovery using the P2-approved recovery_required or Recovery Record representation.
+- Task-domain recovery using the P2-implemented `runs.recovery_required`; no Recovery Record is created.
 - Browser disconnect subscription-only behavior.
 - Outbox at-least-once retry, durable identity deduplication, dead letters, and failure fixtures.
 
@@ -639,7 +687,7 @@ Keep Legacy behavior usable, map it to the canonical Task-domain path, and verif
 
 - Legacy route and bridge categories under apps/server/src/routes/tasks.ts and TaskRunService.
 - Task-domain recovery category and startup recovery integration.
-- OutboxPublisher, retry, dead-letter, and failure categories.
+- OutboxPublisher, RuntimeEventDeliverySink, retry, dead-letter, and failure categories.
 - Legacy mapping, browser disconnect, server restart, duplicate publish, gap, and uncertain-state tests.
 
 #### Required evidence
@@ -647,14 +695,15 @@ Keep Legacy behavior usable, map it to the canonical Task-domain path, and verif
 - Legacy endpoint remains callable and its response/frames correspond to canonical Run/Operation/Event evidence.
 - No double execution path exists.
 - Browser refresh/disconnect leaves Run durable.
-- Restart resumes or marks explicit uncertainty using an existing schema representation.
+- Restart classifies Run, Stage, Start Operation, Approval where applicable, and Runtime Event evidence together; it restores only frozen cases or records explicit uncertainty in `runs.recovery_required`.
 - Outbox retry is at-least-once and duplicate-safe; dead letters retain failure evidence.
+- Completed classified delivery failures, immutable first failure time, unknown lease outcomes, and terminal DeadLetter evidence are durably reconstructible without using total claim `attempts` as the failure budget.
 - Legacy JSON, Legacy API, and Web default remain unchanged.
 
 #### RED/GREEN tests
 
 - RED: current Legacy request-bound execution aborts on close and emits direct frames rather than durable v2 projections; current Task-domain restart/outbox chain is incomplete.
-- GREEN: mapping, terminal reconciliation, disconnect, restart, retry, duplicate publish, dead letter, gap, and uncertainty tests pass.
+- GREEN: mapping, terminal reconciliation, disconnect, restart, retry, duplicate publish, dead letter, expired-lease reclaim, Start Operation matrix, gap, and uncertainty tests pass using injected clocks/barriers and no sleep-based correctness.
 
 #### Related regression
 
@@ -665,6 +714,7 @@ Keep Legacy behavior usable, map it to the canonical Task-domain path, and verif
 - P4 route compatibility and P5 durable stream/replay are accepted.
 - P2 recovery representation and Outbox failure contract are available.
 - Independent review confirms Legacy remains usable and no second execution model exists.
+- The P6A0 docs package containing M3-TD-33 through M3-TD-36 is independently accepted before any P6 production branch begins.
 
 #### Stop conditions
 
@@ -688,6 +738,349 @@ Review compatibility mapping, recovery uncertainty, Outbox retry/idempotency, da
 #### L3 Gate requirements
 
 Run fresh/legacy local DB fixtures, controlled process restart, failure injection, targeted suites, typecheck/build, and related regression. No production restore or data access.
+
+#### M3-TD-33 — P6 Task-domain Outbox delivery sink
+
+The frozen durable live-distribution path is:
+
+```text
+OutboxPublisher
+→ RuntimeEventDeliverySink
+→ RuntimeEventNotifier
+```
+
+`RuntimeEventDeliverySink` is a P6 adapter boundary, not an Event Store,
+Conversation EventBus, HTTP/SSE client, or external broker. Its input is the
+exact durable Outbox identity plus persisted Runtime Event identity. It emits
+only `{ runId, sequence, eventId }` after validating persisted evidence; it
+does not trust arbitrary caller payload.
+
+P5 direct post-commit notifier publication remains the low-latency path. P6
+publisher publication is the durable at-least-once wake-up path. Duplicate
+hints are allowed and harmless because `RunStreamService` deduplicates by
+`runId + sequence`. P6 does not change Event Store truth or make request/SSE
+paths read Outbox rows.
+
+`outbox.status = published` means only that the sink synchronously accepted the
+exact durable message for live-distribution dispatch. It does not assert
+browser/Legacy receipt, observation by future subscribers, or Run completion.
+Client delivery remains Event Store + replay + Last-Event-ID. Subscriber
+handler isolation remains unchanged; browser disconnect cannot trigger Outbox
+retry or a Run transition.
+
+At-least-once identities are:
+
+```text
+delivery: outbox.id
+domain Event: event.id
+ordering / stream dedup: runId + sequence
+```
+
+Sink success followed by crash before `markPublished` redelivers the same
+Outbox/Event identities and creates no second Event or Run transition.
+
+#### M3-TD-34 — P6 Task-domain restart and uncertainty contract
+
+`runs.recovery_required` is the only M3 recovery representation. P6B checks
+Run, Run Stage, `run.start` Operation, Approval where applicable, and Runtime
+Event evidence together; Run status alone is insufficient.
+
+| Persisted evidence | Frozen recovery direction |
+| --- | --- |
+| `completed`, `failed`, or `cancelled` Run | Terminal immutable; do not reopen, retry, or execute. |
+| queued Run with no non-terminal Start Operation | Keep queued; do not execute, complete, or fail. |
+| queued Run with exactly one queued Start Operation | `queue-restore`; future worker may reclaim authorization, but P6B does not invoke Provider/AgentRunner. |
+| starting Run with running Start Operation | Reuse M3-TD-29 C1b atomic startup failure closure; do not leave starting or infer success. |
+| running Run with completed Start Operation and unprovable external outcome | Keep running, set `recovery_required = 1`, and do not complete/fail/resume/restart provider. |
+| waiting Run with exactly one coherent unresolved Approval | `approval-restore`; keep waiting and never auto-approve/reject. |
+| waiting Run with incomplete/contradictory Approval evidence | Set `recovery_required = 1`; fail closed. |
+| coherent paused state | Keep paused; do not auto-resume. |
+| paused cross-aggregate inconsistency | Set `recovery_required = 1`. |
+| multiple active Starts, incompatible Start status, or foreign binding | Fail closed; never synthesize completion or create a second Start. |
+
+P6B implements the already specified `run.recovery_attempted`,
+`run.recovered`, and `run.recovery_failed` events in the Shared Registry.
+Queue/approval restore records attempted then recovered with the corresponding
+mode. Uncertain active execution records attempted, atomically sets
+`recovery_required = 1`, and records recovery failed. State/flag/Event/Outbox
+remain transactionally consistent. Process/session/worktree evidence is never
+fabricated.
+
+#### M3-TD-35 — P6 Outbox reclaim, retry, and dead letter
+
+##### HIGH-1 root cause and no-schema storage
+
+Current `outbox_messages.attempts` increments on every
+`pending/retry -> publishing` claim. A claim followed by process crash and lease
+expiry consumes one attempt without completing a classified sink failure.
+Therefore:
+
+```text
+attempts = total delivery claim attempts
+attempts != completed classified delivery failures
+```
+
+The completed-failure budget and first classified failure time require an
+independent durable representation. P6A adds no column/table/Migration 014 and
+uses existing mutable `outbox_messages.last_error TEXT` as a P6-internal
+versioned envelope:
+
+```ts
+interface OutboxFailureStateV1 {
+  readonly schemaVersion: 1;
+  readonly completedFailures: number;
+  readonly firstFailedAt?: string;
+  readonly lastOutcome: 'classified_failure' | 'lease_expired';
+  readonly lastCode: string;
+  readonly lastMessage: string;
+  readonly lastObservedAt: string;
+}
+```
+
+`last_error` is the canonical JSON serialization of this exact semantic state.
+NULL means zero completed failures and no first failure time. The parser
+validates schema version, exact fields, a non-negative safe integer count,
+`firstFailedAt` iff count is positive, canonical UTC millisecond timestamps,
+stable non-empty sanitized code, bounded sanitized message, and known outcome.
+Stack traces, SQL, database paths, secrets, and arbitrary sink objects are
+forbidden. Malformed persisted state fails closed and remains durable; P6A does
+not reset, guess, discard, publish, or expose raw content.
+
+##### Claim, classified failure, and lease-expired semantics
+
+Claim keeps `attempts = attempts + 1`; `attempts` includes successful claims,
+classified failures, and unknown crash outcomes and never directly drives
+failure exhaustion.
+
+Only a classified sink failure observed while the publisher owns a valid lease
+increments `completedFailures`. The first sets `firstFailedAt = now`; later
+classified failures preserve it. Every classified failure records stable final
+code, sanitized message, `lastOutcome = 'classified_failure'`, and
+`lastObservedAt = now`.
+
+Expired claim recovery is the fenced transition:
+
+```text
+publishing + lease_expires_at <= now
+→ retry
+```
+
+It preserves `completedFailures`, `firstFailedAt`, and `attempts`; records
+`lastOutcome = 'lease_expired'`, `lastCode = 'OUTBOX_LEASE_EXPIRED'`, stable
+sanitized message, and observation time; clears lease; increments version; and
+sets `available_at = now`. It is neither a classified failure nor proof of
+delivery, never directly dead-letters, and applies no failure backoff.
+
+##### Retry budget and backoff
+
+```text
+MAX_COMPLETED_FAILURE_ATTEMPTS = 5
+delay_ms = min(1000 * 2^(completedFailures - 1), 300000)
+random jitter = none
+clock = injectable
+```
+
+The first through fourth retryable classified failures schedule 1s, 2s, 4s,
+and 8s. The fifth is exhausted and dead-letters. A non-retryable classified
+failure dead-letters immediately. Even when `attempts > 5`, unknown lease
+outcomes do not consume this completed-failure budget. Correctness tests use no
+sleeps.
+
+##### Exact DeadLetter evidence mapping
+
+Terminal delivery failure maps to:
+
+```text
+id = deadletter:<outbox.id>
+sourceType = outbox
+sourceId = outbox.id
+target = runtime-events
+attempts = outbox.attempts
+firstFailedAt = OutboxFailureStateV1.firstFailedAt
+lastFailedAt = current classified terminal failure timestamp
+errorCode = final classified stable code
+errorMessage = final sanitized classified message
+```
+
+Payload is only safe stable identity metadata:
+
+```ts
+{
+  outboxId: outbox.id,
+  eventId: outbox.eventId,
+  runId: outbox.aggregateId,
+  topic: outbox.topic,
+}
+```
+
+No stricter repository identity convention exists, so deterministic
+`deadletter:<outbox.id>` is frozen without modifying `Identity.ts`. It ensures
+one terminal record per Outbox message. Arbitrary caller/Event payload is not
+copied and no Runtime Event is created for dead-lettering.
+
+Dead-letter entry requires `completedFailures >= 1` and valid persisted
+`firstFailedAt`; otherwise fail closed. Creation, claim, lease expiry, and
+restart timestamps cannot substitute for the first classified failure.
+Explicit non-retryable failure writes `retryable = false`; retryable exhaustion
+writes `retryable = true`, describing underlying classification rather than
+remaining automatic retries. `OUTBOX_LEASE_EXPIRED` is never a terminal
+DeadLetter error.
+
+`markDeadLetterWithinTransaction` and
+`DeadLetterRepository.insertWithinTransaction` execute in one
+`store.runInTransaction(...)` on the same database handle. Both commit or both
+roll back; partial or duplicate terminal evidence is forbidden.
+
+##### P6A HIGH-1 RED/GREEN evidence
+
+```text
+P6A-F01 claim increments attempts but not completedFailures
+P6A-F02 first classified failure freezes firstFailedAt
+P6A-F03 second classified failure preserves firstFailedAt
+P6A-F04 claim crash + lease reclaim preserves completedFailures
+P6A-F05 five lease crashes do not exhaust the five-failure budget
+P6A-F06 completedFailures drives backoff
+P6A-F07 fifth classified retryable failure dead-letters
+P6A-F08 first non-retryable failure dead-letters immediately
+P6A-F09 DeadLetter.firstFailedAt equals the first classified failure exactly
+P6A-F10 malformed persisted failure state fails closed
+P6A-F11 Outbox dead-letter mutation and DeadLetter insert roll back together
+```
+
+All tests use injected clocks and deterministic barriers, with no sleeps.
+
+##### Publisher startup boundary
+
+Startup order is:
+
+```text
+ownership
+→ open/migrate store
+→ synchronous Task-domain recovery
+→ construct and validate OutboxPublisher
+→ compose routes
+→ HTTP listen succeeds
+→ reclaim expired Outbox leases
+→ start OutboxPublisher loop
+```
+
+Background delivery starts only after listen success. Ordinary sink delivery
+failure follows retry/dead-letter policy and never becomes a Run failure.
+
+#### M3-TD-36 — Legacy single execution authority
+
+One Legacy request maps to one canonical Run, one `run.start` Operation, and
+one execution authority. Future `LegacyCanonicalExecutionService` is the sole
+AgentRunner owner for `legacy_pipeline`. It adapts the existing AgentRunner and
+does not introduce M4 ProcessManager/ProviderAdapter or a second executor.
+
+`tasks.ts` retains Legacy validation, canonical command initiation, persisted-
+event projection subscription, heartbeat, and transport cleanup. It no longer
+constructs AgentRunner, owns execution AbortController, directly drives Stages,
+or directly mutates canonical terminal Run state. Canonical Run, Start
+Operation, Stage lifecycle, Runtime Events, and Outbox are execution truth.
+
+The AgentRunner text callback first persists `stream.text_delta`. Pure
+`LegacyRuntimeEventAdapter` then projects persisted `RuntimeEventRecord` values
+to the existing `status`, `stage`, `thinking`, `done`, and `error` frame shapes.
+It owns no state machine and cannot send thinking before persistence.
+
+Legacy disconnect performs only:
+
+```text
+unsubscribe
+→ stop heartbeat
+→ close Legacy transport
+```
+
+It does not abort AgentRunner, cancel Run/Operation, or kill a process. Only an
+explicit Cancel command may change execution state. P6C reuses the accepted P5
+RunStreamService handoff and does not switch Web or retire Legacy JSON/API.
+
+#### Candidate P6A scope
+
+```text
+apps/server/src/store/OutboxRepository.ts
+apps/server/src/services/RuntimeEventDeliverySink.ts       [new]
+apps/server/src/services/OutboxPublisher.ts                [new]
+apps/server/src/store/SqliteStore.ts
+apps/server/src/index.ts
+
+apps/server/src/store/m3-p2b-persistence.test.ts
+apps/server/src/services/RuntimeEventDeliverySink.test.ts   [new]
+apps/server/src/services/OutboxPublisher.test.ts            [new]
+apps/server/src/services/m3-p6a-outbox-recovery.test.ts     [new]
+```
+
+`RuntimeEventNotifier.ts` is zero-diff unless a future RED test proves its
+accepted public seam is insufficient. `DeadLetterRepository.ts` is also
+zero-diff unless RED proves the existing primitive insufficient; that requires
+explicit `P6A ALLOWLIST EXPANSION REQUIRED` review and cannot be edited
+silently. Registry remains exactly 001–013, Migration 014 remains absent, and
+P6A makes no schema change.
+
+#### Candidate P6B scope
+
+```text
+apps/server/src/store/RunRepository.ts
+apps/server/src/services/LifecycleTransactionService.ts
+apps/server/src/services/TaskRunRecoveryService.ts          [new]
+apps/server/src/services/OperationService.ts                 [only if required]
+apps/server/src/taskRecovery.ts
+apps/server/src/index.ts
+
+packages/shared/src/types/m3-runtime.ts
+packages/shared/src/types/m3-runtime-registry.ts
+packages/shared/src/types/m3-runtime-fixtures.ts
+packages/shared/m3-runtime.test.ts
+
+RunRepository recovery tests
+TaskRunRecoveryService tests
+taskRecovery tests
+```
+
+Conversation aggregate `runRecovery.ts` is forbidden.
+
+#### Candidate P6C scope
+
+```text
+apps/server/src/routes/tasks.ts
+apps/server/src/services/TaskRunService.ts
+apps/server/src/services/LifecycleTransactionService.ts
+apps/server/src/services/LegacyCanonicalExecutionService.ts   [new]
+apps/server/src/services/LegacyRuntimeEventAdapter.ts          [new]
+apps/server/src/index.ts
+
+packages/shared/src/types/m3-runtime.ts
+packages/shared/src/types/m3-runtime-registry.ts
+packages/shared/src/types/m3-runtime-fixtures.ts
+packages/shared/m3-runtime.test.ts
+
+taskPipelineBridge tests
+LegacyCanonicalExecutionService tests
+LegacyRuntimeEventAdapter tests
+Legacy disconnect tests
+```
+
+P6C includes no M4 ProcessManager/ProviderAdapter and no Web switch.
+
+#### Candidate P6D scope
+
+```text
+apps/server/src/services/m3-p6-integrated-verification.test.ts [new]
+docs/implementation/milestones/M3-p6-integrated-closeout.md    [new]
+docs/implementation/milestones/M3-lifecycle-event-api-implementation-plan.md
+```
+
+P6D contains no production code unless a separately reviewed remediation is
+authorized.
+
+#### P6 production entry after P6A0
+
+P6 production entry remains NO-GO until independent remote review verifies the
+P6A0 docs package. A passing P6A0 review may authorize P6A only. It does not
+authorize P6B, P6C, P6D, Migration 014, Production Cutover, Legacy retirement,
+or a Web default switch.
 
 ### P7 — Consolidated Formal Gate, Draft PR, Ordinary Merge and Closeout
 
@@ -776,7 +1169,7 @@ The future planning package must cover:
 5. Durable operations with operations.run_id or equivalent aggregate reference, operations.correlation_id, and immutable unique correlation_id.
 6. run_stages rebuild/extension from pending-only to M3 lifecycle, including failure_code/failure_message and started_at/completed_at while preserving the existing version column for optimistic version-checked updates; no duplicate version column.
 7. idempotency_records.operation values run.start, run.retry, and finally approved M3 commands.
-8. Recovery representation: runs.recovery_required or a separate Recovery Record, chosen before P6.
+8. Recovery representation: `runs.recovery_required`, selected and implemented before P6; no separate Recovery Record.
 9. Task-domain sequence allocation through runs.next_event_sequence.
 10. Event append-only and Outbox immutable/concurrency constraints, with immutable identity/payload fields and controlled delivery-field updates.
 11. Operation lifecycle, result, ApiProblem, aggregate reference, workspaceId, aggregateType=run, aggregateId/runId, timestamps, and version fields.
@@ -809,11 +1202,51 @@ Current status:
 - P2B: COMPLETE.
 - P2C-0: COMPLETE.
 - P2C-1: COMPLETE.
-- P2C-2: LOCAL FORMAL GATE PASSED.
-- P2 overall: LOCAL FORMAL GATE PASSED — PENDING INDEPENDENT REVIEW.
+- P2C-2: COMPLETE / ACCEPTED.
+- P2 overall: COMPLETE / ACCEPTED.
+- P3: COMPLETE / MERGED.
+- P4: COMPLETE / ACCEPTED.
+- P5: COMPLETE / ACCEPTED through P5C at
+  `a1cbb2868f9da215fab058b4176d70a3b382831d`.
+- P6-0 independent review: PASS WITH CONTRACT RECLASSIFICATION.
+- P6A0 independent remote review of commit
+  `67e06e12088c6f369763bc5241ea10cc35876da8`: CHANGES REQUIRED — HIGH-1.
+- P6A0 HIGH-1 durable failure evidence remediation: DOCUMENTED; awaiting
+  independent remote re-review before any P6 production authorization.
+- P6A: ACCEPTED. P6A implementation baseline `4efef838` with remediation
+  `a0b6460e`; Outbox reclaim/retry/dead-letter evidence accepted.
+- P6B: ACCEPTED at
+  `ff9a375f681d96fd91d07f3f237529adb46a12c8`; v2 task-domain recovery
+  semantics accepted.
+- P6C: ACCEPTED at
+  `2151ed57e774cd585337709f09169ded3d3e3304`; P6C HIGH-1 independent remote
+  re-review PASS; Legacy canonical restart recovery accepted.
+- P6D: INTEGRATED VERIFICATION COMPLETE. New consolidated suite
+  `apps/server/src/services/m3-p6-integrated-verification.test.ts` passes
+  23/23; P6A/P6B/P6C/P5/Lifecycle/Shared/full-server regressions green;
+  closeout evidence in
+  `docs/implementation/milestones/M3-p6-integrated-closeout.md`.
+- New P6 user Owner Decision: NONE.
+- P6: AWAITING INDEPENDENT INTEGRATED REMOTE REVIEW.
+- P7: NOT ENTERED / NOT AUTHORIZED.
+- DRAFT PR: NOT CREATED.
+- Migration 014: NOT CREATED / NOT REQUIRED.
 - Remote Checks: UNAVAILABLE — NOT PASS.
-- P3: NOT AUTHORIZED.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
+- Legacy Retirement: NOT PERFORMED.
+- Web default switch: NOT PERFORMED.
+- M4 runtime expansion: NOT ENTERED.
 
-This document does not claim a merge, Remote CI success, P3 authorization,
-Production readiness, or Production Cutover.
+This P6D update records the accepted P6A/P6B/P6C state and the completed P6D
+integrated verification. It does not claim P7 entry, merge, Remote CI success,
+Production readiness, Production Cutover, Legacy Retirement, or a Web default
+switch.
+
+Supersedes, for current-status purposes only: the earlier P6A0-era statements
+that P6 production implementation was not authorized and that
+P6A/P6B/P6C/P6D were not entered. Those statements remain intact as historical
+evidence of the sequential authorization state at the time they were written;
+the accepted P6A (`4efef838` + `a0b6460e`), P6B
+(`ff9a375f681d96fd91d07f3f237529adb46a12c8`), P6C
+(`2151ed57e774cd585337709f09169ded3d3e3304`), and the P6D integrated
+verification are the current verified state.

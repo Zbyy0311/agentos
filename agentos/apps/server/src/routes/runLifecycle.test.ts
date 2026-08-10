@@ -381,9 +381,14 @@ function expectOperationBody(body: unknown, workspaceId: string, runId: string):
 function expectErrorBody(response: StartResponse, status: number, code: string): void {
   assert.equal(response.status, status);
   assert.ok(response.json !== null);
-  assert.deepEqual(Object.keys(response.json).sort(), ['code', 'error']);
+  assert.deepEqual(
+    Object.keys(response.json).sort(),
+    ['code', 'detail', 'instance', 'requestId', 'retryable', 'status', 'title', 'type'],
+  );
   assert.equal(response.json.code, code);
-  assert.equal(typeof response.json.error, 'string');
+  assert.equal(response.json.status, status);
+  assert.equal(typeof response.json.detail, 'string');
+  assert.equal(typeof response.json.requestId, 'string');
   assert.doesNotMatch(response.text, /SQLITE|sql|database is locked|\.agentos/i);
 }
 
@@ -656,11 +661,9 @@ test('P3C1-R21 a real SQLite busy timeout maps to a sanitized 503 RUN_START_BUSY
     const elapsedMs = Date.now() - startedAt;
     assert.equal(response.status, 503);
     assert.ok(response.json !== null);
-    assert.deepEqual(response.json, {
-      error: 'Run start is temporarily unavailable',
-      code: 'RUN_START_BUSY',
-      retryable: true,
-    });
+    assert.equal(response.json.code, 'RUN_START_BUSY');
+    assert.equal(response.json.detail, 'Run start is temporarily unavailable');
+    assert.equal(response.json.retryable, true);
     assert.doesNotMatch(response.text, /SQLITE|SQL|database is locked|BEGIN IMMEDIATE/);
     // Production busy_timeout is 5000ms: the loser waited for the real timeout.
     assert.ok(elapsedMs >= 4000, `expected the request to wait for the busy timeout, got ${elapsedMs}ms`);
@@ -1025,10 +1028,9 @@ test('P3C1-R30 known run + malformed JSON maps to a sanitized 400 VALIDATION_FAI
   try {
     const response = await postStart(fx, fx.runId, { raw: '{"expectedVersion":' });
     assert.equal(response.status, 400);
-    assert.deepEqual(response.json, {
-      error: 'Request body must be a valid JSON object',
-      code: 'VALIDATION_FAILED',
-    });
+    assert.ok(response.json !== null);
+    assert.equal(response.json.code, 'VALIDATION_FAILED');
+    assert.equal(response.json.detail, 'Request body must be a valid JSON object');
     assert.doesNotMatch(response.text, /SyntaxError|Unexpected token|JSON\.parse|stack|database is locked|E:\\|C:\\/i);
     assert.equal(tableRowCount(fx.store, 'operations'), 0);
     assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
@@ -1364,10 +1366,9 @@ test('P3C1-RY08 Retry maps duplicate and active-slot races to stable 409 respons
     assert.equal(live.status, 201);
     const duplicate = await postRetry(first, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-duplicate-other-01' });
     assert.equal(duplicate.status, 409);
-    assert.deepEqual(duplicate.json, {
-      error: 'Retry child already exists',
-      code: 'RUN_RETRY_ALREADY_CREATED',
-    });
+    assert.ok(duplicate.json !== null);
+    assert.equal(duplicate.json.code, 'RUN_RETRY_ALREADY_CREATED');
+    assert.equal(duplicate.json.detail, 'Retry child already exists');
     assert.equal(tableRowCount(first.store, 'idempotency_records'), 1);
     assert.equal((first.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 1);
   } finally {
@@ -1386,11 +1387,10 @@ test('P3C1-RY08 Retry maps duplicate and active-slot races to stable 409 respons
     });
     const active = await postRetry(second, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-active-key-01' });
     assert.equal(active.status, 409);
-    assert.deepEqual(active.json, {
-      error: 'Task already has an active run',
-      code: 'RUN_ACTIVE_EXISTS',
-      retryable: false,
-    });
+    assert.ok(active.json !== null);
+    assert.equal(active.json.code, 'RUN_ACTIVE_EXISTS');
+    assert.equal(active.json.detail, 'Task already has an active run');
+    assert.equal(active.json.retryable, false);
     assert.equal(tableRowCount(second.store, 'idempotency_records'), 0);
     assert.equal((second.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);
   } finally {
@@ -1410,10 +1410,9 @@ test('P3C1-RY09 Retry ambiguity and inconsistency responses remain exact two-fie
       key: 'retry-ambiguous-response-01',
     });
     assert.equal(response.status, 500);
-    assert.deepEqual(response.json, {
-      error: 'Retry state is ambiguous',
-      code: 'RUN_RETRY_STATE_AMBIGUOUS',
-    });
+    assert.ok(response.json !== null);
+    assert.equal(response.json.code, 'RUN_RETRY_STATE_AMBIGUOUS');
+    assert.equal(response.json.detail, 'Retry state is ambiguous');
   } finally {
     await closeRouteFixture(ambiguous);
   }
@@ -1431,10 +1430,9 @@ test('P3C1-RY09 Retry ambiguity and inconsistency responses remain exact two-fie
       key: 'retry-inconsistent-response-01',
     });
     assert.equal(response.status, 500);
-    assert.deepEqual(response.json, {
-      error: 'Retry state is inconsistent',
-      code: 'RUN_RETRY_STATE_INCONSISTENT',
-    });
+    assert.ok(response.json !== null);
+    assert.equal(response.json.code, 'RUN_RETRY_STATE_INCONSISTENT');
+    assert.equal(response.json.detail, 'Retry state is inconsistent');
   } finally {
     await closeRouteFixture(inconsistent);
   }
@@ -1455,11 +1453,10 @@ test('P3C1-RY10 a Run active-slot unique conflict returns the exact retryable fa
       key: 'retry-unique-active-response-01',
     });
     assert.equal(response.status, 409);
-    assert.deepEqual(response.json, {
-      error: 'Task already has an active run',
-      code: 'RUN_ACTIVE_EXISTS',
-      retryable: false,
-    });
+    assert.ok(response.json !== null);
+    assert.equal(response.json.code, 'RUN_ACTIVE_EXISTS');
+    assert.equal(response.json.detail, 'Task already has an active run');
+    assert.equal(response.json.retryable, false);
     assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);
     assert.equal((fx.store.getDatabase().prepare('SELECT COUNT(*) AS count FROM runs WHERE parent_run_id = ?').get(parent.id) as { count: number }).count, 0);
     assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
@@ -1482,7 +1479,9 @@ test('P3C1-RY11 an unknown Retry failure remains a sanitized 500 INTERNAL_ERROR'
       key: 'retry-unknown-response-01',
     });
     assert.equal(response.status, 500);
-    assert.deepEqual(response.json, { error: 'Internal server error', code: 'INTERNAL_ERROR' });
+    assert.ok(response.json !== null);
+    assert.equal(response.json.code, 'INTERNAL_ERROR');
+    assert.equal(response.json.detail, 'Internal server error');
     assert.doesNotMatch(response.text, /secret|SQLite|private|\.agentos/i);
     assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
   } finally {
@@ -1499,11 +1498,10 @@ test('P3C1-RY12 genuine SQLite lock timeout maps only to Retry busy', async () =
     locker.exec('BEGIN IMMEDIATE');
     const response = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-busy-key-01' });
     assert.equal(response.status, 503);
-    assert.deepEqual(response.json, {
-      error: 'Run retry is temporarily unavailable',
-      code: 'RUN_RETRY_BUSY',
-      retryable: true,
-    });
+    assert.ok(response.json !== null);
+    assert.equal(response.json.code, 'RUN_RETRY_BUSY');
+    assert.equal(response.json.detail, 'Run retry is temporarily unavailable');
+    assert.equal(response.json.retryable, true);
     assert.doesNotMatch(response.text, /SQLITE|SQL|database is locked|BEGIN IMMEDIATE|\.agentos/i);
     assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
     assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);

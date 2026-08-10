@@ -21,12 +21,15 @@ type Db = InstanceType<typeof DatabaseSync>;
 
 import { TaskRunService, type TaskRunServiceDeps } from '../TaskRunService.js';
 import type { LifecycleTransactionService } from '../LifecycleTransactionService.js';
+import type { OperationService } from '../OperationService.js';
 import { TaskRepository } from '../../store/TaskRepository.js';
 import { RunRepository } from '../../store/RunRepository.js';
 import { inTransaction } from '../../store/Transaction.js';
 import { migration005 } from '../../migrations/migrations/005-tasks-table.js';
 import { migration006 } from '../../migrations/migrations/006-runs-table.js';
 import type {
+  ApiOperation,
+  M3OperationStatus,
   Run,
   RunSnapshot,
   RunSnapshotPayloadV2,
@@ -43,6 +46,7 @@ interface Env {
   runRepo: RunRepository;
   service: TaskRunService;
   lifecycleStub: TestOnlyLifecycleTransactionServiceStub;
+  operationStub: TestOnlyOperationServiceStub;
   workspace: Workspace;
 }
 
@@ -192,10 +196,111 @@ function makeTestOnlyLifecycleTransactionServiceStub(): TestOnlyLifecycleTransac
   return stub;
 }
 
+type TestOnlyOperationService = Pick<
+  OperationService,
+  'createWithinTransaction' | 'listByRun' | 'transitionWithinTransaction' | 'transitionWithinTransactionAt'
+>;
+
+const TEST_OPERATION_TIMESTAMP = '2026-01-01T00:00:00.000Z';
+const TEST_OPERATION_TRANSITIONS: Readonly<Record<M3OperationStatus, readonly M3OperationStatus[]>> = {
+  queued: ['running', 'failed', 'cancelled'],
+  running: ['completed', 'failed', 'cancelled'],
+  waiting_approval: [],
+  paused: [],
+  completed: [],
+  failed: [],
+  cancelled: [],
+};
+
+interface TestOnlyOperationServiceStub {
+  readonly service: OperationService;
+  readonly operations: Map<string, ApiOperation>;
+}
+
+function makeTestOnlyOperationServiceStub(): TestOnlyOperationServiceStub {
+  const operations = new Map<string, ApiOperation>();
+  let nextOperationNumber = 1;
+
+  const createWithinTransaction: TestOnlyOperationService['createWithinTransaction'] = input => {
+    const id = `op_${String(nextOperationNumber).padStart(26, '0')}`;
+    nextOperationNumber += 1;
+    const operation: ApiOperation = {
+      id,
+      type: input.type,
+      status: 'queued',
+      workspaceId: input.workspaceId,
+      aggregateType: 'run',
+      aggregateId: input.runId,
+      runId: input.runId,
+      correlationId: input.type === 'run.create' ? input.runId : id,
+      createdAt: TEST_OPERATION_TIMESTAMP,
+      version: 1,
+    };
+    operations.set(operation.id, operation);
+    return { ...operation };
+  };
+
+  const listByRun: TestOnlyOperationService['listByRun'] = (workspaceId, runId) => [...operations.values()]
+    .filter(operation => operation.workspaceId === workspaceId && operation.runId === runId)
+    .map(operation => ({ ...operation }));
+
+  const transitionWithinTransactionAt: TestOnlyOperationService['transitionWithinTransactionAt'] = (input, timestamp) => {
+    const current = operations.get(input.operationId);
+    if (!current || current.workspaceId !== input.workspaceId) {
+      throw new Error(`TEST_OPERATION_NOT_FOUND: ${input.operationId}`);
+    }
+    if (current.version !== input.expectedVersion) {
+      throw new Error(`TEST_OPERATION_VERSION_CONFLICT: ${input.operationId}`);
+    }
+    if (current.status === input.to || !TEST_OPERATION_TRANSITIONS[current.status].includes(input.to)) {
+      throw new Error(`TEST_OPERATION_INVALID_TRANSITION: ${current.status}->${input.to}`);
+    }
+
+    const startedAt = current.startedAt ?? (input.to === 'running' ? timestamp : undefined);
+    const completedAt = ['completed', 'failed', 'cancelled'].includes(input.to)
+      ? current.completedAt ?? timestamp
+      : current.completedAt;
+    const transitioned: ApiOperation = {
+      id: current.id,
+      type: current.type,
+      status: input.to,
+      workspaceId: current.workspaceId,
+      aggregateType: current.aggregateType,
+      aggregateId: current.aggregateId,
+      runId: current.runId,
+      correlationId: current.correlationId,
+      ...(input.result === undefined || input.result === null ? {} : { result: input.result }),
+      ...(input.error === undefined || input.error === null ? {} : { error: input.error }),
+      createdAt: current.createdAt,
+      ...(startedAt === undefined ? {} : { startedAt }),
+      ...(completedAt === undefined ? {} : { completedAt }),
+      version: current.version + 1,
+    };
+    operations.set(transitioned.id, transitioned);
+    return { ...transitioned };
+  };
+
+  const transitionWithinTransaction: TestOnlyOperationService['transitionWithinTransaction'] = input => (
+    transitionWithinTransactionAt(input, TEST_OPERATION_TIMESTAMP)
+  );
+
+  const service: TestOnlyOperationService = {
+    createWithinTransaction,
+    listByRun,
+    transitionWithinTransaction,
+    transitionWithinTransactionAt,
+  };
+  return {
+    service: service as unknown as OperationService,
+    operations,
+  };
+}
+
 function createEnv(db: Db): Env {
   const taskRepo = new TaskRepository(db as never);
   const runRepo = new RunRepository(db as never);
   const lifecycleStub = makeTestOnlyLifecycleTransactionServiceStub();
+  const operationStub = makeTestOnlyOperationServiceStub();
   const deps: TaskRunServiceDeps = {
     taskRepository: () => taskRepo,
     runRepository: () => runRepo,
@@ -206,6 +311,7 @@ function createEnv(db: Db): Env {
     findAgentSnapshotSource: unexpectedRealCaptureDependency as never,
     runInTransaction: <T>(fn: () => T): T => inTransaction(db as never, fn),
     lifecycleTransactionService: () => lifecycleStub.service,
+    operationService: () => operationStub.service,
   };
   return {
     db,
@@ -213,6 +319,7 @@ function createEnv(db: Db): Env {
     runRepo,
     service: new TaskRunService(deps, { snapshotService: makeLifecycleSnapshotService() }),
     lifecycleStub,
+    operationStub,
     workspace: TEST_WORKSPACE,
   };
 }
