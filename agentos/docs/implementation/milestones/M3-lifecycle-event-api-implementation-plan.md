@@ -1,8 +1,8 @@
 # AgentOS M3 Lifecycle, Event and API Foundation Implementation Plan
 
-Status: M3 P5 COMPLETE / ACCEPTED — M3 P6A ACCEPTED — M3 P6B ACCEPTED — M3 P6C ACCEPTED — M3 P6D INTEGRATED VERIFICATION COMPLETE — P6 AWAITING INDEPENDENT INTEGRATED REMOTE REVIEW — P7 NOT ENTERED / NOT AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: M3 P5 COMPLETE / ACCEPTED — M3 P6A ACCEPTED — M3 P6B ACCEPTED — M3 P6C ACCEPTED — M3 P6D ACCEPTED — M3 P6 COMPLETE / ACCEPTED — M3 P7 COMPLETE — PR #40 MERGED — M3 IMPLEMENTATION MERGED INTO MAIN — M3 FOUNDATION COMPLETE — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
-This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation, Remote Checks, and Production Cutover remain outside this closure.
+This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation is complete / accepted and merged as part of M3. Remote Checks and Production Cutover remain outside the completed M3 Foundation authorization boundary.
 
 ## 1. Authoritative contract
 
@@ -1226,10 +1226,20 @@ Current status:
   23/23; P6A/P6B/P6C/P5/Lifecycle/Shared/full-server regressions green;
   closeout evidence in
   `docs/implementation/milestones/M3-p6-integrated-closeout.md`.
+- P6D MEDIUM-1 real reconnect cursor evidence remediation at
+  `35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b`; independent remote re-review
+  PASS.
 - New P6 user Owner Decision: NONE.
-- P6: AWAITING INDEPENDENT INTEGRATED REMOTE REVIEW.
-- P7: NOT ENTERED / NOT AUTHORIZED.
-- DRAFT PR: NOT CREATED.
+- P6: COMPLETE / ACCEPTED / CLOSED.
+- P7: COMPLETE.
+- PR #40: MERGED (ordinary merge commit
+  `312485568cb3f11437e11c301d91d4a80e6c62b9`, base `95e03ace...`, head
+  `35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b`).
+- Accepted P6D: `35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b`.
+- M3 IMPLEMENTATION: MERGED INTO MAIN.
+- M3: FOUNDATION COMPLETE.
+- M3 FINAL CLOSEOUT: PROPOSED (docs-only branch
+  `docs/m3-final-closeout`; awaiting independent remote review before merge).
 - Migration 014: NOT CREATED / NOT REQUIRED.
 - Remote Checks: UNAVAILABLE — NOT PASS.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
@@ -1237,16 +1247,20 @@ Current status:
 - Web default switch: NOT PERFORMED.
 - M4 runtime expansion: NOT ENTERED.
 
-This P6D update records the accepted P6A/P6B/P6C state and the completed P6D
-integrated verification. It does not claim P7 entry, merge, Remote CI success,
-Production readiness, Production Cutover, Legacy Retirement, or a Web default
-switch.
+This final closeout update records the accepted P6A/P6B/P6C/P6D state, the
+completed P6 integrated verification, the completed P7 gate, the merged PR #40,
+and the M3 implementation merged into main. It does not claim Remote CI
+success, Production readiness, Production Cutover, Legacy Retirement, or a Web
+default switch.
 
-Supersedes, for current-status purposes only: the earlier P6A0-era statements
-that P6 production implementation was not authorized and that
-P6A/P6B/P6C/P6D were not entered. Those statements remain intact as historical
-evidence of the sequential authorization state at the time they were written;
-the accepted P6A (`4efef838` + `a0b6460e`), P6B
+Supersedes, for current-status purposes only: the earlier P6A0/P6D-era
+statements that P6 production implementation was not authorized, that
+P6A/P6B/P6C/P6D were not entered, that P6 was awaiting independent integrated
+remote review, and that P7/Draft PR were not entered/created. Those statements
+remain intact as historical evidence of the sequential authorization state at
+the time they were written. The accepted P6A (`4efef838` + `a0b6460e`), P6B
 (`ff9a375f681d96fd91d07f3f237529adb46a12c8`), P6C
-(`2151ed57e774cd585337709f09169ded3d3e3304`), and the P6D integrated
-verification are the current verified state.
+(`2151ed57e774cd585337709f09169ded3d3e3304`), P6D
+(`35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b`), PR #40 merge
+(`312485568cb3f11437e11c301d91d4a80e6c62b9`), and the merged M3 implementation
+are the current verified state.

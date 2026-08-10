@@ -1,6 +1,6 @@
 # M3 P6 Integrated Verification Closeout
 
-Status: M3 P6D INTEGRATED VERIFICATION COMPLETE — P6 AWAITING INDEPENDENT INTEGRATED REMOTE REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS — P7 NOT ENTERED / NOT AUTHORIZED — PRODUCTION CUTOVER NOT PERFORMED
+Status: M3 P6D INTEGRATED VERIFICATION COMPLETE — P6D INDEPENDENT REMOTE REVIEW CHANGES REQUIRED — MEDIUM-1 — MEDIUM-1 REAL RECONNECT CURSOR EVIDENCE REMEDIATED — P6D INDEPENDENT REMOTE RE-REVIEW PASS — P6 ACCEPTED / CLOSED — P7 COMPLETED — PR #40 MERGED — M3 IMPLEMENTATION MERGED INTO MAIN — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT PERFORMED
 
 ## 1. Scope
 
@@ -252,9 +252,24 @@ REMOTE CHECKS:
 UNAVAILABLE — NOT PASS
 ```
 
-No claim of remote CI or remote integrated review PASS is made.
+```text
+GitHub Remote Checks / CI:
+UNAVAILABLE — NOT PASS
 
-## 16. Remaining Boundaries
+P6D independent remote re-review:
+PASS
+```
+
+The independent review PASS is separate evidence and is not relabeled as
+GitHub Remote Checks.
+
+## 16. Historical P6D Remaining Boundaries
+
+This section records the historical gate state at the time the original P6D
+package was completed. It is superseded by the §17 final disposition: P6 is
+ACCEPTED / CLOSED, P7 is COMPLETED, PR #40 is MERGED, and the M3 implementation
+is merged into main. The items below are preserved as historical evidence only
+and no longer represent current status.
 
 - P7: NOT ENTERED / NOT AUTHORIZED. P7 owns the consolidated Draft PR,
   ordinary merge, and closeout.
@@ -270,7 +285,24 @@ No claim of remote CI or remote integrated review PASS is made.
 ## 17. P6 Closure Verdict
 
 M3 P6C HIGH-1 INDEPENDENT REMOTE RE-REVIEW: PASS. M3 P6C: ACCEPTED.
-M3 P6D INTEGRATED VERIFICATION: COMPLETE AND PUSHED. P6: AWAITING
-INDEPENDENT INTEGRATED REMOTE REVIEW. No production remediation was required by
-the integrated verification; therefore no P6D PRODUCTION REMEDIATION package
-was created.
+M3 P6D INTEGRATED VERIFICATION: COMPLETE AND PUSHED.
+
+### P6D MEDIUM-1 remediation and final disposition
+
+- P6D independent remote review: CHANGES REQUIRED — MEDIUM-1.
+- MEDIUM-1: real reconnect cursor evidence. The reconnect subscriber now passes
+  the persisted cursor directly as `afterSequence` to
+  `RunStreamService.subscribe` with no client-side filter, and proves replay +
+  live + exact-once in one deterministic test.
+- Remediation commit: `35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b`.
+- Independent remote re-review: PASS.
+- P6: ACCEPTED / CLOSED.
+- P7: COMPLETED.
+- PR #40: MERGED (ordinary merge commit
+  `312485568cb3f11437e11c301d91d4a80e6c62b9`).
+- M3 IMPLEMENTATION: MERGED INTO MAIN.
+
+No production remediation was required by the integrated verification;
+therefore no P6D PRODUCTION REMEDIATION package was created. The current status
+is no longer "P6 AWAITING INDEPENDENT INTEGRATED REMOTE REVIEW"; P6 is
+ACCEPTED / CLOSED and the M3 implementation is merged into main.
