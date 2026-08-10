@@ -43,9 +43,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Server tests
+        env:
+          NODE_OPTIONS: --no-experimental-strip-types
         run: pnpm --filter @agentos/server test
 
       - name: Shared M3 contract harness
+        env:
+          NODE_OPTIONS: --no-experimental-strip-types
         run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/m3-runtime.test.ts
 
       - name: Workspace build
