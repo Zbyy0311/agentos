@@ -12,6 +12,8 @@ import { createProblemErrorHandler } from '../problemDetails.js';
 import { createTaskRoutes, type RunnerFactory } from './tasks.js';
 import { createV2TaskRoutes } from './v2Tasks.js';
 import { createV2RunRoutes } from './v2Runs.js';
+import { TaskRunService } from '../services/TaskRunService.js';
+import { recoverInterruptedTaskRuntime } from '../taskRecovery.js';
 
 const WORKER_STDOUT = '## Checks Run\n- unit tests\n## Findings by Severity\n- none\n## Evidence\n- proof\n';
 const FINAL_STDOUT = 'Final Decision: approve\n';
@@ -292,6 +294,116 @@ test('T95/T96 second successful legacy execution produces a retry Run with corre
     assert.equal(starts[0]!.status, 'completed');
     assert.equal(fixture.store.taskRepository().findById(fixture.workspaceId, canonicalTask.id)?.pendingResultRunId, retry.id);
     assert.equal(observed.constructions, 2);
+  } finally {
+    await closeFixture(fixture);
+  }
+});
+
+test('HIGH-1 HTTP retry after canonical restart recovery creates one child Run, one Start, and one execution authority', async () => {
+  const observed = { constructions: 0, order: [] as AgentStage[] };
+  const fixture = await createHttpFixture(instantRunner(observed));
+  const task = legacyTask(fixture.workspaceId, 'legacy-p6c-recovered-retry');
+  task.status = 'running';
+  task.currentAgent = 'codex_manager';
+  fixture.store.saveTask(fixture.workspaceId, task);
+  try {
+    const workspace = fixture.manager.get(fixture.workspaceId)!;
+    const service = new TaskRunService(fixture.store);
+    const interrupted = service.createLegacyRunForBridge({
+      workspaceId: fixture.workspaceId,
+      legacyTaskId: task.id,
+      title: task.title,
+      createdBy: 'legacy_pipeline',
+      objective: task.title,
+      workspace,
+    });
+    fixture.store.runInTransaction(() => {
+      const run = fixture.store.runRepository().findById(fixture.workspaceId, interrupted.run.id)!;
+      const start = startsForRun(fixture, run.id)[0]!;
+      fixture.store.operationService().transitionWithinTransaction({
+        workspaceId: fixture.workspaceId,
+        operationId: start.id,
+        expectedVersion: start.version,
+        to: 'running',
+      });
+      fixture.store.lifecycleTransactionService().transitionRunWithinTransaction({
+        workspaceId: fixture.workspaceId,
+        runId: run.id,
+        expectedVersion: run.version,
+        expectedFrom: 'queued',
+        to: 'starting',
+        correlationId: start.correlationId,
+      });
+    });
+    fixture.store.runInTransaction(() => {
+      const start = startsForRun(fixture, interrupted.run.id)[0]!;
+      let stage = fixture.store.runStageRepository().listByRun(fixture.workspaceId, interrupted.run.id)[0]!;
+      fixture.store.lifecycleTransactionService().transitionStageWithinTransaction({
+        workspaceId: fixture.workspaceId,
+        runId: interrupted.run.id,
+        stageId: stage.id,
+        expectedVersion: stage.version,
+        expectedFrom: 'pending',
+        to: 'ready',
+        dependenciesCompleted: [],
+        correlationId: start.correlationId,
+      });
+      stage = fixture.store.runStageRepository().findById(fixture.workspaceId, interrupted.run.id, stage.id)!;
+      fixture.store.lifecycleTransactionService().transitionStageWithinTransaction({
+        workspaceId: fixture.workspaceId,
+        runId: interrupted.run.id,
+        stageId: stage.id,
+        expectedVersion: stage.version,
+        expectedFrom: 'ready',
+        to: 'starting',
+        correlationId: start.correlationId,
+      });
+    });
+    fixture.store.runInTransaction(() => {
+      const run = fixture.store.runRepository().findById(fixture.workspaceId, interrupted.run.id)!;
+      const start = startsForRun(fixture, run.id)[0]!;
+      const stage = fixture.store.runStageRepository().listByRun(fixture.workspaceId, run.id)[0]!;
+      const snapshot = fixture.store.runSnapshotRepository().findByRunId(fixture.workspaceId, run.id)!;
+      const snapshotStage = snapshot.payload.workflow.stages[0]!;
+      const lifecycle = fixture.store.lifecycleTransactionService().completeRunStartupWithinTransaction({
+        workspaceId: fixture.workspaceId,
+        runId: run.id,
+        stageId: stage.id,
+        expectedRunVersion: run.version,
+        expectedStageVersion: stage.version,
+        correlationId: start.correlationId,
+        agentSnapshot: snapshotStage.agent!,
+        providerSnapshot: snapshotStage.provider!,
+        workflowSnapshotVersion: snapshot.snapshotSchemaVersion,
+      });
+      fixture.store.operationService().transitionWithinTransactionAt({
+        workspaceId: fixture.workspaceId,
+        operationId: start.id,
+        expectedVersion: start.version,
+        to: 'completed',
+      }, lifecycle.events.at(-1)!.timestamp);
+      service.reconcileCanonicalLegacyRunStartedWithinTransaction(fixture.workspaceId, run.id);
+    });
+
+    const recovery = recoverInterruptedTaskRuntime(fixture.store, service);
+    assert.deepEqual(recovery.recoveredLegacyCanonicalRuns.map(item => item.runId), [interrupted.run.id]);
+    assert.equal(fixture.store.runRepository().findById(fixture.workspaceId, interrupted.run.id)!.status, 'failed');
+    assert.equal(fixture.store.runRepository().findActiveByTask(fixture.workspaceId, interrupted.task.id), undefined);
+    assert.equal(observed.constructions, 0, 'startup recovery must not construct execution authority');
+
+    const response = await runLegacyTask(fixture, task.id);
+    assert.equal(response.status, 200);
+    assert.match(response.body, /"status":"completed"/);
+    const runs = fixture.store.runRepository().listByTask(fixture.workspaceId, interrupted.task.id);
+    assert.equal(runs.length, 2);
+    const retry = runs[1]!;
+    assert.equal(retry.reason, 'retry');
+    assert.equal(retry.parentRunId, interrupted.run.id);
+    assert.equal(retry.rootRunId, interrupted.run.rootRunId);
+    assert.equal(retry.status, 'completed');
+    assert.equal(startsForRun(fixture, retry.id).length, 1);
+    assert.equal(startsForRun(fixture, retry.id)[0]!.status, 'completed');
+    assert.equal(observed.constructions, 1);
   } finally {
     await closeFixture(fixture);
   }

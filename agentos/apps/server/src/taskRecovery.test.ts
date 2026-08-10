@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Store } from './store/Store.js';
@@ -162,7 +162,214 @@ function assertLegacyCapture(store: SqliteStore, created: ReturnType<typeof crea
   assert.equal(store.runStageRepository().listByRun(created.run.workspaceId, created.run.id).length, 4);
 }
 
-test('R17 Window A recovers a queued legacy orphan after a real store reopen and permits retry', () => {
+type LegacyCapture = ReturnType<typeof createLegacyQueuedRun>;
+
+function canonicalStart(store: SqliteStore, created: LegacyCapture) {
+  const starts = store.operationService().listByRun(created.run.workspaceId, created.run.id)
+    .filter(operation => operation.type === 'run.start');
+  assert.equal(starts.length, 1);
+  return starts[0]!;
+}
+
+function moveCanonicalToStarting(
+  store: SqliteStore,
+  created: LegacyCapture,
+  options: { startStatus?: 'running' | 'queued'; startingStageCount?: 0 | 1 | 2 } = {},
+): void {
+  const startStatus = options.startStatus ?? 'running';
+  const startingStageCount = options.startingStageCount ?? 0;
+  store.runInTransaction(() => {
+    const run = store.runRepository().findById(created.run.workspaceId, created.run.id)!;
+    const start = canonicalStart(store, created);
+    if (startStatus === 'running') {
+      store.operationService().transitionWithinTransaction({
+        workspaceId: run.workspaceId,
+        operationId: start.id,
+        expectedVersion: start.version,
+        to: 'running',
+      });
+    }
+    store.lifecycleTransactionService().transitionRunWithinTransaction({
+      workspaceId: run.workspaceId,
+      runId: run.id,
+      expectedVersion: run.version,
+      expectedFrom: 'queued',
+      to: 'starting',
+      correlationId: start.correlationId,
+    });
+  });
+
+  if (startingStageCount === 0) return;
+  store.runInTransaction(() => {
+    const start = canonicalStart(store, created);
+    const stages = store.runStageRepository().listByRun(created.run.workspaceId, created.run.id);
+    for (let index = 0; index < startingStageCount; index += 1) {
+      let stage = stages[index]!;
+      store.lifecycleTransactionService().transitionStageWithinTransaction({
+        workspaceId: created.run.workspaceId,
+        runId: created.run.id,
+        stageId: stage.id,
+        expectedVersion: stage.version,
+        expectedFrom: 'pending',
+        to: 'ready',
+        dependenciesCompleted: [],
+        correlationId: start.correlationId,
+      });
+      stage = store.runStageRepository().findById(created.run.workspaceId, created.run.id, stage.id)!;
+      store.lifecycleTransactionService().transitionStageWithinTransaction({
+        workspaceId: created.run.workspaceId,
+        runId: created.run.id,
+        stageId: stage.id,
+        expectedVersion: stage.version,
+        expectedFrom: 'ready',
+        to: 'starting',
+        correlationId: start.correlationId,
+      });
+    }
+  });
+}
+
+function moveCanonicalToRunning(store: SqliteStore, service: TaskRunService, created: LegacyCapture): void {
+  moveCanonicalToStarting(store, created, { startingStageCount: 1 });
+  store.runInTransaction(() => {
+    const run = store.runRepository().findById(created.run.workspaceId, created.run.id)!;
+    const stage = store.runStageRepository().listByRun(created.run.workspaceId, created.run.id)[0]!;
+    const start = canonicalStart(store, created);
+    const snapshot = store.runSnapshotRepository().findByRunId(created.run.workspaceId, created.run.id)!;
+    const snapshotStage = snapshot.payload.workflow.stages[0]!;
+    const lifecycle = store.lifecycleTransactionService().completeRunStartupWithinTransaction({
+      workspaceId: run.workspaceId,
+      runId: run.id,
+      stageId: stage.id,
+      expectedRunVersion: run.version,
+      expectedStageVersion: stage.version,
+      correlationId: start.correlationId,
+      agentSnapshot: snapshotStage.agent!,
+      providerSnapshot: snapshotStage.provider!,
+      workflowSnapshotVersion: snapshot.snapshotSchemaVersion,
+    });
+    const timestamp = lifecycle.events.at(-1)!.timestamp;
+    store.operationService().transitionWithinTransactionAt({
+      workspaceId: run.workspaceId,
+      operationId: start.id,
+      expectedVersion: start.version,
+      to: 'completed',
+    }, timestamp);
+    service.reconcileCanonicalLegacyRunStartedWithinTransaction(run.workspaceId, run.id);
+  });
+}
+
+function completeStageAndOptionallyAdvance(
+  store: SqliteStore,
+  created: LegacyCapture,
+  stageIndex: number,
+  nextStatus: 'none' | 'starting' | 'running',
+): void {
+  const start = canonicalStart(store, created);
+  let stage = store.runStageRepository().listByRun(created.run.workspaceId, created.run.id)[stageIndex]!;
+  assert.equal(stage.status, 'running');
+  store.lifecycleTransactionService().transitionStage({
+    workspaceId: created.run.workspaceId,
+    runId: created.run.id,
+    stageId: stage.id,
+    expectedVersion: stage.version,
+    expectedFrom: 'running',
+    to: 'completed',
+    durationMs: 1,
+    artifactIds: [],
+    outputContractSatisfied: true,
+    correlationId: start.correlationId,
+  });
+  if (nextStatus === 'none') return;
+
+  const nextIndex = stageIndex + 1;
+  store.runInTransaction(() => {
+    const completed = store.runStageRepository().listByRun(created.run.workspaceId, created.run.id)
+      .filter(candidate => candidate.status === 'completed')
+      .map(candidate => candidate.id);
+    stage = store.runStageRepository().listByRun(created.run.workspaceId, created.run.id)[nextIndex]!;
+    store.lifecycleTransactionService().transitionStageWithinTransaction({
+      workspaceId: created.run.workspaceId,
+      runId: created.run.id,
+      stageId: stage.id,
+      expectedVersion: stage.version,
+      expectedFrom: 'pending',
+      to: 'ready',
+      dependenciesCompleted: completed,
+      correlationId: start.correlationId,
+    });
+    stage = store.runStageRepository().findById(created.run.workspaceId, created.run.id, stage.id)!;
+    store.lifecycleTransactionService().transitionStageWithinTransaction({
+      workspaceId: created.run.workspaceId,
+      runId: created.run.id,
+      stageId: stage.id,
+      expectedVersion: stage.version,
+      expectedFrom: 'ready',
+      to: 'starting',
+      correlationId: start.correlationId,
+    });
+  });
+  if (nextStatus === 'starting') return;
+
+  stage = store.runStageRepository().listByRun(created.run.workspaceId, created.run.id)[nextIndex]!;
+  const run = store.runRepository().findById(created.run.workspaceId, created.run.id)!;
+  const snapshot = store.runSnapshotRepository().findByRunId(created.run.workspaceId, created.run.id)!;
+  const snapshotStage = snapshot.payload.workflow.stages[nextIndex]!;
+  store.lifecycleTransactionService().startStage({
+    workspaceId: run.workspaceId,
+    runId: run.id,
+    stageId: stage.id,
+    expectedRunVersion: run.version,
+    expectedStageVersion: stage.version,
+    correlationId: start.correlationId,
+    agentSnapshot: snapshotStage.agent!,
+    providerSnapshot: snapshotStage.provider!,
+  });
+}
+
+function knownEvents(store: SqliteStore, runId: string) {
+  return store.runtimeEventRepository().listByRunAfterSequence(runId, 0)
+    .filter(record => record.kind === 'known')
+    .map(record => record.event);
+}
+
+function canonicalRecoverySnapshot(store: SqliteStore, created: LegacyCapture) {
+  const db = store.getDatabase();
+  return {
+    run: structuredClone(store.runRepository().findById(created.run.workspaceId, created.run.id)),
+    task: structuredClone(store.taskRepository().findById(created.run.workspaceId, created.task.id)),
+    runSnapshot: structuredClone(store.runSnapshotRepository().findByRunId(created.run.workspaceId, created.run.id)),
+    stages: structuredClone(store.runStageRepository().listByRun(created.run.workspaceId, created.run.id)),
+    starts: structuredClone(store.operationService().listByRun(created.run.workspaceId, created.run.id)),
+    events: structuredClone(knownEvents(store, created.run.id)),
+    legacyTasks: structuredClone(store.loadTasks(created.run.workspaceId)),
+    outboxes: structuredClone(db.prepare(
+      'SELECT * FROM outbox_messages WHERE aggregate_id = ? ORDER BY created_at, id',
+    ).all(created.run.id)),
+    deadLetters: structuredClone(db.prepare(
+      'SELECT * FROM dead_letters ORDER BY created_at, id',
+    ).all()),
+  };
+}
+
+function assertRecoveryEvents(
+  store: SqliteStore,
+  runId: string,
+  previousHighWatermark: number,
+  expectedTypes: string[],
+  correlationId: string,
+): void {
+  const appended = knownEvents(store, runId).filter(event => event.sequence > previousHighWatermark);
+  assert.deepEqual(appended.map(event => event.type), expectedTypes);
+  assert.deepEqual(
+    appended.map(event => event.sequence),
+    expectedTypes.map((_, index) => previousHighWatermark + index + 1),
+  );
+  assert.ok(appended.every(event => event.correlationId === correlationId));
+  assert.ok(appended.every(event => store.outboxRepository().findByEventId(event.id) !== undefined));
+}
+
+test('R17/RC01 queued Run + queued Start recovery remains unchanged and permits retry', () => {
   const env = createRealRecoveryEnv();
   let store = env.store;
   try {
@@ -305,21 +512,35 @@ test('R21 startup recovery preserves an existing pending acceptance window', () 
   }
 });
 
-test('R22 startup recovery leaves a running legacy Run to explicit retry reconciliation', () => {
+test('R22a startup recovery preserves a pre-P6C running Legacy Run with no canonical Start/Event graph', () => {
   const env = createRealRecoveryEnv();
   try {
     const legacy = seedRealLegacyTask(env.store, 'ws-a', 'running');
-    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
-    const running = env.service.startRunForBridge('ws-a', created.run.id);
+    const task = env.store.taskRepository().insert({
+      workspaceId: 'ws-a',
+      legacyTaskId: legacy.id,
+      title: 'historical Legacy',
+      createdBy: 'legacy_pipeline',
+    });
+    const run = env.store.runRepository().insert({
+      workspaceId: 'ws-a',
+      taskId: task.id,
+      origin: 'legacy_pipeline',
+      objective: 'historical Legacy',
+      createdBy: 'legacy_pipeline',
+    });
+    const running = env.service.startRunForBridge('ws-a', run.id);
     const result = recoverInterruptedTaskRuntime(env.store, env.service);
-    const afterRun = env.store.runRepository().findById('ws-a', created.run.id)!;
-    const afterTask = env.store.taskRepository().findById('ws-a', created.task.id)!;
+    const afterRun = env.store.runRepository().findById('ws-a', run.id)!;
+    const afterTask = env.store.taskRepository().findById('ws-a', task.id)!;
     assert.deepEqual(result.recoveredLegacyQueuedRuns, []);
+    assert.deepEqual(result.recoveredLegacyCanonicalRuns, []);
+    assert.equal(env.store.loadTasks('ws-a')[0]!.status, 'failed');
     assert.equal(afterRun.status, 'running');
     assert.equal(afterRun.version, running.run.version);
     assert.equal(afterTask.status, 'in_progress');
     assert.equal(afterTask.version, running.task.version);
-    assert.equal(env.store.runRepository().findActiveByTask('ws-a', created.task.id)!.id, created.run.id);
+    assert.equal(env.store.runRepository().findActiveByTask('ws-a', task.id)!.id, run.id);
   } finally {
     env.store.close();
     rmSync(env.root, { recursive: true, force: true });
@@ -434,6 +655,332 @@ test('R25 startup composition preserves Legacy recovery and then restores canoni
       'run.recovered',
     ]);
     assert.ok(recoveryEvents.every(event => event.correlationId === start.correlationId));
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC02 starting Run + running Start + no starting Stage fails Run and Start canonically', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'running');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToStarting(env.store, created);
+    const start = canonicalStart(env.store, created);
+    const highWatermark = knownEvents(env.store, created.run.id).at(-1)!.sequence;
+
+    const result = recoverInterruptedTaskRuntime(env.store, env.service);
+    const run = env.store.runRepository().findById('ws-a', created.run.id)!;
+    assert.equal(run.status, 'failed');
+    assert.equal(run.failureCode, 'LEGACY_PIPELINE_FAILED');
+    assert.equal(canonicalStart(env.store, created).status, 'failed');
+    assert.ok(env.store.runStageRepository().listByRun('ws-a', created.run.id)
+      .every(stage => stage.status === 'pending'));
+    assert.equal(env.store.loadTasks('ws-a')[0]!.status, 'failed');
+    assert.deepEqual(result.recoveredLegacyCanonicalRuns.map(item => item.previousStatus), ['starting']);
+    assertRecoveryEvents(env.store, created.run.id, highWatermark, ['run.failed'], start.correlationId);
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC03 starting Run + running Start + one starting Stage fails Stage, Run, and Start atomically', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'running');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToStarting(env.store, created, { startingStageCount: 1 });
+    const start = canonicalStart(env.store, created);
+    const highWatermark = knownEvents(env.store, created.run.id).at(-1)!.sequence;
+
+    recoverInterruptedTaskRuntime(env.store, env.service);
+    const stages = env.store.runStageRepository().listByRun('ws-a', created.run.id);
+    assert.equal(stages[0]!.status, 'failed');
+    assert.ok(stages.slice(1).every(stage => stage.status === 'pending'));
+    assert.equal(env.store.runRepository().findById('ws-a', created.run.id)!.status, 'failed');
+    assert.equal(canonicalStart(env.store, created).status, 'failed');
+    assertRecoveryEvents(
+      env.store,
+      created.run.id,
+      highWatermark,
+      ['stage.failed', 'run.failed'],
+      start.correlationId,
+    );
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC04 starting recovery failure injection rolls back every canonical mutation', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToStarting(env.store, created, { startingStageCount: 1 });
+    const before = canonicalRecoverySnapshot(env.store, created);
+    const operations = env.store.operationService();
+    const original = operations.transitionWithinTransactionAt;
+    operations.transitionWithinTransactionAt = ((input, timestamp) => {
+      if (input.to === 'failed') throw new Error('injected starting recovery failure');
+      return original.call(operations, input, timestamp);
+    }) as typeof operations.transitionWithinTransactionAt;
+
+    assert.throws(
+      () => recoverInterruptedTaskRuntime(env.store, env.service),
+      /injected starting recovery failure/,
+    );
+    assert.deepEqual(canonicalRecoverySnapshot(env.store, created), before);
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC05 running Run + completed Start + running Stage fails Stage and Run while Start remains completed', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'running');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToRunning(env.store, env.service, created);
+    const start = canonicalStart(env.store, created);
+    const highWatermark = knownEvents(env.store, created.run.id).at(-1)!.sequence;
+
+    recoverInterruptedTaskRuntime(env.store, env.service);
+    assert.equal(env.store.runStageRepository().listByRun('ws-a', created.run.id)[0]!.status, 'failed');
+    assert.equal(env.store.runRepository().findById('ws-a', created.run.id)!.status, 'failed');
+    assert.equal(canonicalStart(env.store, created).status, 'completed');
+    assert.equal(env.store.taskRepository().findById('ws-a', created.task.id)!.status, 'open');
+    assertRecoveryEvents(
+      env.store,
+      created.run.id,
+      highWatermark,
+      ['stage.failed', 'run.failed'],
+      start.correlationId,
+    );
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC06 running Run + completed Start + one starting Stage fails the active Stage and Run', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToRunning(env.store, env.service, created);
+    completeStageAndOptionallyAdvance(env.store, created, 0, 'starting');
+
+    recoverInterruptedTaskRuntime(env.store, env.service);
+    const stages = env.store.runStageRepository().listByRun('ws-a', created.run.id);
+    assert.equal(stages[0]!.status, 'completed');
+    assert.equal(stages[1]!.status, 'failed');
+    assert.ok(stages.slice(2).every(stage => stage.status === 'pending'));
+    assert.equal(env.store.runRepository().findById('ws-a', created.run.id)!.status, 'failed');
+    assert.equal(canonicalStart(env.store, created).status, 'completed');
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC07 running Run + completed Start + zero active Stage fails Run safely', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToRunning(env.store, env.service, created);
+    completeStageAndOptionallyAdvance(env.store, created, 0, 'none');
+    const start = canonicalStart(env.store, created);
+    const highWatermark = knownEvents(env.store, created.run.id).at(-1)!.sequence;
+
+    recoverInterruptedTaskRuntime(env.store, env.service);
+    const stages = env.store.runStageRepository().listByRun('ws-a', created.run.id);
+    assert.equal(stages[0]!.status, 'completed');
+    assert.ok(stages.slice(1).every(stage => stage.status === 'pending'));
+    assert.equal(env.store.runRepository().findById('ws-a', created.run.id)!.status, 'failed');
+    assert.equal(canonicalStart(env.store, created).status, 'completed');
+    assertRecoveryEvents(env.store, created.run.id, highWatermark, ['run.failed'], start.correlationId);
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC08 running recovery failure injection rolls back Stage, Run, Event, Outbox, and Task', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToRunning(env.store, env.service, created);
+    const before = canonicalRecoverySnapshot(env.store, created);
+    const lifecycle = env.store.lifecycleTransactionService();
+    const original = lifecycle.transitionRunWithinTransaction;
+    lifecycle.transitionRunWithinTransaction = (input => {
+      if (input.expectedFrom === 'running' && input.to === 'failed') {
+        throw new Error('injected running recovery failure');
+      }
+      return original.call(lifecycle, input);
+    }) as typeof lifecycle.transitionRunWithinTransaction;
+
+    assert.throws(
+      () => recoverInterruptedTaskRuntime(env.store, env.service),
+      /injected running recovery failure/,
+    );
+    assert.deepEqual(canonicalRecoverySnapshot(env.store, created), before);
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC09 multiple Start Operations fail closed with zero mutation', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToStarting(env.store, created);
+    env.store.operationService().create({ workspaceId: 'ws-a', runId: created.run.id, type: 'run.start' });
+    const before = canonicalRecoverySnapshot(env.store, created);
+
+    assert.throws(
+      () => recoverInterruptedTaskRuntime(env.store, env.service),
+      (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED',
+    );
+    assert.deepEqual(canonicalRecoverySnapshot(env.store, created), before);
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC10 wrong Start status fails closed with zero mutation', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToStarting(env.store, created, { startStatus: 'queued' });
+    const before = canonicalRecoverySnapshot(env.store, created);
+
+    assert.throws(
+      () => recoverInterruptedTaskRuntime(env.store, env.service),
+      (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED',
+    );
+    assert.deepEqual(canonicalRecoverySnapshot(env.store, created), before);
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC11 more than one active Stage fails closed with zero mutation', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToStarting(env.store, created, { startingStageCount: 2 });
+    const before = canonicalRecoverySnapshot(env.store, created);
+
+    assert.throws(
+      () => recoverInterruptedTaskRuntime(env.store, env.service),
+      (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED',
+    );
+    assert.deepEqual(canonicalRecoverySnapshot(env.store, created), before);
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('canonical recovery requires one persisted Outbox for every existing Runtime Event', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToRunning(env.store, env.service, created);
+    const before = canonicalRecoverySnapshot(env.store, created);
+    const outboxes = env.store.outboxRepository();
+    outboxes.findByEventId = (() => undefined) as typeof outboxes.findByEventId;
+
+    assert.throws(
+      () => recoverInterruptedTaskRuntime(env.store, env.service),
+      (error: unknown) => (error as { code?: unknown }).code === 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED',
+    );
+    assert.deepEqual(canonicalRecoverySnapshot(env.store, created), before);
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});
+
+test('RC12 restart recovery source never constructs AgentRunner or invokes Provider execution', () => {
+  const taskRunSource = readFileSync(new URL('./services/TaskRunService.ts', import.meta.url), 'utf8');
+  const recoverySource = readFileSync(new URL('./taskRecovery.ts', import.meta.url), 'utf8');
+  const publicRecovery = taskRunSource.slice(
+    taskRunSource.indexOf('recoverInterruptedLegacyCanonicalRuns('),
+    taskRunSource.indexOf('cancelQueuedRun(', taskRunSource.indexOf('recoverInterruptedLegacyCanonicalRuns(')),
+  );
+  const privateRecovery = taskRunSource.slice(
+    taskRunSource.indexOf('private recoverInterruptedLegacyQueuedRunWithinTransaction('),
+    taskRunSource.indexOf('private requireTask(', taskRunSource.indexOf('private recoverInterruptedLegacyQueuedRunWithinTransaction(')),
+  );
+  assert.doesNotMatch(
+    `${publicRecovery}\n${privateRecovery}\n${recoverySource}`,
+    /\b(?:AgentRunner|Provider|ProcessManager|ProcessRunner)\b/u,
+  );
+});
+
+test('final-review crash window fails canonical Run/final Stage and completed JSON mirror without a second execution', () => {
+  const env = createRealRecoveryEnv();
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'running');
+    const created = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    moveCanonicalToRunning(env.store, env.service, created);
+    completeStageAndOptionallyAdvance(env.store, created, 0, 'running');
+    completeStageAndOptionallyAdvance(env.store, created, 1, 'running');
+    completeStageAndOptionallyAdvance(env.store, created, 2, 'running');
+    const json = env.store.loadTasks('ws-a')[0]!;
+    json.status = 'completed';
+    json.currentAgent = null;
+    json.reviewDecision = 'approve';
+    json.reviewBlocked = false;
+    json.outputs.push({
+      stage: 'codex_final_review',
+      agentName: 'Codex Final Reviewer',
+      stdout: 'preserved final output',
+      stderr: '',
+      exitCode: 0,
+      timestamp: '2026-07-24T00:00:01.000Z',
+      duration: 1,
+    });
+    env.store.saveTask('ws-a', json);
+    const start = canonicalStart(env.store, created);
+    const highWatermark = knownEvents(env.store, created.run.id).at(-1)!.sequence;
+
+    const result = recoverInterruptedTaskRuntime(env.store, env.service);
+    const stages = env.store.runStageRepository().listByRun('ws-a', created.run.id);
+    const recoveredJson = env.store.loadTasks('ws-a')[0]!;
+    assert.deepEqual(stages.map(stage => stage.status), ['completed', 'completed', 'completed', 'failed']);
+    assert.equal(env.store.runRepository().findById('ws-a', created.run.id)!.status, 'failed');
+    assert.equal(canonicalStart(env.store, created).status, 'completed');
+    assert.equal(recoveredJson.status, 'failed');
+    assert.equal(recoveredJson.currentAgent, null);
+    assert.equal(recoveredJson.error, '服务端在任务执行期间退出，请重新运行任务。');
+    assert.equal(recoveredJson.reviewDecision, 'approve');
+    assert.equal(recoveredJson.reviewBlocked, false);
+    assert.equal(recoveredJson.outputs[0]!.stdout, 'preserved final output');
+    assert.deepEqual(result.recoveredLegacyCanonicalRuns.map(item => item.previousStatus), ['running']);
+    assert.deepEqual(result.recoveredLegacyTasks, [{ workspaceId: 'ws-a', taskId: legacy.id }]);
+    assertRecoveryEvents(
+      env.store,
+      created.run.id,
+      highWatermark,
+      ['stage.failed', 'run.failed'],
+      start.correlationId,
+    );
   } finally {
     env.store.close();
     rmSync(env.root, { recursive: true, force: true });

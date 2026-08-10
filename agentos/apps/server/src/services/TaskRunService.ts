@@ -5,7 +5,9 @@ import type {
   CreateV2TaskInput,
   Run,
   RunSnapshot,
+  RunSnapshotPayloadV2,
   RunStage,
+  RuntimeEventEnvelope,
   Task,
   Workspace,
 } from '@agentos/shared';
@@ -21,6 +23,8 @@ import type { WorkflowDefinitionRepository } from '../store/WorkflowDefinitionRe
 import type { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
 import type { RunStageRepository } from '../store/RunStageRepository.js';
 import type { ProviderConfigurationRepository } from '../store/ProviderConfigurationRepository.js';
+import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
+import type { OutboxRepository } from '../store/OutboxRepository.js';
 import type { AgentSnapshotSourceRecord } from '../store/SqliteStore.js';
 import { WorkflowDefinitionResolver } from './WorkflowDefinitionResolver.js';
 import type { LifecycleTransactionService } from './LifecycleTransactionService.js';
@@ -58,6 +62,10 @@ export interface TaskRunServiceDeps {
   runInTransaction<T>(fn: () => T): T;
   /** Supplied by SqliteStore for the production V2 Run creation path. */
   lifecycleTransactionService(): LifecycleTransactionService;
+  /** Required only by the P6C Legacy canonical startup recovery seam. */
+  runtimeEventRepository?(): RuntimeEventRepository;
+  /** Required only to prove the persisted P6C Event/Outbox graph. */
+  outboxRepository?(): OutboxRepository;
   /**
    * M3 P3C-1: optional OperationService capability bound to the same SQLite
    * handle (supplied by SqliteStore). Kept optional so existing Legacy/v2
@@ -138,6 +146,21 @@ export interface RecoveredLegacyQueuedRun {
   recoveredStatus: 'failed';
 }
 
+export interface RecoveredLegacyCanonicalRun {
+  workspaceId: string;
+  canonicalTaskId: string;
+  legacyTaskId?: string;
+  runId: string;
+  previousStatus: 'queued' | 'starting' | 'running';
+  recoveredStatus: 'failed';
+}
+
+interface LegacyCanonicalRecoveryEvidence {
+  start: ApiOperation;
+  stages: RunStage[];
+  events: RuntimeEventEnvelope[];
+}
+
 function domainError(code: string, message: string): Error & { code: string } {
   const err = new Error(message) as Error & { code: string };
   err.code = code;
@@ -195,6 +218,16 @@ function assertValidExpectedVersion(expectedVersion?: number): void {
 const RETRY_CHILD_LIFECYCLE_STATUSES: readonly Run['status'][] = [
   'queued', 'starting', 'running', 'waiting_approval', 'paused', 'completed', 'failed', 'cancelled',
 ];
+
+const LEGACY_CANONICAL_STAGE_ORDER = Object.freeze([
+  'codex_manager',
+  'kimi_worker',
+  'opencode_reviewer',
+  'codex_final_review',
+] as const);
+
+const LEGACY_RESTART_STARTUP_MESSAGE = 'Server restarted during Legacy canonical startup';
+const LEGACY_RESTART_EXECUTION_MESSAGE = 'Server restarted during Legacy canonical execution';
 
 export class TaskRunService {
   private readonly snapshotService: SnapshotService;
@@ -538,27 +571,58 @@ export class TaskRunService {
       const queuedRuns = this.deps.runRepository().listByWorkspace(workspaceId, { status: 'queued' });
       for (const run of queuedRuns) {
         if (run.origin !== 'legacy_pipeline') continue;
+        recovered.push(this.recoverInterruptedLegacyQueuedRunWithinTransaction(run));
+      }
+      return recovered;
+    });
+  }
+
+  /**
+   * P6C startup gate for canonical Legacy execution. Queued compatibility
+   * retains its existing direct bridge closure; starting/running require the
+   * persisted P6C Start/Event graph and fail through lifecycle transactions.
+   * No execution authority is constructed or resumed here.
+   */
+  recoverInterruptedLegacyCanonicalRuns(workspaceId: string): RecoveredLegacyCanonicalRun[] {
+    return this.deps.runInTransaction(() => {
+      const recovered: RecoveredLegacyCanonicalRun[] = [];
+      const runs = this.deps.runRepository().listByWorkspace(workspaceId)
+        .filter(run => run.origin === 'legacy_pipeline'
+          && (run.status === 'queued' || run.status === 'starting' || run.status === 'running'));
+
+      for (const run of runs) {
+        if (run.status === 'queued') {
+          const queued = this.recoverInterruptedLegacyQueuedRunWithinTransaction(run);
+          const task = this.requireTask(workspaceId, run.taskId);
+          recovered.push({
+            workspaceId,
+            canonicalTaskId: queued.taskId,
+            ...(task.legacyTaskId === undefined ? {} : { legacyTaskId: task.legacyTaskId }),
+            runId: queued.runId,
+            previousStatus: 'queued',
+            recoveredStatus: 'failed',
+          });
+          continue;
+        }
+        if (run.status !== 'starting' && run.status !== 'running') continue;
+
+        const evidence = this.readLegacyCanonicalRecoveryEvidence(run);
+        if (!evidence) continue;
         const task = this.requireTask(workspaceId, run.taskId);
-        const start = this.requireSingleQueuedLegacyStart(workspaceId, run.id);
-        this.requireOperationService().transitionWithinTransaction({
-          workspaceId,
-          operationId: start.id,
-          expectedVersion: start.version,
-          to: 'failed',
-          error: this.legacyBridgeProblem(run, start, 'LEGACY_BRIDGE_RESTARTED', 'Server restarted before Legacy bridge Run entered running'),
-        });
-        const failed = this.deps.runRepository().failQueuedBridgeRestart(
-          workspaceId,
-          run.id,
-          run.version,
-          'Server restarted before Legacy bridge Run entered running',
-        );
-        this.resolveTaskAfterRunTerminal(task, failed);
+        if (!task.legacyTaskId) this.legacyCanonicalRecoveryIntegrityFailure(run);
+        const previousStatus: 'starting' | 'running' = run.status;
+
+        if (previousStatus === 'starting') {
+          this.recoverInterruptedLegacyStartingRunWithinTransaction(run, evidence.start, evidence.stages);
+        } else {
+          this.recoverInterruptedLegacyRunningRunWithinTransaction(run, evidence.start, evidence.stages);
+        }
         recovered.push({
           workspaceId,
-          taskId: task.id,
+          canonicalTaskId: task.id,
+          legacyTaskId: task.legacyTaskId,
           runId: run.id,
-          previousStatus: 'queued',
+          previousStatus,
           recoveredStatus: 'failed',
         });
       }
@@ -1323,6 +1387,483 @@ export class TaskRunService {
     const task = this.requireTask(workspaceId, run.taskId);
     const updated = this.resolveTaskAfterRunTerminal(task, cancelled);
     return { run: cancelled, task: updated };
+  }
+
+  private recoverInterruptedLegacyQueuedRunWithinTransaction(run: Run): RecoveredLegacyQueuedRun {
+    if (run.origin !== 'legacy_pipeline' || run.status !== 'queued') {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+    const task = this.requireTask(run.workspaceId, run.taskId);
+    const start = this.requireSingleQueuedLegacyStart(run.workspaceId, run.id);
+    this.requireOperationService().transitionWithinTransaction({
+      workspaceId: run.workspaceId,
+      operationId: start.id,
+      expectedVersion: start.version,
+      to: 'failed',
+      error: this.legacyBridgeProblem(
+        run,
+        start,
+        'LEGACY_BRIDGE_RESTARTED',
+        'Server restarted before Legacy bridge Run entered running',
+      ),
+    });
+    const failed = this.deps.runRepository().failQueuedBridgeRestart(
+      run.workspaceId,
+      run.id,
+      run.version,
+      'Server restarted before Legacy bridge Run entered running',
+    );
+    this.resolveTaskAfterRunTerminal(task, failed);
+    return {
+      workspaceId: run.workspaceId,
+      taskId: task.id,
+      runId: run.id,
+      previousStatus: 'queued',
+      recoveredStatus: 'failed',
+    };
+  }
+
+  private readLegacyCanonicalRecoveryEvidence(run: Run): LegacyCanonicalRecoveryEvidence | undefined {
+    const events = this.readLegacyCanonicalRecoveryEvents(run);
+    let starts: ApiOperation[];
+    try {
+      starts = this.requireOperationService().listByRun(run.workspaceId, run.id)
+        .filter(operation => operation.type === 'run.start');
+    } catch {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+
+    // Pre-P6C historical Legacy Runs have neither a canonical Start nor a
+    // canonical Runtime Event graph. Preserve that frozen compatibility case.
+    if (starts.length === 0 && events.length === 0) return undefined;
+    if (starts.length !== 1) this.legacyCanonicalRecoveryIntegrityFailure(run);
+    const start = starts[0]!;
+    const expectedStartStatus = run.status === 'starting' ? 'running' : 'completed';
+    if (
+      start.status !== expectedStartStatus
+      || start.workspaceId !== run.workspaceId
+      || start.runId !== run.id
+      || start.aggregateType !== 'run'
+      || start.aggregateId !== run.id
+      || start.correlationId !== start.id
+    ) {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+
+    const stages = this.readLegacyCanonicalRecoveryStages(run);
+    this.assertLegacyCanonicalRecoveryEventGraph(run, start, stages, events);
+    return { start, stages, events };
+  }
+
+  private readLegacyCanonicalRecoveryEvents(run: Run): RuntimeEventEnvelope[] {
+    const repository = this.requireLegacyRecoveryRuntimeEventRepository();
+    const events: RuntimeEventEnvelope[] = [];
+    let afterSequence = 0;
+    let expectedSequence = 1;
+    let hasMore = true;
+    while (hasMore) {
+      let page: ReturnType<RuntimeEventRepository['queryByRun']>;
+      try {
+        page = repository.queryByRun({
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          afterSequence,
+          limit: 200,
+        });
+      } catch {
+        this.legacyCanonicalRecoveryIntegrityFailure(run);
+      }
+      if (page.hasMore && page.results.length === 0) this.legacyCanonicalRecoveryIntegrityFailure(run);
+      for (const record of page.results) {
+        if (record.kind !== 'known') this.legacyCanonicalRecoveryIntegrityFailure(run);
+        const event = record.event;
+        if (
+          event.workspaceId !== run.workspaceId
+          || event.runId !== run.id
+          || event.sequence !== expectedSequence
+        ) {
+          this.legacyCanonicalRecoveryIntegrityFailure(run);
+        }
+        events.push(event);
+        afterSequence = event.sequence;
+        expectedSequence += 1;
+      }
+      hasMore = page.hasMore;
+    }
+    return events;
+  }
+
+  private readLegacyCanonicalRecoveryStages(run: Run): RunStage[] {
+    let stages: RunStage[];
+    let snapshot: RunSnapshot<RunSnapshotPayloadV2> | undefined;
+    try {
+      const persisted = this.deps.runSnapshotRepository().findByRunId(run.workspaceId, run.id);
+      if (
+        !persisted
+        || persisted.snapshotSchemaVersion !== 2
+        || persisted.payload.schemaVersion !== 2
+        || !this.deps.runSnapshotRepository().verifyHash(persisted)
+      ) {
+        this.legacyCanonicalRecoveryIntegrityFailure(run);
+      }
+      snapshot = persisted as RunSnapshot<RunSnapshotPayloadV2>;
+      stages = this.deps.runStageRepository().listByRun(run.workspaceId, run.id);
+    } catch {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+
+    if (
+      snapshot.workspaceId !== run.workspaceId
+      || snapshot.runId !== run.id
+      || snapshot.payload.run.workspaceId !== run.workspaceId
+      || snapshot.payload.run.taskId !== run.taskId
+      || snapshot.payload.run.origin !== run.origin
+      || snapshot.payload.run.reason !== run.reason
+      || snapshot.payload.run.parentRunId !== (run.parentRunId ?? null)
+      || snapshot.payload.run.rootRunId !== run.rootRunId
+      || stages.length !== LEGACY_CANONICAL_STAGE_ORDER.length
+      || snapshot.payload.workflow.stages.length !== LEGACY_CANONICAL_STAGE_ORDER.length
+    ) {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+
+    for (let index = 0; index < LEGACY_CANONICAL_STAGE_ORDER.length; index += 1) {
+      const expectedKey = LEGACY_CANONICAL_STAGE_ORDER[index]!;
+      const stage = stages[index]!;
+      const snapshotStage = snapshot.payload.workflow.stages[index]!;
+      if (
+        stage.workspaceId !== run.workspaceId
+        || stage.runId !== run.id
+        || stage.runSnapshotId !== snapshot.id
+        || stage.workflowStageKey !== expectedKey
+        || stage.name !== expectedKey
+        || stage.sequence !== index + 1
+        || snapshotStage.workflowStageKey !== expectedKey
+        || snapshotStage.name !== expectedKey
+        || snapshotStage.sequence !== index + 1
+        || !snapshotStage.agent
+        || !snapshotStage.provider
+      ) {
+        this.legacyCanonicalRecoveryIntegrityFailure(run);
+      }
+    }
+    return stages;
+  }
+
+  private assertLegacyCanonicalRecoveryEventGraph(
+    run: Run,
+    start: ApiOperation,
+    stages: readonly RunStage[],
+    events: readonly RuntimeEventEnvelope[],
+  ): void {
+    if (events.length === 0 || run.nextEventSequence !== events.at(-1)!.sequence + 1) {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+
+    const runCreated = events[0]!;
+    const runCreatedPayload = runCreated.payload as Record<string, unknown>;
+    if (
+      runCreated.type !== 'run.created'
+      || runCreated.stageId !== undefined
+      || runCreated.taskId !== run.taskId
+      || runCreated.correlationId !== run.id
+      || runCreated.causationId !== undefined
+      || runCreated.parentEventId !== undefined
+      || runCreatedPayload.reason !== run.reason
+      || runCreatedPayload.rootRunId !== run.rootRunId
+      || runCreatedPayload.createdBy !== run.createdBy
+    ) {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+    for (let index = 0; index < stages.length; index += 1) {
+      const stage = stages[index]!;
+      const event = events[index + 1];
+      const payload = event?.payload as Record<string, unknown> | undefined;
+      if (
+        !event
+        || event.type !== 'stage.created'
+        || event.stageId !== stage.id
+        || event.taskId !== run.taskId
+        || event.correlationId !== run.id
+        || event.causationId !== runCreated.id
+        || event.parentEventId !== runCreated.id
+        || payload?.workflowStageKey !== stage.workflowStageKey
+        || payload?.name !== stage.name
+        || payload?.sequence !== stage.sequence
+      ) {
+        this.legacyCanonicalRecoveryIntegrityFailure(run);
+      }
+    }
+
+    const expectedLifecycle: Array<{ type: RuntimeEventEnvelope['type']; stageId?: string }> = [
+      { type: 'run.dequeued' },
+    ];
+    if (run.status === 'starting') {
+      if (stages[0]!.status === 'starting') {
+        expectedLifecycle.push(
+          { type: 'stage.ready', stageId: stages[0]!.id },
+          { type: 'stage.starting', stageId: stages[0]!.id },
+        );
+      }
+    } else {
+      expectedLifecycle.push(
+        { type: 'stage.ready', stageId: stages[0]!.id },
+        { type: 'stage.starting', stageId: stages[0]!.id },
+        { type: 'stage.started', stageId: stages[0]!.id },
+        { type: 'run.started' },
+      );
+      if (stages[0]!.status === 'completed') {
+        expectedLifecycle.push({ type: 'stage.completed', stageId: stages[0]!.id });
+      }
+      for (const stage of stages.slice(1)) {
+        if (stage.status === 'pending') continue;
+        expectedLifecycle.push(
+          { type: 'stage.ready', stageId: stage.id },
+          { type: 'stage.starting', stageId: stage.id },
+        );
+        if (stage.status === 'starting') continue;
+        expectedLifecycle.push({ type: 'stage.started', stageId: stage.id });
+        if (stage.status === 'completed') {
+          expectedLifecycle.push({ type: 'stage.completed', stageId: stage.id });
+        }
+      }
+    }
+
+    const actualLifecycle = events.filter(event => (
+      (event.type.startsWith('run.') || event.type.startsWith('stage.'))
+      && event.type !== 'run.created'
+      && event.type !== 'stage.created'
+    ));
+    if (actualLifecycle.length !== expectedLifecycle.length) {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+    for (let index = 0; index < expectedLifecycle.length; index += 1) {
+      const expected = expectedLifecycle[index]!;
+      const actual = actualLifecycle[index]!;
+      if (
+        actual.type !== expected.type
+        || actual.stageId !== expected.stageId
+        || actual.correlationId !== start.correlationId
+      ) {
+        this.legacyCanonicalRecoveryIntegrityFailure(run);
+      }
+    }
+
+    const outboxes = this.requireLegacyRecoveryOutboxRepository();
+    for (const event of events) {
+      const outbox = outboxes.findByEventId(event.id);
+      if (
+        !outbox
+        || outbox.event.id !== event.id
+        || outbox.event.sequence !== event.sequence
+        || outbox.aggregateId !== run.id
+      ) {
+        this.legacyCanonicalRecoveryIntegrityFailure(run);
+      }
+    }
+  }
+
+  private recoverInterruptedLegacyStartingRunWithinTransaction(
+    run: Run,
+    start: ApiOperation,
+    stages: readonly RunStage[],
+  ): void {
+    const stage = this.findInterruptedLegacyStartingStage(run, stages);
+    const problem = this.legacyCanonicalRecoveryProblem(run, start, LEGACY_RESTART_STARTUP_MESSAGE, stage);
+    const lifecycle = this.requireLifecycleTransactionService();
+    const result = stage === undefined
+      ? lifecycle.failRunStartupWithinTransaction({
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          expectedRunVersion: run.version,
+          correlationId: start.correlationId,
+          phase: 'legacy-startup-recovery',
+          problem,
+        })
+      : lifecycle.failRunStartupWithinTransaction({
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          stageId: stage.id,
+          expectedRunVersion: run.version,
+          expectedStageVersion: stage.version,
+          correlationId: start.correlationId,
+          phase: 'legacy-startup-recovery',
+          problem,
+        });
+    const timestamp = result.events.at(-1)?.timestamp;
+    if (!timestamp) this.legacyCanonicalRecoveryIntegrityFailure(run);
+    this.requireOperationService().transitionWithinTransactionAt({
+      workspaceId: run.workspaceId,
+      operationId: start.id,
+      expectedVersion: start.version,
+      to: 'failed',
+      error: problem,
+    }, timestamp);
+    this.reconcileCanonicalLegacyRunFailedWithinTransaction(run.workspaceId, run.id);
+  }
+
+  private recoverInterruptedLegacyRunningRunWithinTransaction(
+    run: Run,
+    start: ApiOperation,
+    stages: readonly RunStage[],
+  ): void {
+    const stage = this.findInterruptedLegacyRunningStage(run, stages);
+    const lifecycle = this.requireLifecycleTransactionService();
+    const failedStage = stage === undefined
+      ? undefined
+      : lifecycle.transitionStageWithinTransaction({
+          workspaceId: run.workspaceId,
+          runId: run.id,
+          stageId: stage.id,
+          expectedVersion: stage.version,
+          expectedFrom: stage.status,
+          to: 'failed',
+          errorCode: LEGACY_PIPELINE_FAILED,
+          message: LEGACY_RESTART_EXECUTION_MESSAGE,
+          retryable: false,
+          retryScheduled: false,
+          correlationId: start.correlationId,
+        }).stage;
+    lifecycle.transitionRunWithinTransaction({
+      workspaceId: run.workspaceId,
+      runId: run.id,
+      expectedVersion: run.version,
+      expectedFrom: 'running',
+      to: 'failed',
+      errorCode: LEGACY_PIPELINE_FAILED,
+      message: LEGACY_RESTART_EXECUTION_MESSAGE,
+      phase: 'legacy-execution-recovery',
+      retryable: false,
+      ...(failedStage === undefined ? {} : { stageId: failedStage.id }),
+      correlationId: start.correlationId,
+    });
+    this.reconcileCanonicalLegacyRunFailedWithinTransaction(run.workspaceId, run.id);
+  }
+
+  private findInterruptedLegacyStartingStage(run: Run, stages: readonly RunStage[]): RunStage | undefined {
+    let starting: RunStage | undefined;
+    for (let index = 0; index < stages.length; index += 1) {
+      const stage = stages[index]!;
+      if (stage.status === 'starting') {
+        if (starting || index !== 0 || stage.startedAt !== undefined || stage.completedAt !== undefined
+          || stage.failureCode !== undefined || stage.failureMessage !== undefined) {
+          this.legacyCanonicalRecoveryIntegrityFailure(run);
+        }
+        starting = stage;
+        continue;
+      }
+      if (stage.status !== 'pending' || stage.startedAt !== undefined || stage.completedAt !== undefined
+        || stage.failureCode !== undefined || stage.failureMessage !== undefined) {
+        this.legacyCanonicalRecoveryIntegrityFailure(run);
+      }
+    }
+    return starting;
+  }
+
+  private findInterruptedLegacyRunningStage(
+    run: Run,
+    stages: readonly RunStage[],
+  ): (RunStage & { status: 'starting' | 'running' }) | undefined {
+    let active: (RunStage & { status: 'starting' | 'running' }) | undefined;
+    let pendingSeen = false;
+    let completedCount = 0;
+    for (const stage of stages) {
+      if (stage.status === 'completed') {
+        if (active || pendingSeen || !stage.startedAt || !stage.completedAt
+          || stage.failureCode !== undefined || stage.failureMessage !== undefined) {
+          this.legacyCanonicalRecoveryIntegrityFailure(run);
+        }
+        completedCount += 1;
+        continue;
+      }
+      if (stage.status === 'starting' || stage.status === 'running') {
+        if (active || pendingSeen || stage.completedAt !== undefined
+          || stage.failureCode !== undefined || stage.failureMessage !== undefined
+          || (stage.status === 'starting' ? stage.startedAt !== undefined : !stage.startedAt)) {
+          this.legacyCanonicalRecoveryIntegrityFailure(run);
+        }
+        active = stage as RunStage & { status: 'starting' | 'running' };
+        continue;
+      }
+      if (stage.status !== 'pending' || stage.startedAt !== undefined || stage.completedAt !== undefined
+        || stage.failureCode !== undefined || stage.failureMessage !== undefined) {
+        this.legacyCanonicalRecoveryIntegrityFailure(run);
+      }
+      pendingSeen = true;
+    }
+    if (!active && (completedCount === 0 || completedCount === stages.length)) {
+      this.legacyCanonicalRecoveryIntegrityFailure(run);
+    }
+    return active;
+  }
+
+  private legacyCanonicalRecoveryProblem(
+    run: Run,
+    start: ApiOperation,
+    detail: string,
+    stage?: RunStage,
+  ): ApiProblem {
+    return {
+      type: 'https://agentos.dev/problems/legacy-pipeline-failed',
+      title: 'Legacy pipeline failed',
+      status: 500,
+      code: LEGACY_PIPELINE_FAILED,
+      detail,
+      instance: `/runs/${run.id}`,
+      requestId: `legacy-recovery-${run.id}`,
+      retryable: false,
+      context: {
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        operationId: start.correlationId,
+        ...(stage === undefined ? {} : { stageId: stage.id }),
+      },
+    };
+  }
+
+  private requireLegacyRecoveryRuntimeEventRepository(): RuntimeEventRepository {
+    let factory: unknown;
+    try {
+      factory = this.deps.runtimeEventRepository;
+    } catch {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+    if (typeof factory !== 'function') {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+    try {
+      const repository = factory.call(this.deps) as RuntimeEventRepository;
+      if (!repository || typeof repository.queryByRun !== 'function') throw new Error('unavailable');
+      return repository;
+    } catch {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+  }
+
+  private requireLegacyRecoveryOutboxRepository(): OutboxRepository {
+    let factory: unknown;
+    try {
+      factory = this.deps.outboxRepository;
+    } catch {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+    if (typeof factory !== 'function') {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+    try {
+      const repository = factory.call(this.deps) as OutboxRepository;
+      if (!repository || typeof repository.findByEventId !== 'function') throw new Error('unavailable');
+      return repository;
+    } catch {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+  }
+
+  private legacyCanonicalRecoveryIntegrityFailure(run: Pick<Run, 'id'>): never {
+    throw domainError(
+      'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED',
+      `LEGACY_CANONICAL_RUN_INTEGRITY_FAILED: ${run.id}`,
+    );
   }
 
   private requireTask(workspaceId: string, taskId: string): Task {
