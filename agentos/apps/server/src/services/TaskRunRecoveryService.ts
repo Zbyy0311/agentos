@@ -57,6 +57,8 @@ export type TaskRunRecoveryDisposition =
 
 interface PersistedEvidence {
   readonly events: readonly RuntimeEventEnvelope[];
+  readonly hasUnknownEvents: boolean;
+  readonly hasSequenceGap: boolean;
   readonly processFound: boolean;
   readonly providerSessionFound: boolean;
   readonly worktreeFound: boolean;
@@ -158,8 +160,9 @@ export class TaskRunRecoveryService {
   private recoverQueued(run: Run, start: ApiOperation | undefined): TaskRunRecoveryDisposition {
     if (!start) return 'untouched';
     this.requireStartStatus(run, start, 'queued');
-    this.readStages(run);
+    const stages = this.readStages(run);
     const evidence = this.readPersistedEvidence(run);
+    this.assertQueueRestoreEvidenceCoherent(run, stages, evidence);
     this.dependencies.lifecycleTransactionService.recordRecoveryOutcomeWithinTransaction({
       workspaceId: run.workspaceId,
       runId: run.id,
@@ -229,7 +232,9 @@ export class TaskRunRecoveryService {
     const stages = this.readStages(run);
     const evidence = this.readPersistedEvidence(run);
     const approval = this.approvalHistory(run, stages, evidence.events);
-    if (this.hasOneCoherentUnresolvedApproval(stages, approval)) {
+    if (!evidence.hasUnknownEvents
+      && !evidence.hasSequenceGap
+      && this.hasOneCoherentUnresolvedApproval(stages, approval)) {
       this.dependencies.lifecycleTransactionService.recordRecoveryOutcomeWithinTransaction({
         workspaceId: run.workspaceId,
         runId: run.id,
@@ -258,7 +263,11 @@ export class TaskRunRecoveryService {
     const contradictoryStage = stages.some(
       stage => ['starting', 'running', 'waiting_approval'].includes(stage.status),
     );
-    if (!contradictoryStage && approval.valid && approval.unresolved.length === 0) {
+    if (!contradictoryStage
+      && !evidence.hasUnknownEvents
+      && !evidence.hasSequenceGap
+      && approval.valid
+      && approval.unresolved.length === 0) {
       return 'untouched';
     }
     this.recordUncertainty(run, operation, evidence, RECOVERY_FAILURE_MESSAGES.paused);
@@ -356,6 +365,9 @@ export class TaskRunRecoveryService {
   private readPersistedEvidence(run: Run): PersistedEvidence {
     const events: RuntimeEventEnvelope[] = [];
     let afterSequence = 0;
+    let expectedSequence = 1;
+    let hasUnknownEvents = false;
+    let hasSequenceGap = false;
     let hasMore = true;
     while (hasMore) {
       let page: ReturnType<RuntimeEventRepository['queryByRun']>;
@@ -378,17 +390,87 @@ export class TaskRunRecoveryService {
           || !Number.isSafeInteger(event.sequence) || event.sequence <= afterSequence) {
           throw integrity(`Run ${run.id} Runtime Event evidence binding is invalid`);
         }
+        if (event.sequence !== expectedSequence) hasSequenceGap = true;
+        expectedSequence = event.sequence + 1;
         afterSequence = event.sequence;
         if (record.kind === 'known') events.push(record.event);
+        else hasUnknownEvents = true;
       }
       hasMore = page.hasMore;
     }
     return {
       events,
+      hasUnknownEvents,
+      hasSequenceGap,
       processFound: events.some(event => nonBlank(event.processId)),
       providerSessionFound: events.some(event => nonBlank(event.providerSessionId)),
       worktreeFound: events.some(event => nonBlank(event.worktreeId)),
     };
+  }
+
+  private assertQueueRestoreEvidenceCoherent(
+    run: Run,
+    stages: readonly RunStage[],
+    evidence: PersistedEvidence,
+  ): void {
+    const reject = (): never => {
+      throw integrity(`Run ${run.id} queue recovery evidence is not coherent`);
+    };
+    if (evidence.hasUnknownEvents
+      || evidence.hasSequenceGap
+      || evidence.processFound
+      || evidence.providerSessionFound
+      || evidence.worktreeFound) {
+      reject();
+    }
+
+    if (stages.some(stage => !['pending', 'ready'].includes(stage.status)
+      || stage.startedAt !== undefined
+      || stage.completedAt !== undefined
+      || stage.failureCode !== undefined
+      || stage.failureMessage !== undefined)) {
+      reject();
+    }
+
+    const stagesById = new Map(stages.map(stage => [stage.id, stage]));
+    let recoveryAttempt: RuntimeEventEnvelope | undefined;
+    for (const event of evidence.events) {
+      if (recoveryAttempt) {
+        const payload = event.payload;
+        if (event.type !== 'run.recovered'
+          || typeof payload !== 'object'
+          || payload === null
+          || (payload as Record<string, unknown>).recoveryMode !== 'queue-restore'
+          || event.correlationId !== recoveryAttempt.correlationId
+          || event.parentEventId !== recoveryAttempt.id) {
+          reject();
+        }
+        recoveryAttempt = undefined;
+        continue;
+      }
+
+      if (event.type === 'run.created' || event.type === 'run.queued') continue;
+      if (event.type === 'stage.created' || event.type === 'stage.ready') {
+        const stage = event.stageId === undefined ? undefined : stagesById.get(event.stageId);
+        if (!stage || (event.type === 'stage.ready' && stage.status !== 'ready')) reject();
+        continue;
+      }
+      if (event.type === 'run.recovery_attempted') {
+        const payload = event.payload;
+        if (typeof payload !== 'object'
+          || payload === null
+          || (payload as Record<string, unknown>).previousStatus !== 'queued'
+          || (payload as Record<string, unknown>).processFound !== false
+          || (payload as Record<string, unknown>).providerSessionFound !== false
+          || (payload as Record<string, unknown>).worktreeFound !== false) {
+          reject();
+        }
+        recoveryAttempt = event;
+        continue;
+      }
+      reject();
+    }
+    if (recoveryAttempt) reject();
   }
 
   private approvalHistory(

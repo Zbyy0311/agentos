@@ -87,12 +87,25 @@ interface Fixture {
 
 interface SeedKnownEventInput {
   readonly runId?: string;
-  readonly type: 'run.queued' | 'approval.required' | 'approval.resolved';
+  readonly type:
+    | 'run.created'
+    | 'run.queued'
+    | 'run.dequeued'
+    | 'run.recovery_attempted'
+    | 'run.recovered'
+    | 'run.recovery_failed'
+    | 'stage.created'
+    | 'stage.ready'
+    | 'stage.starting'
+    | 'approval.required'
+    | 'approval.resolved';
   readonly stageId?: string;
   readonly approvalRequestId?: string;
   readonly processId?: string;
   readonly providerSessionId?: string;
   readonly worktreeId?: string;
+  readonly correlationId?: string;
+  readonly parentEventId?: string;
   readonly payload?: Record<string, unknown>;
 }
 
@@ -341,23 +354,67 @@ function seedKnownEvent(fixture: Fixture, input: SeedKnownEventInput): RuntimeEv
   const run = fixture.runRepository.findById(WORKSPACE_ID, runId);
   assert.ok(run, `seed run ${runId} must exist`);
   const sequence = run.nextEventSequence;
-  const payload = input.payload ?? (
-    input.type === 'run.queued'
-      ? { priority: 'normal', queueName: 'default' }
-      : input.type === 'approval.required'
-        ? {
-            category: 'command',
-            riskLevel: 'medium',
-            title: 'Approval required',
-            description: 'Approve the recovery test command',
-            requestSummary: { command: 'echo recovery-test' },
-          }
-        : {
-            decision: 'approve_once',
-            decidedBy: 'recovery-test',
-            decidedAt: NOW,
-          }
-  );
+  const payload = input.payload ?? (() => {
+    switch (input.type) {
+      case 'run.created':
+        return {
+          reason: 'initial',
+          rootRunId: runId,
+          workflowDefinitionId: WORKFLOW_ID,
+          worktreeMode: 'preferred',
+          createdBy: 'recovery-test',
+        };
+      case 'run.queued':
+        return { priority: 'normal', queueName: 'default' };
+      case 'run.dequeued':
+        return { dequeuedAt: NOW };
+      case 'run.recovery_attempted':
+        return {
+          previousStatus: 'queued',
+          processFound: false,
+          providerSessionFound: false,
+          worktreeFound: false,
+        };
+      case 'run.recovered':
+        return { recoveryMode: 'queue-restore' };
+      case 'run.recovery_failed':
+        return {
+          errorCode: 'RUN_RECOVERY_FAILED',
+          message: 'Prior recovery failed',
+          retryableAsNewRun: false,
+        };
+      case 'stage.created':
+        return {
+          workflowStageKey: 'stage_one',
+          name: 'stage_one',
+          sequence: 1,
+          dependsOn: [],
+        };
+      case 'stage.ready':
+        return { dependenciesCompleted: [] };
+      case 'stage.starting':
+        return {
+          workflowStageKey: 'stage_one',
+          name: 'stage_one',
+          attempt: 1,
+          startingAt: NOW,
+        };
+      case 'approval.required':
+        return {
+          category: 'command',
+          riskLevel: 'medium',
+          title: 'Approval required',
+          description: 'Approve the recovery test command',
+          requestSummary: { command: 'echo recovery-test' },
+        };
+      case 'approval.resolved':
+        return {
+          decision: 'approve_once',
+          decidedBy: 'recovery-test',
+          decidedAt: NOW,
+        };
+    }
+  })();
   const event = fixture.runtimeEventRepository.appendWithinTransaction({
     id: fixedId('evt', fixture.nextSeedEventNumber++),
     schemaVersion: 1,
@@ -372,7 +429,8 @@ function seedKnownEvent(fixture: Fixture, input: SeedKnownEventInput): RuntimeEv
     ...(input.worktreeId === undefined ? {} : { worktreeId: input.worktreeId }),
     sequence,
     timestamp: NOW,
-    correlationId: `seed-${runId}-${sequence}`,
+    correlationId: input.correlationId ?? `seed-${runId}-${sequence}`,
+    ...(input.parentEventId === undefined ? {} : { parentEventId: input.parentEventId }),
     payload,
   });
   fixture.db.prepare('UPDATE runs SET next_event_sequence = ? WHERE workspace_id = ? AND id = ?')
@@ -420,11 +478,12 @@ function seedApprovalResolved(
   });
 }
 
-function seedUnknownFutureEvent(fixture: Fixture, input: SeedUnknownEventInput = {}): void {
+function seedUnknownFutureEvent(fixture: Fixture, input: SeedUnknownEventInput = {}): string {
   const runId = input.runId ?? fixture.runId;
   const run = fixture.runRepository.findById(WORKSPACE_ID, runId);
   assert.ok(run, `seed run ${runId} must exist`);
   const sequence = run.nextEventSequence;
+  const eventId = fixedId('evt', fixture.nextSeedEventNumber++);
   fixture.db.prepare(`
     INSERT INTO runtime_events (
       id, schema_version, type, workspace_id, task_id, run_id, stage_id,
@@ -435,7 +494,7 @@ function seedUnknownFutureEvent(fixture: Fixture, input: SeedUnknownEventInput =
     ) VALUES (?, 99, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?, ?, NULL, ?, NULL, NULL, ?, ?,
       'approval-service', ?, NULL, NULL, 'info', 'internal', 'durable', ?, NULL, ?)
   `).run(
-    fixedId('evt', fixture.nextSeedEventNumber++),
+    eventId,
     input.type ?? 'approval.required',
     WORKSPACE_ID,
     run.taskId,
@@ -452,6 +511,7 @@ function seedUnknownFutureEvent(fixture: Fixture, input: SeedUnknownEventInput =
   );
   fixture.db.prepare('UPDATE runs SET next_event_sequence = ? WHERE workspace_id = ? AND id = ?')
     .run(sequence + 1, WORKSPACE_ID, runId);
+  return eventId;
 }
 
 function seedAdditionalRun(
@@ -489,6 +549,25 @@ function eventRows(fixture: Fixture, runId = fixture.runId): Array<Record<string
       correlation_id, causation_id, parent_event_id, payload_json
     FROM runtime_events WHERE workspace_id = ? AND run_id = ? ORDER BY sequence ASC
   `).all(WORKSPACE_ID, runId) as Array<Record<string, unknown>>;
+}
+
+function rawRuntimeEventRow(fixture: Fixture, eventId: string): Record<string, unknown> {
+  const row = fixture.db.prepare('SELECT * FROM runtime_events WHERE id = ?').get(eventId) as
+    | Record<string, unknown>
+    | undefined;
+  assert.ok(row, `raw Runtime Event ${eventId} must exist`);
+  return row;
+}
+
+function assertRawRuntimeEventUnchanged(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): void {
+  assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort());
+  for (const field of Object.keys(before)) {
+    assert.deepEqual(after[field], before[field], `raw Runtime Event field ${field} changed`);
+  }
+  assert.deepEqual(after, before);
 }
 
 function outboxRows(fixture: Fixture, runId = fixture.runId): Array<Record<string, unknown>> {
@@ -551,6 +630,42 @@ function assertRecoveryIntegrityError(action: () => unknown, message: string): v
   ));
 }
 
+function assertStableRecoveryIntegrityError(action: () => unknown): void {
+  assert.throws(action, (error: unknown) => (
+    error instanceof TaskRunRecoveryError
+      && error.code === 'TASK_RUN_RECOVERY_INTEGRITY_FAILED'
+      && error.message.startsWith('TASK_RUN_RECOVERY_INTEGRITY_FAILED:')
+  ));
+}
+
+function reserveEventSequence(fixture: Fixture): number {
+  return inTransaction(fixture.db, () => (
+    fixture.runSequenceAllocator.allocateWithinTransaction(WORKSPACE_ID, fixture.runId)
+  ));
+}
+
+function seedKnownSequenceGap(fixture: Fixture): void {
+  seedKnownEvent(fixture, {
+    type: 'run.queued',
+    payload: { priority: 'normal', queueName: 'default', position: 1 },
+  });
+  assert.equal(reserveEventSequence(fixture), 2);
+  seedKnownEvent(fixture, {
+    type: 'run.queued',
+    payload: { priority: 'normal', queueName: 'default', position: 3 },
+  });
+}
+
+function assertExistingUncertainty(fixture: Fixture): void {
+  assert.equal(fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId), 'uncertainty-marked');
+  assert.equal(fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!.recoveryRequired, true);
+  assert.deepEqual(
+    eventRows(fixture).filter(row => row.type === 'run.recovery_attempted' || row.type === 'run.recovery_failed')
+      .map(row => row.type),
+    ['run.recovery_attempted', 'run.recovery_failed'],
+  );
+}
+
 function runStartOperation(fixture: Fixture): Record<string, unknown> {
   const rows = fixture.db.prepare(`
     SELECT id, status, version, started_at, completed_at, error_json
@@ -566,6 +681,293 @@ test('P6B recovery fixture uses the production repository seams', () => {
   assert.equal(typeof prototype.listActiveByWorkspaceForRecovery, 'function');
   assert.equal(typeof prototype.markRecoveryRequiredWithinTransaction, 'function');
 });
+
+test('H01 queued+queued Start+Stage starting -> stable integrity failure with zero mutation', () => withFixture({
+  runStatus: 'queued',
+  stageStatus: 'starting',
+  startStatuses: ['queued'],
+}, fixture => {
+  const before = persistedSnapshot(fixture.db);
+  assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+  assertZeroMutation(fixture, before);
+}));
+
+test('H02 queued+queued Start+Stage running -> stable integrity failure with zero mutation', () => withFixture({
+  runStatus: 'queued',
+  stageStatus: 'running',
+  startStatuses: ['queued'],
+}, fixture => {
+  const before = persistedSnapshot(fixture.db);
+  assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+  assertZeroMutation(fixture, before);
+}));
+
+test('H03 queued+queued Start+run.dequeued -> stable integrity failure with zero mutation', () => withFixture({
+  runStatus: 'queued',
+  startStatuses: ['queued'],
+}, fixture => {
+  seedKnownEvent(fixture, { type: 'run.dequeued' });
+  const before = persistedSnapshot(fixture.db);
+  assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+  assertZeroMutation(fixture, before);
+}));
+
+test('H04 queued+queued Start+stage.starting -> stable integrity failure with zero mutation', () => withFixture({
+  runStatus: 'queued',
+  startStatuses: ['queued'],
+}, fixture => {
+  seedKnownEvent(fixture, { type: 'stage.starting', stageId: fixture.stageId });
+  const before = persistedSnapshot(fixture.db);
+  assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+  assertZeroMutation(fixture, before);
+}));
+
+test('H05 queued+queued Start+unknown future Event -> stable integrity failure and raw row unchanged', () => withFixture({
+  runStatus: 'queued',
+  startStatuses: ['queued'],
+}, fixture => {
+  const unknownEventId = seedUnknownFutureEvent(fixture, {
+    type: 'run.future.v2',
+    approvalRequestId: 'approval-future-h05',
+    processId: fixedId('proc', 5),
+    providerSessionId: fixedId('psess', 5),
+    worktreeId: fixedId('wt', 5),
+    payload: { future: true, nested: { preserved: 'h05' } },
+  });
+  const unknownBefore = rawRuntimeEventRow(fixture, unknownEventId);
+  const before = persistedSnapshot(fixture.db);
+  assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+  assertZeroMutation(fixture, before);
+  assertRawRuntimeEventUnchanged(unknownBefore, rawRuntimeEventRow(fixture, unknownEventId));
+}));
+
+test('H06 queued+queued Start+sequence gap -> stable integrity failure with zero mutation', () => withFixture({
+  runStatus: 'queued',
+  startStatuses: ['queued'],
+}, fixture => {
+  seedKnownSequenceGap(fixture);
+  const before = persistedSnapshot(fixture.db);
+  assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+  assertZeroMutation(fixture, before);
+}));
+
+test('H07 waiting known unresolved approval+unknown -> existing uncertainty and raw row unchanged', () => withFixture({
+  runStatus: 'waiting_approval',
+  stageStatus: 'waiting_approval',
+  startStatuses: ['completed'],
+}, fixture => {
+  seedApprovalRequired(fixture, 'approval-h07');
+  const unknownEventId = seedUnknownFutureEvent(fixture, {
+    type: 'approval.future.v2',
+    approvalRequestId: 'approval-future-h07',
+    processId: fixedId('proc', 7),
+    providerSessionId: fixedId('psess', 7),
+    worktreeId: fixedId('wt', 7),
+    payload: { future: true, nested: { preserved: 'h07' } },
+  });
+  const unknownBefore = rawRuntimeEventRow(fixture, unknownEventId);
+  assertExistingUncertainty(fixture);
+  assertRawRuntimeEventUnchanged(unknownBefore, rawRuntimeEventRow(fixture, unknownEventId));
+}));
+
+test('H08 waiting known unresolved approval+sequence gap -> existing uncertainty', () => withFixture({
+  runStatus: 'waiting_approval',
+  stageStatus: 'waiting_approval',
+  startStatuses: ['completed'],
+}, fixture => {
+  seedApprovalRequired(fixture, 'approval-h08');
+  assert.equal(reserveEventSequence(fixture), 2);
+  seedKnownEvent(fixture, { type: 'run.queued' });
+  assertExistingUncertainty(fixture);
+}));
+
+test('H09 paused+unknown -> existing uncertainty and raw row unchanged', () => withFixture({
+  runStatus: 'paused',
+  stageStatus: 'pending',
+  startStatuses: ['completed'],
+}, fixture => {
+  const unknownEventId = seedUnknownFutureEvent(fixture, {
+    type: 'run.future.v2',
+    approvalRequestId: 'approval-future-h09',
+    processId: fixedId('proc', 9),
+    providerSessionId: fixedId('psess', 9),
+    worktreeId: fixedId('wt', 9),
+    payload: { future: true, nested: { preserved: 'h09' } },
+  });
+  const unknownBefore = rawRuntimeEventRow(fixture, unknownEventId);
+  assertExistingUncertainty(fixture);
+  assertRawRuntimeEventUnchanged(unknownBefore, rawRuntimeEventRow(fixture, unknownEventId));
+}));
+
+test('H10 paused+sequence gap -> existing uncertainty', () => withFixture({
+  runStatus: 'paused',
+  stageStatus: 'pending',
+  startStatuses: ['completed'],
+}, fixture => {
+  seedKnownSequenceGap(fixture);
+  assertExistingUncertainty(fixture);
+}));
+
+test('S01 existing empty lower-level evidence remains a positive queue recovery', () => withFixture({
+  runStatus: 'queued',
+  stageStatus: 'pending',
+  startStatuses: ['queued'],
+}, fixture => {
+  assert.equal(fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId), 'queue-restored');
+  assert.equal(fixture.runStageRepository.listByRun(WORKSPACE_ID, fixture.runId)[0]!.status, 'pending');
+}));
+
+test('S02 safe run.created/stage.created history remains a positive queue recovery', () => withFixture({
+  runStatus: 'queued',
+  startStatuses: ['queued'],
+}, fixture => {
+  seedKnownEvent(fixture, { type: 'run.created' });
+  seedKnownEvent(fixture, { type: 'stage.created', stageId: fixture.stageId });
+  assert.equal(fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId), 'queue-restored');
+  assert.deepEqual(eventRows(fixture).map(row => row.type), [
+    'run.created',
+    'stage.created',
+    'run.recovery_attempted',
+    'run.recovered',
+  ]);
+}));
+
+test('S03 prior complete queue recovery pair remains safe', () => withFixture({
+  runStatus: 'queued',
+  startStatuses: ['queued'],
+}, fixture => {
+  const correlationId = 'prior-queue-recovery';
+  const attempted = seedKnownEvent(fixture, {
+    type: 'run.recovery_attempted',
+    correlationId,
+  });
+  seedKnownEvent(fixture, {
+    type: 'run.recovered',
+    correlationId,
+    parentEventId: attempted.id,
+  });
+  assert.equal(fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId), 'queue-restored');
+  assert.deepEqual(eventRows(fixture).map(row => row.type), [
+    'run.recovery_attempted',
+    'run.recovered',
+    'run.recovery_attempted',
+    'run.recovered',
+  ]);
+}));
+
+test('S04 coherent known unresolved approval remains a positive approval recovery', () => withFixture({
+  runStatus: 'waiting_approval',
+  stageStatus: 'waiting_approval',
+  startStatuses: ['completed'],
+}, fixture => {
+  seedApprovalRequired(fixture, 'approval-s04');
+  assert.equal(fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId), 'approval-restored');
+  assert.equal(fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!.recoveryRequired, false);
+}));
+
+test('queue restore rejects every entered/terminal Stage status and persisted lifecycle evidence', () => {
+  for (const stageStatus of [
+    'starting',
+    'running',
+    'waiting_approval',
+    'paused',
+    'completed',
+    'failed',
+    'cancelled',
+    'skipped',
+  ] as const) {
+    withFixture({ runStatus: 'queued', stageStatus, startStatuses: ['queued'] }, fixture => {
+      const before = persistedSnapshot(fixture.db);
+      assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+      assertZeroMutation(fixture, before);
+    });
+  }
+
+  for (const column of ['started_at', 'completed_at', 'failure_code', 'failure_message'] as const) {
+    withFixture({ runStatus: 'queued', stageStatus: 'pending', startStatuses: ['queued'] }, fixture => {
+      fixture.db.exec('PRAGMA ignore_check_constraints = ON');
+      fixture.db.prepare(`UPDATE run_stages SET ${column} = ? WHERE id = ?`)
+        .run(column.endsWith('_at') ? NOW : 'persisted evidence', fixture.stageId);
+      fixture.db.exec('PRAGMA ignore_check_constraints = OFF');
+      const before = persistedSnapshot(fixture.db);
+      assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+      assertZeroMutation(fixture, before);
+    });
+  }
+});
+
+test('safe queued/ready scheduling history remains eligible for queue restore', () => withFixture({
+  runStatus: 'queued',
+  stageStatus: 'ready',
+  startStatuses: ['queued'],
+}, fixture => {
+  seedKnownEvent(fixture, { type: 'run.created' });
+  seedKnownEvent(fixture, { type: 'stage.created', stageId: fixture.stageId });
+  seedKnownEvent(fixture, { type: 'run.queued' });
+  seedKnownEvent(fixture, { type: 'stage.ready', stageId: fixture.stageId });
+  assert.equal(fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId), 'queue-restored');
+}));
+
+test('malformed prior queue recovery telemetry fails closed with zero mutation', () => {
+  const cases: Array<(fixture: Fixture) => void> = [
+    fixture => {
+      seedKnownEvent(fixture, { type: 'run.recovery_attempted' });
+    },
+    fixture => {
+      seedKnownEvent(fixture, {
+        type: 'run.recovery_attempted',
+        payload: {
+          previousStatus: 'running',
+          processFound: false,
+          providerSessionFound: false,
+          worktreeFound: false,
+        },
+      });
+    },
+    fixture => {
+      const correlationId = 'prior-non-queue-recovery';
+      const attempted = seedKnownEvent(fixture, { type: 'run.recovery_attempted', correlationId });
+      seedKnownEvent(fixture, {
+        type: 'run.recovered',
+        correlationId,
+        parentEventId: attempted.id,
+        payload: { recoveryMode: 'approval-restore' },
+      });
+    },
+    fixture => {
+      seedKnownEvent(fixture, { type: 'run.recovery_failed' });
+    },
+  ];
+
+  for (const seed of cases) {
+    withFixture({ runStatus: 'queued', startStatuses: ['queued'] }, fixture => {
+      seed(fixture);
+      const before = persistedSnapshot(fixture.db);
+      assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+      assertZeroMutation(fixture, before);
+    });
+  }
+});
+
+test('sequence gap crossing the 200-record page boundary fails closed', () => withFixture({
+  runStatus: 'queued',
+  startStatuses: ['queued'],
+}, fixture => {
+  for (let position = 1; position <= 200; position += 1) {
+    seedKnownEvent(fixture, {
+      type: 'run.queued',
+      payload: { priority: 'normal', queueName: 'default', position },
+    });
+  }
+  assert.equal(reserveEventSequence(fixture), 201);
+  seedKnownEvent(fixture, {
+    type: 'run.queued',
+    payload: { priority: 'normal', queueName: 'default', position: 202 },
+  });
+  const before = persistedSnapshot(fixture.db);
+  assertStableRecoveryIntegrityError(() => fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId));
+  assertZeroMutation(fixture, before);
+}));
 
 test('B01 terminal completed untouched', () => withFixture({
   runStatus: 'completed',
