@@ -114,8 +114,35 @@ production services:
 `RunStreamService` subscribe/buffer → high-watermark → replay → drain → live
 is exercised with the real `RuntimeEventNotifier`/`RuntimeEventDeliverySink`.
 P6D-A3 proves delivery reaches the stream exactly once per durable Event;
-P6D-A6 proves reconnect at a persisted cursor replays exactly once and
-continues live; P6D-C7 proves recovery Events stream in strict order.
+P6D-C7 proves recovery Events stream in strict order.
+
+P6D-A6 proves a real reconnect cursor end-to-end:
+
+```text
+first subscription records durable cursor
+
+at least one post-cursor Event is committed while disconnected
+  (kimi_worker lifecycle/text Events, then execution held at opencode_reviewer)
+
+second RunStream subscription is created with
+  afterSequence = cursor
+
+cursor+1..preReconnectHighWatermark are obtained by replay
+
+later Events (opencode_reviewer, codex_final_review, run.completed)
+are received live by the same subscription
+
+final observed sequence set is exactly
+  cursor+1..finalHighWatermark
+```
+
+The reconnect subscriber records every delivered sequence with no client-side
+filter; the assertions directly require the delivered set to equal
+`cursor+1..finalHighWatermark` with no duplicate and no missing sequence, so a
+regression in `RunStreamService.subscribe(afterSequence = cursor)` fails the
+test. The same deterministic stage barriers prove both replay and live in one
+test without timing reliance. Execution authority remains exactly one
+construction and the Run/Start finish completed.
 
 ## 7. Disconnect Evidence
 

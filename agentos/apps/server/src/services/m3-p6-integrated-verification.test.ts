@@ -169,11 +169,17 @@ function outboxesForRun(store: SqliteStore, runId: string) {
   ).all(runId) as Array<Record<string, unknown>>;
 }
 
-function runStreamUnsubscribe(store: SqliteStore, workspaceId: string, runId: string, onEvent: (event: RuntimeEventRecord) => void): () => void {
+function runStreamUnsubscribe(
+  store: SqliteStore,
+  workspaceId: string,
+  runId: string,
+  onEvent: (event: RuntimeEventRecord) => void,
+  afterSequence = 0,
+): () => void {
   return store.runStreamService().subscribe({
     workspaceId,
     runId,
-    afterSequence: 0,
+    afterSequence,
     onEvent,
     onOverflow: () => { throw new Error('unexpected RunStream overflow'); },
   });
@@ -711,8 +717,12 @@ test('P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and
 test('P6D-A6 reconnect replays exactly once after the last observed cursor and continues live', async () => {
   const fixture = createFixture('p6d-a6');
   const workerGate = deferred();
+  const reviewerGate = deferred();
   const observed = { constructions: 0, order: [] as AgentStage[] };
-  const gates = new Map<AgentStage, Deferred>([['kimi_worker', workerGate]]);
+  const gates = new Map<AgentStage, Deferred>([
+    ['kimi_worker', workerGate],
+    ['opencode_reviewer', reviewerGate],
+  ]);
   const firstSeen: number[] = [];
   const first = runStreamUnsubscribe(
     fixture.store,
@@ -722,35 +732,68 @@ test('P6D-A6 reconnect replays exactly once after the last observed cursor and c
   );
   try {
     const execution = execute(fixture, createService(fixture, gatedRunner(observed, gates)));
-    for (let attempt = 0; attempt < 200 && observed.order.length < 2; attempt += 1) {
+    // Deterministic barrier 1: execution has entered kimi_worker and the
+    // first subscriber has recorded its durable cursor.
+    for (let attempt = 0; attempt < 400 && observed.order.length < 2; attempt += 1) {
       await new Promise(resolve => setTimeout(resolve, 10));
     }
     assert.equal(observed.order[1], 'kimi_worker');
     const cursor = firstSeen.at(-1)!;
-    assert.ok(cursor >= 18);
+    assert.ok(cursor >= 12, 'first subscriber must observe the manager text Events');
     first();
     workerGate.resolve();
+
+    // Deterministic barrier 2: kimi_worker completes and execution enters
+    // opencode_reviewer, whose lifecycle/text Events are now durable while
+    // execution is held at the reviewer gate.
+    for (let attempt = 0; attempt < 400 && observed.order.length < 3; attempt += 1) {
+      await new Promise(resolve => setTimeout(resolve, 10));
+    }
+    assert.equal(observed.order[2], 'opencode_reviewer');
+    const preReconnectHighWatermark = highWatermark(fixture.store, fixture.workspaceId, fixture.bridge.run.id);
+    assert.ok(
+      preReconnectHighWatermark > cursor,
+      `at least one Event must be committed while disconnected (cursor=${cursor}, HWM=${preReconnectHighWatermark})`,
+    );
 
     const replaySeen: number[] = [];
     const replay = runStreamUnsubscribe(
       fixture.store,
       fixture.workspaceId,
       fixture.bridge.run.id,
-      event => {
-        if (event.sequence > cursor) replaySeen.push(event.sequence);
-      },
+      event => replaySeen.push(event.sequence),
+      cursor,
     );
+    const replayPrefix = replaySeen.filter(sequence => sequence <= preReconnectHighWatermark);
+    assert.deepEqual(
+      replayPrefix,
+      Array.from(
+        { length: preReconnectHighWatermark - cursor },
+        (_, index) => cursor + index + 1,
+      ),
+      'RunStream must replay exactly cursor+1..preReconnectHighWatermark when subscribed afterSequence=cursor',
+    );
+
+    reviewerGate.resolve();
     await execution;
+    const finalHighWatermark = highWatermark(fixture.store, fixture.workspaceId, fixture.bridge.run.id);
+    assert.ok(finalHighWatermark > preReconnectHighWatermark, 'live Events must commit after reconnect');
+    assert.deepEqual(
+      replaySeen,
+      Array.from(
+        { length: finalHighWatermark - cursor },
+        (_, index) => cursor + index + 1,
+      ),
+      'post-reconnect delivery must form one exact continuous sequence cursor+1..finalHWM (replay -> drain -> live)',
+    );
+    assert.equal(new Set(replaySeen).size, replaySeen.length, 'no duplicate sequence delivery');
+    assert.ok(replaySeen.every(sequence => sequence > cursor), 'no sequence <= cursor may be delivered after reconnect');
     assert.equal(observed.constructions, 1);
-    assert.deepEqual(replaySeen, Array.from(
-      { length: highWatermark(fixture.store, fixture.workspaceId, fixture.bridge.run.id) - cursor },
-      (_, index) => cursor + index + 1,
-    ));
-    assert.equal(new Set(replaySeen).size, replaySeen.length);
-    assert.ok(replaySeen.length > 0);
     assert.equal(fixture.store.runRepository().findById(fixture.workspaceId, fixture.bridge.run.id)!.status, 'completed');
+    assert.equal(startsForRun(fixture.store, fixture.workspaceId, fixture.bridge.run.id)[0]!.status, 'completed');
   } finally {
     workerGate.resolve();
+    reviewerGate.resolve();
     closeFixture(fixture);
   }
 });
