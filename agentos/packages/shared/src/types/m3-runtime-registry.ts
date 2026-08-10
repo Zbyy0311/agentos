@@ -634,6 +634,21 @@ export interface ApprovalResolvedPayload {
   readonly modifiedRequest?: Record<string, unknown>;
 }
 
+export type TextDeltaChannel = 'assistant' | 'analysis-summary' | 'status' | 'review' | 'system';
+
+export interface TextDeltaPayload {
+  readonly channel: TextDeltaChannel;
+  readonly delta: string;
+  readonly blockId?: string;
+}
+
+export interface TextCompletedPayload {
+  readonly channel: string;
+  readonly blockId?: string;
+  readonly artifactId?: string;
+  readonly characterCount: number;
+}
+
 function hasLifecycleString(value: Record<string, unknown>, key: string): boolean {
   return isNonEmptyString(value[key]);
 }
@@ -1007,6 +1022,29 @@ export function isApprovalResolvedPayload(value: unknown): value is ApprovalReso
     && hasLifecycleString(value, 'decidedBy')
     && hasLifecycleCanonicalTimestamp(value, 'decidedAt')
     && hasOptionalRecord(value, 'modifiedRequest')
+  );
+}
+
+export function isTextDeltaPayload(value: unknown): value is TextDeltaPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['channel', 'delta', 'blockId'])
+    && hasValue(['assistant', 'analysis-summary', 'status', 'review', 'system'], value.channel)
+    && typeof value.delta === 'string'
+    && hasOptionalLifecycleString(value, 'blockId')
+  );
+}
+
+export function isTextCompletedPayload(value: unknown): value is TextCompletedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['channel', 'blockId', 'artifactId', 'characterCount'])
+    && hasLifecycleString(value, 'channel')
+    && hasOptionalLifecycleString(value, 'blockId')
+    && hasOptionalLifecycleString(value, 'artifactId')
+    && typeof value.characterCount === 'number'
+    && Number.isSafeInteger(value.characterCount)
+    && value.characterCount >= 0
   );
 }
 
@@ -1394,6 +1432,36 @@ export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
       optional: ['modifiedRequest'],
     },
     validatePayload: isApprovalResolvedPayload,
+  },
+  {
+    type: 'stream.text_delta',
+    domain: 'stream',
+    description: 'A stage executor emitted a text stream delta.',
+    schemaVersion: 1,
+    source: 'stage-executor',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['channel', 'delta'],
+      optional: ['blockId'],
+    },
+    validatePayload: isTextDeltaPayload,
+  },
+  {
+    type: 'stream.text_completed',
+    domain: 'stream',
+    description: 'A stage executor completed a text stream block.',
+    schemaVersion: 1,
+    source: 'stage-executor',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['channel', 'characterCount'],
+      optional: ['blockId', 'artifactId'],
+    },
+    validatePayload: isTextCompletedPayload,
   },
 ];
 

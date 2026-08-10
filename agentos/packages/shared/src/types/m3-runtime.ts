@@ -57,6 +57,7 @@ export const RUNTIME_EVENT_DOMAINS = Object.freeze([
   'run',
   'stage',
   'approval',
+  'stream',
 ] as const);
 
 export type RuntimeEventDomain = (typeof RUNTIME_EVENT_DOMAINS)[number];
@@ -86,6 +87,8 @@ export const M3_RUNTIME_EVENT_TYPES = Object.freeze([
   'stage.skipped',
   'approval.required',
   'approval.resolved',
+  'stream.text_delta',
+  'stream.text_completed',
 ] as const);
 
 export type M3RuntimeEventType = (typeof M3_RUNTIME_EVENT_TYPES)[number];

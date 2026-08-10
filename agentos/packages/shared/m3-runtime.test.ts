@@ -27,6 +27,8 @@ import type {
   RunRecoveryAttemptedPayload,
   RunRecoveredPayload,
   RunRecoveryFailedPayload,
+  TextCompletedPayload,
+  TextDeltaPayload,
 } from './src/types/m3-runtime-registry.ts';
 import type {
   CancelRunBody,
@@ -147,7 +149,7 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
 });
 
 test('registers the complete M3 Event set with frozen domains and metadata', () => {
-  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval']);
+  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval', 'stream']);
   const expectedTypes = [
     'run.created',
     'run.queued',
@@ -173,10 +175,13 @@ test('registers the complete M3 Event set with frozen domains and metadata', () 
     'stage.skipped',
     'approval.required',
     'approval.resolved',
+    'stream.text_delta',
+    'stream.text_completed',
   ];
   assert.deepEqual(M3_RUNTIME_EVENT_TYPES, expectedTypes);
+  assert.equal(M3_RUNTIME_EVENT_TYPES.length, 26);
   assert.deepEqual(M3_CORE_EVENT_DEFINITIONS.map(definition => definition.type), expectedTypes);
-  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 24);
+  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 26);
 
   const registry = createM3RuntimeEventRegistry();
   assert.deepEqual(
@@ -190,6 +195,97 @@ test('registers the complete M3 Event set with frozen domains and metadata', () 
   assert.equal(registry.get('run.failed')?.defaultSeverity, 'error');
   assert.equal(registry.get('stage.cancelled')?.defaultSeverity, 'notice');
   assert.equal(registry.get('approval.required')?.defaultSeverity, 'notice');
+});
+
+test('registers and strictly validates the P6C stream text Events', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const expected = [
+    {
+      type: 'stream.text_delta',
+      required: ['channel', 'delta'],
+      optional: ['blockId'],
+    },
+    {
+      type: 'stream.text_completed',
+      required: ['channel', 'characterCount'],
+      optional: ['blockId', 'artifactId'],
+    },
+  ] as const;
+
+  for (const item of expected) {
+    const definition = registry.get(item.type);
+    assert.ok(definition, item.type);
+    assert.deepEqual(
+      {
+        schemaVersion: definition.schemaVersion,
+        domain: definition.domain,
+        source: definition.source,
+        defaultVisibility: definition.defaultVisibility,
+        defaultDurability: definition.defaultDurability,
+        requiresStageId: definition.requiresStageId,
+        forbidsStageId: definition.forbidsStageId,
+        payloadSchema: definition.payloadSchema,
+      },
+      {
+        schemaVersion: 1,
+        domain: 'stream',
+        source: 'stage-executor',
+        defaultVisibility: 'public',
+        defaultDurability: 'durable',
+        requiresStageId: undefined,
+        forbidsStageId: undefined,
+        payloadSchema: { required: item.required, optional: item.optional },
+      },
+    );
+  }
+
+  const typedDelta: TextDeltaPayload = { channel: 'analysis-summary', delta: '' };
+  const typedCompleted: TextCompletedPayload = { channel: 'review', characterCount: 0 };
+  assert.equal(typedDelta.delta, '');
+  assert.equal(typedCompleted.characterCount, 0);
+  assert.deepEqual(Object.keys(fixtures.validTextDeltaEvent.payload), ['channel', 'delta', 'blockId']);
+  assert.deepEqual(
+    Object.keys(fixtures.validTextCompletedEvent.payload),
+    ['channel', 'blockId', 'artifactId', 'characterCount'],
+  );
+  assert.equal(fixtures.validTextDeltaEvent.source, 'stage-executor');
+  assert.equal(fixtures.validTextCompletedEvent.source, 'stage-executor');
+  assert.equal(fixtures.validTextDeltaEvent.stageId, 'stage_fixture_01');
+  assert.equal(fixtures.validTextCompletedEvent.stageId, undefined);
+
+  for (const channel of ['assistant', 'analysis-summary', 'status', 'review', 'system'] as const) {
+    const event = registry.publish({
+      ...fixtures.validTextDeltaEvent,
+      id: `evt_fixture_text_delta_${channel}`,
+      payload: { channel, delta: '' },
+    });
+    assert.equal(event.payload.channel, channel);
+  }
+
+  const invalidPayloads = [
+    fixtures.invalidTextDeltaChannel,
+    fixtures.invalidTextDeltaMissingDelta,
+    fixtures.invalidTextDeltaExtraField,
+    fixtures.invalidTextCompletedChannel,
+    fixtures.invalidTextCompletedMissingCharacterCount,
+    fixtures.invalidTextCompletedExtraField,
+    ...fixtures.invalidTextCompletedCharacterCounts,
+  ];
+  for (const invalidPayload of invalidPayloads) {
+    assert.throws(
+      () => registry.publish(invalidPayload),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+    );
+  }
+
+  assert.throws(
+    () => registry.publish(fixtures.invalidTextType),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'UNREGISTERED_CORE_EVENT',
+  );
+  assert.equal(M3_RUNTIME_EVENT_TYPES.includes('stream.text_unknown' as never), false);
 });
 
 test('registers P6B recovery Events with exact metadata and forbids stageId', () => {
@@ -553,8 +649,8 @@ test('covers every registered payload with a valid and an unknown-field invalid 
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
 
-  assert.equal(fixtures.validEvents.length, 24);
-  assert.equal(fixtures.invalidPayloads.length, 24);
+  assert.equal(fixtures.validEvents.length, 26);
+  assert.equal(fixtures.invalidPayloads.length, 26);
   for (const event of fixtures.validEvents) {
     assert.ok(registry.get(event.type), `missing definition for ${event.type}`);
   }
@@ -567,7 +663,7 @@ test('covers every registered payload with a valid and an unknown-field invalid 
   }
 });
 
-test('rejects omission of every required payload field for all 24 registered Events', () => {
+test('rejects omission of every required payload field for all 26 registered Events', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
   const validEvents = new Map(fixtures.validEvents.map(event => [event.type, event]));
@@ -606,7 +702,7 @@ test('rejects omission of every required payload field for all 24 registered Eve
     }
   }
 
-  assert.equal(omissionCount, 66);
+  assert.equal(omissionCount, 70);
 });
 
 test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges', () => {
@@ -994,7 +1090,7 @@ test('rejects unregistered Publish Events and invalid schema versions', () => {
 
 test('keeps Core Event definitions in the production Registry, not the fixture module', async () => {
   const publicExports = await import('./src/index.ts');
-  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 24);
+  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 26);
   assert.equal('createM3RuntimeEventFixtures' in publicExports, false);
 });
 

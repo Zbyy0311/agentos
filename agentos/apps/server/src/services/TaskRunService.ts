@@ -1,4 +1,6 @@
 import type {
+  ApiOperation,
+  ApiProblem,
   CreateV2RunInput,
   CreateV2TaskInput,
   Run,
@@ -82,6 +84,7 @@ export interface CreateLegacyRunForBridgeResult {
   runnerWorkspace: Workspace;
   snapshot: RunSnapshot;
   stages: RunStage[];
+  startOperation: ApiOperation;
 }
 
 export interface TaskRunServiceOptions {
@@ -467,14 +470,24 @@ export class TaskRunService {
         createdBy: input.createdBy,
       });
       const persisted = this.snapshotService.persistResolvedRun(run, resolved);
+      const lifecycleTransactionService = this.requireLifecycleTransactionService();
+      lifecycleTransactionService.createRunGraphEventsWithinTransaction(run, persisted.snapshot, persisted.stages);
+      const startOperation = this.requireOperationService().createWithinTransaction({
+        workspaceId: input.workspaceId,
+        runId: run.id,
+        type: 'run.start',
+      });
+      const currentRun = this.deps.runRepository().findById(input.workspaceId, run.id);
+      if (!currentRun) throw new RunNotFoundError(run.id);
       return {
         task,
-        run,
+        run: currentRun,
         taskCreated,
         resolvedConfiguration: resolved,
         runnerWorkspace: this.snapshotService.buildLegacyRunnerWorkspace(input.workspace, resolved),
         snapshot: persisted.snapshot,
         stages: persisted.stages,
+        startOperation,
       };
     });
   }
@@ -526,6 +539,14 @@ export class TaskRunService {
       for (const run of queuedRuns) {
         if (run.origin !== 'legacy_pipeline') continue;
         const task = this.requireTask(workspaceId, run.taskId);
+        const start = this.requireSingleQueuedLegacyStart(workspaceId, run.id);
+        this.requireOperationService().transitionWithinTransaction({
+          workspaceId,
+          operationId: start.id,
+          expectedVersion: start.version,
+          to: 'failed',
+          error: this.legacyBridgeProblem(run, start, 'LEGACY_BRIDGE_RESTARTED', 'Server restarted before Legacy bridge Run entered running'),
+        });
         const failed = this.deps.runRepository().failQueuedBridgeRestart(
           workspaceId,
           run.id,
@@ -988,6 +1009,48 @@ export class TaskRunService {
     });
   }
 
+  reconcileCanonicalLegacyRunStartedWithinTransaction(workspaceId: string, runId: string): Task {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    if (run.origin !== 'legacy_pipeline' || run.status !== 'running') {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+    const task = this.requireTask(workspaceId, run.taskId);
+    if (task.status === 'open') {
+      return this.deps.taskRepository().transitionStatus(workspaceId, task.id, task.version, 'in_progress');
+    }
+    if (task.status === 'in_progress') return task;
+    throw new InvalidTaskTransitionError(task.status, 'in_progress');
+  }
+
+  reconcileCanonicalLegacyRunCompletedWithinTransaction(workspaceId: string, runId: string): Task {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    if (run.origin !== 'legacy_pipeline' || run.status !== 'completed') {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+    const task = this.requireTask(workspaceId, run.taskId);
+    if (task.status !== 'in_progress') {
+      throw new InvalidTaskTransitionError(task.status, 'in_progress');
+    }
+    return this.deps.taskRepository().transitionStatus(
+      workspaceId,
+      task.id,
+      task.version,
+      'in_progress',
+      { pendingResultRunId: run.id },
+    );
+  }
+
+  reconcileCanonicalLegacyRunFailedWithinTransaction(workspaceId: string, runId: string): Task {
+    const run = this.deps.runRepository().findById(workspaceId, runId);
+    if (!run) throw new RunNotFoundError(runId);
+    if (run.origin !== 'legacy_pipeline' || run.status !== 'failed') {
+      throw domainError('LEGACY_CANONICAL_RUN_INTEGRITY_FAILED', 'LEGACY_CANONICAL_RUN_INTEGRITY_FAILED');
+    }
+    return this.resolveTaskAfterRunTerminal(this.requireTask(workspaceId, run.taskId), run);
+  }
+
   completeRunForBridge(workspaceId: string, runId: string): { run: Run; task: Task } {
     return this.deps.runInTransaction(() => this.completeRunForBridgeInTransaction(workspaceId, runId, false));
   }
@@ -1178,6 +1241,14 @@ export class TaskRunService {
         const run = this.deps.runRepository().findById(workspaceId, runId);
         if (!run) throw new RunNotFoundError(runId);
         const task = this.requireTask(workspaceId, run.taskId);
+        const start = this.requireSingleQueuedLegacyStart(workspaceId, run.id);
+        this.requireOperationService().transitionWithinTransaction({
+          workspaceId,
+          operationId: start.id,
+          expectedVersion: start.version,
+          to: 'failed',
+          error: this.legacyBridgeProblem(run, start, BRIDGE_CLAIM_FAILED, errorMessage(originalError)),
+        });
         const failed = this.deps.runRepository().failQueuedBridgeClaim(workspaceId, runId, run.version, errorMessage(originalError));
         this.resolveTaskAfterRunTerminal(task, failed);
       });
@@ -1258,5 +1329,38 @@ export class TaskRunService {
     const task = this.deps.taskRepository().findById(workspaceId, taskId);
     if (!task) throw new TaskNotFoundError(taskId);
     return task;
+  }
+
+  private requireSingleQueuedLegacyStart(workspaceId: string, runId: string): ApiOperation {
+    const starts = this.requireOperationService()
+      .listByRun(workspaceId, runId)
+      .filter(operation => operation.type === 'run.start');
+    if (starts.length !== 1 || starts[0]!.status !== 'queued') {
+      throw domainError('LEGACY_RUN_START_INTEGRITY_FAILED', 'LEGACY_RUN_START_INTEGRITY_FAILED');
+    }
+    return starts[0]!;
+  }
+
+  private legacyBridgeProblem(
+    run: Run,
+    operation: ApiOperation,
+    code: string,
+    detail: string,
+  ): ApiProblem {
+    return {
+      type: 'https://agentos.dev/problems/legacy-bridge-start-failed',
+      title: 'Legacy bridge start failed',
+      status: 500,
+      code,
+      detail,
+      instance: `/runs/${run.id}`,
+      requestId: `legacy-bridge-${run.id}`,
+      retryable: true,
+      context: {
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        operationId: operation.id,
+      },
+    };
   }
 }

@@ -30,6 +30,7 @@ import { createApiNotFoundHandler, createProblemErrorHandler, createRequestIdMid
 import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
 import { TaskRunService } from './services/TaskRunService.js';
+import { LegacyCanonicalExecutionService } from './services/LegacyCanonicalExecutionService.js';
 import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 import { PreferenceService } from './services/PreferenceService.js';
 import { RetentionService } from './services/RetentionService.js';
@@ -148,6 +149,12 @@ async function bootstrap(): Promise<void> {
     }
 
     phase = 'services';
+    const legacyCanonicalExecutionService = new LegacyCanonicalExecutionService(
+      store,
+      taskRunService,
+      store.lifecycleTransactionService(),
+      store.operationService(),
+    );
     const outboxPublisher = store.createOutboxPublisher({
       workerId: `server:${serverInstanceId}`,
       onError: error => {
@@ -207,7 +214,11 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, workspaceManager));
     app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
-    app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager, { taskRunService }));
+    app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager, {
+      taskRunService,
+      legacyCanonicalExecutionService,
+      runStreamService: store.runStreamService(),
+    }));
     app.use('/api/workspaces/:workspaceId/v2', createV2TaskRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId/v2', createV2RunRoutes(store, workspaceManager));
     // M3 P4B canonical top-level Run compatibility routes and the Basic
