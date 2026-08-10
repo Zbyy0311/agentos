@@ -66,6 +66,14 @@ export interface RunLifecycleTransitionWithinTransactionInput {
   readonly failureMessage?: string;
 }
 
+export interface MarkRecoveryRequiredWithinTransactionInput {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly expectedStatus: V2RunStatus;
+  readonly expectedVersion: number;
+  readonly timestamp: string;
+}
+
 interface RunRow {
   id: string;
   workspace_id: string;
@@ -233,6 +241,81 @@ export class RunRepository {
       LIMIT 1
     `).get(workspaceId, taskId) as RunRow | undefined;
     return row ? mapRow(row) : undefined;
+  }
+
+  listActiveByWorkspaceForRecovery(workspaceId: string): Run[] {
+    if (!workspaceId.trim()) {
+      throw new RunValidationError('RUN_RECOVERY_VALIDATION_FAILED: workspaceId is required');
+    }
+    const rows = this.db.prepare(`
+      SELECT * FROM runs
+      WHERE workspace_id = ?
+        AND status IN ('queued','starting','running','waiting_approval','paused')
+      ORDER BY created_at ASC, id ASC
+    `).all(workspaceId) as RunRow[];
+    return rows.map(mapRow);
+  }
+
+  markRecoveryRequiredWithinTransaction(input: MarkRecoveryRequiredWithinTransactionInput): Run {
+    if (!input.workspaceId.trim() || !input.runId.trim()) {
+      throw new RunValidationError('RUN_RECOVERY_VALIDATION_FAILED: workspaceId and runId are required');
+    }
+    if (!ACTIVE_RUN_STATUSES.includes(input.expectedStatus)) {
+      throw new InvalidRunTransitionError(
+        input.expectedStatus,
+        input.expectedStatus,
+        'recovery_required is forbidden for terminal Runs',
+      );
+    }
+    if (!Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1) {
+      throw new RunValidationError('RUN_RECOVERY_VALIDATION_FAILED: expectedVersion must be a positive safe integer');
+    }
+    if (!isCanonicalUtcTimestamp(input.timestamp)) {
+      throw new RunValidationError('RUN_RECOVERY_VALIDATION_FAILED: timestamp must be canonical UTC ISO 8601 milliseconds');
+    }
+
+    const result = this.db.prepare(`
+      UPDATE runs
+      SET recovery_required = 1,
+        updated_at = ?,
+        version = version + 1
+      WHERE workspace_id = ? AND id = ? AND status = ? AND version = ?
+        AND status IN ('queued','starting','running','waiting_approval','paused')
+        AND origin = 'v2_api'
+        AND recovery_required = 0
+    `).run(
+      input.timestamp,
+      input.workspaceId,
+      input.runId,
+      input.expectedStatus,
+      input.expectedVersion,
+    ) as { changes: number };
+
+    if (result.changes === 1) {
+      return this.findById(input.workspaceId, input.runId)!;
+    }
+
+    const current = this.findById(input.workspaceId, input.runId);
+    if (!current) throw new RunNotFoundError(input.runId);
+    if (!ACTIVE_RUN_STATUSES.includes(current.status)) {
+      throw new InvalidRunTransitionError(
+        current.status,
+        current.status,
+        'recovery_required is forbidden for terminal Runs',
+      );
+    }
+    if (current.origin !== 'v2_api') {
+      throw new RunValidationError('RUN_RECOVERY_VALIDATION_FAILED: recovery_required requires a v2_api Run');
+    }
+    if (current.status !== input.expectedStatus) {
+      throw new InvalidRunTransitionError(
+        current.status,
+        input.expectedStatus,
+        'expectedStatus does not match current status',
+      );
+    }
+    if (current.recoveryRequired === true) return current;
+    throw new VersionConflictError('runs', input.runId, input.expectedVersion);
   }
 
   transitionStatus(

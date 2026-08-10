@@ -14,8 +14,10 @@ import type {
   ProviderTypeV1,
   V2TaskPriority,
 } from './index.js';
+import type { M3RunStatus } from './m3-run-status.js';
 import type { V2RunReason, WorktreeMode } from './m3-runtime-contracts.js';
 import {
+  M3_RUN_STATUSES,
   RUNTIME_EVENT_DURABILITIES,
   RUNTIME_EVENT_DOMAINS,
   RUNTIME_EVENT_SEVERITIES,
@@ -516,6 +518,27 @@ export interface RunFailedPayload {
   readonly debugArtifactId?: string;
 }
 
+export interface RunRecoveryAttemptedPayload {
+  readonly previousStatus: M3RunStatus;
+  readonly processFound: boolean;
+  readonly providerSessionFound: boolean;
+  readonly worktreeFound: boolean;
+}
+
+export interface RunRecoveredPayload {
+  readonly recoveryMode:
+    | 'process-reattach'
+    | 'provider-session-resume'
+    | 'queue-restore'
+    | 'approval-restore';
+}
+
+export interface RunRecoveryFailedPayload {
+  readonly errorCode: string;
+  readonly message: string;
+  readonly retryableAsNewRun: boolean;
+}
+
 export interface StageCreatedPayload {
   readonly workflowStageKey: string;
   readonly name: string;
@@ -844,6 +867,38 @@ export function isRunFailedPayload(value: unknown): value is RunFailedPayload {
   );
 }
 
+export function isRunRecoveryAttemptedPayload(value: unknown): value is RunRecoveryAttemptedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['previousStatus', 'processFound', 'providerSessionFound', 'worktreeFound'])
+    && hasValue(M3_RUN_STATUSES, value.previousStatus)
+    && typeof value.processFound === 'boolean'
+    && typeof value.providerSessionFound === 'boolean'
+    && typeof value.worktreeFound === 'boolean'
+  );
+}
+
+export function isRunRecoveredPayload(value: unknown): value is RunRecoveredPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['recoveryMode'])
+    && hasValue(
+      ['process-reattach', 'provider-session-resume', 'queue-restore', 'approval-restore'],
+      value.recoveryMode,
+    )
+  );
+}
+
+export function isRunRecoveryFailedPayload(value: unknown): value is RunRecoveryFailedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['errorCode', 'message', 'retryableAsNewRun'])
+    && hasLifecycleString(value, 'errorCode')
+    && hasLifecycleString(value, 'message')
+    && typeof value.retryableAsNewRun === 'boolean'
+  );
+}
+
 export function isStageCreatedPayload(value: unknown): value is StageCreatedPayload {
   if (!isRecord(value)) return false;
   return (
@@ -1099,6 +1154,54 @@ export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
     },
     forbidsStageId: true,
     validatePayload: isRunFailedPayload,
+  },
+  {
+    type: 'run.recovery_attempted',
+    domain: 'run',
+    description: 'Recovery inspection began for a Task-domain Run.',
+    schemaVersion: 1,
+    source: 'recovery-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['previousStatus', 'processFound', 'providerSessionFound', 'worktreeFound'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunRecoveryAttemptedPayload,
+  },
+  {
+    type: 'run.recovered',
+    domain: 'run',
+    description: 'A Task-domain Run was recovered using a confirmed recovery mode.',
+    schemaVersion: 1,
+    source: 'recovery-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['recoveryMode'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunRecoveredPayload,
+  },
+  {
+    type: 'run.recovery_failed',
+    domain: 'run',
+    description: 'Recovery of a Task-domain Run failed closed with a classified outcome.',
+    schemaVersion: 1,
+    source: 'recovery-manager',
+    defaultSeverity: 'error',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['errorCode', 'message', 'retryableAsNewRun'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunRecoveryFailedPayload,
   },
   {
     type: 'stage.created',

@@ -384,3 +384,58 @@ test('R24 startup recovery is workspace-scoped and returns precise evidence', ()
     rmSync(env.root, { recursive: true, force: true });
   }
 });
+
+test('R25 startup composition preserves Legacy recovery and then restores canonical queued authorization', () => {
+  const env = createRealRecoveryEnv(['ws-a', 'ws-b']);
+  try {
+    const legacy = seedRealLegacyTask(env.store, 'ws-a', 'completed');
+    const legacyRun = createLegacyQueuedRun(env.store, env.service, 'ws-a', legacy.id);
+    const task = env.service.createTask('ws-b', { title: 'canonical task', createdBy: 'tester' });
+    const run = env.service.createRun('ws-b', { taskId: task.id, createdBy: 'tester' });
+    const start = env.store.operationService().create({
+      workspaceId: 'ws-b',
+      runId: run.id,
+      type: 'run.start',
+    });
+
+    const result = recoverInterruptedTaskRuntime(env.store, env.service);
+    const recoveredLegacy = env.store.runRepository().findById('ws-a', legacyRun.run.id)!;
+    const recoveredCanonical = env.store.runRepository().findById('ws-b', run.id)!;
+    const persistedStart = env.store.operationService().findById('ws-b', start.id);
+    const recoveryEvents = env.store.runtimeEventRepository()
+      .listByRunAfterSequence(run.id, 0)
+      .filter(record => record.kind === 'known')
+      .map(record => record.event)
+      .filter(event => event.type.startsWith('run.recover'));
+
+    assert.equal(recoveredLegacy.status, 'failed');
+    assert.equal(recoveredLegacy.failureCode, 'BRIDGE_PRESTART_INTERRUPTED');
+    assert.deepEqual(result.recoveredLegacyQueuedRuns, [{
+      workspaceId: 'ws-a',
+      taskId: legacyRun.task.id,
+      runId: legacyRun.run.id,
+      previousStatus: 'queued',
+      recoveredStatus: 'failed',
+    }]);
+    assert.deepEqual(result.taskDomainRecovery, {
+      queueRestored: [run.id],
+      approvalRestored: [],
+      uncertaintyMarked: [],
+      startupFailed: [],
+      alreadyRecoveryRequired: [],
+    });
+    assert.equal(recoveredCanonical.status, 'queued');
+    assert.equal(recoveredCanonical.recoveryRequired, false);
+    assert.equal(persistedStart.status, 'queued');
+    assert.equal(env.store.operationService().listByRun('ws-b', run.id)
+      .filter(operation => operation.type === 'run.start').length, 1);
+    assert.deepEqual(recoveryEvents.map(event => event.type), [
+      'run.recovery_attempted',
+      'run.recovered',
+    ]);
+    assert.ok(recoveryEvents.every(event => event.correlationId === start.correlationId));
+  } finally {
+    env.store.close();
+    rmSync(env.root, { recursive: true, force: true });
+  }
+});

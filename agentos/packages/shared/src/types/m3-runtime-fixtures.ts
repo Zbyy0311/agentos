@@ -11,6 +11,9 @@ import type {
   RunCreatedPayload,
   RunDequeuedPayload,
   RunFailedPayload,
+  RunRecoveryAttemptedPayload,
+  RunRecoveredPayload,
+  RunRecoveryFailedPayload,
   RunPausedPayload,
   RunQueuedPayload,
   RunResumedPayload,
@@ -122,6 +125,10 @@ export interface M3RuntimeEventFixtureSet {
   readonly validRunCancelledEvent: RuntimeEventEnvelope<RunCancelledPayload>;
   readonly validRunCompletedEvent: RuntimeEventEnvelope<RunCompletedPayload>;
   readonly validRunFailedEvent: RuntimeEventEnvelope<RunFailedPayload>;
+  readonly validRunRecoveryAttemptedEvent: RuntimeEventEnvelope<RunRecoveryAttemptedPayload>;
+  readonly validRunRecoveredEvent: RuntimeEventEnvelope<RunRecoveredPayload>;
+  readonly validRunRecoveredEvents: readonly RuntimeEventEnvelope<RunRecoveredPayload>[];
+  readonly validRunRecoveryFailedEvent: RuntimeEventEnvelope<RunRecoveryFailedPayload>;
   readonly validStageCreatedEvent: RuntimeEventEnvelope<StageCreatedPayload>;
   readonly validStageReadyEvent: RuntimeEventEnvelope<StageReadyPayload>;
   readonly validStageStartingEvent: RuntimeEventEnvelope<StageStartingPayload>;
@@ -140,6 +147,11 @@ export interface M3RuntimeEventFixtureSet {
   readonly invalidReason: RuntimeEventDraft;
   readonly invalidWorktreeMode: RuntimeEventDraft;
   readonly invalidUnknownWorktreeMode: RuntimeEventDraft;
+  readonly invalidRecoveryPreviousStatus: RuntimeEventDraft;
+  readonly invalidRecoveryMode: RuntimeEventDraft;
+  readonly invalidRecoveryBooleans: readonly RuntimeEventDraft[];
+  readonly invalidRecoveryUnknownField: RuntimeEventDraft;
+  readonly invalidRecoveryRequiredOmissions: readonly RuntimeEventDraft[];
   readonly invalidStageSnapshot: RuntimeEventDraft;
   readonly invalidStageEnvelope: RuntimeEventDraft;
   readonly invalidNonCanonicalTimestamp: RuntimeEventDraft;
@@ -234,6 +246,33 @@ export function createM3RuntimeEventFixtures(
     { errorCode: 'FIXTURE_FAILURE', message: 'Fixture failure', phase: 'test', retryable: false },
     { id: 'evt_fixture_10', sequence: 10 },
   );
+  const validRunRecoveryAttemptedEvent = publish<RunRecoveryAttemptedPayload>(
+    'run.recovery_attempted',
+    {
+      previousStatus: 'running',
+      processFound: true,
+      providerSessionFound: false,
+      worktreeFound: true,
+    },
+    { id: 'evt_fixture_30', sequence: 30 },
+  );
+  const validRunRecoveredEvents = (
+    ['process-reattach', 'provider-session-resume', 'queue-restore', 'approval-restore'] as const
+  ).map((recoveryMode, index) => publish<RunRecoveredPayload>(
+    'run.recovered',
+    { recoveryMode },
+    { id: `evt_fixture_recovered_${index + 1}`, sequence: 31 + index },
+  ));
+  const validRunRecoveredEvent = validRunRecoveredEvents[0]!;
+  const validRunRecoveryFailedEvent = publish<RunRecoveryFailedPayload>(
+    'run.recovery_failed',
+    {
+      errorCode: 'RECOVERY_UNCERTAIN',
+      message: 'External execution outcome is unavailable.',
+      retryableAsNewRun: true,
+    },
+    { id: 'evt_fixture_35', sequence: 35 },
+  );
   const validStageCreatedEvent = publish<StageCreatedPayload>(
     'stage.created',
     { workflowStageKey: 'plan', name: 'Plan', sequence: 1, dependsOn: [] },
@@ -322,6 +361,9 @@ export function createM3RuntimeEventFixtures(
     validRunCancelledEvent,
     validRunCompletedEvent,
     validRunFailedEvent,
+    validRunRecoveryAttemptedEvent,
+    validRunRecoveredEvent,
+    validRunRecoveryFailedEvent,
     validStageCreatedEvent,
     validStageReadyEvent,
     validStageStartingEvent,
@@ -376,6 +418,114 @@ export function createM3RuntimeEventFixtures(
     { dequeuedAt: '2026-08-02T00:00:25.000Z' },
     { id: 'evt_fixture_invalid_source', sequence: 25, source: 'run-engine' },
   );
+  const withPayloadField = (
+    event: RuntimeEventEnvelope,
+    field: string,
+    value: unknown,
+    id: string,
+  ): RuntimeEventDraft => ({
+    ...event,
+    id,
+    payload: {
+      ...(event.payload as Record<string, unknown>),
+      [field]: value,
+    },
+  });
+  const withoutPayloadField = (
+    event: RuntimeEventEnvelope,
+    field: string,
+    id: string,
+  ): RuntimeEventDraft => {
+    const payload = { ...(event.payload as Record<string, unknown>) };
+    delete payload[field];
+    return { ...event, id, payload };
+  };
+  const invalidRecoveryPreviousStatus = withPayloadField(
+    validRunRecoveryAttemptedEvent,
+    'previousStatus',
+    'created',
+    'evt_fixture_invalid_recovery_status',
+  );
+  const invalidRecoveryMode = withPayloadField(
+    validRunRecoveredEvent,
+    'recoveryMode',
+    'unsupported-mode',
+    'evt_fixture_invalid_recovery_mode',
+  );
+  const invalidRecoveryBooleans: readonly RuntimeEventDraft[] = [
+    withPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'processFound',
+      'true',
+      'evt_fixture_invalid_recovery_process_boolean',
+    ),
+    withPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'providerSessionFound',
+      1,
+      'evt_fixture_invalid_recovery_provider_boolean',
+    ),
+    withPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'worktreeFound',
+      null,
+      'evt_fixture_invalid_recovery_worktree_boolean',
+    ),
+    withPayloadField(
+      validRunRecoveryFailedEvent,
+      'retryableAsNewRun',
+      'false',
+      'evt_fixture_invalid_recovery_retryable_boolean',
+    ),
+  ];
+  const invalidRecoveryUnknownField = withPayloadField(
+    validRunRecoveredEvent,
+    'unexpectedRecoveryField',
+    true,
+    'evt_fixture_invalid_recovery_unknown_field',
+  );
+  const invalidRecoveryRequiredOmissions: readonly RuntimeEventDraft[] = [
+    withoutPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'previousStatus',
+      'evt_fixture_missing_recovery_previous_status',
+    ),
+    withoutPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'processFound',
+      'evt_fixture_missing_recovery_process_found',
+    ),
+    withoutPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'providerSessionFound',
+      'evt_fixture_missing_recovery_provider_session_found',
+    ),
+    withoutPayloadField(
+      validRunRecoveryAttemptedEvent,
+      'worktreeFound',
+      'evt_fixture_missing_recovery_worktree_found',
+    ),
+    withoutPayloadField(
+      validRunRecoveredEvent,
+      'recoveryMode',
+      'evt_fixture_missing_recovery_mode',
+    ),
+    withoutPayloadField(
+      validRunRecoveryFailedEvent,
+      'errorCode',
+      'evt_fixture_missing_recovery_error_code',
+    ),
+    withoutPayloadField(
+      validRunRecoveryFailedEvent,
+      'message',
+      'evt_fixture_missing_recovery_message',
+    ),
+    withoutPayloadField(
+      validRunRecoveryFailedEvent,
+      'retryableAsNewRun',
+      'evt_fixture_missing_recovery_retryable',
+    ),
+  ];
 
   const unknownSameVersionEvent = {
     ...baseDraft(
@@ -448,6 +598,10 @@ export function createM3RuntimeEventFixtures(
     validRunCancelledEvent,
     validRunCompletedEvent,
     validRunFailedEvent,
+    validRunRecoveryAttemptedEvent,
+    validRunRecoveredEvent,
+    validRunRecoveredEvents,
+    validRunRecoveryFailedEvent,
     validStageCreatedEvent,
     validStageReadyEvent,
     validStageStartingEvent,
@@ -498,6 +652,11 @@ export function createM3RuntimeEventFixtures(
       worktreeMode: 'experimental' as WorktreeMode,
       createdBy: 'fixture',
     }),
+    invalidRecoveryPreviousStatus,
+    invalidRecoveryMode,
+    invalidRecoveryBooleans,
+    invalidRecoveryUnknownField,
+    invalidRecoveryRequiredOmissions,
     invalidStageSnapshot: baseDraft(
       'stage.started',
       {

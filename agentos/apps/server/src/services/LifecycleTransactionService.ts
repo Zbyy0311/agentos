@@ -326,6 +326,32 @@ export interface CompositeLifecycleTransactionResult {
   readonly outboxes: OutboxMessage[];
 }
 
+type P6BRecoveryStatus = Extract<
+  M3RunStatus,
+  'queued' | 'running' | 'waiting_approval' | 'paused'
+>;
+
+type P6BRecoveryOutcome =
+  | {
+      readonly kind: 'recovered';
+      readonly recoveryMode: 'queue-restore' | 'approval-restore';
+    }
+  | {
+      readonly kind: 'failed';
+      readonly errorCode: string;
+      readonly message: string;
+      readonly retryableAsNewRun: boolean;
+    };
+
+export interface RecordRecoveryOutcomeWithinTransactionInput extends CompositeLifecycleInputBase {
+  readonly runId: string;
+  readonly expectedStatus: P6BRecoveryStatus;
+  readonly processFound: boolean;
+  readonly providerSessionFound: boolean;
+  readonly worktreeFound: boolean;
+  readonly outcome: P6BRecoveryOutcome;
+}
+
 const RUN_SINGLE_TRANSITIONS = new Set([
   'queued->starting',
   'starting->failed',
@@ -750,6 +776,82 @@ export class LifecycleTransactionService {
     );
     const runOutbox = this.insertOutbox(runEvent, timestamp);
     return this.compositeResult(input.workspaceId, input.runId, [runEvent], [runOutbox]);
+  }
+
+  recordRecoveryOutcomeWithinTransaction(
+    input: RecordRecoveryOutcomeWithinTransactionInput,
+  ): CompositeLifecycleTransactionResult {
+    this.validateRecoveryOutcomeInput(input);
+    const expectedRunVersion = this.expectedRunVersion(input);
+    const run = this.requireRun(input.workspaceId, input.runId);
+    this.assertExpectedRunState(run, input.expectedStatus);
+    this.assertExpectedVersion('runs', run.id, run.version, expectedRunVersion);
+    if (run.recoveryRequired === true) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_STATE_MISMATCH',
+        `Run ${run.id} already requires reviewed recovery`,
+      );
+    }
+
+    const timestamp = this.transactionTimestamp();
+    const attempted = this.appendEvent(
+      run,
+      undefined,
+      'run.recovery_attempted',
+      timestamp,
+      input.correlationId,
+      input.causationId,
+      input.parentEventId,
+      input.metadata,
+      {
+        previousStatus: run.status,
+        processFound: input.processFound,
+        providerSessionFound: input.providerSessionFound,
+        worktreeFound: input.worktreeFound,
+      },
+    );
+    const attemptedOutbox = this.insertOutbox(attempted, timestamp);
+
+    let currentRun = run;
+    let outcomeType: 'run.recovered' | 'run.recovery_failed';
+    let outcomePayload: Record<string, unknown>;
+    if (input.outcome.kind === 'recovered') {
+      outcomeType = 'run.recovered';
+      outcomePayload = { recoveryMode: input.outcome.recoveryMode };
+    } else {
+      currentRun = this.dependencies.runRepository.markRecoveryRequiredWithinTransaction({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        expectedStatus: input.expectedStatus,
+        expectedVersion: expectedRunVersion,
+        timestamp,
+      });
+      outcomeType = 'run.recovery_failed';
+      outcomePayload = {
+        errorCode: input.outcome.errorCode,
+        message: input.outcome.message,
+        retryableAsNewRun: input.outcome.retryableAsNewRun,
+      };
+    }
+
+    const outcome = this.appendEvent(
+      currentRun,
+      undefined,
+      outcomeType,
+      timestamp,
+      input.correlationId,
+      input.causationId,
+      attempted.id,
+      input.metadata,
+      outcomePayload,
+    );
+    const outcomeOutbox = this.insertOutbox(outcome, timestamp);
+    return this.compositeResult(
+      input.workspaceId,
+      input.runId,
+      [attempted, outcome],
+      [attemptedOutbox, outcomeOutbox],
+    );
   }
 
   startStage(input: StartStageInput): StageLifecycleTransitionResult {
@@ -1696,6 +1798,52 @@ export class LifecycleTransactionService {
     }
     this.validateRunAndStageIds(input.runId, input.stageId);
     this.expectedStageVersion(input);
+  }
+
+  private validateRecoveryOutcomeInput(input: RecordRecoveryOutcomeWithinTransactionInput): void {
+    this.validateCompositeCommonInput(input);
+    this.validateRunId(input.runId);
+    if (!['queued', 'running', 'waiting_approval', 'paused'].includes(input.expectedStatus)) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        'recovery expectedStatus must be non-terminal',
+      );
+    }
+    if (typeof input.processFound !== 'boolean'
+      || typeof input.providerSessionFound !== 'boolean'
+      || typeof input.worktreeFound !== 'boolean') {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        'recovery evidence flags must be boolean',
+      );
+    }
+    if (!isRecord(input.outcome)) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'recovery outcome is required');
+    }
+    if (input.outcome.kind === 'recovered') {
+      const expectedMode = input.expectedStatus === 'queued'
+        ? 'queue-restore'
+        : input.expectedStatus === 'waiting_approval'
+          ? 'approval-restore'
+          : undefined;
+      if (input.outcome.recoveryMode !== expectedMode) {
+        throw new LifecycleTransactionError(
+          'LIFECYCLE_VALIDATION_FAILED',
+          'recoveryMode does not match the persisted Run status',
+        );
+      }
+      return;
+    }
+    if (input.outcome.kind !== 'failed'
+      || !['running', 'waiting_approval', 'paused'].includes(input.expectedStatus)
+      || !isNonBlankString(input.outcome.errorCode)
+      || !isNonBlankString(input.outcome.message)
+      || typeof input.outcome.retryableAsNewRun !== 'boolean') {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        'recovery failure outcome is invalid',
+      );
+    }
   }
 
   private validateStartStageInput(input: StartStageInput): void {

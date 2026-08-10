@@ -22,7 +22,12 @@ import {
 import {
   createM3RuntimeEventFixtures,
 } from './src/types/m3-runtime-fixtures.ts';
-import type { RunFailedPayload } from './src/types/m3-runtime-registry.ts';
+import type {
+  RunFailedPayload,
+  RunRecoveryAttemptedPayload,
+  RunRecoveredPayload,
+  RunRecoveryFailedPayload,
+} from './src/types/m3-runtime-registry.ts';
 import type {
   CancelRunBody,
   CreateRunBody,
@@ -54,6 +59,25 @@ test('keeps the ProviderType compile-time contract in the Shared test source', (
   // @ts-expect-error non-canonical ProviderType must not be assignable to RunFailedPayload
   const invalidProviderType: RunFailedPayload['providerType'] = 'not-a-provider';
   void invalidProviderType;
+});
+
+test('keeps the P6B recovery payload type contract in the Shared test source', () => {
+  const attempted: RunRecoveryAttemptedPayload = {
+    previousStatus: 'running',
+    processFound: true,
+    providerSessionFound: false,
+    worktreeFound: true,
+  };
+  const recovered: RunRecoveredPayload = { recoveryMode: 'queue-restore' };
+  const failed: RunRecoveryFailedPayload = {
+    errorCode: 'RECOVERY_UNCERTAIN',
+    message: 'External execution outcome is unavailable.',
+    retryableAsNewRun: true,
+  };
+
+  assert.equal(attempted.previousStatus, 'running');
+  assert.equal(recovered.recoveryMode, 'queue-restore');
+  assert.equal(failed.retryableAsNewRun, true);
 });
 
 function withPayloadField(
@@ -122,7 +146,7 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
   );
 });
 
-test('registers the complete P2C-1 Event set with frozen domains and metadata', () => {
+test('registers the complete M3 Event set with frozen domains and metadata', () => {
   assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval']);
   const expectedTypes = [
     'run.created',
@@ -134,6 +158,9 @@ test('registers the complete P2C-1 Event set with frozen domains and metadata', 
     'run.cancelled',
     'run.completed',
     'run.failed',
+    'run.recovery_attempted',
+    'run.recovered',
+    'run.recovery_failed',
     'stage.created',
     'stage.ready',
     'stage.starting',
@@ -149,7 +176,7 @@ test('registers the complete P2C-1 Event set with frozen domains and metadata', 
   ];
   assert.deepEqual(M3_RUNTIME_EVENT_TYPES, expectedTypes);
   assert.deepEqual(M3_CORE_EVENT_DEFINITIONS.map(definition => definition.type), expectedTypes);
-  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 21);
+  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 24);
 
   const registry = createM3RuntimeEventRegistry();
   assert.deepEqual(
@@ -163,6 +190,123 @@ test('registers the complete P2C-1 Event set with frozen domains and metadata', 
   assert.equal(registry.get('run.failed')?.defaultSeverity, 'error');
   assert.equal(registry.get('stage.cancelled')?.defaultSeverity, 'notice');
   assert.equal(registry.get('approval.required')?.defaultSeverity, 'notice');
+});
+
+test('registers P6B recovery Events with exact metadata and forbids stageId', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const expected = [
+    {
+      type: 'run.recovery_attempted',
+      severity: 'info',
+      required: ['previousStatus', 'processFound', 'providerSessionFound', 'worktreeFound'],
+    },
+    {
+      type: 'run.recovered',
+      severity: 'info',
+      required: ['recoveryMode'],
+    },
+    {
+      type: 'run.recovery_failed',
+      severity: 'error',
+      required: ['errorCode', 'message', 'retryableAsNewRun'],
+    },
+  ] as const;
+
+  for (const item of expected) {
+    const definition = registry.get(item.type);
+    assert.ok(definition, item.type);
+    assert.deepEqual(
+      {
+        schemaVersion: definition.schemaVersion,
+        domain: definition.domain,
+        source: definition.source,
+        defaultSeverity: definition.defaultSeverity,
+        defaultVisibility: definition.defaultVisibility,
+        defaultDurability: definition.defaultDurability,
+        forbidsStageId: definition.forbidsStageId,
+        requiresStageId: definition.requiresStageId,
+        payloadSchema: definition.payloadSchema,
+      },
+      {
+        schemaVersion: 1,
+        domain: 'run',
+        source: 'recovery-manager',
+        defaultSeverity: item.severity,
+        defaultVisibility: 'internal',
+        defaultDurability: 'durable',
+        forbidsStageId: true,
+        requiresStageId: undefined,
+        payloadSchema: { required: item.required, optional: [] },
+      },
+    );
+  }
+});
+
+test('validates P6B recovery payloads, legal modes, strict fields, and stageId rules', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+  const recoveryEvents = [
+    fixtures.validRunRecoveryAttemptedEvent,
+    fixtures.validRunRecoveredEvent,
+    fixtures.validRunRecoveryFailedEvent,
+  ];
+
+  assert.deepEqual(
+    fixtures.validRunRecoveredEvents.map(event => event.payload.recoveryMode),
+    ['process-reattach', 'provider-session-resume', 'queue-restore', 'approval-restore'],
+  );
+  for (const event of [...recoveryEvents, ...fixtures.validRunRecoveredEvents]) {
+    assert.doesNotThrow(() => registry.publish(event));
+    assert.equal(event.stageId, undefined);
+  }
+  assert.equal(fixtures.validRunRecoveryAttemptedEvent.severity, 'info');
+  assert.equal(fixtures.validRunRecoveredEvent.severity, 'info');
+  assert.equal(fixtures.validRunRecoveryFailedEvent.severity, 'error');
+  assert.equal(fixtures.validRunRecoveryAttemptedEvent.visibility, 'internal');
+  assert.equal(fixtures.validRunRecoveredEvent.visibility, 'internal');
+  assert.equal(fixtures.validRunRecoveryFailedEvent.visibility, 'internal');
+  assert.equal(fixtures.validRunRecoveryAttemptedEvent.durability, 'durable');
+  assert.equal(fixtures.validRunRecoveredEvent.durability, 'durable');
+  assert.equal(fixtures.validRunRecoveryFailedEvent.durability, 'durable');
+
+  for (const event of recoveryEvents) {
+    assert.throws(
+      () => registry.publish({ ...event, stageId: 'stage_fixture_01' }),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'UNEXPECTED_STAGE_ID',
+      `${event.type} must forbid stageId`,
+    );
+  }
+
+  assert.throws(
+    () => registry.publish(fixtures.invalidRecoveryPreviousStatus),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.invalidRecoveryMode),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  for (const invalidBoolean of fixtures.invalidRecoveryBooleans) {
+    assert.throws(
+      () => registry.publish(invalidBoolean),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+    );
+  }
+  assert.throws(
+    () => registry.publish(fixtures.invalidRecoveryUnknownField),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
+  );
+  for (const omittedRequiredField of fixtures.invalidRecoveryRequiredOmissions) {
+    assert.throws(
+      () => registry.publish(omittedRequiredField),
+      (error: unknown) => error instanceof RuntimeEventRegistryError
+        && error.code === 'INVALID_EVENT_PAYLOAD',
+    );
+  }
 });
 
 test('validates canonical UTC timestamp and source/Envelope reference rules', () => {
@@ -409,8 +553,8 @@ test('covers every registered payload with a valid and an unknown-field invalid 
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
 
-  assert.equal(fixtures.validEvents.length, 21);
-  assert.equal(fixtures.invalidPayloads.length, 21);
+  assert.equal(fixtures.validEvents.length, 24);
+  assert.equal(fixtures.invalidPayloads.length, 24);
   for (const event of fixtures.validEvents) {
     assert.ok(registry.get(event.type), `missing definition for ${event.type}`);
   }
@@ -423,7 +567,7 @@ test('covers every registered payload with a valid and an unknown-field invalid 
   }
 });
 
-test('rejects omission of every required payload field for all 21 registered Events', () => {
+test('rejects omission of every required payload field for all 24 registered Events', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
   const validEvents = new Map(fixtures.validEvents.map(event => [event.type, event]));
@@ -462,7 +606,7 @@ test('rejects omission of every required payload field for all 21 registered Eve
     }
   }
 
-  assert.equal(omissionCount, 58);
+  assert.equal(omissionCount, 66);
 });
 
 test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges', () => {
@@ -545,6 +689,18 @@ test('maps all 17 Run and 19 Stage transitions without terminal outgoing edges',
   assert.equal(M3_RUN_TRANSITION_EVENT_CONTRACTS.some(contract => contract.primaryEvent === 'run.queued'), false);
   assert.equal(M3_RUNTIME_EVENT_TYPES.includes('run.status_changed' as never), false);
   assert.equal(M3_RUNTIME_EVENT_TYPES.includes('stage.status_changed' as never), false);
+  for (const recoveryType of [
+    'run.recovery_attempted',
+    'run.recovered',
+    'run.recovery_failed',
+  ] as const) {
+    assert.equal(
+      [...M3_RUN_TRANSITION_EVENT_CONTRACTS, ...M3_STAGE_TRANSITION_EVENT_CONTRACTS]
+        .some(contract => contract.primaryEvent === recoveryType),
+      false,
+      recoveryType,
+    );
+  }
 });
 
 test('freezes the shared multi-Event ordering contracts', () => {
@@ -838,7 +994,7 @@ test('rejects unregistered Publish Events and invalid schema versions', () => {
 
 test('keeps Core Event definitions in the production Registry, not the fixture module', async () => {
   const publicExports = await import('./src/index.ts');
-  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 21);
+  assert.equal(M3_CORE_EVENT_DEFINITIONS.length, 24);
   assert.equal('createM3RuntimeEventFixtures' in publicExports, false);
 });
 

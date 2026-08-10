@@ -1,5 +1,10 @@
 import type { Store } from './store/Store.js';
+import type { SqliteStore } from './store/SqliteStore.js';
 import type { RecoveredLegacyQueuedRun, TaskRunService } from './services/TaskRunService.js';
+import {
+  TaskRunRecoveryService,
+  type TaskDomainRecoverySummary,
+} from './services/TaskRunRecoveryService.js';
 
 export interface RecoveredTask {
   workspaceId: string;
@@ -9,7 +14,18 @@ export interface RecoveredTask {
 export interface RecoveredTaskRuntime {
   recoveredLegacyTasks: RecoveredTask[];
   recoveredLegacyQueuedRuns: RecoveredLegacyQueuedRun[];
+  taskDomainRecovery: TaskDomainRecoverySummary;
 }
+
+type TaskRecoveryStore = Store & Pick<
+  SqliteStore,
+  | 'runRepository'
+  | 'runStageRepository'
+  | 'operationService'
+  | 'lifecycleTransactionService'
+  | 'runtimeEventRepository'
+  | 'runInTransaction'
+>;
 
 export function recoverInterruptedRunningTasks(
   store: Store,
@@ -41,12 +57,35 @@ export function recoverInterruptedRunningTasks(
 }
 
 export function recoverInterruptedTaskRuntime(
-  store: Store,
+  store: TaskRecoveryStore,
   taskRunService: TaskRunService,
 ): RecoveredTaskRuntime {
   const recoveredLegacyTasks = recoverInterruptedRunningTasks(store);
-  const recoveredLegacyQueuedRuns = store
-    .loadWorkspaces()
+  const workspaces = store.loadWorkspaces();
+  const recoveredLegacyQueuedRuns = workspaces
     .flatMap(workspace => taskRunService.recoverInterruptedLegacyQueuedRuns(workspace.id));
-  return { recoveredLegacyTasks, recoveredLegacyQueuedRuns };
+  const taskRunRecoveryService = new TaskRunRecoveryService({
+    runRepository: store.runRepository(),
+    runStageRepository: store.runStageRepository(),
+    operationService: store.operationService(),
+    lifecycleTransactionService: store.lifecycleTransactionService(),
+    runtimeEventRepository: store.runtimeEventRepository(),
+    runInTransaction: fn => store.runInTransaction(fn),
+  });
+  const taskDomainRecovery: TaskDomainRecoverySummary = {
+    queueRestored: [],
+    approvalRestored: [],
+    uncertaintyMarked: [],
+    startupFailed: [],
+    alreadyRecoveryRequired: [],
+  };
+  for (const workspace of workspaces) {
+    const workspaceRecovery = taskRunRecoveryService.recoverWorkspace(workspace.id);
+    taskDomainRecovery.queueRestored.push(...workspaceRecovery.queueRestored);
+    taskDomainRecovery.approvalRestored.push(...workspaceRecovery.approvalRestored);
+    taskDomainRecovery.uncertaintyMarked.push(...workspaceRecovery.uncertaintyMarked);
+    taskDomainRecovery.startupFailed.push(...workspaceRecovery.startupFailed);
+    taskDomainRecovery.alreadyRecoveryRequired.push(...workspaceRecovery.alreadyRecoveryRequired);
+  }
+  return { recoveredLegacyTasks, recoveredLegacyQueuedRuns, taskDomainRecovery };
 }
