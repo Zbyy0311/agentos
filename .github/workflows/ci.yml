@@ -16,6 +16,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+defaults:
+  run:
+    working-directory: agentos
+
 jobs:
   server:
     runs-on: windows-latest
@@ -33,6 +37,7 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
