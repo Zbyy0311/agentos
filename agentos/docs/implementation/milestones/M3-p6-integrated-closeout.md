@@ -252,9 +252,24 @@ REMOTE CHECKS:
 UNAVAILABLE — NOT PASS
 ```
 
-No claim of remote CI or remote integrated review PASS is made.
+```text
+GitHub Remote Checks / CI:
+UNAVAILABLE — NOT PASS
 
-## 16. Remaining Boundaries
+P6D independent remote re-review:
+PASS
+```
+
+The independent review PASS is separate evidence and is not relabeled as
+GitHub Remote Checks.
+
+## 16. Historical P6D Remaining Boundaries
+
+This section records the historical gate state at the time the original P6D
+package was completed. It is superseded by the §17 final disposition: P6 is
+ACCEPTED / CLOSED, P7 is COMPLETED, PR #40 is MERGED, and the M3 implementation
+is merged into main. The items below are preserved as historical evidence only
+and no longer represent current status.
 
 - P7: NOT ENTERED / NOT AUTHORIZED. P7 owns the consolidated Draft PR,
   ordinary merge, and closeout.

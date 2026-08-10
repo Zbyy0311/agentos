@@ -1,6 +1,6 @@
 # AgentOS M3 Lifecycle, Event and API Foundation — Final Closeout
 
-Status: M3 FOUNDATION IMPLEMENTATION COMPLETE — M3 FINAL CLOSEOUT PROPOSED — AWAITING INDEPENDENT REMOTE REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS
+Status: M3 FOUNDATION IMPLEMENTATION COMPLETE — M3 FINAL CLOSEOUT PROPOSED — AWAITING INDEPENDENT REMOTE RE-REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS
 
 ## 1. Closure Verdict
 
@@ -102,6 +102,37 @@ No M4 runtime capability is introduced by M3.
   and integrated verification (P6D): COMPLETE / ACCEPTED / CLOSED.
 - P7: Consolidated formal gate, Draft PR, Ready, and ordinary merge:
   COMPLETE.
+
+### 4.1 Final Accepted Refs
+
+```text
+P5C:
+a1cbb2868f9da215fab058b4176d70a3b382831d
+
+P6A0:
+7fd1f642a4851b52f115d49d1bb8d917de59cd4e
+
+P6A:
+a0b6460ecab7e1f0e87837bceb1b7fea7142ea29
+
+P6B:
+ff9a375f681d96fd91d07f3f237529adb46a12c8
+
+P6C implementation:
+dbdf73b4bf63388facf5251d73f5b161b2481d21
+
+P6C accepted remediation:
+2151ed57e774cd585337709f09169ded3d3e3304
+
+P6D initial:
+d8e22477031abb7a5bc7fcf892e50d77213d7cb3
+
+P6D accepted remediation:
+35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b
+
+M3 implementation merge:
+312485568cb3f11437e11c301d91d4a80e6c62b9
+```
 
 ## 5. Final PR / Merge Evidence
 
@@ -357,5 +388,5 @@ M3 FOUNDATION:
 FINAL CLOSEOUT PROPOSED
 
 M3 FINAL CLOSEOUT:
-AWAITING INDEPENDENT REMOTE REVIEW
+AWAITING INDEPENDENT REMOTE RE-REVIEW
 ```

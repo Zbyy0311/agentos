@@ -2,7 +2,7 @@
 
 Status: M3 P5 COMPLETE / ACCEPTED — M3 P6A ACCEPTED — M3 P6B ACCEPTED — M3 P6C ACCEPTED — M3 P6D ACCEPTED — M3 P6 COMPLETE / ACCEPTED — M3 P7 COMPLETE — PR #40 MERGED — M3 IMPLEMENTATION MERGED INTO MAIN — M3 FOUNDATION COMPLETE — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
-This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation, Remote Checks, and Production Cutover remain outside this closure.
+This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation is complete / accepted and merged as part of M3. Remote Checks and Production Cutover remain outside the completed M3 Foundation authorization boundary.
 
 ## 1. Authoritative contract
 
