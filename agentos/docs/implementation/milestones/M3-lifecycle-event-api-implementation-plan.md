@@ -1,6 +1,6 @@
 # AgentOS M3 Lifecycle, Event and API Foundation Implementation Plan
 
-Status: M3 P5 COMPLETE / ACCEPTED — M3 P6-0 INDEPENDENT REVIEW PASS WITH CONTRACT RECLASSIFICATION — P6A0 INDEPENDENT REMOTE REVIEW CHANGES REQUIRED / HIGH-1 — P6A0 HIGH-1 DOCS-ONLY FORWARD REMEDIATION DOCUMENTED — P6 PRODUCTION ENTRY NO-GO PENDING INDEPENDENT REMOTE RE-REVIEW — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: M3 P5 COMPLETE / ACCEPTED — M3 P6A ACCEPTED — M3 P6B ACCEPTED — M3 P6C ACCEPTED — M3 P6D INTEGRATED VERIFICATION COMPLETE — P6 AWAITING INDEPENDENT INTEGRATED REMOTE REVIEW — P7 NOT ENTERED / NOT AUTHORIZED — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
 This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation, Remote Checks, and Production Cutover remain outside this closure.
 
@@ -1213,12 +1213,40 @@ Current status:
   `67e06e12088c6f369763bc5241ea10cc35876da8`: CHANGES REQUIRED — HIGH-1.
 - P6A0 HIGH-1 durable failure evidence remediation: DOCUMENTED; awaiting
   independent remote re-review before any P6 production authorization.
+- P6A: ACCEPTED. P6A implementation baseline `4efef838` with remediation
+  `a0b6460e`; Outbox reclaim/retry/dead-letter evidence accepted.
+- P6B: ACCEPTED at
+  `ff9a375f681d96fd91d07f3f237529adb46a12c8`; v2 task-domain recovery
+  semantics accepted.
+- P6C: ACCEPTED at
+  `2151ed57e774cd585337709f09169ded3d3e3304`; P6C HIGH-1 independent remote
+  re-review PASS; Legacy canonical restart recovery accepted.
+- P6D: INTEGRATED VERIFICATION COMPLETE. New consolidated suite
+  `apps/server/src/services/m3-p6-integrated-verification.test.ts` passes
+  23/23; P6A/P6B/P6C/P5/Lifecycle/Shared/full-server regressions green;
+  closeout evidence in
+  `docs/implementation/milestones/M3-p6-integrated-closeout.md`.
 - New P6 user Owner Decision: NONE.
-- P6 production entry: NO-GO.
-- P6A/P6B/P6C/P6D: NOT ENTERED.
+- P6: AWAITING INDEPENDENT INTEGRATED REMOTE REVIEW.
+- P7: NOT ENTERED / NOT AUTHORIZED.
+- DRAFT PR: NOT CREATED.
 - Migration 014: NOT CREATED / NOT REQUIRED.
 - Remote Checks: UNAVAILABLE — NOT PASS.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
+- Legacy Retirement: NOT PERFORMED.
+- Web default switch: NOT PERFORMED.
+- M4 runtime expansion: NOT ENTERED.
 
-This P6A0 update does not claim a P6 production implementation, P6A entry,
-merge, Remote CI success, Production readiness, or Production Cutover.
+This P6D update records the accepted P6A/P6B/P6C state and the completed P6D
+integrated verification. It does not claim P7 entry, merge, Remote CI success,
+Production readiness, Production Cutover, Legacy Retirement, or a Web default
+switch.
+
+Supersedes, for current-status purposes only: the earlier P6A0-era statements
+that P6 production implementation was not authorized and that
+P6A/P6B/P6C/P6D were not entered. Those statements remain intact as historical
+evidence of the sequential authorization state at the time they were written;
+the accepted P6A (`4efef838` + `a0b6460e`), P6B
+(`ff9a375f681d96fd91d07f3f237529adb46a12c8`), P6C
+(`2151ed57e774cd585337709f09169ded3d3e3304`), and the P6D integrated
+verification are the current verified state.
