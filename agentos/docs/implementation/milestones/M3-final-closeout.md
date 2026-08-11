@@ -1,6 +1,6 @@
 # AgentOS M3 Lifecycle, Event and API Foundation — Final Closeout
 
-Status: M3 FOUNDATION IMPLEMENTATION COMPLETE — M3 FINAL CLOSEOUT PACKAGE ACCEPTED — INDEPENDENT REMOTE RE-REVIEW PASS — PR #41 READY FOR REVIEW — AWAITING ORDINARY MERGE — REMOTE CHECKS UNAVAILABLE — NOT PASS
+Status: M3 COMPLETE — PR #40 AND PR #41 MERGED — CI BASELINE MERGED VIA PR #42 — POST-MERGE MAIN CI PASS — M4 PREPLANNING AUTHORIZED ONLY
 
 ## 1. Closure Verdict
 
@@ -25,17 +25,24 @@ completion, Legacy retirement, or M4 completion.
 
 ```text
 origin/main:
+859d8c73657741c03a3241402a9ab4c2e2f173ce
+
+M3 implementation merge commit (PR #40):
 312485568cb3f11437e11c301d91d4a80e6c62b9
 
-merge commit:
-312485568cb3f11437e11c301d91d4a80e6c62b9
+M3 final closeout merge commit (PR #41):
+77add6a0dc1a860d9d054b0bc146b231c9cccb88
+
+CI baseline merge commit (PR #42):
+859d8c73657741c03a3241402a9ab4c2e2f173ce
 ```
 
-`git log -1 --oneline origin/main` is the PR #40 ordinary merge commit
-("Merge pull request #40 from Zbyy0311/test/m3-p6d-integrated-verification").
-The merged main tree is identical to the accepted PR head tree
+PR #40 is the ordinary merge of the accepted M3 implementation tree. The
+merged PR #40 tree is identical to the accepted PR head tree
 `35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b` (verified with `git diff --exit-code`
-before this docs-only closeout branch).
+before the original docs-only closeout branch). PR #41 then merged this final
+closeout package, and PR #42 merged the repository CI baseline. The current
+authoritative main is the PR #42 ordinary merge commit shown above.
 
 ## 3. Scope Delivered
 
@@ -356,13 +363,17 @@ This is an independent external review gate, not a GitHub APPROVED review.
 ## 16. Remote Checks
 
 ```text
-REMOTE CHECKS:
-UNAVAILABLE — NOT PASS
+CURRENT MAIN REPOSITORY CI:
+AVAILABLE — PASS
 ```
 
-Accepted substitute evidence consists of independent remote code reviews,
-local formal gates, integrated verification, and post-merge tree verification;
-this substitute evidence is not renamed as Remote Checks.
+At the time of the original M3 closeout, GitHub Remote Checks were unavailable
+and the accepted substitute evidence consisted of independent remote reviews,
+local formal gates, integrated verification, and post-merge tree verification.
+That historical limitation is now superseded by post-merge main CI run
+`31513943821`, which completed successfully at
+`859d8c73657741c03a3241402a9ab4c2e2f173ce` with dependency install, Windows
+TCP diagnostics, Server tests, Shared M3 contracts, and workspace build passing.
 
 ## 17. Explicit Non-Goals
 
@@ -386,7 +397,7 @@ Migration 014:
 NOT CREATED
 
 M4:
-NOT ENTERED
+PREPLANNING AUTHORIZED ONLY
 
 ProcessManager:
 NOT IMPLEMENTED BY M3
@@ -399,10 +410,14 @@ NOT IMPLEMENTED BY M3
 
 ```text
 M4 ENTRY:
-PENDING SEPARATE AUTHORIZATION
+AUTHORIZED FOR PREPLANNING ONLY
+
+M4 PRODUCTION IMPLEMENTATION:
+NOT AUTHORIZED
 ```
 
-No M4 branch is created by this closeout.
+This closeout does not create an M4 implementation branch, schema change,
+Migration 014, production cutover, Legacy retirement, or Web default switch.
 
 ## 19. Final M3 Status
 
@@ -417,11 +432,20 @@ M3 FINAL CLOSEOUT INDEPENDENT REMOTE RE-REVIEW:
 PASS
 
 PR #41:
-READY FOR REVIEW / AWAITING ORDINARY MERGE
+MERGED — 77add6a0dc1a860d9d054b0bc146b231c9cccb88
 
 M3 REPOSITORY FINAL CLOSEOUT:
-NOT YET MERGED
+MERGED
+
+CI BASELINE / PR #42:
+MERGED — 859d8c73657741c03a3241402a9ab4c2e2f173ce
+
+POST-MERGE MAIN CI:
+PASS — RUN 31513943821
 
 M3:
-NOT YET FORMALLY COMPLETE
+FORMALLY COMPLETE
+
+M4 ENTRY:
+AUTHORIZED FOR PREPLANNING ONLY
 ```

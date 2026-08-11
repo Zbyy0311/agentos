@@ -3,7 +3,19 @@
 > Date: 2026-07-21  
 > Scope: Concrete migration items from v1 to v2 architecture  
 > Repository: `Zbyy0311/agentos`  
-> Note: This register tracks specific migration work items, not a full timeline.
+> Note: This register preserves the 2026-07-21 migration-planning baseline; its
+> section-level "Current State" and priority labels are historical as of that
+> date, not the repository's current completion state.
+>
+> Current reconciliation (2026-08-12): M3 implementation and final closeout are
+> merged through PR #40 / PR #41. Repository CI is merged through PR #42, and
+> post-merge main run `31513943821` passed. The authoritative migration registry
+> is continuous from 001 through 013; Migration 014 is absent and was not
+> required by M3. Task/Run separation and the M3 RunEngine/lifecycle foundation
+> are complete. ProcessManager, ProviderAdapter, durable process/provider-session
+> storage, Legacy retirement, and production cutover remain M4+ planning topics.
+> This historical register does not authorize those changes. M4 is authorized
+> for preplanning only.
 
 ---
 

@@ -4,7 +4,7 @@
 
 > Status: Draft  
 > Version: 2.0  
-> Last Updated: 2026-08-08
+> Last Updated: 2026-08-12
 > Scope: AgentOS v2 HTTP, Realtime and Internal Runtime API Contract  
 > Depends On:
 > - `00-Vision.md`
@@ -32,9 +32,11 @@
 > P3D-1 / P3D-2: IMPLEMENTED AND MERGED via PR #36 / PR #37
 > P3D-3: COMPLETE AND MERGED via PR #38
 > P3E integrated verification evidence: COMPLETE (test/docs only, commit `400a3b29697b7185d29df2cb9da0417260549913`; no API production behavior added)
-> Migration 014: NOT REQUIRED / NOT AUTHORIZED / ABSENT
+> Migration 014: NOT REQUIRED BY M3 / NOT AUTHORIZED / ABSENT
 > Production Cutover: NOT PERFORMED / NOT AUTHORIZED
-> Remote Checks: UNAVAILABLE — NOT PASS
+> M3: FORMALLY COMPLETE via PR #40 / PR #41
+> Repository CI: PASS via PR #42 and post-merge main run `31513943821`
+> M4 Entry: AUTHORIZED FOR PREPLANNING ONLY; production implementation and Migration 014 creation are NOT AUTHORIZED
 
 ---
 

@@ -4,7 +4,7 @@
 
 > Status: Draft  
 > Version: 2.0  
-> Last Updated: 2026-08-08
+> Last Updated: 2026-08-12
 > Scope: AgentOS v2 Canonical Persistent Data Model  
 > Depends On:
 > - `00-Vision.md`
@@ -27,9 +27,11 @@
 > M3 P3E entry production baseline: `7efecc67a8f8cb8abe64a4ceefe7f144d22ec17e`
 > P3D: COMPLETE via PR #36 / PR #37 / PR #38
 > P3E integrated verification evidence: `400a3b29697b7185d29df2cb9da0417260549913` (test/docs only; zero production behavior change)
-> Migration 014: NOT REQUIRED / ABSENT
+> Migration 014: NOT REQUIRED BY M3 / ABSENT
 > Production Cutover: NOT PERFORMED / NOT AUTHORIZED
-> Remote Checks: UNAVAILABLE — NOT PASS
+> M3: FORMALLY COMPLETE via PR #40 / PR #41
+> Repository CI: PASS via PR #42 and post-merge main run `31513943821`
+> M4 Entry: AUTHORIZED FOR PREPLANNING ONLY; production implementation and Migration 014 creation are NOT AUTHORIZED
 
 ---
 

@@ -1,8 +1,8 @@
 # AgentOS M3 Lifecycle, Event and API Foundation Implementation Plan
 
-Status: M3 P5 COMPLETE / ACCEPTED — M3 P6A ACCEPTED — M3 P6B ACCEPTED — M3 P6C ACCEPTED — M3 P6D ACCEPTED — M3 P6 COMPLETE / ACCEPTED — M3 P7 COMPLETE — PR #40 MERGED — M3 IMPLEMENTATION MERGED INTO MAIN — M3 FOUNDATION COMPLETE — REMOTE CHECKS UNAVAILABLE — NOT PASS — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: M3 COMPLETE — PR #40 IMPLEMENTATION MERGED — PR #41 FINAL CLOSEOUT MERGED — PR #42 CI BASELINE MERGED — POST-MERGE MAIN CI PASS — M4 PREPLANNING AUTHORIZED ONLY — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
-This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation is complete / accepted and merged as part of M3. Remote Checks and Production Cutover remain outside the completed M3 Foundation authorization boundary.
+This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation is complete / accepted and merged as part of M3. Repository CI is now available and passing; Production Cutover and M4 production implementation remain outside the completed M3 Foundation authorization boundary.
 
 ## 1. Authoritative contract
 
@@ -264,9 +264,10 @@ redefine the four canonical startup mappings.
 - **P3 — Run Engine, Workflow Executor and Operation:** NOT AUTHORIZED.
 - **Production Cutover:** NOT AUTHORIZED / NOT STARTED.
 
-The P2C-0 authorization language below is the historical specification-gate
-record. The current integrated state is the closeout status above; it does not
-authorize P3, Remote Checks, a merge, or Production Cutover.
+The P2 phase status and P2C-0 authorization language in this section are the
+historical P2 specification-gate record; they do not describe the repository's
+current integrated state. The current state is recorded at the end of this
+plan. The historical gate did not authorize P3, a merge, or Production Cutover.
 
 #### P2C-0 — Lifecycle Event Specification Closure
 
@@ -1238,20 +1239,23 @@ Current status:
 - Accepted P6D: `35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b`.
 - M3 IMPLEMENTATION: MERGED INTO MAIN.
 - M3: FOUNDATION COMPLETE.
-- M3 FINAL CLOSEOUT: PROPOSED (docs-only branch
-  `docs/m3-final-closeout`; awaiting independent remote review before merge).
-- Migration 014: NOT CREATED / NOT REQUIRED.
-- Remote Checks: UNAVAILABLE — NOT PASS.
+- M3 FINAL CLOSEOUT: ACCEPTED / MERGED via PR #41 at
+  `77add6a0dc1a860d9d054b0bc146b231c9cccb88`.
+- Migration 014: NOT REQUIRED BY M3 / NOT CREATED / M4 CREATION NOT AUTHORIZED.
+- Repository CI baseline: MERGED via PR #42 at
+  `859d8c73657741c03a3241402a9ab4c2e2f173ce`.
+- Post-merge main CI: PASS (run `31513943821`).
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
 - Legacy Retirement: NOT PERFORMED.
 - Web default switch: NOT PERFORMED.
-- M4 runtime expansion: NOT ENTERED.
+- M4 Entry: AUTHORIZED FOR PREPLANNING ONLY.
+- M4 production implementation: NOT AUTHORIZED.
 
 This final closeout update records the accepted P6A/P6B/P6C/P6D state, the
-completed P6 integrated verification, the completed P7 gate, the merged PR #40,
-and the M3 implementation merged into main. It does not claim Remote CI
-success, Production readiness, Production Cutover, Legacy Retirement, or a Web
-default switch.
+completed P6 integrated verification, the completed P7 gate, the merged PR #40
+implementation, the merged PR #41 closeout, and the passing PR #42 repository
+CI baseline. It does not claim Production readiness, Production Cutover,
+Legacy Retirement, a Web default switch, or M4 production implementation.
 
 Supersedes, for current-status purposes only: the earlier P6A0/P6D-era
 statements that P6 production implementation was not authorized, that
