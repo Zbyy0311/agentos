@@ -42,6 +42,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Windows TCP port diagnostics
+        shell: pwsh
+        run: |
+          netsh interface ipv4 show excludedportrange protocol=tcp
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          netsh interface ipv4 show dynamicport tcp
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
       - name: Server tests
         run: pnpm --filter @agentos/server test
 

@@ -54,6 +54,44 @@ function assertUnavailable(error: unknown): boolean {
   return true;
 }
 
+function readDiagnosticField(value: object, key: string): unknown {
+  try {
+    return (value as Record<string, unknown>)[key];
+  } catch {
+    return undefined;
+  }
+}
+
+function snapshotDiagnosticValue(
+  value: unknown,
+  depth = 0,
+  seen = new WeakSet<object>(),
+): unknown {
+  if (value === null || ['string', 'number', 'boolean'].includes(typeof value)) return value;
+  if (typeof value !== 'object' || depth >= 2 || seen.has(value)) return undefined;
+  seen.add(value);
+  const snapshot: Record<string, unknown> = {};
+  for (const key of ['name', 'message', 'code', 'errno', 'syscall', 'address', 'port']) {
+    const field = readDiagnosticField(value, key);
+    if (field === null || ['string', 'number', 'boolean'].includes(typeof field)) snapshot[key] = field;
+  }
+  const cause = snapshotDiagnosticValue(readDiagnosticField(value, 'cause'), depth + 1, seen);
+  if (cause !== undefined) snapshot.cause = cause;
+  return Object.keys(snapshot).length > 0 ? snapshot : undefined;
+}
+
+function snapshotListenTarget(args: readonly unknown[]): Record<string, unknown> | undefined {
+  const target = args[0];
+  if (typeof target === 'number') return { port: target };
+  if (!target || typeof target !== 'object') return undefined;
+  const snapshot: Record<string, unknown> = {};
+  for (const key of ['host', 'port']) {
+    const field = readDiagnosticField(target, key);
+    if (field === null || ['string', 'number', 'boolean'].includes(typeof field)) snapshot[key] = field;
+  }
+  return Object.keys(snapshot).length > 0 ? snapshot : undefined;
+}
+
 function assertAlreadyRunning(error: unknown): boolean {
   assert.ok(error instanceof ServerAlreadyRunningError);
   assert.equal((error as ServerAlreadyRunningError).code, 'SERVER_ALREADY_RUNNING');
@@ -199,7 +237,50 @@ test('R35 loopback same-root conflict, release and re-acquire; candidate ports a
       assert.ok(port >= 49152 && port <= 65535, `candidate ${port} must be inside 49152-65535`);
     }
 
-    first = await acquireLoopbackServerOwnership(root);
+    const mutableNet = net as typeof net & { createServer: typeof net.createServer };
+    const originalCreateServer = mutableNet.createServer;
+    const bindAttempts: Array<{
+      listenTarget?: Record<string, unknown>;
+      rawError?: unknown;
+    }> = [];
+    const observedServers: Array<{
+      server: net.Server;
+      originalListen: net.Server['listen'];
+      onError: (error: Error) => void;
+    }> = [];
+    mutableNet.createServer = ((...createArgs: unknown[]) => {
+      const server = Reflect.apply(originalCreateServer, mutableNet, createArgs) as net.Server;
+      const attempt: (typeof bindAttempts)[number] = {};
+      bindAttempts.push(attempt);
+      const originalListen = server.listen;
+      const onError = (error: Error): void => {
+        attempt.rawError = snapshotDiagnosticValue(error);
+      };
+      server.once('error', onError);
+      server.listen = (function(this: net.Server, ...listenArgs: unknown[]): net.Server {
+        attempt.listenTarget = snapshotListenTarget(listenArgs);
+        return Reflect.apply(originalListen, this, listenArgs) as net.Server;
+      }) as net.Server['listen'];
+      observedServers.push({ server, originalListen, onError });
+      return server;
+    }) as typeof net.createServer;
+    try {
+      first = await acquireLoopbackServerOwnership(root);
+    } catch (error) {
+      console.error(JSON.stringify({
+        diagnostic: 'R35_WINDOWS_BIND_FAILURE',
+        candidatePorts: derivedA,
+        bindAttempts,
+        productionError: snapshotDiagnosticValue(error),
+      }));
+      throw error;
+    } finally {
+      mutableNet.createServer = originalCreateServer;
+      for (const observed of observedServers) {
+        observed.server.removeListener('error', observed.onError);
+        observed.server.listen = observed.originalListen;
+      }
+    }
     assert.match(first.endpoint, /^tcp:\/\/127\.0\.0\.1:\d+$/);
     assert.ok(!first.endpoint.includes(root), 'endpoint must not contain the project root');
     assert.ok(!first.endpoint.endsWith('.sock'), 'loopback ownership never uses filesystem sockets');
