@@ -6,12 +6,20 @@
 
 ## 冻结基线与修改范围
 
-开始实施前必须满足：
+远端冻结基线为：
 
 - `origin/main` 为 `77add6a0dc1a860d9d054b0bc146b231c9cccb88`。
-- 当前 HEAD 与 `origin/infra/github-actions-ci` 均为 `56829742c6ec29a4a56e957deb530e34daa9b762`。
+- `origin/infra/github-actions-ci` 与 PR #42 remote head 均为 `56829742c6ec29a4a56e957deb530e34daa9b762`。
 - PR #42 为 OPEN/DRAFT、未合并。
-- 工作树干净，`git diff --check` 通过。
+
+本地设计提交链为：
+
+- initial design commit 为 `8e7f214fa9aff397cc6f6ed76b35941352f119cc`。
+- `8e7f214fa9aff397cc6f6ed76b35941352f119cc^` 必须为 `56829742c6ec29a4a56e957deb530e34daa9b762`。
+- 本次 review correction 开始时的 local HEAD 为 `8e7f214fa9aff397cc6f6ed76b35941352f119cc`。
+- `IMPLEMENTATION_BASE` 定义为本设计通过最终独立复审时的最新 docs-only spec revision commit；开始 production 修改前必须记录其实际 SHA，并证明该提交沿第一父链追溯到 `8e7f214f` 和 `56829742`。
+
+开始实施前还必须满足：工作树干净、`git diff --check` 通过，并且 `56829742..IMPLEMENTATION_BASE` 只包含本设计文档。这样 docs correction commit 不会与冻结的 remote PR head 混淆，也不会要求本地 HEAD 回退到旧远端 SHA。
 
 除本设计文档外，实施 allowlist 仅包含：
 
@@ -21,6 +29,11 @@
 - `agentos/apps/server/src/services/ConversationService.test.ts`
 
 禁止修改 `.github/workflows/ci.yml`、`agentos/pnpm-lock.yaml`、`agentos/package.json`、`SqliteStore.ts`、migrations 和真实 `.agentos/agentos.sqlite`。若直接启动参数无法覆盖所需的真实 server 启动模式，并且事实证明必须新增 launcher，则报告证据并停止，等待独立的 launcher scope expansion；本 gate 不自行新增 launcher。
+
+最终 changed-files gate 分成两个互不替代的视图：
+
+- `IMPLEMENTATION DIFF`：`IMPLEMENTATION_BASE..final HEAD`，只允许上述四个 production/test 文件。
+- `CUMULATIVE REMEDIATION DIFF`：`56829742..final HEAD`，只允许本设计文档和上述四个 production/test 文件。
 
 ## 方案选择
 
@@ -76,6 +89,10 @@ R31/R32 保留全部既有 forbidden-output assertions，并增加策略边界�
 
 `flushEventsForRun()` 继续先 flush runtime buffer，再观察全部关键任务；任何失败仍将 run 标记为 failed 并重新抛出稳定错误。该设计不得造成双重 publication、失败丢失或 false success，`sendGroupMessage()` 仍应拒绝。
 
+ledger 生命周期还必须满足以下硬契约：一次 `flushEventsForRun()` 尝试消费的全部 critical promises，在该调用的任何 terminal path 上都必须 settled 并从 ledger 删除，包括 `flushRuntimeBuffer()` 本身先拒绝的路径。被拒绝的 outer flush promise 不得残留并污染后续无关 run。implementation plan 可以选择批次快照、`finally` drain 或等价实现，但不能让清理依赖仅在成功路径才会执行。
+
+489 必须增加跨 run 行为回归：第一个 run 注入 critical event persistence failure，断言 `sendGroupMessage()` 拒绝且 run 为 failed；恢复正常 persistence 后执行第二个独立 run，第二个 run 必须成功，且不得观察到第一个 run 的 stale rejection。
+
 ## ConversationService 497：确定性并发屏障
 
 测试移除 worker 命令中的 `300ms` sleep、`Date.now()` 采样和 `<250ms` 阈值。两个测试 worker 使用测试临时目录中的双标记文件 barrier：各自的 inline worker command 启动后原子写入自己的标记，并等待对方标记出现；只有 A、B 两个进程都实际启动，屏障才允许任一 worker 输出结果并进入终态。标记目录由测试创建并在 `finally` 中清理，不进入 production 路径。
@@ -105,9 +122,11 @@ R31/R32 保留全部既有 forbidden-output assertions，并增加策略边界�
 4. Server full suite：1704 total、1702 pass、0 fail、2 existing skips。
 5. Shared M3 contract harness：31/31。
 6. Workspace build：PASS。
-7. `git diff --check` 通过，changed files 为授权集合子集。
+7. `git diff --check` 通过；`IMPLEMENTATION DIFF` 与 `CUMULATIVE REMEDIATION DIFF` 分别满足各自授权集合。
 8. workflow、lockfile、Node 22、tsx declared `^4.23.1`、tsx resolved `4.23.11`、test command 均保持不变；`NODE_OPTIONS` 和 `--no-warnings` 均未添加。
 
 本地验证全部通过后，按逻辑边界创建普通前向 commits，不 amend、rebase、squash、reset 或 force push。push 前再次 fetch 并核对远程旧 HEAD，只允许 fast-forward push 到 `infra/github-actions-ci`。
 
 最终只接受新 pushed SHA 对应、event 为 `pull_request`、Node 为 22 的 GitHub Actions run。Install dependencies、Server tests、Shared M3、Workspace build 和 overall workflow 必须全部通过。即使完全绿色，PR #42 仍保持 OPEN/DRAFT，不修改 PR body，不执行 Ready、Merge 或 M4。
+
+当前 PR body 声明 `CI infrastructure only` 和 `No runtime/product/migration changes`。production remediation push 后，这两项 metadata 预期会变为 stale；本 gate 只登记该事实，不修改 PR body。进入 Ready review 前必须另开一个获得授权的 metadata-only remediation，使 PR 描述重新与实际 diff 一致。
