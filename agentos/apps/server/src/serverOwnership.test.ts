@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -71,7 +71,7 @@ function snapshotDiagnosticValue(
   if (typeof value !== 'object' || depth >= 2 || seen.has(value)) return undefined;
   seen.add(value);
   const snapshot: Record<string, unknown> = {};
-  for (const key of ['name', 'message', 'code', 'errno', 'syscall', 'address', 'port']) {
+  for (const key of ['name', 'message', 'code', 'errno', 'syscall', 'address', 'port', 'candidateIndex']) {
     const field = readDiagnosticField(value, key);
     if (field === null || ['string', 'number', 'boolean'].includes(typeof field)) snapshot[key] = field;
   }
@@ -650,6 +650,65 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
   }
 });
 
+test(
+  'R39D Windows excluded candidate preserves the real loopback bind failure',
+  { skip: process.platform === 'win32' ? false : 'Windows hosted-runner diagnostic only', timeout: 120_000 },
+  async (t) => {
+    const netsh = spawnSync(
+      'netsh',
+      ['interface', 'ipv4', 'show', 'excludedportrange', 'protocol=tcp'],
+      { encoding: 'utf8' },
+    );
+    assert.equal(netsh.status, 0, `netsh excluded-port query failed: ${netsh.stderr}`);
+
+    const excludedPorts: number[] = [];
+    for (const line of netsh.stdout.split(/\r?\n/)) {
+      const match = /^\s*(\d+)\s+(\d+)(?:\s+\*)?\s*$/.exec(line);
+      if (!match) continue;
+      const start = Number(match[1]);
+      const end = Number(match[2]);
+      for (let port = Math.max(start, 49_152); port <= Math.min(end, 65_535); port += 1) {
+        excludedPorts.push(port);
+      }
+    }
+
+    const root = makeRoot('r39d');
+    try {
+      for (const port of excludedPorts) {
+        const probe = await collectR39CandidateEvidence(port);
+        if ((probe.rawSocketError as { code?: unknown } | undefined)?.code !== 'ECONNREFUSED') continue;
+
+        try {
+          const ownership = await acquireLoopbackServerOwnership(root, { candidatePorts: [port] });
+          await ownership.release();
+        } catch (error) {
+          const diagnostic = snapshotDiagnosticValue(error) as {
+            cause?: Record<string, unknown>;
+          };
+          const cause = diagnostic.cause;
+          console.error(JSON.stringify({
+            diagnostic: 'R39_BIND_EVIDENCE',
+            excludedRangeCandidate: true,
+            probe,
+            bindFailure: diagnostic,
+          }));
+          assert.ok(error instanceof ServerOwnershipUnavailableError);
+          assert.equal(cause?.port, port);
+          assert.equal(cause?.candidateIndex, 0);
+          assert.equal(typeof cause?.code, 'string');
+          assert.ok(['string', 'number'].includes(typeof cause?.errno));
+          assert.equal(typeof cause?.syscall, 'string');
+          assert.equal(cause?.address, '127.0.0.1');
+          return;
+        }
+      }
+      t.skip('no connect-refused excluded candidate produced a bind failure on this Windows host');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  },
+);
+
 test('R40 platform ownership strategy selection keeps named pipe on Windows and loopback elsewhere', async () => {
   const root = makeRoot('r40');
   let ownership: ServerOwnership | undefined;
@@ -839,9 +898,27 @@ test('R46 non-EADDRINUSE bind failures fail closed without falling through to th
         await assert.rejects(
           () => acquireLoopbackServerOwnership(root, {
             candidatePorts: [port1, port2],
-            bindErrorForTesting: { port: port1, code },
+            bindErrorForTesting: {
+              port: port1,
+              code,
+              errno: code === 'EACCES' ? -4092 : -4066,
+              syscall: 'listen',
+              address: '127.0.0.1',
+            },
           }),
-          assertUnavailable,
+          (error: unknown) => {
+            assertUnavailable(error);
+            const diagnostic = snapshotDiagnosticValue(error) as {
+              cause?: Record<string, unknown>;
+            };
+            assert.equal(diagnostic.cause?.code, code);
+            assert.equal(typeof diagnostic.cause?.errno, 'number');
+            assert.equal(diagnostic.cause?.syscall, 'listen');
+            assert.equal(diagnostic.cause?.address, '127.0.0.1');
+            assert.equal(diagnostic.cause?.port, port1);
+            assert.equal(diagnostic.cause?.candidateIndex, 0);
+            return true;
+          },
         );
         await assertPortFree(port1);
         await assertPortFree(port2);

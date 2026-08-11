@@ -15,9 +15,44 @@ export class ServerAlreadyRunningError extends Error {
 export class ServerOwnershipUnavailableError extends Error {
   readonly code = 'SERVER_OWNERSHIP_UNAVAILABLE' as const;
 
-  constructor() {
+  constructor(cause?: unknown) {
     super('SERVER_OWNERSHIP_UNAVAILABLE');
     this.name = 'ServerOwnershipUnavailableError';
+    if (cause !== undefined) {
+      Object.defineProperty(this, 'cause', {
+        configurable: true,
+        enumerable: false,
+        value: cause,
+      });
+    }
+  }
+}
+
+interface LoopbackBindError extends Error {
+  code?: string;
+  errno?: string | number;
+  syscall?: string;
+  address?: string;
+  port?: number;
+}
+
+class LoopbackBindFailure extends Error {
+  readonly code?: string;
+  readonly errno?: string | number;
+  readonly syscall?: string;
+  readonly address?: string;
+  readonly port: number;
+  readonly candidateIndex: number;
+
+  constructor(error: LoopbackBindError, port: number, candidateIndex: number) {
+    super('LOOPBACK_BIND_FAILED');
+    this.name = 'LoopbackBindFailure';
+    this.code = error.code;
+    this.errno = error.errno;
+    this.syscall = error.syscall;
+    this.address = error.address;
+    this.port = typeof error.port === 'number' ? error.port : port;
+    this.candidateIndex = candidateIndex;
   }
 }
 
@@ -148,7 +183,13 @@ export interface LoopbackOwnershipOptions {
   /** Test seam: explicit barrier invoked after the pre-bind sweep, before binding. */
   afterPreSweep?: () => Promise<void> | void;
   /** Test seam: inject a stable non-EADDRINUSE bind failure for a candidate port. */
-  bindErrorForTesting?: { port: number; code: string };
+  bindErrorForTesting?: {
+    port: number;
+    code: string;
+    errno?: string | number;
+    syscall?: string;
+    address?: string;
+  };
 }
 
 function createOwnershipServer(token: string, acceptedSockets: Set<net.Socket>): net.Server {
@@ -213,12 +254,17 @@ export async function acquireLoopbackServerOwnership(
   let boundPort: number | undefined;
   let boundSockets: Set<net.Socket> | undefined;
   for (const port of freeCandidates) {
+    const candidateIndex = candidatePorts.indexOf(port);
     const acceptedSockets = new Set<net.Socket>();
     const server = createOwnershipServer(token, acceptedSockets);
     try {
       if (options.bindErrorForTesting?.port === port) {
-        const fabricated = new Error('injected bind failure') as NodeJS.ErrnoException;
+        const fabricated = new Error('injected bind failure') as LoopbackBindError;
         fabricated.code = options.bindErrorForTesting.code;
+        fabricated.errno = options.bindErrorForTesting.errno;
+        fabricated.syscall = options.bindErrorForTesting.syscall ?? 'listen';
+        fabricated.address = options.bindErrorForTesting.address ?? LOOPBACK_HOST;
+        fabricated.port = port;
         throw fabricated;
       }
       await listenOnce(server, { host: LOOPBACK_HOST, port });
@@ -227,7 +273,9 @@ export async function acquireLoopbackServerOwnership(
       boundSockets = acceptedSockets;
       break;
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
+      const bindError = error as LoopbackBindError;
+      const bindFailure = new LoopbackBindFailure(bindError, port, candidateIndex);
+      const code = bindError.code;
       if (code === 'EADDRINUSE') {
         // Contention after the sweep: re-probe this candidate before deciding.
         const outcome = await probeCandidate(port, token, probeTimeoutMs);
@@ -238,10 +286,10 @@ export async function acquireLoopbackServerOwnership(
           continue;
         }
         // unknown or a bind-then-vanish free race: fail closed.
-        throw new ServerOwnershipUnavailableError();
+        throw new ServerOwnershipUnavailableError(bindFailure);
       }
       // Non-EADDRINUSE bind failures fail closed; never fall through.
-      throw new ServerOwnershipUnavailableError();
+      throw new ServerOwnershipUnavailableError(bindFailure);
     }
   }
   if (boundServer === undefined || boundPort === undefined || boundSockets === undefined) {
