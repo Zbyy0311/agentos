@@ -208,13 +208,29 @@ test('does not return success when critical group-run event persistence fails', 
   try {
     process.env.AGENTOS_FORCE_MOCK = 'true';
     store = new SqliteStore(root);
-    store.createGroupConversation({ id: 'event-failure-group', workspaceId: 'workspace-a', type: 'group', title: 'Event failure', createdAt: '2026-07-12T01:00:00.000Z', updatedAt: '2026-07-12T01:00:00.000Z' }, [
-      { conversationId: 'event-failure-group', agentId: 'codex', roleTitle: 'leader', isLeader: true, createdAt: '2026-07-12T01:00:00.000Z' },
-      { conversationId: 'event-failure-group', agentId: 'kimi', roleTitle: 'worker', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
-    ]);
+    for (const conversationId of ['event-failure-group', 'event-recovery-group']) {
+      store.createGroupConversation({
+        id: conversationId,
+        workspaceId: 'workspace-a',
+        type: 'group',
+        title: conversationId,
+        createdAt: '2026-07-12T01:00:00.000Z',
+        updatedAt: '2026-07-12T01:00:00.000Z',
+      }, [
+        { conversationId, agentId: 'codex', roleTitle: 'leader', isLeader: true, createdAt: '2026-07-12T01:00:00.000Z' },
+        { conversationId, agentId: 'kimi', roleTitle: 'worker', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
+      ]);
+    }
+
+    let failPersistence = true;
+    const bus = new EventBus(draft => {
+      if (failPersistence) throw new Error('event persistence unavailable');
+      return { event: { ...draft, sequence: 0 }, inserted: true };
+    });
+    const service = new ConversationService(store, bus);
 
     await assert.rejects(
-      new ConversationService(store, createFailingEventBus()).sendGroupMessage({
+      service.sendGroupMessage({
         workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'event-failure-group', content: 'event failure',
       }),
       error => error instanceof Error && error.message === '关键事件持久化失败',
@@ -223,6 +239,13 @@ test('does not return success when critical group-run event persistence fails', 
     const run = store.listRuns('workspace-a', 'event-failure-group')[0];
     assert.equal(run?.status, 'failed');
     assert.match(run?.failureReason ?? '', /关键事件持久化失败/);
+
+    failPersistence = false;
+    await service.sendGroupMessage({
+      workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'event-recovery-group', content: 'event recovery',
+    });
+    const recoveredRun = store.listRuns('workspace-a', 'event-recovery-group')[0];
+    assert.equal(recoveredRun?.status, 'completed');
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
     else process.env.AGENTOS_FORCE_MOCK = originalForceMock;
