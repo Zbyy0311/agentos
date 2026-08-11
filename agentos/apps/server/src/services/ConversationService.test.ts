@@ -479,16 +479,33 @@ test('uses the execution agent id when a worker turn fails', async () => {
 test('runs independent group workers concurrently after the leader plan', async () => {
   const root = createProjectRoot({
     codex: { cliCommand: process.execPath, cliArgs: ['-e', 'console.log(process.argv.at(-1))'] },
-    kimi: { cliCommand: process.execPath, cliArgs: ['-e', 'setTimeout(() => console.log("kimi worker"), 300)'] },
   });
   const originalForceMock = process.env.AGENTOS_FORCE_MOCK;
   let store: SqliteStore | undefined;
   try {
     process.env.AGENTOS_FORCE_MOCK = 'false';
+    const barrierDir = join(root, 'worker-barrier');
+    mkdirSync(barrierDir, { recursive: true });
+    const workerScript = [
+      "const fs = require('node:fs')",
+      "const [own, peer, label] = process.argv.slice(1)",
+      "fs.writeFileSync(own, 'ready')",
+      'const watchdog = setTimeout(() => process.exit(2), 15000)',
+      'const poll = setInterval(() => {',
+      '  if (!fs.existsSync(peer)) return',
+      '  clearInterval(poll); clearTimeout(watchdog); console.log(label)',
+      '}, 10)',
+    ].join(';');
+    const kimiMarker = join(barrierDir, 'kimi.ready');
+    const opencodeMarker = join(barrierDir, 'opencode.ready');
     const workspaces = JSON.parse(readFileSync(join(root, 'workspace', 'workspaces.json'), 'utf-8'));
+    const kimi = workspaces.workspaces[0].agents.find((agent: { id: string }) => agent.id === 'kimi');
+    kimi.cliCommand = process.execPath;
+    kimi.cliArgs = ['-e', workerScript, kimiMarker, opencodeMarker, 'kimi worker'];
     workspaces.workspaces[0].agents.push({
       id: 'opencode', name: 'OpenCode', role: 'opencode', enabled: true,
-      cliCommand: process.execPath, cliArgs: ['-e', 'setTimeout(() => console.log("opencode worker"), 300)'],
+      cliCommand: process.execPath,
+      cliArgs: ['-e', workerScript, opencodeMarker, kimiMarker, 'opencode worker'],
     });
     writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify(workspaces), 'utf-8');
 
@@ -508,16 +525,26 @@ test('runs independent group workers concurrently after the leader plan', async 
       { conversationId: 'group-parallel', agentId: 'opencode', roleTitle: '审查工程师', isLeader: false, createdAt: '2026-07-12T01:00:00.000Z' },
     ]);
 
-    const workerStarts: number[] = [];
+    const workerEvents: Array<{ agentId: string; status: string }> = [];
     const result = await new ConversationService(store).sendGroupMessage({
       workspaceId: 'workspace-a', workspaceRoot: root, conversationId: 'group-parallel', content: '并行执行测试',
       onExecutionEvent: event => {
-        if (event.status === 'running_cli' && event.agentId !== 'codex') workerStarts.push(Date.now());
+        if (event.agentId && event.agentId !== 'codex') {
+          workerEvents.push({ agentId: event.agentId, status: event.status });
+        }
       },
     });
 
-    assert.equal(workerStarts.length, 2);
-    assert.ok(Math.abs(workerStarts[0]! - workerStarts[1]!) < 250, `workers started ${Math.abs(workerStarts[0]! - workerStarts[1]!)}ms apart`);
+    const terminal = new Set(['completed', 'failed', 'cancelled', 'waiting_user']);
+    const firstTerminal = workerEvents.findIndex(event => terminal.has(event.status));
+    const runningCli = ['kimi', 'opencode'].map(agentId => (
+      workerEvents.findIndex(event => event.agentId === agentId && event.status === 'running_cli')
+    ));
+    assert.ok(firstTerminal >= 0, 'at least one worker must reach a terminal state');
+    assert.ok(
+      runningCli.every(index => index >= 0 && index < firstTerminal),
+      'both workers must reach running_cli before the first worker terminal event',
+    );
     assert.deepEqual(result.executions.map(execution => execution.agentId), ['codex', 'kimi', 'opencode', 'codex']);
   } finally {
     if (originalForceMock === undefined) delete process.env.AGENTOS_FORCE_MOCK;
