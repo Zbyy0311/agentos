@@ -56,6 +56,14 @@ class LoopbackBindFailure extends Error {
   }
 }
 
+function isWindowsExcludedPortBindFailure(error: LoopbackBindError, port: number): boolean {
+  return error.code === 'EACCES'
+    && error.errno === -4092
+    && error.syscall === 'listen'
+    && error.address === LOOPBACK_HOST
+    && error.port === port;
+}
+
 export interface ServerOwnership {
   endpoint: string;
   release(): Promise<void>;
@@ -189,6 +197,7 @@ export interface LoopbackOwnershipOptions {
     errno?: string | number;
     syscall?: string;
     address?: string;
+    reportedPort?: number;
   };
 }
 
@@ -253,6 +262,7 @@ export async function acquireLoopbackServerOwnership(
   let boundServer: net.Server | undefined;
   let boundPort: number | undefined;
   let boundSockets: Set<net.Socket> | undefined;
+  let lastCandidateLocalBindFailure: LoopbackBindFailure | undefined;
   for (const port of freeCandidates) {
     const candidateIndex = candidatePorts.indexOf(port);
     const acceptedSockets = new Set<net.Socket>();
@@ -264,7 +274,7 @@ export async function acquireLoopbackServerOwnership(
         fabricated.errno = options.bindErrorForTesting.errno;
         fabricated.syscall = options.bindErrorForTesting.syscall ?? 'listen';
         fabricated.address = options.bindErrorForTesting.address ?? LOOPBACK_HOST;
-        fabricated.port = port;
+        fabricated.port = options.bindErrorForTesting.reportedPort ?? port;
         throw fabricated;
       }
       await listenOnce(server, { host: LOOPBACK_HOST, port });
@@ -288,12 +298,28 @@ export async function acquireLoopbackServerOwnership(
         // unknown or a bind-then-vanish free race: fail closed.
         throw new ServerOwnershipUnavailableError(bindFailure);
       }
+      if (isWindowsExcludedPortBindFailure(bindError, port)) {
+        lastCandidateLocalBindFailure = bindFailure;
+        // A Windows excluded port can refuse connects while rejecting bind.
+        // Before trying another candidate, repeat the full safety sweep so a
+        // concurrent same-root or unknown listener can never be bypassed.
+        for (const candidatePort of candidatePorts) {
+          const outcome = await probeCandidate(candidatePort, token, probeTimeoutMs);
+          if (outcome === 'same-owner') {
+            throw new ServerAlreadyRunningError();
+          }
+          if (outcome === 'unknown') {
+            throw new ServerOwnershipUnavailableError();
+          }
+        }
+        continue;
+      }
       // Non-EADDRINUSE bind failures fail closed; never fall through.
       throw new ServerOwnershipUnavailableError(bindFailure);
     }
   }
   if (boundServer === undefined || boundPort === undefined || boundSockets === undefined) {
-    throw new ServerOwnershipUnavailableError();
+    throw new ServerOwnershipUnavailableError(lastCandidateLocalBindFailure);
   }
 
   // Step 3: full post-bind verification sweep. A concurrent same-root owner
