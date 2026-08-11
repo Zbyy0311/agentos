@@ -92,6 +92,181 @@ function snapshotListenTarget(args: readonly unknown[]): Record<string, unknown>
   return Object.keys(snapshot).length > 0 ? snapshot : undefined;
 }
 
+const R39_OWNER_RESPONSE_PATTERN = /^AGENTOS_OWNER_V1 [0-9a-f]{64}$/;
+const R39_PROBE_TIMEOUT_MS = 750;
+const R39_EVIDENCE_TIMEOUT_MS = 1_000;
+
+interface R39CandidateEvidence {
+  port: number;
+  connectSucceeded: boolean;
+  elapsedMs: number;
+  responseBytes: number;
+  firstResponseLine?: string;
+  endedBeforeValidResponse: boolean;
+  timedOut: boolean;
+  responseLimitExceeded?: boolean;
+  rawSocketError?: unknown;
+}
+
+function diagnosticPort(args: readonly unknown[]): number | undefined {
+  const target = snapshotListenTarget(args);
+  return typeof target?.port === 'number' ? target.port : undefined;
+}
+
+function updateR39ResponseEvidence(
+  evidence: R39CandidateEvidence,
+  responseText: string,
+): void {
+  const newline = responseText.indexOf('\n');
+  if (newline >= 0) {
+    evidence.firstResponseLine = responseText.slice(0, newline);
+  }
+}
+
+function observeR39ParentProbes(): {
+  attempts: R39CandidateEvidence[];
+  restore(): void;
+} {
+  const mutableNet = net as typeof net & { connect: typeof net.connect };
+  const originalConnect = mutableNet.connect;
+  const attempts: R39CandidateEvidence[] = [];
+  const observations: Array<{
+    socket: net.Socket;
+    timer: NodeJS.Timeout;
+    startedAt: number;
+    evidence: R39CandidateEvidence;
+    onConnect: () => void;
+    onData: (chunk: Buffer) => void;
+    onEnd: () => void;
+    onError: (error: Error) => void;
+  }> = [];
+
+  mutableNet.connect = ((...connectArgs: unknown[]) => {
+    const port = diagnosticPort(connectArgs);
+    const socket = Reflect.apply(originalConnect, mutableNet, connectArgs) as net.Socket;
+    if (port === undefined) return socket;
+
+    const startedAt = Date.now();
+    const evidence: R39CandidateEvidence = {
+      port,
+      connectSucceeded: false,
+      elapsedMs: 0,
+      responseBytes: 0,
+      endedBeforeValidResponse: false,
+      timedOut: false,
+    };
+    let responseText = '';
+    const updateElapsed = (): void => {
+      evidence.elapsedMs = Date.now() - startedAt;
+    };
+    const timer = setTimeout(() => {
+      evidence.timedOut = true;
+      updateElapsed();
+    }, R39_PROBE_TIMEOUT_MS);
+    timer.unref();
+    const onConnect = (): void => {
+      evidence.connectSucceeded = true;
+      updateElapsed();
+    };
+    const onData = (chunk: Buffer): void => {
+      evidence.responseBytes += chunk.length;
+      responseText = (responseText + String(chunk)).slice(0, 1_024);
+      updateR39ResponseEvidence(evidence, responseText);
+      if (responseText.length > 128 || evidence.firstResponseLine !== undefined) {
+        evidence.responseLimitExceeded = responseText.length > 128;
+        clearTimeout(timer);
+      }
+      updateElapsed();
+    };
+    const onEnd = (): void => {
+      clearTimeout(timer);
+      evidence.endedBeforeValidResponse = !R39_OWNER_RESPONSE_PATTERN.test(evidence.firstResponseLine ?? '');
+      updateElapsed();
+    };
+    const onError = (error: Error): void => {
+      clearTimeout(timer);
+      evidence.rawSocketError = snapshotDiagnosticValue(error);
+      updateElapsed();
+    };
+    socket.once('connect', onConnect);
+    socket.on('data', onData);
+    socket.once('end', onEnd);
+    socket.once('error', onError);
+    attempts.push(evidence);
+    observations.push({ socket, timer, startedAt, evidence, onConnect, onData, onEnd, onError });
+    return socket;
+  }) as typeof net.connect;
+
+  return {
+    attempts,
+    restore(): void {
+      mutableNet.connect = originalConnect;
+      for (const observation of observations) {
+        clearTimeout(observation.timer);
+        observation.evidence.elapsedMs = Date.now() - observation.startedAt;
+        observation.socket.removeListener('connect', observation.onConnect);
+        observation.socket.removeListener('data', observation.onData);
+        observation.socket.removeListener('end', observation.onEnd);
+        observation.socket.removeListener('error', observation.onError);
+      }
+    },
+  };
+}
+
+function collectR39CandidateEvidence(port: number): Promise<R39CandidateEvidence> {
+  return new Promise(resolvePromise => {
+    const startedAt = Date.now();
+    const evidence: R39CandidateEvidence = {
+      port,
+      connectSucceeded: false,
+      elapsedMs: 0,
+      responseBytes: 0,
+      endedBeforeValidResponse: false,
+      timedOut: false,
+    };
+    let responseText = '';
+    let settled = false;
+    const socket = net.connect({ host: '127.0.0.1', port });
+    const finish = (): void => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      evidence.elapsedMs = Date.now() - startedAt;
+      socket.removeAllListeners();
+      socket.destroy();
+      resolvePromise(evidence);
+    };
+    const timer = setTimeout(() => {
+      evidence.timedOut = true;
+      finish();
+    }, R39_EVIDENCE_TIMEOUT_MS);
+    socket.once('connect', () => {
+      evidence.connectSucceeded = true;
+    });
+    socket.on('data', (chunk: Buffer) => {
+      evidence.responseBytes += chunk.length;
+      responseText = (responseText + String(chunk)).slice(0, 1_024);
+      updateR39ResponseEvidence(evidence, responseText);
+      if (responseText.length > 128) evidence.responseLimitExceeded = true;
+      if (evidence.firstResponseLine !== undefined || evidence.responseLimitExceeded) finish();
+    });
+    socket.once('end', () => {
+      evidence.endedBeforeValidResponse = !R39_OWNER_RESPONSE_PATTERN.test(evidence.firstResponseLine ?? '');
+      finish();
+    });
+    socket.once('error', (error: Error) => {
+      evidence.rawSocketError = snapshotDiagnosticValue(error);
+      finish();
+    });
+    socket.once('close', () => {
+      if (!settled) {
+        evidence.endedBeforeValidResponse = !R39_OWNER_RESPONSE_PATTERN.test(evidence.firstResponseLine ?? '');
+        finish();
+      }
+    });
+  });
+}
+
 function assertAlreadyRunning(error: unknown): boolean {
   assert.ok(error instanceof ServerAlreadyRunningError);
   assert.equal((error as ServerAlreadyRunningError).code, 'SERVER_ALREADY_RUNNING');
@@ -395,10 +570,15 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
   for (let round = 0; round < ROUNDS; round += 1) {
     const root = makeRoot(`r39-${round}`);
     const spawned = Array.from({ length: CHILDREN }, () => spawnLoopbackChild(root));
+    const candidatePorts = deriveOwnershipCandidatePorts(root);
+    const childOutcomes: Array<string | null> = Array.from({ length: CHILDREN }, () => null);
+    const parentProbeAttempts: R39CandidateEvidence[] = [];
+    let phase = 'child-outcomes';
     let reacquired: ServerOwnership | undefined;
     try {
       try {
         const outcomes = await Promise.all(spawned.map(item => waitForOutcomeLine(item)));
+        outcomes.forEach((outcome, index) => { childOutcomes[index] = outcome; });
         const acquired = outcomes.filter(outcome => outcome.startsWith('ACQUIRED '));
         const failed = outcomes.filter(outcome => outcome.startsWith('FAILED '));
         assert.ok(
@@ -423,16 +603,46 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
           );
         }
       } finally {
+        phase = 'child-cleanup';
         for (const item of spawned) {
           if (item.child.exitCode === null && item.child.signalCode === null) {
             item.child.kill('SIGKILL');
           }
         }
         await Promise.all(spawned.map(item => waitForChildExit(item.child).catch(() => {})));
+        phase = 'child-outcomes';
       }
 
-      reacquired = await acquireLoopbackServerOwnership(root);
+      phase = 'parent-reacquire';
+      const observation = observeR39ParentProbes();
+      try {
+        reacquired = await acquireLoopbackServerOwnership(root);
+      } finally {
+        observation.restore();
+        parentProbeAttempts.push(...observation.attempts);
+      }
+      phase = 'parent-reacquire-assertion';
       assert.match(reacquired.endpoint, /^tcp:\/\/127\.0\.0\.1:\d+$/);
+    } catch (error) {
+      const postFailureCandidateEvidence = phase === 'parent-reacquire'
+        ? await Promise.all(candidatePorts.map(port => collectR39CandidateEvidence(port)))
+        : [];
+      console.error(JSON.stringify({
+        diagnostic: 'R39_DIAGNOSTIC',
+        round,
+        phase,
+        root,
+        candidatePorts,
+        childOutcomes: spawned.map((item, index) => childOutcomes[index]
+          ?? item.lines().find(line => line.startsWith('ACQUIRED ') || line.startsWith('FAILED '))
+          ?? null),
+        childExitCodes: spawned.map(item => item.child.exitCode),
+        childSignalCodes: spawned.map(item => item.child.signalCode),
+        parentError: snapshotDiagnosticValue(error),
+        parentProbeAttempts,
+        postFailureCandidateEvidence,
+      }));
+      throw error;
     } finally {
       await reacquired?.release().catch(() => {});
       rmSync(root, { recursive: true, force: true });
