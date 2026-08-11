@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { spawn, type ChildProcess } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   existsSync,
@@ -18,6 +18,7 @@ import type { TaskItem, Workspace } from '@agentos/shared';
 import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import { SqliteStore } from './store/SqliteStore.js';
 import { TaskRunService } from './services/TaskRunService.js';
+import { acquireServerOwnership, type ServerOwnership } from './serverOwnership.js';
 
 const SERVER_SRC_DIR = dirname(fileURLToPath(import.meta.url));
 const SERVER_ENTRY = join(SERVER_SRC_DIR, 'index.ts');
@@ -51,7 +52,12 @@ interface SpawnedServer {
 
 function spawnServer(root: string, port: number): SpawnedServer {
   let buffer = '';
-  const child = spawn(process.execPath, ['--import', 'tsx', SERVER_ENTRY], {
+  const child = spawn(process.execPath, [
+    '--disable-warning=ExperimentalWarning',
+    '--import',
+    'tsx',
+    SERVER_ENTRY,
+  ], {
     cwd: SERVER_CWD,
     env: {
       ...process.env,
@@ -63,6 +69,27 @@ function spawnServer(root: string, port: number): SpawnedServer {
   child.stdout?.on('data', chunk => { buffer += String(chunk); });
   child.stderr?.on('data', chunk => { buffer += String(chunk); });
   return { child, port, root, output: () => buffer };
+}
+
+function assertSelectiveWarningPolicy(): void {
+  const packageJson = JSON.parse(readFileSync(join(SERVER_CWD, 'package.json'), 'utf-8')) as {
+    scripts: Record<string, string>;
+  };
+  for (const name of ['dev', 'dev:stable', 'start']) {
+    assert.match(packageJson.scripts[name] ?? '', /--disable-warning=ExperimentalWarning/);
+  }
+  const scripts = Object.values(packageJson.scripts).join('\n');
+  assert.doesNotMatch(scripts, /NODE_OPTIONS|--no-warnings/);
+
+  const probe = spawnSync(process.execPath, [
+    '--disable-warning=ExperimentalWarning',
+    '-e',
+    "process.stderr.write('ordinary-stderr-visible\\n'); process.emitWarning('deprecated-visible', 'DeprecationWarning'); process.emitWarning('experimental-hidden', 'ExperimentalWarning');",
+  ], { encoding: 'utf-8' });
+  assert.equal(probe.status, 0);
+  assert.match(probe.stderr, /ordinary-stderr-visible/);
+  assert.match(probe.stderr, /deprecated-visible/);
+  assert.doesNotMatch(probe.stderr, /experimental-hidden/);
 }
 
 function waitForExit(
@@ -395,6 +422,7 @@ test('R28 crash releases ownership and the next instance completes orphan recove
 });
 
 test('R31 startup recovery failure exits sanitized and rolls back without leaking', { timeout: 240_000 }, async () => {
+  assertSelectiveWarningPolicy();
   const root = makeTempRoot('r31');
   const seeded = seedQueuedLegacyRun(root, 'ws-r31');
   {
@@ -505,21 +533,17 @@ test('R32 HTTP bind failure is sanitized and releases ownership', { timeout: 240
 
 test('R33 ownership failure has no persistent side effects beyond diagnostics', { timeout: 240_000 }, async () => {
   const root = makeTempRoot('r33');
-  const portA = await freePort();
-  const serverA = spawnServer(root, portA);
+  const seeded = seedQueuedLegacyRun(root, 'ws-r33');
+  let ownership: ServerOwnership | undefined;
   let serverB: SpawnedServer | undefined;
   try {
-    await waitForHealthy(portA);
-    const seeded = seedQueuedLegacyRun(root, 'ws-r33');
-
-    // Wait until the first instance finished its post-listen background writes.
-    const leaseFile = join(root, '.agentos', 'worktrees', 'leases.json');
-    const deadline = Date.now() + 30_000;
-    while (!existsSync(leaseFile) && Date.now() < deadline) {
-      await new Promise(resolvePromise => setTimeout(resolvePromise, 100));
-    }
-
+    ownership = await acquireServerOwnership(root);
     const before = snapshotProjectTree(root);
+    assert.equal(
+      Object.keys(before).some(path => path.toLowerCase().endsWith('.sqlite-journal')),
+      false,
+      'ownership fixture must start without a journal file',
+    );
 
     const portB = await freePort();
     serverB = spawnServer(root, portB);
@@ -532,11 +556,13 @@ test('R33 ownership failure has no persistent side effects beyond diagnostics', 
 
     const state = readRunState(root, seeded.workspaceId, seeded.runId, seeded.taskId);
     assert.deepEqual(state, seeded.initial, 'blocked instance must not mutate Task, Run, JSON, or versions');
-
-    await waitForHealthy(portA, 10_000);
+    await assert.rejects(
+      () => fetch(`http://127.0.0.1:${portB}/api/health`, { signal: AbortSignal.timeout(2_000) }),
+      'blocked instance must not enter HTTP listen',
+    );
   } finally {
     killServer(serverB);
-    await stopServer(serverA);
+    await ownership?.release();
     rmSync(root, { recursive: true, force: true });
   }
 });

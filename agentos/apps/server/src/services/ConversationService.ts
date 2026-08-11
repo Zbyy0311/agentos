@@ -102,7 +102,7 @@ export interface PreferenceLearningService {
 }
 
 export class ConversationService {
-  private readonly pendingEvents = new Set<Promise<AgentEvent>>();
+  private readonly pendingEvents = new Set<Promise<unknown>>();
   private readonly pendingArtifacts = new Set<Promise<void>>();
   private readonly pendingStepMutations = new Set<Promise<unknown>>();
   private stepMutationTail: Promise<void> = Promise.resolve();
@@ -884,7 +884,7 @@ export class ConversationService {
       }
     }
     if (event.type === 'assistant.message') this.scheduleRuntimeFlush(runId);
-    else void this.flushRuntimeBuffer(runId);
+    else this.trackCriticalEventWork(this.flushRuntimeBuffer(runId));
     if (this.artifactCollector && workspaceRoot) {
       this.trackArtifact(this.artifactCollector.recordRuntimeEvent(this.artifactContext(execution, workspaceRoot, runId), event));
     }
@@ -894,7 +894,7 @@ export class ConversationService {
     if (this.runtimeFlushTimers.has(runId)) return;
     const timer = setTimeout(() => {
       this.runtimeFlushTimers.delete(runId);
-      void this.flushRuntimeBuffer(runId);
+      this.trackCriticalEventWork(this.flushRuntimeBuffer(runId));
     }, 260);
     timer.unref?.();
     this.runtimeFlushTimers.set(runId, timer);
@@ -914,13 +914,20 @@ export class ConversationService {
   }
 
   private publishEvent(event: AgentEventDraft): Promise<AgentEvent | undefined> {
-    if (!this.eventBus) return Promise.resolve({ ...event, sequence: 0 });
-    let pending: Promise<AgentEvent>;
-    try {
-      pending = Promise.resolve(this.eventBus.publish(event));
-    } catch (error) {
-      pending = Promise.reject(error);
+    let pending: Promise<AgentEvent | undefined>;
+    if (!this.eventBus) {
+      pending = Promise.resolve({ ...event, sequence: 0 });
+    } else {
+      try {
+        pending = Promise.resolve(this.eventBus.publish(event));
+      } catch (error) {
+        pending = Promise.reject(error);
+      }
     }
+    return this.trackCriticalEventWork(pending);
+  }
+
+  private trackCriticalEventWork<T>(pending: Promise<T>): Promise<T> {
     this.pendingEvents.add(pending);
     void pending.catch(() => undefined);
     return pending;
@@ -947,13 +954,14 @@ export class ConversationService {
   }
 
   private async flushEvents(): Promise<void> {
-    if (this.pendingEvents.size === 0) return;
-    const pendingEvents = [...this.pendingEvents];
-    const results = await Promise.allSettled(pendingEvents);
-    for (const pending of pendingEvents) this.pendingEvents.delete(pending);
-    if (results.some(result => result.status === 'rejected')) {
-      throw new Error(CRITICAL_EVENT_PERSISTENCE_FAILURE);
+    let rejected = false;
+    while (this.pendingEvents.size > 0) {
+      const pendingEvents = [...this.pendingEvents];
+      const results = await Promise.allSettled(pendingEvents);
+      for (const pending of pendingEvents) this.pendingEvents.delete(pending);
+      if (results.some(result => result.status === 'rejected')) rejected = true;
     }
+    if (rejected) throw new Error(CRITICAL_EVENT_PERSISTENCE_FAILURE);
   }
 
   private trackStepMutation(operation: () => Promise<unknown>): void {
@@ -1036,21 +1044,28 @@ export class ConversationService {
   }
 
   private async flushEventsForRun(workspaceId: string, runId: string): Promise<void> {
+    let persistenceFailed = false;
     try {
-      await this.flushRuntimeBuffer(runId);
-      await this.flushEvents();
-      this.runtimeBuffers.delete(runId);
-      this.runtimeQuotaNotices.forEach(key => {
-        if (key.startsWith(`${runId}:`)) this.runtimeQuotaNotices.delete(key);
-      });
+      await this.trackCriticalEventWork(this.flushRuntimeBuffer(runId));
     } catch {
-      this.store.updateRun(workspaceId, runId, {
-        status: 'failed',
-        failureReason: CRITICAL_EVENT_PERSISTENCE_FAILURE,
-        completedAt: new Date().toISOString(),
-      });
-      throw new Error(CRITICAL_EVENT_PERSISTENCE_FAILURE);
+      persistenceFailed = true;
     }
+    try {
+      await this.flushEvents();
+    } catch {
+      persistenceFailed = true;
+    }
+    this.runtimeBuffers.delete(runId);
+    this.runtimeQuotaNotices.forEach(key => {
+      if (key.startsWith(`${runId}:`)) this.runtimeQuotaNotices.delete(key);
+    });
+    if (!persistenceFailed) return;
+    this.store.updateRun(workspaceId, runId, {
+      status: 'failed',
+      failureReason: CRITICAL_EVENT_PERSISTENCE_FAILURE,
+      completedAt: new Date().toISOString(),
+    });
+    throw new Error(CRITICAL_EVENT_PERSISTENCE_FAILURE);
   }
 
   private persistMemoryUsage(workspaceId: string, conversationId: string, usages: MemoryUsage[]): void {

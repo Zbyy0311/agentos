@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+defaults:
+  run:
+    working-directory: agentos
+
+jobs:
+  server:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: agentos/pnpm-lock.yaml
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Windows TCP port diagnostics
+        shell: pwsh
+        run: |
+          netsh interface ipv4 show excludedportrange protocol=tcp
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          netsh interface ipv4 show dynamicport tcp
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Server tests
+        run: pnpm --filter @agentos/server test
+
+      - name: Shared M3 contract harness
+        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/m3-runtime.test.ts
+
+      - name: Workspace build
+        run: pnpm build
