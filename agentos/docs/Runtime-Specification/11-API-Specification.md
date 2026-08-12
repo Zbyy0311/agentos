@@ -32,11 +32,12 @@
 > P3D-1 / P3D-2: IMPLEMENTED AND MERGED via PR #36 / PR #37
 > P3D-3: COMPLETE AND MERGED via PR #38
 > P3E integrated verification evidence: COMPLETE (test/docs only, commit `400a3b29697b7185d29df2cb9da0417260549913`; no API production behavior added)
-> Migration 014: NOT REQUIRED BY M3 / NOT AUTHORIZED / ABSENT
+> Migration 014: NOT REQUIRED BY M3 / NOT CREATED / NOT AUTHORIZED
 > Production Cutover: NOT PERFORMED / NOT AUTHORIZED
-> M3: FORMALLY COMPLETE via PR #40 / PR #41
-> Repository CI: PASS via PR #42 and post-merge main run `31513943821`
-> M4 Entry: AUTHORIZED FOR PREPLANNING ONLY; production implementation and Migration 014 creation are NOT AUTHORIZED
+> M3 implementation: COMPLETE via PR #40; formal closeout: COMPLETE UPON PR #43 MERGE
+> Historical PR #42 CI baseline: `859d8c73657741c03a3241402a9ab4c2e2f173ce`; run `31513943821` PASS — SUPERSEDED AS CURRENT-MAIN BASELINE
+> Current authoritative main before PR #43: `e17a4bffdf12a033a0587ec2431cefe51a97bc49` (PR #44 R39 remediation merge); post-PR #44 main CI: PASS (run `31565915572`)
+> M4 Entry: PENDING SEPARATE ENTRY DECISION; M4 preplanning is NOT AUTHORIZED BY THIS CLOSEOUT; production implementation and Migration 014 creation are NOT AUTHORIZED
 
 ---
 

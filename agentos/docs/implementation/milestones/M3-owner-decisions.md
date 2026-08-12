@@ -1,6 +1,6 @@
 # AgentOS M3 Owner Decision Register
 
-Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / IMPLEMENTED AND MERGED through P3D. M3-TD-33 through M3-TD-36 required no new user Owner Decision and were subsequently implemented and accepted through P6A/P6B/P6C/P6D. The earlier P6A0 HIGH-1 is preserved below as historical review evidence; its forward remediation passed re-review without a new Owner decision, schema change, or Migration 014. M3 is formally complete. M4 production implementation remains NOT AUTHORIZED; only M4 preplanning is authorized.
+Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / IMPLEMENTED AND MERGED through P3D. M3-TD-33 through M3-TD-36 required no new user Owner Decision and were subsequently implemented and accepted through P6A/P6B/P6C/P6D. The earlier P6A0 HIGH-1 is preserved below as historical review evidence; its forward remediation passed re-review without a new Owner decision, schema change, or Migration 014. M3 implementation is complete; formal closeout becomes COMPLETE when PR #43 merges. M4 Entry is PENDING A SEPARATE ENTRY DECISION; M4 preplanning is NOT AUTHORIZED BY THIS CLOSEOUT, and M4 production implementation remains NOT AUTHORIZED.
 
 M3 current decision and contract status:
 P3C-0B: MERGED
@@ -23,11 +23,11 @@ P3D-1: IMPLEMENTED AND MERGED via PR #36
 P3D-2: IMPLEMENTED AND MERGED via PR #37
 P3D-3: COMPLETE AND MERGED via PR #38
 P3E integrated verification evidence: COMPLETE (test/docs only, commit `400a3b29697b7185d29df2cb9da0417260549913`)
-Migration 014: NOT REQUIRED BY M3 / ABSENT / M4 CREATION NOT AUTHORIZED
+Migration 014: NOT REQUIRED BY M3 / NOT CREATED / NOT AUTHORIZED
 Production Cutover: NOT PERFORMED / NOT AUTHORIZED
-Repository CI: PASS — post-merge main run 31513943821; original M3 closeout Remote Checks were UNAVAILABLE at that historical gate
-M3: FORMALLY COMPLETE
-M4 Entry: AUTHORIZED FOR PREPLANNING ONLY
+Repository CI: PASS — current pre-PR #43 authoritative main `e17a4bffdf12a033a0587ec2431cefe51a97bc49` (PR #44 R39 remediation merge), post-PR #44 run `31565915572`; PR #42 baseline `859d8c73657741c03a3241402a9ab4c2e2f173ce` / run `31513943821` is historical and superseded as the current-main baseline
+M3: IMPLEMENTATION COMPLETE; FORMAL CLOSEOUT COMPLETE UPON PR #43 MERGE
+M4 Entry: PENDING SEPARATE ENTRY DECISION; M4 preplanning is NOT AUTHORIZED BY THIS CLOSEOUT
 
 Final P0 documentation merge gate: COMPLETE (historical; superseded by the merged P1, P2, and P3 preplanning records).
 
@@ -41,7 +41,7 @@ This register separates the approved M3 technical contract from deferred Product
 - M3 is the Lifecycle, Event and API Foundation defined by Runtime Specification 14, Roadmap §§47–53.
 - The technical rows below are approved as contract direction by independent technical review. Already merged stages are current evidence; unimplemented stages and portions remain unauthorized unless a later instruction explicitly authorizes them. The P0 docs-only merge gate is historical and complete.
 - USER OWNER APPROVAL REQUIRED remains mandatory for deviations from the Runtime Specification, irreversible schema or data changes, external cost or infrastructure, major user-visible behavior changes, Production Restore, and unrollbackable Cutover.
-- Migration 012 was implemented and merged as part of M3 P2. No further migration was required by M3; this M3 register does not authorize Migration 014 or any M4 migration. M4 preplanning must audit schema needs separately.
+- Migration 012 was implemented and merged as part of M3 P2. No further migration was required by M3; this M3 register does not authorize Migration 014 or any M4 migration. If M4 preplanning is separately authorized, it must audit schema needs separately.
 - Unknown records, data mismatch, active/interrupted Runs, missing Remote Checks, and incomplete evidence fail closed.
 
 ## 2. Approved M3 technical contract
@@ -1532,7 +1532,7 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 | M3-POST-12 | Post-Cutover observation duration, telemetry, incident thresholds, and audit evidence remain deferred because no Cutover has occurred. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED where external telemetry or sensitive data is involved. |
 | M3-POST-13 | Legacy data deletion remains separate from M3 and is never automatic after a technical gate. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED for any destructive operation. |
 | M3-POST-14 | Branch, PR, merge, and release policy for future implementation remains deferred. This remediation creates no PR; the future P0 merge gate requires Draft PR, independent review, and ordinary Merge Commit. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3. |
-| M3-POST-15 | At the original P0 gate, Remote Checks were UNAVAILABLE — NOT PASS. That historical absence was not relabeled; repository CI was later merged by PR #42 and post-merge main run `31513943821` passed. | HISTORICAL M3 EVIDENCE GAP — SUPERSEDED BY CURRENT CI BASELINE; NOT A CUTOVER AUTHORIZATION. |
+| M3-POST-15 | At the original P0 gate, Remote Checks were UNAVAILABLE — NOT PASS. That historical absence was not relabeled. PR #42 later established the historical CI baseline at `859d8c73657741c03a3241402a9ab4c2e2f173ce`, and post-PR #42 main run `31513943821` passed. PR #44 at `e17a4bffdf12a033a0587ec2431cefe51a97bc49` superseded it as the current-main baseline, with post-PR #44 main run `31565915572` passing. | HISTORICAL M3 EVIDENCE GAP — SUPERSEDED BY CURRENT CI BASELINE; NOT A CUTOVER OR M4 AUTHORIZATION. |
 
 ## 5. P0 closure and current authorization status
 
@@ -1603,13 +1603,22 @@ The following historical decisions remain recorded but do not block the M3 Lifec
   and accepted M3 technical directions; they do not authorize M4 production
   implementation or production cutover.
 - Migration 012: IMPLEMENTED AND MERGED as part of M3 P2.
-- Migration 014: NOT REQUIRED BY M3 / ABSENT / M4 CREATION NOT AUTHORIZED.
+- Migration 014: NOT REQUIRED BY M3 / NOT CREATED / NOT AUTHORIZED.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
 - Production Restore: NOT AUTHORIZED.
 - Legacy API/JSON retirement or deletion: NOT AUTHORIZED.
-- M3: FORMALLY COMPLETE after PR #40 implementation merge, PR #41 closeout
-  merge, and PR #42/post-merge main CI success.
-- M4 Entry: AUTHORIZED FOR PREPLANNING ONLY. M4 production implementation,
-  Migration 014 creation, and production cutover remain NOT AUTHORIZED.
+- M3 implementation: COMPLETE after PR #40 implementation merge and the
+  accepted P6/P7 evidence.
+- M3 formal closeout: COMPLETE upon PR #43 merge. Before that merge, the
+  authoritative main is the PR #44 R39 remediation merge at
+  `e17a4bffdf12a033a0587ec2431cefe51a97bc49`,
+  and post-PR #44 main CI run `31565915572` passes. The resulting PR #43 merge
+  commit becomes authoritative and requires its own post-merge main CI.
+- The PR #42 baseline `859d8c73657741c03a3241402a9ab4c2e2f173ce`
+  and run `31513943821` remain historical evidence, superseded as the
+  current-main baseline by PR #44.
+- M4 Entry: PENDING SEPARATE ENTRY DECISION. M4 preplanning is NOT AUTHORIZED BY
+  THIS CLOSEOUT. M4 production implementation, Migration 014 creation, and
+  production cutover remain NOT AUTHORIZED.
 
 An Owner Decision is closed only when it records the selected option, owner identity and timestamp, affected scope, evidence thresholds, stop/no-go condition, rollback boundary, review requirement, and re-review trigger. These technical approvals do not authorize M4 production implementation, schema mutation, or production cutover.

@@ -1,6 +1,6 @@
 # AgentOS M3 Lifecycle, Event and API Foundation Implementation Plan
 
-Status: M3 COMPLETE — PR #40 IMPLEMENTATION MERGED — PR #41 FINAL CLOSEOUT MERGED — PR #42 CI BASELINE MERGED — POST-MERGE MAIN CI PASS — M4 PREPLANNING AUTHORIZED ONLY — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
+Status: M3 IMPLEMENTATION COMPLETE — FORMAL CLOSEOUT COMPLETE UPON PR #43 MERGE — CURRENT PRE-PR #43 MAIN PR #44 / CI PASS — M4 ENTRY PENDING SEPARATE ENTRY DECISION — M4 PREPLANNING NOT AUTHORIZED BY THIS CLOSEOUT — PRODUCTION CUTOVER NOT AUTHORIZED / NOT STARTED
 
 This plan began as the integrated M3 P2 local closeout record and now carries the sequential M3 implementation contract through the accepted P5C baseline and the P6A0 docs-only technical closure. P6 production implementation is complete / accepted and merged as part of M3. Repository CI is now available and passing; Production Cutover and M4 production implementation remain outside the completed M3 Foundation authorization boundary.
 
@@ -1239,23 +1239,31 @@ Current status:
 - Accepted P6D: `35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b`.
 - M3 IMPLEMENTATION: MERGED INTO MAIN.
 - M3: FOUNDATION COMPLETE.
-- M3 FINAL CLOSEOUT: ACCEPTED / MERGED via PR #41 at
+- M3 FINAL CLOSEOUT PACKAGE: ACCEPTED / MERGED via PR #41 at
   `77add6a0dc1a860d9d054b0bc146b231c9cccb88`.
 - Migration 014: NOT REQUIRED BY M3 / NOT CREATED / M4 CREATION NOT AUTHORIZED.
-- Repository CI baseline: MERGED via PR #42 at
+- Historical repository CI baseline: MERGED via PR #42 at
   `859d8c73657741c03a3241402a9ab4c2e2f173ce`.
-- Post-merge main CI: PASS (run `31513943821`).
+- Historical post-PR #42 main CI: PASS (run `31513943821`); superseded as the
+  current-main baseline by PR #44.
+- Current authoritative main before PR #43: PR #44 R39 remediation merge at
+  `e17a4bffdf12a033a0587ec2431cefe51a97bc49`.
+- Current post-PR #44 main CI: PASS (run `31565915572`).
+- M3 formal closeout: COMPLETE upon PR #43 merge; the resulting merge commit
+  becomes authoritative and requires its own post-merge main CI.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
 - Legacy Retirement: NOT PERFORMED.
 - Web default switch: NOT PERFORMED.
-- M4 Entry: AUTHORIZED FOR PREPLANNING ONLY.
+- M4 Entry: PENDING SEPARATE ENTRY DECISION.
+- M4 preplanning: NOT AUTHORIZED BY THIS CLOSEOUT.
 - M4 production implementation: NOT AUTHORIZED.
 
 This final closeout update records the accepted P6A/P6B/P6C/P6D state, the
 completed P6 integrated verification, the completed P7 gate, the merged PR #40
-implementation, the merged PR #41 closeout, and the passing PR #42 repository
-CI baseline. It does not claim Production readiness, Production Cutover,
-Legacy Retirement, a Web default switch, or M4 production implementation.
+implementation, the merged PR #41 closeout package, and the historical passing
+PR #42 repository CI baseline. Formal closeout becomes complete only when PR #43
+merges. It does not claim Production readiness, Production Cutover, Legacy
+Retirement, a Web default switch, M4 preplanning, or M4 production implementation.
 
 Supersedes, for current-status purposes only: the earlier P6A0/P6D-era
 statements that P6 production implementation was not authorized, that

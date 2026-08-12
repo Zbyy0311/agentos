@@ -1,12 +1,15 @@
 # AgentOS M3 Lifecycle, Event and API Foundation — Final Closeout
 
-Status: M3 COMPLETE — PR #40 AND PR #41 MERGED — CI BASELINE MERGED VIA PR #42 — POST-MERGE MAIN CI PASS — M4 PREPLANNING AUTHORIZED ONLY
+Status: M3 IMPLEMENTATION COMPLETE — FORMAL CLOSEOUT COMPLETE UPON PR #43 MERGE — CURRENT PRE-PR #43 MAIN PR #44 / CI PASS — M4 ENTRY PENDING SEPARATE ENTRY DECISION — M4 PREPLANNING NOT AUTHORIZED BY THIS CLOSEOUT — PRODUCTION CUTOVER NOT AUTHORIZED
 
 ## 1. Closure Verdict
 
 ```text
-M3 LIFECYCLE, EVENT AND API FOUNDATION:
+M3 LIFECYCLE, EVENT AND API FOUNDATION IMPLEMENTATION:
 COMPLETE
+
+M3 FORMAL CLOSEOUT:
+COMPLETE UPON PR #43 MERGE
 
 IMPLEMENTATION:
 MERGED INTO MAIN
@@ -24,25 +27,31 @@ completion, Legacy retirement, or M4 completion.
 ## 2. Final Main Baseline
 
 ```text
-origin/main:
-859d8c73657741c03a3241402a9ab4c2e2f173ce
+origin/main before PR #43 merge:
+e17a4bffdf12a033a0587ec2431cefe51a97bc49
 
 M3 implementation merge commit (PR #40):
 312485568cb3f11437e11c301d91d4a80e6c62b9
 
-M3 final closeout merge commit (PR #41):
+M3 final closeout package merge commit (PR #41):
 77add6a0dc1a860d9d054b0bc146b231c9cccb88
 
-CI baseline merge commit (PR #42):
+Historical CI baseline merge commit (PR #42):
 859d8c73657741c03a3241402a9ab4c2e2f173ce
+
+Current authoritative main before PR #43 (PR #44 R39 remediation merge):
+e17a4bffdf12a033a0587ec2431cefe51a97bc49
 ```
 
 PR #40 is the ordinary merge of the accepted M3 implementation tree. The
 merged PR #40 tree is identical to the accepted PR head tree
 `35cb9d6afcde7c86457388fe99fb1c94cc7dbd7b` (verified with `git diff --exit-code`
 before the original docs-only closeout branch). PR #41 then merged this final
-closeout package, and PR #42 merged the repository CI baseline. The current
-authoritative main is the PR #42 ordinary merge commit shown above.
+closeout package, and PR #42 merged the repository CI baseline. That PR #42
+baseline is historical and superseded as the current-main baseline by PR #44.
+Before PR #43 merges, the authoritative main is the PR #44 ordinary merge
+commit shown above. The resulting PR #43 merge commit becomes authoritative and
+requires its own post-merge main CI; no future merge SHA is asserted here.
 
 ## 3. Scope Delivered
 
@@ -363,17 +372,22 @@ This is an independent external review gate, not a GitHub APPROVED review.
 ## 16. Remote Checks
 
 ```text
-CURRENT MAIN REPOSITORY CI:
+CURRENT PRE-PR #43 MAIN REPOSITORY CI:
 AVAILABLE — PASS
 ```
 
 At the time of the original M3 closeout, GitHub Remote Checks were unavailable
 and the accepted substitute evidence consisted of independent remote reviews,
 local formal gates, integrated verification, and post-merge tree verification.
-That historical limitation is now superseded by post-merge main CI run
+That historical limitation was first superseded by post-PR #42 main CI run
 `31513943821`, which completed successfully at
 `859d8c73657741c03a3241402a9ab4c2e2f173ce` with dependency install, Windows
 TCP diagnostics, Server tests, Shared M3 contracts, and workspace build passing.
+That PR #42 baseline remains historical evidence but is superseded as the
+current-main baseline by PR #44 at
+`e17a4bffdf12a033a0587ec2431cefe51a97bc49`; post-PR #44 main CI run
+`31565915572` passed. The resulting PR #43 merge commit requires its own
+post-merge main CI.
 
 ## 17. Explicit Non-Goals
 
@@ -394,10 +408,13 @@ Web Default Switch:
 NOT PERFORMED
 
 Migration 014:
-NOT CREATED
+NOT CREATED / NOT AUTHORIZED
 
-M4:
-PREPLANNING AUTHORIZED ONLY
+M4 ENTRY:
+PENDING SEPARATE ENTRY DECISION
+
+M4 PREPLANNING:
+NOT AUTHORIZED BY THIS CLOSEOUT
 
 ProcessManager:
 NOT IMPLEMENTED BY M3
@@ -410,7 +427,10 @@ NOT IMPLEMENTED BY M3
 
 ```text
 M4 ENTRY:
-AUTHORIZED FOR PREPLANNING ONLY
+PENDING SEPARATE ENTRY DECISION
+
+M4 PREPLANNING:
+NOT AUTHORIZED BY THIS CLOSEOUT
 
 M4 PRODUCTION IMPLEMENTATION:
 NOT AUTHORIZED
@@ -426,7 +446,7 @@ M3 FOUNDATION IMPLEMENTATION:
 COMPLETE
 
 M3 FINAL CLOSEOUT PACKAGE:
-ACCEPTED
+ACCEPTED; FORMAL CLOSEOUT COMPLETE UPON PR #43 MERGE
 
 M3 FINAL CLOSEOUT INDEPENDENT REMOTE RE-REVIEW:
 PASS
@@ -435,17 +455,32 @@ PR #41:
 MERGED — 77add6a0dc1a860d9d054b0bc146b231c9cccb88
 
 M3 REPOSITORY FINAL CLOSEOUT:
-MERGED
+COMPLETE UPON PR #43 MERGE
 
 CI BASELINE / PR #42:
-MERGED — 859d8c73657741c03a3241402a9ab4c2e2f173ce
+HISTORICAL — MERGED AT 859d8c73657741c03a3241402a9ab4c2e2f173ce
 
-POST-MERGE MAIN CI:
-PASS — RUN 31513943821
+POST-PR #42 MAIN CI:
+HISTORICAL PASS — RUN 31513943821 — SUPERSEDED AS CURRENT-MAIN BASELINE
+
+CURRENT AUTHORITATIVE MAIN BEFORE PR #43 (PR #44 MERGE):
+e17a4bffdf12a033a0587ec2431cefe51a97bc49
+
+CURRENT POST-PR #44 MAIN CI:
+PASS — RUN 31565915572
+
+PR #43 RESULTING MERGE COMMIT:
+BECOMES AUTHORITATIVE; POST-MERGE MAIN CI REQUIRED
 
 M3:
-FORMALLY COMPLETE
+IMPLEMENTATION COMPLETE; FORMAL CLOSEOUT COMPLETE UPON PR #43 MERGE
 
 M4 ENTRY:
-AUTHORIZED FOR PREPLANNING ONLY
+PENDING SEPARATE ENTRY DECISION
+
+M4 PREPLANNING:
+NOT AUTHORIZED BY THIS CLOSEOUT
+
+M4 PRODUCTION IMPLEMENTATION / MIGRATION 014 / PRODUCTION CUTOVER:
+NOT AUTHORIZED
 ```
