@@ -15,10 +15,57 @@ export class ServerAlreadyRunningError extends Error {
 export class ServerOwnershipUnavailableError extends Error {
   readonly code = 'SERVER_OWNERSHIP_UNAVAILABLE' as const;
 
-  constructor() {
+  constructor(cause?: unknown) {
     super('SERVER_OWNERSHIP_UNAVAILABLE');
     this.name = 'ServerOwnershipUnavailableError';
+    if (cause !== undefined) {
+      Object.defineProperty(this, 'cause', {
+        configurable: true,
+        enumerable: false,
+        value: cause,
+      });
+    }
   }
+}
+
+interface LoopbackBindError extends Error {
+  code?: string;
+  errno?: string | number;
+  syscall?: string;
+  address?: string;
+  port?: number;
+}
+
+interface LoopbackBindDiagnostic {
+  readonly code?: string;
+  readonly errno?: string | number;
+  readonly syscall?: string;
+  readonly address?: string;
+  readonly port: number;
+  readonly candidateIndex: number;
+}
+
+function createLoopbackBindDiagnostic(
+  error: LoopbackBindError,
+  port: number,
+  candidateIndex: number,
+): LoopbackBindDiagnostic {
+  return Object.freeze({
+    code: error.code,
+    errno: error.errno,
+    syscall: error.syscall,
+    address: error.address,
+    port: typeof error.port === 'number' ? error.port : port,
+    candidateIndex,
+  });
+}
+
+function isWindowsExcludedPortBindFailure(error: LoopbackBindError, port: number): boolean {
+  return error.code === 'EACCES'
+    && error.errno === -4092
+    && error.syscall === 'listen'
+    && error.address === LOOPBACK_HOST
+    && error.port === port;
 }
 
 export interface ServerOwnership {
@@ -148,7 +195,14 @@ export interface LoopbackOwnershipOptions {
   /** Test seam: explicit barrier invoked after the pre-bind sweep, before binding. */
   afterPreSweep?: () => Promise<void> | void;
   /** Test seam: inject a stable non-EADDRINUSE bind failure for a candidate port. */
-  bindErrorForTesting?: { port: number; code: string };
+  bindErrorForTesting?: {
+    port: number;
+    code: string;
+    errno?: string | number;
+    syscall?: string;
+    address?: string;
+    reportedPort?: number;
+  };
 }
 
 function createOwnershipServer(token: string, acceptedSockets: Set<net.Socket>): net.Server {
@@ -212,13 +266,19 @@ export async function acquireLoopbackServerOwnership(
   let boundServer: net.Server | undefined;
   let boundPort: number | undefined;
   let boundSockets: Set<net.Socket> | undefined;
+  let lastCandidateLocalBindFailure: LoopbackBindDiagnostic | undefined;
   for (const port of freeCandidates) {
+    const candidateIndex = candidatePorts.indexOf(port);
     const acceptedSockets = new Set<net.Socket>();
     const server = createOwnershipServer(token, acceptedSockets);
     try {
       if (options.bindErrorForTesting?.port === port) {
-        const fabricated = new Error('injected bind failure') as NodeJS.ErrnoException;
+        const fabricated = new Error('injected bind failure') as LoopbackBindError;
         fabricated.code = options.bindErrorForTesting.code;
+        fabricated.errno = options.bindErrorForTesting.errno;
+        fabricated.syscall = options.bindErrorForTesting.syscall ?? 'listen';
+        fabricated.address = options.bindErrorForTesting.address ?? LOOPBACK_HOST;
+        fabricated.port = options.bindErrorForTesting.reportedPort ?? port;
         throw fabricated;
       }
       await listenOnce(server, { host: LOOPBACK_HOST, port });
@@ -227,7 +287,9 @@ export async function acquireLoopbackServerOwnership(
       boundSockets = acceptedSockets;
       break;
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
+      const bindError = error as LoopbackBindError;
+      const bindFailure = createLoopbackBindDiagnostic(bindError, port, candidateIndex);
+      const code = bindError.code;
       if (code === 'EADDRINUSE') {
         // Contention after the sweep: re-probe this candidate before deciding.
         const outcome = await probeCandidate(port, token, probeTimeoutMs);
@@ -238,14 +300,30 @@ export async function acquireLoopbackServerOwnership(
           continue;
         }
         // unknown or a bind-then-vanish free race: fail closed.
-        throw new ServerOwnershipUnavailableError();
+        throw new ServerOwnershipUnavailableError(bindFailure);
+      }
+      if (isWindowsExcludedPortBindFailure(bindError, port)) {
+        lastCandidateLocalBindFailure = bindFailure;
+        // A Windows excluded port can refuse connects while rejecting bind.
+        // Before trying another candidate, repeat the full safety sweep so a
+        // concurrent same-root or unknown listener can never be bypassed.
+        for (const candidatePort of candidatePorts) {
+          const outcome = await probeCandidate(candidatePort, token, probeTimeoutMs);
+          if (outcome === 'same-owner') {
+            throw new ServerAlreadyRunningError();
+          }
+          if (outcome === 'unknown') {
+            throw new ServerOwnershipUnavailableError();
+          }
+        }
+        continue;
       }
       // Non-EADDRINUSE bind failures fail closed; never fall through.
-      throw new ServerOwnershipUnavailableError();
+      throw new ServerOwnershipUnavailableError(bindFailure);
     }
   }
   if (boundServer === undefined || boundPort === undefined || boundSockets === undefined) {
-    throw new ServerOwnershipUnavailableError();
+    throw new ServerOwnershipUnavailableError(lastCandidateLocalBindFailure);
   }
 
   // Step 3: full post-bind verification sweep. A concurrent same-root owner

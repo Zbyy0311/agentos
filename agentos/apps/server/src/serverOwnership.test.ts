@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { inspect } from 'node:util';
 import net, { type AddressInfo } from 'node:net';
 import {
   acquireLoopbackServerOwnership,
@@ -48,6 +49,20 @@ function closeServer(server: net.Server): Promise<void> {
   return new Promise(resolvePromise => server.close(() => resolvePromise()));
 }
 
+function observeOwnershipServerCreations(): { count(): number; restore(): void } {
+  const mutableNet = net as typeof net & { createServer: typeof net.createServer };
+  const originalCreateServer = mutableNet.createServer;
+  let creations = 0;
+  mutableNet.createServer = ((...args: Parameters<typeof net.createServer>) => {
+    creations += 1;
+    return Reflect.apply(originalCreateServer, mutableNet, args) as net.Server;
+  }) as typeof net.createServer;
+  return {
+    count: () => creations,
+    restore: () => { mutableNet.createServer = originalCreateServer; },
+  };
+}
+
 function assertUnavailable(error: unknown): boolean {
   assert.ok(error instanceof ServerOwnershipUnavailableError);
   assert.equal((error as ServerOwnershipUnavailableError).code, 'SERVER_OWNERSHIP_UNAVAILABLE');
@@ -71,7 +86,7 @@ function snapshotDiagnosticValue(
   if (typeof value !== 'object' || depth >= 2 || seen.has(value)) return undefined;
   seen.add(value);
   const snapshot: Record<string, unknown> = {};
-  for (const key of ['name', 'message', 'code', 'errno', 'syscall', 'address', 'port']) {
+  for (const key of ['name', 'message', 'code', 'errno', 'syscall', 'address', 'port', 'candidateIndex']) {
     const field = readDiagnosticField(value, key);
     if (field === null || ['string', 'number', 'boolean'].includes(typeof field)) snapshot[key] = field;
   }
@@ -265,6 +280,26 @@ function collectR39CandidateEvidence(port: number): Promise<R39CandidateEvidence
       }
     });
   });
+}
+
+async function makeUnoccupiedR39Root(label: string): Promise<{
+  root: string;
+  candidatePorts: number[];
+}> {
+  const MAX_ROOT_ATTEMPTS = 32;
+  for (let attempt = 0; attempt < MAX_ROOT_ATTEMPTS; attempt += 1) {
+    const root = makeRoot(`${label}-${attempt}`);
+    const candidatePorts = deriveOwnershipCandidatePorts(root);
+    const evidence = await Promise.all(candidatePorts.map(port => collectR39CandidateEvidence(port)));
+    const allCandidatesHaveNoListener = evidence.every(item => (
+      (item.rawSocketError as { code?: unknown } | undefined)?.code === 'ECONNREFUSED'
+    ));
+    if (allCandidatesHaveNoListener) {
+      return { root, candidatePorts };
+    }
+    rmSync(root, { recursive: true, force: true });
+  }
+  throw new Error(`R39 could not establish an unoccupied candidate-set precondition after ${MAX_ROOT_ATTEMPTS} attempts`);
 }
 
 function assertAlreadyRunning(error: unknown): boolean {
@@ -568,9 +603,8 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
   const ROUNDS = 5;
   const CHILDREN = 3;
   for (let round = 0; round < ROUNDS; round += 1) {
-    const root = makeRoot(`r39-${round}`);
+    const { root, candidatePorts } = await makeUnoccupiedR39Root(`r39-${round}`);
     const spawned = Array.from({ length: CHILDREN }, () => spawnLoopbackChild(root));
-    const candidatePorts = deriveOwnershipCandidatePorts(root);
     const childOutcomes: Array<string | null> = Array.from({ length: CHILDREN }, () => null);
     const parentProbeAttempts: R39CandidateEvidence[] = [];
     let phase = 'child-outcomes';
@@ -631,7 +665,6 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
         diagnostic: 'R39_DIAGNOSTIC',
         round,
         phase,
-        root,
         candidatePorts,
         childOutcomes: spawned.map((item, index) => childOutcomes[index]
           ?? item.lines().find(line => line.startsWith('ACQUIRED ') || line.startsWith('FAILED '))
@@ -829,27 +862,171 @@ test('R45 post-bind verification detects a concurrent same-root owner and releas
   }
 });
 
-test('R46 non-EADDRINUSE bind failures fail closed without falling through to the next candidate', async (t) => {
-  for (const code of ['EACCES', 'EMFILE']) {
-    await t.test(code, async () => {
-      const root = makeRoot('r46');
+test('R46 Windows excluded-port EACCES falls back only after a full fail-closed resweep', async (t) => {
+  await t.test('captured EACCES shape falls through to the next free candidate', async () => {
+    const root = makeRoot('r46-fallback');
+    const port1 = await freePort();
+    const port2 = await freePort();
+    let ownership: ServerOwnership | undefined;
+    try {
+      ownership = await acquireLoopbackServerOwnership(root, {
+        candidatePorts: [port1, port2],
+        bindErrorForTesting: {
+          port: port1,
+          code: 'EACCES',
+          errno: -4092,
+          syscall: 'listen',
+          address: '127.0.0.1',
+        },
+      });
+      assert.equal(ownership.endpoint, `tcp://127.0.0.1:${port2}`);
+    } finally {
+      await ownership?.release().catch(() => {});
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test('resweep preserves unknown-occupant fail-closed semantics', async () => {
+    const root = makeRoot('r46-unknown');
+    const port1 = await freePort();
+    const port2 = await freePort();
+    let unknown: net.Server | undefined;
+    let creationObservation: ReturnType<typeof observeOwnershipServerCreations> | undefined;
+    try {
+      await assert.rejects(
+        () => acquireLoopbackServerOwnership(root, {
+          candidatePorts: [port1, port2],
+          probeTimeoutMs: 500,
+          afterPreSweep: async () => {
+            unknown = net.createServer(socket => socket.end('not-agentos\n'));
+            await new Promise<void>((resolvePromise, rejectPromise) => {
+              unknown!.once('error', rejectPromise);
+              unknown!.listen(port2, '127.0.0.1', () => resolvePromise());
+            });
+            creationObservation = observeOwnershipServerCreations();
+          },
+          bindErrorForTesting: {
+            port: port1,
+            code: 'EACCES',
+            errno: -4092,
+            syscall: 'listen',
+            address: '127.0.0.1',
+          },
+        }),
+        assertUnavailable,
+      );
+      assert.equal(creationObservation?.count(), 1, 'unknown must be found by the full resweep before port2 bind');
+      await assertPortFree(port1);
+    } finally {
+      creationObservation?.restore();
+      if (unknown) await closeServer(unknown).catch(() => {});
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test('resweep preserves same-root single-owner semantics', async () => {
+    const root = makeRoot('r46-same-root');
+    const port1 = await freePort();
+    const port2 = await freePort();
+    let existing: ServerOwnership | undefined;
+    let creationObservation: ReturnType<typeof observeOwnershipServerCreations> | undefined;
+    try {
+      await assert.rejects(
+        () => acquireLoopbackServerOwnership(root, {
+          candidatePorts: [port1, port2],
+          afterPreSweep: async () => {
+            existing = await acquireLoopbackServerOwnership(root, { candidatePorts: [port2] });
+            creationObservation = observeOwnershipServerCreations();
+          },
+          bindErrorForTesting: {
+            port: port1,
+            code: 'EACCES',
+            errno: -4092,
+            syscall: 'listen',
+            address: '127.0.0.1',
+          },
+        }),
+        assertAlreadyRunning,
+      );
+      assert.equal(creationObservation?.count(), 1, 'same-root must be found by the full resweep before port2 bind');
+      assert.equal(existing?.endpoint, `tcp://127.0.0.1:${port2}`);
+      await assertPortFree(port1);
+    } finally {
+      creationObservation?.restore();
+      await existing?.release().catch(() => {});
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  await t.test('exhausted classified and unclassified failures preserve sanitized diagnostics', async () => {
+    const variants = [
+      { name: 'classified exhaustion', code: 'EACCES', errno: -4092, candidateCount: 1 },
+      { name: 'wrong errno', code: 'EACCES', errno: -13, candidateCount: 2 },
+      { name: 'wrong syscall', code: 'EACCES', errno: -4092, syscall: 'bind', candidateCount: 2 },
+      { name: 'wrong address', code: 'EACCES', errno: -4092, address: '0.0.0.0', candidateCount: 2 },
+      { name: 'wrong port', code: 'EACCES', errno: -4092, reportedPort: 'other-candidate', candidateCount: 2 },
+      { name: 'wrong code', code: 'EMFILE', errno: -4092, candidateCount: 2 },
+      { name: 'fatal resource error', code: 'EMFILE', errno: -4066, candidateCount: 2 },
+    ];
+    for (const [index, variant] of variants.entries()) {
+      const root = makeRoot(`r46-negative-${index}`);
       const port1 = await freePort();
       const port2 = await freePort();
+      const candidatePorts = variant.candidateCount === 1 ? [port1] : [port1, port2];
+      const reportedPort = variant.reportedPort === 'other-candidate' ? port2 : port1;
       try {
         await assert.rejects(
           () => acquireLoopbackServerOwnership(root, {
-            candidatePorts: [port1, port2],
-            bindErrorForTesting: { port: port1, code },
+            candidatePorts,
+            bindErrorForTesting: {
+              port: port1,
+              code: variant.code,
+              errno: variant.errno,
+              syscall: variant.syscall ?? 'listen',
+              address: variant.address ?? '127.0.0.1',
+              reportedPort,
+            },
           }),
-          assertUnavailable,
+          (error: unknown) => {
+            assertUnavailable(error);
+            assert.equal((error as Error).message, 'SERVER_OWNERSHIP_UNAVAILABLE');
+            assert.ok(!Object.keys(error as object).includes('cause'), 'cause must remain non-enumerable');
+            const cause = readDiagnosticField(error as object, 'cause');
+            assert.ok(cause && typeof cause === 'object');
+            const diagnostic = snapshotDiagnosticValue(error) as {
+              cause?: Record<string, unknown>;
+            };
+            assert.equal(diagnostic.cause?.code, variant.code);
+            assert.equal(diagnostic.cause?.errno, variant.errno);
+            assert.equal(diagnostic.cause?.syscall, variant.syscall ?? 'listen');
+            assert.equal(diagnostic.cause?.address, variant.address ?? '127.0.0.1');
+            assert.equal(diagnostic.cause?.port, reportedPort);
+            assert.equal(diagnostic.cause?.candidateIndex, 0);
+            assert.doesNotMatch(JSON.stringify(error), /r46-negative|projectRoot|root/i);
+            assert.equal(cause instanceof Error, false);
+            assert.equal(Object.isFrozen(cause), true);
+            assert.deepEqual(
+              Object.getOwnPropertyNames(cause).sort(),
+              ['address', 'candidateIndex', 'code', 'errno', 'port', 'syscall'],
+            );
+            for (const rendered of [
+              JSON.stringify(cause),
+              inspect(cause),
+              JSON.stringify(structuredClone(cause)),
+            ]) {
+              assert.doesNotMatch(rendered, /serverOwnership|projectRoot|r46-negative|\\Users\\|\/Users\//i);
+            }
+            return true;
+          },
+          variant.name,
         );
         await assertPortFree(port1);
         await assertPortFree(port2);
       } finally {
         rmSync(root, { recursive: true, force: true });
       }
-    });
-  }
+    }
+  });
 });
 
 test('R47 a held client connection cannot block release on loopback or named pipe ownership', { timeout: 60_000 }, async () => {
