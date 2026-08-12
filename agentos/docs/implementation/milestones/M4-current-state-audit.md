@@ -1,6 +1,6 @@
 # AgentOS M4 Process & Provider Runtime — Current-State Audit
 
-Status: PREPLANNING COMPLETE — DOCS ONLY — M4 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
+Status: HIGH-1 REMEDIATED — PENDING INDEPENDENT RE-REVIEW — DOCS ONLY — M4 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
 
 ## 1. Metadata / exact baseline
 
@@ -14,7 +14,7 @@ Status: PREPLANNING COMPLETE — DOCS ONLY — M4 PRODUCTION IMPLEMENTATION NOT 
 | Migration registry | `001`–`013` |
 | Migration 014 | NOT CREATED / NOT AUTHORIZED |
 | PR #45 | OPEN / DRAFT / head `60e5845d5db0a9164621cb23384686e9d8d2bb30`; forensic-only, frozen, not used as M4 evidence |
-| Audit date | 2026-08-12 (Asia/Shanghai) |
+| Audit date | 2026-08-12; HIGH-1 remediation 2026-08-13 (Asia/Shanghai) |
 
 The working tree was clean before branch creation. The branch
 `docs/m4-process-provider-preplanning` was created directly from the exact
@@ -458,15 +458,18 @@ exit code, missing handle, or provider-native files.
 | Provider | Implementation / discovery | Command/auth/output | Cancel / tests / integration / stability | Status |
 |---|---|---|---|---|
 | KimiCode Direct | `KimiAdapter` registered; direct command config defaults to `kimi`; probe checks `--version` and `--help` for `stream-json`; current machine `0.23.5` | Adapter injects `--output-format stream-json`; OAuth home copy or `AGENTOS_KIMI_API_KEY` environment mode; parser covers assistant/tool/usage/diagnostic | generic CLI child cancel only; adapter golden fixture/unit/integration tests (`kimiAdapter.test.ts`, `executor.test.ts:229-257`); historical Kimi Gate PASS (`docs/acceptance/kimi-runtime-final.md`) | PARTIAL, strongest initial slice |
-| Codex | `CodexAdapter` registered; probe checks version and `exec --help`; current machine wrapper `0.146.0` | structured `--json` when supported; CODEX_HOME derivation; parser covers messages/tools/usage; no stable auth mapping | generic child cancel only; adapter/probe/executor tests; historical real Gate PASS (`codex-runtime-final.md`) | PARTIAL; defer as second adapter proof |
-| OpenCode | config/capability/model discovery and usage DB delta exist; no `OpenCodeProviderAdapter` class and Registry does not register one; current machine not found | config uses `opencode run` when available but Registry probe/fallback is not a Provider-specific OpenCode protocol; auth path absent; output generally plain fallback | generic child cancel only; model/usage tests, no current dedicated adapter contract/golden native stream; historical documents conflict by date, current code wins | PARTIAL / MISSING adapter; defer follow-up |
+| Codex | `CodexAdapter` registered; probe checks version and `exec --help`; current machine wrapper `0.146.0` | structured `--json` when supported; CODEX_HOME derivation; parser covers messages/tools/usage; no stable auth mapping | generic child cancel only; adapter/probe/executor tests; historical real Gate PASS (`codex-runtime-final.md`) | PARTIAL; stage as the separately authorized second adapter proof after Core/Kimi |
+| OpenCode | config/capability/model discovery and usage DB delta exist; no `OpenCodeProviderAdapter` class and Registry does not register one; current machine not found | config uses `opencode run` when available but Registry probe/fallback is not a Provider-specific OpenCode protocol; auth path absent; output generally plain fallback | generic child cancel only; model/usage tests, no current dedicated adapter contract/golden native stream; historical documents conflict by date, current code wins | PARTIAL / MISSING adapter; later M4 phase requires evidence, otherwise final closeout is blocked pending formal disposition |
 
 Recommendation: **KimiCode Direct** is the sole initial vertical slice. It is
 the Roadmap default, is presently installed, has a direct dedicated adapter,
 structured output probe, fixture/parser/integration coverage, and past real
 smoke evidence. Codex should be the second adapter to prove the generic seam
 after the Kimi slice passes. OpenCode requires executable/version/protocol and a
-dedicated adapter before admission. None of this authorizes implementation.
+dedicated adapter before admission. The installed Kimi/Codex versions and paths
+are current-machine supporting evidence only, not durable release contracts;
+future acceptance requires separate real and deterministic Provider gates. None
+of this authorizes implementation.
 
 ## 14. Schema / migration audit
 
@@ -526,8 +529,8 @@ Missing M4 acceptance evidence:
 
 ## 16. Gap matrix
 
-Exactly 24 planning gaps are classified below. Counts: `IMPLEMENTED 2`,
-`PARTIAL 8`, `LEGACY 2`, `MISSING 9`, `CONFLICTING 2`, `UNKNOWN 1`.
+Exactly 30 planning gaps are classified below. Counts: `IMPLEMENTED 2`,
+`PARTIAL 9`, `LEGACY 3`, `MISSING 13`, `CONFLICTING 2`, `UNKNOWN 1`.
 
 | ID | Area | Contract Requirement | Current Evidence | Current Status | Gap | Risk | Dependency | Owner Decision Required | Proposed M4 Phase | Acceptance Evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
@@ -549,12 +552,24 @@ Exactly 24 planning gaps are classified below. Counts: `IMPLEMENTED 2`,
 | G16 | Auth failures | stable `PROVIDER_AUTH_REQUIRED` | no auth validation/mapping | MISSING | CLI text/generic error leaks semantics | High | Provider Validation | No | P3/P4 | authenticated/expired/missing fixtures |
 | G17 | RunEngine integration | exactly one accepted execution chain | RunEngine seam exists, no production provider wiring | PARTIAL | scheduler/authority lease missing | Critical | M3 contracts, P1-P3 | No | P4 | one Start -> one Process; replay no spawn |
 | G18 | Browser disconnect | transport lifecycle != Process lifecycle | canonical/Legacy pass; initial Conversation aborts | CONFLICTING | one production path kills CLI on close | Critical | P4/P5 | No | P5 | socket-close E2E, Process continues |
-| G19 | Legacy compatibility | old routes project same authority/events | `LegacyCanonicalExecutionService` sole old authority | LEGACY | migration must avoid second execution authority | High | P4 | No | P4/P7 | parity + no-double-execution tests |
-| G20 | Conversation compatibility | old conversation execution remains usable | ConversationService owns old Run/CLI state | LEGACY | browser-owned execution and second aggregate | High | P4/P5 | No | P5/P7 | compatibility tests without cutover |
-| G21 | Testing | unit/contract/platform/integration/recovery gates | strong CLI/M3 tests, no Process tests | MISSING | no evidence for E01-E09 | Critical | all phases | No | P0-P7 | frozen matrix, no retry-until-green |
+| G19 | Legacy compatibility | old routes project same authority/events | `LegacyCanonicalExecutionService` sole old authority | LEGACY | migration must avoid second execution authority | High | P4 | No | P4/P7/P11 | parity + no-double-execution tests |
+| G20 | Conversation compatibility | old conversation execution remains usable | ConversationService owns old Run/CLI state | LEGACY | browser-owned execution and second aggregate | High | P4/P5 | No | P5/P7/P11 | compatibility tests without cutover |
+| G21 | Testing | unit/contract/platform/integration/recovery gates | strong CLI/M3 tests, no Process tests | MISSING | no evidence for E01-E09 or Roadmap breadth | Critical | all phases | No | P0-P11 | frozen matrix, no retry-until-green |
 | G22 | Migration/schema | minimal durable model, authorized separately | partial refs/config; no process/session tables | UNKNOWN | exact minimal schema awaits design/review | Critical | P0 schema decision gate | No now | P0/P2 | schema proposal + separate authorization |
 | G23 | M3 lifecycle/events | preserve state/Event/Outbox/idempotency/recovery | M3 closeout and main CI pass | IMPLEMENTED | integration may regress if bypassed | Critical | frozen invariant | No | all | complete M3 regression matrix |
 | G24 | Provider identity naming | `kimicode` canonical identity, no conflation | persistence `kimicode`; runtime `kimi`; runner inference | CONFLICTING | snapshot/adapter/type drift | High | spec reconciliation | No | P0/P3 | canonical mapping and mismatch tests |
+| G25 | Codex second-provider proof | Codex adapter proves generic Process/Provider seam after Kimi | dedicated Codex adapter/tests and historical gate, but current launch still uses `CLIExecutor` | PARTIAL | no Codex execution through accepted Process port/authority | High | P7 Core/Kimi accepted | No | P8 | Codex E2E + Kimi/M3 regression + no Provider-specific Process branch |
+| G26 | OpenCode adapter | dedicated evidence-backed `OpenCodeProviderAdapter` through Process Runtime | model discovery/usage delta only; no registered adapter; executable absent locally | MISSING | no protocol/auth/output/cancel contract or generic integration proof | High | P8; executable/protocol evidence | No | P9 | deterministic contract fixtures + authorized real evidence; otherwise final closeout blocked |
+| G27 | Custom CLI Foundation | bounded explicit Custom CLI identity/config/allowlist/error contract | generic raw CLI/plain fallback exists | LEGACY | unrestricted/silent fallback is not the Roadmap Foundation | High | accepted Process/Provider ports; security contract | No | P9 | shell-injection negative tests + bounded launch/output contract |
+| G28 | Provider Session API | canonical Session create/read/state/error contract over separate identity | optional event refs and old Conversation invocation/session concepts only | MISSING | no canonical Provider Session resource/API | High | P2 schema decision; P3 Provider contract | No now | P10 | API/authz/identity/pagination/state tests |
+| G29 | Process Inspector API | bounded backend Process query/inspection contract | no Process resource/repository/API exists | MISSING | no authorized/redacted Process inspection surface | High | P2 Process repository | No | P10 | API/authz/redaction/raw-output-ref tests; UI excluded |
+| G30 | Recovery Record | durable evidence/result record for minimum M4 Process recovery | M3 `runs.recovery_required` and recovery events exist, no Process Recovery Record | MISSING | final M4 deliverable is absent despite partial Run uncertainty semantics | Critical | P2/P6; M4/M7 boundary | No now | P6/P10 | same/missing/unknown/no-guess persistence and API tests |
+
+Roadmap deliverable mapping is therefore explicit rather than implicit:
+`ProcessEventNormalizer -> G08`, `Provider Validation API -> G13`, `Stable
+Cancel -> G05`, and the six previously underrepresented deliverables map to
+G25–G30. No Roadmap item is considered complete merely because a broader gap
+or the Kimi slice passes.
 
 ## 17. Risks
 
@@ -579,6 +594,9 @@ Exactly 24 planning gaps are classified below. Counts: `IMPLEMENTED 2`,
    package exports and server bootstrap require serial phase ownership.
 10. **Scope multiplication — High.** implementing Kimi/Codex/OpenCode together
     would hide Process Runtime faults behind provider-specific variance.
+11. **False milestone closeout — Critical.** E01–E10 plus Core/Kimi can pass
+    while explicit Roadmap M4 Provider/API deliverables remain unresolved.
+    Final status must be gated by the deliverable reconciliation matrix.
 
 ## 18. Unknowns
 
@@ -610,9 +628,14 @@ phase that would otherwise rely on it.
    M4 scope/deliverables list Codex/OpenCode/Process Inspector/Recovery Record
    (`14-Roadmap.md:1165-1249`), while the same Roadmap mandates Process + one
    Provider first and warns against a broad matrix (`14-Roadmap.md:3630-3689`).
-   Planning resolves this as staged delivery: Kimi first; Codex second after
-   core proof; OpenCode deferred; Process Inspector UI and generalized Recovery
-   Record are not first-slice gates.
+   Staging Kimi first resolves implementation order only; it does not resolve or
+   shrink final M4 scope. The final scope remains governed by Roadmap §§55/59:
+   Codex follows as the second-provider proof, then OpenCode/Custom CLI and the
+   remaining API/Recovery deliverables. Each must be accepted before M4 final
+   closeout or formally moved by a separately authorized scope/spec
+   reconciliation. The Process Inspector UI and generalized M7 recovery remain
+   outside M4, but the Roadmap Process Inspector API and minimum Recovery Record
+   do not silently disappear.
 3. **SPEC_RECONCILIATION_REQUIRED — M4 recovery versus M7 hardening.** M4 exit
    needs explicit restart semantics; M7 owns generalized recovery hardening
    (`14-Roadmap.md:1550-1627`). M4 is limited to durable identity and safe
@@ -640,8 +663,20 @@ M4-P0 must close the following before any production code or migration:
    authorization before migration creation;
 5. freeze Windows tree termination acceptance and fallback evidence;
 6. freeze raw-output security/backpressure contract;
-7. freeze the Kimi-only vertical slice and explicit Codex/OpenCode deferral;
-8. preserve all E01–E10 gates and M3 regression contracts.
+7. freeze Kimi as the initial slice without treating it as final M4 completion;
+8. freeze the authoritative final-scope contract and Roadmap deliverable matrix:
+   Codex second, OpenCode/Custom CLI and API/Recovery breadth later, each behind
+   separate authorization; any removal/deferral requires formal reconciliation;
+9. preserve all E01–E10 gates and M3 regression contracts.
+
+M4-P0 must explicitly close HIGH-1 before implementation entry by proving:
+
+```text
+KIMI VERTICAL SLICE COMPLETE != M4 MILESTONE COMPLETE
+```
+
+P7 may verify Process Core and Kimi only. It cannot become the final milestone
+closeout gate while any Roadmap §§55/59 disposition remains unresolved.
 
 Current Owner Decision count is zero. Routine architecture choices above are
 technical decisions subject to independent review. Migration creation,

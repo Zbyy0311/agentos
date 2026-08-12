@@ -1,6 +1,6 @@
 # AgentOS M4 Process & Provider Runtime — Owner Decision Register
 
-Status: PREPLANNING ONLY — NO PRODUCTION AUTHORIZATION
+Status: HIGH-1 REMEDIATED — PENDING INDEPENDENT RE-REVIEW — NO PRODUCTION AUTHORIZATION
 
 ## 1. Current owner decision count
 
@@ -15,6 +15,12 @@ to decide a product behavior, security policy, irreversible data change,
 compatibility removal, external cost, cutover or destructive retirement before
 the contract-only M4-P0 phase. This document does not invent Owner Decisions for
 routine architecture or implementation details.
+
+The register preserves the complete authoritative Roadmap M4 scope. Keeping
+Codex, OpenCode, Custom CLI Foundation, Provider Session API, Process Inspector
+API and Recovery Record as final M4 closeout obligations is not a new product
+choice and needs no Owner Decision. It follows Roadmap §§55/59. Kimi-first is
+delivery order only.
 
 An empty Owner Decision register is not production authorization. Every M4
 implementation phase still requires its own explicit entry authorization and
@@ -43,7 +49,7 @@ plumbing, test tools, or other routine implementation details.
 | M4-TD-01 | Single execution authority | `RunEngine -> Stage coordinator -> ProviderRegistry -> ProviderAdapter -> ProcessManager -> PlatformDriver`; no route/AgentRunner/Adapter direct provider spawn | P1 implementation | Must pass P0 independent review |
 | M4-TD-02 | Process identity | AgentOS Process ID is durable and never OS PID; recovery evidence includes more than PID | schema design/P2 | Must pass schema and recovery review |
 | M4-TD-03 | Initial Provider | KimiCode Direct only for first vertical slice; current main has dedicated adapter/tests and current machine `0.23.5` | P3/P4 | Must pass Provider contract review |
-| M4-TD-04 | Additional Providers | Codex is second adapter proof after Kimi; OpenCode is deferred until executable/protocol/dedicated adapter evidence exists | after Kimi gate | Re-review after initial slice |
+| M4-TD-04 | Additional Providers | Codex is the second adapter proof after Core/Kimi; OpenCode and bounded Custom CLI follow in later M4 phases. Missing evidence stops closeout; it does not silently move them out of M4 | P8/P9 | Re-review at each separately authorized phase |
 | M4-TD-05 | Process versus Provider output | Process Runtime owns bytes/raw artifacts/activity; Adapter owns provider parsing/finalization/error mapping; M3 Event layer owns durable canonical facts | P1/P2/P3 | Event/security review |
 | M4-TD-06 | Lifecycle authority | Provider/Process components return facts; only existing M3 lifecycle transaction seams mutate Run/Stage | all implementation | M3 regression review |
 | M4-TD-07 | Cancel | explicit Run/Operation command coordinates graceful Provider stop and Process tree termination; disconnect only unsubscribes | P5 | cancellation/platform review |
@@ -56,8 +62,10 @@ plumbing, test tools, or other routine implementation details.
 | M4-TD-14 | Raw output | bounded, append-oriented, restricted artifacts with pre-persistence redaction/classification; ordinary events carry references/safe summaries | P2 | security/output review |
 | M4-TD-15 | Unrelated subprocesses | inventory remains open; Provider execution migrates first. Git/Worktree/tar semantics remain M5-owned and cannot broaden the first slice | all phases | scope review |
 | M4-TD-16 | Schema process | produce minimal schema design first; no migration file or number before separate authorization | P0/P2 | independent schema review + entry authorization |
-| M4-TD-17 | Legacy compatibility | preserve Legacy and Conversation behavior through adapters/projections; no deletion/default switch in M4 | P4/P7 | compatibility review |
+| M4-TD-17 | Legacy compatibility | preserve Legacy and Conversation behavior through adapters/projections; no deletion/default switch in M4 | P4/P7/P11 | compatibility review |
 | M4-TD-18 | Failure mapping | stable Provider and Process errors are mapped before lifecycle transition; raw stderr is never the public contract | P3/P4 | error-contract review |
+| M4-TD-19 | Milestone status separation | `KIMI VERTICAL SLICE COMPLETE != M4 MILESTONE COMPLETE`; P7 verifies Core/Kimi only; P11 can close M4 only after every Roadmap deliverable is accepted or formally reconciled | P0/P7/P11 | Roadmap-scope and final closeout review |
+| M4-TD-20 | Roadmap deliverable disposition | Preserve all §§55/59 deliverables in M4. A later proposal to remove/defer one must stop and raise explicit scope/spec authority; inconvenience or missing local executable is insufficient | P0/P8-P11 | Matrix review on every gate |
 
 ## 4. Deferred product decisions
 
@@ -73,6 +81,7 @@ do not block M4-P0.
 | Web default switch | explicitly outside authorization | production cutover phase |
 | Generalized native Provider resume UX | M7 hardening and user-visible semantics need multi-provider evidence | M7 planning |
 | External broker/remote Process infrastructure | no current need or cost authorization | future scale/product phase |
+| Moving an explicit Roadmap M4 deliverable to another milestone | current plan does not propose this; if later proposed, authoritative scope and user-visible delivery commitment must be reconciled without implicit selection | before the phase that would omit it and before P11 |
 
 No deferred item may be treated as implicitly selected.
 
@@ -121,14 +130,18 @@ path. That routing is not permission to remove the surface.
 
 | Phase | Technical decisions required | User Owner Decision required | Authorization boundary |
 |---|---|---:|---|
-| M4-P0 contract closure | TD-01 through TD-18 as applicable; exact port/schema proposal | 0 | Contract/docs only unless separately authorized |
+| M4-P0 contract closure | TD-01 through TD-20 as applicable; exact port/schema/final-scope proposal | 0 | Contract/docs only unless separately authorized; must freeze Kimi != M4 complete |
 | M4-P1 Process foundation | TD-01, 05, 08, 09 | 0 | Requires explicit P1 authorization after P0 review |
 | M4-P2 persistence/output | TD-02, 10, 14, 16 | likely 1 only if schema creation is proposed and approved; currently 0 | Migration remains forbidden until separate authorization |
 | M4-P3 Registry/validation/Kimi adapter contract | TD-03, 04, 13, 18 | 0 for fail-closed local validation | Requires P3 authorization |
 | M4-P4 Run integration/Kimi slice | TD-01, 05, 06, 17 | 0 | Requires P4 authorization; no cutover |
 | M4-P5 cancel/tree/timeout/disconnect | TD-07, 08, 09, 12 | 0 | Requires P5 authorization |
 | M4-P6 minimum recovery | TD-02, 10, 11 | 0 if unknown remains fail-closed | Requires P6 authorization; generalized M7 recovery excluded |
-| M4-P7 verification/closeout | all frozen decisions | 0 | Verification does not authorize Ready, merge or cutover |
+| M4-P7 Core/Kimi verification gate | TD-01 through TD-19 as applicable | 0 | Can verify Core/Kimi only; cannot close M4 or authorize P8 |
+| M4-P8 Codex genericity proof | TD-04, 05, 06, 13, 18-20 | 0 under preserved Roadmap | Requires explicit P8 authorization; does not authorize P9 |
+| M4-P9 OpenCode/Custom CLI | TD-04, 05, 18-20 | 0 under preserved Roadmap | Requires explicit P9 authorization and evidence; missing evidence blocks closeout |
+| M4-P10 Session/Inspector/Recovery APIs | TD-02, 05, 10, 14, 16, 19-20 | 0 unless irreversible schema/product policy emerges | Requires explicit P10 and any separate schema authorization |
+| M4-P11 final M4 closeout | TD-19-20 plus all accepted contracts | 0 if every Roadmap item is delivered | Requires explicit P11; unresolved or unauthorized deferral blocks M4 completion |
 
 If a future phase discovers an irreversible schema choice, product-visible auth
 policy, compatibility removal, external cost, destructive cleanup, or cutover
@@ -136,11 +149,25 @@ choice, it must create a new `OD-M4-XX` with Question, why evidence cannot decid
 options, recommendation, impact, reversibility and required-before phase. It
 must remain undecided until the Owner records an explicit selection.
 
+The same rule applies if a future plan proposes moving an explicit Roadmap M4
+deliverable out of M4. That proposal is not approved here. It must record an
+undecided Owner/scope-spec decision before omission, and P11 must reject an
+unrecorded deferral.
+
 ## 8. Current decision conclusion
 
 ```text
 CURRENT OWNER DECISION COUNT = 0
 OWNER DECISIONS REQUIRED BEFORE M4-P0 = 0
+
+AUTHORITATIVE M4 SCOPE:
+PRESERVED
+
+KIMI VERTICAL SLICE COMPLETE == M4 MILESTONE COMPLETE:
+NO
+
+SCOPE/SPEC RECONCILIATION:
+TECHNICAL P0 CLOSURE REQUIRED; NO SCOPE REDUCTION PROPOSED
 
 M4-P0 ENTRY RECOMMENDATION:
 ELIGIBLE FOR SEPARATE AUTHORIZATION
