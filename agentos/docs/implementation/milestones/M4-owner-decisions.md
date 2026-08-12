@@ -1,20 +1,23 @@
 # AgentOS M4 Process & Provider Runtime — Owner Decision Register
 
-Status: HIGH-1 REMEDIATED — PENDING INDEPENDENT RE-REVIEW — NO PRODUCTION AUTHORIZATION
+Status: P0 CONTRACT CLOSURE COMPLETE — PENDING INDEPENDENT P0 REVIEW — NO PRODUCTION AUTHORIZATION
 
 ## 1. Current owner decision count
 
 ```text
-CURRENT OWNER DECISION COUNT = 0
+CURRENT OWNER DECISION COUNT = 1
 
 OWNER DECISIONS REQUIRED BEFORE M4-P0 = 0
+
+OWNER DECISIONS REQUIRED BEFORE M4-P1 = 0
+
+OWNER DECISIONS REQUIRED BEFORE M4-P2 SCHEMA = 1
 ```
 
-No unresolved question found by the current-state audit requires the user Owner
-to decide a product behavior, security policy, irreversible data change,
-compatibility removal, external cost, cutover or destructive retirement before
-the contract-only M4-P0 phase. This document does not invent Owner Decisions for
-routine architecture or implementation details.
+P0 produced one genuine unresolved Owner Decision for a future irreversible
+database compatibility commitment. It does not block the schema-light P1
+foundation. It blocks any P2 schema/migration creation until an explicit option
+is selected. No Owner Decision is required before P0 or P1.
 
 The register preserves the complete authoritative Roadmap M4 scope. Keeping
 Codex, OpenCode, Custom CLI Foundation, Provider Session API, Process Inspector
@@ -22,7 +25,7 @@ API and Recovery Record as final M4 closeout obligations is not a new product
 choice and needs no Owner Decision. It follows Roadmap §§55/59. Kimi-first is
 delivery order only.
 
-An empty Owner Decision register is not production authorization. Every M4
+An undecided Owner Decision is not production or migration authorization. Every M4
 implementation phase still requires its own explicit entry authorization and
 independent review gate.
 
@@ -41,6 +44,24 @@ A `TECHNICAL DECISION` is resolved from repository evidence, tests, safety
 invariants and independent technical review. The user is not asked to choose
 class names, package layout, platform libraries, retry mechanics, event
 plumbing, test tools, or other routine implementation details.
+
+### OD-M4-01 — First durable Process Runtime schema commitment
+
+| Field | Value |
+|---|---|
+| ID | `OD-M4-01` |
+| Question | After independent P0/schema review, should AgentOS authorize a future additive migration implementing exactly `runtime_processes`, `provider_sessions`, and `process_output_references` with the P0 forward-only evidence-preservation boundary? |
+| Why evidence cannot decide | Evidence proves migrations 001–013 cannot represent the required reservation, Session identity and stream offsets, and it supports the three-resource design. It cannot grant acceptance of the irreversible minimum-database compatibility commitment once production rows exist. |
+| Option A | Authorize a separately reviewed additive migration package matching the exact P0 resources, constraints, fresh/upgrade tests and forward-only boundary. |
+| Option B | Keep P2 blocked and require a revised schema proposal; create no migration. |
+| Recommendation | Option A, only after independent P0/schema review and a new authorization naming exact base, files, migration number, DDL, tests, backup and compatibility boundary. |
+| Impact | Option A unlocks P2 durable Process/Session/output work and raises the minimum database understood by future application code. Option B preserves 001–013 and blocks P2/P4 execution authority. |
+| Reversibility | Reversible before migration execution and before durable rows exist. After production evidence exists, rollback is forward correction or authorized restore, never silent table/row deletion. |
+| Required-before phase | Before any P2 schema or migration file creation; not required for P1. |
+| Status | `UNDECIDED` |
+
+P0 selects no option. Migration 014 remains uncreated, unauthorized, unreserved
+and unallocated.
 
 ## 3. Technical decisions that do not require Owner
 
@@ -87,26 +108,26 @@ No deferred item may be treated as implicitly selected.
 
 ## 5. Schema and migration decisions explicitly not authorized
 
-Current audit verdict:
+P0 schema verdict:
 
 ```text
-SCHEMA CHANGE CANDIDATE
-OWNER/ENTRY AUTHORIZATION REQUIRED BEFORE MIGRATION CREATION
+SCHEMA_PROPOSAL_REQUIRES_FUTURE_MIGRATION
+OD-M4-01 + ENTRY AUTHORIZATION REQUIRED BEFORE MIGRATION CREATION
 
 Migration 014:
 NOT CREATED
 NOT AUTHORIZED
 NOT RESERVED
-NOT DECLARED REQUIRED
+FUTURE MIGRATION TECHNICALLY REQUIRED; NUMBER NOT ALLOCATED
 ```
 
-The likely need for durable Runtime Process (and possibly Provider Session /
-Validation) records is technical evidence for a schema proposal, not approval
-to mutate data. A future schema package must state exact tables/fields,
-constraints, old-aggregate compatibility, upgrade/fresh database tests,
-recovery identity, rollback/forward behavior and data sensitivity. Only then
-can the responsible entry/Owner authority decide whether the irreversible data
-change is authorized.
+P0 proposes exactly three first-schema resources: Runtime Process, Provider
+Session and Process output references. Provider Validation and Recovery Record
+use typed/cache/Event and Process/Event/M3 resources instead of new first-schema
+tables. This technical necessity is not approval to mutate data. A future
+authorized package must contain exact DDL/number/checksum, compatibility,
+upgrade/fresh/backup tests and forward behavior before `OD-M4-01` may be
+selected and P2 entry granted.
 
 No SQL or migration number is part of this preplanning package.
 
@@ -130,9 +151,9 @@ path. That routing is not permission to remove the surface.
 
 | Phase | Technical decisions required | User Owner Decision required | Authorization boundary |
 |---|---|---:|---|
-| M4-P0 contract closure | TD-01 through TD-20 as applicable; exact port/schema/final-scope proposal | 0 | Contract/docs only unless separately authorized; must freeze Kimi != M4 complete |
+| M4-P0 contract closure | TD-01 through TD-20 as applicable; exact port/schema/final-scope proposal | 0 | Contract/docs complete; independent review still required |
 | M4-P1 Process foundation | TD-01, 05, 08, 09 | 0 | Requires explicit P1 authorization after P0 review |
-| M4-P2 persistence/output | TD-02, 10, 14, 16 | likely 1 only if schema creation is proposed and approved; currently 0 | Migration remains forbidden until separate authorization |
+| M4-P2 persistence/output | TD-02, 10, 14, 16; exact P0 schema | 1 (`OD-M4-01`, UNDECIDED) | Migration remains forbidden until Owner selection and separate P2 authorization |
 | M4-P3 Registry/validation/Kimi adapter contract | TD-03, 04, 13, 18 | 0 for fail-closed local validation | Requires P3 authorization |
 | M4-P4 Run integration/Kimi slice | TD-01, 05, 06, 17 | 0 | Requires P4 authorization; no cutover |
 | M4-P5 cancel/tree/timeout/disconnect | TD-07, 08, 09, 12 | 0 | Requires P5 authorization |
@@ -157,8 +178,10 @@ unrecorded deferral.
 ## 8. Current decision conclusion
 
 ```text
-CURRENT OWNER DECISION COUNT = 0
+CURRENT OWNER DECISION COUNT = 1
 OWNER DECISIONS REQUIRED BEFORE M4-P0 = 0
+OWNER DECISIONS REQUIRED BEFORE M4-P1 = 0
+OWNER DECISIONS REQUIRED BEFORE M4-P2 SCHEMA = 1
 
 AUTHORITATIVE M4 SCOPE:
 PRESERVED
@@ -167,10 +190,16 @@ KIMI VERTICAL SLICE COMPLETE == M4 MILESTONE COMPLETE:
 NO
 
 SCOPE/SPEC RECONCILIATION:
-TECHNICAL P0 CLOSURE REQUIRED; NO SCOPE REDUCTION PROPOSED
+P0 CONTRACTS FROZEN; EVENT ADDITIONS REQUIRE OWNING-PHASE REVIEW; NO SCOPE REDUCTION
 
-M4-P0 ENTRY RECOMMENDATION:
-ELIGIBLE FOR SEPARATE AUTHORIZATION
+M4-P0 CONTRACT PACKAGE:
+COMPLETE / PENDING INDEPENDENT P0 REVIEW
+
+M4-P1 ENTRY RECOMMENDATION:
+ELIGIBLE FOR SEPARATE ENTRY DECISION AFTER P0 REVIEW
+
+M4-P2 SCHEMA:
+BLOCKED ON OD-M4-01 + SEPARATE AUTHORIZATION
 
 M4 PRODUCTION IMPLEMENTATION:
 NOT AUTHORIZED

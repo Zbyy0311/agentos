@@ -1,6 +1,6 @@
 # AgentOS M4 Process & Provider Runtime — Current-State Audit
 
-Status: HIGH-1 REMEDIATED — PENDING INDEPENDENT RE-REVIEW — DOCS ONLY — M4 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
+Status: P0 CONTRACT CLOSURE COMPLETE — PENDING INDEPENDENT P0 REVIEW — DOCS ONLY — M4 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
 
 ## 1. Metadata / exact baseline
 
@@ -14,7 +14,7 @@ Status: HIGH-1 REMEDIATED — PENDING INDEPENDENT RE-REVIEW — DOCS ONLY — M4
 | Migration registry | `001`–`013` |
 | Migration 014 | NOT CREATED / NOT AUTHORIZED |
 | PR #45 | OPEN / DRAFT / head `60e5845d5db0a9164621cb23384686e9d8d2bb30`; forensic-only, frozen, not used as M4 evidence |
-| Audit date | 2026-08-12; HIGH-1 remediation 2026-08-13 (Asia/Shanghai) |
+| Audit date | 2026-08-12; HIGH-1 remediation and P0 contract closure 2026-08-13 (Asia/Shanghai) |
 
 The working tree was clean before branch creation. The branch
 `docs/m4-process-provider-preplanning` was created directly from the exact
@@ -294,7 +294,7 @@ remain explicitly compatibility-only; they must not retain a second spawn path.
 | recovery identity | no PID start time, executable fingerprint, token or ownership epoch | MISSING |
 | raw output references | no Process stdout/stderr artifacts | MISSING |
 
-Classification: **SCHEMA PARTIAL / SCHEMA CHANGE CANDIDATE**. Existing Run,
+Pre-P0 classification was **SCHEMA PARTIAL / SCHEMA CHANGE CANDIDATE**. Existing Run,
 Stage, Runtime Event reference fields and Provider Configuration should be
 reused. They are not sufficient to represent a durable AgentOS Process distinct
 from PID, tree ownership, active state, termination, output references and
@@ -302,15 +302,16 @@ recovery identity. The old Conversation tables cannot be silently repurposed
 because they bind to `agent_runs` and model completed CLI invocations, not the
 canonical M3 Process contract.
 
-Required record only:
+P0 closes the design uncertainty, not migration authorization:
 
 ```text
-SCHEMA CHANGE CANDIDATE
+SCHEMA_PROPOSAL_REQUIRES_FUTURE_MIGRATION
+OD-M4-01 UNDECIDED
 OWNER/ENTRY AUTHORIZATION REQUIRED BEFORE MIGRATION CREATION
 ```
 
-Migration 014 remains NOT CREATED / NOT AUTHORIZED. No number is allocated and
-no SQL is proposed by this package.
+Migration 014 remains NOT CREATED / NOT AUTHORIZED / NOT RESERVED. No number is
+allocated and no SQL is proposed by this package.
 
 ## 9. Output / event path
 
@@ -490,10 +491,14 @@ shows conceptual tables (`10-Data-Model.md:834-952`, `1692-1788`), but those are
 not approval or current schema. `migration-register.md:19-39` also calls the
 resources deferred and explicitly leaves Migration 014 unauthorized.
 
-Verdict: **SCHEMA CHANGE CANDIDATE**. A separately authorized schema-design
-phase must prove the minimal model, compatibility with both aggregates,
-constraints, recovery identity, output reference strategy, migration tests and
-rollback/forward boundary before any migration file is created.
+P0 verdict: **SCHEMA_PROPOSAL_REQUIRES_FUTURE_MIGRATION**. The exact conceptual
+first schema has three resources: `runtime_processes`, `provider_sessions`, and
+`process_output_references`. Provider Validation uses typed results, bounded
+cache and Run-bound Events; Recovery Record uses Process facts, Runtime Events
+and existing `runs.recovery_required`. `M4-p0-schema-proposal.md` freezes fields,
+relationships, constraints, CAS, sensitivity and forward boundaries. P2 remains
+blocked on `OD-M4-01`, independent schema review and separate entry
+authorization.
 
 ## 15. Test coverage audit
 
@@ -529,14 +534,15 @@ Missing M4 acceptance evidence:
 
 ## 16. Gap matrix
 
-Exactly 30 planning gaps are classified below. Counts: `IMPLEMENTED 2`,
-`PARTIAL 9`, `LEGACY 3`, `MISSING 13`, `CONFLICTING 2`, `UNKNOWN 1`.
+Exactly 30 planning gaps are classified below. Post-P0 planning counts are
+`IMPLEMENTED 2`, `PARTIAL 10`, `LEGACY 3`, `MISSING 13`, `CONFLICTING 2`,
+`UNKNOWN 0`. P0 closes contract ambiguity only; it implements no runtime gap.
 
 | ID | Area | Contract Requirement | Current Evidence | Current Status | Gap | Risk | Dependency | Owner Decision Required | Proposed M4 Phase | Acceptance Evidence |
 |---|---|---|---|---|---|---|---|---|---|---|
 | G01 | Process Manager | one launch/stop/timeout authority | `CLIExecutor` owns raw spawn (`executor.ts:275-596`) | MISSING | no ProcessManager/driver/handle registry | Critical | contract/types | No | P1 | mock + platform contract; architecture import rule |
 | G02 | Process Identity | AgentOS ID distinct from PID | transient `child.pid`; event ref only | MISSING | no durable identity/recovery token | Critical | P1, schema gate | No | P2 | repository/identity/PID reuse tests |
-| G03 | Process Repository | durable state and CAS terminal transition | no process table/repository | MISSING | cannot recover/query Process | Critical | separate schema authorization | No now | P2 | fresh/upgrade schema + repository tests |
+| G03 | Process Repository | durable state and CAS terminal transition | no process table/repository; exact P0 proposal exists | MISSING | cannot recover/query Process | Critical | separate schema authorization | `OD-M4-01` before P2 schema | P2 | fresh/upgrade schema + repository tests |
 | G04 | Process Tree | own child/grandchild tree | Windows `child.kill`, POSIX child signals | MISSING | escaped descendants/survivors | Critical | platform driver | No | P5 | Windows/POSIX child-tree tests |
 | G05 | Cancellation | Run cancel propagates once through Provider to tree | canonical cancel is queued-only; old AbortSignal path | PARTIAL | no active canonical cancellation chain | Critical | P1-P4 | No | P5 | cancel race/idempotency/tree E2E |
 | G06 | Timeout | startup/idle/total semantics and stable reason | idle + total timer in CLIExecutor | PARTIAL | no startup/approval pause/process fact | High | P1/P2 | No | P5 | timer/state/race tests |
@@ -555,7 +561,7 @@ Exactly 30 planning gaps are classified below. Counts: `IMPLEMENTED 2`,
 | G19 | Legacy compatibility | old routes project same authority/events | `LegacyCanonicalExecutionService` sole old authority | LEGACY | migration must avoid second execution authority | High | P4 | No | P4/P7/P11 | parity + no-double-execution tests |
 | G20 | Conversation compatibility | old conversation execution remains usable | ConversationService owns old Run/CLI state | LEGACY | browser-owned execution and second aggregate | High | P4/P5 | No | P5/P7/P11 | compatibility tests without cutover |
 | G21 | Testing | unit/contract/platform/integration/recovery gates | strong CLI/M3 tests, no Process tests | MISSING | no evidence for E01-E09 or Roadmap breadth | Critical | all phases | No | P0-P11 | frozen matrix, no retry-until-green |
-| G22 | Migration/schema | minimal durable model, authorized separately | partial refs/config; no process/session tables | UNKNOWN | exact minimal schema awaits design/review | Critical | P0 schema decision gate | No now | P0/P2 | schema proposal + separate authorization |
+| G22 | Migration/schema | minimal durable model, authorized separately | P0 freezes the exact three-resource proposal and future-migration verdict; no migration exists | PARTIAL | Owner selection, independent schema review, exact DDL/number and P2 entry remain | Critical | P2 schema decision gate | `OD-M4-01` UNDECIDED | P2 | authorized schema package + fresh/upgrade/forward evidence |
 | G23 | M3 lifecycle/events | preserve state/Event/Outbox/idempotency/recovery | M3 closeout and main CI pass | IMPLEMENTED | integration may regress if bypassed | Critical | frozen invariant | No | all | complete M3 regression matrix |
 | G24 | Provider identity naming | `kimicode` canonical identity, no conflation | persistence `kimicode`; runtime `kimi`; runner inference | CONFLICTING | snapshot/adapter/type drift | High | spec reconciliation | No | P0/P3 | canonical mapping and mismatch tests |
 | G25 | Codex second-provider proof | Codex adapter proves generic Process/Provider seam after Kimi | dedicated Codex adapter/tests and historical gate, but current launch still uses `CLIExecutor` | PARTIAL | no Codex execution through accepted Process port/authority | High | P7 Core/Kimi accepted | No | P8 | Codex E2E + Kimi/M3 regression + no Provider-specific Process branch |
@@ -600,8 +606,6 @@ or the Kimi slice passes.
 
 ## 18. Unknowns
 
-- Exact minimal durable schema and whether Provider Session must be persisted in
-  the same first schema authorization as Runtime Process.
 - Viable Windows Job Object implementation/dependency under this Node version;
   native capability must be proven, with an explicit fallback contract.
 - Whether KimiCode `0.23.5` exposes a stable native Session/resume identity;
@@ -612,8 +616,8 @@ or the Kimi slice passes.
   their owning M5 packages later. The initial M4 Provider slice explicitly does
   not absorb M5 behavior.
 
-Unknowns do not block M4-P0 contract closure; each is a stop condition for the
-phase that would otherwise rely on it.
+Remaining unknowns do not invalidate the P0 conceptual contract; each is a stop
+condition for the phase that would otherwise rely on implementation evidence.
 
 ## 19. Spec conflicts
 
@@ -648,12 +652,14 @@ phase that would otherwise rely on it.
    Provider execution first; unrelated Git/tar paths remain inventoried and
    must not be silently accepted as final architecture.
 
-## 20. Entry recommendation for M4-P0 implementation
+## 20. Entry recommendation after M4-P0 closure
 
-Recommendation: **GO for a separately authorized M4-P0 contract/current-state
-closure phase only. NO-GO for M4 production implementation from this document.**
+P0 has closed the listed contracts in the four `M4-p0-*` documents and remains
+pending independent P0 review. Recommendation: **M4-P1 ELIGIBLE FOR A SEPARATE
+ENTRY DECISION only after that review has BLOCKER/HIGH zero. NO-GO for M4
+production implementation from this document.**
 
-M4-P0 must close the following before any production code or migration:
+P0 closure evidence:
 
 1. freeze the single execution authority chain and compatibility routing;
 2. freeze Process/Provider/Session identity terminology and `kimi`/`kimicode`
@@ -678,7 +684,8 @@ KIMI VERTICAL SLICE COMPLETE != M4 MILESTONE COMPLETE
 P7 may verify Process Core and Kimi only. It cannot become the final milestone
 closeout gate while any Roadmap §§55/59 disposition remains unresolved.
 
-Current Owner Decision count is zero. Routine architecture choices above are
-technical decisions subject to independent review. Migration creation,
+Current Owner Decision count is one: `OD-M4-01` is UNDECIDED and required only
+before P2 schema/migration creation, not P1. Routine architecture choices above
+remain technical decisions subject to independent review. Migration creation,
 production cutover, Web default switch and legacy retirement remain separately
 unauthorized.

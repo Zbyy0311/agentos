@@ -1,6 +1,6 @@
 # AgentOS M4 Process & Provider Runtime — Implementation Plan
 
-Status: HIGH-1 REMEDIATED — PENDING INDEPENDENT RE-REVIEW — IMPLEMENTATION REQUIRES PHASE-BY-PHASE AUTHORIZATION
+Status: P0 CONTRACT CLOSURE COMPLETE — PENDING INDEPENDENT P0 REVIEW — IMPLEMENTATION REQUIRES PHASE-BY-PHASE AUTHORIZATION
 
 ## 1. Baseline
 
@@ -180,8 +180,9 @@ authorized for spec reconciliation.
 `ProviderProcessPort`, `RuntimeProviderAdapter`, Process event drafts and stable
 error codes.
 
-**Schema impact:** proposal only. Record `SCHEMA CHANGE CANDIDATE` and exact
-minimum; Migration 014 stays absent.
+**Schema impact:** proposal only. P0 verdict is
+`SCHEMA_PROPOSAL_REQUIRES_FUTURE_MIGRATION`; `OD-M4-01` is UNDECIDED and blocks
+P2 schema creation, not P1. Migration 014 stays absent and unallocated.
 
 **Tests:** design mock Process scenarios; platform tree fixtures; Provider
 auth/parse fixtures; architecture-negative searches; M3 regression set.
@@ -281,8 +282,9 @@ renumbering, Runtime Specification edits, Run lifecycle changes.
 **Contract changes:** add Process fact/event contracts and references without
 changing existing M3 event envelope/order.
 
-**Schema impact:** **SCHEMA CHANGE CANDIDATE — separate authorization required.**
-No plan statement approves, reserves or requires Migration 014.
+**Schema impact:** exact P0 three-resource proposal; `OD-M4-01` plus separate P2
+entry/schema authorization required. No plan statement approves, reserves or
+allocates Migration 014.
 
 **Tests:** fresh and 001–013 upgrade DB; checksum/registry; repository identity
 and CAS races; spawn reservation compensation; output append/range/offset;
@@ -1211,7 +1213,13 @@ This file is a plan, not an authorization.
 
 ```text
 M4 PREPLANNING:
-HIGH-1 REMEDIATED / PENDING INDEPENDENT RE-REVIEW
+ACCEPTED INPUT TO P0
+
+M4-P0 CONTRACT PACKAGE:
+COMPLETE / PENDING INDEPENDENT P0 REVIEW
+
+M4-P1 IMPLEMENTATION:
+NOT AUTHORIZED
 
 M4 PRODUCTION IMPLEMENTATION:
 NOT AUTHORIZED
@@ -1235,7 +1243,5 @@ Merge:
 NOT AUTHORIZED
 ```
 
-The next action after this docs package is independent HIGH-1 remediation
-re-review of M4 preplanning.
-Only a later explicit entry decision may authorize M4-P0, and P0 cannot
-authorize P1 automatically.
+The next action is independent M4-P0 contract review. P0 completion cannot
+authorize P1 automatically; only a later explicit P1 entry decision may do so.
