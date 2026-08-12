@@ -36,24 +36,28 @@ interface LoopbackBindError extends Error {
   port?: number;
 }
 
-class LoopbackBindFailure extends Error {
+interface LoopbackBindDiagnostic {
   readonly code?: string;
   readonly errno?: string | number;
   readonly syscall?: string;
   readonly address?: string;
   readonly port: number;
   readonly candidateIndex: number;
+}
 
-  constructor(error: LoopbackBindError, port: number, candidateIndex: number) {
-    super('LOOPBACK_BIND_FAILED');
-    this.name = 'LoopbackBindFailure';
-    this.code = error.code;
-    this.errno = error.errno;
-    this.syscall = error.syscall;
-    this.address = error.address;
-    this.port = typeof error.port === 'number' ? error.port : port;
-    this.candidateIndex = candidateIndex;
-  }
+function createLoopbackBindDiagnostic(
+  error: LoopbackBindError,
+  port: number,
+  candidateIndex: number,
+): LoopbackBindDiagnostic {
+  return Object.freeze({
+    code: error.code,
+    errno: error.errno,
+    syscall: error.syscall,
+    address: error.address,
+    port: typeof error.port === 'number' ? error.port : port,
+    candidateIndex,
+  });
 }
 
 function isWindowsExcludedPortBindFailure(error: LoopbackBindError, port: number): boolean {
@@ -262,7 +266,7 @@ export async function acquireLoopbackServerOwnership(
   let boundServer: net.Server | undefined;
   let boundPort: number | undefined;
   let boundSockets: Set<net.Socket> | undefined;
-  let lastCandidateLocalBindFailure: LoopbackBindFailure | undefined;
+  let lastCandidateLocalBindFailure: LoopbackBindDiagnostic | undefined;
   for (const port of freeCandidates) {
     const candidateIndex = candidatePorts.indexOf(port);
     const acceptedSockets = new Set<net.Socket>();
@@ -284,7 +288,7 @@ export async function acquireLoopbackServerOwnership(
       break;
     } catch (error) {
       const bindError = error as LoopbackBindError;
-      const bindFailure = new LoopbackBindFailure(bindError, port, candidateIndex);
+      const bindFailure = createLoopbackBindDiagnostic(bindError, port, candidateIndex);
       const code = bindError.code;
       if (code === 'EADDRINUSE') {
         // Contention after the sweep: re-probe this candidate before deciding.

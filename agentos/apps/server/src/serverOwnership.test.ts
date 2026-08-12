@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { inspect } from 'node:util';
 import net, { type AddressInfo } from 'node:net';
 import {
   acquireLoopbackServerOwnership,
@@ -46,6 +47,20 @@ async function occupyPort(handler: (socket: net.Socket) => void): Promise<{ serv
 
 function closeServer(server: net.Server): Promise<void> {
   return new Promise(resolvePromise => server.close(() => resolvePromise()));
+}
+
+function observeOwnershipServerCreations(): { count(): number; restore(): void } {
+  const mutableNet = net as typeof net & { createServer: typeof net.createServer };
+  const originalCreateServer = mutableNet.createServer;
+  let creations = 0;
+  mutableNet.createServer = ((...args: Parameters<typeof net.createServer>) => {
+    creations += 1;
+    return Reflect.apply(originalCreateServer, mutableNet, args) as net.Server;
+  }) as typeof net.createServer;
+  return {
+    count: () => creations,
+    restore: () => { mutableNet.createServer = originalCreateServer; },
+  };
 }
 
 function assertUnavailable(error: unknown): boolean {
@@ -876,6 +891,7 @@ test('R46 Windows excluded-port EACCES falls back only after a full fail-closed 
     const port1 = await freePort();
     const port2 = await freePort();
     let unknown: net.Server | undefined;
+    let creationObservation: ReturnType<typeof observeOwnershipServerCreations> | undefined;
     try {
       await assert.rejects(
         () => acquireLoopbackServerOwnership(root, {
@@ -887,6 +903,7 @@ test('R46 Windows excluded-port EACCES falls back only after a full fail-closed 
               unknown!.once('error', rejectPromise);
               unknown!.listen(port2, '127.0.0.1', () => resolvePromise());
             });
+            creationObservation = observeOwnershipServerCreations();
           },
           bindErrorForTesting: {
             port: port1,
@@ -898,8 +915,10 @@ test('R46 Windows excluded-port EACCES falls back only after a full fail-closed 
         }),
         assertUnavailable,
       );
+      assert.equal(creationObservation?.count(), 1, 'unknown must be found by the full resweep before port2 bind');
       await assertPortFree(port1);
     } finally {
+      creationObservation?.restore();
       if (unknown) await closeServer(unknown).catch(() => {});
       rmSync(root, { recursive: true, force: true });
     }
@@ -910,12 +929,14 @@ test('R46 Windows excluded-port EACCES falls back only after a full fail-closed 
     const port1 = await freePort();
     const port2 = await freePort();
     let existing: ServerOwnership | undefined;
+    let creationObservation: ReturnType<typeof observeOwnershipServerCreations> | undefined;
     try {
       await assert.rejects(
         () => acquireLoopbackServerOwnership(root, {
           candidatePorts: [port1, port2],
           afterPreSweep: async () => {
             existing = await acquireLoopbackServerOwnership(root, { candidatePorts: [port2] });
+            creationObservation = observeOwnershipServerCreations();
           },
           bindErrorForTesting: {
             port: port1,
@@ -927,9 +948,11 @@ test('R46 Windows excluded-port EACCES falls back only after a full fail-closed 
         }),
         assertAlreadyRunning,
       );
+      assert.equal(creationObservation?.count(), 1, 'same-root must be found by the full resweep before port2 bind');
       assert.equal(existing?.endpoint, `tcp://127.0.0.1:${port2}`);
       await assertPortFree(port1);
     } finally {
+      creationObservation?.restore();
       await existing?.release().catch(() => {});
       rmSync(root, { recursive: true, force: true });
     }
@@ -966,6 +989,10 @@ test('R46 Windows excluded-port EACCES falls back only after a full fail-closed 
           }),
           (error: unknown) => {
             assertUnavailable(error);
+            assert.equal((error as Error).message, 'SERVER_OWNERSHIP_UNAVAILABLE');
+            assert.ok(!Object.keys(error as object).includes('cause'), 'cause must remain non-enumerable');
+            const cause = readDiagnosticField(error as object, 'cause');
+            assert.ok(cause && typeof cause === 'object');
             const diagnostic = snapshotDiagnosticValue(error) as {
               cause?: Record<string, unknown>;
             };
@@ -976,6 +1003,19 @@ test('R46 Windows excluded-port EACCES falls back only after a full fail-closed 
             assert.equal(diagnostic.cause?.port, reportedPort);
             assert.equal(diagnostic.cause?.candidateIndex, 0);
             assert.doesNotMatch(JSON.stringify(error), /r46-negative|projectRoot|root/i);
+            assert.equal(cause instanceof Error, false);
+            assert.equal(Object.isFrozen(cause), true);
+            assert.deepEqual(
+              Object.getOwnPropertyNames(cause).sort(),
+              ['address', 'candidateIndex', 'code', 'errno', 'port', 'syscall'],
+            );
+            for (const rendered of [
+              JSON.stringify(cause),
+              inspect(cause),
+              JSON.stringify(structuredClone(cause)),
+            ]) {
+              assert.doesNotMatch(rendered, /serverOwnership|projectRoot|r46-negative|\\Users\\|\/Users\//i);
+            }
             return true;
           },
           variant.name,
