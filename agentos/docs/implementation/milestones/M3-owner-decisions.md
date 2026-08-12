@@ -1,6 +1,6 @@
 # AgentOS M3 Owner Decision Register
 
-Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / IMPLEMENTED AND MERGED: the P3D Cancel contract they closed was subsequently implemented through P3D-2 (PR #37) and race-closed through P3D-3 (PR #38). M3-TD-33 through M3-TD-36 are the P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE recorded after the P6-0 independent review reclassified the remaining delivery, recovery, retry/dead-letter, and Legacy execution questions as requiring no new user Owner Decision. Independent remote review of P6A0 commit `67e06e12088c6f369763bc5241ea10cc35876da8` returned CHANGES REQUIRED — HIGH-1 because total claim attempts could not durably reconstruct completed classified delivery failures or DeadLetter `firstFailedAt`. The forward remediation below closes that technical evidence gap without a new Owner decision or schema change. P6 production implementation remains NOT AUTHORIZED pending independent remote re-review.
+Technical direction status: M3-TD-01 through M3-TD-30 retain their prior independent technical review status. M3-TD-31 and M3-TD-32 are OWNER APPROVED / IMPLEMENTED AND MERGED through P3D. M3-TD-33 through M3-TD-36 required no new user Owner Decision and were subsequently implemented and accepted through P6A/P6B/P6C/P6D. The earlier P6A0 HIGH-1 is preserved below as historical review evidence; its forward remediation passed re-review without a new Owner decision, schema change, or Migration 014. M3 implementation is complete; formal closeout becomes COMPLETE when PR #43 merges. M4 Entry is PENDING A SEPARATE ENTRY DECISION; M4 preplanning is NOT AUTHORIZED BY THIS CLOSEOUT, and M4 production implementation remains NOT AUTHORIZED.
 
 M3 current decision and contract status:
 P3C-0B: MERGED
@@ -13,19 +13,21 @@ P3D-0 Preplanning: COMPLETE
 P3D Contract Closure: OWNER APPROVED / DOCUMENTED
 M3-TD-31: OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37
 M3-TD-32: OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37
-M3-TD-33 through M3-TD-36: P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE / DOCUMENTED
+M3-TD-33 through M3-TD-36: IMPLEMENTED / ACCEPTED through P6A/P6B/P6C/P6D
 P6-0 independent review: PASS WITH CONTRACT RECLASSIFICATION
-P6A0 independent remote review: CHANGES REQUIRED — HIGH-1
-P6A0 HIGH-1 remediation: DOCUMENTED / AWAITING INDEPENDENT REMOTE RE-REVIEW
+P6A0 initial independent remote review: CHANGES REQUIRED — HIGH-1 (HISTORICAL)
+P6A0 HIGH-1 remediation: ACCEPTED / RE-REVIEW PASS
 New P6 user Owner Decision: NONE
-P6 production entry: NO-GO — AWAITING P6A0 INDEPENDENT REMOTE RE-REVIEW
+P6A/P6B/P6C/P6D: COMPLETE / ACCEPTED / CLOSED
 P3D-1: IMPLEMENTED AND MERGED via PR #36
 P3D-2: IMPLEMENTED AND MERGED via PR #37
 P3D-3: COMPLETE AND MERGED via PR #38
 P3E integrated verification evidence: COMPLETE (test/docs only, commit `400a3b29697b7185d29df2cb9da0417260549913`)
-Migration 014: NOT REQUIRED / NOT AUTHORIZED / ABSENT
+Migration 014: NOT REQUIRED BY M3 / NOT CREATED / NOT AUTHORIZED
 Production Cutover: NOT PERFORMED / NOT AUTHORIZED
-Remote Checks: UNAVAILABLE — NOT PASS
+Repository CI: PASS — current pre-PR #43 authoritative main `e17a4bffdf12a033a0587ec2431cefe51a97bc49` (PR #44 R39 remediation merge), post-PR #44 run `31565915572`; PR #42 baseline `859d8c73657741c03a3241402a9ab4c2e2f173ce` / run `31513943821` is historical and superseded as the current-main baseline
+M3: IMPLEMENTATION COMPLETE; FORMAL CLOSEOUT COMPLETE UPON PR #43 MERGE
+M4 Entry: PENDING SEPARATE ENTRY DECISION; M4 preplanning is NOT AUTHORIZED BY THIS CLOSEOUT
 
 Final P0 documentation merge gate: COMPLETE (historical; superseded by the merged P1, P2, and P3 preplanning records).
 
@@ -39,7 +41,7 @@ This register separates the approved M3 technical contract from deferred Product
 - M3 is the Lifecycle, Event and API Foundation defined by Runtime Specification 14, Roadmap §§47–53.
 - The technical rows below are approved as contract direction by independent technical review. Already merged stages are current evidence; unimplemented stages and portions remain unauthorized unless a later instruction explicitly authorizes them. The P0 docs-only merge gate is historical and complete.
 - USER OWNER APPROVAL REQUIRED remains mandatory for deviations from the Runtime Specification, irreversible schema or data changes, external cost or infrastructure, major user-visible behavior changes, Production Restore, and unrollbackable Cutover.
-- Migration 012 was implemented and merged as part of M3 P2. No further migration, including Migration 014, is required or authorized by this register.
+- Migration 012 was implemented and merged as part of M3 P2. No further migration was required by M3; this M3 register does not authorize Migration 014 or any M4 migration. If M4 preplanning is separately authorized, it must audit schema needs separately.
 - Unknown records, data mismatch, active/interrupted Runs, missing Remote Checks, and incomplete evidence fail closed.
 
 ## 2. Approved M3 technical contract
@@ -78,10 +80,10 @@ This register separates the approved M3 technical contract from deferred Product
 | M3-TD-30 | Retry child run activation package | Option A: Retry is accepted only for a Parent Run in `failed` at the expected version; it creates one queued Child Run and never authorizes Engine execution. The Child requires a separate `run.start`; `run.retry -> HTTP 201` with the dedicated schemaVersion 1 Child Run + completed v3 Retry Operation replay envelope. The Parent is never reset or modified. | Option A alignment MERGED via PR #29. P3C-0B idempotency closure MERGED. P3C-1 Start Portion MERGED via PR #31. P3C-1 Retry contract IMPLEMENTED / CURRENT. Retry production implementation IMPLEMENTED AND MERGED via PR #33. |
 | M3-TD-31 | P3D Operation Cancel HTTP Request and Replay Contract | `POST /api/operations/:operationId/cancel` accepts only URL `operationId`, an empty query, and the exact body `{ "expectedVersion": <positive safe integer> }`. The router is locator-first and mounts before global `express.json()`. Already-cancelled is HTTP 200 with zero side effects even when the supplied version is stale; other stale requests are `409 VERSION_CONFLICT`; matching-version completed/failed are `409 OPERATION_NOT_CANCELLABLE`. Server metadata is `operation_api` / empty process IDs / Worktree preserved / no reason. | APPROVED TECHNICAL DIRECTION. OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37 (P3D-2); race closure evidence via PR #38 (P3D-3). |
 | M3-TD-32 | P3D Guarded Operation Cancel and Approval-aware Run Cancellation | Option C is approved: a dedicated Operation guarded-cancel seam plus an approval-aware Lifecycle cancellation seam. The ordinary Operation transition table is unchanged. Waiting-approval cancellation discovers exactly one unresolved Approval and preserves `approval.resolved -> stage.cancelled* -> run.cancelled` in the same outer transaction. | APPROVED TECHNICAL DIRECTION. OWNER APPROVED / IMPLEMENTED AND MERGED via PR #37 (P3D-2). |
-| M3-TD-33 | P6 Task-domain Outbox delivery sink | `OutboxPublisher -> RuntimeEventDeliverySink -> RuntimeEventNotifier` is the P6 durable live-distribution wake-up path. The sink accepts only exact persisted Outbox/Event identity and emits `{ runId, sequence, eventId }`; it is not an Event Store, Conversation EventBus, HTTP/SSE client, or external broker. `published` means synchronous sink acceptance, not browser consumption or Run completion. | BOUNDED TECHNICAL CONTRACT CLOSURE / DOCUMENTED IN P6A0. NO NEW USER OWNER DECISION. P6 PRODUCTION IMPLEMENTATION NOT AUTHORIZED pending P6A0 independent remote review. |
-| M3-TD-34 | P6 Task-domain restart and uncertainty contract | `runs.recovery_required` is the only M3 recovery representation. Recovery classifies Run, Run Stage, `run.start` Operation, Approval where applicable, and Runtime Event evidence together. Terminal Runs remain immutable; queued authorization may be restored; post-claim/pre-start uses the existing M3-TD-29 C1b failure closure; uncertain active execution stays `running` with `recovery_required = 1`; coherent approvals/paused state remain waiting/paused; impossible combinations fail closed. | Same P6A0 status. No Recovery Record or Migration 014. Never guess success or blindly restart provider execution. |
-| M3-TD-35 | P6 Outbox crash, retry, and dead-letter policy | An expired `publishing` lease is conditionally reclaimed to `retry` while preserving immutable identity/payload and attempts. `attempts` is total delivery claims, not completed failures. Canonical `OutboxFailureStateV1` in existing mutable `last_error` durably records completed classified failures, immutable first failure time, and latest classified/lease-expired outcome. Completed failures alone drive the five-failure budget and deterministic backoff. Outbox dead-letter transition and DeadLetter insert share one outer transaction with exact stable evidence mapping. | P6A0 HIGH-1 FORWARD REMEDIATION / DOCUMENTED. NO NEW USER OWNER DECISION; NO SCHEMA CHANGE OR MIGRATION 014. P6A NOT AUTHORIZED pending independent remote re-review. |
-| M3-TD-36 | Legacy canonical mapping execution ownership | One Legacy request creates one canonical Run, one `run.start` Operation, and one execution authority. `LegacyCanonicalExecutionService` is the sole AgentRunner owner for `legacy_pipeline`; `tasks.ts` owns validation, command initiation, persisted-event projection subscription, and transport cleanup only. Thinking is persisted as `stream.text_delta` before pure Legacy projection. Disconnect unsubscribes without aborting execution or cancelling Run/Operation. | Same P6A0 status. No second executor, M4 ProcessManager/ProviderAdapter, Web switch, Legacy retirement, or route-owned lifecycle state machine. |
+| M3-TD-33 | P6 Task-domain Outbox delivery sink | `OutboxPublisher -> RuntimeEventDeliverySink -> RuntimeEventNotifier` is the P6 durable live-distribution wake-up path. The sink accepts only exact persisted Outbox/Event identity and emits `{ runId, sequence, eventId }`; it is not an Event Store, Conversation EventBus, HTTP/SSE client, or external broker. `published` means synchronous sink acceptance, not browser consumption or Run completion. | IMPLEMENTED / ACCEPTED through P6A and P6D. NO NEW USER OWNER DECISION. |
+| M3-TD-34 | P6 Task-domain restart and uncertainty contract | `runs.recovery_required` is the only M3 recovery representation. Recovery classifies Run, Run Stage, `run.start` Operation, Approval where applicable, and Runtime Event evidence together. Terminal Runs remain immutable; queued authorization may be restored; post-claim/pre-start uses the existing M3-TD-29 C1b failure closure; uncertain active execution stays `running` with `recovery_required = 1`; coherent approvals/paused state remain waiting/paused; impossible combinations fail closed. | IMPLEMENTED / ACCEPTED through P6B and P6D. No Recovery Record or Migration 014. Never guess success or blindly restart provider execution. |
+| M3-TD-35 | P6 Outbox crash, retry, and dead-letter policy | An expired `publishing` lease is conditionally reclaimed to `retry` while preserving immutable identity/payload and attempts. `attempts` is total delivery claims, not completed failures. Canonical `OutboxFailureStateV1` in existing mutable `last_error` durably records completed classified failures, immutable first failure time, and latest classified/lease-expired outcome. Completed failures alone drive the five-failure budget and deterministic backoff. Outbox dead-letter transition and DeadLetter insert share one outer transaction with exact stable evidence mapping. | P6A0 HIGH-1 forward remediation ACCEPTED; IMPLEMENTED / ACCEPTED through P6A and P6D. NO NEW USER OWNER DECISION, SCHEMA CHANGE, OR MIGRATION 014. |
+| M3-TD-36 | Legacy canonical mapping execution ownership | One Legacy request creates one canonical Run, one `run.start` Operation, and one execution authority. `LegacyCanonicalExecutionService` is the sole AgentRunner owner for `legacy_pipeline`; `tasks.ts` owns validation, command initiation, persisted-event projection subscription, and transport cleanup only. Thinking is persisted as `stream.text_delta` before pure Legacy projection. Disconnect unsubscribes without aborting execution or cancelling Run/Operation. | IMPLEMENTED / ACCEPTED through P6C and P6D. No second executor, M4 ProcessManager/ProviderAdapter, Web switch, Legacy retirement, or route-owned lifecycle state machine. |
 
 > **SUPERSEDED / HISTORICAL — NOT CURRENT STATUS.** Implementation-boundary
 > text that describes an earlier authorization gate is historical when the
@@ -94,9 +96,9 @@ individual current implementation statuses recorded above and in section 5.
 M3-TD-26 through M3-TD-30 resolve the five P3 Owner Decision candidates
 (formerly OD-P3-01 through OD-P3-05). M3-TD-31 and M3-TD-32 close the missing
 P3D HTTP and approval-aware cancellation details; they do not authorize code.
-M3-TD-33 through M3-TD-36 are the P6A0 bounded technical closure, require no
-new user Owner Decision, and remain production-unimplemented pending review of
-this docs package.
+M3-TD-33 through M3-TD-36 are the P6A0 bounded technical closure, required no
+new user Owner Decision, and are implemented and accepted through
+P6A/P6B/P6C/P6D.
 
 M3-TD-01 through M3-TD-25 retain their historical contract wording. Any P1/P2
 implementation boundary recorded in those rows is a historical phase
@@ -1530,7 +1532,7 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 | M3-POST-12 | Post-Cutover observation duration, telemetry, incident thresholds, and audit evidence remain deferred because no Cutover has occurred. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED where external telemetry or sensitive data is involved. |
 | M3-POST-13 | Legacy data deletion remains separate from M3 and is never automatic after a technical gate. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; USER OWNER APPROVAL REQUIRED for any destructive operation. |
 | M3-POST-14 | Branch, PR, merge, and release policy for future implementation remains deferred. This remediation creates no PR; the future P0 merge gate requires Draft PR, independent review, and ordinary Merge Commit. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3. |
-| M3-POST-15 | Remote Checks remain UNAVAILABLE — NOT PASS. Exact local L3 evidence may substitute only where separately accepted; missing remote evidence must not be relabeled passed. | NOT AN M3 P1 BLOCKER; NOT AUTHORIZED IN M3; Owner acknowledgment is required for a substitute release gate. |
+| M3-POST-15 | At the original P0 gate, Remote Checks were UNAVAILABLE — NOT PASS. That historical absence was not relabeled. PR #42 later established the historical CI baseline at `859d8c73657741c03a3241402a9ab4c2e2f173ce`, and post-PR #42 main run `31513943821` passed. PR #44 at `e17a4bffdf12a033a0587ec2431cefe51a97bc49` superseded it as the current-main baseline, with post-PR #44 main run `31565915572` passing. | HISTORICAL M3 EVIDENCE GAP — SUPERSEDED BY CURRENT CI BASELINE; NOT A CUTOVER OR M4 AUTHORIZATION. |
 
 ## 5. P0 closure and current authorization status
 
@@ -1539,8 +1541,8 @@ The following historical decisions remain recorded but do not block the M3 Lifec
   MERGED via PR #37; race closure evidence via PR #38. M3-TD-33 through
   M3-TD-36 are the P6A0 BOUNDED TECHNICAL CONTRACT CLOSURE documented after
   P6-0 independent review reclassified the remaining questions as requiring no
-  new user Owner Decision. P6 production implementation is not authorized
-  pending P6A0 independent remote review.
+  new user Owner Decision. They were subsequently implemented and accepted
+  through P6A/P6B/P6C/P6D.
 - P3C-0B Post-Merge Remediation 1: historical six-file Option A alignment
   prerequisite; PR #33 contains the six-file Retry production implementation.
 - Final independent P0 review: COMPLETE (historical).
@@ -1586,23 +1588,37 @@ The following historical decisions remain recorded but do not block the M3 Lifec
 - M3 P5: COMPLETE / ACCEPTED through P5C at
   `a1cbb2868f9da215fab058b4176d70a3b382831d`.
 - M3 P6-0 independent review: PASS WITH CONTRACT RECLASSIFICATION.
-- M3 P6A0 independent remote review: CHANGES REQUIRED — HIGH-1 on commit
+- M3 P6A0 initial independent remote review: CHANGES REQUIRED — HIGH-1 on commit
   `67e06e12088c6f369763bc5241ea10cc35876da8`.
-- M3 P6A0 HIGH-1 durable failure evidence remediation: DOCUMENTED; production
-  implementation remains NO-GO pending independent remote re-review.
+- M3 P6A0 HIGH-1 durable failure evidence remediation: ACCEPTED / independent
+  remote re-review PASS.
 - New P6 user Owner Decision: NONE.
-- P6A/P6B/P6C/P6D: NOT ENTERED.
+- P6A/P6B/P6C/P6D: COMPLETE / ACCEPTED / CLOSED.
 - P3B-2A CONTRACT ALIGNMENT: COMPLETED AND MERGED via PR #25; this historical
   completion does not alter the merged Retry implementation. P3D has since
   COMPLETED via PR #36/#37/#38.
 - Unresolved P3 Owner Decision candidates: 0.
 - Approved P3 decisions: 7.
-- M3-TD sequence ends at M3-TD-36. M3-TD-33 through M3-TD-36 are bounded P6
-  technical directions only; they do not authorize production implementation.
+- M3-TD sequence ends at M3-TD-36. M3-TD-33 through M3-TD-36 are implemented
+  and accepted M3 technical directions; they do not authorize M4 production
+  implementation or production cutover.
 - Migration 012: IMPLEMENTED AND MERGED as part of M3 P2.
-- Migration 014: NOT REQUIRED / NOT AUTHORIZED / ABSENT.
+- Migration 014: NOT REQUIRED BY M3 / NOT CREATED / NOT AUTHORIZED.
 - Production Cutover: NOT AUTHORIZED / NOT STARTED.
 - Production Restore: NOT AUTHORIZED.
 - Legacy API/JSON retirement or deletion: NOT AUTHORIZED.
+- M3 implementation: COMPLETE after PR #40 implementation merge and the
+  accepted P6/P7 evidence.
+- M3 formal closeout: COMPLETE upon PR #43 merge. Before that merge, the
+  authoritative main is the PR #44 R39 remediation merge at
+  `e17a4bffdf12a033a0587ec2431cefe51a97bc49`,
+  and post-PR #44 main CI run `31565915572` passes. The resulting PR #43 merge
+  commit becomes authoritative and requires its own post-merge main CI.
+- The PR #42 baseline `859d8c73657741c03a3241402a9ab4c2e2f173ce`
+  and run `31513943821` remain historical evidence, superseded as the
+  current-main baseline by PR #44.
+- M4 Entry: PENDING SEPARATE ENTRY DECISION. M4 preplanning is NOT AUTHORIZED BY
+  THIS CLOSEOUT. M4 production implementation, Migration 014 creation, and
+  production cutover remain NOT AUTHORIZED.
 
-An Owner Decision is closed only when it records the selected option, owner identity and timestamp, affected scope, evidence thresholds, stop/no-go condition, rollback boundary, review requirement, and re-review trigger. These technical approvals close contract direction only; they do not satisfy the final P0 merge gate.
+An Owner Decision is closed only when it records the selected option, owner identity and timestamp, affected scope, evidence thresholds, stop/no-go condition, rollback boundary, review requirement, and re-review trigger. These technical approvals do not authorize M4 production implementation, schema mutation, or production cutover.
