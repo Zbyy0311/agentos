@@ -39,7 +39,8 @@ Future package-local deterministic tests must cover:
   starting;
 - startup, idle and total timers with injected clock; approved waiting pauses
   idle only; total continues according to frozen policy;
-- repeated stop, stop before spawn, during spawn/running/waiting, after terminal;
+- repeated stop, `created` cancel before spawn-right consumption, `starting`
+  cancel with null/present PID, running/waiting stop and stop after terminal;
 - spawn/cancel, spawn-failure/cancel, exit/cancel, exit/timeout,
   timeout/cancel, shutdown/exit and duplicate-terminal races;
 - independent stdout/stderr sequences; UTF-8 split/BOM/CRLF/lone CR/invalid
@@ -137,8 +138,9 @@ Each case records the first accepted stop reason, Process versions, Driver call
 count, terminal Event count, output finalization count, tree result and final M3
 outcome:
 
-- cancel before reservation, after reservation/before spawn, during fenced
-  start, immediately after spawn, running, waiting, stopping and after terminal;
+- cancel before reservation, after reservation while still `created`, during
+  fenced `starting` with unresolved spawn, immediately after spawn, running,
+  waiting, stopping and after terminal;
 - two callers with same key, different keys/reasons and concurrent Run/Stage
   cancel; all join one Process stop;
 - graceful Provider exit before deadline, at deadline and after force begins;
@@ -153,6 +155,24 @@ outcome:
 Acceptance requires one terminal winner, no overwrite, no duplicate terminal
 Event, no second spawn, no signal on mismatch, and no successful cancellation
 when survivors are known or cannot be excluded.
+
+The HIGH-1 `starting` x cancel remediation adds these five mandatory
+deterministic schedules. A controllable fake Driver exposes `spawn-entered`,
+`spawn-settle`, `tree-terminate-entered` and `survivor-result` barriers; the
+repository exposes committed-version barriers. Tests advance only those
+barriers and an injected clock, never sleeps or probability loops.
+
+| ID | Forced schedule | Required assertions |
+|---|---|---|
+| RACE-S1 | Reserve `created`; hold start before its CAS; commit cancel first; then release start. | `created -> failed` with `cancelled-before-spawn`; spawn right is revoked; Driver spawn count 0; later/duplicate start returns the same terminal snapshot; exactly one terminal fact. |
+| RACE-S2 | Commit `created -> starting`; block the entered Driver spawn before it settles, so PID remains null; commit cancel and inspect before releasing Driver. | `starting -> stopping`; null PID is not treated as unspawned; spawn count remains exactly 1; no `failed/cancelled-before-spawn`, no `running`, no second spawn; the stop ticket retains cancel causation while awaiting the single spawn result. |
+| RACE-S3 | Continue RACE-S2 by releasing a successful spawn with a fixed PID/start/tree identity; make tree termination succeed and survivor verification return no survivors, while holding verification until state/evidence is inspected. | Late success binds native identity to the original Process ID and persists factual start evidence without a `running` transition; the existing stop ticket immediately invokes tree termination and survivor verification once; the Process reaches `exited` with one `process.exited` terminal fact carrying cancel causation; spawn count 1 and terminal fact count 1. |
+| RACE-S4 | Continue RACE-S2 by releasing `PROCESS_SPAWN_FAILED` with deterministic redacted native evidence. | One `process.failed` terminal fact contains both the accepted cancel causation/stop reason and spawn-failure code/evidence; no `process.exited`, tree signal or replacement Process; spawn count 1 and no retry/takeover spawn. |
+| RACE-S5 | At each RACE-S3/S4 terminal boundary, release duplicate start callers, duplicate cancel keys, a stale owner, recovery scan and duplicate late Driver callbacks in a fixed barrier order. | All callers join the original Process/stop result; state never returns to `running`; native identity cannot rebind to another Process; spawn count 1, cleanup/finalization at most once as applicable, exactly one terminal fact/Event, and conflicting late evidence is restricted diagnostic only. |
+
+RACE-S1 proves that only `created` owns an unconsumed spawn right. RACE-S2--S5
+prove that `starting` has consumed it regardless of PID visibility and that
+cancel cannot convert that uncertainty into a second spawn.
 
 ## 7. Recovery cases
 

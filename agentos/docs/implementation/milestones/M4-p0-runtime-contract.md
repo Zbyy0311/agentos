@@ -116,9 +116,12 @@ Registry resolves exact Adapter
 
 1. A dispatcher may call Adapter start only after it creates/acquires the unique
    Session claim and CAS-persists its one-way `adapterStartRequestedAt` marker
-   with the current Session claim epoch/owner. A process-backed dispatcher may
-   spawn only after the paired root Process reservation CAS-transitions from
-   `created` to `starting` with the current Process claim epoch/owner.
+   with the current Session claim epoch/owner. A process-backed dispatcher owns
+   an unconsumed spawn right only while the paired root Process is `created`.
+   The winning fenced CAS from `created` to `starting` consumes that right
+   before the Driver call. `starting` therefore means one spawn attempt has
+   been irrevocably committed; a null PID is only an in-flight/unknown result,
+   never evidence that spawn has not happened.
 2. A duplicate dispatcher that loses Session uniqueness reads the same Session
    and paired Process when present. It observes/joins that authority evidence
    and never calls Adapter start.
@@ -135,14 +138,17 @@ Registry resolves exact Adapter
    owner must CAS in that same transaction. Elapsed wall time or lease expiry
    without these persisted conditions is insufficient.
 6. Once `adapterStartRequestedAt` is durable, automatic takeover cannot call
-   Adapter start again. Once Process `starting` is durable, takeover cannot spawn
-   another root. A crash in either external-call window becomes uncertainty for
-   the same Session/Process chain; at-most-once is preferred over guessed retry.
+   Adapter start again. Once Process `starting` is durable, takeover, cancel,
+   recovery and PID-null observation cannot spawn another root. A crash in
+   either external-call window becomes uncertainty for the same Session/Process
+   chain; at-most-once is preferred over guessed retry.
 7. A stale owner must revalidate its epoch in the same transition that grants
    Adapter start or Process spawn. A failed CAS prohibits the external call.
-8. Spawn failure terminalizes the reservation as `failed`. Spawn success
-   followed by registration failure triggers immediate tree termination,
-   durable failure evidence, and no second spawn.
+8. Spawn failure terminalizes the reservation as `failed`. If cancel already
+   moved `starting -> stopping`, the single terminal failure retains both
+   cancel causation and spawn-failure evidence. Spawn success followed by
+   registration failure triggers immediate tree termination, durable failure
+   evidence, and no second spawn.
 9. A terminal claim is immutable. Retry or Provider fallback requires a new
    Stage attempt, never reuse of the old claim.
 10. Restart scans the same Session claim and any paired Process reservation. It
@@ -216,13 +222,13 @@ P0 adopts the Runtime Specification vocabulary exactly:
 
 | State | Entry and allowed next states | Terminal? | Required durable evidence | PID / live handle | Stop / restart rule |
 |---|---|---:|---|---|---|
-| `created` | unique reservation transaction; -> `starting`, `failed`, `unknown` | no | claim key, claim epoch/owner, launch snapshot, version, created time | PID absent; handle absent | stop may CAS to `failed` with cancelled-before-spawn reason; restart may reacquire only with fencing evidence |
-| `starting` | winning fenced CAS before spawn; -> `running`, `stopping` only after PID exists, `failed`, `unknown` | no | start intent, claim epoch, timestamps, redacted launch facts | PID may be absent/present; handle may appear only after spawn | cancel before native spawn CAS-terminalizes `failed`; after spawn it enters `stopping`; restart never respawns automatically |
+| `created` | unique reservation transaction; spawn right unconsumed; -> `starting`, `failed`, `unknown` | no | claim key, claim epoch/owner, launch snapshot, version, created time | PID absent; handle absent | cancel may CAS to `failed` with cancelled-before-spawn reason and permanently revoke spawn; restart may reacquire only with fencing evidence |
+| `starting` | winning fenced CAS consumed the one spawn right before the Driver call; -> `running`, `stopping`, `failed`, `unknown` | no | durable `starting` state is the consumed-right fact; start intent, claim epoch, timestamps, redacted launch facts | PID may be absent/present; null PID does not mean unspawned; handle may appear only after spawn | cancel always CASes to `stopping`, even with null PID; late success binds the same Process and is terminated; late failure may alone terminalize `failed`; restart never respawns |
 | `running` | registered native identity + stream/exit wiring; -> `waiting`, `stopping`, `exited`, `orphaned`, `unknown` | no | PID, native start identity, started fact, Process Event | PID required; controllable handle expected in current server | idempotent stop accepted; restart classifies identity |
 | `waiting` | Provider/approval wait from running; -> `running`, `stopping`, `exited`, `orphaned`, `unknown` | no | wait reason and activity/timer checkpoint | PID normally present; handle expected in current server | idle timer pauses only for an approved reason; stop remains allowed |
-| `stopping` | accepted stop/timeout/shutdown from any spawned active state; -> `exited`, `orphaned`, `unknown` | no | stop reason/key, deadline, version, stopping Event | PID may disappear; handle optional after restart | repeat stop joins same result; restart verifies before signaling |
+| `stopping` | accepted stop/timeout/shutdown from `starting` or a spawned active state; -> `exited`, `failed`, `orphaned`, `unknown` | no | stop reason/key, deadline, version, stopping Event | PID may be absent while the consumed spawn call is unresolved; may disappear later; handle optional after restart | repeat stop joins same result; `failed` is allowed only when the in-flight spawn later proves no native root was created; restart verifies before signaling |
 | `exited` | authoritative close/exit/tree result after native start | yes | exit/signal, termination reason, times, output finalization and cleanup result | PID historical only; no live handle | returns prior result; immutable except archival metadata |
-| `failed` | pre-running validation/spawn/registration failure or successful pre-spawn cancel | yes | stable error, phase, time, no live native ownership | PID absent, except registration-failure evidence after verified cleanup; no handle | immutable; no spawn/retry under same attempt |
+| `failed` | pre-running validation/spawn/registration failure or successful `created` cancel before spawn-right consumption | yes | stable error when applicable, phase, time, no live native ownership; late spawn failure after cancel retains both causes | PID absent, except registration-failure evidence after verified cleanup; no handle | immutable; no spawn/retry under same attempt |
 | `orphaned` | native process/survivor is or may be alive but control/ownership is insufficient; -> `exited` after verified cleanup, `unknown` if evidence becomes insufficient | no | classification, known PIDs, cleanup requirement, identity evidence | PID may exist; trusted handle absent/insufficient | never report successful cancel; only verified no-survivor cleanup may terminalize |
 | `unknown` | recovery cannot prove alive/missing/identity/terminal fact; -> `orphaned` on proven alive-but-uncontrolled/mismatch, `failed` when no managed running Process ever existed and missing/no-spawn is proven, `exited` when prior native start plus terminal/tree facts are proven; otherwise remains `unknown` | no | evidence inspected, missing evidence, classifier version/time | PID/handle may be unknown | no signal, spawn, success, or return to `running` under the M4 minimum; any terminalization uses recovery/unknown reason, never Provider success |
 
@@ -235,10 +241,23 @@ Every transition is CAS on expected version and allowed source state. The
 winner writes the Process update and its durable Process fact atomically with
 the M3 Event/Outbox chain where a Run Event is required. Race rules:
 
-- spawn-success vs cancel: accepted cancel moves to `stopping`; a late running
-  observation cannot overwrite it and termination proceeds;
-- spawn-failure vs cancel: one CAS terminal winner; the loser returns the same
-  terminal fact;
+- `created` vs cancel: only `created` means the spawn right is unconsumed.
+  Cancel CAS-terminalizes it as `failed` with cancelled-before-spawn evidence;
+  every later start sees terminal state and Driver spawn count remains zero;
+- `starting` vs cancel: `created -> starting` already consumed the spawn right.
+  Cancel always persists `starting -> stopping`, including while PID is null;
+  it never terminalizes as if spawn had not been attempted;
+- late spawn success after `stopping`: it cannot write `running`. The returned
+  native PID/start/tree handle is registered against the same AgentOS Process,
+  the factual start evidence is retained, and the existing stop ticket
+  immediately continues bounded tree termination plus survivor verification;
+- late spawn failure after `stopping`: one `process.failed` terminal CAS records
+  the original cancel causation/stop reason together with
+  `PROCESS_SPAWN_FAILED` and redacted native evidence. It emits no
+  `process.exited`, creates no replacement Process, and never calls spawn again;
+- duplicate/late spawn callbacks, cancel requests and terminal observations
+  join the same Process/stop ticket. No callback may restore `running`, consume
+  another spawn right, or emit a second terminal fact;
 - exit vs cancel or timeout: observed exit wins terminal CAS if first; otherwise
   stop reason is retained while exit/tree evidence finalizes it;
 - timeout vs cancel: first accepted stop reason owns the transition; later
@@ -252,9 +271,9 @@ the M3 Event/Outbox chain where a Run Event is required. Race rules:
 | Operation | Input -> output | Preconditions / side effects / durability | Idempotency / errors / races |
 |---|---|---|---|
 | `reserve` | frozen claim identity + preallocated Provider Session reference when applicable + validated redacted launch facts + timeout/security policy -> Process reservation | Run/Stage/snapshot/Session binding exists in the coordinator's transaction; creates only the `created` Process row; no Provider Session mutation and no OS action | unique claim returns existing reservation to duplicates; binding/claim conflict is explicit; no spawn on conflict |
-| `start` | Process ID + claim epoch/owner + executable/args/cwd/safe env -> observation handle/facts | exact `created` CAS to `starting`; validate `shell=false` default, separated args, cwd, environment and policy; call Driver once; register identity/streams/timers; persist `running` or compensate to `failed` | repeated call observes existing state; stale epoch rejected; spawn/registration errors stable; cancel/start race follows section 7 |
+| `start` | Process ID + claim epoch/owner + executable/args/cwd/safe env -> observation handle/facts | validate `shell=false` default, separated args, cwd, environment and policy; exact fenced `created` CAS to `starting` consumes the only spawn right; call Driver once; on ordinary success register identity/streams/timers and persist `running`; on success after cancel bind the same identity while remaining `stopping` and continue cleanup; on failure persist the single failed fact | repeated call observes existing state; stale epoch rejected; PID-null `starting` never permits a retry; spawn/registration errors stable; cancel/start race follows section 7 |
 | `observe` | Process ID + subscriber cursor -> bounded byte/fact subscription | workspace/Run ownership required; observation never owns Process; no lifecycle mutation; durable output checkpoints are sink-owned | reconnect resumes from durable reference/cursor; slow subscriber cannot grow Process memory or stop it |
-| `stop` | Process ID + reason + idempotency key + bounded graceful/force policy -> opaque stop operation with durable `accepted` ticket and final result | logically two-phase: terminal returns prior result; `created` CAS-terminalizes `failed` with cancelled-before-spawn evidence; spawned active states verify native identity and persist `stopping` before `accepted`; only then may the coordinator request Adapter-native graceful behavior, while Manager executes bounded platform graceful/force/tree and finalizes output/facts; `unknown`/unverified identity permits classification but no signal | duplicate key/request joins the same accepted ticket/result; stale/invalid transitions cannot overwrite; mismatch/survivor/unknown fails closed; ProcessManager receives no Provider callback/parser and Provider-native graceful coordination remains outside it |
+| `stop` | Process ID + reason + idempotency key + bounded graceful/force policy -> opaque stop operation with durable `accepted` ticket and final result | logically two-phase: terminal returns prior result; only `created` CAS-terminalizes `failed` with cancelled-before-spawn evidence and revokes spawn; `starting` always CASes to `stopping` even with null PID; other active states verify native identity and persist `stopping` before `accepted`; a late success is bound to this Process and immediately cleaned, while a late failure writes the single compound failed fact; only after acceptance may the coordinator request Adapter-native graceful behavior, while Manager executes bounded platform graceful/force/tree and finalizes output/facts; `unknown`/unverified identity permits classification but no signal | duplicate key/request joins the same accepted ticket/result; stale/invalid transitions cannot overwrite; mismatch/survivor/unknown fails closed; no cancel path grants a second spawn; ProcessManager receives no Provider callback/parser and Provider-native graceful coordination remains outside it |
 | `get/query` | scoped ID or Run filters -> immutable snapshot(s) | enforce workspace/authz and visibility; read only | repeatable; not found and forbidden remain distinct internally without leaking existence |
 | `terminalize` | expected version + authoritative exit/spawn/cleanup evidence -> terminal snapshot | only allowed state transition; finalize each stream; append one terminal fact; remove live handle after durable commit | first CAS wins; duplicate observation returns winner; conflicting evidence retained internally but cannot overwrite |
 | `recover/classify` | active Process facts + platform evidence + classifier version -> classification | no spawn; inspect PID/start/executable/token/group evidence; persist classification Event and preserve Run uncertainty | repeat classification is safe; identity mismatch prohibits signal; unknown remains unknown; recovery errors never imply success |
@@ -361,7 +380,8 @@ Cancellation is coordinated once per accepted Process/Run command:
 explicit cancel accepted by M3 command boundary
   -> stop scheduling new Stage work
   -> StageExecutionCoordinator correlates active Session/Process
-  -> ProcessManager validates identity, persists stopping, returns accepted ticket
+  -> ProcessManager records pending identity or validates available identity,
+     persists stopping, returns accepted ticket
   -> Adapter optional native graceful request through constrained ports/ticket
   -> bounded platform graceful request
   -> grace deadline

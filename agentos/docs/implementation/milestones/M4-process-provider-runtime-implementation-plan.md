@@ -332,9 +332,12 @@ in Adapter; arbitrary route shell; OpenCode speculation; silent plain fallback
 for a configured Kimi vertical slice.
 
 **Contract changes:** stable validation response/error mapping including
-`PROVIDER_NOT_FOUND`, `PROVIDER_CONFIG_INVALID`, `PROVIDER_AUTH_REQUIRED`,
-`PROVIDER_VERSION_UNSUPPORTED`, `PROVIDER_VALIDATION_FAILED`, and
-`PROVIDER_ADAPTER_NOT_FOUND`.
+`PROVIDER_NOT_FOUND`, `PROVIDER_EXECUTABLE_NOT_ACCESSIBLE`,
+`PROVIDER_CONFIG_INVALID`, `PROVIDER_AUTH_REQUIRED`,
+`PROVIDER_VERSION_UNSUPPORTED`, `PROVIDER_CAPABILITY_UNAVAILABLE`,
+`PROVIDER_INTERNAL_ERROR`, and `PROVIDER_ADAPTER_NOT_FOUND`.
+`PROVIDER_VALIDATION_FAILED` remains `SPEC_RECONCILIATION_REQUIRED` and cannot
+be emitted unless that reconciliation is separately accepted.
 
 **Schema impact:** reuse Provider Configuration. Persisted validation/session
 records require separate schema authorization; an in-memory bounded cache may

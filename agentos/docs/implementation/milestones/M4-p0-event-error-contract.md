@@ -14,10 +14,10 @@ are explicitly marked.
 | Event / fact | Trigger and payload | Source / visibility / durability | Required refs / lifecycle authority |
 |---|---|---|---|
 | `process.launch_requested` | durable reservation committed; `processType`, redacted executable/args/cwd, claim epoch/role, shell, timeout-policy digest | `process-manager`; internal; durable | Run, Stage, Process, Session for Provider root; causation is accepted command/dispatch claim; cannot transition Run/Stage |
-| `process.started` | native identity registered and streams/exit watcher wired; PID, native-start time, platform/tree mode, started time | `process-manager`; internal; durable | Run, Stage, Process, Session; caused by launch request; fact only |
-| `process.failed` **(P0 addition)** | reservation ends before managed running state; outcome `spawn-failure`, `registration-failure`, or `cancelled-before-spawn`; stable Process code only for failure outcomes, phase and cleanup result when native spawn partially occurred | `process-manager`; internal/restricted; durable | Run, Stage, Process, optional Session; caused by launch request or pre-spawn cancel; LifecycleTransactionService decides Stage/Run outcome |
+| `process.started` | native identity registered and streams/exit watcher wired; PID, native-start time, platform/tree mode, started time; may be a late spawn-success fact while Process remains `stopping` and never implies a `running` transition | `process-manager`; internal; durable | Run, Stage, Process, Session; caused by launch request; fact only |
+| `process.failed` **(P0 addition)** | reservation ends before managed running state; outcome `spawn-failure`, `spawn-failure-after-cancel`, `registration-failure`, or `cancelled-before-spawn`; the after-cancel outcome retains both original cancel causation/stop reason and `PROCESS_SPAWN_FAILED` evidence in one terminal fact | `process-manager`; internal/restricted; durable | Run, Stage, Process, optional Session; caused by launch request and, when present, the accepted cancel; LifecycleTransactionService decides Stage/Run outcome; exactly one terminal fact and no second spawn |
 | `process.output_reference_advanced` **(P0 addition)** | first retained bytes, each checkpoint and finalization; stream, artifact ID, prior/next source offsets, retained bytes, truncated/finalized flags | `process-manager`; restricted; durable | Run, Stage, Process, Session, Artifact; caused by started/prior checkpoint; no lifecycle transition |
-| `process.stopping` | first accepted stop/timeout/shutdown request; reason, graceful requested, grace/force deadlines, idempotency-key hash | `process-manager`; internal; durable | Run, Stage, Process, Session; caused by explicit Cancel/timeout/shutdown; lifecycle service may consume only as non-terminal evidence |
+| `process.stopping` | first accepted stop/timeout/shutdown request from `starting`, `running`, or `waiting`; reason, graceful requested, grace/force deadlines, idempotency-key hash and whether native identity is still pending | `process-manager`; internal; durable | Run, Stage, Process, Session; caused by explicit Cancel/timeout/shutdown; PID may be null after spawn-right consumption; lifecycle service may consume only as non-terminal evidence |
 | `process.exited` | one terminal native/cleanup observation; exit code/signal, termination reason, duration, graceful/force flags, cleanup result and output refs | `process-manager`; internal, safe projection may be public; durable | Run, Stage, Process, Session and output Artifacts; one per Process; LifecycleTransactionService decides Stage/Run outcome |
 | `process.cleanup_required` | tree stop cannot prove complete; result `SURVIVORS`, `IDENTITY_MISMATCH`, or `UNKNOWN_PLATFORM_UNAVAILABLE`, restricted known-PID count and safe reason | `process-manager`; restricted; durable | Run, Stage, Process, Session; caused by stopping/recovery; lifecycle service preserves uncertainty/failure as contract dictates |
 | `process.orphaned` | same/mismatched native process is alive but not safely controlled, or known survivor exists; classification and cleanup-required flag | `recovery-manager` or `process-manager`; restricted; durable | Run, Stage, Process, Session; cannot itself claim successful cancellation |
@@ -28,11 +28,14 @@ are explicitly marked.
 `process.failed`, `process.output_reference_advanced` and
 `process.recovery_classified` require future P2 Registry/schema review. They
 must not be emitted as unknown production events before that gate.
-`process.exited` is emitted for every Process that reached running, including
-non-zero, signal, cancel and timeout; those meanings are payload facts, not
-separate terminal states. Pre-running failure uses `process.failed`, so every
-state transition still has a durable fact without pretending a native Process
-exited.
+`process.exited` is emitted for every Process with an authoritative native-start
+identity after verified terminal/cleanup observation, including late spawn
+success while already `stopping`, non-zero, signal, cancel and timeout; those
+meanings are payload facts, not separate terminal states. A proved spawn failure
+or other pre-native-start failure uses `process.failed`, so every transition has
+a durable fact without pretending a native Process exited. Only `created`
+admits `cancelled-before-spawn`; `starting` has already consumed the spawn right
+and cancellation must first produce `process.stopping` even when PID is null.
 
 Secret rule for every Process row above: payloads contain only redacted launch
 facts, safe stable codes, bounded counters/classifications and restricted
@@ -133,11 +136,15 @@ accepted command/dispatch claim
 ```text
 explicit cancel | timeout | shutdown
   -> process.stopping
-  -> process.exited | process.cleanup_required
+  -> process.exited | process.failed (late spawn failure) | process.cleanup_required
   -> provider.session_cancelled when cleanup proves successful cancellation
      | provider.session_failed when cancellation/finalization fails
   -> LifecycleTransactionService terminal/uncertainty Event
 ```
+
+For late spawn success, `process.started` is appended between
+`process.stopping` and `process.exited`; it records the returned native identity
+but does not authorize a `running` transition.
 
 Concurrent producers do not pre-assign sequence outside the Event transaction.
 Out-of-order native facts are timestamped/offset internally but appended in the
@@ -162,61 +169,129 @@ state.
 
 ## 7. Stable Process errors
 
-P0 uses Runtime Specification names when they are more precise. Requested
-candidate aliases are explicitly reconciled below. `HTTP` applies only when the
-error is returned synchronously by an API; asynchronous execution stores the
-same stable code in Operation/Event evidence.
+The authoritative set is the exact 30-member `ProcessErrorCode` union in
+`05-Process-Runtime.md` section 81. Every member has a disposition below.
+`HTTP` applies only to a synchronous API response; asynchronous execution
+stores the same code in Operation/Event evidence. `P1 REQUIRED` freezes the
+code now for the schema-light foundation; a later phase label means the code
+remains authoritative but does not expand P1 scope.
 
-| Frozen code | Candidate reconciliation / phase | HTTP | Retryable | Public detail / internal evidence | Run/Stage mapping owner / stderr |
-|---|---|---:|---|---|---|
-| `PROCESS_EXECUTABLE_NOT_FOUND` | unchanged; validation/start | 422 | no without config change | safe executable/config guidance; resolved search paths restricted | LifecycleTransactionService maps pre-start failure; raw stderr never public |
-| `PROCESS_EXECUTABLE_NOT_ACCESSIBLE` | spec addition; validation/start | 422 | no without permission change | safe permission guidance; native EACCES/EPERM internal | lifecycle owner; no raw stderr |
-| `PROCESS_SPAWN_FAILED` | replaces candidate `PROCESS_START_FAILED`; spawn | 503 | yes only for classified transient resource/race, otherwise no | safe start failure; native code/redacted message/platform evidence internal | lifecycle owner maps Stage failure; no raw stderr |
-| `PROCESS_REGISTRATION_FAILED` | spec addition; post-spawn registration | 500 | no automatic retry | generic public detail; cleanup/tree/persistence evidence restricted | lifecycle owner preserves failure/uncertainty; no raw stderr |
-| `PROCESS_STARTUP_TIMEOUT` | replaces `PROCESS_START_TIMEOUT`; readiness | 503 | phase/policy dependent, never same attempt auto-spawn | limit and suggested action; activity/readiness evidence internal | lifecycle owner; no raw stderr |
-| `PROCESS_IDLE_TIMEOUT` | unchanged; runtime | 409 | no automatic same-attempt retry | safe timeout reason/limit; activity checkpoints internal | lifecycle owner maps timeout |
-| `PROCESS_TOTAL_TIMEOUT` | unchanged; runtime | 409 | no automatic same-attempt retry | safe timeout reason/limit; timer evidence internal | lifecycle owner maps timeout |
-| `PROCESS_CANCEL_FAILED` | replaces broad `PROCESS_STOP_FAILED`; cancellation coordinator | 409 | retry stop may be safe under same idempotency key | generic incomplete cancellation; method/errors restricted | lifecycle owner must not report cancelled success; no raw stderr |
-| `PROCESS_TREE_TERMINATION_FAILED` | precise force-tree failure | 503 | yes for bounded cleanup re-entry only | generic cleanup failure; platform method/native errors restricted | lifecycle owner preserves uncertainty |
-| `PROCESS_SURVIVORS_DETECTED` | replaces `PROCESS_TREE_SURVIVORS`; verification | 409 | cleanup may be retried under policy | safe “cleanup incomplete”; survivor identities restricted | lifecycle owner cannot mark cancel complete |
-| `PROCESS_IDENTITY_MISMATCH` | retained P0 code for any ownership mismatch before signal/recovery | 409 | no until fresh evidence | safe mismatch; compared PID/start/executable/token/group evidence restricted | lifecycle/recovery owner preserves uncertainty; no stderr |
-| `PROCESS_PID_REUSED` | spec-compatible specialized identity mismatch | 409 | no | same public policy; old/new identity evidence restricted | recovery/lifecycle owner |
-| `PROCESS_RECOVERY_UNKNOWN` | retained P0 classification code when evidence cannot decide | 503 | yes only by later scan with stronger evidence | safe “state cannot be verified”; missing checks internal | recovery supplies fact; LifecycleTransactionService owns Run uncertainty |
-| `PROCESS_RECOVERY_FAILED` | classifier operation failed, distinct from unknown result | 503 | normally yes | generic recovery failure; native/repository error internal | same owner split |
-| `PROCESS_OUTPUT_LIMIT_EXCEEDED` | unchanged; output | 409 | no automatic retry | limit/truncation safe; byte counts and policy internal | lifecycle owner only if policy terminates; stderr never public |
-| `PROCESS_ARTIFACT_WRITE_FAILED` | spec addition; output sink | 500 | bounded retry before fail-closed stop | generic traceability failure; sink error/path restricted | lifecycle owner; execution cannot claim fully evidenced success |
-| `PROCESS_MANAGER_SHUTTING_DOWN` | spec addition; pre-start | 503 | yes via later dispatch, same claim evidence | safe retry guidance; shutdown mode internal | scheduler/lifecycle owner; no spawn |
+| Authoritative code | Disposition / owner phase | Frozen trigger and phase | HTTP | Retryable | Required outcome/evidence |
+|---|---|---|---:|---|---|
+| `PROCESS_REQUEST_INVALID` | ADOPT EXACT — P1 REQUIRED | malformed or semantically invalid launch request; `validation` | 400 | no until request changes | field-safe detail; no reservation or spawn |
+| `PROCESS_POLICY_DENIED` | ADOPT EXACT — P1 REQUIRED | executable, cwd, shell or security policy rejects launch; `validation` | 403 | no until policy/request changes | policy reference only; no secret or spawn |
+| `PROCESS_EXECUTABLE_NOT_FOUND` | ADOPT EXACT — P1 REQUIRED | resolved executable/command absent, including `ENOENT`; `validation` | 422 | no until install/config changes | safe guidance; search paths restricted; no spawn |
+| `PROCESS_EXECUTABLE_NOT_ACCESSIBLE` | ADOPT EXACT — P1 REQUIRED | executable exists but access, type or permission fails, including `EACCES`/`EPERM`; `validation` | 422 | no until permission/config changes | native code restricted; no spawn |
+| `PROCESS_CWD_INVALID` | ADOPT EXACT — P1 REQUIRED | cwd missing, inaccessible, escaped or outside worktree boundary; `validation` | 422 | no until cwd/request changes | normalized path evidence restricted; no spawn |
+| `PROCESS_ENVIRONMENT_INVALID` | ADOPT EXACT — P1 REQUIRED | environment merge, size, encoding, denylist or secret-reference validation fails; `validation` | 422 | no until env/config changes | key/source only; never persist values; no spawn |
+| `PROCESS_REGISTRATION_FAILED` | ADOPT EXACT — P1 REQUIRED; durability lands P2 | spawn succeeded but native identity, handle, stream or started fact cannot be registered; `reservation`/`spawn` | 500 | no automatic same-attempt retry | bind returned identity to the same Process, terminate and verify tree, retain cleanup evidence, never respawn |
+| `PROCESS_SPAWN_FAILED` | ADOPT EXACT — P1 REQUIRED | the one consumed Driver spawn call proves no native root was created; `spawn` | 503 | only explicit transient classification; never same-attempt spawn retry | after cancel, one failed fact retains cancel causation plus spawn evidence; no `process.exited` or second spawn |
+| `PROCESS_STDIN_CLOSED` | ADOPT EXACT — P1 REQUIRED | write/close targets closed stdin or native `EPIPE`; `stdio` | 409 | no for same write unless protocol explicitly permits | preserve Process state; safe operation detail only |
+| `PROCESS_STDIN_WRITE_FAILED` | ADOPT EXACT — P1 REQUIRED | non-closed stdin write or flush fails; `stdio` | 500 | only when Driver classifies a retry-safe same input | no duplicate approval/input; native evidence restricted |
+| `PROCESS_OUTPUT_DECODE_FAILED` | ADOPT EXACT — P1 REQUIRED | required text/protocol decode cannot continue safely; `stdio` | N/A async | no by default | binary classification alone is not this error; preserve bounded offsets/reference evidence |
+| `PROCESS_OUTPUT_LIMIT_EXCEEDED` | ADOPT EXACT — P1 REQUIRED | frame, queue or retained-stream hard contract exceeded; `stdio`/`runtime` | 409 | no automatic attempt retry | fail-closed stop; retain truncation/source counts and terminal facts |
+| `PROCESS_STARTUP_TIMEOUT` | ADOPT EXACT — P1 REQUIRED | spawned Process misses the frozen Provider-readiness deadline; `timeout` | 503 | new attempt only when policy/evidence allows | same Process stop; never a second spawn under the attempt |
+| `PROCESS_IDLE_TIMEOUT` | ADOPT EXACT — P1 REQUIRED | eligible activity deadline expires after lock-time recheck; `timeout` | 409 | no automatic same-attempt retry | first stop reason wins; approved waiting pauses idle only |
+| `PROCESS_TOTAL_TIMEOUT` | ADOPT EXACT — P1 REQUIRED | total deadline from native start expires after recheck; `timeout` | 409 | no automatic same-attempt retry | first stop reason wins; waiting does not silently reset it |
+| `PROCESS_TOOL_TIMEOUT` | ADOPT EXACT — P5/later Tool runtime | child Tool deadline expires; `timeout` | 409 | policy or new Tool attempt only | stop the owned Tool tree; Provider root outcome remains lifecycle-owned |
+| `PROCESS_PAUSE_UNSUPPORTED` | ADOPT EXACT — deferred pause scope | platform/Process cannot safely pause; `pause` | 409 | no without capability change | truthful capability result; no fabricated pause |
+| `PROCESS_PAUSE_FAILED` | ADOPT EXACT — deferred pause scope | supported pause attempt fails; `pause` | 409 | only bounded same-Process retry when classified | preserve actual state and restricted native evidence |
+| `PROCESS_RESUME_FAILED` | ADOPT EXACT — deferred resume scope | paused Process cannot safely resume; `resume` | 409 | only explicit transient classification | no inferred activity/success; preserve uncertainty |
+| `PROCESS_CANCEL_FAILED` | ADOPT EXACT — P1 REQUIRED idempotency; P5 tree | stop coordination fails independently of a more precise tree code; `cancel` | 409 | same Process/key cleanup retry only | never report cancelled success; no second spawn |
+| `PROCESS_TREE_TERMINATION_FAILED` | ADOPT EXACT — P5 | force-tree action fails; `tree-cleanup` | 503 | bounded cleanup re-entry only | cleanup-required/uncertainty; native errors restricted |
+| `PROCESS_SURVIVORS_DETECTED` | ADOPT EXACT — P5 | post-stop verification proves a root or descendant survivor; `tree-cleanup` | 409 | cleanup may re-enter under policy | survivor identities restricted; cancellation not successful |
+| `PROCESS_EXIT_UNKNOWN` | ADOPT EXACT — P1 REQUIRED | a native Process existed but terminal exit/signal fact is missing; `runtime` | 500 | no without stronger evidence | not a recovery-unknown alias; lifecycle cannot infer success |
+| `PROCESS_PID_REUSED` | ADOPT EXACT — P6 | PID identifies a different start, executable, token or group; `recovery` | 409 | no | never signal/reattach; identity evidence restricted |
+| `PROCESS_RECOVERY_FAILED` | ADOPT EXACT — P6 | recovery/classifier operation fails, not merely an `unknown` result; `recovery` | 503 | normally yes on a later scan | preserve M3 uncertainty; never infer exit/success |
+| `PROCESS_ORPHANED` | ADOPT EXACT — P5/P6 | owned native Process/survivor is alive but control is insufficient; `tree-cleanup`/`recovery` | 409 | policy-governed cleanup only | state remains `orphaned`; no successful cancel claim |
+| `PROCESS_RESOURCE_LIMIT` | ADOPT EXACT — later resource enforcement | CPU, memory, process-count or disk policy terminates; `runtime` | 409 | no automatic retry | exact safe limit/action; usage evidence restricted |
+| `PROCESS_ARTIFACT_WRITE_FAILED` | ADOPT EXACT — P2 | output append, checkpoint, finalize or hash fails; `artifact` | 500 | bounded sink retry before fail-closed stop | execution cannot claim traceable success; path/error restricted |
+| `PROCESS_MANAGER_SHUTTING_DOWN` | ADOPT EXACT — P1 REQUIRED | launch rejected before spawn after shutdown gate closes; `shutdown` | 503 | later dispatch under existing claim rules | no reservation takeover or spawn; mode restricted |
+| `PROCESS_UNKNOWN_ERROR` | ADOPT EXACT — P1 REQUIRED catch-all | sanitized unclassified Process failure after precise mappings are exhausted | 500 | no by default | restricted native fingerprint; lifecycle owner maps outcome |
 
-`PROCESS_EXIT_UNKNOWN` remains available when native terminal facts are missing
-after an otherwise terminal observation; it is not an alias for recovery
-classification. Unknown Process codes map to `PROCESS_UNKNOWN_ERROR`, 500,
-non-retryable by default, with restricted evidence.
+The 19-code P1 freeze is complete for request/policy/executable/cwd/environment,
+registration/spawn, stdin/output, startup/idle/total timers, idempotent cancel,
+exit uncertainty, shutdown and catch-all behavior. It does not grant P1 durable
+Artifact/schema, full tree, pause/resume, recovery, resource or Tool scope.
+Within that set, the complete launch/environment/spawn surface is the first
+eight rows through `PROCESS_SPAWN_FAILED`; the complete P1 output surface is
+`PROCESS_OUTPUT_DECODE_FAILED` and `PROCESS_OUTPUT_LIMIT_EXCEEDED`; and the
+complete P1 timer surface is `PROCESS_STARTUP_TIMEOUT`,
+`PROCESS_IDLE_TIMEOUT`, and `PROCESS_TOTAL_TIMEOUT`.
+
+Non-authoritative candidate aliases are closed as follows and must never enter
+new persistence, API or Event payloads:
+
+| Candidate alias | Exact disposition |
+|---|---|
+| `PROCESS_START_FAILED` | map to `PROCESS_SPAWN_FAILED` for Driver spawn failure; use `PROCESS_REGISTRATION_FAILED` after a returned native identity |
+| `PROCESS_START_TIMEOUT` | map to `PROCESS_STARTUP_TIMEOUT` |
+| `PROCESS_STOP_FAILED` | map to `PROCESS_CANCEL_FAILED`, or the more precise `PROCESS_TREE_TERMINATION_FAILED`/`PROCESS_SURVIVORS_DETECTED` |
+| `PROCESS_TREE_SURVIVORS` | map to `PROCESS_SURVIVORS_DETECTED` |
+
+Two P0 proposed codes are not in the authoritative union and cannot be emitted
+until specification reconciliation:
+
+| P0 code | Disposition |
+|---|---|
+| `PROCESS_IDENTITY_MISMATCH` | `SPEC_RECONCILIATION_REQUIRED`; retain as the proposed broader ownership-mismatch code. PID reuse maps to authoritative `PROCESS_PID_REUSED`; other mismatch classifications remain restricted facts until reconciliation. |
+| `PROCESS_RECOVERY_UNKNOWN` | `SPEC_RECONCILIATION_REQUIRED`; `unknown` is an evidence classification, not `PROCESS_RECOVERY_FAILED`. Preserve uncertainty without inventing an authoritative error until reconciliation. |
+
+Process reconciliation count: authoritative `30/30` dispositioned; P1-required
+`19/19` frozen; candidate aliases `4/4` mapped; P0 proposed codes `2/2` marked
+`SPEC_RECONCILIATION_REQUIRED`.
 
 ## 8. Stable Provider errors
 
-| Frozen code | Phase / candidate reconciliation | HTTP | Retryable | Public detail / internal evidence | Run/Stage mapping owner / stderr |
-|---|---|---:|---|---|---|
-| `PROVIDER_NOT_FOUND` | discovery; unchanged | 404 | no without configuration/install change | safe Provider missing guidance; search evidence restricted | LifecycleTransactionService maps pre-start failure; no raw stderr |
-| `PROVIDER_CONFIG_INVALID` | validation; unchanged | 422 | no without config change | field-safe errors; no secret values | lifecycle owner |
-| `PROVIDER_ADAPTER_NOT_FOUND` | Registry; unchanged | 409 | no without install/version change | Adapter ID/version safe; Registry inventory internal | lifecycle owner |
-| `PROVIDER_VERSION_UNSUPPORTED` | validation/Registry; unchanged | 422 | no without version/config change | safe supported-version guidance; raw probe output restricted | lifecycle owner |
-| `PROVIDER_AUTH_REQUIRED` | authentication; unchanged | 409 | no without user action | login/validation guidance; no token/cookie/env | lifecycle owner; stderr never public |
-| `PROVIDER_AUTH_EXPIRED` | spec addition; authentication | 409 | no without user action | reauthentication guidance; credential evidence never persisted | lifecycle owner |
-| `PROVIDER_AUTH_FAILED` | retained for explicit credential rejection not equivalent to missing/expired auth | 409 | no without user action | generic auth failure; native code/redacted message internal | lifecycle owner |
-| `PROVIDER_VALIDATION_FAILED` | infrastructure/protocol validation failure; unchanged from Event contract | 503 | only if classified transient | safe validation failure; phase/probe evidence restricted | lifecycle owner |
-| `PROVIDER_PROTOCOL_ERROR` | retained umbrella for framing/state-machine protocol violation not merely output syntax | 422 when returned synchronously | usually no; transient only by Adapter classification | safe protocol mismatch; raw frame Artifact restricted | lifecycle owner |
-| `PROVIDER_OUTPUT_PARSE_FAILED` | spec precise parse failure | 422 when synchronous, otherwise N/A | no by default | safe parse failure; raw output reference/internal parser evidence | lifecycle owner after finalization |
-| `PROVIDER_OUTPUT_INVALID` | parsed output violates required contract; unchanged | 422 | no by default | safe missing/invalid contract detail; restricted output reference | lifecycle owner |
-| `PROVIDER_FINALIZATION_FAILED` | retained P0 code for Adapter finalization exception | 500 | no automatic same-attempt retry | generic finalization failure; redacted stack/context internal | lifecycle owner; never expose stderr |
-| `PROVIDER_START_FAILED` | spec addition; Provider startup/readiness semantics after Process starts | 503 | Adapter-classified only | safe start guidance; Process/diagnostic refs internal | lifecycle owner |
-| `PROVIDER_SESSION_FAILED` | spec terminal Provider failure with no more precise code | N/A for asynchronous Run; 503 if a synchronous transient start fails, otherwise 500 | Provider-classified | safe summary; native code/redacted message/references internal | lifecycle owner |
-| `PROVIDER_CANCEL_FAILED` | native graceful cancel failed; Process tree stop still proceeds | 409 | stop may continue/retry under same key | safe native cancel warning; internal native evidence | lifecycle owner uses final tree result, not this error alone |
-| `PROVIDER_RATE_LIMITED` | runtime | 429 | yes with validated `retryAfterMs` | safe limit detail/action; headers/native evidence internal | lifecycle owner; retry requires new attempt/policy |
-| `PROVIDER_NETWORK_ERROR` | runtime | 503 | yes when transient | generic network guidance; endpoint/stack restricted | lifecycle owner |
+The authoritative set is the exact 23-member `ProviderErrorCode` union in
+`04-Provider-Specification.md` section 31. Every member is adopted exactly; raw
+stderr is never public and only `LifecycleTransactionService` maps Provider
+facts to Run/Stage state.
 
-Unknown native failures map to `PROVIDER_UNKNOWN_ERROR`, 500, non-retryable by
-default. Adapter may upgrade retryability only from explicit Provider evidence.
-Raw stderr is never public for any Provider error.
+| Authoritative code | Disposition / owner phase | Frozen trigger and phase | HTTP | Retryable | Required outcome/evidence |
+|---|---|---|---:|---|---|
+| `PROVIDER_ADAPTER_NOT_FOUND` | ADOPT EXACT — P3 | frozen Adapter ID absent from Registry; `validation` | 409 | no until install/config changes | safe ID/version; Registry inventory restricted; no start |
+| `PROVIDER_CONFIG_INVALID` | ADOPT EXACT — P3 | schema, disabled/archive, runtime-mode or snapshot binding invalid; `validation` | 422 | no until config changes | field-safe errors; no secret values |
+| `PROVIDER_NOT_FOUND` | ADOPT EXACT — P3 | discovery finds no Provider runtime candidate; `discovery` | 404 | no until install/config changes | safe install/path guidance; search evidence restricted |
+| `PROVIDER_EXECUTABLE_NOT_ACCESSIBLE` | ADOPT EXACT — P3 | configured/discovered runtime cannot execute or be read; `discovery`/`validation` | 422 | no until permission/config changes | native code restricted; distinct from Process launch-time code |
+| `PROVIDER_VERSION_UNSUPPORTED` | ADOPT EXACT — P3 | CLI, Adapter or config snapshot version is incompatible; `validation` | 422 | no until version/config changes | safe supported range; raw probe output restricted |
+| `PROVIDER_AUTH_REQUIRED` | ADOPT EXACT — P3 | login/credential absent or native response requires auth; `authentication` | 409 | no until user action | official login/revalidate guidance; no credential/stderr |
+| `PROVIDER_AUTH_EXPIRED` | ADOPT EXACT — P3 | explicit expiry evidence; `authentication` | 409 | no until user action | reauthentication guidance; no token/OAuth state |
+| `PROVIDER_RATE_LIMITED` | ADOPT EXACT — P3+ runtime | Provider throttles request/session; `startup`/`runtime` | 429 | yes with validated backoff | bounded `retryAfterMs`; retry requires new authorized attempt/policy |
+| `PROVIDER_QUOTA_EXCEEDED` | ADOPT EXACT — P3+ runtime | account/workspace quota exhausted; `startup`/`runtime` | 429 | no unless reset evidence exists | safe quota class/reset only; account evidence restricted |
+| `PROVIDER_MODEL_UNAVAILABLE` | ADOPT EXACT — P3+ selection | requested model unavailable for frozen config; `validation`/`startup` | 409; 503 only when explicitly transient | evidence-classified only | no silent model/Provider fallback; new attempt required |
+| `PROVIDER_CAPABILITY_UNAVAILABLE` | ADOPT EXACT — P3 | required capability absent from effective manifest; `validation` | 409 | no until config/version changes | exact safe capability/source; no fabricated behavior |
+| `PROVIDER_START_FAILED` | ADOPT EXACT — P3/P4 | Adapter/Provider Session cannot start or become ready; `startup` | 503 | only explicit transient classification | OS spawn root cause remains `PROCESS_SPAWN_FAILED`; preserve both layer facts |
+| `PROVIDER_SESSION_FAILED` | ADOPT EXACT — P3/P4 | terminal Provider-native failure with no more precise code; `runtime`/`finalize` | N/A async; 500/503 synchronously by classification | Provider-evidence classified | exactly one failed Session finalization; Process exit alone is insufficient |
+| `PROVIDER_SESSION_NOT_RESUMABLE` | ADOPT EXACT — P6/later resume | native Session/config/worktree/capability cannot resume; `resume` | 409 | no unless incompatibility is explicitly transient | no same-attempt guessed restart; Runtime decides a new attempt/Run |
+| `PROVIDER_OUTPUT_PARSE_FAILED` | ADOPT EXACT — P3 | native framing/syntax cannot be parsed; `output-parse` | 422 synchronous; N/A async | no by default | retain restricted raw reference/offset; no semantic fabrication |
+| `PROVIDER_OUTPUT_INVALID` | ADOPT EXACT — P3/P4 | parsed final output violates required contract/artifact/final message; `finalize` | 422 synchronous; N/A async | no by default | exit zero cannot override; restricted output references only |
+| `PROVIDER_APPROVAL_FAILED` | ADOPT EXACT — deferred approval bridge | native approval request/response bridge fails; `approval` | 409 | only if the same decision is idempotently replayable | no automatic approval; preserve decision identity without content leak |
+| `PROVIDER_CANCEL_FAILED` | ADOPT EXACT — P3/P5 | native graceful Provider cancel fails; `cancel` | 409 | same Session/stop ticket may continue | Process tree termination still proceeds; code alone never decides outcome |
+| `PROVIDER_PAUSE_UNSUPPORTED` | ADOPT EXACT — deferred pause scope | capability/Adapter cannot pause; `pause` | 409 | no without capability change | truthful capability result; no fabricated pause |
+| `PROVIDER_RESUME_FAILED` | ADOPT EXACT — P6/later resume | supported native resume operation fails; `resume` | 409; 503 only when explicitly transient | evidence-classified only | no automatic Provider start or success inference |
+| `PROVIDER_NETWORK_ERROR` | ADOPT EXACT — API/remote or networked runtime | DNS, connect, TLS or transport failure; `startup`/`runtime` | 503 | yes only when classified transient | endpoint/stack restricted; no credential leak |
+| `PROVIDER_INTERNAL_ERROR` | ADOPT EXACT — P3 internal catch-all | Provider crash/assertion or Adapter invariant failure; matching phase | 500 | explicit temporary evidence only | safe fingerprint/restricted diagnostic; Provider identity retained |
+| `PROVIDER_UNKNOWN_ERROR` | ADOPT EXACT — P3 final catch-all | sanitized native failure after precise mappings are exhausted | 500 | no by default | native fingerprint restricted; never only exit code |
+
+Four P0 proposed codes are absent from the authoritative union. They remain
+draft vocabulary and require reconciliation before Registry, API or Event use:
+
+| P0 code | Disposition |
+|---|---|
+| `PROVIDER_AUTH_FAILED` | `SPEC_RECONCILIATION_REQUIRED`; keep distinct only if rejected-credential semantics cannot safely map to `PROVIDER_AUTH_REQUIRED` or `PROVIDER_AUTH_EXPIRED`. |
+| `PROVIDER_VALIDATION_FAILED` | `SPEC_RECONCILIATION_REQUIRED`; deterministic causes use precise authoritative validation codes; machinery failure may map to `PROVIDER_INTERNAL_ERROR` only after accepting that loss of specificity. |
+| `PROVIDER_PROTOCOL_ERROR` | `SPEC_RECONCILIATION_REQUIRED`; output syntax maps to `PROVIDER_OUTPUT_PARSE_FAILED`, while a broader Session protocol violation needs an explicit spec decision. |
+| `PROVIDER_FINALIZATION_FAILED` | `SPEC_RECONCILIATION_REQUIRED`; it may map to `PROVIDER_INTERNAL_ERROR` with phase `finalize` only after review of the lost dedicated code. |
+
+`PROVIDER_SNAPSHOT_INCOMPATIBLE` appears in Provider Specification section 71
+but is absent from its authoritative section 31 union. It is a specification-
+internal conflict, not a 24th authoritative code, and is
+`SPEC_RECONCILIATION_REQUIRED` before use.
+
+Provider reconciliation count: authoritative `23/23` dispositioned; P0
+proposed codes `4/4` marked `SPEC_RECONCILIATION_REQUIRED`; specification-
+internal extra-union code `1/1` marked `SPEC_RECONCILIATION_REQUIRED`.
 
 ## 9. ApiProblem mapping
 
@@ -378,7 +453,8 @@ unallocated in P0.
 P3 may implement Provider facts/errors only after P1/P2 ports are accepted as
 needed, exact Adapter/Registry/version contracts are frozen in code,
 `provider.diagnostic` and `provider.session_cancelled` are reconciled against
-the specification/Registry, Kimi fixtures prove normalization/redaction, and
+the specification/Registry, every proposed code below is reconciled or mapped
+to an authoritative code, Kimi fixtures prove normalization/redaction, and
 Provider contract/API/security review has BLOCKER/HIGH zero.
 
 Neither gate authorizes RunEngine wiring, production cutover, P4, Ready, Merge,
@@ -393,7 +469,15 @@ process.output_reference_advanced
 process.recovery_classified
 provider.diagnostic
 provider.session_cancelled
+PROCESS_IDENTITY_MISMATCH
+PROCESS_RECOVERY_UNKNOWN
+PROVIDER_AUTH_FAILED
+PROVIDER_VALIDATION_FAILED
+PROVIDER_PROTOCOL_ERROR
+PROVIDER_FINALIZATION_FAILED
+PROVIDER_SNAPSHOT_INCOMPATIBLE
 ```
 
-This marker records draft vocabulary absent from the current specification/
-M3 Registry. It is not permission to edit either under P0.
+This marker records draft vocabulary absent from the authoritative error unions
+or current specification/M3 Registry. It is not permission to edit any of them
+under P0.
