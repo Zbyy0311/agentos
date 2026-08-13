@@ -140,24 +140,23 @@ describe('validateLaunch', () => {
 });
 
 describe('redactArgs', () => {
-  it('keeps flag names and redacts their values', () => {
+  it('masks every non-empty raw argument without guessing flag or value', () => {
     expect(redactArgs(['--token=abc', '--mode', 'fast'])).toEqual([
-      '--token=[REDACTED]',
-      '--mode',
+      '[REDACTED]',
+      '[REDACTED]',
       '[REDACTED]',
     ]);
-  });
-
-  it('redacts separated flag values while preserving the flag name', () => {
-    expect(redactArgs(['--api-key', 'xyz'])).toEqual(['--api-key', '[REDACTED]']);
-  });
-
-  it('redacts ordinary positional arguments and preserves empty strings', () => {
     expect(redactArgs(['task', '--', 'positional', ''])).toEqual([
       '[REDACTED]',
-      '--',
+      '[REDACTED]',
       '[REDACTED]',
       '',
     ]);
+  });
+
+  it('never leaks a secret passed as a separated flag value', () => {
+    const result = redactArgs(['--api-key', '-sk_live_secret']);
+    expect(result).toEqual(['[REDACTED]', '[REDACTED]']);
+    expect(JSON.stringify(result)).not.toContain('sk_live_secret');
   });
 });

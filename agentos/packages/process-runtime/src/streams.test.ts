@@ -157,6 +157,33 @@ describe('BoundedProcessStream redaction and summaries', () => {
     expect(summary).toContain('[REDACTED]');
   });
 
+  it('accounts source offsets exactly across a cross-chunk secret redaction', async () => {
+    const { stream } = makeStream({ secretPatterns: ['s3cret'] });
+    expect(stream.push(enc('value: s3cr'))).toBe(true);
+    expect(stream.push(enc('et done'))).toBe(true);
+    stream.finalize();
+    // finalize must not double-count the held carry: the total equals the
+    // exact raw input size (11 + 7 bytes).
+    expect(stream.sourceBytes).toBe(18);
+    expect(stream.truncatedSourceBytes).toBe(0);
+    const chunks = [];
+    let chunk = await stream.next();
+    while (chunk !== null) {
+      chunks.push(chunk);
+      chunk = await stream.next();
+    }
+    // Monotonic, contiguous source coverage: 6 committed, then 7, then 5.
+    expect(chunks.map((c) => c.sourceOffset)).toEqual([0, 6, 13]);
+    expect(chunks.map((c) => c.sourceBytes)).toEqual([6, 7, 5]);
+    for (let i = 1; i < chunks.length; i++) {
+      const prev = chunks[i - 1];
+      expect(chunks[i].sourceOffset).toBe(prev.sourceOffset + prev.sourceBytes);
+    }
+    const text = chunks.map((c) => c.text).join('');
+    expect(text).toBe('value: [REDACTED] done');
+    expect(text).not.toContain('s3cret');
+  });
+
   it('bounds the safe summary and strips control sequences', () => {
     const { stream } = makeStream();
     stream.push(enc('\x1b[31m' + 'a'.repeat(5000)));

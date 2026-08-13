@@ -48,14 +48,9 @@ export interface LaunchPolicy {
 }
 
 export function redactArgs(args: readonly string[]): readonly string[] {
-  return args.map((arg) => {
-    if (arg.length === 0) return arg;
-    if (arg.startsWith('-')) {
-      const eq = arg.indexOf('=');
-      return eq === -1 ? arg : arg.slice(0, eq) + '=[REDACTED]';
-    }
-    return '[REDACTED]';
-  });
+  // Diagnostics never guess the flag/value structure of a raw argument:
+  // every non-empty argument is masked wholesale. argCount keeps the shape.
+  return args.map((arg) => (arg.length === 0 ? arg : '[REDACTED]'));
 }
 
 export function redactedLaunchFacts(launch: ValidatedLaunch): RedactedLaunchFacts {

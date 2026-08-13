@@ -212,20 +212,31 @@ export class BoundedProcessStream {
     if (source.length > this.limits.maxChunkBytes) {
       return this.#overflow('chunk-too-large', source.length);
     }
-    if (this.#pendingBytes + source.length > this.limits.pendingHardBytes) {
+    // Source accounting follows the scanner carry: only bytes that actually
+    // left the scanner in this push are committed, so offsets never run
+    // ahead of the emitted evidence and the final flush cannot double-count.
+    const carryBefore = this.#scanner.carryLength;
+    const redacted = this.#scanner.push(source);
+    const committedSourceBytes = carryBefore + source.length - this.#scanner.carryLength;
+    if (redacted.length === 0) {
+      // Fully held by the bounded scanner carry; nothing committed yet.
+      return true;
+    }
+    // Pending, budget and retained accounting all use the same unit: the
+    // emitted, already-redacted byte count actually held in memory.
+    if (this.#pendingBytes + redacted.length > this.limits.pendingHardBytes) {
       return this.#overflow('pending-hard-limit', source.length);
     }
-    if (!this.#budget.tryAdd(source.length)) {
+    if (!this.#budget.tryAdd(redacted.length)) {
       return this.#overflow('process-budget-exceeded', source.length);
     }
-    const redacted = this.#scanner.push(source);
     if (this.#retainedBytes + redacted.length > this.limits.retainedCapBytes) {
-      this.#budget.release(source.length);
+      this.#budget.release(redacted.length);
       return this.#overflow('retained-cap', source.length);
     }
     this.#retained.push(redacted.slice());
     this.#retainedBytes += redacted.length;
-    this.#enqueue(this.#decode(redacted, source.length));
+    this.#enqueue(this.#decode(redacted, committedSourceBytes));
     return true;
   }
 
@@ -260,14 +271,17 @@ export class BoundedProcessStream {
     if (this.#ended) return;
     this.#ended = true;
     if (!this.#overflowed) {
+      const carryBefore = this.#scanner.carryLength;
       const tail = this.#scanner.flush();
       if (tail.length > 0) {
         this.#retained.push(tail.slice());
         this.#retainedBytes += tail.length;
         if (this.#budget.tryAdd(tail.length)) {
-          this.#enqueue(this.#decode(tail, tail.length));
+          // The held carry becomes committed exactly once, in source units.
+          this.#enqueue(this.#decode(tail, carryBefore));
         } else {
-          this.#truncatedSourceBytes += tail.length;
+          this.#sourceBytes += carryBefore;
+          this.#truncatedSourceBytes += carryBefore;
         }
       } else if (this.#decoderCarry.length > 0) {
         // Incomplete trailing sequence: decode forcibly as replacement evidence.
