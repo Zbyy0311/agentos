@@ -47,6 +47,19 @@ describe('buildSafeEnvironment', () => {
     }
   });
 
+  it('rejects secret-looking keys supplied through an explicit base', () => {
+    try {
+      buildSafeEnvironment({ base: { PATH: 'x', API_TOKEN: 'secret-value' } });
+      expect.unreachable();
+    } catch (err) {
+      expect(err).toBeInstanceOf(ProcessError);
+      expect((err as ProcessError).code).toBe('PROCESS_ENVIRONMENT_INVALID');
+    }
+    expect(() =>
+      buildSafeEnvironment({ base: { DB_PASSWORD: 'db-secret' } }),
+    ).toThrowError(ProcessError);
+  });
+
   it('accepts ephemeral secret references without exposing values in diagnostics', () => {
     const secret = 'supersecret-value-12345';
     const { env, diagnostics } = buildSafeEnvironment({

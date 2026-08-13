@@ -64,4 +64,33 @@ describe('SecretScanner', () => {
     const out = dec(scanner.push(enc('aa aa aa'))) + dec(scanner.flush());
     expect(out).toBe(REDACTION_MARKER + ' ' + REDACTION_MARKER + ' ' + REDACTION_MARKER);
   });
+
+  it('chooses the longest pattern when matches start at the same index', () => {
+    for (const patterns of [
+      ['tok', 'tok-999'],
+      ['tok-999', 'tok'],
+    ]) {
+      const scanner = new SecretScanner(patterns);
+      const out = dec(scanner.push(enc('api tok-999 end'))) + dec(scanner.flush());
+      expect(out).toBe('api ' + REDACTION_MARKER + ' end');
+      expect(out).not.toContain('tok-999');
+      expect(out).not.toContain('-999');
+    }
+  });
+
+  it('redacts cross-chunk overlapping secrets as a whole', () => {
+    for (const patterns of [
+      ['abcd', 'abcdef'],
+      ['abcdef', 'abcd'],
+    ]) {
+      const scanner = new SecretScanner(patterns);
+      const out =
+        dec(scanner.push(enc('xabc'))) + dec(scanner.push(enc('defy'))) + dec(scanner.flush());
+      expect(out).toBe('x' + REDACTION_MARKER + 'y');
+      expect(out).not.toContain('abcdef');
+      for (const suffix of ['bcdef', 'cdef', 'def', 'ef', 'f']) {
+        expect(out).not.toContain(suffix);
+      }
+    }
+  });
 });

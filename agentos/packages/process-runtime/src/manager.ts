@@ -6,9 +6,11 @@ import type {
   IdentityInspection,
   NativeProcessHandle,
   PlatformProcessDriver,
+  SurvivorClassification,
   SurvivorVerification,
   TreeTerminationResult,
 } from './driver.js';
+import { cleanupResultFrom } from './driver.js';
 import { ProcessHandleRegistry } from './handle-registry.js';
 import { newProcessId } from './process-id.js';
 import { createRecord, InMemoryProcessStore } from './store.js';
@@ -65,6 +67,33 @@ export interface ReserveRequest {
   readonly claim: ClaimIdentity;
   readonly launch: LaunchRequest;
   readonly timeouts?: Partial<TimeoutPolicy>;
+}
+
+/** Default per-read page size for the bounded output observation surface. */
+export const PROCESS_OUTPUT_READ_DEFAULT_BYTES = 64 * 1024;
+/** Hard per-read cap for the bounded output observation surface. */
+export const PROCESS_OUTPUT_READ_MAX_BYTES = 1024 * 1024;
+
+export interface ProcessOutputReadOptions {
+  readonly offsetBytes?: number;
+  readonly maxBytes?: number;
+}
+
+/** One bounded page of retained, already-redacted process output. */
+export interface ProcessOutputRead {
+  readonly stream: StreamName;
+  readonly offsetBytes: number;
+  /** Redacted, persist-safe retained bytes for this page. */
+  readonly bytes: Uint8Array;
+  /** Lossy UTF-8 view; bytes stay authoritative at page boundaries. */
+  readonly text: string;
+  readonly nextOffsetBytes: number;
+  readonly retainedBytes: number;
+  readonly sourceBytes: number;
+  readonly truncatedSourceBytes: number;
+  /** True once the native stream ended and the final flush completed. */
+  readonly ended: boolean;
+  readonly overflowed: boolean;
 }
 
 const TIMER_ERROR_CODES: Record<ProcessTimerKind, P1ProcessErrorCode> = {
@@ -180,8 +209,10 @@ export class ProcessManager {
         if (existing.claimOwner !== request.claim.owner) {
           throw new ProcessError('PROCESS_REQUEST_INVALID', 'claim key conflict');
         }
-        if (request.claim.epoch > existing.claimEpoch) {
-          existing.claimEpoch = request.claim.epoch;
+        // Exact-epoch fencing: P1 has no ownership transfer, so a greater
+        // epoch is rejected rather than adopted.
+        if (request.claim.epoch !== existing.claimEpoch) {
+          throw new ProcessError('PROCESS_REQUEST_INVALID', 'claim epoch mismatch');
         }
         return { snapshot: this.#store.snapshotOf(existing), joinedExisting: true };
       }
@@ -327,6 +358,41 @@ export class ProcessManager {
     return this.#store.subscribe(id, listener);
   }
 
+  /**
+   * Process-scoped, bounded output observation. Reads the retained, already
+   * redacted bytes by AgentOS Process identity; no native handle, PID or
+   * signal surface is exposed. Pages are capped by
+   * PROCESS_OUTPUT_READ_MAX_BYTES; follow nextOffsetBytes to keep paging.
+   * Returns undefined while no native streams exist for the Process.
+   */
+  readProcessOutput(
+    id: ProcessId,
+    stream: StreamName,
+    options: ProcessOutputReadOptions = {},
+  ): ProcessOutputRead | undefined {
+    const entry = this.#streams.get(id);
+    if (entry === undefined) return undefined;
+    const target = stream === 'stdout' ? entry.stdout : entry.stderr;
+    const offsetBytes = Math.max(0, Math.trunc(options.offsetBytes ?? 0));
+    const maxBytes = Math.min(
+      Math.max(1, Math.trunc(options.maxBytes ?? PROCESS_OUTPUT_READ_DEFAULT_BYTES)),
+      PROCESS_OUTPUT_READ_MAX_BYTES,
+    );
+    const page = target.readRetained(offsetBytes, maxBytes);
+    return Object.freeze({
+      stream,
+      offsetBytes,
+      bytes: page.bytes,
+      text: new TextDecoder('utf-8', { fatal: false }).decode(page.bytes),
+      nextOffsetBytes: page.nextOffsetBytes,
+      retainedBytes: target.retainedBytes,
+      sourceBytes: target.sourceBytes,
+      truncatedSourceBytes: target.truncatedSourceBytes,
+      ended: target.ended,
+      overflowed: target.overflowed,
+    });
+  }
+
   /** Deterministic wait for tests and coordinators; no sleeps involved. */
   waitForState(id: ProcessId, states: readonly ProcessState[]): Promise<ProcessSnapshot> {
     if (this.#store.getRecord(id) === undefined) {
@@ -438,10 +504,10 @@ export class ProcessManager {
     if (claim.owner !== record.claimOwner) {
       throw new ProcessError('PROCESS_POLICY_DENIED', 'claim owner mismatch');
     }
-    if (!Number.isInteger(claim.epoch) || claim.epoch < record.claimEpoch) {
-      throw new ProcessError('PROCESS_REQUEST_INVALID', 'stale claim epoch');
+    // Exact-epoch fencing: greater epochs are never auto-adopted in P1.
+    if (!Number.isInteger(claim.epoch) || claim.epoch !== record.claimEpoch) {
+      throw new ProcessError('PROCESS_REQUEST_INVALID', 'claim epoch mismatch');
     }
-    if (claim.epoch > record.claimEpoch) record.claimEpoch = claim.epoch;
   }
 
   #registerStop(record: ProcessRecord, request: StopRequest, acceptedAt: number): InternalStop {
@@ -512,12 +578,11 @@ export class ProcessManager {
       timers.disarmAll();
       this.#timers.delete(record.id);
     }
-    const streams = this.#streams.get(record.id);
-    if (streams !== undefined) {
-      streams.stdout.finalize();
-      streams.stderr.finalize();
-      this.#streams.delete(record.id);
-    }
+    // Streams are deliberately NOT finalized or dropped here: native exit
+    // precedes stream completion, and trailing bytes must stay accepted and
+    // observable. Each pump finalizes its own stream when the native source
+    // ends; retained bounded pages stay readable via readProcessOutput after
+    // any terminal or uncertainty conclusion.
     this.#registry.remove(record.id);
     record.hasHandle = false;
     this.#settleStopIfConcludedLocked(record);
@@ -575,27 +640,38 @@ export class ProcessManager {
       return 'late-cleanup';
     });
     const kind = await action;
-    if (kind === 'terminate-stray' || kind === 'registration-failure') {
-      await this.#safeTerminateAndVerify(handle);
+    if (kind === 'terminate-stray') {
+      // Best effort only: the owning Process has already concluded.
+      await this.#terminateAndVerifyClassification(handle);
     }
     if (kind === 'registration-failure') {
-      return this.#store.withLock(() => {
-        const record = this.#requireRecord(id);
-        this.#terminalizeLocked(record, {
-          state: 'failed',
-          outcome: 'registration-failure',
-          terminationReason: null,
-          cancelCausation: record.stopReason,
-          error: {
-            code: 'PROCESS_REGISTRATION_FAILED',
-            phase: 'spawn',
-            detail: 'native identity registration failed',
-          },
-          exit: null,
-          cleanup: null,
-        }, 'process.failed');
-        return this.#store.snapshotOf(record);
-      });
+      // Terminate/verify evidence is never discarded: only a proven-clean
+      // tree allows the failed terminal; survivors or an unknown verdict
+      // stay non-terminal uncertainty with cleanup evidence.
+      const classification = await this.#terminateAndVerifyClassification(handle);
+      if (classification === 'complete') {
+        return this.#store.withLock(() => {
+          const record = this.#requireRecord(id);
+          this.#terminalizeLocked(record, {
+            state: 'failed',
+            outcome: 'registration-failure',
+            terminationReason: null,
+            cancelCausation: record.stopReason,
+            error: {
+              code: 'PROCESS_REGISTRATION_FAILED',
+              phase: 'spawn',
+              detail: 'native identity registration failed',
+            },
+            exit: null,
+            cleanup: 'TERMINATED',
+          }, 'process.failed');
+          return this.#store.snapshotOf(record);
+        });
+      }
+      await this.#orphan(id, cleanupResultFrom(classification, false));
+      return this.#store.withLock(() =>
+        this.#store.snapshotOf(this.#requireRecord(id)),
+      );
     }
     if (kind === 'running') {
       const record = this.#requireRecord(id);
@@ -719,9 +795,9 @@ export class ProcessManager {
   }
 
   async #onNativeExit(id: ProcessId, evidence: ExitEvidence | null): Promise<void> {
-    await this.#store.withLock(() => {
+    const kickCleanup = await this.#store.withLock(() => {
       const record = this.#store.getRecord(id);
-      if (record === undefined || record.terminal !== null) return;
+      if (record === undefined || record.terminal !== null) return false;
       if (record.state === 'running' || record.state === 'waiting') {
         this.#terminalizeLocked(record, {
           state: 'exited',
@@ -732,21 +808,14 @@ export class ProcessManager {
           exit: evidence,
           cleanup: null,
         }, 'process.exited');
-        return;
+        return false;
       }
-      if (record.state === 'stopping' && !record.cleanupStarted) {
-        const reason = record.stopReason ?? 'cancel';
-        this.#terminalizeLocked(record, {
-          state: 'exited',
-          outcome: outcomeForReason(reason),
-          terminationReason: reason,
-          cancelCausation: reason,
-          error: null,
-          exit: evidence,
-          cleanup: 'ALREADY_EXITED',
-        }, 'process.exited');
-      }
+      // A native root exit while stopping is not tree evidence. The bounded
+      // cleanup pipeline must verify survivors before any successful cleanup
+      // is reported, so the exit only guarantees the pipeline is running.
+      return record.state === 'stopping' && !record.cleanupStarted;
     });
+    if (kickCleanup) await this.#maybeRunCleanup(id);
   }
 
   async #maybeRunCleanup(id: ProcessId): Promise<void> {
@@ -865,13 +934,20 @@ export class ProcessManager {
     }
   }
 
-  async #safeTerminateAndVerify(handle: NativeProcessHandle): Promise<void> {
+  /**
+   * Terminate-then-verify for a handle that never became ours. The verdict
+   * is retained by the caller: only 'complete' proves the tree is gone.
+   */
+  async #terminateAndVerifyClassification(
+    handle: NativeProcessHandle,
+  ): Promise<SurvivorClassification> {
     try {
       await this.#driver.terminateTree(handle);
     } catch {
-      // Best effort: the stray handle is never registered either way.
+      return 'unknown';
     }
-    await this.#safeVerify(handle);
+    const verify = await this.#safeVerify(handle);
+    return verify.classification;
   }
 
   async #finalizeExited(
@@ -899,8 +975,14 @@ export class ProcessManager {
     await this.#store.withLock(() => {
       const record = this.#store.getRecord(id);
       if (record === undefined || record.terminal !== null) return;
-      if (record.state === 'stopping') {
+      if (
+        record.state === 'stopping' ||
+        record.state === 'running' ||
+        record.state === 'waiting'
+      ) {
         this.#store.transition(record, record.version, 'orphaned');
+      } else if (record.state === 'starting') {
+        this.#store.transition(record, record.version, 'unknown');
       }
       record.cleanupEvidence = { result, at: this.#clock.now() };
       this.#afterStopConcludedLocked(record);

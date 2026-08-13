@@ -47,16 +47,14 @@ export interface LaunchPolicy {
   readonly executableExtensions?: readonly string[];
 }
 
-const SECRET_ARG_VALUE = /(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY)/i;
-
 export function redactArgs(args: readonly string[]): readonly string[] {
   return args.map((arg) => {
-    const eq = arg.indexOf('=');
-    if (eq > 0 && SECRET_ARG_VALUE.test(arg.slice(0, eq))) {
-      return arg.slice(0, eq) + '=[REDACTED]';
+    if (arg.length === 0) return arg;
+    if (arg.startsWith('-')) {
+      const eq = arg.indexOf('=');
+      return eq === -1 ? arg : arg.slice(0, eq) + '=[REDACTED]';
     }
-    if (SECRET_ARG_VALUE.test(arg)) return '[REDACTED]';
-    return arg;
+    return '[REDACTED]';
   });
 }
 
@@ -167,4 +165,3 @@ function defaultExecutableExtensions(): readonly string[] {
   }
   return [''];
 }
-

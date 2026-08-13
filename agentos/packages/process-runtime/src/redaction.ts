@@ -82,7 +82,12 @@ export class SecretScanner {
       let matchLength = 0;
       for (const pattern of this.#patterns) {
         const found = indexOfBytes(data, pattern, cursor);
-        if (found !== -1 && (matchIndex === -1 || found < matchIndex)) {
+        if (
+          found !== -1 &&
+          (matchIndex === -1 ||
+            found < matchIndex ||
+            (found === matchIndex && pattern.length > matchLength))
+        ) {
           matchIndex = found;
           matchLength = pattern.length;
         }

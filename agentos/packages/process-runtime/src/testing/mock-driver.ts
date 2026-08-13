@@ -133,7 +133,10 @@ export class MockNativeProcessHandle implements NativeProcessHandle {
     this.stderr.end();
   }
 
-  emitExit(evidence: Partial<ExitEvidence> = {}): void {
+  emitExit(
+    evidence: Partial<ExitEvidence> = {},
+    options: { readonly endStreams?: boolean } = {},
+  ): void {
     if (this.#exitEmitted) return;
     this.#exitEmitted = true;
     this.#exit.resolve({
@@ -141,7 +144,7 @@ export class MockNativeProcessHandle implements NativeProcessHandle {
       signal: evidence.signal === undefined ? null : evidence.signal,
       exitedAt: evidence.exitedAt === undefined ? 0 : evidence.exitedAt,
     });
-    this.endStreams();
+    if (options.endStreams ?? true) this.endStreams();
   }
 }
 

@@ -173,6 +173,35 @@ export class BoundedProcessStream {
   get ended(): boolean { return this.#ended; }
   get decoderCarryBytes(): number { return this.#decoderCarry.length; }
 
+  /**
+   * Read a bounded slice of the retained, already-redacted bytes. Offsets
+   * are clamped into the retained range; the reader pages with
+   * nextOffsetBytes. Retention itself stays fail-closed under the frozen cap.
+   */
+  readRetained(
+    offsetBytes: number,
+    maxBytes: number,
+  ): { bytes: Uint8Array; nextOffsetBytes: number } {
+    const start = Math.max(0, Math.min(Math.trunc(offsetBytes), this.#retainedBytes));
+    const limit = Math.max(0, Math.trunc(maxBytes));
+    const out = new Uint8Array(Math.min(limit, this.#retainedBytes - start));
+    let written = 0;
+    let skipped = start;
+    for (const segment of this.#retained) {
+      if (written >= out.length) break;
+      if (skipped >= segment.length) {
+        skipped -= segment.length;
+        continue;
+      }
+      const from = skipped;
+      skipped = 0;
+      const take = Math.min(segment.length - from, out.length - written);
+      out.set(segment.subarray(from, from + take), written);
+      written += take;
+    }
+    return { bytes: out, nextOffsetBytes: start + written };
+  }
+
   /** Returns false when the chunk was rejected by a fail-closed limit. */
   push(source: Uint8Array): boolean {
     if (this.#ended || this.#overflowed) {

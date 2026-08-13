@@ -6,9 +6,10 @@ import { MockNativeProcessHandle } from './testing/mock-driver.js';
 import {
   completeStopPipeline,
   createManagerFixture,
+  drainTurns,
   startRunning,
 } from './testing/fixture.js';
-import type { ClaimIdentity, ProcessSnapshot } from './types.js';
+import type { ClaimIdentity, ProcessId, ProcessSnapshot } from './types.js';
 
 function claimOf(snapshot: ProcessSnapshot): ClaimIdentity {
   return {
@@ -153,7 +154,7 @@ describe('ProcessManager start', () => {
     expect(fx.driver.spawnCalls).toHaveLength(0);
   });
 
-  it('rejects stale epochs and foreign owners, adopts newer epochs', async () => {
+  it('rejects stale, foreign and greater epochs without adoption', async () => {
     const fx = createManagerFixture();
     const { id, claim } = await fx.reserve();
     await expect(fx.manager.start(id, { ...claim, owner: 'other' })).rejects.toMatchObject({
@@ -162,12 +163,19 @@ describe('ProcessManager start', () => {
     await expect(fx.manager.start(id, { ...claim, epoch: 0 })).rejects.toMatchObject({
       code: 'PROCESS_REQUEST_INVALID',
     });
-    const newer = await fx.manager.start(id, { ...claim, epoch: 5 });
-    await newer.settled;
-    expect(fx.manager.getSnapshot(id)?.claimEpoch).toBe(5);
-    await expect(fx.manager.start(id, { ...claim, epoch: 2 })).rejects.toMatchObject({
+    // Exact-epoch fencing: a greater epoch is never auto-adopted in P1.
+    await expect(fx.manager.start(id, { ...claim, epoch: 5 })).rejects.toMatchObject({
       code: 'PROCESS_REQUEST_INVALID',
     });
+    expect(fx.manager.getSnapshot(id)?.claimEpoch).toBe(1);
+    await expect(fx.reserve({ claim: { ...claim, epoch: 9 } })).rejects.toMatchObject({
+      code: 'PROCESS_REQUEST_INVALID',
+    });
+    const joined = await fx.reserve({ claim });
+    expect(joined.snapshot.id).toBe(id);
+    const start = await fx.manager.start(id, claim);
+    await start.settled;
+    expect(fx.manager.getSnapshot(id)?.state).toBe('running');
   });
 });
 
@@ -261,9 +269,150 @@ describe('ProcessManager exit and stop', () => {
     expect(final2.state).toBe('failed');
     expect(final2.terminal?.outcome).toBe('registration-failure');
     expect(final2.terminal?.error?.code).toBe('PROCESS_REGISTRATION_FAILED');
+    expect(final2.terminal?.cleanup).toBe('TERMINATED');
     expect(fx.driver.terminateTreeCalls).toBe(1);
     expect(fx.driver.verifySurvivorsCalls).toBe(1);
     expect(fx.manager.getSnapshot(first.id)?.state).toBe('running');
+  });
+});
+
+describe('ProcessManager tree fail-closed cleanup', () => {
+  it('verifies survivors after a root exit during stopping before reporting success', async () => {
+    const fx = createManagerFixture();
+    const { id, handle } = await startRunning(fx);
+    fx.driver.holdVerifySurvivors();
+    const stopP = fx.manager.stop(id, { reason: 'cancel', idempotencyKey: 'tf1' });
+    handle.emitExit({ exitCode: 0 });
+    const ticket = await stopP;
+    await fx.driver.awaitVerifySurvivorsEntered();
+    // The root exit alone is not tree evidence: no terminal result yet.
+    const pending = fx.manager.getSnapshot(id);
+    expect(pending?.state).toBe('stopping');
+    expect(pending?.terminal).toBeNull();
+    fx.driver.settleVerifySurvivors('complete');
+    const final = await ticket.result;
+    expect(final.state).toBe('exited');
+    expect(final.terminal?.outcome).toBe('cancelled');
+    expect(final.terminal?.terminationReason).toBe('cancel');
+    expect(final.terminal?.cleanup).toBe('ALREADY_EXITED');
+    expect(final.terminal?.exit?.exitCode).toBe(0);
+    expect(fx.driver.gracefulStopCalls).toBe(1);
+    expect(fx.driver.terminateTreeCalls).toBe(0);
+    expect(fx.driver.verifySurvivorsCalls).toBe(1);
+    expect(terminalFacts(final)).toHaveLength(1);
+    expect(terminalFacts(final)[0].type).toBe('process.exited');
+  });
+
+  it('keeps survivor uncertainty non-terminal with cleanup evidence', async () => {
+    const fx = createManagerFixture();
+    const { id, handle } = await startRunning(fx);
+    fx.driver.holdVerifySurvivors();
+    const ticket = await fx.manager.stop(id, { reason: 'cancel', idempotencyKey: 'tf2' });
+    handle.emitExit({ exitCode: 0 });
+    await fx.driver.awaitVerifySurvivorsEntered();
+    fx.driver.settleVerifySurvivors('survivors', [handle.pid]);
+    const final = await ticket.result;
+    expect(final.state).toBe('orphaned');
+    expect(final.terminal).toBeNull();
+    expect(final.cleanupEvidence?.result).toBe('SURVIVORS');
+    expect(terminalFacts(final)).toHaveLength(0);
+    expect(fx.driver.terminateTreeCalls).toBe(0);
+  });
+
+  it('keeps an unknown verification non-terminal instead of reporting cancel success', async () => {
+    const fx = createManagerFixture();
+    const { id, handle } = await startRunning(fx);
+    fx.driver.verifyError = new Error('platform cannot verify');
+    const ticket = await fx.manager.stop(id, { reason: 'cancel', idempotencyKey: 'tf3' });
+    handle.emitExit({ exitCode: 0 });
+    const final = await ticket.result;
+    expect(final.state).toBe('orphaned');
+    expect(final.terminal).toBeNull();
+    expect(final.cleanupEvidence?.result).toBe('UNKNOWN_PLATFORM_UNAVAILABLE');
+    expect(terminalFacts(final)).toHaveLength(0);
+  });
+
+  it('registration failure with survivors keeps tree uncertainty non-terminal', async () => {
+    const fx = createManagerFixture();
+    const first = await startRunning(fx);
+    fx.driver.holdNextSpawn();
+    const second = await fx.reserve();
+    const start2 = await fx.manager.start(second.id, second.claim);
+    await fx.driver.awaitSpawnEntered();
+    fx.driver.holdVerifySurvivors();
+    fx.driver.settleSpawnSuccess(new MockNativeProcessHandle(first.handle.pid, 'tool'));
+    await fx.driver.awaitVerifySurvivorsEntered();
+    // The stray verdict is pending: no failed terminal may be reported yet.
+    expect(fx.manager.getSnapshot(second.id)?.terminal).toBeNull();
+    fx.driver.settleVerifySurvivors('survivors', [first.handle.pid]);
+    const final2 = await start2.settled;
+    expect(final2.state).toBe('unknown');
+    expect(final2.terminal).toBeNull();
+    expect(final2.cleanupEvidence?.result).toBe('SURVIVORS');
+    expect(terminalFacts(final2)).toHaveLength(0);
+    expect(fx.driver.terminateTreeCalls).toBe(1);
+    expect(fx.driver.verifySurvivorsCalls).toBe(1);
+    expect(fx.manager.getSnapshot(first.id)?.state).toBe('running');
+  });
+
+  it('registration failure with a verify failure records platform uncertainty', async () => {
+    const fx = createManagerFixture();
+    const first = await startRunning(fx);
+    fx.driver.holdNextSpawn();
+    const second = await fx.reserve();
+    const start2 = await fx.manager.start(second.id, second.claim);
+    await fx.driver.awaitSpawnEntered();
+    fx.driver.verifyError = new Error('verify unsupported');
+    fx.driver.settleSpawnSuccess(new MockNativeProcessHandle(first.handle.pid, 'tool'));
+    const final2 = await start2.settled;
+    expect(final2.state).toBe('unknown');
+    expect(final2.terminal).toBeNull();
+    expect(final2.cleanupEvidence?.result).toBe('UNKNOWN_PLATFORM_UNAVAILABLE');
+    expect(terminalFacts(final2)).toHaveLength(0);
+    expect(fx.manager.getSnapshot(first.id)?.state).toBe('running');
+  });
+});
+
+describe('ProcessManager output observation', () => {
+  it('exposes bounded process-scoped stdout/stderr pages without native handles', async () => {
+    const fx = createManagerFixture();
+    const { id, handle } = await startRunning(fx);
+    handle.pushStdout('hello ');
+    handle.pushStdout('world');
+    handle.pushStderr('err-line');
+    await drainTurns();
+    const page = fx.manager.readProcessOutput(id, 'stdout');
+    expect(page?.text).toBe('hello world');
+    expect(page?.ended).toBe(false);
+    expect(page?.sourceBytes).toBe(11);
+    expect(fx.manager.readProcessOutput(id, 'stderr')?.text).toBe('err-line');
+    const first = fx.manager.readProcessOutput(id, 'stdout', { maxBytes: 5 });
+    expect(first?.text).toBe('hello');
+    expect(first?.nextOffsetBytes).toBe(5);
+    const rest = fx.manager.readProcessOutput(id, 'stdout', {
+      offsetBytes: first?.nextOffsetBytes ?? 0,
+      maxBytes: 10_000,
+    });
+    expect(rest?.text).toBe(' world');
+    expect(fx.manager.readProcessOutput('proc_nope' as ProcessId, 'stdout')).toBeUndefined();
+  });
+
+  it('keeps trailing output observable when native exit precedes stream close', async () => {
+    const fx = createManagerFixture();
+    const { id, handle } = await startRunning(fx);
+    handle.pushStdout('head-');
+    await drainTurns();
+    handle.emitExit({ exitCode: 0 }, { endStreams: false });
+    const terminal = await fx.manager.waitForTerminal(id);
+    expect(terminal.state).toBe('exited');
+    // The tail arrives only after the native exit observation.
+    handle.pushStdout('tail');
+    handle.endStreams();
+    await drainTurns();
+    const out = fx.manager.readProcessOutput(id, 'stdout');
+    expect(out?.text).toBe('head-tail');
+    expect(out?.ended).toBe(true);
+    expect(out?.truncatedSourceBytes).toBe(0);
   });
 });
 

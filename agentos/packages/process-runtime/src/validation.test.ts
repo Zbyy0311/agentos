@@ -140,11 +140,24 @@ describe('validateLaunch', () => {
 });
 
 describe('redactArgs', () => {
-  it('redacts secret-looking argument values without touching plain args', () => {
+  it('keeps flag names and redacts their values', () => {
     expect(redactArgs(['--token=abc', '--mode', 'fast'])).toEqual([
       '--token=[REDACTED]',
       '--mode',
-      'fast',
+      '[REDACTED]',
+    ]);
+  });
+
+  it('redacts separated flag values while preserving the flag name', () => {
+    expect(redactArgs(['--api-key', 'xyz'])).toEqual(['--api-key', '[REDACTED]']);
+  });
+
+  it('redacts ordinary positional arguments and preserves empty strings', () => {
+    expect(redactArgs(['task', '--', 'positional', ''])).toEqual([
+      '[REDACTED]',
+      '--',
+      '[REDACTED]',
+      '',
     ]);
   });
 });

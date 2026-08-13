@@ -55,6 +55,12 @@ export function buildSafeEnvironment(input: LaunchEnvironmentInput = {}): SafeEn
   for (const [key, value] of Object.entries(base)) {
     if (value === undefined) continue;
     assertKeyValueSafe(key, value, 'base');
+    if (input.base !== undefined && SECRET_KEY_PATTERN.test(key)) {
+      throw new ProcessError(
+        'PROCESS_ENVIRONMENT_INVALID',
+        'secret-looking environment key must be supplied as an ephemeral secret reference: ' + key,
+      );
+    }
     env[key] = value;
     diagnostics.push({ key, source: 'base', classification: 'plain' });
   }
@@ -108,4 +114,3 @@ function upsertDiagnostic(list: EnvironmentDiagnostic[], entry: EnvironmentDiagn
   if (index >= 0) list.splice(index, 1);
   list.push(entry);
 }
-
