@@ -90,7 +90,7 @@ ID CHECKs pin prefix and total length (`proc_`+26=31, `psess_`+26=32,
 | `claim_owner_id` | TEXT NULL; service identity, never browser identity |
 | `claim_lease_expires_at` | TEXT NULL (UTC ISO 8601 ms) |
 | `adapter_start_requested_at` | TEXT NULL; CAS-set exactly once before Adapter start; never cleared or reused |
-| `capabilities_json` | TEXT NOT NULL; canonical validated bounded JSON; no secret values |
+| `capabilities_json` | TEXT NOT NULL CHECK (`json_valid(capabilities_json)`); canonical validated bounded JSON; no secret values |
 | `error_code` | TEXT NULL; stable code |
 | `error_detail_redacted` | TEXT NULL; bounded safe detail |
 | `started_at` / `last_activity_at` / `completed_at` | TEXT NULL (UTC ISO 8601 ms) |
@@ -103,7 +103,8 @@ Table-level constraints:
 - CHECK (`(claim_owner_id IS NULL AND claim_lease_expires_at IS NULL) OR (claim_owner_id IS NOT NULL AND claim_lease_expires_at IS NOT NULL)`)
 - CHECK (`status <> 'active' OR started_at IS NOT NULL`)
 - CHECK (`status NOT IN ('completed','failed','cancelled') OR completed_at IS NOT NULL`)
-- UNIQUE (`id, workspace_id, run_id`) — supporting key for Process FK
+- UNIQUE (`id, workspace_id, run_id`) — supporting key
+- UNIQUE (`id, workspace_id, run_id, stage_id, stage_attempt`) — supporting parent key binding the Process FK to the Session's exact Stage/attempt
 - UNIQUE (`workspace_id, run_id, stage_id, stage_attempt, authority_role`) — exactly-one primary Provider Session per Stage attempt
 
 Foreign keys (all `ON DELETE RESTRICT`; runtime evidence is archived, never
@@ -151,13 +152,13 @@ Triggers:
 | `status` | TEXT NOT NULL CHECK (`status IN ('created','starting','running','waiting','stopping','exited','failed','orphaned','unknown')`) |
 | `executable_resolved` | TEXT NOT NULL |
 | `executable_fingerprint` | TEXT NULL until platform can resolve it |
-| `args_redacted_json` | TEXT NOT NULL; canonical bounded JSON; redacted launch arguments only |
+| `args_redacted_json` | TEXT NOT NULL CHECK (`json_valid(args_redacted_json)`); canonical bounded JSON; redacted launch arguments only |
 | `cwd_resolved` | TEXT NOT NULL |
 | `shell` | INTEGER NOT NULL CHECK (`shell IN (0,1)`); P1 policy admits only 0 |
 | `detached` | INTEGER NOT NULL CHECK (`detached IN (0,1)`); P1 policy admits only 0 |
 | `stdin_mode` | TEXT NOT NULL CHECK (`stdin_mode IN ('closed','pipe')`); first slice `closed` |
 | `stdout_mode` / `stderr_mode` | TEXT NOT NULL CHECK (`IN ('capture','null')`); first slice `capture` |
-| `timeout_policy_json` | TEXT NOT NULL; canonical bounded JSON of the frozen safe policy |
+| `timeout_policy_json` | TEXT NOT NULL CHECK (`json_valid(timeout_policy_json)`); canonical bounded JSON of the frozen safe policy |
 | `security_profile_ref` | TEXT NOT NULL; opaque reference, never resolved secret material |
 | `native_pid` | INTEGER NULL CHECK (`native_pid IS NULL OR native_pid > 0`) |
 | `native_parent_pid` | INTEGER NULL CHECK (`native_parent_pid IS NULL OR native_parent_pid > 0`) |
@@ -165,7 +166,7 @@ Triggers:
 | `process_group_id` / `tree_ownership_mode` / `platform_handle_id` | TEXT NULL; restricted native ownership diagnostics; handle ID is not a reusable handle; `tree_ownership_mode` vocabulary is frozen by the P5 platform-driver contract |
 | `recovery_token_hash` | TEXT NULL; one-way hash only, raw token is never persisted |
 | `recovery_classification` | TEXT NULL CHECK (`IS NULL OR IN ('same','missing','mismatch','unknown')`) |
-| `recovery_evidence_json` | TEXT NULL; bounded restricted summary |
+| `recovery_evidence_json` | TEXT NULL CHECK (`recovery_evidence_json IS NULL OR json_valid(recovery_evidence_json)`); bounded restricted summary |
 | `recovery_checked_at` | TEXT NULL (UTC ISO 8601 ms) |
 | `recovery_classifier_version` | TEXT NULL |
 | `started_at` / `ready_at` / `last_activity_at` / `stopping_at` / `exited_at` | TEXT NULL (UTC ISO 8601 ms), allowed per state rules |
@@ -173,7 +174,7 @@ Triggers:
 | `exit_signal` | TEXT NULL |
 | `termination_reason` | TEXT NULL |
 | `cleanup_result` | TEXT NULL CHECK (`IS NULL OR IN ('TERMINATED','ALREADY_EXITED','SURVIVORS','IDENTITY_MISMATCH','UNKNOWN_PLATFORM_UNAVAILABLE')`) |
-| `survivor_pids_redacted_json` | TEXT NULL; restricted |
+| `survivor_pids_redacted_json` | TEXT NULL CHECK (`survivor_pids_redacted_json IS NULL OR json_valid(survivor_pids_redacted_json)`); restricted |
 | `error_code` / `error_detail_redacted` | TEXT NULL; stable code and safe detail |
 | `version` | INTEGER NOT NULL DEFAULT 1 CHECK (`version >= 1`) |
 | `created_at` / `updated_at` | TEXT NOT NULL (UTC ISO 8601 ms) |
@@ -183,6 +184,7 @@ Table-level constraints:
 
 - CHECK (`(claim_owner_id IS NULL AND claim_lease_expires_at IS NULL) OR (claim_owner_id IS NOT NULL AND claim_lease_expires_at IS NOT NULL)`)
 - Root Provider shape: CHECK (`authority_role IS NULL OR (provider_session_id IS NOT NULL AND stage_id IS NOT NULL AND stage_attempt IS NOT NULL AND parent_process_id IS NULL)`)
+- Session-linked full binding: CHECK (`provider_session_id IS NULL OR (stage_id IS NOT NULL AND stage_attempt IS NOT NULL)`) — composite FKs use default MATCH NONE semantics (any NULL component skips enforcement), so a Session-linked Process must carry non-NULL Stage/attempt for the five-column FK to bite
 - CHECK (`status <> 'created' OR (native_pid IS NULL AND native_started_at IS NULL)`)
 - CHECK (`status <> 'running' OR (native_pid IS NOT NULL AND native_started_at IS NOT NULL AND started_at IS NOT NULL)`)
 - CHECK (`status NOT IN ('exited','failed') OR exited_at IS NOT NULL`)
@@ -196,7 +198,7 @@ Foreign keys (all `ON DELETE RESTRICT`):
 | `(workspace_id)` | `workspaces(id)` |
 | `(run_id, workspace_id, task_id)` | `runs(id, workspace_id, task_id)` via supporting unique index |
 | `(stage_id, workspace_id, run_id, stage_attempt)` | `run_stages(id, workspace_id, run_id, attempt)` via supporting unique index |
-| `(provider_session_id, workspace_id, run_id)` | `provider_sessions(id, workspace_id, run_id)` via its supporting UNIQUE key |
+| `(provider_session_id, workspace_id, run_id, stage_id, stage_attempt)` | `provider_sessions(id, workspace_id, run_id, stage_id, stage_attempt)` via its supporting UNIQUE key; makes root Process Session/Stage/attempt equality a real DDL constraint |
 | `(parent_process_id, workspace_id, run_id)` | `runtime_processes(id, workspace_id, run_id)` self-reference, `DEFERRABLE INITIALLY DEFERRED` |
 
 Indexes:
@@ -236,7 +238,7 @@ Triggers:
 | `truncated` | INTEGER NOT NULL CHECK (`truncated IN (0,1)`) |
 | `truncation_reason` | TEXT NULL; bounded; CHECK (`truncated = 1 OR truncation_reason IS NULL`) |
 | `finalized` | INTEGER NOT NULL CHECK (`finalized IN (0,1)`); terminal |
-| `sha256` | TEXT NULL CHECK (`sha256 IS NULL OR (length(sha256) = 64 AND sha256 GLOB '[0-9a-f]*')`); lowercase hex of retained bytes |
+| `sha256` | TEXT NULL CHECK (`sha256 IS NULL OR (length(sha256) = 64 AND sha256 NOT GLOB '*[^0-9a-f]*')`); lowercase hex of retained bytes |
 | `version` | INTEGER NOT NULL DEFAULT 1 CHECK (`version >= 1`) |
 | `created_at` / `updated_at` | TEXT NOT NULL (UTC ISO 8601 ms) |
 | `finalized_at` | TEXT NULL (UTC ISO 8601 ms) |
@@ -295,9 +297,14 @@ rows cannot be removed while M4 evidence references them.
 
 **Workspace/Run/Stage ownership consistency.** Ownership columns are mutually
 consistent through the composite FKs above; `stage_attempt` must equal the
-referenced Stage `attempt`; a root Provider Process shares the exact
-Run/Stage/attempt of its Session; a child Process shares Workspace/Run with its
-parent (composite self-FK) and cannot be its own parent.
+referenced Stage `attempt`. A root Provider Process shares the exact
+Run/Stage/attempt of its Session, enforced as a real DDL constraint: the
+five-column Process-to-Session FK references the Session's
+`(id, workspace_id, run_id, stage_id, stage_attempt)` supporting UNIQUE key,
+and the Session-linked full-binding CHECK guarantees no NULL component can
+silently skip enforcement (SQLite composite FKs default to MATCH NONE, where
+any NULL component disables the check). A child Process shares Workspace/Run
+with its parent (composite self-FK) and cannot be its own parent.
 
 **Exactly-one primary Provider claim.** `provider_sessions` UNIQUE
 `(workspace_id, run_id, stage_id, stage_attempt, authority_role)` plus
@@ -310,6 +317,15 @@ API/remote Session may have no Process and must not fabricate one.
 exceeds `source_bytes_seen`; finalization requires `finalized_at` + lowercase
 `sha256`; finalized rows reject further mutation. Duplicate checkpoints at the
 same offsets are idempotent at repository level under expected-version CAS.
+
+**JSON fields.** Every JSON relational column (`capabilities_json`,
+`args_redacted_json`, `timeout_policy_json`, `recovery_evidence_json`,
+`survivor_pids_redacted_json`) carries a DDL `json_valid` CHECK (NULL-tolerant
+where the column is nullable); `json_valid` is SQLite core since 3.38 and
+available in the bundled runtime. Above that floor, the repository layer owns
+canonical schema validation and bounded byte limits before persistence; the
+exact byte budgets are owned by the respective frozen contracts (P1 launch /
+output / recovery contracts) and are deliberately not re-invented here.
 
 ## 4. Proposed migration number
 
@@ -328,12 +344,12 @@ next and only valid id after 013. Number renumbering of 001–013 is forbidden.
 
 | Topic | Frozen rule |
 |---|---|
-| Fresh DB path | On an empty database the runner applies 001–013 then 014; 014 creates the three empty tables with constraints/indexes/triggers plus the three supporting unique indexes. No rows, no seed data, no secret material. |
+| Fresh DB path | On an empty database the runner applies 001–013 then 014; 014 creates the three empty tables with constraints/indexes/triggers plus the three supporting unique indexes. No rows, no seed data, no secret material. The runner's existing fresh destructive skip applies to the backup gate; schema application itself is unchanged. |
 | 001–013 upgrade path | Additive only: prove existing `provider_configurations`/`runs`/`run_stages` rows satisfy the supporting unique keys (duplicate pre-check fails the migration before any DDL), then create new objects. Existing rows/checksums and M3 Event/Outbox semantics are untouched. |
 | Backfill | **No backfill.** No scan or import of old `agent_runs`, `executions`, `run_cli_invocations`, old `runtime_artifacts` or historical Event references. |
 | Old-table reuse | Old Conversation tables and old `runtime_artifacts` are never reused as canonical Process/Session/output storage. |
-| `destructive` flag | `false` (additive, no existing-row mutation). |
-| Backup point | The runner mandates backup only for destructive migrations; for 014 the frozen operational rule is: before applying on any **non-empty** database, deployment must take a verified file backup through the existing `createFileBackupProvider` mechanism; fresh databases may skip it. |
+| `destructive` flag | `true` — frozen deliberately to engage the existing MigrationRunner mandatory-backup gate. Schema/data behavior remains additive / no-backfill; the flag is the backup-gate mechanism, not a data-destruction statement. The MigrationRunner is not modified. |
+| Backup point | Runner-enforced: with `destructive: true`, the existing MigrationRunner gate requires a backup provider and a database file path, and takes the verified file backup inside the migration transaction before `apply`; without them it fails closed before any DDL. A non-empty database therefore cannot run 014 without a backup. A fresh database may use the runner's existing fresh destructive skip. |
 | Restore / failure boundary | 014 runs inside the runner's `BEGIN IMMEDIATE` transaction with post-apply integrity assertion; any failure rolls back completely to the 001–013 state. Restore is an offline copy from the verified backup; never in-place repair. |
 | Forward-only evidence preservation | After the first M4 Session/Process/output row exists, rollback is forward-only application correction or authorized backup restore — never table drop, row deletion, schema downgrade, Event rewrite, ID reuse or mapping into old Conversation tables. |
 | Old binary compatibility rule | Old binaries may open the upgraded database: 014 adds no columns and changes no semantics of existing tables (only new tables plus new unique indexes that constrain duplicates application invariants already prevent). Old code paths keep working unchanged and ignore the new tables. |
@@ -356,7 +372,8 @@ Migration 014 phase may touch exactly:
 Explicitly out of scope for that phase: Runtime Specification/contract document
 edits, M3 lifecycle/Run/Stage services, HTTP routes, `agent-core`, legacy
 tables, old `runtime_artifacts`, migration renumbering, checksum changes to
-001–013, and any production cutover.
+001–013, `MigrationRunner`/backup-runner code (the frozen `destructive: true`
+flag engages the existing gate unchanged), and any production cutover.
 
 ## 7. Future acceptance matrix
 
@@ -371,10 +388,11 @@ tables, old `runtime_artifacts`, migration renumbering, checksum changes to
 | 7 | Terminal immutability | Post-terminal mutation attempts rejected by triggers; archival-only update path proven; duplicate terminal observation returns stored result |
 | 8 | Output offset monotonicity | Counter regression rejected; `retained_bytes <= source_bytes_seen`; finalized rows reject append; duplicate checkpoint idempotent |
 | 9 | Checksum / registry | 014 checksum recorded and mismatch fails closed (`MIGRATION_CHECKSUM_MISMATCH`); registry order 001–014; duplicate id rejected |
-| 10 | Backup / restore | Non-empty upgrade produces a verified backup before DDL; failure rehearsal restores byte-identical pre-migration state offline |
+| 10 | Backup / restore | Runner mandatory-backup gate engaged by `destructive: true`: non-empty upgrade cannot reach DDL without backup provider + file path; verified backup taken inside the migration transaction before `apply`; fresh-DB destructive skip evidenced; failure rehearsal restores byte-identical pre-migration state offline |
 | 11 | Old-path compatibility | Pre-014 binaries open the upgraded DB and run legacy paths unchanged; old Conversation/runtime_artifacts behavior green |
 | 12 | Full server + process-runtime regression | Entire `apps/server` suite plus `packages/process-runtime` suite green; no skipped evidence |
 | 13 | Workspace build | Full monorepo build passes |
+| 14 | JSON validation | Invalid JSON rejected by the DDL `json_valid` CHECK on every JSON column; non-canonical or oversized JSON rejected by repository-layer schema validation and bounded byte limits; test evidence covers both rejection paths |
 
 Acceptance never means rerun-until-green; a flaky pass is a failure.
 
