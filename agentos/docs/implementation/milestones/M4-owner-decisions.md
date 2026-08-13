@@ -1,6 +1,6 @@
 # AgentOS M4 Process & Provider Runtime — Owner Decision Register
 
-Status: P0 CONTRACT CLOSURE COMPLETE — PENDING INDEPENDENT P0 REVIEW — NO PRODUCTION AUTHORIZATION
+Status: OD-M4-01 SELECTED — OPTION A — P2 SCHEMA DESIGN FROZEN IN M4-p2-schema-design.md — MIGRATION 014 IMPLEMENTATION NOT AUTHORIZED — NO PRODUCTION AUTHORIZATION
 
 ## 1. Current owner decision count
 
@@ -58,10 +58,16 @@ plumbing, test tools, or other routine implementation details.
 | Impact | Option A unlocks P2 durable Process/Session/output work and raises the minimum database understood by future application code. Option B preserves 001–013 and blocks P2/P4 execution authority. |
 | Reversibility | Reversible before migration execution and before durable rows exist. After production evidence exists, rollback is forward correction or authorized restore, never silent table/row deletion. |
 | Required-before phase | Before any P2 schema or migration file creation; not required for P1. |
-| Status | `UNDECIDED` |
+| Status | `SELECTED — OPTION A` |
 
-P0 selects no option. Migration 014 remains uncreated, unauthorized, unreserved
-and unallocated.
+Owner selection recorded 2026-08-13 on authoritative base
+`6a3a257af1d71ec5c8884311c4427c5f1ea1a543`: `OD-M4-01 = Option A — SELECTED`.
+This selection authorizes only continued preparation of the P2 schema/migration
+package, frozen in `M4-p2-schema-design.md`. It does not authorize Migration 014
+implementation, and it does not authorize P2 production implementation; both
+still require the separate P2 entry authorization and independent schema
+review. Migration 014 remains uncreated; its number is reserved inside the
+design document only.
 
 ## 3. Technical decisions that do not require Owner
 
@@ -116,20 +122,22 @@ OD-M4-01 + ENTRY AUTHORIZATION REQUIRED BEFORE MIGRATION CREATION
 
 Migration 014:
 NOT CREATED
-NOT AUTHORIZED
-NOT RESERVED
-FUTURE MIGRATION TECHNICALLY REQUIRED; NUMBER NOT ALLOCATED
+IMPLEMENTATION NOT AUTHORIZED
+NUMBER RESERVED IN DESIGN DOC ONLY
+FUTURE MIGRATION TECHNICALLY REQUIRED; NUMBER FROZEN AS 014 IN M4-p2-schema-design.md
 ```
 
 P0 proposes exactly three first-schema resources: Runtime Process, Provider
 Session and Process output references. Provider Validation and Recovery Record
 use typed/cache/Event and Process/Event/M3 resources instead of new first-schema
-tables. This technical necessity is not approval to mutate data. A future
-authorized package must contain exact DDL/number/checksum, compatibility,
-upgrade/fresh/backup tests and forward behavior before `OD-M4-01` may be
-selected and P2 entry granted.
+tables. This technical necessity is not approval to mutate data. `OD-M4-01` is
+now `SELECTED — OPTION A` (see section 2) and the exact schema design is frozen
+in `M4-p2-schema-design.md`. The future implementation package must still add
+exact DDL, checksum, registry entry, tests and independent review before any
+P2 entry authorization may be granted; the Owner selection does not grant it.
 
-No SQL or migration number is part of this preplanning package.
+No SQL or migration file is part of this register; the Migration 014 number
+reservation lives only inside `M4-p2-schema-design.md`.
 
 ## 6. Cutover and compatibility decisions explicitly not authorized
 
@@ -153,7 +161,7 @@ path. That routing is not permission to remove the surface.
 |---|---|---:|---|
 | M4-P0 contract closure | TD-01 through TD-20 as applicable; exact port/schema/final-scope proposal | 0 | Contract/docs complete; independent review still required |
 | M4-P1 Process foundation | TD-01, 05, 08, 09 | 0 | Requires explicit P1 authorization after P0 review |
-| M4-P2 persistence/output | TD-02, 10, 14, 16; exact P0 schema | 1 (`OD-M4-01`, UNDECIDED) | Migration remains forbidden until Owner selection and separate P2 authorization |
+| M4-P2 persistence/output | TD-02, 10, 14, 16; exact P0 schema | 1 (`OD-M4-01`, SELECTED — OPTION A) | Migration implementation remains forbidden until separate P2 entry authorization |
 | M4-P3 Registry/validation/Kimi adapter contract | TD-03, 04, 13, 18 | 0 for fail-closed local validation | Requires P3 authorization |
 | M4-P4 Run integration/Kimi slice | TD-01, 05, 06, 17 | 0 | Requires P4 authorization; no cutover |
 | M4-P5 cancel/tree/timeout/disconnect | TD-07, 08, 09, 12 | 0 | Requires P5 authorization |
@@ -198,14 +206,20 @@ COMPLETE / PENDING INDEPENDENT P0 REVIEW
 M4-P1 ENTRY RECOMMENDATION:
 ELIGIBLE FOR SEPARATE ENTRY DECISION AFTER P0 REVIEW
 
-M4-P2 SCHEMA:
-BLOCKED ON OD-M4-01 + SEPARATE AUTHORIZATION
+M4-P2 SCHEMA DESIGN:
+OD-M4-01 SELECTED — OPTION A; PACKAGE FROZEN IN M4-p2-schema-design.md
+
+M4-P2 IMPLEMENTATION:
+BLOCKED ON SEPARATE P2 ENTRY AUTHORIZATION
 
 M4 PRODUCTION IMPLEMENTATION:
 NOT AUTHORIZED
 
 Migration 014:
 NOT CREATED
+
+Migration 014 Number:
+RESERVED IN DESIGN DOC ONLY; IMPLEMENTATION NOT AUTHORIZED
 
 Production Cutover:
 NOT AUTHORIZED
