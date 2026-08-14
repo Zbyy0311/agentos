@@ -1,4 +1,5 @@
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
+import type { RuntimeEventContext } from '@agentos/shared';
 import { createEntityId, isValidEntityId } from './Identity.js';
 import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
 import type { DurableRuntimeFactWriter } from './RuntimeEventRepository.js';
@@ -103,6 +104,8 @@ export interface CreateOutputReferenceInput {
   readonly truncated?: boolean;
   readonly truncationReason?: string | null;
   readonly createdAt?: string;
+  /** Accepted Operation/Run context for the first retained-byte fact. */
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export type CreateOutputReferenceResult =
@@ -130,6 +133,7 @@ export interface OutputReferenceCheckpointInput {
   readonly truncated: boolean;
   readonly truncationReason?: string | null;
   readonly updatedAt?: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export interface FinalizeOutputReferenceInput {
@@ -140,6 +144,7 @@ export interface FinalizeOutputReferenceInput {
   /** Lowercase 64-char hex SHA-256 of the retained-byte concatenation. */
   readonly sha256: string;
   readonly finalizedAt?: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 function integrityFailure(reason: string): OutputReferenceIntegrityError {
@@ -472,7 +477,12 @@ export class ProcessOutputReferenceRepository {
         'PROCESS_OUTPUT_REFERENCE_VALIDATION_FAILED: inserted output reference not found',
       );
     }
-    this.#appendAdvance(reference, 0, reference.updatedAt, false);
+    const hasAdvance = reference.retainedBytes > 0
+      || reference.nextSourceOffset > 0
+      || reference.segmentCount > 0;
+    if (hasAdvance) {
+      this.#appendAdvance(reference, 0, reference.updatedAt, false, input.eventContext);
+    }
     return { kind: 'created', reference };
   }
 
@@ -601,7 +611,13 @@ export class ProcessOutputReferenceRepository {
 
     if (result.changes === 1) {
       const reference = this.findReference(workspaceId, processId, input.stream)!;
-      this.#appendAdvance(reference, current.nextSourceOffset, input.updatedAt ?? reference.updatedAt, false);
+      this.#appendAdvance(
+        reference,
+        current.nextSourceOffset,
+        input.updatedAt ?? reference.updatedAt,
+        false,
+        input.eventContext,
+      );
       return {
         kind: 'applied',
         reference,
@@ -669,7 +685,13 @@ export class ProcessOutputReferenceRepository {
 
     if (result.changes === 1) {
       const reference = this.findReference(workspaceId, processId, input.stream)!;
-      this.#appendAdvance(reference, current.nextSourceOffset, input.finalizedAt ?? reference.updatedAt, true);
+      this.#appendAdvance(
+        reference,
+        current.nextSourceOffset,
+        input.finalizedAt ?? reference.updatedAt,
+        true,
+        input.eventContext,
+      );
       return {
         kind: 'applied',
         reference,
@@ -685,7 +707,14 @@ export class ProcessOutputReferenceRepository {
     priorSourceOffset: number,
     timestamp: string,
     finalizedMutation: boolean,
+    eventContext?: RuntimeEventContext,
   ): void {
+    if (this.factWriter === undefined) return;
+    if (eventContext === undefined) {
+      throw new OutputReferenceValidationError(
+        'PROCESS_OUTPUT_REFERENCE_VALIDATION_FAILED: eventContext is required for durable output facts',
+      );
+    }
     const binding = this.db.prepare(`
       SELECT task_id, stage_id, provider_session_id
       FROM runtime_processes
@@ -695,7 +724,7 @@ export class ProcessOutputReferenceRepository {
       stage_id: string | null;
       provider_session_id: string | null;
     } | undefined;
-    this.factWriter?.appendWithinTransaction({
+    this.factWriter.appendWithinTransaction({
       type: 'process.output_reference_advanced',
       workspaceId: reference.workspaceId,
       ...(binding?.task_id === null || binding?.task_id === undefined ? {} : { taskId: binding.task_id }),
@@ -707,7 +736,7 @@ export class ProcessOutputReferenceRepository {
       processId: reference.processId,
       artifactId: reference.artifactId,
       timestamp,
-      correlationId: `m4-p2b:output:${reference.processId}:${reference.stream}`,
+      eventContext,
       payload: {
         stream: reference.stream,
         artifactId: reference.artifactId,

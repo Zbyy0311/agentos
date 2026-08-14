@@ -1,6 +1,13 @@
 import type { ProcessState } from './types.js';
 import type { StreamName } from './streams.js';
 
+/** Structural copy of the shared accepted Operation/Run event context. */
+export interface RuntimeEventContext {
+  readonly correlationId: string;
+  readonly causationId: string;
+  readonly parentEventId?: string;
+}
+
 /**
  * M4-P2B durable repository ports (schema-light package boundary).
  *
@@ -114,6 +121,7 @@ export interface SessionClaimCreate {
   /** Canonicalized and bounded at the repository layer. */
   readonly capabilities: unknown;
   readonly createdAt?: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface SessionStartRequestedInput extends DurableClaimFence {
@@ -121,6 +129,7 @@ export interface SessionStartRequestedInput extends DurableClaimFence {
   readonly sessionId: string;
   readonly expectedVersion: number;
   readonly timestamp: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface SessionTransitionInput extends DurableClaimFence {
@@ -132,6 +141,7 @@ export interface SessionTransitionInput extends DurableClaimFence {
   readonly timestamp: string;
   readonly failureCode?: string;
   readonly failureDetailRedacted?: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface SessionClaimTransferInput extends DurableClaimFence {
@@ -141,6 +151,7 @@ export interface SessionClaimTransferInput extends DurableClaimFence {
   readonly timestamp: string;
   readonly newClaimOwner: string;
   readonly newClaimLeaseExpiresAt: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface DurableSessionRepository {
@@ -251,6 +262,7 @@ export interface ProcessReservationCreate {
   readonly timeoutPolicy: unknown;
   readonly securityProfileRef: string;
   readonly createdAt?: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface ConsumeSpawnRightInput extends DurableClaimFence {
@@ -258,6 +270,7 @@ export interface ConsumeSpawnRightInput extends DurableClaimFence {
   readonly processId: string;
   readonly expectedVersion: number;
   readonly timestamp: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface NativeSpawnIdentity {
@@ -274,6 +287,7 @@ export interface BindNativeIdentityInput extends DurableClaimFence {
   readonly expectedVersion: number;
   readonly timestamp: string;
   readonly identity: NativeSpawnIdentity;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface ProcessTransitionInput extends DurableClaimFence {
@@ -289,6 +303,22 @@ export interface ProcessTransitionInput extends DurableClaimFence {
   readonly exitSignal?: string | null;
   readonly terminationReason?: string | null;
   readonly cleanupResult?: string | null;
+  readonly eventContext: RuntimeEventContext;
+  readonly gracefulRequested?: boolean;
+  readonly graceDeadline?: string;
+  readonly forceDeadline?: string;
+  readonly idempotencyKeyHash?: string;
+  readonly durationMs?: number;
+  readonly graceful?: boolean;
+  readonly force?: boolean;
+  readonly failureOutcome?:
+    | 'spawn-failure'
+    | 'spawn-failure-after-cancel'
+    | 'registration-failure'
+    | 'cancelled-before-spawn';
+  readonly cancelReason?: string;
+  readonly cancelCausationId?: string;
+  readonly spawnFailureEvidence?: string;
 }
 
 export interface ProcessClaimTransferInput extends DurableClaimFence {
@@ -298,6 +328,7 @@ export interface ProcessClaimTransferInput extends DurableClaimFence {
   readonly timestamp: string;
   readonly newClaimOwner: string;
   readonly newClaimLeaseExpiresAt: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface DurableProcessRepository {
@@ -375,6 +406,7 @@ export interface OutputReferenceCreate {
   readonly contentType: string;
   readonly encoding: string;
   readonly redactionMode: 'scan' | 'strict';
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface OutputCheckpointInput {
@@ -389,6 +421,7 @@ export interface OutputCheckpointInput {
   readonly truncated: boolean;
   readonly truncationReason?: string | null;
   readonly updatedAt?: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface OutputFinalizeInput {
@@ -398,6 +431,7 @@ export interface OutputFinalizeInput {
   readonly expectedVersion: number;
   readonly sha256: string;
   readonly finalizedAt?: string;
+  readonly eventContext: RuntimeEventContext;
 }
 
 export interface DurableOutputReferenceRepository {

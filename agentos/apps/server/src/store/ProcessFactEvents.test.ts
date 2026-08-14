@@ -45,6 +45,26 @@ const SNAPSHOT = 'snapshot_m4_events';
 const STAGE = 'stage_m4_events';
 const PCFG = 'pcfg_m4_events';
 const AGENT = 'agent_m4_events';
+const DEFAULT_EVENT_CONTEXT = Object.freeze({
+  correlationId: RUN,
+  causationId: 'op_m4_p2b_context',
+});
+const GRACE_DEADLINE = '2026-08-14T01:00:05.000Z';
+const FORCE_DEADLINE = '2026-08-14T01:00:10.000Z';
+
+function eventContext(causationId: string, parentEventId?: string) {
+  return {
+    correlationId: RUN,
+    causationId,
+    ...(parentEventId === undefined ? {} : { parentEventId }),
+  };
+}
+
+function eventIdAt(events: RuntimeEventRepository, sequence: number): string {
+  const record = events.findByRunAndSequence(RUN, sequence);
+  assert.equal(record?.kind, 'known');
+  return record.event.id;
+}
 
 function migratedDb(): Db {
   const db = new DatabaseSync(':memory:');
@@ -105,6 +125,7 @@ function sessionInput(overrides: Partial<CreateProviderSessionInput> = {}): Crea
     runtimeMode: 'cli',
     capabilities: { streaming: true },
     createdAt: NOW,
+    eventContext: DEFAULT_EVENT_CONTEXT,
     ...overrides,
   };
 }
@@ -132,6 +153,7 @@ function processInput(sessionId: string, overrides: Partial<CreateProcessInput> 
     timeoutPolicy: { graceMs: 5000 },
     securityProfileRef: 'secprofile_default',
     createdAt: NOW,
+    eventContext: DEFAULT_EVENT_CONTEXT,
     ...overrides,
   };
 }
@@ -180,10 +202,15 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
   const db = migratedDb();
   try {
     const { events, outbox, sessions, processes, outputs } = bundle(db);
-    const createdSession = sessions.createSession(sessionInput());
+    const createdSession = sessions.createSession(sessionInput({
+      eventContext: eventContext('op_m4_session_claim'),
+    }));
     assert.equal(createdSession.kind, 'created');
     const session = createdSession.session;
-    const createdProcess = processes.createProcess(processInput(session.id));
+    const sessionEventId = eventIdAt(events, 1);
+    const createdProcess = processes.createProcess(processInput(session.id, {
+      eventContext: eventContext(sessionEventId, sessionEventId),
+    }));
     assert.equal(createdProcess.kind, 'created');
     const process = createdProcess.process;
     const afterCreate = counts(db);
@@ -204,6 +231,7 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: eventContext(eventIdAt(events, 2), eventIdAt(events, 2)),
     });
     assert.equal(starting.kind, 'applied');
     assert.equal(counts(db).events, 3);
@@ -227,6 +255,7 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       nativePid: 1234,
       nativeStartedAt: LATER,
       timestamp: LATER,
+      eventContext: eventContext(eventIdAt(events, 3), eventIdAt(events, 3)),
     });
     assert.equal(bound.kind, 'applied');
     assert.equal(counts(db).events, 4);
@@ -241,10 +270,11 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       encoding: 'utf-8',
       redactionMode: 'scan',
       createdAt: LATER,
+      eventContext: eventContext(eventIdAt(events, 4), eventIdAt(events, 4)),
     });
     assert.equal(refCreated.kind, 'created');
     const ref = refCreated.reference;
-    assert.equal(counts(db).events, 5);
+    assert.equal(counts(db).events, 4);
     const checkpoint = outputs.checkpoint({
       workspaceId: WS,
       processId: process.id,
@@ -256,9 +286,10 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       segmentCount: 1,
       truncated: false,
       updatedAt: LATER,
+      eventContext: eventContext(eventIdAt(events, 4), eventIdAt(events, 4)),
     });
     assert.equal(checkpoint.kind, 'applied');
-    assert.equal(counts(db).events, 6);
+    assert.equal(counts(db).events, 5);
     const finalized = outputs.finalizeReference({
       workspaceId: WS,
       processId: process.id,
@@ -266,9 +297,10 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       expectedVersion: checkpoint.reference.version,
       sha256: 'a'.repeat(64),
       finalizedAt: LATER,
+      eventContext: eventContext(eventIdAt(events, 5), eventIdAt(events, 5)),
     });
     assert.equal(finalized.kind, 'applied');
-    assert.equal(counts(db).events, 7);
+    assert.equal(counts(db).events, 6);
 
     const stopping = processes.transitionStatus({
       workspaceId: WS,
@@ -281,6 +313,11 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       timestamp: LATER,
       terminationReason: 'cancelled',
       cleanupResult: 'TERMINATED',
+      gracefulRequested: true,
+      graceDeadline: GRACE_DEADLINE,
+      forceDeadline: FORCE_DEADLINE,
+      idempotencyKeyHash: 'b'.repeat(64),
+      eventContext: eventContext('op_m4_cancel'),
     });
     assert.equal(stopping.kind, 'applied');
     const exited = processes.transitionStatus({
@@ -295,12 +332,16 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       exitCode: 0,
       terminationReason: 'cancelled',
       cleanupResult: 'TERMINATED',
+      durationMs: 3600000,
+      graceful: true,
+      force: false,
+      eventContext: eventContext(eventIdAt(events, 7), eventIdAt(events, 7)),
     });
     assert.equal(exited.kind, 'applied');
-    assert.equal(counts(db).events, 9);
+    assert.equal(counts(db).events, 8);
 
     const records = events.listByRunAfterSequence(RUN, 0);
-    assert.deepEqual(records.map(record => record.event.sequence), [1, 2, 3, 4, 5, 6, 7, 8, 9]);
+    assert.deepEqual(records.map(record => record.event.sequence), [1, 2, 3, 4, 5, 6, 7, 8]);
     assert.deepEqual(records.map(record => record.event.type), [
       'process.session_claimed',
       'process.launch_requested',
@@ -308,9 +349,19 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       'process.started',
       'process.output_reference_advanced',
       'process.output_reference_advanced',
-      'process.output_reference_advanced',
       'process.stopping',
       'process.exited',
+    ]);
+    assert.deepEqual(records.map(record => record.event.correlationId), Array(8).fill(RUN));
+    assert.deepEqual(records.map(record => record.event.causationId), [
+      'op_m4_session_claim',
+      eventIdAt(events, 1),
+      eventIdAt(events, 2),
+      eventIdAt(events, 3),
+      eventIdAt(events, 4),
+      eventIdAt(events, 5),
+      'op_m4_cancel',
+      eventIdAt(events, 7),
     ]);
     for (const record of records) {
       assert.equal(record.kind, 'known');
@@ -379,13 +430,19 @@ test('P2B-2 F: Process Event payloads contain redacted facts, never sensitive ar
     const { events, sessions, processes } = bundle(db);
     const session = sessions.createSession(sessionInput()).session;
     const process = processes.createProcess(processInput(session.id, {
+      executableResolved: 'C:\\secrets\\SUPER_EXE_SECRET\\agent.exe',
       argsRedacted: ['--token=SUPER_SECRET'],
+      cwdResolved: 'E:\\workspace\\SUPER_CWD_SECRET',
     })).process;
     const row = events.findByRunAndSequence(RUN, 2);
     assert.equal(row?.kind, 'known');
     const serialized = JSON.stringify(row?.event.payload);
     assert.equal(serialized.includes('SUPER_SECRET'), false);
     assert.equal(serialized.includes('token='), false);
+    assert.equal(serialized.includes('SUPER_EXE_SECRET'), false);
+    assert.equal(serialized.includes('SUPER_CWD_SECRET'), false);
+    assert.equal(serialized.includes('C:\\secrets'), false);
+    assert.equal(serialized.includes('E:\\workspace\\SUPER_CWD_SECRET'), false);
     const failed = processes.casStartProcess({
       workspaceId: WS,
       processId: process.id,
@@ -393,8 +450,242 @@ test('P2B-2 F: Process Event payloads contain redacted facts, never sensitive ar
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: DEFAULT_EVENT_CONTEXT,
     });
     assert.equal(failed.kind, 'applied');
+  } finally {
+    close(db);
+  }
+});
+
+test('P2B-2 output reference creation/replay/CAS losers emit zero facts for zero progress', () => {
+  const db = migratedDb();
+  try {
+    const { sessions, processes, outputs } = bundle(db);
+    const session = sessions.createSession(sessionInput()).session;
+    const process = processes.createProcess(processInput(session.id)).process;
+    const before = counts(db);
+    const created = outputs.createReference({
+      workspaceId: WS,
+      runId: RUN,
+      processId: process.id,
+      stream: 'stderr',
+      storageKey: 'managed/zero-byte',
+      contentType: 'text/plain',
+      encoding: 'utf-8',
+      redactionMode: 'strict',
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    });
+    assert.equal(created.kind, 'created');
+    const afterCreate = counts(db);
+    assert.equal(afterCreate.refs, before.refs + 1);
+    assert.equal(afterCreate.events, before.events);
+    assert.equal(afterCreate.outbox, before.outbox);
+    assert.equal(afterCreate.next, before.next);
+
+    const joined = outputs.createReference({
+      workspaceId: WS,
+      runId: RUN,
+      processId: process.id,
+      stream: 'stderr',
+      storageKey: 'managed/zero-byte',
+      contentType: 'text/plain',
+      encoding: 'utf-8',
+      redactionMode: 'strict',
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    });
+    assert.equal(joined.kind, 'joined');
+    assert.deepEqual(counts(db), afterCreate);
+
+    const loser = outputs.checkpoint({
+      workspaceId: WS,
+      processId: process.id,
+      stream: 'stderr',
+      expectedVersion: created.reference.version + 1,
+      sourceBytesSeen: 1,
+      retainedBytes: 1,
+      nextSourceOffset: 1,
+      segmentCount: 1,
+      truncated: false,
+      updatedAt: LATER,
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    });
+    assert.equal(loser.kind, 'version-conflict');
+    assert.deepEqual(counts(db), afterCreate);
+  } finally {
+    close(db);
+  }
+});
+
+test('P2B-2 durable facts reject synthetic correlation and return frozen payloads', () => {
+  const db = migratedDb();
+  try {
+    const { events, writer, sessions, processes } = bundle(db);
+    const session = sessions.createSession(sessionInput()).session;
+    processes.createProcess(processInput(session.id));
+    const launch = events.findByRunAndSequence(RUN, 2);
+    assert.equal(launch?.kind, 'known');
+    assert.equal(Object.isFrozen(launch.event), true);
+    assert.equal(Object.isFrozen(launch.event.payload), true);
+    assert.throws(
+      () => {
+        const args = (launch.event.payload as { argsRedacted: string[] }).argsRedacted;
+        args.push('mutation');
+      },
+      TypeError,
+    );
+    assert.throws(
+      () => inTransaction(db, () => writer.appendWithinTransaction({
+        type: 'process.session_state_changed',
+        workspaceId: WS,
+        taskId: TASK,
+        runId: RUN,
+        stageId: STAGE,
+        providerSessionId: session.id,
+        timestamp: LATER,
+        eventContext: { correlationId: 'm4-p2b:synthetic', causationId: 'op_fake' },
+        payload: {
+          from: 'starting',
+          to: 'starting',
+          adapterStartRequested: true,
+          terminal: false,
+        },
+      })),
+      /Synthetic m4-p2b correlationId is forbidden/,
+    );
+  } finally {
+    close(db);
+  }
+});
+
+test('P2B-2 failed/stopping/exited facts require frozen outcome evidence', () => {
+  const db = migratedDb();
+  try {
+    const { events, sessions, processes } = bundle(db);
+    const session = sessions.createSession(sessionInput()).session;
+    const process = processes.createProcess(processInput(session.id)).process;
+    const starting = processes.casStartProcess({
+      workspaceId: WS,
+      processId: process.id,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      timestamp: NOW,
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    });
+    assert.equal(starting.kind, 'applied');
+
+    assert.throws(
+      () => processes.transitionStatus({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: starting.process.version,
+        expectedClaimEpoch: starting.process.claimEpoch,
+        expectedClaimOwner: starting.process.claimOwnerId,
+        expectedFrom: 'starting',
+        to: 'failed',
+        timestamp: LATER,
+        errorCode: 'PROCESS_SPAWN_FAILED',
+        eventContext: DEFAULT_EVENT_CONTEXT,
+      }),
+      /failureOutcome is required/,
+    );
+    assert.equal(counts(db).events, 3);
+
+    const failed = processes.transitionStatus({
+      workspaceId: WS,
+      processId: process.id,
+      expectedVersion: starting.process.version,
+      expectedClaimEpoch: starting.process.claimEpoch,
+      expectedClaimOwner: starting.process.claimOwnerId,
+      expectedFrom: 'starting',
+      to: 'failed',
+      timestamp: LATER,
+      errorCode: 'PROCESS_SPAWN_FAILED',
+      failureOutcome: 'spawn-failure',
+      spawnFailureEvidence: 'PROCESS_SPAWN_FAILED',
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    });
+    assert.equal(failed.kind, 'applied');
+    const fact = events.findByRunAndSequence(RUN, 4);
+    assert.equal(fact?.kind, 'known');
+    assert.equal((fact.event.payload as { outcome: string }).outcome, 'spawn-failure');
+    assert.equal(
+      (fact.event.payload as { spawnFailureEvidence: string }).spawnFailureEvidence,
+      'PROCESS_SPAWN_FAILED',
+    );
+
+    const child = processes.createProcess(processInput(session.id, {
+      parentProcessId: process.id,
+      stageId: null,
+      stageAttempt: null,
+      providerSessionId: null,
+      authorityRole: null,
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    })).process;
+    const childStarting = processes.casStartProcess({
+      workspaceId: WS,
+      processId: child.id,
+      expectedVersion: child.version,
+      expectedClaimEpoch: child.claimEpoch,
+      expectedClaimOwner: child.claimOwnerId,
+      timestamp: LATER,
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    });
+    assert.equal(childStarting.kind, 'applied');
+    const childStopping = processes.transitionStatus({
+      workspaceId: WS,
+      processId: child.id,
+      expectedVersion: childStarting.process.version,
+      expectedClaimEpoch: childStarting.process.claimEpoch,
+      expectedClaimOwner: childStarting.process.claimOwnerId,
+      expectedFrom: 'starting',
+      to: 'stopping',
+      timestamp: LATER,
+      terminationReason: 'cancelled',
+      gracefulRequested: true,
+      graceDeadline: GRACE_DEADLINE,
+      forceDeadline: FORCE_DEADLINE,
+      idempotencyKeyHash: 'c'.repeat(64),
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    });
+    assert.equal(childStopping.kind, 'applied');
+    const afterCancel = processes.transitionStatus({
+      workspaceId: WS,
+      processId: child.id,
+      expectedVersion: childStopping.process.version,
+      expectedClaimEpoch: childStopping.process.claimEpoch,
+      expectedClaimOwner: childStopping.process.claimOwnerId,
+      expectedFrom: 'stopping',
+      to: 'failed',
+      timestamp: LATER,
+      errorCode: 'PROCESS_SPAWN_FAILED',
+      terminationReason: 'cancelled',
+      failureOutcome: 'spawn-failure-after-cancel',
+      cancelReason: 'user-cancelled',
+      cancelCausationId: 'op_m4_cancel_child',
+      spawnFailureEvidence: 'PROCESS_SPAWN_FAILED',
+      eventContext: DEFAULT_EVENT_CONTEXT,
+    });
+    assert.equal(afterCancel.kind, 'applied');
+    const afterCancelFact = events.listByRunAfterSequence(RUN, 0).find(
+      record => record.kind === 'known'
+        && record.event.processId === child.id
+        && record.event.type === 'process.failed',
+    );
+    assert.equal(afterCancelFact?.kind, 'known');
+    assert.equal(
+      (afterCancelFact.event.payload as { outcome: string }).outcome,
+      'spawn-failure-after-cancel',
+    );
+    assert.equal(
+      (afterCancelFact.event.payload as { cancelReason: string }).cancelReason,
+      'user-cancelled',
+    );
+    assert.equal(
+      (afterCancelFact.event.payload as { cancelCausationId: string }).cancelCausationId,
+      'op_m4_cancel_child',
+    );
   } finally {
     close(db);
   }
@@ -425,6 +716,7 @@ test('P2B-2 paired claim takeover remains one SQLite transaction with one Event+
         timestamp: LATER,
         newClaimOwner: 'owner-2',
         newClaimLeaseExpiresAt: '2026-08-14T02:00:00.000Z',
+        eventContext: DEFAULT_EVENT_CONTEXT,
       });
       processOutcome = processes.casTransferClaim({
         workspaceId: WS,
@@ -435,6 +727,7 @@ test('P2B-2 paired claim takeover remains one SQLite transaction with one Event+
         timestamp: LATER,
         newClaimOwner: 'owner-2',
         newClaimLeaseExpiresAt: '2026-08-14T02:00:00.000Z',
+        eventContext: DEFAULT_EVENT_CONTEXT,
       });
     });
     assert.equal((sessionOutcome as { kind: string }).kind, 'applied');

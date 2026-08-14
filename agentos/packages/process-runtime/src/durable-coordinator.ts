@@ -24,6 +24,7 @@ import type {
   OutputReferenceCreate,
   ProcessClaimTransferInput,
   ProcessReservationCreate,
+  RuntimeEventContext,
   SessionClaimCreate,
   SessionClaimTransferInput,
 } from './repository-port.js';
@@ -106,6 +107,11 @@ export interface ConsumeSpawnInput {
   readonly expectedClaimEpoch: number;
   readonly expectedClaimOwner: string | null;
   readonly timestamp: string;
+  /** Accepted command/Run context; forwarded to every durable fact. */
+  readonly eventContext: RuntimeEventContext;
+  /** Original cancel evidence when a spawn failure races an accepted stop. */
+  readonly cancelReason?: string;
+  readonly cancelCausationId?: string;
   /** Exactly-once Driver call; the returned native handle is retained. */
   readonly spawn: () => Promise<NativeProcessHandle>;
 }
@@ -198,6 +204,7 @@ export class DurableProcessCoordinator {
       expectedClaimEpoch: input.expectedClaimEpoch,
       expectedClaimOwner: input.expectedClaimOwner,
       timestamp: input.timestamp,
+      eventContext: input.eventContext,
     });
     if (consumed.kind !== 'applied') {
       return { kind: 'joined', outcome: consumed, spawned: false };
@@ -207,17 +214,31 @@ export class DurableProcessCoordinator {
     try {
       handle = await input.spawn();
     } catch (error) {
+      const current = await this.#processRepository.getProcess(
+        starting.workspaceId,
+        starting.processId,
+      );
+      const afterCancel = current?.status === 'stopping';
       const failed = await this.#processRepository.casProcessTransition({
         workspaceId: starting.workspaceId,
         processId: starting.processId,
-        expectedVersion: starting.version,
-        expectedClaimEpoch: starting.claimEpoch,
-        expectedClaimOwner: starting.claimOwnerId,
-        expectedFrom: starting.status,
+        expectedVersion: current?.version ?? starting.version,
+        expectedClaimEpoch: current?.claimEpoch ?? starting.claimEpoch,
+        expectedClaimOwner: current?.claimOwnerId ?? starting.claimOwnerId,
+        expectedFrom: current?.status ?? starting.status,
         to: 'failed',
         timestamp: this.#now(),
         errorCode: 'PROCESS_SPAWN_FAILED',
         errorDetailRedacted: SPAWN_FAILED_DETAIL,
+        eventContext: input.eventContext,
+        failureOutcome: afterCancel ? 'spawn-failure-after-cancel' : 'spawn-failure',
+        ...(afterCancel
+          ? {
+            cancelReason: input.cancelReason ?? current?.terminationReason,
+            cancelCausationId: input.cancelCausationId,
+            spawnFailureEvidence: 'PROCESS_SPAWN_FAILED',
+          }
+          : { spawnFailureEvidence: 'PROCESS_SPAWN_FAILED' }),
       });
       return { kind: 'spawned', outcome: failed, spawned: true };
     }
@@ -252,10 +273,11 @@ export class DurableProcessCoordinator {
       expectedClaimOwner: fresh.claimOwnerId,
       timestamp: this.#now(),
       identity: identityFromHandle(handle),
+      eventContext: input.eventContext,
     });
     if (bound.kind === 'applied') {
       if (bound.value.status === 'stopping') {
-        await this.#lateSuccessCleanup(bound.value, handle);
+        await this.#lateSuccessCleanup(bound.value, handle, input.eventContext);
         return { kind: 'spawned', outcome: await this.#readOutcome(bound.value), spawned: true };
       }
       return { kind: 'spawned', outcome: bound, spawned: true };
@@ -291,6 +313,8 @@ export class DurableProcessCoordinator {
         errorCode: 'PROCESS_REGISTRATION_FAILED',
         errorDetailRedacted: REGISTRATION_FAILED_DETAIL,
         cleanupResult: verdict.cleanupResult,
+        eventContext: input.eventContext,
+        failureOutcome: 'registration-failure',
       });
       this.#handles.delete(current.processId);
       return { kind: 'spawned', outcome: failed, spawned: true };
@@ -307,6 +331,7 @@ export class DurableProcessCoordinator {
       errorCode: 'PROCESS_REGISTRATION_FAILED',
       errorDetailRedacted: REGISTRATION_FAILED_DETAIL,
       cleanupResult: verdict.cleanupResult,
+      eventContext: input.eventContext,
     });
     this.#handles.delete(current.processId);
     return { kind: 'spawned', outcome: uncertain, spawned: true };
@@ -329,6 +354,7 @@ export class DurableProcessCoordinator {
       session,
       this.#now,
       options.retainedCapBytes,
+      input.eventContext,
     );
   }
 
@@ -383,7 +409,11 @@ export class DurableProcessCoordinator {
    * verified no-survivor tree terminalizes as exited, otherwise the Process
    * stays orphaned uncertainty. Never running, never a second spawn.
    */
-  async #lateSuccessCleanup(process: DurableProcessView, handle: NativeProcessHandle): Promise<void> {
+  async #lateSuccessCleanup(
+    process: DurableProcessView,
+    handle: NativeProcessHandle,
+    eventContext: ConsumeSpawnInput['eventContext'],
+  ): Promise<void> {
     const verdict = await this.#terminateAndVerify(handle);
     if (verdict.classification === 'complete') {
       await this.#processRepository.casProcessTransition({
@@ -397,6 +427,9 @@ export class DurableProcessCoordinator {
         timestamp: this.#now(),
         exitCode: null,
         cleanupResult: verdict.cleanupResult,
+        graceful: true,
+        force: true,
+        eventContext,
       });
     } else {
       await this.#processRepository.casProcessTransition({
@@ -411,6 +444,7 @@ export class DurableProcessCoordinator {
         errorCode: 'PROCESS_SURVIVORS_DETECTED',
         errorDetailRedacted: REGISTRATION_FAILED_DETAIL,
         cleanupResult: verdict.cleanupResult,
+        eventContext,
       });
     }
     this.#handles.delete(process.processId);
@@ -450,6 +484,7 @@ export class DurableOutputWriter {
   readonly #session: ArtifactWriteSession;
   readonly #now: () => string;
   readonly #retainedCapBytes: number;
+  readonly #eventContext: OutputReferenceCreate['eventContext'];
   #closed = false;
 
   constructor(
@@ -458,12 +493,14 @@ export class DurableOutputWriter {
     session: ArtifactWriteSession,
     now: () => string,
     retainedCapBytes: number = STREAM_RETAINED_CAP_BYTES,
+    eventContext: OutputReferenceCreate['eventContext'],
   ) {
     this.#repository = repository;
     this.#reference = reference;
     this.#session = session;
     this.#now = now;
     this.#retainedCapBytes = retainedCapBytes;
+    this.#eventContext = eventContext;
   }
 
   get reference(): DurableOutputReferenceView {
@@ -541,6 +578,7 @@ export class DurableOutputWriter {
         segmentCount,
         truncated: false,
         updatedAt: this.#now(),
+        eventContext: this.#eventContext,
       });
     } catch (error) {
       // Revert the uncommitted tail so sink bytes and DB counters stay
@@ -589,6 +627,7 @@ export class DurableOutputWriter {
       expectedVersion: this.#reference.version,
       sha256: result.sha256,
       finalizedAt: this.#now(),
+      eventContext: this.#eventContext,
     });
     let guard = 0;
     while (outcome.kind === 'version-conflict' && guard < 3) {
@@ -609,6 +648,7 @@ export class DurableOutputWriter {
         expectedVersion: fresh.version,
         sha256: result.sha256,
         finalizedAt: this.#now(),
+        eventContext: this.#eventContext,
       });
       guard += 1;
     }
@@ -640,6 +680,7 @@ export class DurableOutputWriter {
       truncated: true,
       truncationReason: reason,
       updatedAt: this.#now(),
+      eventContext: this.#eventContext,
     });
     if (outcome.kind === 'applied' || outcome.kind === 'duplicate') {
       this.#reference = outcome.value;

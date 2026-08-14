@@ -249,6 +249,99 @@ test('registers the additive P2B Process fact definitions without changing M3 li
     }),
     (error: unknown) => error instanceof RuntimeEventRegistryError && error.code === 'MISSING_PROCESS_ID',
   );
+
+  assert.throws(
+    () => registry.publish({
+      ...base,
+      id: 'evt_01J4P2B0000000000000000002',
+      stageId: undefined,
+      providerSessionId: undefined,
+      payload: {
+        processType: 'provider',
+        executable: 'safe:sha256:abc',
+        argsRedacted: [],
+        cwd: 'safe:sha256:def',
+        shell: false,
+        timeoutPolicyDigest: '0'.repeat(64),
+        claimEpoch: 1,
+        authorityRole: 'primary-provider',
+      },
+      type: 'process.launch_requested',
+    }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError && error.code === 'MISSING_STAGE_ID',
+  );
+
+  assert.throws(
+    () => registry.publish({
+      ...base,
+      id: 'evt_01J4P2B0000000000000000003',
+      stageId: undefined,
+      processId: undefined,
+      providerSessionId: undefined,
+      payload: {
+        claimEpoch: 2,
+        authorityRole: 'primary-provider',
+        ownerChanged: true,
+      },
+      type: 'process.claim_transferred',
+    }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'MISSING_PROCESS_OR_SESSION_ID',
+  );
+
+  assert.throws(
+    () => registry.publish({
+      ...base,
+      id: 'evt_01J4P2B0000000000000000004',
+      stageId: undefined,
+      providerSessionId: undefined,
+      payload: {
+        stream: 'stdout',
+        artifactId: 'artifact_01J4P2B0000000000000000000',
+        priorSourceOffset: 0,
+        nextSourceOffset: 1,
+        retainedBytes: 1,
+        segmentCount: 1,
+        truncated: false,
+        finalized: false,
+      },
+      type: 'process.output_reference_advanced',
+    }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError && error.code === 'MISSING_ARTIFACT_ID',
+  );
+});
+
+test('freezes published nested payload and metadata without freezing the caller draft', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const draft = {
+    id: 'evt_01J4P2B0000000000000000010',
+    schemaVersion: 1,
+    type: 'approval.required',
+    workspaceId: 'ws_01J4P2B0000000000000000000',
+    runId: 'run_01J4P2B0000000000000000000',
+    approvalRequestId: 'approval_01J4P2B0000000000000000000',
+    sequence: 1,
+    timestamp: '2026-08-14T00:00:00.000Z',
+    source: 'approval-service' as const,
+    correlationId: 'run_01J4P2B0000000000000000000',
+    payload: {
+      category: 'command',
+      riskLevel: 'low',
+      title: 'approve',
+      description: 'approve',
+      requestSummary: { nested: { value: 'safe' } },
+    },
+    metadata: { nested: { value: 'safe' } },
+  } satisfies RuntimeEventDraft;
+  const event = registry.publish(draft);
+  assert.equal(Object.isFrozen(event.payload), true);
+  assert.equal(Object.isFrozen((event.payload as { requestSummary: object }).requestSummary), true);
+  assert.equal(Object.isFrozen(event.metadata), true);
+  assert.notEqual(event.payload, draft.payload);
+  assert.throws(() => {
+    ((event.payload as { requestSummary: { nested: { value: string } } }).requestSummary.nested.value) = 'mutated';
+  }, TypeError);
+  assert.equal((draft.payload.requestSummary.nested as { value: string }).value, 'safe');
 });
 
 test('registers and strictly validates the P6C stream text Events', () => {

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { RuntimeEventContext } from '@agentos/shared';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
@@ -234,6 +235,8 @@ export interface CreateProcessInput {
   readonly timeoutPolicy: unknown;
   readonly securityProfileRef: string;
   readonly createdAt?: string;
+  /** Accepted Operation/Run context for the launch_requested fact. */
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export type CreateProcessResult =
@@ -260,6 +263,7 @@ export interface CasStartProcessInput extends ProcessClaimFence {
   readonly processId: string;
   readonly expectedVersion: number;
   readonly timestamp: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export interface BindNativeIdentityInput extends ProcessClaimFence {
@@ -272,6 +276,7 @@ export interface BindNativeIdentityInput extends ProcessClaimFence {
   readonly nativeStartedAt: string;
   readonly processGroupId?: string | null;
   readonly platformHandleId?: string | null;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export interface ProcessStatusTransitionInput extends ProcessClaimFence {
@@ -288,6 +293,25 @@ export interface ProcessStatusTransitionInput extends ProcessClaimFence {
   readonly survivorPidsRedacted?: unknown | null;
   readonly errorCode?: string | null;
   readonly errorDetailRedacted?: string | null;
+  readonly eventContext?: RuntimeEventContext;
+  /** Frozen stop evidence required for a durable process.stopping fact. */
+  readonly gracefulRequested?: boolean;
+  readonly graceDeadline?: string;
+  readonly forceDeadline?: string;
+  readonly idempotencyKeyHash?: string;
+  /** Frozen terminal evidence required for a durable process.exited fact. */
+  readonly durationMs?: number;
+  readonly graceful?: boolean;
+  readonly force?: boolean;
+  /** Explicit P0 outcome/evidence for a durable process.failed fact. */
+  readonly failureOutcome?:
+    | 'spawn-failure'
+    | 'spawn-failure-after-cancel'
+    | 'registration-failure'
+    | 'cancelled-before-spawn';
+  readonly cancelReason?: string;
+  readonly cancelCausationId?: string;
+  readonly spawnFailureEvidence?: string;
 }
 
 export interface ProcessClaimTransferInput extends ProcessClaimFence {
@@ -297,6 +321,7 @@ export interface ProcessClaimTransferInput extends ProcessClaimFence {
   readonly timestamp: string;
   readonly newClaimOwner: string;
   readonly newClaimLeaseExpiresAt: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 function integrityFailure(reason: string): RuntimeProcessIntegrityError {
@@ -696,7 +721,7 @@ export class ProcessRepository {
         from: 'created',
         to: 'starting',
         spawnRightConsumed: true,
-      });
+      }, input.eventContext);
       return { kind: 'applied', process };
     }
     return this.#classifyProcessMutationFailure(
@@ -788,7 +813,7 @@ export class ProcessRepository {
         platform: process.platform,
         ...(process.treeOwnershipMode === null ? {} : { treeOwnershipMode: process.treeOwnershipMode }),
         startedAt: process.startedAt ?? input.timestamp,
-      });
+      }, input.eventContext);
       return { kind: 'applied', process };
     }
     return this.#classifyProcessMutationFailure(
@@ -971,7 +996,7 @@ export class ProcessRepository {
         claimEpoch: process.claimEpoch,
         authorityRole: process.authorityRole ?? 'primary-provider',
         ownerChanged: true,
-      });
+      }, input.eventContext);
       return { kind: 'applied', process };
     }
     return this.#classifyProcessMutationFailure(
@@ -1177,14 +1202,14 @@ export class ProcessRepository {
     }
     this.#appendProcessFact('process.launch_requested', process, process.createdAt, {
       processType: process.processType,
-      executable: process.executableResolved,
+      executable: this.#safeProjection('executable', process.executableResolved),
       argsRedacted: this.#redactedArgs(process.argsRedactedJson),
-      cwd: process.cwdResolved,
+      cwd: this.#safeProjection('cwd', process.cwdResolved),
       shell: process.shell === 1,
       timeoutPolicyDigest: this.#sha256(process.timeoutPolicyJson),
       claimEpoch: process.claimEpoch,
       ...(process.authorityRole === null ? {} : { authorityRole: process.authorityRole }),
-    });
+    }, input.eventContext);
     return { kind: 'created', process };
   }
 
@@ -1193,8 +1218,15 @@ export class ProcessRepository {
     process: RuntimeProcess,
     timestamp: string,
     payload: Record<string, unknown>,
+    eventContext?: RuntimeEventContext,
   ): void {
-    this.factWriter?.appendWithinTransaction({
+    if (this.factWriter === undefined) return;
+    if (eventContext === undefined) {
+      throw new RuntimeProcessValidationError(
+        'RUNTIME_PROCESS_VALIDATION_FAILED: eventContext is required for durable process facts',
+      );
+    }
+    this.factWriter.appendWithinTransaction({
       type,
       workspaceId: process.workspaceId,
       taskId: process.taskId,
@@ -1203,37 +1235,76 @@ export class ProcessRepository {
       ...(process.providerSessionId === null ? {} : { providerSessionId: process.providerSessionId }),
       processId: process.id,
       timestamp,
-      correlationId: this.#correlationId(type, process.id),
+      eventContext,
       payload,
     });
   }
 
   #appendTransitionFact(input: ProcessStatusTransitionInput, process: RuntimeProcess): void {
+    if (this.factWriter === undefined) return;
     if (input.to === 'stopping') {
       this.#appendProcessFact('process.stopping', process, input.timestamp, {
         reason: process.terminationReason ?? 'stop-requested',
         nativeIdentityPending: process.nativePid === null,
         stoppingAt: process.stoppingAt ?? input.timestamp,
+        gracefulRequested: this.#requiredBoolean(input.gracefulRequested, 'gracefulRequested'),
+        graceDeadline: this.#requiredTimestamp(input.graceDeadline, 'graceDeadline'),
+        forceDeadline: this.#requiredTimestamp(input.forceDeadline, 'forceDeadline'),
+        idempotencyKeyHash: this.#requiredDigest(input.idempotencyKeyHash, 'idempotencyKeyHash'),
         ...(process.cleanupResult === null ? {} : { cleanupResult: process.cleanupResult }),
-      });
+      }, input.eventContext);
       return;
     }
     if (input.to === 'exited') {
+      const exitedAt = process.exitedAt ?? input.timestamp;
+      const durationMs = input.durationMs ?? this.#derivedDurationMs(process.startedAt, exitedAt);
+      if (input.graceful === undefined || input.force === undefined) {
+        throw new RuntimeProcessValidationError(
+          'RUNTIME_PROCESS_VALIDATION_FAILED: graceful and force evidence are required for process.exited',
+        );
+      }
       this.#appendProcessFact('process.exited', process, input.timestamp, {
         exitCode: process.exitCode,
         exitSignal: process.exitSignal,
         terminationReason: process.terminationReason,
         cleanupResult: process.cleanupResult,
-        exitedAt: process.exitedAt ?? input.timestamp,
-      });
+        exitedAt,
+        durationMs: this.#requiredDuration(durationMs),
+        graceful: input.graceful,
+        force: input.force,
+        outputReferenceIds: this.#outputReferenceIds(process),
+      }, input.eventContext);
       return;
     }
     if (input.to === 'failed') {
+      if (input.failureOutcome === undefined) {
+        throw new RuntimeProcessValidationError(
+          'RUNTIME_PROCESS_VALIDATION_FAILED: failureOutcome is required for process.failed',
+        );
+      }
+      if (input.failureOutcome === 'spawn-failure'
+        && input.spawnFailureEvidence !== 'PROCESS_SPAWN_FAILED') {
+        throw new RuntimeProcessValidationError(
+          'RUNTIME_PROCESS_VALIDATION_FAILED: spawn failure requires PROCESS_SPAWN_FAILED evidence',
+        );
+      }
+      if (input.failureOutcome === 'spawn-failure-after-cancel'
+        && (input.cancelReason === undefined
+          || input.cancelCausationId === undefined
+          || input.spawnFailureEvidence !== 'PROCESS_SPAWN_FAILED')) {
+        throw new RuntimeProcessValidationError(
+          'RUNTIME_PROCESS_VALIDATION_FAILED: after-cancel failure requires cancel reason/causation and spawn evidence',
+        );
+      }
       this.#appendProcessFact('process.failed', process, input.timestamp, {
         errorCode: process.errorCode ?? 'PROCESS_UNKNOWN_ERROR',
         failedAt: process.exitedAt ?? input.timestamp,
+        outcome: input.failureOutcome,
         ...(process.cleanupResult === null ? {} : { cleanupResult: process.cleanupResult }),
-      });
+        ...(input.cancelReason === undefined ? {} : { cancelReason: input.cancelReason }),
+        ...(input.cancelCausationId === undefined ? {} : { cancelCausationId: input.cancelCausationId }),
+        ...(input.spawnFailureEvidence === undefined ? {} : { spawnFailureEvidence: input.spawnFailureEvidence }),
+      }, input.eventContext);
       return;
     }
     if (input.to === 'orphaned') {
@@ -1244,7 +1315,7 @@ export class ProcessRepository {
         classification,
         cleanupRequired: true,
         reason: process.errorCode ?? process.cleanupResult ?? 'process-control-uncertain',
-      });
+      }, input.eventContext);
       return;
     }
     if (input.to === 'unknown') {
@@ -1253,7 +1324,7 @@ export class ProcessRepository {
         survivorCount: this.#survivorCount(process.survivorPidsRedactedJson),
         reason: process.errorCode ?? 'process-control-uncertain',
         checkedAt: process.recoveryCheckedAt ?? input.timestamp,
-      });
+      }, input.eventContext);
       return;
     }
     this.#appendProcessFact('process.state_changed', process, input.timestamp, {
@@ -1261,18 +1332,18 @@ export class ProcessRepository {
       to: input.to,
       updatedAt: input.timestamp,
       ...(process.cleanupResult === null ? {} : { cleanupResult: process.cleanupResult }),
-    });
+      }, input.eventContext);
   }
 
   #redactedArgs(json: string): string[] {
     try {
       const parsed = JSON.parse(json) as unknown;
       if (!Array.isArray(parsed)) return ['<redacted>'];
-      return parsed.map(value => {
-        if (typeof value !== 'string') return '<redacted>';
-        return /(secret|token|password|api[_-]?key|authorization|bearer)/iu.test(value)
-          ? '<redacted>'
-          : value;
+      return parsed.slice(0, 64).map(value => {
+        if (typeof value !== 'string' || value === '<redacted>' || value === '[REDACTED]') {
+          return '<redacted>';
+        }
+        return this.#safeProjection('arg', value);
       });
     } catch {
       return ['<redacted>'];
@@ -1283,6 +1354,65 @@ export class ProcessRepository {
     return createHash('sha256').update(value, 'utf8').digest('hex');
   }
 
+  #safeProjection(kind: string, value: string): string {
+    return `${kind}:sha256:${this.#sha256(value).slice(0, 32)}`;
+  }
+
+  #requiredBoolean(value: boolean | undefined, field: string): boolean {
+    if (typeof value !== 'boolean') {
+      throw new RuntimeProcessValidationError(
+        `RUNTIME_PROCESS_VALIDATION_FAILED: ${field} is required for process.stopping`,
+      );
+    }
+    return value;
+  }
+
+  #requiredTimestamp(value: string | undefined, field: string): string {
+    if (value === undefined || !isCanonicalUtcTimestamp(value)) {
+      throw new RuntimeProcessValidationError(
+        `RUNTIME_PROCESS_VALIDATION_FAILED: ${field} is required and must be canonical`,
+      );
+    }
+    return value;
+  }
+
+  #requiredDigest(value: string | undefined, field: string): string {
+    if (value === undefined || !/^[0-9a-f]{64}$/u.test(value)) {
+      throw new RuntimeProcessValidationError(
+        `RUNTIME_PROCESS_VALIDATION_FAILED: ${field} must be a 64-character lowercase digest`,
+      );
+    }
+    return value;
+  }
+
+  #requiredDuration(value: number): number {
+    if (!Number.isSafeInteger(value) || value < 0) {
+      throw new RuntimeProcessValidationError(
+        'RUNTIME_PROCESS_VALIDATION_FAILED: durationMs must be a non-negative safe integer',
+      );
+    }
+    return value;
+  }
+
+  #derivedDurationMs(startedAt: string | null, exitedAt: string): number {
+    if (startedAt === null) {
+      throw new RuntimeProcessValidationError(
+        'RUNTIME_PROCESS_VALIDATION_FAILED: process.exited requires native startedAt evidence',
+      );
+    }
+    const duration = Date.parse(exitedAt) - Date.parse(startedAt);
+    return this.#requiredDuration(duration);
+  }
+
+  #outputReferenceIds(process: RuntimeProcess): string[] {
+    const rows = this.db.prepare(`
+      SELECT artifact_id FROM process_output_references
+      WHERE workspace_id = ? AND process_id = ?
+      ORDER BY stream ASC
+    `).all(process.workspaceId, process.id) as Array<{ artifact_id: string }>;
+    return rows.map(row => row.artifact_id);
+  }
+
   #survivorCount(json: string | null): number {
     if (json === null) return 0;
     try {
@@ -1291,10 +1421,6 @@ export class ProcessRepository {
     } catch {
       return 0;
     }
-  }
-
-  #correlationId(kind: string, id: string): string {
-    return `m4-p2b:${kind}:${id}`;
   }
 
   /**

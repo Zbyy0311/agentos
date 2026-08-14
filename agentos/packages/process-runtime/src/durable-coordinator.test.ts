@@ -38,6 +38,10 @@ import type {
 
 const NOW = '2026-08-13T00:00:00.000Z';
 const LATER = '2026-08-13T01:00:00.000Z';
+const EVENT_CONTEXT = {
+  correlationId: 'run_m4',
+  causationId: 'op_m4',
+} as const;
 
 function baseSessionView(overrides: Partial<DurableSessionView> = {}): DurableSessionView {
   return {
@@ -153,6 +157,7 @@ function sessionClaim(): SessionClaimCreate {
     runtimeMode: 'cli',
     claimEpoch: 1,
     capabilities: { streaming: true },
+    eventContext: EVENT_CONTEXT,
   };
 }
 
@@ -178,6 +183,7 @@ function processReservation(overrides: Partial<ProcessReservationCreate> = {}): 
     stderrMode: 'capture',
     timeoutPolicy: { graceMs: 5000 },
     securityProfileRef: 'secprofile_default',
+    eventContext: EVENT_CONTEXT,
     ...overrides,
   };
 }
@@ -192,6 +198,7 @@ function outputCreate(process: DurableProcessView): OutputReferenceCreate {
     contentType: 'text/plain',
     encoding: 'utf-8',
     redactionMode: 'scan',
+    eventContext: EVENT_CONTEXT,
   };
 }
 
@@ -808,6 +815,7 @@ describe('DurableProcessCoordinator', () => {
         timestamp: LATER,
         newClaimOwner: 'svc-2',
         newClaimLeaseExpiresAt: '2026-08-13T02:00:00.000Z',
+        eventContext: EVENT_CONTEXT,
       },
       process: {
         workspaceId: established.process.workspaceId,
@@ -818,6 +826,7 @@ describe('DurableProcessCoordinator', () => {
         timestamp: LATER,
         newClaimOwner: 'svc-2',
         newClaimLeaseExpiresAt: '2026-08-13T02:00:00.000Z',
+        eventContext: EVENT_CONTEXT,
       },
     });
     expect(ok.kind).toBe('applied');
@@ -834,6 +843,7 @@ describe('DurableProcessCoordinator', () => {
         timestamp: LATER,
         newClaimOwner: 'svc-3',
         newClaimLeaseExpiresAt: '2026-08-13T03:00:00.000Z',
+        eventContext: EVENT_CONTEXT,
       },
       process: {
         workspaceId: established.process.workspaceId,
@@ -844,6 +854,7 @@ describe('DurableProcessCoordinator', () => {
         timestamp: LATER,
         newClaimOwner: 'svc-3',
         newClaimLeaseExpiresAt: '2026-08-13T03:00:00.000Z',
+        eventContext: EVENT_CONTEXT,
       },
     });
     if (stale.kind !== 'conflict') throw new Error('expected conflict pair outcome');
@@ -872,6 +883,7 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
       spawn,
     });
     expect(winner.kind).toBe('spawned');
@@ -888,6 +900,7 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
       spawn,
     });
     expect(loser.kind).toBe('joined');
@@ -910,6 +923,7 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
       spawn: async () => {
         spawnCalls += 1;
         throw new Error('native spawn exploded with a secret token');
@@ -939,6 +953,7 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
       spawn: async () => makeHandle(4242),
     });
     expect(driver.gracefulStopCalls).toBe(1);
@@ -967,6 +982,7 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
       spawn: async () => makeHandle(4242),
     });
     const uncertain = applied(result.outcome);
@@ -994,6 +1010,7 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
       spawn: async () => makeHandle(4242),
     });
     const uncertain = applied(result.outcome);
@@ -1019,6 +1036,7 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
       spawn: async () => makeHandle(4242),
     });
     const uncertain = applied(result.outcome);
@@ -1043,6 +1061,7 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
       spawn: async () => {
         spawnCalls += 1;
         // Cancel races during spawn: starting -> stopping before the handle
@@ -1057,6 +1076,7 @@ describe('DurableProcessCoordinator', () => {
           expectedFrom: 'starting',
           to: 'stopping',
           timestamp: NOW,
+          eventContext: EVENT_CONTEXT,
         });
         return makeHandle(4242);
       },
@@ -1100,6 +1120,7 @@ describe('DurableProcessCoordinator', () => {
       nextSourceOffset: first.nextSourceOffset,
       segmentCount: first.segmentCount,
       truncated: false,
+      eventContext: EVENT_CONTEXT,
     });
     expect(duplicate.kind).toBe('duplicate');
     expect(duplicate.value!.version).toBe(first.version);

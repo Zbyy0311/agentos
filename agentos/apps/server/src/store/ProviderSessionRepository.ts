@@ -1,4 +1,5 @@
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
+import type { RuntimeEventContext } from '@agentos/shared';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
 import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
@@ -154,6 +155,8 @@ export interface CreateProviderSessionInput {
   /** Canonicalized and bounded at this repository layer before persistence. */
   readonly capabilities: unknown;
   readonly createdAt?: string;
+  /** Accepted Operation/Run context for the session_claimed fact. */
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export type CreateProviderSessionResult =
@@ -181,6 +184,7 @@ export interface CasSetAdapterStartRequestedInput extends SessionClaimFence {
   readonly sessionId: string;
   readonly expectedVersion: number;
   readonly timestamp: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export interface SessionStatusTransitionInput extends SessionClaimFence {
@@ -192,6 +196,7 @@ export interface SessionStatusTransitionInput extends SessionClaimFence {
   readonly timestamp: string;
   readonly failureCode?: string;
   readonly failureDetailRedacted?: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export interface SessionClaimTransferInput extends SessionClaimFence {
@@ -201,6 +206,7 @@ export interface SessionClaimTransferInput extends SessionClaimFence {
   readonly timestamp: string;
   readonly newClaimOwner: string;
   readonly newClaimLeaseExpiresAt: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 function integrityFailure(reason: string): ProviderSessionIntegrityError {
@@ -565,7 +571,13 @@ export class ProviderSessionRepository {
           'PROVIDER_SESSION_VALIDATION_FAILED: inserted session not found',
         );
       }
-      this.factWriter?.appendWithinTransaction({
+      if (this.factWriter !== undefined) {
+        if (input.eventContext === undefined) {
+          throw new ProviderSessionValidationError(
+            'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
+          );
+        }
+        this.factWriter.appendWithinTransaction({
         type: 'process.session_claimed',
         workspaceId: session.workspaceId,
         taskId: session.taskId,
@@ -573,14 +585,15 @@ export class ProviderSessionRepository {
         stageId: session.stageId,
         providerSessionId: session.id,
         timestamp: session.createdAt,
-        correlationId: this.#correlationId('session-claim', session.id),
+        eventContext: input.eventContext,
         payload: {
           stageAttempt: session.stageAttempt,
           authorityRole: session.authorityRole,
           claimEpoch: session.claimEpoch,
           runtimeMode: session.runtimeMode,
         },
-      });
+        });
+      }
       return { kind: 'created' as const, session };
     };
     // Match ProcessRepository: BEGIN IMMEDIATE serializes the claim read +
@@ -648,7 +661,13 @@ export class ProviderSessionRepository {
 
     if (result.changes === 1) {
       const session = this.findById(input.workspaceId, input.sessionId)!;
-      this.factWriter?.appendWithinTransaction({
+      if (this.factWriter !== undefined) {
+        if (input.eventContext === undefined) {
+          throw new ProviderSessionValidationError(
+            'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
+          );
+        }
+        this.factWriter.appendWithinTransaction({
         type: 'process.session_state_changed',
         workspaceId: session.workspaceId,
         taskId: session.taskId,
@@ -656,14 +675,15 @@ export class ProviderSessionRepository {
         stageId: session.stageId,
         providerSessionId: session.id,
         timestamp: input.timestamp,
-        correlationId: this.#correlationId('session-start-request', session.id),
+        eventContext: input.eventContext,
         payload: {
           from: session.status,
           to: session.status,
           adapterStartRequested: true,
           terminal: false,
         },
-      });
+        });
+      }
       return { kind: 'applied', session };
     }
     return this.#classifyMutationFailure(
@@ -757,7 +777,13 @@ export class ProviderSessionRepository {
 
     if (result.changes === 1) {
       const session = this.findById(input.workspaceId, input.sessionId)!;
-      this.factWriter?.appendWithinTransaction({
+      if (this.factWriter !== undefined) {
+        if (input.eventContext === undefined) {
+          throw new ProviderSessionValidationError(
+            'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
+          );
+        }
+        this.factWriter.appendWithinTransaction({
         type: 'process.session_state_changed',
         workspaceId: session.workspaceId,
         taskId: session.taskId,
@@ -765,7 +791,7 @@ export class ProviderSessionRepository {
         stageId: session.stageId,
         providerSessionId: session.id,
         timestamp: input.timestamp,
-        correlationId: this.#correlationId('session-state', session.id),
+        eventContext: input.eventContext,
         payload: {
           from: input.expectedFrom,
           to: input.to,
@@ -773,7 +799,8 @@ export class ProviderSessionRepository {
           terminal: TERMINAL_PROVIDER_SESSION_STATUSES.includes(session.status as TerminalProviderSessionStatus),
           ...(session.errorCode === null ? {} : { errorCode: session.errorCode }),
         },
-      });
+        });
+      }
       return { kind: 'applied', session };
     }
     return this.#classifyMutationFailure(
@@ -848,7 +875,13 @@ export class ProviderSessionRepository {
 
     if (result.changes === 1) {
       const session = this.findById(input.workspaceId, input.sessionId)!;
-      this.factWriter?.appendWithinTransaction({
+      if (this.factWriter !== undefined) {
+        if (input.eventContext === undefined) {
+          throw new ProviderSessionValidationError(
+            'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
+          );
+        }
+        this.factWriter.appendWithinTransaction({
         type: 'process.claim_transferred',
         workspaceId: session.workspaceId,
         taskId: session.taskId,
@@ -856,13 +889,14 @@ export class ProviderSessionRepository {
         stageId: session.stageId,
         providerSessionId: session.id,
         timestamp: input.timestamp,
-        correlationId: this.#correlationId('session-claim-transfer', session.id),
+        eventContext: input.eventContext,
         payload: {
           claimEpoch: session.claimEpoch,
           authorityRole: session.authorityRole,
           ownerChanged: true,
         },
-      });
+        });
+      }
       return { kind: 'applied', session };
     }
     return this.#classifyMutationFailure(
@@ -883,10 +917,6 @@ export class ProviderSessionRepository {
       },
       { expectedFrom: 'starting' },
     );
-  }
-
-  #correlationId(kind: string, id: string): string {
-    return `m4-p2b:${kind}:${id}`;
   }
 
   #classifyMutationFailure(

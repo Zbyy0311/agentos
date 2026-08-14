@@ -151,6 +151,20 @@ export const RUNTIME_EVENT_DURABILITIES = Object.freeze([
   'ephemeral',
 ] as const);
 
+/**
+ * Causal context supplied by the accepted Operation/Run execution chain.
+ *
+ * Process/Provider repositories must never manufacture correlation or
+ * causation identifiers.  The causation reference is intentionally required
+ * for the durable M4 fact seam: it is either the accepted command/operation
+ * identifier or an already-persisted immediately causal Runtime Event.
+ */
+export interface RuntimeEventContext {
+  readonly correlationId: string;
+  readonly causationId: string;
+  readonly parentEventId?: string;
+}
+
 export type RuntimeEventDurability = (typeof RUNTIME_EVENT_DURABILITIES)[number];
 
 export interface RuntimeEventMetadata {

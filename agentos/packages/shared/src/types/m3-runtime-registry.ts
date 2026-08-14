@@ -88,6 +88,7 @@ export type RuntimeEventRegistryErrorCode =
   | 'MISSING_STAGE_ID'
   | 'UNEXPECTED_STAGE_ID'
   | 'MISSING_PROCESS_ID'
+  | 'MISSING_PROCESS_OR_SESSION_ID'
   | 'MISSING_PROVIDER_SESSION_ID'
   | 'MISSING_ARTIFACT_ID'
   | 'MISSING_APPROVAL_REQUEST_ID'
@@ -106,6 +107,26 @@ export class RuntimeEventRegistryError extends Error {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+/** Clone JSON-shaped values before freezing so callers cannot mutate an
+ * already-published draft through a nested payload/metadata reference. */
+function cloneAndFreeze<T>(value: T, seen = new WeakMap<object, unknown>()): T {
+  if (value === null || typeof value !== 'object') return value;
+  const existing = seen.get(value as object);
+  if (existing !== undefined) return existing as T;
+  if (Array.isArray(value)) {
+    const clone: unknown[] = [];
+    seen.set(value, clone);
+    for (const item of value) clone.push(cloneAndFreeze(item, seen));
+    return Object.freeze(clone) as T;
+  }
+  const clone: Record<string, unknown> = {};
+  seen.set(value as object, clone);
+  for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    clone[key] = cloneAndFreeze(item, seen);
+  }
+  return Object.freeze(clone) as T;
 }
 
 function isNonEmptyString(value: unknown): value is string {
@@ -307,10 +328,33 @@ export class CentralRuntimeEventRegistry {
       );
     }
 
+    if (
+      draft.type === 'process.claim_transferred'
+      && !isNonEmptyString(draft.processId)
+      && !isNonEmptyString(draft.providerSessionId)
+    ) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_PROCESS_OR_SESSION_ID',
+        'Claim transfer Runtime Event requires a processId or providerSessionId',
+      );
+    }
+
     if (definition.requiresProviderSessionId && !isNonEmptyString(draft.providerSessionId)) {
       throw new RuntimeEventRegistryError(
         'MISSING_PROVIDER_SESSION_ID',
         'Process Runtime Event requires an envelope providerSessionId: ' + draft.type,
+      );
+    }
+
+    if (
+      draft.type === 'process.launch_requested'
+      && isRecord(draft.payload)
+      && draft.payload.authorityRole === 'primary-provider'
+      && (!isNonEmptyString(draft.stageId) || !isNonEmptyString(draft.providerSessionId))
+    ) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_STAGE_ID',
+        'Provider-root launch Runtime Event requires stageId and providerSessionId',
       );
     }
 
@@ -356,13 +400,19 @@ export class CentralRuntimeEventRegistry {
       );
     }
 
-    return {
+    const payload = cloneAndFreeze(draft.payload);
+    const metadata = draft.metadata === undefined
+      ? undefined
+      : cloneAndFreeze(draft.metadata);
+    return Object.freeze({
       ...draft,
       source: draft.source ?? definition.source,
       severity: draft.severity ?? definition.defaultSeverity,
       visibility: draft.visibility ?? definition.defaultVisibility,
       durability: draft.durability ?? definition.defaultDurability,
-    };
+      payload,
+      ...(metadata === undefined ? {} : { metadata }),
+    });
   }
 
   private toDraft(record: unknown): RuntimeEventDraft {
@@ -1151,6 +1201,10 @@ export interface ProcessStoppingPayload {
   readonly reason: string;
   readonly nativeIdentityPending: boolean;
   readonly stoppingAt: string;
+  readonly gracefulRequested: boolean;
+  readonly graceDeadline: string;
+  readonly forceDeadline: string;
+  readonly idempotencyKeyHash: string;
   readonly cleanupResult?: string;
 }
 
@@ -1160,13 +1214,25 @@ export interface ProcessExitedPayload {
   readonly terminationReason: string | null;
   readonly cleanupResult: string | null;
   readonly exitedAt: string;
+  readonly durationMs: number;
+  readonly graceful: boolean;
+  readonly force: boolean;
+  readonly outputReferenceIds: string[];
 }
 
 export interface ProcessFailedPayload {
   readonly errorCode: string;
   readonly failedAt: string;
+  readonly outcome:
+    | 'spawn-failure'
+    | 'spawn-failure-after-cancel'
+    | 'registration-failure'
+    | 'cancelled-before-spawn';
   readonly detailRedacted?: string;
   readonly cleanupResult?: string;
+  readonly cancelReason?: string;
+  readonly cancelCausationId?: string;
+  readonly spawnFailureEvidence?: string;
 }
 
 export interface ProcessCleanupRequiredPayload {
@@ -1306,10 +1372,23 @@ export function isProcessStateChangedPayload(value: unknown): value is ProcessSt
 export function isProcessStoppingPayload(value: unknown): value is ProcessStoppingPayload {
   if (!isRecord(value)) return false;
   return (
-    hasOnly(value, ['reason', 'nativeIdentityPending', 'stoppingAt', 'cleanupResult'])
+    hasOnly(value, [
+      'reason',
+      'nativeIdentityPending',
+      'stoppingAt',
+      'gracefulRequested',
+      'graceDeadline',
+      'forceDeadline',
+      'idempotencyKeyHash',
+      'cleanupResult',
+    ])
     && hasLifecycleString(value, 'reason')
     && typeof value.nativeIdentityPending === 'boolean'
     && hasLifecycleCanonicalTimestamp(value, 'stoppingAt')
+    && typeof value.gracefulRequested === 'boolean'
+    && hasLifecycleCanonicalTimestamp(value, 'graceDeadline')
+    && hasLifecycleCanonicalTimestamp(value, 'forceDeadline')
+    && isHexDigest(value.idempotencyKeyHash)
     && (value.cleanupResult === undefined || hasLifecycleString(value, 'cleanupResult'))
   );
 }
@@ -1317,23 +1396,61 @@ export function isProcessStoppingPayload(value: unknown): value is ProcessStoppi
 export function isProcessExitedPayload(value: unknown): value is ProcessExitedPayload {
   if (!isRecord(value)) return false;
   return (
-    hasOnly(value, ['exitCode', 'exitSignal', 'terminationReason', 'cleanupResult', 'exitedAt'])
+    hasOnly(value, [
+      'exitCode',
+      'exitSignal',
+      'terminationReason',
+      'cleanupResult',
+      'exitedAt',
+      'durationMs',
+      'graceful',
+      'force',
+      'outputReferenceIds',
+    ])
     && isNullableSafeInteger(value.exitCode)
     && isNullableString(value.exitSignal)
     && isNullableString(value.terminationReason)
     && isNullableString(value.cleanupResult)
     && hasLifecycleCanonicalTimestamp(value, 'exitedAt')
+    && isNonNegativeSafeInteger(value.durationMs)
+    && typeof value.graceful === 'boolean'
+    && typeof value.force === 'boolean'
+    && isLifecycleStringArray(value.outputReferenceIds)
   );
 }
 
 export function isProcessFailedPayload(value: unknown): value is ProcessFailedPayload {
   if (!isRecord(value)) return false;
   return (
-    hasOnly(value, ['errorCode', 'failedAt', 'detailRedacted', 'cleanupResult'])
+    hasOnly(value, [
+      'errorCode',
+      'failedAt',
+      'outcome',
+      'detailRedacted',
+      'cleanupResult',
+      'cancelReason',
+      'cancelCausationId',
+      'spawnFailureEvidence',
+    ])
     && hasLifecycleString(value, 'errorCode')
     && hasLifecycleCanonicalTimestamp(value, 'failedAt')
+    && hasValue([
+      'spawn-failure',
+      'spawn-failure-after-cancel',
+      'registration-failure',
+      'cancelled-before-spawn',
+    ], value.outcome)
     && hasOptionalLifecycleString(value, 'detailRedacted')
     && hasOptionalLifecycleString(value, 'cleanupResult')
+    && hasOptionalLifecycleString(value, 'cancelReason')
+    && hasOptionalLifecycleString(value, 'cancelCausationId')
+    && hasOptionalLifecycleString(value, 'spawnFailureEvidence')
+    && (value.outcome !== 'spawn-failure-after-cancel'
+      || (value.cancelReason !== undefined
+        && value.cancelCausationId !== undefined
+        && value.spawnFailureEvidence === 'PROCESS_SPAWN_FAILED'))
+    && (value.outcome !== 'spawn-failure'
+      || value.spawnFailureEvidence === 'PROCESS_SPAWN_FAILED')
   );
 }
 
@@ -1943,7 +2060,15 @@ export const M4_PROCESS_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
     defaultDurability: 'durable',
     requiresProcessId: true,
     payloadSchema: {
-      required: ['reason', 'nativeIdentityPending', 'stoppingAt'],
+      required: [
+        'reason',
+        'nativeIdentityPending',
+        'stoppingAt',
+        'gracefulRequested',
+        'graceDeadline',
+        'forceDeadline',
+        'idempotencyKeyHash',
+      ],
       optional: ['cleanupResult'],
     },
     validatePayload: isProcessStoppingPayload,
@@ -1959,7 +2084,17 @@ export const M4_PROCESS_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
     defaultDurability: 'durable',
     requiresProcessId: true,
     payloadSchema: {
-      required: ['exitCode', 'exitSignal', 'terminationReason', 'cleanupResult', 'exitedAt'],
+      required: [
+        'exitCode',
+        'exitSignal',
+        'terminationReason',
+        'cleanupResult',
+        'exitedAt',
+        'durationMs',
+        'graceful',
+        'force',
+        'outputReferenceIds',
+      ],
       optional: [],
     },
     validatePayload: isProcessExitedPayload,
@@ -1975,8 +2110,14 @@ export const M4_PROCESS_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
     defaultDurability: 'durable',
     requiresProcessId: true,
     payloadSchema: {
-      required: ['errorCode', 'failedAt'],
-      optional: ['detailRedacted', 'cleanupResult'],
+      required: ['errorCode', 'failedAt', 'outcome'],
+      optional: [
+        'detailRedacted',
+        'cleanupResult',
+        'cancelReason',
+        'cancelCausationId',
+        'spawnFailureEvidence',
+      ],
     },
     validatePayload: isProcessFailedPayload,
   },
