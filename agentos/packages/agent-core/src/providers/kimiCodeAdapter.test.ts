@@ -62,6 +62,14 @@ function runnerFor(version: string, help = 'Usage: kimi --output-format stream-j
 }
 
 describe('KimiCodeProviderAdapter', () => {
+  it('normalizes the legacy kimi input token without changing canonical adapter identity', () => {
+    const adapter = new KimiCodeProviderAdapter();
+    const normalized = adapter.normalizeConfiguration(config({ providerType: 'kimi' }));
+    expect(normalized.providerType).toBe('kimicode');
+    expect(normalized.adapterId).toBe('builtin.kimicode');
+    expect(normalized.argsTemplate).not.toBe(config().argsTemplate);
+  });
+
   it('validates direct KimiCode fixtures without emitting the forbidden generic validation error', async () => {
     const adapter = new KimiCodeProviderAdapter({ run: runnerFor('0.23.5') });
     const result = await adapter.validate({
@@ -82,6 +90,16 @@ describe('KimiCodeProviderAdapter', () => {
     expect(result.authentication).toBe('authenticated');
     expect(result.errors).toEqual([]);
     expect(JSON.stringify(result)).not.toContain('PROVIDER_VALIDATION_FAILED');
+  });
+
+  it('distinguishes an explicitly configured inaccessible executable from no discovery candidate', async () => {
+    const adapter = new KimiCodeProviderAdapter();
+    const result = await adapter.validate({
+      configuration: config({ executable: 'C:/missing/kimi.exe' }),
+      environment: {},
+      discover: async () => ({ found: false, candidates: [], warnings: [] }),
+    });
+    expect(result.errors).toEqual([expect.objectContaining({ code: 'PROVIDER_EXECUTABLE_NOT_ACCESSIBLE' })]);
   });
 
   it('builds a canonical direct launch plan with separated args and secret references only', async () => {
@@ -133,6 +151,7 @@ describe('KimiCodeProviderAdapter', () => {
     expect(types).toContain('tool.started');
     expect(types).toContain('tool.completed');
     expect(types).toContain('usage');
+    expect([...first.events, ...done.events].find(event => event.type === 'usage')).toMatchObject({ provider: 'kimicode' });
 
     const malformed = adapter.parseChunk('{"role":"tool","tool_call_id":"missing"}\nnot-json\n', adapter.createParseContext());
     const malformedDone = adapter.finishParse(malformed.context);

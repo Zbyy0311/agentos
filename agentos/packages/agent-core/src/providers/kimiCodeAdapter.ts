@@ -16,6 +16,7 @@ import type {
   ProviderFinalResult,
   ProviderLaunchPlan,
   ProviderNormalizedError,
+  ProviderNormalizedEvent,
   ProviderParseContext,
   ProviderParseResult,
   ProviderProbeRunner,
@@ -98,6 +99,17 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     return { ...KIMICODE_CAPABILITIES };
   }
 
+  /** Normalize legacy agent-core input at the provider boundary only. */
+  normalizeConfiguration(configuration: ProviderConfigurationInput): ProviderConfigurationInput {
+    return {
+      ...configuration,
+      providerType: canonicalProviderType(configuration.providerType),
+      ...(configuration.argsTemplate === undefined ? {} : { argsTemplate: [...configuration.argsTemplate] }),
+      capabilities: { ...configuration.capabilities },
+      timeoutPolicy: { ...configuration.timeoutPolicy },
+    };
+  }
+
   async discover(input: ProviderDiscoveryInput): Promise<ProviderDiscoveryResult> {
     if (input.providerType !== KIMICODE_PROVIDER_TYPE) {
       return { found: false, candidates: [], warnings: ['KimiCode adapter only supports canonical provider type kimicode'] };
@@ -132,7 +144,7 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
   }
 
   async validate(input: ProviderValidationInput): Promise<ProviderValidationResult> {
-    const configuration = input.configuration;
+    const configuration = this.normalizeConfiguration(input.configuration);
     const checkedAt = input.now ?? new Date().toISOString();
     const errors: ProviderValidationError[] = [];
     const warnings: ProviderValidationWarning[] = [];
@@ -166,7 +178,17 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     });
     warnings.push(...discovered.warnings.map(message => ({ code: 'PROVIDER_DISCOVERY_WARNING', message })));
     if (!discovered.found || !discovered.selected) {
-      errors.push({ code: 'PROVIDER_NOT_FOUND', phase: 'discovery', message: 'KimiCode executable was not found', retryable: false });
+      const explicitlyConfigured = Boolean(
+        configuration.executable
+        ?? environment.AGENTOS_KIMICODE_CLI
+        ?? environment.AGENTOS_KIMI_CLI,
+      );
+      errors.push({
+        code: explicitlyConfigured ? 'PROVIDER_EXECUTABLE_NOT_ACCESSIBLE' : 'PROVIDER_NOT_FOUND',
+        phase: 'discovery',
+        message: explicitlyConfigured ? 'KimiCode executable is not accessible' : 'KimiCode executable was not found',
+        retryable: false,
+      });
       return { valid: false, capabilities: this.getDefaultCapabilities(configuration), outputMode: configuration.outputMode, warnings, errors, checkedAt };
     }
 
@@ -220,7 +242,7 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
   }
 
   async buildLaunchPlan(input: ProviderStartInput): Promise<ProviderLaunchPlan> {
-    const configuration = input.configuration;
+    const configuration = this.normalizeConfiguration(input.configuration);
     if (!configuration.enabled || configuration.archivedAt || canonicalProviderType(configuration.providerType) !== KIMICODE_PROVIDER_TYPE) {
       throw new Error('PROVIDER_CONFIG_INVALID');
     }
@@ -278,13 +300,13 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
 
   parseChunk(chunk: string, context: ProviderParseContext = this.createParseContext()): ProviderParseResult {
     const parser = context.parser ?? this.legacyAdapter.createParser();
-    const events = parser.push(chunk);
+    const events = parser.push(chunk).map(canonicalizeEvent);
     return { context: { parser }, events, diagnostics: events.filter(event => event.type === 'diagnostic') };
   }
 
   finishParse(context: ProviderParseContext): ProviderParseResult {
     const parser = context.parser ?? this.legacyAdapter.createParser();
-    const events = parser.finish();
+    const events = parser.finish().map(canonicalizeEvent);
     return { context: { parser }, events, diagnostics: events.filter(event => event.type === 'diagnostic') };
   }
 
@@ -436,4 +458,11 @@ function dedupeCandidates<T extends { executable: string }>(candidates: readonly
     seen.add(candidate.executable);
     return true;
   });
+}
+
+function canonicalizeEvent(event: import('../adapters/types.js').NormalizedCliEvent): ProviderNormalizedEvent {
+  if (event.type === 'usage' && event.provider === 'kimi') {
+    return { ...event, provider: KIMICODE_PROVIDER_TYPE } as ProviderNormalizedEvent;
+  }
+  return event as ProviderNormalizedEvent;
 }

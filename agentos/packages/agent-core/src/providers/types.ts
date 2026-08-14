@@ -164,23 +164,30 @@ export interface ProviderParseContext {
   readonly parser?: CliEventParser;
 }
 
+/** Provider-facing events use canonical M4 provider vocabulary. */
+export type ProviderNormalizedEvent =
+  | Exclude<NormalizedCliEvent, { type: 'usage' }>
+  | (Omit<Extract<NormalizedCliEvent, { type: 'usage' }>, 'provider'> & {
+      readonly provider?: CanonicalProviderType;
+    });
+
 export interface ProviderParseResult {
   readonly context: ProviderParseContext;
-  readonly events: readonly NormalizedCliEvent[];
-  readonly diagnostics: readonly NormalizedCliEvent[];
+  readonly events: readonly ProviderNormalizedEvent[];
+  readonly diagnostics: readonly ProviderNormalizedEvent[];
 }
 
 export interface ProviderFinalizeInput {
   readonly exitCode: number | null;
   readonly signal: string | null;
-  readonly parsedEvents: readonly NormalizedCliEvent[];
+  readonly parsedEvents: readonly ProviderNormalizedEvent[];
   readonly stderr?: string;
   readonly cancelled?: boolean;
 }
 
 export interface ProviderFinalResult {
   readonly status: 'completed' | 'failed' | 'cancelled';
-  readonly events?: readonly NormalizedCliEvent[];
+  readonly events?: readonly ProviderNormalizedEvent[];
   readonly error?: ProviderNormalizedError;
   readonly output?: string;
 }

@@ -58,7 +58,7 @@ describe('ProviderValidationService', () => {
 
   it('reports executable discovery and version failures with stable codes', async () => {
     const missing = service({ discover: async () => ({ found: false, candidates: [], warnings: [] }) });
-    const missingResult = await missing.validate(config());
+    const missingResult = await missing.validate(config({ executable: undefined }));
     expect(missingResult.errors.map(error => error.code)).toContain('PROVIDER_NOT_FOUND');
 
     const unsupported = service({

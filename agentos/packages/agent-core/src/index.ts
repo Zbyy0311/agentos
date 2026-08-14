@@ -47,6 +47,7 @@ export type {
   ProviderFinalResult,
   ProviderLaunchPlan,
   ProviderNormalizedError,
+  ProviderNormalizedEvent,
   ProviderParseContext,
   ProviderParseResult,
   ProviderProbeRunner,
