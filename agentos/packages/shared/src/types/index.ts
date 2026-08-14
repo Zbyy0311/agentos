@@ -1,5 +1,7 @@
 import type { V2RunStatus } from './m3-run-status.js';
 import type { V2RunReason, WorktreeMode } from './m3-runtime-contracts.js';
+
+export * from './provider-runtime.js';
 import type {
   M3StageStatus,
   ReplayArtifactIndexEntry,

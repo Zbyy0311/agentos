@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { createProviderConfigRoutes } from './providerConfigs.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SqliteStore } from '../store/SqliteStore.js';
+import { KimiCodeProviderAdapter, ProviderRegistry, ProviderValidationService } from '@agentos/agent-core';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-provider-routes-'));
@@ -260,6 +261,55 @@ test('provider PUT validates enums, rename conflicts, secret fields, and preserv
     const otherWorkspace = (await otherWorkspaceResponse.json() as { providerConfig: { id: string; version: number } }).providerConfig;
     const renameInOtherWorkspace = await put(baseB, otherWorkspace.id, { name: 'First Config', expectedVersion: otherWorkspace.version });
     assert.equal(renameInOtherWorkspace.status, 200);
+  } finally {
+    server?.close();
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('provider validation route returns stable sanitized Kimi validation evidence', async () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  let server: ReturnType<express.Express['listen']> | undefined;
+  let serverBase = '';
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const workspace = manager.create('Workspace A', join(root, 'a'), { git: false, memory: false, readme: false, docs: false });
+    const adapter = new KimiCodeProviderAdapter({
+      run: async (_command, args) => args[0] === '--version' ? '0.23.5' : args[0] === '--help' ? '--output-format stream-json' : 'authenticated',
+      discover: async input => ({
+        found: true,
+        selected: input.configuredExecutable ?? 'kimi',
+        candidates: [{ executable: input.configuredExecutable ?? 'kimi', source: 'configuration', confidence: 1 }],
+        warnings: [],
+      }),
+    });
+    const validationService = new ProviderValidationService(new ProviderRegistry([adapter]), { auth: async () => 'authenticated' });
+    const app = express();
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, manager, { validationService }));
+    ({ server, base: serverBase } = await listen(app));
+    const base = `${serverBase}/${workspace.id}`;
+    const created = await fetch(`${base}/provider-configs`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: 'Kimi Validate', providerType: 'kimicode', adapterId: 'builtin.kimicode',
+        executable: 'kimi', outputMode: 'structured', secretProfileId: 'secret-ref',
+      }),
+    });
+    assert.equal(created.status, 201);
+    const providerConfig = (await created.json() as { providerConfig: { id: string } }).providerConfig;
+    const response = await fetch(`${base}/provider-configs/${providerConfig.id}/validate`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ forceRefresh: true }),
+    });
+    assert.equal(response.status, 200);
+    const body = await response.json() as { validation: { valid: boolean; cliVersion?: string; errors: Array<{ code: string }> } };
+    assert.equal(body.validation.valid, true);
+    assert.equal(body.validation.cliVersion, '0.23.5');
+    assert.deepEqual(body.validation.errors, []);
+    assertSanitizedErrorBody(body, 'provider validation response');
   } finally {
     server?.close();
     store?.close();

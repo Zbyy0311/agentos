@@ -20,5 +20,44 @@ export type { AdapterResolution } from './adapters/registry.js';
 export type { CodexProbeResult, ProbeCommand } from './adapters/capabilityProbe.js';
 export type { KimiProbeOptions } from './adapters/kimiAdapter.js';
 export { redactRuntimeText, summarizeToolInput } from './adapters/redaction.js';
+export { KimiCodeProviderAdapter } from './providers/kimiCodeAdapter.js';
+export { ProviderRegistry } from './providers/registry.js';
+export { ProviderValidationService } from './providers/validation.js';
+export { ProviderRegistryError, normalizedProviderError, providerErrorStatus } from './providers/errors.js';
+export {
+  KIMICODE_ADAPTER_ID,
+  KIMICODE_DEFAULT_EXECUTABLE,
+  KIMICODE_PROVIDER_TYPE,
+  LEGACY_KIMI_PROVIDER_TYPE,
+  canonicalProviderType,
+  PROVIDER_ERROR_CODES,
+} from './providers/types.js';
+export type {
+  ProviderAdapterManifest,
+  ProviderAuthenticationState,
+  ProviderCapabilities,
+  ProviderCancelInput,
+  ProviderCancelResult,
+  ProviderConfigurationInput,
+  ProviderDiscoveryCandidate,
+  ProviderDiscoveryInput,
+  ProviderDiscoveryResult,
+  ProviderErrorCode,
+  ProviderFinalizeInput,
+  ProviderFinalResult,
+  ProviderLaunchPlan,
+  ProviderNormalizedError,
+  ProviderParseContext,
+  ProviderParseResult,
+  ProviderProbeRunner,
+  ProviderProcessPort,
+  ProviderStartInput,
+  ProviderType,
+  ProviderValidationError,
+  ProviderValidationInput,
+  ProviderValidationResult,
+  ProviderValidationWarning,
+  RuntimeProviderAdapter,
+} from './providers/types.js';
 export type { AgentImageAttachment, ImageInputPlan, ImageInputTransport } from './imageInput.js';
 export type { AgentConfig, PipelineResult, Workspace } from './types.js';

@@ -4,6 +4,7 @@ import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
+import { KimiCodeProviderAdapter, ProviderRegistry, ProviderValidationService } from '@agentos/agent-core';
 
 const VALID_PROVIDER_TYPES = ['codex','claude-code','kimicode','opencode','gemini-cli','custom-cli','remote'] as const;
 const VALID_RUNTIME_MODES = ['cli','api','ssh','container'] as const;
@@ -95,9 +96,19 @@ function isProviderNameUniqueViolation(error: unknown): boolean {
   return /unique constraint failed:\s*provider_configurations\.workspace_id,\s*provider_configurations\.name/i.test(message);
 }
 
-export function createProviderConfigRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
+export interface ProviderConfigRouteOptions {
+  readonly validationService?: ProviderValidationService;
+}
+
+export function createProviderConfigRoutes(
+  store: SqliteStore,
+  workspaceManager: WorkspaceManager,
+  options: ProviderConfigRouteOptions = {},
+): Router {
   const router = Router({ mergeParams: true });
   const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
+  const validationService = options.validationService
+    ?? new ProviderValidationService(new ProviderRegistry([new KimiCodeProviderAdapter()]));
 
   router.get('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -121,6 +132,33 @@ export function createProviderConfigRoutes(store: SqliteStore, workspaceManager:
       res.json({ providerConfig: config, workspaceId: workspace.id });
     } catch (error) {
       sendInternalError(res, 'get provider configuration failed', error);
+    }
+  });
+
+  router.post('/provider-configs/:providerConfigId/validate', async (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) return res.status(404).json({ error: 'Workspace not found', code: 'WORKSPACE_NOT_FOUND' });
+    try {
+      const config = repo.findById(req.params.providerConfigId);
+      if (!config || config.workspaceId !== workspace.id) {
+        return res.status(404).json({ error: 'Provider configuration not found', code: 'PROVIDER_CONFIG_NOT_FOUND' });
+      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (body.forceRefresh !== undefined && typeof body.forceRefresh !== 'boolean') {
+        return sendValidationError(res, 'forceRefresh must be a boolean');
+      }
+      const validation = await validationService.validate(config, {
+        environment: process.env,
+        workspaceRoot: workspace.rootPath,
+        forceRefresh: body.forceRefresh === true,
+      });
+      return res.status(200).json({
+        providerConfigId: config.id,
+        workspaceId: workspace.id,
+        validation,
+      });
+    } catch (error) {
+      return sendInternalError(res, 'validate provider configuration failed', error);
     }
   });
 
