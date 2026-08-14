@@ -24,6 +24,12 @@ export interface ArtifactWriteSession {
   readonly storageKey: string;
   /** Append already-redacted bytes; never called after finalize/abort. */
   append(bytes: Uint8Array): Promise<void>;
+  /**
+   * Revert the in-flight uncommitted tail back to a previously committed
+   * retained length. Used only to keep sink bytes and DB counters consistent
+   * when a checkpoint CAS fails; never called after finalize/abort.
+   */
+  truncateTo(retainedBytes: number): Promise<void>;
   finalize(): Promise<ArtifactFinalizeResult>;
   abort(): Promise<void>;
 }
@@ -69,6 +75,7 @@ class FileArtifactWriteSession implements ArtifactWriteSession {
   readonly #hash = createHash('sha256');
   #retainedBytes = 0;
   #closed = false;
+  #finalizedResult: ArtifactFinalizeResult | null = null;
 
   constructor(
     readonly artifactId: string,
@@ -89,14 +96,30 @@ class FileArtifactWriteSession implements ArtifactWriteSession {
     this.#retainedBytes += bytes.length;
   }
 
+  async truncateTo(retainedBytes: number): Promise<void> {
+    if (this.#closed) {
+      throw new Error('RESTRICTED_SINK_CLOSED: truncateTo after finalize/abort is forbidden');
+    }
+    if (!Number.isSafeInteger(retainedBytes) || retainedBytes < 0 || retainedBytes > this.#retainedBytes) {
+      throw new Error('RESTRICTED_SINK_INVALID_TRUNCATE: retainedBytes is out of range');
+    }
+    await this.#handle.truncate(retainedBytes);
+    this.#retainedBytes = retainedBytes;
+  }
+
   async finalize(): Promise<ArtifactFinalizeResult> {
     if (this.#closed) {
-      throw new Error('RESTRICTED_SINK_CLOSED: finalize after close is forbidden');
+      if (this.#finalizedResult !== null) return this.#finalizedResult;
+      throw new Error('RESTRICTED_SINK_CLOSED: finalize after abort is forbidden');
     }
     this.#closed = true;
     await this.#handle.sync();
     await this.#handle.close();
-    return { sha256: this.#hash.digest('hex'), retainedBytes: this.#retainedBytes };
+    this.#finalizedResult = {
+      sha256: this.#hash.digest('hex'),
+      retainedBytes: this.#retainedBytes,
+    };
+    return this.#finalizedResult;
   }
 
   async abort(): Promise<void> {

@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -18,11 +22,15 @@ import { MigrationRegistry } from '../migrations/registry.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { inTransaction } from './Transaction.js';
+import { ProviderSessionRepository } from './ProviderSessionRepository.js';
+import { ProcessOutputReferenceRepository } from './ProcessOutputReferenceRepository.js';
 import {
   ProcessRepository,
   RuntimeProcessIntegrityError,
   RuntimeProcessValidationError,
 } from './ProcessRepository.js';
+
+const require = createRequire(import.meta.url);
 
 type Db = InstanceType<typeof DatabaseSync>;
 
@@ -35,7 +43,7 @@ const SNAPSHOT = 'snapshot_m4';
 const STAGE = 'stage_m4';
 const PCFG = 'pcfg_m4';
 const AGENT = 'agent_m4';
-const SESSION_ID = 'psess_' + 'a'.repeat(26);
+const SESSION_ID = 'psess_' + 'A'.repeat(26);
 
 function migratedDb(): Db {
   const db = new DatabaseSync(':memory:');
@@ -564,6 +572,1034 @@ describe('ProcessRepository', () => {
         throw new Error('outer rollback');
       }), /outer rollback/);
       assert.equal((db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c, 0);
+    } finally {
+      db.close();
+    }
+  });
+});
+
+function fileDbPair(): { root: string; path: string; a: Db; b: Db; close(): void } {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p2b-race-'));
+  const path = join(root, 'agentos.sqlite');
+  const a = new DatabaseSync(path);
+  const b = new DatabaseSync(path);
+  a.exec('PRAGMA foreign_keys = ON');
+  a.exec('PRAGMA busy_timeout = 5000');
+  b.exec('PRAGMA foreign_keys = ON');
+  b.exec('PRAGMA busy_timeout = 5000');
+  return {
+    root,
+    path,
+    a,
+    b,
+    close() {
+      try { a.close(); } catch { /* ignore */ }
+      try { b.close(); } catch { /* ignore */ }
+      try { rmSync(root, { recursive: true, force: true }); } catch { /* Windows may hold the file briefly; OS temp cleanup removes it. */ }
+    },
+  };
+}
+
+interface WorkerHandle {
+  started: Promise<void>;
+  result: Promise<unknown>;
+  terminate(): Promise<void>;
+}
+
+function runRepoCallInWorker(
+  repoFile: string,
+  repoClass: string,
+  dbPath: string,
+  method: string,
+  args: unknown[],
+): WorkerHandle {
+  const code = [
+    "const { parentPort } = require('node:worker_threads');",
+    "(async () => {",
+    "  try {",
+    "    const { register } = require('tsx/esm/api');",
+    "    register();",
+    "    const { DatabaseSync } = require('node:sqlite');",
+    `    const module = await import('file:///E:/workspace/Multi-Agent/agentos/apps/server/src/store/${repoFile}.ts');`,
+    `    const db = new DatabaseSync(${JSON.stringify(dbPath)});`,
+    "    db.exec('PRAGMA foreign_keys = ON');",
+    "    db.exec('PRAGMA busy_timeout = 5000');",
+    `    const repo = new module.${repoClass}(db);`,
+   "    parentPort.postMessage({ type: 'started' });",
+   `    const result = await Promise.resolve(repo[${JSON.stringify(method)}](...${JSON.stringify(args)}));`,
+    "    db.close();",
+   "    parentPort.postMessage({ type: 'result', value: result });",
+    "  } catch (error) {",
+    "    parentPort.postMessage({ type: 'error', error: String((error && error.message) || error) });",
+    "  }",
+    "})();",
+  ].join('\n');
+ const worker = new Worker(code, { eval: true });
+ let resolveStarted: () => void = () => undefined;
+  let rejectStarted: (error: Error) => void = () => undefined;
+  let resolveResult: (value: unknown) => void = () => undefined;
+  let rejectResult: (error: Error) => void = () => undefined;
+  const started = new Promise<void>((resolve, reject) => {
+    resolveStarted = resolve;
+    rejectStarted = reject;
+  });
+  const result = new Promise<unknown>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  worker.on('message', (message) => {
+    if (message.type === 'started') resolveStarted();
+    else if (message.type === 'result') resolveResult(message.value);
+    else if (message.type === 'error') {
+      const error = new Error(message.error);
+      rejectStarted(error);
+      rejectResult(error);
+    }
+  });
+  worker.once('error', (error) => {
+    rejectStarted(error);
+    rejectResult(error);
+  });
+  return {
+    started,
+    result,
+    terminate: () => worker.terminate().then(() => undefined),
+  };
+}
+
+describe('ProcessRepository two-connection races', () => {
+  it('root Process claim race: exactly one root row; loser joins with a stable result', async () => {
+    const pair = fileDbPair();
+    try {
+      const seed = (db: Db) => {
+        new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
+        seedParents(db);
+      };
+      seed(pair.a);
+      const repositoryA = new ProcessRepository(pair.a);
+      const repositoryB = new ProcessRepository(pair.b);
+
+      pair.a.exec('BEGIN IMMEDIATE');
+      const worker = runRepoCallInWorker(
+        'ProcessRepository',
+        'ProcessRepository',
+        pair.path,
+        'createProcess',
+        [rootInput()],
+      );
+     await worker.started;
+      // A wins the root claim while holding the write lock. createProcess
+      // wraps itself in a transaction, so the winner is inserted with the
+      // exact same CAS SQL the repository uses (no nested BEGIN).
+      const winnerId = 'proc_' + 'C'.repeat(26);
+      pair.a.prepare(`
+        INSERT INTO runtime_processes (
+          id, workspace_id, task_id, run_id, stage_id, stage_attempt,
+          provider_session_id, authority_role, claim_epoch, process_type, platform,
+          status, executable_resolved, args_redacted_json, cwd_resolved, shell,
+          detached, stdin_mode, stdout_mode, stderr_mode, timeout_policy_json,
+          security_profile_ref, version, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 1, ?, 'primary-provider', 1, 'provider', 'win32',
+          'created', 'C:\\bin\\agent.exe', '["[REDACTED]"]', 'E:\\ws', 0, 0, 'closed',
+          'capture', 'capture', '{"graceMs":5000}', 'secprofile_default', 1, ?, ?)
+      `).run(winnerId, WS, TASK, RUN, STAGE, SESSION_ID, NOW, NOW);
+      const winner = { kind: 'created', process: { id: winnerId } };
+     pair.a.exec('COMMIT');
+     const loser = await worker.result as { kind: string; process: { id: string } };
+     assert.equal(loser.kind, 'joined');
+     assert.equal(loser.process.id, winner.process.id);
+      const count = (pair.b.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c;
+      assert.equal(count, 1);
+      await worker.terminate();
+    } finally {
+      pair.close();
+    }
+  });
+
+  it('created->starting CAS race: exactly one winner consumes the spawn right', async () => {
+    const pair = fileDbPair();
+    try {
+      const seed = (db: Db) => {
+        new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
+        seedParents(db);
+      };
+      seed(pair.a);
+      const repositoryA = new ProcessRepository(pair.a);
+      const repositoryB = new ProcessRepository(pair.b);
+      const process = repositoryA.createProcess(rootInput()).process;
+
+      pair.a.exec('BEGIN IMMEDIATE');
+      const worker = runRepoCallInWorker(
+        'ProcessRepository',
+        'ProcessRepository',
+        pair.path,
+        'casStartProcess',
+        [{
+          workspaceId: WS,
+          processId: process.id,
+          expectedVersion: 1,
+          expectedClaimEpoch: 1,
+          expectedClaimOwner: null,
+          timestamp: LATER,
+        }],
+      );
+      await worker.started;
+      const winner = repositoryA.casStartProcess({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 1,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      assert.equal(winner.kind, 'applied');
+      pair.a.exec('COMMIT');
+      const loser = await worker.result as { kind: string };
+      assert.equal(loser.kind, 'state-mismatch');
+      const final = repositoryB.findById(WS, process.id)!;
+      assert.equal(final.status, 'starting');
+      assert.equal(final.version, 2);
+      // No second spawn can ever be consumed: a further CAS is a mismatch.
+      const again = repositoryB.casStartProcess({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 2,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      assert.equal(again.kind, 'state-mismatch');
+      await worker.terminate();
+    } finally {
+      pair.close();
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Real Migration 014 SQLite integration for the process-runtime durable
+// coordinator. The coordinator is loaded at runtime via createRequire so the
+// server tsc rootDir boundary stays intact; the port adapters below map the
+// three real repositories to the coordinator's structural seam.
+// ---------------------------------------------------------------------------
+
+interface IntegrationSessionView {
+  sessionId: string;
+  workspaceId: string;
+  runId: string;
+  stageId: string;
+  stageAttempt: number;
+  status: string;
+  claimEpoch: number;
+  claimOwnerId: string | null;
+  adapterStartRequestedAt: string | null;
+  version: number;
+}
+
+interface IntegrationProcessView {
+  processId: string;
+  workspaceId: string;
+  runId: string;
+  status: string;
+  claimEpoch: number;
+  claimOwnerId: string | null;
+  nativePid: number | null;
+  version: number;
+}
+
+interface IntegrationOutputView {
+  processId: string;
+  stream: string;
+  workspaceId: string;
+  runId: string;
+  artifactId: string;
+  storageKey: string;
+  sourceBytesSeen: number;
+  retainedBytes: number;
+  nextSourceOffset: number;
+  segmentCount: number;
+  truncated: boolean;
+  truncationReason: string | null;
+  finalized: boolean;
+  sha256: string | null;
+  version: number;
+}
+
+interface IntegrationSessionCreate {
+  workspaceId: string;
+  taskId: string;
+  runId: string;
+  stageId: string;
+  stageAttempt: number;
+  authorityRole: string;
+  agentId: string;
+  providerConfigId: string;
+  providerConfigVersion: number;
+  providerType: string;
+  adapterId: string;
+  adapterVersion: string;
+  configSchemaVersion: number;
+  runtimeMode: string;
+  claimEpoch: number;
+  claimOwnerId?: string | null;
+  claimLeaseExpiresAt?: string | null;
+  capabilities: unknown;
+}
+
+interface IntegrationProcessCreate {
+  workspaceId: string;
+  taskId: string;
+  runId: string;
+  stageId?: string | null;
+  stageAttempt?: number | null;
+  providerSessionId?: string | null;
+  parentProcessId?: string | null;
+  authorityRole?: string | null;
+  claimEpoch: number;
+  claimOwnerId?: string | null;
+  claimLeaseExpiresAt?: string | null;
+  processType: string;
+  platform: string;
+  executableResolved: string;
+  executableFingerprint?: string | null;
+  argsRedacted: unknown;
+  cwdResolved: string;
+  shell: number;
+  detached: number;
+  stdinMode: string;
+  stdoutMode: string;
+  stderrMode: string;
+  timeoutPolicy: unknown;
+  securityProfileRef: string;
+}
+
+interface IntegrationFenceInput {
+  workspaceId: string;
+  expectedClaimEpoch: number;
+  expectedClaimOwner: string | null;
+}
+
+interface IntegrationClaimInput extends IntegrationFenceInput {
+  sessionId: string;
+  expectedVersion: number;
+  timestamp: string;
+}
+
+interface IntegrationProcessClaimInput extends IntegrationFenceInput {
+  processId: string;
+  expectedVersion: number;
+  timestamp: string;
+}
+
+interface IntegrationTransitionInput extends IntegrationFenceInput {
+  sessionId: string;
+  processId: string;
+  expectedVersion: number;
+  timestamp: string;
+  expectedFrom: string;
+  to: string;
+  errorCode?: string;
+  errorDetailRedacted?: string;
+  exitCode?: number | null;
+  cleanupResult?: string | null;
+  failureCode?: string;
+  failureDetailRedacted?: string;
+}
+
+interface IntegrationOutputCreate {
+  workspaceId: string;
+  runId: string;
+  processId: string;
+  stream: string;
+  storageKey: string;
+  contentType: string;
+  encoding: string;
+  redactionMode: string;
+}
+
+interface IntegrationOutputCheckpoint {
+  workspaceId: string;
+  processId: string;
+  stream: string;
+  expectedVersion: number;
+  sourceBytesSeen: number;
+  retainedBytes: number;
+  nextSourceOffset: number;
+  segmentCount: number;
+  truncated: boolean;
+  truncationReason?: string | null;
+}
+
+interface IntegrationOutputFinalize {
+  workspaceId: string;
+  processId: string;
+  stream: string;
+  expectedVersion: number;
+  sha256: string;
+}
+
+interface IntegrationTransferPairInput {
+  session: IntegrationClaimInput & { newClaimOwner: string; newClaimLeaseExpiresAt: string };
+  process: IntegrationProcessClaimInput & { newClaimOwner: string; newClaimLeaseExpiresAt: string };
+}
+
+function toSessionView(session: { id: string; workspaceId: string; runId: string; stageId: string; stageAttempt: number; status: string; claimEpoch: number; claimOwnerId: string | null; adapterStartRequestedAt: string | null; version: number }): IntegrationSessionView {
+  return {
+    sessionId: session.id,
+    workspaceId: session.workspaceId,
+    runId: session.runId,
+    stageId: session.stageId,
+    stageAttempt: session.stageAttempt,
+    status: session.status,
+    claimEpoch: session.claimEpoch,
+    claimOwnerId: session.claimOwnerId,
+    adapterStartRequestedAt: session.adapterStartRequestedAt,
+    version: session.version,
+  };
+}
+
+function toProcessView(process: { id: string; workspaceId: string; runId: string; status: string; claimEpoch: number; claimOwnerId: string | null; nativePid: number | null; version: number }): IntegrationProcessView {
+  return {
+    processId: process.id,
+    workspaceId: process.workspaceId,
+    runId: process.runId,
+    status: process.status,
+    claimEpoch: process.claimEpoch,
+    claimOwnerId: process.claimOwnerId,
+    nativePid: process.nativePid,
+    version: process.version,
+  };
+}
+
+function mapSessionOutcome(outcome: { kind: string; session?: unknown }): { kind: string; value?: unknown } {
+  if (outcome.session === undefined) return { kind: outcome.kind };
+  return { kind: outcome.kind, value: toSessionView(outcome.session as never) };
+}
+
+function mapProcessOutcome(outcome: { kind: string; process?: unknown }): { kind: string; value?: unknown } {
+  if (outcome.process === undefined) return { kind: outcome.kind };
+  return { kind: outcome.kind, value: toProcessView(outcome.process as never) };
+}
+
+describe('M4-P2B real SQLite coordinator integration', () => {
+  it('establish + spawn flow + output persist real rows through the coordinator', async () => {
+    const db = migratedDb();
+    const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p2b-int-'));
+    try {
+      db.prepare(`
+        INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
+        VALUES (?, ?, ?, ?, 'plan', 'Plan', 2, 2, 'pending', ?, ?, 1)
+      `).run(STAGE + '_b', WS, RUN, SNAPSHOT, NOW, NOW);
+      const sessionRepo = new ProviderSessionRepository(db);
+      const processRepo = new ProcessRepository(db);
+      const outputRepo = new ProcessOutputReferenceRepository(db);
+      const { DurableProcessCoordinator } = require('E:/workspace/Multi-Agent/agentos/packages/process-runtime/src/durable-coordinator.ts');
+      const { FileArtifactSink } = require('E:/workspace/Multi-Agent/agentos/packages/process-runtime/src/artifact-sink.ts');
+
+      const sessionPort = {
+        createSessionClaim: async (input: any) => {
+          const result = sessionRepo.createSession({
+            workspaceId: input.workspaceId,
+            taskId: input.taskId,
+            runId: input.runId,
+            stageId: input.stageId,
+            stageAttempt: input.stageAttempt,
+            authorityRole: input.authorityRole,
+            agentId: input.agentId,
+            providerConfigId: input.providerConfigId,
+            providerConfigVersion: input.providerConfigVersion,
+            providerType: input.providerType,
+            adapterId: input.adapterId,
+            adapterVersion: input.adapterVersion,
+            configSchemaVersion: input.configSchemaVersion,
+            runtimeMode: input.runtimeMode,
+            claimEpoch: input.claimEpoch,
+            claimOwnerId: input.claimOwnerId ?? null,
+            claimLeaseExpiresAt: input.claimLeaseExpiresAt ?? null,
+            capabilities: input.capabilities,
+          });
+          return { kind: result.kind, session: toSessionView(result.session) };
+        },
+        casSetAdapterStartRequested: async (input: any) => mapSessionOutcome(sessionRepo.casSetAdapterStartRequested({
+          workspaceId: input.workspaceId,
+          sessionId: input.sessionId,
+          expectedVersion: input.expectedVersion,
+          expectedClaimEpoch: input.expectedClaimEpoch,
+          expectedClaimOwner: input.expectedClaimOwner,
+          timestamp: input.timestamp,
+        })),
+        casSessionTransition: async (input: any) => mapSessionOutcome(sessionRepo.transitionStatus({
+          workspaceId: input.workspaceId,
+          sessionId: input.sessionId,
+          expectedVersion: input.expectedVersion,
+          expectedClaimEpoch: input.expectedClaimEpoch,
+          expectedClaimOwner: input.expectedClaimOwner,
+          expectedFrom: input.expectedFrom,
+          to: input.to,
+          timestamp: input.timestamp,
+          failureCode: input.failureCode,
+          failureDetailRedacted: input.failureDetailRedacted,
+        })),
+        getSession: async (workspaceId: string, sessionId: string) => {
+          const session = sessionRepo.findById(workspaceId, sessionId);
+          return session === undefined ? null : toSessionView(session);
+        },
+      };
+
+      const processPort = {
+        createProcessReservation: async (input: any) => {
+          const result = processRepo.createProcess({
+            workspaceId: input.workspaceId,
+            taskId: input.taskId,
+            runId: input.runId,
+            stageId: input.stageId ?? null,
+            stageAttempt: input.stageAttempt ?? null,
+            providerSessionId: input.providerSessionId ?? null,
+            parentProcessId: input.parentProcessId ?? null,
+            authorityRole: input.authorityRole ?? null,
+            claimEpoch: input.claimEpoch,
+            claimOwnerId: input.claimOwnerId ?? null,
+            claimLeaseExpiresAt: input.claimLeaseExpiresAt ?? null,
+            processType: input.processType,
+            platform: input.platform,
+            executableResolved: input.executableResolved,
+            executableFingerprint: input.executableFingerprint ?? null,
+            argsRedacted: input.argsRedacted,
+            cwdResolved: input.cwdResolved,
+            shell: input.shell,
+            detached: input.detached,
+            stdinMode: input.stdinMode,
+            stdoutMode: input.stdoutMode,
+            stderrMode: input.stderrMode,
+            timeoutPolicy: input.timeoutPolicy,
+            securityProfileRef: input.securityProfileRef,
+          });
+          return { kind: result.kind, process: toProcessView(result.process) };
+        },
+        casConsumeSpawnRight: async (input: any) => mapProcessOutcome(processRepo.casStartProcess({
+          workspaceId: input.workspaceId,
+          processId: input.processId,
+          expectedVersion: input.expectedVersion,
+          expectedClaimEpoch: input.expectedClaimEpoch,
+          expectedClaimOwner: input.expectedClaimOwner,
+          timestamp: input.timestamp,
+        })),
+        casBindNativeIdentity: async (input: any) => mapProcessOutcome(processRepo.casBindNativeIdentity({
+          workspaceId: input.workspaceId,
+          processId: input.processId,
+          expectedVersion: input.expectedVersion,
+          expectedClaimEpoch: input.expectedClaimEpoch,
+          expectedClaimOwner: input.expectedClaimOwner,
+          timestamp: input.timestamp,
+          nativePid: input.identity.nativePid,
+          nativeParentPid: input.identity.nativeParentPid ?? null,
+          nativeStartedAt: input.identity.nativeStartedAt,
+        })),
+        casProcessTransition: async (input: any) => mapProcessOutcome(processRepo.transitionStatus({
+          workspaceId: input.workspaceId,
+          processId: input.processId,
+          expectedVersion: input.expectedVersion,
+          expectedClaimEpoch: input.expectedClaimEpoch,
+          expectedClaimOwner: input.expectedClaimOwner,
+          expectedFrom: input.expectedFrom,
+          to: input.to,
+          timestamp: input.timestamp,
+          errorCode: input.errorCode,
+          errorDetailRedacted: input.errorDetailRedacted,
+          exitCode: input.exitCode ?? null,
+          cleanupResult: input.cleanupResult ?? null,
+        })),
+        getProcess: async (workspaceId: string, processId: string) => {
+          const process = processRepo.findById(workspaceId, processId);
+          return process === undefined ? null : toProcessView(process);
+        },
+      };
+
+      const outputPort = {
+        createReference: async (input: any) => {
+          const result = outputRepo.createReference({
+            workspaceId: input.workspaceId,
+            runId: input.runId,
+            processId: input.processId,
+            stream: input.stream,
+            storageKey: input.storageKey,
+            contentType: input.contentType,
+            encoding: input.encoding,
+            redactionMode: input.redactionMode,
+          });
+          return { kind: result.kind, reference: result.reference };
+        },
+        checkpoint: async (input: any) => {
+          const outcome = outputRepo.checkpoint(input);
+          return {
+            kind: outcome.kind,
+            value: 'reference' in outcome ? outcome.reference : undefined,
+          };
+        },
+        finalizeReference: async (input: any) => {
+          const outcome = outputRepo.finalizeReference(input);
+          return {
+            kind: outcome.kind,
+            value: 'reference' in outcome ? outcome.reference : undefined,
+          };
+        },
+        getReference: async (workspaceId: string, processId: string, stream: string) => {
+          const reference = outputRepo.findReference(workspaceId, processId, stream as 'stdout' | 'stderr');
+          return reference === undefined ? null : reference;
+        },
+      };
+
+      const atomicSeam = {
+       createSessionAndRootProcess: async (input: any) => {
+          let sessionResult!: { kind: string; session: { id: string } };
+          let processResult!: { kind: string; process: unknown };
+          inTransaction(db, () => {
+            sessionResult = sessionRepo.createSession({
+              workspaceId: input.session.workspaceId,
+              taskId: input.session.taskId,
+              runId: input.session.runId,
+              stageId: input.session.stageId,
+              stageAttempt: input.session.stageAttempt,
+              authorityRole: input.session.authorityRole,
+              agentId: input.session.agentId,
+              providerConfigId: input.session.providerConfigId,
+              providerConfigVersion: input.session.providerConfigVersion,
+              providerType: input.session.providerType,
+              adapterId: input.session.adapterId,
+              adapterVersion: input.session.adapterVersion,
+              configSchemaVersion: input.session.configSchemaVersion,
+              runtimeMode: input.session.runtimeMode,
+              claimEpoch: input.session.claimEpoch,
+              claimOwnerId: input.session.claimOwnerId ?? null,
+              claimLeaseExpiresAt: input.session.claimLeaseExpiresAt ?? null,
+              capabilities: input.session.capabilities,
+            });
+            processResult = processRepo.createProcess({
+              workspaceId: input.process.workspaceId,
+              taskId: input.process.taskId,
+              runId: input.process.runId,
+              stageId: input.process.stageId ?? null,
+              stageAttempt: input.process.stageAttempt ?? null,
+              providerSessionId: input.process.providerSessionId
+                ?? (input.process.authorityRole ? sessionResult.session.id : null),
+              parentProcessId: input.process.parentProcessId ?? null,
+              authorityRole: input.process.authorityRole ?? null,
+              claimEpoch: input.process.claimEpoch,
+              claimOwnerId: input.process.claimOwnerId ?? null,
+              claimLeaseExpiresAt: input.process.claimLeaseExpiresAt ?? null,
+              processType: input.process.processType,
+              platform: input.process.platform,
+              executableResolved: input.process.executableResolved,
+              executableFingerprint: input.process.executableFingerprint ?? null,
+              argsRedacted: input.process.argsRedacted,
+              cwdResolved: input.process.cwdResolved,
+              shell: input.process.shell,
+              detached: input.process.detached,
+              stdinMode: input.process.stdinMode,
+              stdoutMode: input.process.stdoutMode,
+              stderrMode: input.process.stderrMode,
+              timeoutPolicy: input.process.timeoutPolicy,
+              securityProfileRef: input.process.securityProfileRef,
+            });
+          });
+          return {
+            session: toSessionView(sessionResult.session as never),
+            process: toProcessView(processResult.process as never),
+            joinedExisting: processResult.kind === 'joined',
+          };
+        },
+        casTransferClaimPair: async (input: any) => {
+          let sOutcome: { kind: string };
+          let pOutcome: { kind: string };
+          let aborted = false;
+          try {
+            inTransaction(db, () => {
+              sOutcome = sessionRepo.casTransferClaim({
+                workspaceId: input.session.workspaceId,
+                sessionId: input.session.sessionId,
+                expectedVersion: input.session.expectedVersion,
+                expectedClaimEpoch: input.session.expectedClaimEpoch,
+                expectedClaimOwner: input.session.expectedClaimOwner,
+                timestamp: input.session.timestamp,
+                newClaimOwner: input.session.newClaimOwner,
+                newClaimLeaseExpiresAt: input.session.newClaimLeaseExpiresAt,
+              });
+              if (sOutcome.kind !== 'applied') throw new Error('PAIR_ABORT');
+              pOutcome = processRepo.casTransferClaim({
+                workspaceId: input.process.workspaceId,
+                processId: input.process.processId,
+                expectedVersion: input.process.expectedVersion,
+                expectedClaimEpoch: input.process.expectedClaimEpoch,
+                expectedClaimOwner: input.process.expectedClaimOwner,
+                timestamp: input.process.timestamp,
+                newClaimOwner: input.process.newClaimOwner,
+                newClaimLeaseExpiresAt: input.process.newClaimLeaseExpiresAt,
+              });
+              if (pOutcome.kind !== 'applied') throw new Error('PAIR_ABORT');
+            });
+          } catch (error) {
+            if ((error as Error).message !== 'PAIR_ABORT') throw error;
+            aborted = true;
+          }
+          const session = sessionRepo.findById(input.session.workspaceId, input.session.sessionId)!;
+          const process = processRepo.findById(input.process.workspaceId, input.process.processId)!;
+          if (!aborted) {
+            return { kind: 'applied', session: toSessionView(session), process: toProcessView(process) };
+          }
+          return {
+            kind: 'conflict',
+            reason: (sOutcome!.kind === 'applied' ? pOutcome!.kind : sOutcome!.kind),
+            session: toSessionView(session),
+            process: toProcessView(process),
+          };
+        },
+      };
+
+      const driver = {
+        spawn: async () => { throw new Error('unused'); },
+        gracefulStop: async () => ({ delivered: true, detail: 'ok' }),
+        terminateTree: async () => ({ classification: 'complete', attemptedMembers: [], errors: [] }),
+        verifySurvivors: async () => ({ classification: 'complete', knownPids: [] }),
+        inspectIdentity: async () => ({ kind: 'match', identity: { pid: 1, startedAtMs: 0, executablePath: 'x' } }),
+      };
+
+      const coordinator = new DurableProcessCoordinator({
+        sessionRepository: sessionPort,
+        processRepository: processPort,
+        outputReferenceRepository: outputPort,
+        artifactSink: new FileArtifactSink(join(root, 'sink')),
+        atomicSeam,
+        driver,
+      });
+
+      const established = await coordinator.establishClaimAndReservation({
+        session: {
+          workspaceId: WS,
+          taskId: TASK,
+          runId: RUN,
+          stageId: STAGE + '_b',
+          stageAttempt: 2,
+          authorityRole: 'primary-provider',
+          agentId: AGENT,
+          providerConfigId: PCFG,
+          providerConfigVersion: 1,
+          providerType: 'kimicode',
+          adapterId: 'adapter.cli',
+          adapterVersion: '1.0.0',
+          configSchemaVersion: 1,
+          runtimeMode: 'cli',
+          claimEpoch: 1,
+          claimOwnerId: 'svc-1',
+          claimLeaseExpiresAt: '2026-08-12T00:00:00.000Z',
+          capabilities: { streaming: true },
+        },
+        process: {
+          workspaceId: WS,
+          taskId: TASK,
+          runId: RUN,
+          stageId: STAGE + '_b',
+          stageAttempt: 2,
+          providerSessionId: null,
+          authorityRole: 'primary-provider',
+          claimEpoch: 1,
+          claimOwnerId: 'svc-1',
+          claimLeaseExpiresAt: '2026-08-12T00:00:00.000Z',
+          processType: 'provider',
+          platform: 'win32',
+          executableResolved: 'C:\\bin\\agent.exe',
+          argsRedacted: ['[REDACTED]'],
+          cwdResolved: 'E:\\ws',
+          shell: 0,
+          detached: 0,
+          stdinMode: 'closed',
+          stdoutMode: 'capture',
+          stderrMode: 'capture',
+          timeoutPolicy: { graceMs: 5000 },
+          securityProfileRef: 'secprofile_default',
+        },
+      });
+      assert.equal(established.session.status, 'starting');
+      assert.equal(established.process.status, 'created');
+      assert.equal((db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c, 2);
+      assert.equal((db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c, 1);
+
+      // Duplicate establish joins the same pair.
+      const duplicate = await coordinator.establishClaimAndReservation({
+        session: {
+          workspaceId: WS,
+          taskId: TASK,
+          runId: RUN,
+          stageId: STAGE + '_b',
+          stageAttempt: 2,
+          authorityRole: 'primary-provider',
+          agentId: AGENT,
+          providerConfigId: PCFG,
+          providerConfigVersion: 1,
+          providerType: 'kimicode',
+          adapterId: 'adapter.cli',
+          adapterVersion: '1.0.0',
+          configSchemaVersion: 1,
+          runtimeMode: 'cli',
+          claimEpoch: 1,
+          claimOwnerId: 'svc-1',
+          claimLeaseExpiresAt: '2026-08-12T00:00:00.000Z',
+          capabilities: { streaming: true },
+        },
+        process: {
+          workspaceId: WS,
+          taskId: TASK,
+          runId: RUN,
+          stageId: STAGE + '_b',
+          stageAttempt: 2,
+          providerSessionId: established.session.sessionId,
+          authorityRole: 'primary-provider',
+          claimEpoch: 1,
+          claimOwnerId: 'svc-1',
+          claimLeaseExpiresAt: '2026-08-12T00:00:00.000Z',
+          processType: 'provider',
+          platform: 'win32',
+          executableResolved: 'C:\\bin\\agent.exe',
+          argsRedacted: ['[REDACTED]'],
+          cwdResolved: 'E:\\ws',
+          shell: 0,
+          detached: 0,
+          stdinMode: 'closed',
+          stdoutMode: 'capture',
+          stderrMode: 'capture',
+          timeoutPolicy: { graceMs: 5000 },
+          securityProfileRef: 'secprofile_default',
+        },
+      });
+      assert.equal(duplicate.joinedExisting, true);
+
+      // Paired takeover against the real repos.
+      const pair = await coordinator.transferClaimPair({
+        session: {
+          workspaceId: established.session.workspaceId,
+          sessionId: established.session.sessionId,
+          expectedVersion: established.session.version,
+          expectedClaimEpoch: established.session.claimEpoch,
+          expectedClaimOwner: established.session.claimOwnerId,
+          timestamp: LATER,
+          newClaimOwner: 'svc-2',
+          newClaimLeaseExpiresAt: '2026-08-13T02:00:00.000Z',
+        },
+        process: {
+          workspaceId: established.process.workspaceId,
+          processId: established.process.processId,
+          expectedVersion: established.process.version,
+          expectedClaimEpoch: established.process.claimEpoch,
+          expectedClaimOwner: established.process.claimOwnerId,
+          timestamp: LATER,
+          newClaimOwner: 'svc-2',
+          newClaimLeaseExpiresAt: '2026-08-13T02:00:00.000Z',
+        },
+      });
+      assert.equal(pair.kind, 'applied');
+      assert.equal(pair.session.claimEpoch, 2);
+      assert.equal(pair.process.claimEpoch, 2);
+
+      // Spawn flow against the real repos (fake native handle only).
+      const spawned = await coordinator.consumeSpawnRightAndSpawn({
+        workspaceId: pair.process.workspaceId,
+        processId: pair.process.processId,
+        expectedVersion: pair.process.version,
+        expectedClaimEpoch: pair.process.claimEpoch,
+        expectedClaimOwner: pair.process.claimOwnerId,
+        timestamp: NOW,
+        spawn: async () => ({
+          pid: 4242,
+          identity: { pid: 4242, startedAtMs: Date.parse(NOW), executablePath: 'C:\\bin\\agent.exe', parentPid: 4000 },
+          streams: { stdout: (async function* () {})(), stderr: (async function* () {})() },
+          waitExit: async () => ({ exitCode: 0, signal: null, exitedAt: Date.parse(NOW) }),
+        }),
+      });
+      assert.equal(spawned.kind, 'spawned');
+      assert.equal(spawned.outcome.value.status, 'running');
+      const storedProcess = processRepo.findById(pair.process.workspaceId, pair.process.processId)!;
+      assert.equal(storedProcess.status, 'running');
+      assert.equal(storedProcess.nativePid, 4242);
+
+      // Output flow against the real repos + real file sink.
+      const writer = await coordinator.beginOutput({
+        workspaceId: storedProcess.workspaceId,
+        runId: storedProcess.runId,
+        processId: storedProcess.id,
+        stream: 'stdout',
+        storageKey: 'sink/ws_m4/int-' + storedProcess.id,
+        contentType: 'text/plain',
+        encoding: 'utf-8',
+        redactionMode: 'scan',
+      });
+      const bytes = new TextEncoder().encode('hello real sqlite');
+      const appended = await writer.append({
+        stream: 'stdout',
+        sequence: 1,
+        sourceOffset: 0,
+        sourceBytes: bytes.length,
+        bytes,
+        text: 'hello real sqlite',
+        binary: false,
+      });
+      assert.equal(appended.kind, 'applied');
+      assert.equal(appended.value.sourceBytesSeen, bytes.length);
+      const finalized = await writer.finalize();
+      assert.equal(finalized.outcome.kind, 'applied');
+      const reference = outputRepo.findReference(storedProcess.workspaceId, storedProcess.id, 'stdout')!;
+      assert.equal(reference.finalized, true);
+      assert.equal(reference.sha256, finalized.sha256);
+    } finally {
+      db.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('atomic rollback: invalid Process reservation leaves Session=0 and Process=0', async () => {
+    const db = migratedDb();
+    try {
+      db.prepare(`
+        INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
+        VALUES (?, ?, ?, ?, 'plan', 'Plan', 2, 2, 'pending', ?, ?, 1)
+      `).run(STAGE + '_b', WS, RUN, SNAPSHOT, NOW, NOW);
+      const sessionRepo = new ProviderSessionRepository(db);
+      const processRepo = new ProcessRepository(db);
+      const outputRepo = new ProcessOutputReferenceRepository(db);
+      const { DurableProcessCoordinator } = require('E:/workspace/Multi-Agent/agentos/packages/process-runtime/src/durable-coordinator.ts');
+      const { FileArtifactSink } = require('E:/workspace/Multi-Agent/agentos/packages/process-runtime/src/artifact-sink.ts');
+      const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p2b-rollback-'));
+
+      const sessionPort = { createSessionClaim: async () => { throw new Error('unused'); }, casSetAdapterStartRequested: async () => ({ kind: 'state-mismatch' }), casSessionTransition: async () => ({ kind: 'state-mismatch' }), getSession: async () => null };
+      const processPort = { createProcessReservation: async () => { throw new Error('unused'); }, casConsumeSpawnRight: async () => ({ kind: 'state-mismatch' }), casBindNativeIdentity: async () => ({ kind: 'state-mismatch' }), casProcessTransition: async () => ({ kind: 'state-mismatch' }), getProcess: async () => null };
+      const outputPort = { createReference: async () => ({ kind: 'created', reference: null }), checkpoint: async () => ({ kind: 'state-mismatch' }), finalizeReference: async () => ({ kind: 'state-mismatch' }), getReference: async () => null };
+      const atomicSeam = {
+        createSessionAndRootProcess: async (input: any) => {
+          try {
+            inTransaction(db, () => {
+              sessionRepo.createSession({
+                workspaceId: input.session.workspaceId,
+                taskId: input.session.taskId,
+                runId: input.session.runId,
+                stageId: input.session.stageId,
+                stageAttempt: input.session.stageAttempt,
+                authorityRole: input.session.authorityRole,
+                agentId: input.session.agentId,
+                providerConfigId: input.session.providerConfigId,
+                providerConfigVersion: input.session.providerConfigVersion,
+                providerType: input.session.providerType,
+                adapterId: input.session.adapterId,
+                adapterVersion: input.session.adapterVersion,
+                configSchemaVersion: input.session.configSchemaVersion,
+                runtimeMode: input.session.runtimeMode,
+                claimEpoch: input.session.claimEpoch,
+                claimOwnerId: input.session.claimOwnerId ?? null,
+                claimLeaseExpiresAt: input.session.claimLeaseExpiresAt ?? null,
+                capabilities: input.session.capabilities,
+              });
+              processRepo.createProcess({
+                workspaceId: input.process.workspaceId,
+                taskId: input.process.taskId,
+                runId: input.process.runId,
+                stageId: input.process.stageId ?? null,
+                stageAttempt: input.process.stageAttempt ?? null,
+                providerSessionId: input.process.providerSessionId ?? null,
+                parentProcessId: input.process.parentProcessId ?? null,
+                authorityRole: input.process.authorityRole ?? null,
+                claimEpoch: input.process.claimEpoch,
+                claimOwnerId: input.process.claimOwnerId ?? null,
+                claimLeaseExpiresAt: input.process.claimLeaseExpiresAt ?? null,
+                processType: input.process.processType,
+                platform: input.process.platform,
+                executableResolved: input.process.executableResolved,
+                executableFingerprint: input.process.executableFingerprint ?? null,
+                argsRedacted: input.process.argsRedacted,
+                cwdResolved: input.process.cwdResolved,
+                shell: input.process.shell,
+                detached: input.process.detached,
+                stdinMode: input.process.stdinMode,
+                stdoutMode: input.process.stdoutMode,
+                stderrMode: input.process.stderrMode,
+                timeoutPolicy: input.process.timeoutPolicy,
+                securityProfileRef: input.process.securityProfileRef,
+              });
+            });
+            throw new Error('unreachable');
+          } catch (error) {
+            throw error;
+          }
+        },
+        casTransferClaimPair: async () => ({ kind: 'conflict', reason: 'fence-conflict', session: null, process: null }),
+      };
+
+      const coordinator = new DurableProcessCoordinator({
+        sessionRepository: sessionPort,
+        processRepository: processPort,
+        outputReferenceRepository: outputPort,
+        artifactSink: new FileArtifactSink(join(root, 'sink')),
+        atomicSeam,
+        driver: {
+          spawn: async () => { throw new Error('unused'); },
+          gracefulStop: async () => ({ delivered: true, detail: 'ok' }),
+          terminateTree: async () => ({ classification: 'complete', attemptedMembers: [], errors: [] }),
+          verifySurvivors: async () => ({ classification: 'complete', knownPids: [] }),
+          inspectIdentity: async () => ({ kind: 'match', identity: { pid: 1, startedAtMs: 0, executablePath: 'x' } }),
+        },
+      });
+
+      await assert.rejects(
+        coordinator.establishClaimAndReservation({
+          session: {
+            workspaceId: WS,
+            taskId: TASK,
+            runId: RUN,
+            stageId: STAGE + '_b',
+            stageAttempt: 2,
+            authorityRole: 'primary-provider',
+            agentId: AGENT,
+            providerConfigId: PCFG,
+            providerConfigVersion: 1,
+            providerType: 'kimicode',
+            adapterId: 'adapter.cli',
+            adapterVersion: '1.0.0',
+            configSchemaVersion: 1,
+            runtimeMode: 'cli',
+            claimEpoch: 1,
+            claimOwnerId: 'svc-1',
+            claimLeaseExpiresAt: '2026-08-12T00:00:00.000Z',
+            capabilities: { streaming: true },
+          },
+          process: {
+            workspaceId: WS,
+            taskId: TASK,
+            runId: RUN,
+            stageId: STAGE + '_b',
+            stageAttempt: 2,
+            providerSessionId: null,
+            authorityRole: 'primary-provider',
+            claimEpoch: 1,
+            claimOwnerId: 'svc-1',
+            claimLeaseExpiresAt: '2026-08-12T00:00:00.000Z',
+            processType: 'provider',
+            platform: 'win32',
+            executableResolved: 'C:\\bin\\agent.exe',
+            argsRedacted: ['[REDACTED]'],
+            cwdResolved: 'E:\\ws',
+            shell: 0,
+            detached: 0,
+            stdinMode: 'closed',
+            stdoutMode: 'capture',
+            stderrMode: 'capture',
+            timeoutPolicy: { graceMs: 5000 },
+            securityProfileRef: 'secprofile_default',
+            parentProcessId: 'proc_' + 'Z'.repeat(26),
+          },
+        }),
+        /RUNTIME_PROCESS_VALIDATION_FAILED/,
+      );
+      // The whole transaction rolled back: no failed Session substitute.
+      const sessionCount = (db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c;
+      const processCount = (db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c;
+      assert.equal(sessionCount, 1);
+      assert.equal(processCount, 0);
     } finally {
       db.close();
     }

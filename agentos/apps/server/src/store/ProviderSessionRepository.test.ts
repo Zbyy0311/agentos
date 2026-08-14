@@ -1,6 +1,10 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { Worker } from 'node:worker_threads';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -109,6 +113,95 @@ function assertIntegrity(fn: () => unknown): void {
     error instanceof ProviderSessionIntegrityError
     && error.code === 'PROVIDER_SESSION_INTEGRITY_FAILED'
   ));
+}
+
+function fileDbPair(): { root: string; path: string; a: Db; b: Db; close(): void } {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p2b-race-'));
+  const path = join(root, 'agentos.sqlite');
+  const a = new DatabaseSync(path);
+  const b = new DatabaseSync(path);
+  a.exec('PRAGMA foreign_keys = ON');
+  a.exec('PRAGMA busy_timeout = 5000');
+  b.exec('PRAGMA foreign_keys = ON');
+  b.exec('PRAGMA busy_timeout = 5000');
+  return {
+    root,
+    path,
+    a,
+    b,
+    close() {
+      try { a.close(); } catch { /* ignore */ }
+      try { b.close(); } catch { /* ignore */ }
+      try { rmSync(root, { recursive: true, force: true }); } catch { /* Windows may hold the file briefly; OS temp cleanup removes it. */ }
+    },
+  };
+}
+
+interface WorkerHandle {
+  started: Promise<void>;
+  result: Promise<unknown>;
+  terminate(): Promise<void>;
+}
+
+function runRepoCallInWorker(
+  repoFile: string,
+  repoClass: string,
+  dbPath: string,
+  method: string,
+  args: unknown[],
+): WorkerHandle {
+  const code = [
+    "const { parentPort } = require('node:worker_threads');",
+    "(async () => {",
+    "  try {",
+    "    const { register } = require('tsx/esm/api');",
+    "    register();",
+    "    const { DatabaseSync } = require('node:sqlite');",
+    `    const module = await import('file:///E:/workspace/Multi-Agent/agentos/apps/server/src/store/${repoFile}.ts');`,
+    `    const db = new DatabaseSync(${JSON.stringify(dbPath)});`,
+    "    db.exec('PRAGMA foreign_keys = ON');",
+    "    db.exec('PRAGMA busy_timeout = 5000');",
+    `    const repo = new module.${repoClass}(db);`,
+   "    parentPort.postMessage({ type: 'started' });",
+   `    const result = await Promise.resolve(repo[${JSON.stringify(method)}](...${JSON.stringify(args)}));`,
+    "    db.close();",
+   "    parentPort.postMessage({ type: 'result', value: result });",
+    "  } catch (error) {",
+    "    parentPort.postMessage({ type: 'error', error: String((error && error.message) || error) });",
+    "  }",
+    "})();",
+  ].join('\n');
+ const worker = new Worker(code, { eval: true });
+ let resolveStarted: () => void = () => undefined;
+  let rejectStarted: (error: Error) => void = () => undefined;
+  let resolveResult: (value: unknown) => void = () => undefined;
+  let rejectResult: (error: Error) => void = () => undefined;
+  const started = new Promise<void>((resolve, reject) => {
+    resolveStarted = resolve;
+    rejectStarted = reject;
+  });
+  const result = new Promise<unknown>((resolve, reject) => {
+    resolveResult = resolve;
+    rejectResult = reject;
+  });
+  worker.on('message', (message) => {
+    if (message.type === 'started') resolveStarted();
+    else if (message.type === 'result') resolveResult(message.value);
+    else if (message.type === 'error') {
+      const error = new Error(message.error);
+      rejectStarted(error);
+      rejectResult(error);
+    }
+  });
+  worker.once('error', (error) => {
+    rejectStarted(error);
+    rejectResult(error);
+  });
+  return {
+    started,
+    result,
+    terminate: () => worker.terminate().then(() => undefined),
+  };
 }
 
 describe('ProviderSessionRepository', () => {
@@ -469,6 +562,91 @@ describe('ProviderSessionRepository', () => {
       assert.equal((db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c, 0);
     } finally {
       db.close();
+    }
+  });
+
+  it('two-connection Session claim race: exactly one row, loser joins with a stable classified result', async () => {
+    const pair = fileDbPair();
+    try {
+      const seed = (db: Db) => {
+        new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
+        seedParents(db);
+      };
+      seed(pair.a);
+      const repositoryA = new ProviderSessionRepository(pair.a);
+      const repositoryB = new ProviderSessionRepository(pair.b);
+
+      // Connection A holds the write lock first; B must block behind it.
+      pair.a.exec('BEGIN IMMEDIATE');
+      const worker = runRepoCallInWorker(
+        'ProviderSessionRepository',
+        'ProviderSessionRepository',
+        pair.path,
+        'createSession',
+        [sessionInput()],
+      );
+      await worker.started;
+      // B's statement is now queued on A's lock; A wins the claim first.
+      const winner = repositoryA.createSession(sessionInput());
+      assert.equal(winner.kind, 'created');
+      pair.a.exec('COMMIT');
+      const loser = await worker.result as { kind: string; session: { id: string } };
+      assert.equal(loser.kind, 'joined');
+      assert.equal(loser.session.id, winner.session.id);
+      const count = (pair.b.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c;
+      assert.equal(count, 1);
+      await worker.terminate();
+    } finally {
+      pair.close();
+    }
+  });
+
+  it('two-connection claim CAS: only the holder wins; the blocked connection gets a classified result', async () => {
+    const pair = fileDbPair();
+    try {
+      const seed = (db: Db) => {
+        new MigrationRunner(db, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
+        seedParents(db);
+      };
+      seed(pair.a);
+      const repositoryA = new ProviderSessionRepository(pair.a);
+      const repositoryB = new ProviderSessionRepository(pair.b);
+      const session = repositoryA.createSession(sessionInput()).session;
+
+      pair.a.exec('BEGIN IMMEDIATE');
+      const worker = runRepoCallInWorker(
+        'ProviderSessionRepository',
+        'ProviderSessionRepository',
+        pair.path,
+        'casSetAdapterStartRequested',
+        [{
+          workspaceId: WS,
+          sessionId: session.id,
+          expectedVersion: 1,
+          expectedClaimEpoch: 1,
+          expectedClaimOwner: null,
+          timestamp: LATER,
+        }],
+      );
+      await worker.started;
+      const winner = repositoryA.casSetAdapterStartRequested({
+        workspaceId: WS,
+        sessionId: session.id,
+        expectedVersion: 1,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      assert.equal(winner.kind, 'applied');
+      pair.a.exec('COMMIT');
+      const loser = await worker.result as { kind: string; session: { adapterStartRequestedAt: string | null } };
+      assert.equal(loser.kind, 'already-requested');
+      assert.equal(loser.session.adapterStartRequestedAt, LATER);
+      const final = repositoryB.findById(WS, session.id)!;
+      assert.equal(final.version, 2);
+      await worker.terminate();
+    } finally {
+      pair.close();
     }
   });
 });

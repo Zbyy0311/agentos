@@ -10,9 +10,17 @@ import type { StreamName } from './streams.js';
  * and never redefine them. The package stays Provider-neutral and does not
  * depend on apps/server.
  *
- * Every mutation is an expected-version CAS plus the claim epoch/owner fence.
- * Losers receive a stable classified outcome and never retry implicitly;
- * duplicate terminal observation returns the stored fact.
+ * The create inputs carry the COMPLETE facts the concrete Migration 014
+ * repositories require (Session claim facts, Process launch reservation
+ * facts), and the views mirror the full stored snapshot so a real adapter can
+ * round-trip without loss. Every mutation is an expected-version CAS plus the
+ * claim epoch/owner fence. Losers receive a stable classified outcome and
+ * never retry implicitly; duplicate terminal observation returns the stored
+ * fact.
+ *
+ * The atomic seam owns the exactly-one Session + root Process pair: both are
+ * created (or claimed) in ONE database transaction, and paired claim
+ * takeover succeeds or fails together in the same transaction.
  */
 
 export type DurableCasConflictKind =
@@ -46,27 +54,66 @@ export type DurableSessionStatus =
   | 'failed'
   | 'cancelled';
 
+export type DurableSessionRuntimeMode = 'cli' | 'api' | 'ssh' | 'container';
+
+/** Full stored Provider Session snapshot (mirrors Migration 014 columns). */
 export interface DurableSessionView {
   readonly sessionId: string;
   readonly workspaceId: string;
-  readonly runId: string;
-  readonly stageId: string;
-  readonly stageAttempt: number;
-  readonly status: DurableSessionStatus;
-  readonly claimEpoch: number;
-  readonly claimOwnerId: string | null;
-  readonly adapterStartRequestedAt: string | null;
-  readonly version: number;
-}
-
-export interface SessionClaimCreate {
-  readonly workspaceId: string;
+  readonly taskId: string;
   readonly runId: string;
   readonly stageId: string;
   readonly stageAttempt: number;
   readonly authorityRole: string;
+  readonly agentId: string;
+  readonly providerConfigId: string;
+  readonly providerConfigVersion: number;
+  readonly providerType: string;
+  readonly adapterId: string;
+  readonly adapterVersion: string;
+  readonly configSchemaVersion: number;
+  readonly runtimeMode: DurableSessionRuntimeMode;
+  readonly nativeSessionId: string | null;
+  readonly status: DurableSessionStatus;
   readonly claimEpoch: number;
   readonly claimOwnerId: string | null;
+  readonly claimLeaseExpiresAt: string | null;
+  readonly adapterStartRequestedAt: string | null;
+  readonly capabilitiesJson: string;
+  readonly errorCode: string | null;
+  readonly errorDetailRedacted: string | null;
+  readonly startedAt: string | null;
+  readonly lastActivityAt: string | null;
+  readonly completedAt: string | null;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly archivedAt: string | null;
+}
+
+/** Complete Session claim facts required by the concrete repository. */
+export interface SessionClaimCreate {
+  readonly workspaceId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly stageId: string;
+  readonly stageAttempt: number;
+  readonly authorityRole: string;
+  readonly agentId: string;
+  readonly providerConfigId: string;
+  readonly providerConfigVersion: number;
+  readonly providerType: string;
+  readonly adapterId: string;
+  readonly adapterVersion: string;
+  readonly configSchemaVersion: number;
+  readonly runtimeMode: DurableSessionRuntimeMode;
+  readonly nativeSessionId?: string | null;
+  readonly claimEpoch: number;
+  readonly claimOwnerId?: string | null;
+  readonly claimLeaseExpiresAt?: string | null;
+  /** Canonicalized and bounded at the repository layer. */
+  readonly capabilities: unknown;
+  readonly createdAt?: string;
 }
 
 export interface SessionStartRequestedInput extends DurableClaimFence {
@@ -87,6 +134,15 @@ export interface SessionTransitionInput extends DurableClaimFence {
   readonly failureDetailRedacted?: string;
 }
 
+export interface SessionClaimTransferInput extends DurableClaimFence {
+  readonly workspaceId: string;
+  readonly sessionId: string;
+  readonly expectedVersion: number;
+  readonly timestamp: string;
+  readonly newClaimOwner: string;
+  readonly newClaimLeaseExpiresAt: string;
+}
+
 export interface DurableSessionRepository {
   createSessionClaim(input: SessionClaimCreate): Promise<
     { readonly kind: 'created'; readonly session: DurableSessionView }
@@ -97,20 +153,23 @@ export interface DurableSessionRepository {
   getSession(workspaceId: string, sessionId: string): Promise<DurableSessionView | null>;
 }
 
+export type DurableProcessType =
+  | 'provider'
+  | 'tool'
+  | 'command'
+  | 'git'
+  | 'test'
+  | 'system'
+  | 'extension';
+
+export type DurableStreamCaptureMode = 'capture' | 'null';
+export type DurableStdinMode = 'closed' | 'pipe';
+
+/** Full stored Runtime Process snapshot (mirrors Migration 014 columns). */
 export interface DurableProcessView {
   readonly processId: string;
   readonly workspaceId: string;
-  readonly runId: string;
-  readonly status: ProcessState;
-  readonly claimEpoch: number;
-  readonly claimOwnerId: string | null;
-  /** Transient native attribute; never identity. */
-  readonly nativePid: number | null;
-  readonly version: number;
-}
-
-export interface ProcessReservationCreate {
-  readonly workspaceId: string;
+  readonly taskId: string;
   readonly runId: string;
   readonly stageId: string | null;
   readonly stageAttempt: number | null;
@@ -119,8 +178,79 @@ export interface ProcessReservationCreate {
   readonly authorityRole: string | null;
   readonly claimEpoch: number;
   readonly claimOwnerId: string | null;
-  readonly processType: string;
+  readonly claimLeaseExpiresAt: string | null;
+  readonly processType: DurableProcessType;
   readonly platform: string;
+  readonly status: ProcessState;
+  readonly executableResolved: string;
+  readonly executableFingerprint: string | null;
+  readonly argsRedactedJson: string;
+  readonly cwdResolved: string;
+  readonly shell: 0 | 1;
+  readonly detached: 0 | 1;
+  readonly stdinMode: DurableStdinMode;
+  readonly stdoutMode: DurableStreamCaptureMode;
+  readonly stderrMode: DurableStreamCaptureMode;
+  readonly timeoutPolicyJson: string;
+  readonly securityProfileRef: string;
+  readonly nativePid: number | null;
+  readonly nativeParentPid: number | null;
+  readonly nativeStartedAt: string | null;
+  readonly processGroupId: string | null;
+  readonly treeOwnershipMode: string | null;
+  readonly platformHandleId: string | null;
+  readonly recoveryTokenHash: string | null;
+  readonly recoveryClassification: string | null;
+  readonly recoveryEvidenceJson: string | null;
+  readonly recoveryCheckedAt: string | null;
+  readonly recoveryClassifierVersion: string | null;
+  readonly startedAt: string | null;
+  readonly readyAt: string | null;
+  readonly lastActivityAt: string | null;
+  readonly stoppingAt: string | null;
+  readonly exitedAt: string | null;
+  readonly exitCode: number | null;
+  readonly exitSignal: string | null;
+  readonly terminationReason: string | null;
+  readonly cleanupResult: string | null;
+  readonly survivorPidsRedactedJson: string | null;
+  readonly errorCode: string | null;
+  readonly errorDetailRedacted: string | null;
+  readonly version: number;
+  readonly createdAt: string;
+  readonly updatedAt: string;
+  readonly archivedAt: string | null;
+}
+
+/** Complete Process launch reservation facts required by the repository. */
+export interface ProcessReservationCreate {
+  readonly workspaceId: string;
+  readonly taskId: string;
+  readonly runId: string;
+  readonly stageId?: string | null;
+  readonly stageAttempt?: number | null;
+  readonly providerSessionId?: string | null;
+  readonly parentProcessId?: string | null;
+  readonly authorityRole?: string | null;
+  readonly claimEpoch: number;
+  readonly claimOwnerId?: string | null;
+  readonly claimLeaseExpiresAt?: string | null;
+  readonly processType: DurableProcessType;
+  readonly platform: string;
+  readonly executableResolved: string;
+  readonly executableFingerprint?: string | null;
+  /** Redacted launch arguments; canonicalized and bounded before persistence. */
+  readonly argsRedacted: unknown;
+  readonly cwdResolved: string;
+  readonly shell: 0 | 1;
+  readonly detached: 0 | 1;
+  readonly stdinMode: DurableStdinMode;
+  readonly stdoutMode: DurableStreamCaptureMode;
+  readonly stderrMode: DurableStreamCaptureMode;
+  /** Frozen safe timeout policy; canonicalized and bounded before persistence. */
+  readonly timeoutPolicy: unknown;
+  readonly securityProfileRef: string;
+  readonly createdAt?: string;
 }
 
 export interface ConsumeSpawnRightInput extends DurableClaimFence {
@@ -134,6 +264,8 @@ export interface NativeSpawnIdentity {
   readonly nativePid: number;
   readonly nativeParentPid?: number | null;
   readonly nativeStartedAt: string;
+  readonly processGroupId?: string | null;
+  readonly platformHandleId?: string | null;
 }
 
 export interface BindNativeIdentityInput extends DurableClaimFence {
@@ -154,7 +286,18 @@ export interface ProcessTransitionInput extends DurableClaimFence {
   readonly errorCode?: string;
   readonly errorDetailRedacted?: string;
   readonly exitCode?: number | null;
+  readonly exitSignal?: string | null;
+  readonly terminationReason?: string | null;
   readonly cleanupResult?: string | null;
+}
+
+export interface ProcessClaimTransferInput extends DurableClaimFence {
+  readonly workspaceId: string;
+  readonly processId: string;
+  readonly expectedVersion: number;
+  readonly timestamp: string;
+  readonly newClaimOwner: string;
+  readonly newClaimLeaseExpiresAt: string;
 }
 
 export interface DurableProcessRepository {
@@ -166,6 +309,43 @@ export interface DurableProcessRepository {
   casBindNativeIdentity(input: BindNativeIdentityInput): Promise<DurableCasOutcome<DurableProcessView>>;
   casProcessTransition(input: ProcessTransitionInput): Promise<DurableCasOutcome<DurableProcessView>>;
   getProcess(workspaceId: string, processId: string): Promise<DurableProcessView | null>;
+}
+
+export interface AtomicSessionRootCreate {
+  readonly session: SessionClaimCreate;
+  readonly process: ProcessReservationCreate;
+}
+
+export interface AtomicSessionRootResult {
+  readonly session: DurableSessionView;
+  readonly process: DurableProcessView;
+  readonly joinedExisting: boolean;
+}
+
+/**
+ * Exactly-one Session + root Process pair in ONE database transaction. If the
+ * Process reservation cannot be created, the whole transaction rolls back
+ * (Session = 0, Process = 0); a failed Session is never substituted for
+ * atomicity. Paired claim takeover commits or rolls back together.
+ */
+export interface DurableAtomicSeam {
+  createSessionAndRootProcess(input: AtomicSessionRootCreate): Promise<AtomicSessionRootResult>;
+  casTransferClaimPair(input: {
+    readonly session: SessionClaimTransferInput;
+    readonly process: ProcessClaimTransferInput;
+  }): Promise<
+    | {
+      readonly kind: 'applied';
+      readonly session: DurableSessionView;
+      readonly process: DurableProcessView;
+    }
+    | {
+      readonly kind: 'conflict';
+      readonly reason: DurableCasConflictKind;
+      readonly session: DurableSessionView;
+      readonly process: DurableProcessView;
+    }
+  >;
 }
 
 export interface DurableOutputReferenceView {
