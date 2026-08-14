@@ -1,7 +1,9 @@
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
+import type { RuntimeEventContext } from '@agentos/shared';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
 import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
+import type { DurableRuntimeFactWriter } from './RuntimeEventRepository.js';
 
 /**
  * M4-P2B durable Provider Session repository (Migration 014
@@ -153,21 +155,23 @@ export interface CreateProviderSessionInput {
   /** Canonicalized and bounded at this repository layer before persistence. */
   readonly capabilities: unknown;
   readonly createdAt?: string;
+  /** Accepted Operation/Run context for the session_claimed fact. */
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export type CreateProviderSessionResult =
-  | { readonly kind: 'created'; readonly session: ProviderSession }
-  | { readonly kind: 'joined'; readonly session: ProviderSession };
+  | { readonly kind: 'created'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'joined'; readonly session: ProviderSession; readonly eventId?: string };
 
 export type ProviderSessionMutationOutcome =
-  | { readonly kind: 'applied'; readonly session: ProviderSession }
-  | { readonly kind: 'already-requested'; readonly session: ProviderSession }
-  | { readonly kind: 'terminal'; readonly session: ProviderSession }
-  | { readonly kind: 'state-mismatch'; readonly session: ProviderSession }
-  | { readonly kind: 'version-conflict'; readonly session: ProviderSession }
-  | { readonly kind: 'fence-conflict'; readonly session: ProviderSession }
-  | { readonly kind: 'workspace-mismatch' }
-  | { readonly kind: 'not-found' };
+  | { readonly kind: 'applied'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'already-requested'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'terminal'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'state-mismatch'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'version-conflict'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'fence-conflict'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'workspace-mismatch'; readonly eventId?: string }
+  | { readonly kind: 'not-found'; readonly eventId?: string };
 
 export interface SessionClaimFence {
   readonly expectedClaimEpoch: number;
@@ -180,6 +184,7 @@ export interface CasSetAdapterStartRequestedInput extends SessionClaimFence {
   readonly sessionId: string;
   readonly expectedVersion: number;
   readonly timestamp: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export interface SessionStatusTransitionInput extends SessionClaimFence {
@@ -191,6 +196,7 @@ export interface SessionStatusTransitionInput extends SessionClaimFence {
   readonly timestamp: string;
   readonly failureCode?: string;
   readonly failureDetailRedacted?: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export interface SessionClaimTransferInput extends SessionClaimFence {
@@ -200,6 +206,7 @@ export interface SessionClaimTransferInput extends SessionClaimFence {
   readonly timestamp: string;
   readonly newClaimOwner: string;
   readonly newClaimLeaseExpiresAt: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 function integrityFailure(reason: string): ProviderSessionIntegrityError {
@@ -422,7 +429,10 @@ function assertExpectedVersion(version: number): void {
 }
 
 export class ProviderSessionRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  constructor(
+    private readonly db: TransactionDatabase,
+    private readonly factWriter?: DurableRuntimeFactWriter,
+  ) {}
 
   /**
    * Create the first durable Session row with status `starting`. A duplicate
@@ -561,7 +571,32 @@ export class ProviderSessionRepository {
           'PROVIDER_SESSION_VALIDATION_FAILED: inserted session not found',
         );
       }
-      return { kind: 'created' as const, session };
+      let eventId: string | undefined;
+      if (this.factWriter !== undefined) {
+        if (input.eventContext === undefined) {
+          throw new ProviderSessionValidationError(
+            'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
+          );
+        }
+        const fact = this.factWriter.appendWithinTransaction({
+        type: 'process.session_claimed',
+        workspaceId: session.workspaceId,
+        taskId: session.taskId,
+        runId: session.runId,
+        stageId: session.stageId,
+        providerSessionId: session.id,
+        timestamp: session.createdAt,
+        eventContext: input.eventContext,
+        payload: {
+          stageAttempt: session.stageAttempt,
+          authorityRole: session.authorityRole,
+          claimEpoch: session.claimEpoch,
+          runtimeMode: session.runtimeMode,
+        },
+        });
+        eventId = fact.event.id;
+      }
+      return { kind: 'created' as const, session, ...(eventId === undefined ? {} : { eventId }) };
     };
     // Match ProcessRepository: BEGIN IMMEDIATE serializes the claim read +
     // insert, while an existing repository transaction reuses its lock and
@@ -598,6 +633,9 @@ export class ProviderSessionRepository {
    * (already-requested) and never re-marks the marker.
    */
   casSetAdapterStartRequested(input: CasSetAdapterStartRequestedInput): ProviderSessionMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.casSetAdapterStartRequested(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertNonEmptyString(input.sessionId, 'sessionId');
     assertExpectedVersion(input.expectedVersion);
@@ -624,7 +662,33 @@ export class ProviderSessionRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', session: this.findById(input.workspaceId, input.sessionId)! };
+      const session = this.findById(input.workspaceId, input.sessionId)!;
+      let eventId: string | undefined;
+      if (this.factWriter !== undefined) {
+        if (input.eventContext === undefined) {
+          throw new ProviderSessionValidationError(
+            'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
+          );
+        }
+        const fact = this.factWriter.appendWithinTransaction({
+        type: 'process.session_state_changed',
+        workspaceId: session.workspaceId,
+        taskId: session.taskId,
+        runId: session.runId,
+        stageId: session.stageId,
+        providerSessionId: session.id,
+        timestamp: input.timestamp,
+        eventContext: input.eventContext,
+        payload: {
+          from: session.status,
+          to: session.status,
+          adapterStartRequested: true,
+          terminal: false,
+        },
+        });
+        eventId = fact.event.id;
+      }
+      return { kind: 'applied', session, ...(eventId === undefined ? {} : { eventId }) };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,
@@ -646,6 +710,9 @@ export class ProviderSessionRepository {
    * stored terminal fact (never an implicit retry).
    */
   transitionStatus(input: SessionStatusTransitionInput): ProviderSessionMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.transitionStatus(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertNonEmptyString(input.sessionId, 'sessionId');
     assertExpectedVersion(input.expectedVersion);
@@ -713,7 +780,34 @@ export class ProviderSessionRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', session: this.findById(input.workspaceId, input.sessionId)! };
+      const session = this.findById(input.workspaceId, input.sessionId)!;
+      let eventId: string | undefined;
+      if (this.factWriter !== undefined) {
+        if (input.eventContext === undefined) {
+          throw new ProviderSessionValidationError(
+            'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
+          );
+        }
+        const fact = this.factWriter.appendWithinTransaction({
+        type: 'process.session_state_changed',
+        workspaceId: session.workspaceId,
+        taskId: session.taskId,
+        runId: session.runId,
+        stageId: session.stageId,
+        providerSessionId: session.id,
+        timestamp: input.timestamp,
+        eventContext: input.eventContext,
+        payload: {
+          from: input.expectedFrom,
+          to: input.to,
+          adapterStartRequested: session.adapterStartRequestedAt !== null,
+          terminal: TERMINAL_PROVIDER_SESSION_STATUSES.includes(session.status as TerminalProviderSessionStatus),
+          ...(session.errorCode === null ? {} : { errorCode: session.errorCode }),
+        },
+        });
+        eventId = fact.event.id;
+      }
+      return { kind: 'applied', session, ...(eventId === undefined ? {} : { eventId }) };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,
@@ -743,6 +837,9 @@ export class ProviderSessionRepository {
    * epoch and installs a new owner/lease; anything else is a fence conflict.
    */
   casTransferClaim(input: SessionClaimTransferInput): ProviderSessionMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.casTransferClaim(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertNonEmptyString(input.sessionId, 'sessionId');
     assertExpectedVersion(input.expectedVersion);
@@ -783,7 +880,32 @@ export class ProviderSessionRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', session: this.findById(input.workspaceId, input.sessionId)! };
+      const session = this.findById(input.workspaceId, input.sessionId)!;
+      let eventId: string | undefined;
+      if (this.factWriter !== undefined) {
+        if (input.eventContext === undefined) {
+          throw new ProviderSessionValidationError(
+            'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
+          );
+        }
+        const fact = this.factWriter.appendWithinTransaction({
+        type: 'process.claim_transferred',
+        workspaceId: session.workspaceId,
+        taskId: session.taskId,
+        runId: session.runId,
+        stageId: session.stageId,
+        providerSessionId: session.id,
+        timestamp: input.timestamp,
+        eventContext: input.eventContext,
+        payload: {
+          claimEpoch: session.claimEpoch,
+          authorityRole: session.authorityRole,
+          ownerChanged: true,
+        },
+        });
+        eventId = fact.event.id;
+      }
+      return { kind: 'applied', session, ...(eventId === undefined ? {} : { eventId }) };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,

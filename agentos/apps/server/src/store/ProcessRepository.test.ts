@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
+import { createM3RuntimeEventRegistry } from '@agentos/shared';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -25,6 +26,9 @@ import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { inTransaction } from './Transaction.js';
 import { ProviderSessionRepository } from './ProviderSessionRepository.js';
 import { ProcessOutputReferenceRepository } from './ProcessOutputReferenceRepository.js';
+import { OutboxRepository } from './OutboxRepository.js';
+import { RuntimeEventOutboxWriter, RuntimeEventRepository } from './RuntimeEventRepository.js';
+import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import {
   ProcessRepository,
   RuntimeProcessIntegrityError,
@@ -993,14 +997,22 @@ function toProcessView(process: { id: string; workspaceId: string; runId: string
   };
 }
 
-function mapSessionOutcome(outcome: { kind: string; session?: unknown }): { kind: string; value?: unknown } {
+function mapSessionOutcome(outcome: { kind: string; session?: unknown; eventId?: string }): { kind: string; value?: unknown; eventId?: string } {
   if (outcome.session === undefined) return { kind: outcome.kind };
-  return { kind: outcome.kind, value: toSessionView(outcome.session as never) };
+  return {
+    kind: outcome.kind,
+    value: toSessionView(outcome.session as never),
+    ...(outcome.eventId === undefined ? {} : { eventId: outcome.eventId }),
+  };
 }
 
-function mapProcessOutcome(outcome: { kind: string; process?: unknown }): { kind: string; value?: unknown } {
+function mapProcessOutcome(outcome: { kind: string; process?: unknown; eventId?: string }): { kind: string; value?: unknown; eventId?: string } {
   if (outcome.process === undefined) return { kind: outcome.kind };
-  return { kind: outcome.kind, value: toProcessView(outcome.process as never) };
+  return {
+    kind: outcome.kind,
+    value: toProcessView(outcome.process as never),
+    ...(outcome.eventId === undefined ? {} : { eventId: outcome.eventId }),
+  };
 }
 
 describe('M4-P2B real SQLite coordinator integration', () => {
@@ -1012,9 +1024,13 @@ describe('M4-P2B real SQLite coordinator integration', () => {
         INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version)
         VALUES (?, ?, ?, ?, 'plan', 'Plan', 2, 2, 'pending', ?, ?, 1)
       `).run(STAGE + '_b', WS, RUN, SNAPSHOT, NOW, NOW);
-      const sessionRepo = new ProviderSessionRepository(db);
-      const processRepo = new ProcessRepository(db);
-      const outputRepo = new ProcessOutputReferenceRepository(db);
+      const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
+      const outbox = new OutboxRepository(db, events);
+      const factWriter = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(db), outbox, db);
+      const sessionRepo = new ProviderSessionRepository(db, factWriter);
+      const processRepo = new ProcessRepository(db, factWriter);
+      const outputRepo = new ProcessOutputReferenceRepository(db, factWriter);
+      const eventContext = { correlationId: RUN, causationId: 'op_m4_coordinator' };
       const { DurableProcessCoordinator } = require(durableCoordinatorModulePath);
       const { FileArtifactSink } = require(artifactSinkModulePath);
 
@@ -1039,8 +1055,13 @@ describe('M4-P2B real SQLite coordinator integration', () => {
             claimOwnerId: input.claimOwnerId ?? null,
             claimLeaseExpiresAt: input.claimLeaseExpiresAt ?? null,
             capabilities: input.capabilities,
+            eventContext: input.eventContext,
           });
-          return { kind: result.kind, session: toSessionView(result.session) };
+          return {
+            kind: result.kind,
+            session: toSessionView(result.session),
+            ...(result.eventId === undefined ? {} : { eventId: result.eventId }),
+          };
         },
         casSetAdapterStartRequested: async (input: any) => mapSessionOutcome(sessionRepo.casSetAdapterStartRequested({
           workspaceId: input.workspaceId,
@@ -1049,6 +1070,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           expectedClaimEpoch: input.expectedClaimEpoch,
           expectedClaimOwner: input.expectedClaimOwner,
           timestamp: input.timestamp,
+          eventContext: input.eventContext,
         })),
         casSessionTransition: async (input: any) => mapSessionOutcome(sessionRepo.transitionStatus({
           workspaceId: input.workspaceId,
@@ -1061,6 +1083,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           timestamp: input.timestamp,
           failureCode: input.failureCode,
           failureDetailRedacted: input.failureDetailRedacted,
+          eventContext: input.eventContext,
         })),
         getSession: async (workspaceId: string, sessionId: string) => {
           const session = sessionRepo.findById(workspaceId, sessionId);
@@ -1095,8 +1118,13 @@ describe('M4-P2B real SQLite coordinator integration', () => {
             stderrMode: input.stderrMode,
             timeoutPolicy: input.timeoutPolicy,
             securityProfileRef: input.securityProfileRef,
+            eventContext: input.eventContext,
           });
-          return { kind: result.kind, process: toProcessView(result.process) };
+          return {
+            kind: result.kind,
+            process: toProcessView(result.process),
+            ...(result.eventId === undefined ? {} : { eventId: result.eventId }),
+          };
         },
         casConsumeSpawnRight: async (input: any) => mapProcessOutcome(processRepo.casStartProcess({
           workspaceId: input.workspaceId,
@@ -1105,6 +1133,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           expectedClaimEpoch: input.expectedClaimEpoch,
           expectedClaimOwner: input.expectedClaimOwner,
           timestamp: input.timestamp,
+          eventContext: input.eventContext,
         })),
         casBindNativeIdentity: async (input: any) => mapProcessOutcome(processRepo.casBindNativeIdentity({
           workspaceId: input.workspaceId,
@@ -1116,6 +1145,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           nativePid: input.identity.nativePid,
           nativeParentPid: input.identity.nativeParentPid ?? null,
           nativeStartedAt: input.identity.nativeStartedAt,
+          eventContext: input.eventContext,
         })),
         casProcessTransition: async (input: any) => mapProcessOutcome(processRepo.transitionStatus({
           workspaceId: input.workspaceId,
@@ -1129,7 +1159,21 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           errorCode: input.errorCode,
           errorDetailRedacted: input.errorDetailRedacted,
           exitCode: input.exitCode ?? null,
+          exitSignal: input.exitSignal ?? null,
+          terminationReason: input.terminationReason ?? null,
           cleanupResult: input.cleanupResult ?? null,
+          gracefulRequested: input.gracefulRequested,
+          graceDeadline: input.graceDeadline,
+          forceDeadline: input.forceDeadline,
+          idempotencyKeyHash: input.idempotencyKeyHash,
+          durationMs: input.durationMs,
+          graceful: input.graceful,
+          force: input.force,
+          failureOutcome: input.failureOutcome,
+          cancelReason: input.cancelReason,
+          cancelCausationId: input.cancelCausationId,
+          spawnFailureEvidence: input.spawnFailureEvidence,
+          eventContext: input.eventContext,
         })),
         getProcess: async (workspaceId: string, processId: string) => {
           const process = processRepo.findById(workspaceId, processId);
@@ -1148,14 +1192,20 @@ describe('M4-P2B real SQLite coordinator integration', () => {
             contentType: input.contentType,
             encoding: input.encoding,
             redactionMode: input.redactionMode,
+            eventContext: input.eventContext,
           });
-          return { kind: result.kind, reference: result.reference };
+          return {
+            kind: result.kind,
+            reference: result.reference,
+            ...(result.eventId === undefined ? {} : { eventId: result.eventId }),
+          };
         },
         checkpoint: async (input: any) => {
           const outcome = outputRepo.checkpoint(input);
           return {
             kind: outcome.kind,
             value: 'reference' in outcome ? outcome.reference : undefined,
+            ...(outcome.eventId === undefined ? {} : { eventId: outcome.eventId }),
           };
         },
         finalizeReference: async (input: any) => {
@@ -1163,6 +1213,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           return {
             kind: outcome.kind,
             value: 'reference' in outcome ? outcome.reference : undefined,
+            ...(outcome.eventId === undefined ? {} : { eventId: outcome.eventId }),
           };
         },
         getReference: async (workspaceId: string, processId: string, stream: string) => {
@@ -1173,8 +1224,8 @@ describe('M4-P2B real SQLite coordinator integration', () => {
 
       const atomicSeam = {
        createSessionAndRootProcess: async (input: any) => {
-          let sessionResult!: { kind: string; session: { id: string } };
-          let processResult!: { kind: string; process: unknown };
+          let sessionResult!: { kind: string; session: { id: string }; eventId?: string };
+          let processResult!: { kind: string; process: unknown; eventId?: string };
           inTransaction(db, () => {
             sessionResult = sessionRepo.createSession({
               workspaceId: input.session.workspaceId,
@@ -1195,6 +1246,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
               claimOwnerId: input.session.claimOwnerId ?? null,
               claimLeaseExpiresAt: input.session.claimLeaseExpiresAt ?? null,
               capabilities: input.session.capabilities,
+              eventContext: input.session.eventContext,
             });
             processResult = processRepo.createProcess({
               workspaceId: input.process.workspaceId,
@@ -1222,17 +1274,22 @@ describe('M4-P2B real SQLite coordinator integration', () => {
               stderrMode: input.process.stderrMode,
               timeoutPolicy: input.process.timeoutPolicy,
               securityProfileRef: input.process.securityProfileRef,
+              eventContext: sessionResult.eventId === undefined
+                ? input.process.eventContext
+                : { ...input.process.eventContext, causationId: sessionResult.eventId },
             });
           });
           return {
             session: toSessionView(sessionResult.session as never),
             process: toProcessView(processResult.process as never),
             joinedExisting: processResult.kind === 'joined',
+            sessionEventId: sessionResult.eventId,
+            processEventId: processResult.eventId,
           };
         },
         casTransferClaimPair: async (input: any) => {
-          let sOutcome: { kind: string };
-          let pOutcome: { kind: string };
+          let sOutcome: { kind: string; eventId?: string } = { kind: 'not-found' };
+          let pOutcome: { kind: string; eventId?: string } = { kind: 'not-found' };
           let aborted = false;
           try {
             inTransaction(db, () => {
@@ -1245,6 +1302,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
                 timestamp: input.session.timestamp,
                 newClaimOwner: input.session.newClaimOwner,
                 newClaimLeaseExpiresAt: input.session.newClaimLeaseExpiresAt,
+                eventContext: input.session.eventContext,
               });
               if (sOutcome.kind !== 'applied') throw new Error('PAIR_ABORT');
               pOutcome = processRepo.casTransferClaim({
@@ -1256,6 +1314,9 @@ describe('M4-P2B real SQLite coordinator integration', () => {
                 timestamp: input.process.timestamp,
                 newClaimOwner: input.process.newClaimOwner,
                 newClaimLeaseExpiresAt: input.process.newClaimLeaseExpiresAt,
+                eventContext: sOutcome.eventId === undefined
+                  ? input.process.eventContext
+                  : { ...input.process.eventContext, causationId: sOutcome.eventId },
               });
               if (pOutcome.kind !== 'applied') throw new Error('PAIR_ABORT');
             });
@@ -1266,7 +1327,13 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           const session = sessionRepo.findById(input.session.workspaceId, input.session.sessionId)!;
           const process = processRepo.findById(input.process.workspaceId, input.process.processId)!;
           if (!aborted) {
-            return { kind: 'applied', session: toSessionView(session), process: toProcessView(process) };
+            return {
+              kind: 'applied',
+              session: toSessionView(session),
+              process: toProcessView(process),
+              sessionEventId: sOutcome.eventId,
+              processEventId: pOutcome.eventId,
+            };
           }
           return {
             kind: 'conflict',
@@ -1314,6 +1381,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           claimOwnerId: 'svc-1',
           claimLeaseExpiresAt: '2026-08-12T00:00:00.000Z',
           capabilities: { streaming: true },
+          eventContext,
         },
         process: {
           workspaceId: WS,
@@ -1338,6 +1406,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           stderrMode: 'capture',
           timeoutPolicy: { graceMs: 5000 },
           securityProfileRef: 'secprofile_default',
+          eventContext,
         },
       });
       assert.equal(established.session.status, 'starting');
@@ -1366,6 +1435,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           claimOwnerId: 'svc-1',
           claimLeaseExpiresAt: '2026-08-12T00:00:00.000Z',
           capabilities: { streaming: true },
+          eventContext,
         },
         process: {
           workspaceId: WS,
@@ -1390,6 +1460,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           stderrMode: 'capture',
           timeoutPolicy: { graceMs: 5000 },
           securityProfileRef: 'secprofile_default',
+          eventContext,
         },
       });
       assert.equal(duplicate.joinedExisting, true);
@@ -1405,6 +1476,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           timestamp: LATER,
           newClaimOwner: 'svc-2',
           newClaimLeaseExpiresAt: '2026-08-13T02:00:00.000Z',
+          eventContext,
         },
         process: {
           workspaceId: established.process.workspaceId,
@@ -1415,6 +1487,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
           timestamp: LATER,
           newClaimOwner: 'svc-2',
           newClaimLeaseExpiresAt: '2026-08-13T02:00:00.000Z',
+          eventContext,
         },
       });
       assert.equal(pair.kind, 'applied');
@@ -1429,6 +1502,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
         expectedClaimEpoch: pair.process.claimEpoch,
         expectedClaimOwner: pair.process.claimOwnerId,
         timestamp: NOW,
+        eventContext,
         spawn: async () => ({
           pid: 4242,
           identity: { pid: 4242, startedAtMs: Date.parse(NOW), executablePath: 'C:\\bin\\agent.exe', parentPid: 4000 },
@@ -1452,6 +1526,7 @@ describe('M4-P2B real SQLite coordinator integration', () => {
         contentType: 'text/plain',
         encoding: 'utf-8',
         redactionMode: 'scan',
+        eventContext,
       });
       const bytes = new TextEncoder().encode('hello real sqlite');
       const appended = await writer.append({
@@ -1470,6 +1545,30 @@ describe('M4-P2B real SQLite coordinator integration', () => {
       const reference = outputRepo.findReference(storedProcess.workspaceId, storedProcess.id, 'stdout')!;
       assert.equal(reference.finalized, true);
       assert.equal(reference.sha256, finalized.sha256);
+
+      const processFacts = events.listByRunAfterSequence(RUN, 0)
+        .filter(record => record.kind === 'known' && record.event.processId === storedProcess.id)
+        .map(record => record.event);
+      const launch = processFacts.find(event => event.type === 'process.launch_requested');
+      const transfer = processFacts.find(event => event.type === 'process.claim_transferred');
+      const starting = processFacts.find(event => event.type === 'process.starting');
+      const started = processFacts.find(event => event.type === 'process.started');
+      const outputFacts = processFacts.filter(event => event.type === 'process.output_reference_advanced');
+      assert.ok(launch);
+      assert.ok(transfer);
+      assert.ok(starting);
+      assert.ok(started);
+      assert.equal(starting.causationId, transfer.id);
+      assert.equal(started.causationId, starting.id);
+      assert.equal(outputFacts.length, 2);
+      assert.equal(outputFacts[0].causationId, started.id);
+      assert.equal(outputFacts[1].causationId, outputFacts[0].id);
+      assert.equal(new Set(processFacts.map(event => event.correlationId)).size, 1);
+      assert.equal(processFacts[0].correlationId, eventContext.correlationId);
+      assert.equal(
+        (db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c,
+        (db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c,
+      );
     } finally {
       db.close();
       rmSync(root, { recursive: true, force: true });

@@ -1,6 +1,8 @@
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
+import type { RuntimeEventContext } from '@agentos/shared';
 import { createEntityId, isValidEntityId } from './Identity.js';
-import type { TransactionDatabase } from './Transaction.js';
+import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
+import type { DurableRuntimeFactWriter } from './RuntimeEventRepository.js';
 
 /**
  * M4-P2B durable per-stream output reference repository (Migration 014
@@ -102,20 +104,22 @@ export interface CreateOutputReferenceInput {
   readonly truncated?: boolean;
   readonly truncationReason?: string | null;
   readonly createdAt?: string;
+  /** Accepted Operation/Run context for the first retained-byte fact. */
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export type CreateOutputReferenceResult =
-  | { readonly kind: 'created'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'joined'; readonly reference: ProcessOutputReference };
+  | { readonly kind: 'created'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'joined'; readonly reference: ProcessOutputReference; readonly eventId?: string };
 
 export type OutputReferenceMutationOutcome =
-  | { readonly kind: 'applied'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'duplicate'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'finalized'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'non-monotonic'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'version-conflict'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'workspace-mismatch' }
-  | { readonly kind: 'not-found' };
+  | { readonly kind: 'applied'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'duplicate'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'finalized'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'non-monotonic'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'version-conflict'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'workspace-mismatch'; readonly eventId?: string }
+  | { readonly kind: 'not-found'; readonly eventId?: string };
 
 export interface OutputReferenceCheckpointInput {
   readonly workspaceId: string;
@@ -129,6 +133,7 @@ export interface OutputReferenceCheckpointInput {
   readonly truncated: boolean;
   readonly truncationReason?: string | null;
   readonly updatedAt?: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 export interface FinalizeOutputReferenceInput {
@@ -139,6 +144,7 @@ export interface FinalizeOutputReferenceInput {
   /** Lowercase 64-char hex SHA-256 of the retained-byte concatenation. */
   readonly sha256: string;
   readonly finalizedAt?: string;
+  readonly eventContext?: RuntimeEventContext;
 }
 
 function integrityFailure(reason: string): OutputReferenceIntegrityError {
@@ -349,13 +355,19 @@ function assertSha256(value: string): string {
 }
 
 export class ProcessOutputReferenceRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  constructor(
+    private readonly db: TransactionDatabase,
+    private readonly factWriter?: DurableRuntimeFactWriter,
+  ) {}
 
   /**
    * Create the per-stream reference with zero counts and no raw bytes. A
    * duplicate (process_id, stream) key joins the existing reference.
    */
   createReference(input: CreateOutputReferenceInput): CreateOutputReferenceResult {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.createReference(input));
+    }
     const workspaceId = assertNonEmptyString(input.workspaceId, 'workspaceId');
     const runId = assertNonEmptyString(input.runId, 'runId');
     const processId = assertNonEmptyString(input.processId, 'processId');
@@ -465,7 +477,13 @@ export class ProcessOutputReferenceRepository {
         'PROCESS_OUTPUT_REFERENCE_VALIDATION_FAILED: inserted output reference not found',
       );
     }
-    return { kind: 'created', reference };
+    const hasAdvance = reference.retainedBytes > 0
+      || reference.nextSourceOffset > 0
+      || reference.segmentCount > 0;
+    const eventId = hasAdvance
+      ? this.#appendAdvance(reference, 0, reference.updatedAt, false, input.eventContext)
+      : undefined;
+    return { kind: 'created', reference, ...(eventId === undefined ? {} : { eventId }) };
   }
 
   findReference(
@@ -496,6 +514,9 @@ export class ProcessOutputReferenceRepository {
    * never an implicit retry.
    */
   checkpoint(input: OutputReferenceCheckpointInput): OutputReferenceMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.checkpoint(input));
+    }
     const workspaceId = assertNonEmptyString(input.workspaceId, 'workspaceId');
     const processId = assertNonEmptyString(input.processId, 'processId');
     if (!OUTPUT_STREAM_NAMES.includes(input.stream)) {
@@ -589,9 +610,18 @@ export class ProcessOutputReferenceRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
+      const reference = this.findReference(workspaceId, processId, input.stream)!;
+      const eventId = this.#appendAdvance(
+        reference,
+        current.nextSourceOffset,
+        input.updatedAt ?? reference.updatedAt,
+        false,
+        input.eventContext,
+      );
       return {
         kind: 'applied',
-        reference: this.findReference(workspaceId, processId, input.stream)!,
+        reference,
+        ...(eventId === undefined ? {} : { eventId }),
       };
     }
     const after = this.findReference(workspaceId, processId, input.stream)!;
@@ -608,6 +638,9 @@ export class ProcessOutputReferenceRepository {
    * fact; finalized rows reject further mutation (repository + trigger).
    */
   finalizeReference(input: FinalizeOutputReferenceInput): OutputReferenceMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.finalizeReference(input));
+    }
     const workspaceId = assertNonEmptyString(input.workspaceId, 'workspaceId');
     const processId = assertNonEmptyString(input.processId, 'processId');
     if (!OUTPUT_STREAM_NAMES.includes(input.stream)) {
@@ -652,13 +685,73 @@ export class ProcessOutputReferenceRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
+      const reference = this.findReference(workspaceId, processId, input.stream)!;
+      const eventId = this.#appendAdvance(
+        reference,
+        current.nextSourceOffset,
+        input.finalizedAt ?? reference.updatedAt,
+        true,
+        input.eventContext,
+      );
       return {
         kind: 'applied',
-        reference: this.findReference(workspaceId, processId, input.stream)!,
+        reference,
+        ...(eventId === undefined ? {} : { eventId }),
       };
     }
     const after = this.findReference(workspaceId, processId, input.stream)!;
     if (after.finalized) return { kind: 'duplicate', reference: after };
     return { kind: 'version-conflict', reference: after };
+  }
+
+  #appendAdvance(
+    reference: ProcessOutputReference,
+    priorSourceOffset: number,
+    timestamp: string,
+    finalizedMutation: boolean,
+    eventContext?: RuntimeEventContext,
+  ): string | undefined {
+    if (this.factWriter === undefined) return undefined;
+    if (eventContext === undefined) {
+      throw new OutputReferenceValidationError(
+        'PROCESS_OUTPUT_REFERENCE_VALIDATION_FAILED: eventContext is required for durable output facts',
+      );
+    }
+    const binding = this.db.prepare(`
+      SELECT task_id, stage_id, provider_session_id
+      FROM runtime_processes
+      WHERE workspace_id = ? AND id = ?
+    `).get(reference.workspaceId, reference.processId) as {
+      task_id: string | null;
+      stage_id: string | null;
+      provider_session_id: string | null;
+    } | undefined;
+    const result = this.factWriter.appendWithinTransaction({
+      type: 'process.output_reference_advanced',
+      workspaceId: reference.workspaceId,
+      ...(binding?.task_id === null || binding?.task_id === undefined ? {} : { taskId: binding.task_id }),
+      runId: reference.runId,
+      ...(binding?.stage_id === null || binding?.stage_id === undefined ? {} : { stageId: binding.stage_id }),
+      ...(binding?.provider_session_id === null || binding?.provider_session_id === undefined
+        ? {}
+        : { providerSessionId: binding.provider_session_id }),
+      processId: reference.processId,
+      artifactId: reference.artifactId,
+      timestamp,
+      eventContext,
+      payload: {
+        stream: reference.stream,
+        artifactId: reference.artifactId,
+        priorSourceOffset,
+        nextSourceOffset: reference.nextSourceOffset,
+        retainedBytes: reference.retainedBytes,
+        segmentCount: reference.segmentCount,
+        truncated: reference.truncated,
+        finalized: finalizedMutation || reference.finalized,
+        ...(reference.truncationReason === null ? {} : { truncationReason: reference.truncationReason }),
+        ...(reference.finalizedAt === null ? {} : { finalizedAt: reference.finalizedAt }),
+      },
+    });
+    return result.event.id;
   }
 }

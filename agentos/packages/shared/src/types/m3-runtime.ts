@@ -58,6 +58,7 @@ export const RUNTIME_EVENT_DOMAINS = Object.freeze([
   'stage',
   'approval',
   'stream',
+  'process',
 ] as const);
 
 export type RuntimeEventDomain = (typeof RUNTIME_EVENT_DOMAINS)[number];
@@ -93,6 +94,29 @@ export const M3_RUNTIME_EVENT_TYPES = Object.freeze([
 
 export type M3RuntimeEventType = (typeof M3_RUNTIME_EVENT_TYPES)[number];
 
+/**
+ * M4-P2B Process facts are additive to the M3 lifecycle vocabulary.  They
+ * share the M3 envelope, sequence allocator and Outbox; keeping a separate
+ * type prevents the M3 lifecycle transition union from silently expanding.
+ */
+export const M4_PROCESS_RUNTIME_EVENT_TYPES = Object.freeze([
+  'process.session_claimed',
+  'process.session_state_changed',
+  'process.claim_transferred',
+  'process.launch_requested',
+  'process.starting',
+  'process.started',
+  'process.state_changed',
+  'process.stopping',
+  'process.exited',
+  'process.failed',
+  'process.cleanup_required',
+  'process.orphaned',
+  'process.output_reference_advanced',
+] as const);
+
+export type M4ProcessRuntimeEventType = (typeof M4_PROCESS_RUNTIME_EVENT_TYPES)[number];
+
 const CANONICAL_RUNTIME_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
 export function isCanonicalRuntimeTimestamp(value: unknown): value is string {
@@ -126,6 +150,20 @@ export const RUNTIME_EVENT_DURABILITIES = Object.freeze([
   'durable',
   'ephemeral',
 ] as const);
+
+/**
+ * Causal context supplied by the accepted Operation/Run execution chain.
+ *
+ * Process/Provider repositories must never manufacture correlation or
+ * causation identifiers.  The causation reference is intentionally required
+ * for the durable M4 fact seam: it is either the accepted command/operation
+ * identifier or an already-persisted immediately causal Runtime Event.
+ */
+export interface RuntimeEventContext {
+  readonly correlationId: string;
+  readonly causationId: string;
+  readonly parentEventId?: string;
+}
 
 export type RuntimeEventDurability = (typeof RUNTIME_EVENT_DURABILITIES)[number];
 

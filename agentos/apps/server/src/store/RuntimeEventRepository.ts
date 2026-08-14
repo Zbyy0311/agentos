@@ -3,6 +3,8 @@ import type {
   RuntimeEventConsumptionResult,
   RuntimeEventDraft,
   RuntimeEventEnvelope,
+  RuntimeEventMetadata,
+  RuntimeEventContext,
   RuntimeEventSeverity,
   RuntimeEventSource,
   RuntimeEventVisibility,
@@ -10,8 +12,10 @@ import type {
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import type { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
 import { isTransactionActive, registerAfterCommit, type TransactionDatabase } from './Transaction.js';
-import { isValidEntityId } from './Identity.js';
+import { createEntityId, isValidEntityId } from './Identity.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
+import type { RunSequenceAllocator } from './RunSequenceAllocator.js';
+import type { OutboxMessage, OutboxRepository } from './OutboxRepository.js';
 
 export class RuntimeEventRepositoryError extends Error {
   constructor(
@@ -25,6 +29,285 @@ export class RuntimeEventRepositoryError extends Error {
   ) {
     super(`${code}: ${message}`);
     this.name = 'RuntimeEventRepositoryError';
+  }
+}
+
+/**
+ * One narrow adapter over the existing M3 Event Store + Outbox. P2B
+ * repositories receive this interface rather than constructing a second
+ * persistence path. The caller owns the SQLite transaction; this writer only
+ * allocates the canonical Run sequence, appends the Event, and inserts its
+ * one Outbox handoff.
+ */
+export interface DurableRuntimeFactInput {
+  readonly type: string;
+  readonly workspaceId: string;
+  readonly taskId?: string;
+  readonly runId: string;
+  readonly stageId?: string;
+  readonly providerSessionId?: string;
+  readonly processId?: string;
+  readonly artifactId?: string;
+  readonly timestamp: string;
+  /** Accepted Operation/Run execution context; never generated here. */
+  readonly eventContext: RuntimeEventContext;
+  readonly metadata?: RuntimeEventMetadata;
+  readonly payload: Record<string, unknown>;
+}
+
+export interface DurableRuntimeFactResult {
+  readonly event: RuntimeEventEnvelope;
+  readonly outbox: OutboxMessage;
+}
+
+export interface DurableRuntimeFactWriter {
+  appendWithinTransaction(input: DurableRuntimeFactInput): DurableRuntimeFactResult;
+}
+
+export interface RuntimeEventOutboxWriterOptions {
+  readonly createEventId?: () => string;
+  readonly createOutboxId?: (eventId: string) => string;
+}
+
+function requireContext(context: RuntimeEventContext): RuntimeEventContext {
+  if (typeof context?.correlationId !== 'string' || context.correlationId.trim().length === 0) {
+    throw new RuntimeEventRepositoryError(
+      'RUNTIME_EVENT_PERSISTENCE_FAILED',
+      'Durable Runtime fact requires a caller-provided correlationId',
+    );
+  }
+  if (context.correlationId.startsWith('m4-p2b:')) {
+    throw new RuntimeEventRepositoryError(
+      'RUNTIME_EVENT_PERSISTENCE_FAILED',
+      'Synthetic m4-p2b correlationId is forbidden',
+    );
+  }
+  if (typeof context.causationId !== 'string' || context.causationId.trim().length === 0) {
+    throw new RuntimeEventRepositoryError(
+      'RUNTIME_EVENT_PERSISTENCE_FAILED',
+      'Durable Runtime fact requires a caller-provided causationId',
+    );
+  }
+  if (context.parentEventId !== undefined
+    && (typeof context.parentEventId !== 'string' || context.parentEventId.trim().length === 0)) {
+    throw new RuntimeEventRepositoryError(
+      'RUNTIME_EVENT_PERSISTENCE_FAILED',
+      'parentEventId must be non-empty when supplied',
+    );
+  }
+  return context;
+}
+
+/** Reuses the M3 repositories; it is not a second Event/Outbox store. */
+export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
+  private readonly createEventId: () => string;
+  private readonly createOutboxId: (eventId: string) => string;
+
+  constructor(
+    private readonly runtimeEvents: RuntimeEventRepository,
+    private readonly runSequenceAllocator: RunSequenceAllocator,
+    private readonly outbox: OutboxRepository,
+    private readonly db: TransactionDatabase,
+    options: RuntimeEventOutboxWriterOptions = {},
+  ) {
+    this.createEventId = options.createEventId ?? (() => createEntityId('event'));
+    this.createOutboxId = options.createOutboxId ?? (eventId => `outbox_${eventId}`);
+  }
+
+  appendWithinTransaction(input: DurableRuntimeFactInput): DurableRuntimeFactResult {
+    if (!isTransactionActive(this.db)) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'Durable Runtime facts require an active transaction',
+      );
+    }
+    if (!isCanonicalUtcTimestamp(input.timestamp)) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_TIMESTAMP_INVALID',
+        'Durable Runtime fact timestamp must be canonical UTC ISO 8601 milliseconds',
+      );
+    }
+
+    const context = requireContext(input.eventContext);
+    this.#assertReferenceBindings(input);
+    this.#assertCausalReferences(input, context);
+
+    const sequence = this.runSequenceAllocator.allocateWithinTransaction(input.workspaceId, input.runId);
+    const event = this.runtimeEvents.appendWithinTransaction({
+      id: this.createEventId(),
+      schemaVersion: 1,
+      type: input.type,
+      workspaceId: input.workspaceId,
+      ...(input.taskId === undefined ? {} : { taskId: input.taskId }),
+      runId: input.runId,
+      ...(input.stageId === undefined ? {} : { stageId: input.stageId }),
+      ...(input.providerSessionId === undefined ? {} : { providerSessionId: input.providerSessionId }),
+      ...(input.processId === undefined ? {} : { processId: input.processId }),
+      ...(input.artifactId === undefined ? {} : { artifactId: input.artifactId }),
+      sequence,
+      timestamp: input.timestamp,
+      source: 'process-manager',
+      correlationId: context.correlationId,
+      causationId: context.causationId,
+      ...(context.parentEventId === undefined ? {} : { parentEventId: context.parentEventId }),
+      payload: input.payload,
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+    });
+    const outbox = this.outbox.insertWithinTransaction({
+      id: this.createOutboxId(event.id),
+      eventId: event.id,
+      availableAt: input.timestamp,
+      createdAt: input.timestamp,
+    });
+    return { event, outbox };
+  }
+
+  /**
+   * Event tables intentionally do not carry every M4 resource FK.  Validate
+   * the same-transaction bindings at this one write boundary instead of
+   * allowing a repository caller to emit a cross-Run/Stage/Process fact.
+   */
+  #assertReferenceBindings(input: DurableRuntimeFactInput): void {
+    const run = this.db.prepare(`
+      SELECT task_id FROM runs WHERE workspace_id = ? AND id = ?
+    `).get(input.workspaceId, input.runId) as { task_id: string } | undefined;
+    if (run === undefined) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'Runtime fact run reference is missing or workspace-mismatched',
+      );
+    }
+    if (input.taskId !== undefined && input.taskId !== run.task_id) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'Runtime fact task reference is not bound to the Run',
+      );
+    }
+    if (input.stageId !== undefined) {
+      const stage = this.db.prepare(`
+        SELECT 1 FROM run_stages
+        WHERE workspace_id = ? AND id = ? AND run_id = ?
+      `).get(input.workspaceId, input.stageId, input.runId);
+      if (stage === undefined) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Runtime fact stage reference is missing or Run-mismatched',
+        );
+      }
+    }
+    let process: {
+      stage_id: string | null;
+      provider_session_id: string | null;
+      authority_role: string | null;
+    } | undefined;
+    if (input.processId !== undefined) {
+      process = this.db.prepare(`
+        SELECT stage_id, provider_session_id, authority_role
+        FROM runtime_processes
+        WHERE workspace_id = ? AND id = ? AND run_id = ?
+      `).get(input.workspaceId, input.processId, input.runId) as typeof process;
+      if (process === undefined) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Runtime fact process reference is missing or Run-mismatched',
+        );
+      }
+      if (input.stageId !== undefined && process.stage_id !== input.stageId) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Runtime fact process/stage references do not match',
+        );
+      }
+      if (input.providerSessionId !== undefined
+        && process.provider_session_id !== input.providerSessionId) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Runtime fact process/session references do not match',
+        );
+      }
+      if (input.type === 'process.launch_requested' && process.authority_role === 'primary-provider'
+        && (input.stageId === undefined || input.providerSessionId === undefined)) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Provider-root launch fact requires Stage and ProviderSession references',
+        );
+      }
+    }
+    if (input.providerSessionId !== undefined) {
+      const session = this.db.prepare(`
+        SELECT stage_id FROM provider_sessions
+        WHERE workspace_id = ? AND id = ? AND run_id = ?
+      `).get(input.workspaceId, input.providerSessionId, input.runId) as { stage_id: string } | undefined;
+      if (session === undefined) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Runtime fact ProviderSession reference is missing or Run-mismatched',
+        );
+      }
+      if (input.stageId !== undefined && session.stage_id !== input.stageId) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Runtime fact session/stage references do not match',
+        );
+      }
+    }
+    if (input.artifactId !== undefined && input.processId !== undefined) {
+      const artifact = this.db.prepare(`
+        SELECT 1 FROM process_output_references
+        WHERE workspace_id = ? AND run_id = ? AND process_id = ? AND artifact_id = ?
+      `).get(input.workspaceId, input.runId, input.processId, input.artifactId);
+      if (artifact === undefined) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'Runtime fact artifact reference is not bound to the Process output reference',
+        );
+      }
+    }
+  }
+
+  #assertCausalReferences(
+    input: DurableRuntimeFactInput,
+    context: RuntimeEventContext,
+  ): void {
+    const check = (id: string, field: string): void => {
+      if (!id.startsWith('evt_')) return;
+      if (!isValidEntityId(id, 'event')) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          `${field} is not a canonical Runtime Event id`,
+        );
+      }
+      const row = this.db.prepare(`
+        SELECT workspace_id, run_id, sequence FROM runtime_events WHERE id = ?
+      `).get(id) as { workspace_id: string; run_id: string; sequence: number } | undefined;
+      if (row === undefined || row.workspace_id !== input.workspaceId || row.run_id !== input.runId) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          `${field} must reference an Event in the same Workspace/Run`,
+        );
+      }
+    };
+    check(context.causationId, 'causationId');
+    if (context.parentEventId !== undefined) {
+      if (!isValidEntityId(context.parentEventId, 'event')) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'parentEventId must be a canonical Runtime Event id',
+        );
+      }
+      check(context.parentEventId, 'parentEventId');
+    }
+    if (input.type === 'process.failed'
+      && input.payload.outcome === 'spawn-failure-after-cancel') {
+      const cancelCausationId = input.payload.cancelCausationId;
+      if (typeof cancelCausationId !== 'string' || cancelCausationId.trim().length === 0) {
+        throw new RuntimeEventRepositoryError(
+          'RUNTIME_EVENT_PERSISTENCE_FAILED',
+          'After-cancel process.failed requires a caller-provided cancelCausationId',
+        );
+      }
+      check(cancelCausationId, 'cancelCausationId');
+    }
   }
 }
 
