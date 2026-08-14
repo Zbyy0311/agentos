@@ -139,6 +139,7 @@ function fileDbPair(): { root: string; path: string; a: Db; b: Db; close(): void
 
 interface WorkerHandle {
   started: Promise<void>;
+  attempted: Promise<void>;
   result: Promise<unknown>;
   terminate(): Promise<void>;
 }
@@ -150,6 +151,7 @@ function runRepoCallInWorker(
   method: string,
   args: unknown[],
 ): WorkerHandle {
+  const moduleUrl = new URL(`./${repoFile}.ts`, import.meta.url).href;
   const code = [
     "const { parentPort } = require('node:worker_threads');",
     "(async () => {",
@@ -157,28 +159,35 @@ function runRepoCallInWorker(
     "    const { register } = require('tsx/esm/api');",
     "    register();",
     "    const { DatabaseSync } = require('node:sqlite');",
-    `    const module = await import('file:///E:/workspace/Multi-Agent/agentos/apps/server/src/store/${repoFile}.ts');`,
+    `    const module = await import(${JSON.stringify(moduleUrl)});`,
     `    const db = new DatabaseSync(${JSON.stringify(dbPath)});`,
     "    db.exec('PRAGMA foreign_keys = ON');",
     "    db.exec('PRAGMA busy_timeout = 5000');",
     `    const repo = new module.${repoClass}(db);`,
-   "    parentPort.postMessage({ type: 'started' });",
-   `    const result = await Promise.resolve(repo[${JSON.stringify(method)}](...${JSON.stringify(args)}));`,
+    "    parentPort.postMessage({ type: 'started' });",
+    "    parentPort.postMessage({ type: 'attempting' });",
+    `    const result = await Promise.resolve(repo[${JSON.stringify(method)}](...${JSON.stringify(args)}));`,
     "    db.close();",
-   "    parentPort.postMessage({ type: 'result', value: result });",
+    "    parentPort.postMessage({ type: 'result', value: result });",
     "  } catch (error) {",
     "    parentPort.postMessage({ type: 'error', error: String((error && error.message) || error) });",
     "  }",
     "})();",
   ].join('\n');
- const worker = new Worker(code, { eval: true });
- let resolveStarted: () => void = () => undefined;
+  const worker = new Worker(code, { eval: true });
+  let resolveStarted: () => void = () => undefined;
   let rejectStarted: (error: Error) => void = () => undefined;
+  let resolveAttempted: () => void = () => undefined;
+  let rejectAttempted: (error: Error) => void = () => undefined;
   let resolveResult: (value: unknown) => void = () => undefined;
   let rejectResult: (error: Error) => void = () => undefined;
   const started = new Promise<void>((resolve, reject) => {
     resolveStarted = resolve;
     rejectStarted = reject;
+  });
+  const attempted = new Promise<void>((resolve, reject) => {
+    resolveAttempted = resolve;
+    rejectAttempted = reject;
   });
   const result = new Promise<unknown>((resolve, reject) => {
     resolveResult = resolve;
@@ -186,19 +195,23 @@ function runRepoCallInWorker(
   });
   worker.on('message', (message) => {
     if (message.type === 'started') resolveStarted();
+    else if (message.type === 'attempting') resolveAttempted();
     else if (message.type === 'result') resolveResult(message.value);
     else if (message.type === 'error') {
       const error = new Error(message.error);
       rejectStarted(error);
+      rejectAttempted(error);
       rejectResult(error);
     }
   });
   worker.once('error', (error) => {
     rejectStarted(error);
+    rejectAttempted(error);
     rejectResult(error);
   });
   return {
     started,
+    attempted,
     result,
     terminate: () => worker.terminate().then(() => undefined),
   };
@@ -573,7 +586,6 @@ describe('ProviderSessionRepository', () => {
         seedParents(db);
       };
       seed(pair.a);
-      const repositoryA = new ProviderSessionRepository(pair.a);
       const repositoryB = new ProviderSessionRepository(pair.b);
 
       // Connection A holds the write lock first; B must block behind it.
@@ -586,9 +598,32 @@ describe('ProviderSessionRepository', () => {
         [sessionInput()],
       );
       await worker.started;
-      // B's statement is now queued on A's lock; A wins the claim first.
-      const winner = repositoryA.createSession(sessionInput());
-      assert.equal(winner.kind, 'created');
+      await worker.attempted;
+      // The worker has entered the repository call while A still holds
+      // BEGIN IMMEDIATE; its transaction is queued behind A's write lock.
+      const winnerId = 'psess_' + 'C'.repeat(26);
+      pair.a.prepare(`
+        INSERT INTO provider_sessions (
+          id, workspace_id, task_id, run_id, stage_id, stage_attempt,
+          authority_role, agent_id, provider_config_id, provider_config_version,
+          provider_type, adapter_id, adapter_version, config_schema_version,
+          runtime_mode, status, claim_epoch, capabilities_json, version,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, 1, 'primary-provider', ?, ?, 1,
+          'kimicode', 'adapter.cli', '1.0.0', 1, 'cli', 'starting', 1,
+          '{}', 1, ?, ?)
+      `).run(
+        winnerId,
+        WS,
+        TASK,
+        RUN,
+        STAGE,
+        AGENT,
+        PCFG,
+        NOW,
+        NOW,
+      );
+      const winner = { kind: 'created', session: { id: winnerId } };
       pair.a.exec('COMMIT');
       const loser = await worker.result as { kind: string; session: { id: string } };
       assert.equal(loser.kind, 'joined');

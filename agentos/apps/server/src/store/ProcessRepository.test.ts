@@ -4,6 +4,7 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Worker } from 'node:worker_threads';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
@@ -31,6 +32,12 @@ import {
 } from './ProcessRepository.js';
 
 const require = createRequire(import.meta.url);
+const durableCoordinatorModulePath = fileURLToPath(
+  new URL('../../../../packages/process-runtime/src/durable-coordinator.ts', import.meta.url),
+);
+const artifactSinkModulePath = fileURLToPath(
+  new URL('../../../../packages/process-runtime/src/artifact-sink.ts', import.meta.url),
+);
 
 type Db = InstanceType<typeof DatabaseSync>;
 
@@ -602,6 +609,7 @@ function fileDbPair(): { root: string; path: string; a: Db; b: Db; close(): void
 
 interface WorkerHandle {
   started: Promise<void>;
+  attempted: Promise<void>;
   result: Promise<unknown>;
   terminate(): Promise<void>;
 }
@@ -613,6 +621,7 @@ function runRepoCallInWorker(
   method: string,
   args: unknown[],
 ): WorkerHandle {
+  const moduleUrl = new URL(`./${repoFile}.ts`, import.meta.url).href;
   const code = [
     "const { parentPort } = require('node:worker_threads');",
     "(async () => {",
@@ -620,28 +629,35 @@ function runRepoCallInWorker(
     "    const { register } = require('tsx/esm/api');",
     "    register();",
     "    const { DatabaseSync } = require('node:sqlite');",
-    `    const module = await import('file:///E:/workspace/Multi-Agent/agentos/apps/server/src/store/${repoFile}.ts');`,
+    `    const module = await import(${JSON.stringify(moduleUrl)});`,
     `    const db = new DatabaseSync(${JSON.stringify(dbPath)});`,
     "    db.exec('PRAGMA foreign_keys = ON');",
     "    db.exec('PRAGMA busy_timeout = 5000');",
     `    const repo = new module.${repoClass}(db);`,
-   "    parentPort.postMessage({ type: 'started' });",
-   `    const result = await Promise.resolve(repo[${JSON.stringify(method)}](...${JSON.stringify(args)}));`,
+    "    parentPort.postMessage({ type: 'started' });",
+    "    parentPort.postMessage({ type: 'attempting' });",
+    `    const result = await Promise.resolve(repo[${JSON.stringify(method)}](...${JSON.stringify(args)}));`,
     "    db.close();",
-   "    parentPort.postMessage({ type: 'result', value: result });",
+    "    parentPort.postMessage({ type: 'result', value: result });",
     "  } catch (error) {",
     "    parentPort.postMessage({ type: 'error', error: String((error && error.message) || error) });",
     "  }",
     "})();",
   ].join('\n');
- const worker = new Worker(code, { eval: true });
- let resolveStarted: () => void = () => undefined;
+  const worker = new Worker(code, { eval: true });
+  let resolveStarted: () => void = () => undefined;
   let rejectStarted: (error: Error) => void = () => undefined;
+  let resolveAttempted: () => void = () => undefined;
+  let rejectAttempted: (error: Error) => void = () => undefined;
   let resolveResult: (value: unknown) => void = () => undefined;
   let rejectResult: (error: Error) => void = () => undefined;
   const started = new Promise<void>((resolve, reject) => {
     resolveStarted = resolve;
     rejectStarted = reject;
+  });
+  const attempted = new Promise<void>((resolve, reject) => {
+    resolveAttempted = resolve;
+    rejectAttempted = reject;
   });
   const result = new Promise<unknown>((resolve, reject) => {
     resolveResult = resolve;
@@ -649,19 +665,23 @@ function runRepoCallInWorker(
   });
   worker.on('message', (message) => {
     if (message.type === 'started') resolveStarted();
+    else if (message.type === 'attempting') resolveAttempted();
     else if (message.type === 'result') resolveResult(message.value);
     else if (message.type === 'error') {
       const error = new Error(message.error);
       rejectStarted(error);
+      rejectAttempted(error);
       rejectResult(error);
     }
   });
   worker.once('error', (error) => {
     rejectStarted(error);
+    rejectAttempted(error);
     rejectResult(error);
   });
   return {
     started,
+    attempted,
     result,
     terminate: () => worker.terminate().then(() => undefined),
   };
@@ -688,6 +708,7 @@ describe('ProcessRepository two-connection races', () => {
         [rootInput()],
       );
      await worker.started;
+      await worker.attempted;
       // A wins the root claim while holding the write lock. createProcess
       // wraps itself in a transaction, so the winner is inserted with the
       // exact same CAS SQL the repository uses (no nested BEGIN).
@@ -744,6 +765,7 @@ describe('ProcessRepository two-connection races', () => {
         }],
       );
       await worker.started;
+      await worker.attempted;
       const winner = repositoryA.casStartProcess({
         workspaceId: WS,
         processId: process.id,
@@ -993,8 +1015,8 @@ describe('M4-P2B real SQLite coordinator integration', () => {
       const sessionRepo = new ProviderSessionRepository(db);
       const processRepo = new ProcessRepository(db);
       const outputRepo = new ProcessOutputReferenceRepository(db);
-      const { DurableProcessCoordinator } = require('E:/workspace/Multi-Agent/agentos/packages/process-runtime/src/durable-coordinator.ts');
-      const { FileArtifactSink } = require('E:/workspace/Multi-Agent/agentos/packages/process-runtime/src/artifact-sink.ts');
+      const { DurableProcessCoordinator } = require(durableCoordinatorModulePath);
+      const { FileArtifactSink } = require(artifactSinkModulePath);
 
       const sessionPort = {
         createSessionClaim: async (input: any) => {
@@ -1464,8 +1486,8 @@ describe('M4-P2B real SQLite coordinator integration', () => {
       const sessionRepo = new ProviderSessionRepository(db);
       const processRepo = new ProcessRepository(db);
       const outputRepo = new ProcessOutputReferenceRepository(db);
-      const { DurableProcessCoordinator } = require('E:/workspace/Multi-Agent/agentos/packages/process-runtime/src/durable-coordinator.ts');
-      const { FileArtifactSink } = require('E:/workspace/Multi-Agent/agentos/packages/process-runtime/src/artifact-sink.ts');
+      const { DurableProcessCoordinator } = require(durableCoordinatorModulePath);
+      const { FileArtifactSink } = require(artifactSinkModulePath);
       const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p2b-rollback-'));
 
       const sessionPort = { createSessionClaim: async () => { throw new Error('unused'); }, casSetAdapterStartRequested: async () => ({ kind: 'state-mismatch' }), casSessionTransition: async () => ({ kind: 'state-mismatch' }), getSession: async () => null };

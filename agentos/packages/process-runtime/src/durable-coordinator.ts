@@ -342,8 +342,27 @@ export class DurableProcessCoordinator {
     } catch {
       // Graceful stop is best effort; force tree termination still runs.
     }
-    const terminated = await this.#driver.terminateTree(handle);
-    const verified = await this.#driver.verifySurvivors(handle);
+    try {
+      await this.#driver.terminateTree(handle);
+    } catch {
+      // A platform termination failure removes all proof of cleanup. Keep
+      // the owning Process in uncertainty; never terminalize as cleaned.
+      return {
+        classification: 'unknown',
+        cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE',
+      };
+    }
+    let verified: Awaited<ReturnType<PlatformProcessDriver['verifySurvivors']>>;
+    try {
+      verified = await this.#driver.verifySurvivors(handle);
+    } catch {
+      // Survivor verification is the proof boundary. A throw is explicitly
+      // fail-closed even if terminateTree reported no survivors.
+      return {
+        classification: 'unknown',
+        cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE',
+      };
+    }
     return {
       classification: verified.classification,
       cleanupResult: cleanupResultFrom(verified.classification, false),

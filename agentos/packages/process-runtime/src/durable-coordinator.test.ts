@@ -550,6 +550,8 @@ class FakeDriver implements PlatformProcessDriver {
   gracefulStopCalls = 0;
   terminateTreeCalls = 0;
   verifySurvivorsCalls = 0;
+  terminateTreeThrows = false;
+  verifySurvivorsThrows = false;
 
   async spawn(): Promise<NativeProcessHandle> {
     throw new Error('unused');
@@ -560,10 +562,12 @@ class FakeDriver implements PlatformProcessDriver {
   }
   async terminateTree() {
     this.terminateTreeCalls += 1;
+    if (this.terminateTreeThrows) throw new Error('terminateTree unavailable');
     return this.terminateResult;
   }
   async verifySurvivors() {
     this.verifySurvivorsCalls += 1;
+    if (this.verifySurvivorsThrows) throw new Error('verifySurvivors unavailable');
     return this.verifyResult;
   }
   async inspectIdentity() {
@@ -969,6 +973,56 @@ describe('DurableProcessCoordinator', () => {
     expect(coordinator.retainedHandleCount).toBe(0);
   });
 
+  it('cleanup terminateTree throw fails closed as unknown platform uncertainty', async () => {
+    const { processRepository, driver, coordinator } = makeCoordinator();
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const process = established.process;
+    processRepository.failNextBind = true;
+    driver.terminateTreeThrows = true;
+    const result = await coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      timestamp: NOW,
+      spawn: async () => makeHandle(4242),
+    });
+    const uncertain = applied(result.outcome);
+    expect(uncertain.status).toBe('unknown');
+    expect(uncertain.cleanupResult).toBe('UNKNOWN_PLATFORM_UNAVAILABLE');
+    expect(uncertain.status).not.toBe('failed');
+    expect(driver.verifySurvivorsCalls).toBe(0);
+  });
+
+  it('cleanup verifySurvivors throw fails closed as unknown platform uncertainty', async () => {
+    const { processRepository, driver, coordinator } = makeCoordinator();
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const process = established.process;
+    processRepository.failNextBind = true;
+    driver.verifySurvivorsThrows = true;
+    const result = await coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      timestamp: NOW,
+      spawn: async () => makeHandle(4242),
+    });
+    const uncertain = applied(result.outcome);
+    expect(uncertain.status).toBe('unknown');
+    expect(uncertain.cleanupResult).toBe('UNKNOWN_PLATFORM_UNAVAILABLE');
+    expect(uncertain.status).not.toBe('failed');
+    expect(driver.terminateTreeCalls).toBe(1);
+  });
+
   it('starting x cancel late success binds same identity, stays stopping, cleans up; never running', async () => {
     const { processRepository, driver, coordinator } = makeCoordinator();
     const established = await coordinator.establishClaimAndReservation({
@@ -1098,6 +1152,43 @@ describe('DurableProcessCoordinator', () => {
     const retry = await writer.append(makeChunk(new TextEncoder().encode('-tail')));
     expect(retry.kind).toBe('applied');
     expect(sink.bytesOf(writer.reference.artifactId).toString('utf8')).toBe('first-tail');
+  });
+
+  it('real FileArtifactSink rollback restores file offset and sha256 before retry', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'agentos-real-sink-'));
+    const sessionRepository = new FakeSessionRepository();
+    const processRepository = new FakeProcessRepository();
+    const outputRepository = new FakeOutputReferenceRepository();
+    const coordinator = new DurableProcessCoordinator({
+      sessionRepository,
+      processRepository,
+      outputReferenceRepository: outputRepository,
+      artifactSink: new FileArtifactSink(root),
+      atomicSeam: new FakeAtomicSeam(sessionRepository, processRepository),
+      driver: new FakeDriver(),
+    });
+    try {
+      const established = await coordinator.establishClaimAndReservation({
+        session: sessionClaim(),
+        process: processReservation(),
+      });
+      const writer = await coordinator.beginOutput(outputCreate(established.process));
+      await writer.append(makeChunk(new TextEncoder().encode('first')));
+      outputRepository.failNextCheckpoint = true;
+      const conflicted = await writer.append(makeChunk(new TextEncoder().encode('-tail')));
+      expect(conflicted.kind).toBe('version-conflict');
+
+      const retried = await writer.append(makeChunk(new TextEncoder().encode('-tail')));
+      expect(retried.kind).toBe('applied');
+      const finalized = await writer.finalize();
+      const path = join(root, ...writer.reference.storageKey.split('/'));
+      const bytes = readFileSync(path);
+      expect(bytes.toString('utf8')).toBe('first-tail');
+      expect(finalized.retainedBytes).toBe(bytes.length);
+      expect(finalized.sha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it('checkpoint throw reverts the uncommitted sink tail and surfaces the failure', async () => {

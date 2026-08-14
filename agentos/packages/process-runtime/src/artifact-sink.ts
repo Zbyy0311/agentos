@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, type Hash } from 'node:crypto';
 import { mkdir, open, rm } from 'node:fs/promises';
 import { join, normalize, resolve, sep } from 'node:path';
 
@@ -72,8 +72,10 @@ function assertSafeStorageKey(storageKey: string, root: string): string {
 
 class FileArtifactWriteSession implements ArtifactWriteSession {
   readonly #handle: Awaited<ReturnType<typeof open>>;
-  readonly #hash = createHash('sha256');
+  #hash: Hash;
+  readonly #hashSnapshots: Array<{ readonly retainedBytes: number; readonly hash: Hash }>;
   #retainedBytes = 0;
+  #writeOffset = 0;
   #closed = false;
   #finalizedResult: ArtifactFinalizeResult | null = null;
 
@@ -84,6 +86,8 @@ class FileArtifactWriteSession implements ArtifactWriteSession {
     handle: Awaited<ReturnType<typeof open>>,
   ) {
     this.#handle = handle;
+    this.#hash = createHash('sha256');
+    this.#hashSnapshots = [{ retainedBytes: 0, hash: this.#hash.copy() }];
   }
 
   async append(bytes: Uint8Array): Promise<void> {
@@ -91,9 +95,34 @@ class FileArtifactWriteSession implements ArtifactWriteSession {
       throw new Error('RESTRICTED_SINK_CLOSED: append after finalize/abort is forbidden');
     }
     if (!(bytes instanceof Uint8Array) || bytes.length === 0) return;
-    await this.#handle.write(bytes);
+    const startingOffset = this.#writeOffset;
+    let written = 0;
+    try {
+      while (written < bytes.length) {
+        const result = await this.#handle.write(
+          bytes,
+          written,
+          bytes.length - written,
+          startingOffset + written,
+        );
+        if (result.bytesWritten <= 0) {
+          throw new Error('RESTRICTED_SINK_WRITE_FAILED: no progress');
+        }
+        written += result.bytesWritten;
+      }
+    } catch (error) {
+      // A partial positional write must not leave an untracked tail behind.
+      await this.#handle.truncate(startingOffset);
+      this.#writeOffset = startingOffset;
+      throw error;
+    }
     this.#hash.update(bytes);
-    this.#retainedBytes += bytes.length;
+    this.#writeOffset = startingOffset + bytes.length;
+    this.#retainedBytes = this.#writeOffset;
+    this.#hashSnapshots.push({
+      retainedBytes: this.#retainedBytes,
+      hash: this.#hash.copy(),
+    });
   }
 
   async truncateTo(retainedBytes: number): Promise<void> {
@@ -103,8 +132,22 @@ class FileArtifactWriteSession implements ArtifactWriteSession {
     if (!Number.isSafeInteger(retainedBytes) || retainedBytes < 0 || retainedBytes > this.#retainedBytes) {
       throw new Error('RESTRICTED_SINK_INVALID_TRUNCATE: retainedBytes is out of range');
     }
+    const snapshot = [...this.#hashSnapshots]
+      .reverse()
+      .find((entry) => entry.retainedBytes === retainedBytes);
+    if (snapshot === undefined) {
+      throw new Error('RESTRICTED_SINK_INVALID_TRUNCATE: retainedBytes is not a committed offset');
+    }
     await this.#handle.truncate(retainedBytes);
     this.#retainedBytes = retainedBytes;
+    this.#writeOffset = retainedBytes;
+    this.#hash = snapshot.hash.copy();
+    while (
+      this.#hashSnapshots.length > 1
+      && this.#hashSnapshots[this.#hashSnapshots.length - 1]!.retainedBytes > retainedBytes
+    ) {
+      this.#hashSnapshots.pop();
+    }
   }
 
   async finalize(): Promise<ArtifactFinalizeResult> {

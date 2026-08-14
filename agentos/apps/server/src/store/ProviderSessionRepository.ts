@@ -1,7 +1,7 @@
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
-import type { TransactionDatabase } from './Transaction.js';
+import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
 
 /**
  * M4-P2B durable Provider Session repository (Migration 014
@@ -494,73 +494,79 @@ export class ProviderSessionRepository {
     const createdAt = input.createdAt ?? new Date().toISOString();
     assertCanonicalTimestamp(createdAt, 'createdAt');
 
-    const existing = this.findByClaimKey(
-      workspaceId,
-      runId,
-      stageId,
-      stageAttempt,
-      PROVIDER_SESSION_AUTHORITY_ROLE,
-    );
-    if (existing !== undefined) return { kind: 'joined', session: existing };
-
-    const id = createEntityId('providerSession');
-    const run = this.db.prepare(`
-      INSERT INTO provider_sessions (
-        id, workspace_id, task_id, run_id, stage_id, stage_attempt,
-        authority_role, agent_id, provider_config_id, provider_config_version,
-        provider_type, adapter_id, adapter_version, config_schema_version,
-        runtime_mode, native_session_id, status, claim_epoch, claim_owner_id,
-        claim_lease_expires_at, adapter_start_requested_at, capabilities_json,
-        error_code, error_detail_redacted, started_at, last_activity_at,
-        completed_at, version, created_at, updated_at, archived_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'starting', ?, ?, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, 1, ?, ?, NULL)
-    `).run(
-      id,
-      workspaceId,
-      taskId,
-      runId,
-      stageId,
-      stageAttempt,
-      PROVIDER_SESSION_AUTHORITY_ROLE,
-      agentId,
-      providerConfigId,
-      providerConfigVersion,
-      providerType,
-      adapterId,
-      adapterVersion,
-      configSchemaVersion,
-      input.runtimeMode,
-      nativeSessionId,
-      claimEpoch,
-      claimOwnerId,
-      claimLeaseExpiresAt,
-      capabilitiesJson,
-      createdAt,
-      createdAt,
-    ) as { changes: number };
-
-    if (run.changes !== 1) {
-      // A concurrent winner committed the same five-column claim first.
-      const joined = this.findByClaimKey(
+    const insert = () => {
+      const existing = this.findByClaimKey(
         workspaceId,
         runId,
         stageId,
         stageAttempt,
         PROVIDER_SESSION_AUTHORITY_ROLE,
       );
-      if (joined !== undefined) return { kind: 'joined', session: joined };
-      throw new ProviderSessionValidationError(
-        'PROVIDER_SESSION_VALIDATION_FAILED: session claim insert failed',
-      );
-    }
+      if (existing !== undefined) return { kind: 'joined' as const, session: existing };
 
-    const session = this.findById(workspaceId, id);
-    if (session === undefined) {
-      throw new ProviderSessionValidationError(
-        'PROVIDER_SESSION_VALIDATION_FAILED: inserted session not found',
-      );
-    }
-    return { kind: 'created', session };
+      const id = createEntityId('providerSession');
+      const run = this.db.prepare(`
+        INSERT INTO provider_sessions (
+          id, workspace_id, task_id, run_id, stage_id, stage_attempt,
+          authority_role, agent_id, provider_config_id, provider_config_version,
+          provider_type, adapter_id, adapter_version, config_schema_version,
+          runtime_mode, native_session_id, status, claim_epoch, claim_owner_id,
+          claim_lease_expires_at, adapter_start_requested_at, capabilities_json,
+          error_code, error_detail_redacted, started_at, last_activity_at,
+          completed_at, version, created_at, updated_at, archived_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'starting', ?, ?, ?, NULL, ?, NULL, NULL, NULL, NULL, NULL, 1, ?, ?, NULL)
+      `).run(
+        id,
+        workspaceId,
+        taskId,
+        runId,
+        stageId,
+        stageAttempt,
+        PROVIDER_SESSION_AUTHORITY_ROLE,
+        agentId,
+        providerConfigId,
+        providerConfigVersion,
+        providerType,
+        adapterId,
+        adapterVersion,
+        configSchemaVersion,
+        input.runtimeMode,
+        nativeSessionId,
+        claimEpoch,
+        claimOwnerId,
+        claimLeaseExpiresAt,
+        capabilitiesJson,
+        createdAt,
+        createdAt,
+      ) as { changes: number };
+
+      if (run.changes !== 1) {
+        // A concurrent winner committed the same five-column claim first.
+        const joined = this.findByClaimKey(
+          workspaceId,
+          runId,
+          stageId,
+          stageAttempt,
+          PROVIDER_SESSION_AUTHORITY_ROLE,
+        );
+        if (joined !== undefined) return { kind: 'joined' as const, session: joined };
+        throw new ProviderSessionValidationError(
+          'PROVIDER_SESSION_VALIDATION_FAILED: session claim insert failed',
+        );
+      }
+
+      const session = this.findById(workspaceId, id);
+      if (session === undefined) {
+        throw new ProviderSessionValidationError(
+          'PROVIDER_SESSION_VALIDATION_FAILED: inserted session not found',
+        );
+      }
+      return { kind: 'created' as const, session };
+    };
+    // Match ProcessRepository: BEGIN IMMEDIATE serializes the claim read +
+    // insert, while an existing repository transaction reuses its lock and
+    // never attempts a nested BEGIN.
+    return isTransactionActive(this.db) ? insert() : inTransaction(this.db, insert);
   }
 
   findById(workspaceId: string, sessionId: string): ProviderSession | undefined {
