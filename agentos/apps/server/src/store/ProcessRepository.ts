@@ -1,7 +1,9 @@
+import { createHash } from 'node:crypto';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
 import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
+import type { DurableRuntimeFactWriter } from './RuntimeEventRepository.js';
 
 /**
  * M4-P2B durable Runtime Process repository (Migration 014
@@ -615,7 +617,10 @@ function assertOptionalCleanupResult(value: CleanupResult | null | undefined): s
 }
 
 export class ProcessRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  constructor(
+    private readonly db: TransactionDatabase,
+    private readonly factWriter?: DurableRuntimeFactWriter,
+  ) {}
 
   /**
    * Create the `created` reservation BEFORE any spawn. A duplicate root
@@ -659,6 +664,9 @@ export class ProcessRepository {
    * spawn; a `starting`/later Process with a null PID is never retried.
    */
   casStartProcess(input: CasStartProcessInput): ProcessMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.casStartProcess(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertProcessId(input.processId, 'processId');
     assertExpectedVersion(input.expectedVersion);
@@ -683,7 +691,13 @@ export class ProcessRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', process: this.findById(input.workspaceId, input.processId)! };
+      const process = this.findById(input.workspaceId, input.processId)!;
+      this.#appendProcessFact('process.starting', process, input.timestamp, {
+        from: 'created',
+        to: 'starting',
+        spawnRightConsumed: true,
+      });
+      return { kind: 'applied', process };
     }
     return this.#classifyProcessMutationFailure(
       input.workspaceId,
@@ -710,6 +724,9 @@ export class ProcessRepository {
    * and never identity.
    */
   casBindNativeIdentity(input: BindNativeIdentityInput): ProcessMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.casBindNativeIdentity(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertProcessId(input.processId, 'processId');
     assertExpectedVersion(input.expectedVersion);
@@ -764,7 +781,15 @@ export class ProcessRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', process: this.findById(input.workspaceId, input.processId)! };
+      const process = this.findById(input.workspaceId, input.processId)!;
+      this.#appendProcessFact('process.started', process, input.timestamp, {
+        nativePid: process.nativePid!,
+        nativeStartedAt: process.nativeStartedAt!,
+        platform: process.platform,
+        ...(process.treeOwnershipMode === null ? {} : { treeOwnershipMode: process.treeOwnershipMode }),
+        startedAt: process.startedAt ?? input.timestamp,
+      });
+      return { kind: 'applied', process };
     }
     return this.#classifyProcessMutationFailure(
       input.workspaceId,
@@ -791,6 +816,9 @@ export class ProcessRepository {
    * implicit retry or replacement).
    */
   transitionStatus(input: ProcessStatusTransitionInput): ProcessMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.transitionStatus(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertProcessId(input.processId, 'processId');
     assertExpectedVersion(input.expectedVersion);
@@ -867,7 +895,9 @@ export class ProcessRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', process: this.findById(input.workspaceId, input.processId)! };
+      const process = this.findById(input.workspaceId, input.processId)!;
+      this.#appendTransitionFact(input, process);
+      return { kind: 'applied', process };
     }
     return this.#classifyProcessMutationFailure(
       input.workspaceId,
@@ -893,6 +923,9 @@ export class ProcessRepository {
    * and installs a new owner/lease.
    */
   casTransferClaim(input: ProcessClaimTransferInput): ProcessMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.casTransferClaim(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertProcessId(input.processId, 'processId');
     assertExpectedVersion(input.expectedVersion);
@@ -933,7 +966,13 @@ export class ProcessRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', process: this.findById(input.workspaceId, input.processId)! };
+      const process = this.findById(input.workspaceId, input.processId)!;
+      this.#appendProcessFact('process.claim_transferred', process, input.timestamp, {
+        claimEpoch: process.claimEpoch,
+        authorityRole: process.authorityRole ?? 'primary-provider',
+        ownerChanged: true,
+      });
+      return { kind: 'applied', process };
     }
     return this.#classifyProcessMutationFailure(
       input.workspaceId,
@@ -1136,7 +1175,126 @@ export class ProcessRepository {
         'RUNTIME_PROCESS_VALIDATION_FAILED: inserted process not found',
       );
     }
+    this.#appendProcessFact('process.launch_requested', process, process.createdAt, {
+      processType: process.processType,
+      executable: process.executableResolved,
+      argsRedacted: this.#redactedArgs(process.argsRedactedJson),
+      cwd: process.cwdResolved,
+      shell: process.shell === 1,
+      timeoutPolicyDigest: this.#sha256(process.timeoutPolicyJson),
+      claimEpoch: process.claimEpoch,
+      ...(process.authorityRole === null ? {} : { authorityRole: process.authorityRole }),
+    });
     return { kind: 'created', process };
+  }
+
+  #appendProcessFact(
+    type: string,
+    process: RuntimeProcess,
+    timestamp: string,
+    payload: Record<string, unknown>,
+  ): void {
+    this.factWriter?.appendWithinTransaction({
+      type,
+      workspaceId: process.workspaceId,
+      taskId: process.taskId,
+      runId: process.runId,
+      ...(process.stageId === null ? {} : { stageId: process.stageId }),
+      ...(process.providerSessionId === null ? {} : { providerSessionId: process.providerSessionId }),
+      processId: process.id,
+      timestamp,
+      correlationId: this.#correlationId(type, process.id),
+      payload,
+    });
+  }
+
+  #appendTransitionFact(input: ProcessStatusTransitionInput, process: RuntimeProcess): void {
+    if (input.to === 'stopping') {
+      this.#appendProcessFact('process.stopping', process, input.timestamp, {
+        reason: process.terminationReason ?? 'stop-requested',
+        nativeIdentityPending: process.nativePid === null,
+        stoppingAt: process.stoppingAt ?? input.timestamp,
+        ...(process.cleanupResult === null ? {} : { cleanupResult: process.cleanupResult }),
+      });
+      return;
+    }
+    if (input.to === 'exited') {
+      this.#appendProcessFact('process.exited', process, input.timestamp, {
+        exitCode: process.exitCode,
+        exitSignal: process.exitSignal,
+        terminationReason: process.terminationReason,
+        cleanupResult: process.cleanupResult,
+        exitedAt: process.exitedAt ?? input.timestamp,
+      });
+      return;
+    }
+    if (input.to === 'failed') {
+      this.#appendProcessFact('process.failed', process, input.timestamp, {
+        errorCode: process.errorCode ?? 'PROCESS_UNKNOWN_ERROR',
+        failedAt: process.exitedAt ?? input.timestamp,
+        ...(process.cleanupResult === null ? {} : { cleanupResult: process.cleanupResult }),
+      });
+      return;
+    }
+    if (input.to === 'orphaned') {
+      const classification = process.recoveryClassification === 'mismatch'
+        ? 'mismatch'
+        : process.cleanupResult === 'SURVIVORS' ? 'survivors' : 'unknown';
+      this.#appendProcessFact('process.orphaned', process, input.timestamp, {
+        classification,
+        cleanupRequired: true,
+        reason: process.errorCode ?? process.cleanupResult ?? 'process-control-uncertain',
+      });
+      return;
+    }
+    if (input.to === 'unknown') {
+      this.#appendProcessFact('process.cleanup_required', process, input.timestamp, {
+        cleanupResult: process.cleanupResult ?? 'UNKNOWN_PLATFORM_UNAVAILABLE',
+        survivorCount: this.#survivorCount(process.survivorPidsRedactedJson),
+        reason: process.errorCode ?? 'process-control-uncertain',
+        checkedAt: process.recoveryCheckedAt ?? input.timestamp,
+      });
+      return;
+    }
+    this.#appendProcessFact('process.state_changed', process, input.timestamp, {
+      from: input.expectedFrom,
+      to: input.to,
+      updatedAt: input.timestamp,
+      ...(process.cleanupResult === null ? {} : { cleanupResult: process.cleanupResult }),
+    });
+  }
+
+  #redactedArgs(json: string): string[] {
+    try {
+      const parsed = JSON.parse(json) as unknown;
+      if (!Array.isArray(parsed)) return ['<redacted>'];
+      return parsed.map(value => {
+        if (typeof value !== 'string') return '<redacted>';
+        return /(secret|token|password|api[_-]?key|authorization|bearer)/iu.test(value)
+          ? '<redacted>'
+          : value;
+      });
+    } catch {
+      return ['<redacted>'];
+    }
+  }
+
+  #sha256(value: string): string {
+    return createHash('sha256').update(value, 'utf8').digest('hex');
+  }
+
+  #survivorCount(json: string | null): number {
+    if (json === null) return 0;
+    try {
+      const parsed = JSON.parse(json) as unknown;
+      return Array.isArray(parsed) ? parsed.length : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  #correlationId(kind: string, id: string): string {
+    return `m4-p2b:${kind}:${id}`;
   }
 
   /**

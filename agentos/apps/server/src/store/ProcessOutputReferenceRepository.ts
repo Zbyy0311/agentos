@@ -1,6 +1,7 @@
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
-import type { TransactionDatabase } from './Transaction.js';
+import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
+import type { DurableRuntimeFactWriter } from './RuntimeEventRepository.js';
 
 /**
  * M4-P2B durable per-stream output reference repository (Migration 014
@@ -349,13 +350,19 @@ function assertSha256(value: string): string {
 }
 
 export class ProcessOutputReferenceRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  constructor(
+    private readonly db: TransactionDatabase,
+    private readonly factWriter?: DurableRuntimeFactWriter,
+  ) {}
 
   /**
    * Create the per-stream reference with zero counts and no raw bytes. A
    * duplicate (process_id, stream) key joins the existing reference.
    */
   createReference(input: CreateOutputReferenceInput): CreateOutputReferenceResult {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.createReference(input));
+    }
     const workspaceId = assertNonEmptyString(input.workspaceId, 'workspaceId');
     const runId = assertNonEmptyString(input.runId, 'runId');
     const processId = assertNonEmptyString(input.processId, 'processId');
@@ -465,6 +472,7 @@ export class ProcessOutputReferenceRepository {
         'PROCESS_OUTPUT_REFERENCE_VALIDATION_FAILED: inserted output reference not found',
       );
     }
+    this.#appendAdvance(reference, 0, reference.updatedAt, false);
     return { kind: 'created', reference };
   }
 
@@ -496,6 +504,9 @@ export class ProcessOutputReferenceRepository {
    * never an implicit retry.
    */
   checkpoint(input: OutputReferenceCheckpointInput): OutputReferenceMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.checkpoint(input));
+    }
     const workspaceId = assertNonEmptyString(input.workspaceId, 'workspaceId');
     const processId = assertNonEmptyString(input.processId, 'processId');
     if (!OUTPUT_STREAM_NAMES.includes(input.stream)) {
@@ -589,9 +600,11 @@ export class ProcessOutputReferenceRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
+      const reference = this.findReference(workspaceId, processId, input.stream)!;
+      this.#appendAdvance(reference, current.nextSourceOffset, input.updatedAt ?? reference.updatedAt, false);
       return {
         kind: 'applied',
-        reference: this.findReference(workspaceId, processId, input.stream)!,
+        reference,
       };
     }
     const after = this.findReference(workspaceId, processId, input.stream)!;
@@ -608,6 +621,9 @@ export class ProcessOutputReferenceRepository {
    * fact; finalized rows reject further mutation (repository + trigger).
    */
   finalizeReference(input: FinalizeOutputReferenceInput): OutputReferenceMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.finalizeReference(input));
+    }
     const workspaceId = assertNonEmptyString(input.workspaceId, 'workspaceId');
     const processId = assertNonEmptyString(input.processId, 'processId');
     if (!OUTPUT_STREAM_NAMES.includes(input.stream)) {
@@ -652,13 +668,58 @@ export class ProcessOutputReferenceRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
+      const reference = this.findReference(workspaceId, processId, input.stream)!;
+      this.#appendAdvance(reference, current.nextSourceOffset, input.finalizedAt ?? reference.updatedAt, true);
       return {
         kind: 'applied',
-        reference: this.findReference(workspaceId, processId, input.stream)!,
+        reference,
       };
     }
     const after = this.findReference(workspaceId, processId, input.stream)!;
     if (after.finalized) return { kind: 'duplicate', reference: after };
     return { kind: 'version-conflict', reference: after };
+  }
+
+  #appendAdvance(
+    reference: ProcessOutputReference,
+    priorSourceOffset: number,
+    timestamp: string,
+    finalizedMutation: boolean,
+  ): void {
+    const binding = this.db.prepare(`
+      SELECT task_id, stage_id, provider_session_id
+      FROM runtime_processes
+      WHERE workspace_id = ? AND id = ?
+    `).get(reference.workspaceId, reference.processId) as {
+      task_id: string | null;
+      stage_id: string | null;
+      provider_session_id: string | null;
+    } | undefined;
+    this.factWriter?.appendWithinTransaction({
+      type: 'process.output_reference_advanced',
+      workspaceId: reference.workspaceId,
+      ...(binding?.task_id === null || binding?.task_id === undefined ? {} : { taskId: binding.task_id }),
+      runId: reference.runId,
+      ...(binding?.stage_id === null || binding?.stage_id === undefined ? {} : { stageId: binding.stage_id }),
+      ...(binding?.provider_session_id === null || binding?.provider_session_id === undefined
+        ? {}
+        : { providerSessionId: binding.provider_session_id }),
+      processId: reference.processId,
+      artifactId: reference.artifactId,
+      timestamp,
+      correlationId: `m4-p2b:output:${reference.processId}:${reference.stream}`,
+      payload: {
+        stream: reference.stream,
+        artifactId: reference.artifactId,
+        priorSourceOffset,
+        nextSourceOffset: reference.nextSourceOffset,
+        retainedBytes: reference.retainedBytes,
+        segmentCount: reference.segmentCount,
+        truncated: reference.truncated,
+        finalized: finalizedMutation || reference.finalized,
+        ...(reference.truncationReason === null ? {} : { truncationReason: reference.truncationReason }),
+        ...(reference.finalizedAt === null ? {} : { finalizedAt: reference.finalizedAt }),
+      },
+    });
   }
 }

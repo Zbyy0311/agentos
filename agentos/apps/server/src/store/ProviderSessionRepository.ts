@@ -2,6 +2,7 @@ import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
 import { inTransaction, isTransactionActive, type TransactionDatabase } from './Transaction.js';
+import type { DurableRuntimeFactWriter } from './RuntimeEventRepository.js';
 
 /**
  * M4-P2B durable Provider Session repository (Migration 014
@@ -422,7 +423,10 @@ function assertExpectedVersion(version: number): void {
 }
 
 export class ProviderSessionRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  constructor(
+    private readonly db: TransactionDatabase,
+    private readonly factWriter?: DurableRuntimeFactWriter,
+  ) {}
 
   /**
    * Create the first durable Session row with status `starting`. A duplicate
@@ -561,6 +565,22 @@ export class ProviderSessionRepository {
           'PROVIDER_SESSION_VALIDATION_FAILED: inserted session not found',
         );
       }
+      this.factWriter?.appendWithinTransaction({
+        type: 'process.session_claimed',
+        workspaceId: session.workspaceId,
+        taskId: session.taskId,
+        runId: session.runId,
+        stageId: session.stageId,
+        providerSessionId: session.id,
+        timestamp: session.createdAt,
+        correlationId: this.#correlationId('session-claim', session.id),
+        payload: {
+          stageAttempt: session.stageAttempt,
+          authorityRole: session.authorityRole,
+          claimEpoch: session.claimEpoch,
+          runtimeMode: session.runtimeMode,
+        },
+      });
       return { kind: 'created' as const, session };
     };
     // Match ProcessRepository: BEGIN IMMEDIATE serializes the claim read +
@@ -598,6 +618,9 @@ export class ProviderSessionRepository {
    * (already-requested) and never re-marks the marker.
    */
   casSetAdapterStartRequested(input: CasSetAdapterStartRequestedInput): ProviderSessionMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.casSetAdapterStartRequested(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertNonEmptyString(input.sessionId, 'sessionId');
     assertExpectedVersion(input.expectedVersion);
@@ -624,7 +647,24 @@ export class ProviderSessionRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', session: this.findById(input.workspaceId, input.sessionId)! };
+      const session = this.findById(input.workspaceId, input.sessionId)!;
+      this.factWriter?.appendWithinTransaction({
+        type: 'process.session_state_changed',
+        workspaceId: session.workspaceId,
+        taskId: session.taskId,
+        runId: session.runId,
+        stageId: session.stageId,
+        providerSessionId: session.id,
+        timestamp: input.timestamp,
+        correlationId: this.#correlationId('session-start-request', session.id),
+        payload: {
+          from: session.status,
+          to: session.status,
+          adapterStartRequested: true,
+          terminal: false,
+        },
+      });
+      return { kind: 'applied', session };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,
@@ -646,6 +686,9 @@ export class ProviderSessionRepository {
    * stored terminal fact (never an implicit retry).
    */
   transitionStatus(input: SessionStatusTransitionInput): ProviderSessionMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.transitionStatus(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertNonEmptyString(input.sessionId, 'sessionId');
     assertExpectedVersion(input.expectedVersion);
@@ -713,7 +756,25 @@ export class ProviderSessionRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', session: this.findById(input.workspaceId, input.sessionId)! };
+      const session = this.findById(input.workspaceId, input.sessionId)!;
+      this.factWriter?.appendWithinTransaction({
+        type: 'process.session_state_changed',
+        workspaceId: session.workspaceId,
+        taskId: session.taskId,
+        runId: session.runId,
+        stageId: session.stageId,
+        providerSessionId: session.id,
+        timestamp: input.timestamp,
+        correlationId: this.#correlationId('session-state', session.id),
+        payload: {
+          from: input.expectedFrom,
+          to: input.to,
+          adapterStartRequested: session.adapterStartRequestedAt !== null,
+          terminal: TERMINAL_PROVIDER_SESSION_STATUSES.includes(session.status as TerminalProviderSessionStatus),
+          ...(session.errorCode === null ? {} : { errorCode: session.errorCode }),
+        },
+      });
+      return { kind: 'applied', session };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,
@@ -743,6 +804,9 @@ export class ProviderSessionRepository {
    * epoch and installs a new owner/lease; anything else is a fence conflict.
    */
   casTransferClaim(input: SessionClaimTransferInput): ProviderSessionMutationOutcome {
+    if (this.factWriter && !isTransactionActive(this.db)) {
+      return inTransaction(this.db, () => this.casTransferClaim(input));
+    }
     assertNonEmptyString(input.workspaceId, 'workspaceId');
     assertNonEmptyString(input.sessionId, 'sessionId');
     assertExpectedVersion(input.expectedVersion);
@@ -783,7 +847,23 @@ export class ProviderSessionRepository {
     ) as { changes: number };
 
     if (result.changes === 1) {
-      return { kind: 'applied', session: this.findById(input.workspaceId, input.sessionId)! };
+      const session = this.findById(input.workspaceId, input.sessionId)!;
+      this.factWriter?.appendWithinTransaction({
+        type: 'process.claim_transferred',
+        workspaceId: session.workspaceId,
+        taskId: session.taskId,
+        runId: session.runId,
+        stageId: session.stageId,
+        providerSessionId: session.id,
+        timestamp: input.timestamp,
+        correlationId: this.#correlationId('session-claim-transfer', session.id),
+        payload: {
+          claimEpoch: session.claimEpoch,
+          authorityRole: session.authorityRole,
+          ownerChanged: true,
+        },
+      });
+      return { kind: 'applied', session };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,
@@ -803,6 +883,10 @@ export class ProviderSessionRepository {
       },
       { expectedFrom: 'starting' },
     );
+  }
+
+  #correlationId(kind: string, id: string): string {
+    return `m4-p2b:${kind}:${id}`;
   }
 
   #classifyMutationFailure(

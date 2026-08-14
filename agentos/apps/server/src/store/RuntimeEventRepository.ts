@@ -3,6 +3,7 @@ import type {
   RuntimeEventConsumptionResult,
   RuntimeEventDraft,
   RuntimeEventEnvelope,
+  RuntimeEventMetadata,
   RuntimeEventSeverity,
   RuntimeEventSource,
   RuntimeEventVisibility,
@@ -10,8 +11,10 @@ import type {
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import type { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
 import { isTransactionActive, registerAfterCommit, type TransactionDatabase } from './Transaction.js';
-import { isValidEntityId } from './Identity.js';
+import { createEntityId, isValidEntityId } from './Identity.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
+import type { RunSequenceAllocator } from './RunSequenceAllocator.js';
+import type { OutboxMessage, OutboxRepository } from './OutboxRepository.js';
 
 export class RuntimeEventRepositoryError extends Error {
   constructor(
@@ -25,6 +28,105 @@ export class RuntimeEventRepositoryError extends Error {
   ) {
     super(`${code}: ${message}`);
     this.name = 'RuntimeEventRepositoryError';
+  }
+}
+
+/**
+ * One narrow adapter over the existing M3 Event Store + Outbox. P2B
+ * repositories receive this interface rather than constructing a second
+ * persistence path. The caller owns the SQLite transaction; this writer only
+ * allocates the canonical Run sequence, appends the Event, and inserts its
+ * one Outbox handoff.
+ */
+export interface DurableRuntimeFactInput {
+  readonly type: string;
+  readonly workspaceId: string;
+  readonly taskId?: string;
+  readonly runId: string;
+  readonly stageId?: string;
+  readonly providerSessionId?: string;
+  readonly processId?: string;
+  readonly artifactId?: string;
+  readonly timestamp: string;
+  readonly correlationId: string;
+  readonly causationId?: string;
+  readonly parentEventId?: string;
+  readonly metadata?: RuntimeEventMetadata;
+  readonly payload: Record<string, unknown>;
+}
+
+export interface DurableRuntimeFactResult {
+  readonly event: RuntimeEventEnvelope;
+  readonly outbox: OutboxMessage;
+}
+
+export interface DurableRuntimeFactWriter {
+  appendWithinTransaction(input: DurableRuntimeFactInput): DurableRuntimeFactResult;
+}
+
+export interface RuntimeEventOutboxWriterOptions {
+  readonly createEventId?: () => string;
+  readonly createOutboxId?: (eventId: string) => string;
+}
+
+/** Reuses the M3 repositories; it is not a second Event/Outbox store. */
+export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
+  private readonly createEventId: () => string;
+  private readonly createOutboxId: (eventId: string) => string;
+
+  constructor(
+    private readonly runtimeEvents: RuntimeEventRepository,
+    private readonly runSequenceAllocator: RunSequenceAllocator,
+    private readonly outbox: OutboxRepository,
+    private readonly db: TransactionDatabase,
+    options: RuntimeEventOutboxWriterOptions = {},
+  ) {
+    this.createEventId = options.createEventId ?? (() => createEntityId('event'));
+    this.createOutboxId = options.createOutboxId ?? (eventId => `outbox_${eventId}`);
+  }
+
+  appendWithinTransaction(input: DurableRuntimeFactInput): DurableRuntimeFactResult {
+    if (!isTransactionActive(this.db)) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'Durable Runtime facts require an active transaction',
+      );
+    }
+    if (!isCanonicalUtcTimestamp(input.timestamp)) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_TIMESTAMP_INVALID',
+        'Durable Runtime fact timestamp must be canonical UTC ISO 8601 milliseconds',
+      );
+    }
+
+    const sequence = this.runSequenceAllocator.allocateWithinTransaction(input.workspaceId, input.runId);
+    const event = this.runtimeEvents.appendWithinTransaction({
+      id: this.createEventId(),
+      schemaVersion: 1,
+      type: input.type,
+      workspaceId: input.workspaceId,
+      ...(input.taskId === undefined ? {} : { taskId: input.taskId }),
+      runId: input.runId,
+      ...(input.stageId === undefined ? {} : { stageId: input.stageId }),
+      ...(input.providerSessionId === undefined ? {} : { providerSessionId: input.providerSessionId }),
+      ...(input.processId === undefined ? {} : { processId: input.processId }),
+      ...(input.artifactId === undefined ? {} : { artifactId: input.artifactId }),
+      sequence,
+      timestamp: input.timestamp,
+      source: 'process-manager',
+      correlationId: input.correlationId,
+      ...(input.causationId === undefined ? {} : { causationId: input.causationId }),
+      ...(input.parentEventId === undefined ? {} : { parentEventId: input.parentEventId }),
+      payload: input.payload,
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+    });
+    const outbox = this.outbox.insertWithinTransaction({
+      id: this.createOutboxId(event.id),
+      eventId: event.id,
+      availableAt: input.timestamp,
+      createdAt: input.timestamp,
+    });
+    return { event, outbox };
   }
 }
 

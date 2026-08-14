@@ -58,6 +58,9 @@ export interface RuntimeEventDefinition<TPayload = unknown> {
   readonly validatePayload: RuntimeEventPayloadGuard<TPayload>;
   readonly requiresStageId?: boolean;
   readonly forbidsStageId?: boolean;
+  readonly requiresProcessId?: boolean;
+  readonly requiresProviderSessionId?: boolean;
+  readonly requiresArtifactId?: boolean;
   readonly requiresApprovalRequestId?: boolean;
   readonly source: RuntimeEventSource;
 }
@@ -84,6 +87,9 @@ export type RuntimeEventRegistryErrorCode =
   | 'INVALID_EVENT_PAYLOAD'
   | 'MISSING_STAGE_ID'
   | 'UNEXPECTED_STAGE_ID'
+  | 'MISSING_PROCESS_ID'
+  | 'MISSING_PROVIDER_SESSION_ID'
+  | 'MISSING_ARTIFACT_ID'
   | 'MISSING_APPROVAL_REQUEST_ID'
   | 'INVALID_EVENT_TIMESTAMP'
   | 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE';
@@ -129,6 +135,10 @@ function validateDefinition(definition: RuntimeEventDefinition): void {
     || !Array.isArray(definition.payloadSchema.optional)
     || (definition.requiresStageId !== undefined && typeof definition.requiresStageId !== 'boolean')
     || (definition.forbidsStageId !== undefined && typeof definition.forbidsStageId !== 'boolean')
+    || (definition.requiresProcessId !== undefined && typeof definition.requiresProcessId !== 'boolean')
+    || (definition.requiresProviderSessionId !== undefined
+      && typeof definition.requiresProviderSessionId !== 'boolean')
+    || (definition.requiresArtifactId !== undefined && typeof definition.requiresArtifactId !== 'boolean')
     || (definition.requiresApprovalRequestId !== undefined
       && typeof definition.requiresApprovalRequestId !== 'boolean')
   ) {
@@ -158,7 +168,18 @@ function keysAreKnown(value: Record<string, unknown>, schema: RuntimeEventPayloa
 }
 
 function hasInvalidPayloadTimestamp(value: Record<string, unknown>): boolean {
-  return ['dequeuedAt', 'startedAt', 'startingAt', 'expiresAt', 'decidedAt'].some(
+  return [
+    'dequeuedAt',
+    'startedAt',
+    'startingAt',
+    'expiresAt',
+    'decidedAt',
+    'nativeStartedAt',
+    'exitedAt',
+    'stoppingAt',
+    'finalizedAt',
+    'updatedAt',
+  ].some(
     key => value[key] !== undefined && !isCanonicalRuntimeTimestamp(value[key]),
   );
 }
@@ -276,6 +297,27 @@ export class CentralRuntimeEventRegistry {
       throw new RuntimeEventRegistryError(
         'MISSING_STAGE_ID',
         'Stage Runtime Event requires an envelope stageId: ' + draft.type,
+      );
+    }
+
+    if (definition.requiresProcessId && !isNonEmptyString(draft.processId)) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_PROCESS_ID',
+        'Process Runtime Event requires an envelope processId: ' + draft.type,
+      );
+    }
+
+    if (definition.requiresProviderSessionId && !isNonEmptyString(draft.providerSessionId)) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_PROVIDER_SESSION_ID',
+        'Process Runtime Event requires an envelope providerSessionId: ' + draft.type,
+      );
+    }
+
+    if (definition.requiresArtifactId && !isNonEmptyString(draft.artifactId)) {
+      throw new RuntimeEventRegistryError(
+        'MISSING_ARTIFACT_ID',
+        'Process Runtime Event requires an envelope artifactId: ' + draft.type,
       );
     }
 
@@ -1048,6 +1090,304 @@ export function isTextCompletedPayload(value: unknown): value is TextCompletedPa
   );
 }
 
+/* ------------------------------------------------------------------------- *
+ * M4-P2B Process facts
+ * ------------------------------------------------------------------------- */
+
+export interface ProcessSessionClaimedPayload {
+  readonly stageAttempt: number;
+  readonly authorityRole: 'primary-provider';
+  readonly claimEpoch: number;
+  readonly runtimeMode: 'cli' | 'api' | 'ssh' | 'container';
+}
+
+export interface ProcessSessionStateChangedPayload {
+  readonly from: string;
+  readonly to: string;
+  readonly adapterStartRequested: boolean;
+  readonly terminal: boolean;
+  readonly errorCode?: string;
+}
+
+export interface ProcessClaimTransferredPayload {
+  readonly claimEpoch: number;
+  readonly authorityRole: 'primary-provider';
+  readonly ownerChanged: boolean;
+}
+
+export interface ProcessLaunchRequestedPayload {
+  readonly processType: 'provider' | 'tool' | 'command' | 'git' | 'test' | 'system' | 'extension';
+  readonly executable: string;
+  readonly argsRedacted: string[];
+  readonly cwd: string;
+  readonly shell: boolean;
+  readonly timeoutPolicyDigest: string;
+  readonly claimEpoch: number;
+  readonly authorityRole?: 'primary-provider';
+}
+
+export interface ProcessStartingPayload {
+  readonly from: 'created';
+  readonly to: 'starting';
+  readonly spawnRightConsumed: true;
+}
+
+export interface ProcessStartedPayload {
+  readonly nativePid: number;
+  readonly nativeStartedAt: string;
+  readonly platform: string;
+  readonly treeOwnershipMode?: string;
+  readonly startedAt: string;
+}
+
+export interface ProcessStateChangedPayload {
+  readonly from: string;
+  readonly to: string;
+  readonly updatedAt: string;
+  readonly cleanupResult?: string;
+}
+
+export interface ProcessStoppingPayload {
+  readonly reason: string;
+  readonly nativeIdentityPending: boolean;
+  readonly stoppingAt: string;
+  readonly cleanupResult?: string;
+}
+
+export interface ProcessExitedPayload {
+  readonly exitCode: number | null;
+  readonly exitSignal: string | null;
+  readonly terminationReason: string | null;
+  readonly cleanupResult: string | null;
+  readonly exitedAt: string;
+}
+
+export interface ProcessFailedPayload {
+  readonly errorCode: string;
+  readonly failedAt: string;
+  readonly detailRedacted?: string;
+  readonly cleanupResult?: string;
+}
+
+export interface ProcessCleanupRequiredPayload {
+  readonly cleanupResult: string;
+  readonly survivorCount: number;
+  readonly reason: string;
+  readonly checkedAt: string;
+}
+
+export interface ProcessOrphanedPayload {
+  readonly classification: 'mismatch' | 'unknown' | 'survivors';
+  readonly cleanupRequired: boolean;
+  readonly reason: string;
+}
+
+export interface ProcessOutputReferenceAdvancedPayload {
+  readonly stream: 'stdout' | 'stderr';
+  readonly artifactId: string;
+  readonly priorSourceOffset: number;
+  readonly nextSourceOffset: number;
+  readonly retainedBytes: number;
+  readonly segmentCount: number;
+  readonly truncated: boolean;
+  readonly finalized: boolean;
+  readonly truncationReason?: string;
+  readonly finalizedAt?: string;
+}
+
+function isNonNegativeSafeInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isNullableSafeInteger(value: unknown): value is number | null {
+  return value === null || isNonNegativeSafeInteger(value);
+}
+
+function isNullableString(value: unknown): value is string | null {
+  return value === null || isNonEmptyString(value);
+}
+
+function isHexDigest(value: unknown): value is string {
+  return typeof value === 'string' && /^[0-9a-f]{64}$/u.test(value);
+}
+
+function isProcessTransitionPayload(value: unknown): value is ProcessStateChangedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['from', 'to', 'updatedAt', 'cleanupResult'])
+    && hasLifecycleString(value, 'from')
+    && hasLifecycleString(value, 'to')
+    && hasLifecycleCanonicalTimestamp(value, 'updatedAt')
+    && (value.cleanupResult === undefined || hasLifecycleString(value, 'cleanupResult'))
+  );
+}
+
+export function isProcessSessionClaimedPayload(value: unknown): value is ProcessSessionClaimedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['stageAttempt', 'authorityRole', 'claimEpoch', 'runtimeMode'])
+    && isPositiveSafeInteger(value.stageAttempt)
+    && value.authorityRole === 'primary-provider'
+    && isPositiveSafeInteger(value.claimEpoch)
+    && hasValue(['cli', 'api', 'ssh', 'container'], value.runtimeMode)
+  );
+}
+
+export function isProcessSessionStateChangedPayload(value: unknown): value is ProcessSessionStateChangedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['from', 'to', 'adapterStartRequested', 'terminal', 'errorCode'])
+    && hasLifecycleString(value, 'from')
+    && hasLifecycleString(value, 'to')
+    && typeof value.adapterStartRequested === 'boolean'
+    && typeof value.terminal === 'boolean'
+    && hasOptionalLifecycleString(value, 'errorCode')
+  );
+}
+
+export function isProcessClaimTransferredPayload(value: unknown): value is ProcessClaimTransferredPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['claimEpoch', 'authorityRole', 'ownerChanged'])
+    && isPositiveSafeInteger(value.claimEpoch)
+    && value.authorityRole === 'primary-provider'
+    && typeof value.ownerChanged === 'boolean'
+  );
+}
+
+export function isProcessLaunchRequestedPayload(value: unknown): value is ProcessLaunchRequestedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, [
+      'processType',
+      'executable',
+      'argsRedacted',
+      'cwd',
+      'shell',
+      'timeoutPolicyDigest',
+      'claimEpoch',
+      'authorityRole',
+    ])
+    && hasValue(['provider', 'tool', 'command', 'git', 'test', 'system', 'extension'], value.processType)
+    && hasLifecycleString(value, 'executable')
+    && isLifecycleStringArray(value.argsRedacted)
+    && hasLifecycleString(value, 'cwd')
+    && typeof value.shell === 'boolean'
+    && isHexDigest(value.timeoutPolicyDigest)
+    && isPositiveSafeInteger(value.claimEpoch)
+    && (value.authorityRole === undefined || value.authorityRole === 'primary-provider')
+  );
+}
+
+export function isProcessStartingPayload(value: unknown): value is ProcessStartingPayload {
+  if (!isRecord(value)) return false;
+  return hasOnly(value, ['from', 'to', 'spawnRightConsumed'])
+    && value.from === 'created'
+    && value.to === 'starting'
+    && value.spawnRightConsumed === true;
+}
+
+export function isProcessStartedPayload(value: unknown): value is ProcessStartedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['nativePid', 'nativeStartedAt', 'platform', 'treeOwnershipMode', 'startedAt'])
+    && isPositiveSafeInteger(value.nativePid)
+    && hasLifecycleCanonicalTimestamp(value, 'nativeStartedAt')
+    && hasLifecycleString(value, 'platform')
+    && hasOptionalLifecycleString(value, 'treeOwnershipMode')
+    && hasLifecycleCanonicalTimestamp(value, 'startedAt')
+  );
+}
+
+export function isProcessStateChangedPayload(value: unknown): value is ProcessStateChangedPayload {
+  return isProcessTransitionPayload(value);
+}
+
+export function isProcessStoppingPayload(value: unknown): value is ProcessStoppingPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['reason', 'nativeIdentityPending', 'stoppingAt', 'cleanupResult'])
+    && hasLifecycleString(value, 'reason')
+    && typeof value.nativeIdentityPending === 'boolean'
+    && hasLifecycleCanonicalTimestamp(value, 'stoppingAt')
+    && (value.cleanupResult === undefined || hasLifecycleString(value, 'cleanupResult'))
+  );
+}
+
+export function isProcessExitedPayload(value: unknown): value is ProcessExitedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['exitCode', 'exitSignal', 'terminationReason', 'cleanupResult', 'exitedAt'])
+    && isNullableSafeInteger(value.exitCode)
+    && isNullableString(value.exitSignal)
+    && isNullableString(value.terminationReason)
+    && isNullableString(value.cleanupResult)
+    && hasLifecycleCanonicalTimestamp(value, 'exitedAt')
+  );
+}
+
+export function isProcessFailedPayload(value: unknown): value is ProcessFailedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['errorCode', 'failedAt', 'detailRedacted', 'cleanupResult'])
+    && hasLifecycleString(value, 'errorCode')
+    && hasLifecycleCanonicalTimestamp(value, 'failedAt')
+    && hasOptionalLifecycleString(value, 'detailRedacted')
+    && hasOptionalLifecycleString(value, 'cleanupResult')
+  );
+}
+
+export function isProcessCleanupRequiredPayload(value: unknown): value is ProcessCleanupRequiredPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['cleanupResult', 'survivorCount', 'reason', 'checkedAt'])
+    && hasLifecycleString(value, 'cleanupResult')
+    && isNonNegativeSafeInteger(value.survivorCount)
+    && hasLifecycleString(value, 'reason')
+    && hasLifecycleCanonicalTimestamp(value, 'checkedAt')
+  );
+}
+
+export function isProcessOrphanedPayload(value: unknown): value is ProcessOrphanedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['classification', 'cleanupRequired', 'reason'])
+    && hasValue(['mismatch', 'unknown', 'survivors'], value.classification)
+    && typeof value.cleanupRequired === 'boolean'
+    && hasLifecycleString(value, 'reason')
+  );
+}
+
+export function isProcessOutputReferenceAdvancedPayload(
+  value: unknown,
+): value is ProcessOutputReferenceAdvancedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, [
+      'stream',
+      'artifactId',
+      'priorSourceOffset',
+      'nextSourceOffset',
+      'retainedBytes',
+      'segmentCount',
+      'truncated',
+      'finalized',
+      'truncationReason',
+      'finalizedAt',
+    ])
+    && hasValue(['stdout', 'stderr'], value.stream)
+    && hasLifecycleString(value, 'artifactId')
+    && isNonNegativeSafeInteger(value.priorSourceOffset)
+    && isNonNegativeSafeInteger(value.nextSourceOffset)
+    && isNonNegativeSafeInteger(value.retainedBytes)
+    && isNonNegativeSafeInteger(value.segmentCount)
+    && typeof value.truncated === 'boolean'
+    && typeof value.finalized === 'boolean'
+    && hasOptionalLifecycleString(value, 'truncationReason')
+    && hasOptionalLifecycleCanonicalTimestamp(value, 'finalizedAt')
+  );
+}
+
 export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
   {
     type: 'run.created',
@@ -1465,9 +1805,247 @@ export const M3_CORE_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
   },
 ];
 
+/**
+ * P2B is additive: these definitions use the existing M3 envelope and
+ * persistence path, but are kept outside the M3 lifecycle type list so Run /
+ * Stage transition contracts remain unchanged.
+ */
+export const M4_PROCESS_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
+  {
+    type: 'process.session_claimed',
+    domain: 'process',
+    description: 'A Provider Session reservation was durably claimed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresStageId: true,
+    requiresProviderSessionId: true,
+    payloadSchema: {
+      required: ['stageAttempt', 'authorityRole', 'claimEpoch', 'runtimeMode'],
+      optional: [],
+    },
+    validatePayload: isProcessSessionClaimedPayload,
+  },
+  {
+    type: 'process.session_state_changed',
+    domain: 'process',
+    description: 'A Provider Session storage state or start marker changed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresStageId: true,
+    requiresProviderSessionId: true,
+    payloadSchema: {
+      required: ['from', 'to', 'adapterStartRequested', 'terminal'],
+      optional: ['errorCode'],
+    },
+    validatePayload: isProcessSessionStateChangedPayload,
+  },
+  {
+    type: 'process.claim_transferred',
+    domain: 'process',
+    description: 'A fenced Process or Session claim ownership transfer committed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'notice',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['claimEpoch', 'authorityRole', 'ownerChanged'],
+      optional: [],
+    },
+    validatePayload: isProcessClaimTransferredPayload,
+  },
+  {
+    type: 'process.launch_requested',
+    domain: 'process',
+    description: 'A Runtime Process reservation was durably created before spawn.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: [
+        'processType',
+        'executable',
+        'argsRedacted',
+        'cwd',
+        'shell',
+        'timeoutPolicyDigest',
+        'claimEpoch',
+      ],
+      optional: ['authorityRole'],
+    },
+    validatePayload: isProcessLaunchRequestedPayload,
+  },
+  {
+    type: 'process.starting',
+    domain: 'process',
+    description: 'A fenced Process CAS consumed its single spawn right.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['from', 'to', 'spawnRightConsumed'],
+      optional: [],
+    },
+    validatePayload: isProcessStartingPayload,
+  },
+  {
+    type: 'process.started',
+    domain: 'process',
+    description: 'A native identity was bound to the same Runtime Process.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['nativePid', 'nativeStartedAt', 'platform', 'startedAt'],
+      optional: ['treeOwnershipMode'],
+    },
+    validatePayload: isProcessStartedPayload,
+  },
+  {
+    type: 'process.state_changed',
+    domain: 'process',
+    description: 'A non-terminal Runtime Process state transition committed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['from', 'to', 'updatedAt'],
+      optional: ['cleanupResult'],
+    },
+    validatePayload: isProcessStateChangedPayload,
+  },
+  {
+    type: 'process.stopping',
+    domain: 'process',
+    description: 'A Runtime Process stop transition was durably accepted.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'notice',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['reason', 'nativeIdentityPending', 'stoppingAt'],
+      optional: ['cleanupResult'],
+    },
+    validatePayload: isProcessStoppingPayload,
+  },
+  {
+    type: 'process.exited',
+    domain: 'process',
+    description: 'A Runtime Process reached an authoritative terminal exit fact.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['exitCode', 'exitSignal', 'terminationReason', 'cleanupResult', 'exitedAt'],
+      optional: [],
+    },
+    validatePayload: isProcessExitedPayload,
+  },
+  {
+    type: 'process.failed',
+    domain: 'process',
+    description: 'A Runtime Process ended before a managed running identity existed.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'error',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['errorCode', 'failedAt'],
+      optional: ['detailRedacted', 'cleanupResult'],
+    },
+    validatePayload: isProcessFailedPayload,
+  },
+  {
+    type: 'process.cleanup_required',
+    domain: 'process',
+    description: 'Cleanup evidence requires further bounded recovery work.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'warning',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['cleanupResult', 'survivorCount', 'reason', 'checkedAt'],
+      optional: [],
+    },
+    validatePayload: isProcessCleanupRequiredPayload,
+  },
+  {
+    type: 'process.orphaned',
+    domain: 'process',
+    description: 'A Runtime Process is alive or uncertain without safe control.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'warning',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    payloadSchema: {
+      required: ['classification', 'cleanupRequired', 'reason'],
+      optional: [],
+    },
+    validatePayload: isProcessOrphanedPayload,
+  },
+  {
+    type: 'process.output_reference_advanced',
+    domain: 'process',
+    description: 'A restricted Process output reference advanced or finalized.',
+    schemaVersion: 1,
+    source: 'process-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'restricted',
+    defaultDurability: 'durable',
+    requiresProcessId: true,
+    requiresArtifactId: true,
+    payloadSchema: {
+      required: [
+        'stream',
+        'artifactId',
+        'priorSourceOffset',
+        'nextSourceOffset',
+        'retainedBytes',
+        'segmentCount',
+        'truncated',
+        'finalized',
+      ],
+      optional: ['truncationReason', 'finalizedAt'],
+    },
+    validatePayload: isProcessOutputReferenceAdvancedPayload,
+  },
+];
+
 export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
   const registry = new CentralRuntimeEventRegistry();
   for (const definition of M3_CORE_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of M4_PROCESS_EVENT_DEFINITIONS) {
     registry.registerCore(definition);
   }
   return registry;

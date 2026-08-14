@@ -69,7 +69,7 @@ import { DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from './ProviderConfigur
 import type { StoredConversationAttachment } from '../services/ConversationAttachmentService.js';
 import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
 import { createM3RuntimeEventRegistry } from '@agentos/shared';
-import { RuntimeEventRepository } from './RuntimeEventRepository.js';
+import { RuntimeEventOutboxWriter, RuntimeEventRepository } from './RuntimeEventRepository.js';
 import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import { OutboxRepository } from './OutboxRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
@@ -459,9 +459,6 @@ export class SqliteStore implements Store {
       this.runStageRepo = new RunStageRepository(this.database as any);
       this.idempotencyRepo = new IdempotencyRepository(this.database as any);
       this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
-      this.providerSessionRepo = new ProviderSessionRepository(this.database as any);
-      this.processRepo = new ProcessRepository(this.database as any);
-      this.processOutputReferenceRepo = new ProcessOutputReferenceRepository(this.database as any);
       const runtimeEventRegistry = createM3RuntimeEventRegistry();
       this.runtimeEventNotifier = new RuntimeEventNotifier();
       this.runtimeEventRepo = new RuntimeEventRepository(
@@ -472,6 +469,18 @@ export class SqliteStore implements Store {
       this.runStreamServiceRepo = new RunStreamService(this.runtimeEventRepo, this.runtimeEventNotifier);
       this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
       this.outboxRepo = new OutboxRepository(this.database as any, this.runtimeEventRepo);
+      const durableFactWriter = new RuntimeEventOutboxWriter(
+        this.runtimeEventRepo,
+        this.runSequenceAllocatorRepo,
+        this.outboxRepo,
+        this.database as any,
+      );
+      this.providerSessionRepo = new ProviderSessionRepository(this.database as any, durableFactWriter);
+      this.processRepo = new ProcessRepository(this.database as any, durableFactWriter);
+      this.processOutputReferenceRepo = new ProcessOutputReferenceRepository(
+        this.database as any,
+        durableFactWriter,
+      );
       this.deadLetterRepo = new DeadLetterRepository(this.database as any);
       this.lifecycleTransactionServiceRepo = new LifecycleTransactionService({
         runRepository: this.runRepo,

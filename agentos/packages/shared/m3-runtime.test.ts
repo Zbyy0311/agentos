@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   M3_CORE_EVENT_DEFINITIONS,
+  M4_PROCESS_EVENT_DEFINITIONS,
   M3_MULTI_EVENT_ORDERING_CONTRACTS,
   M3_OPERATION_STATUSES,
   M3_RUN_STATUSES,
@@ -149,7 +150,7 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
 });
 
 test('registers the complete M3 Event set with frozen domains and metadata', () => {
-  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval', 'stream']);
+  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval', 'stream', 'process']);
   const expectedTypes = [
     'run.created',
     'run.queued',
@@ -195,6 +196,59 @@ test('registers the complete M3 Event set with frozen domains and metadata', () 
   assert.equal(registry.get('run.failed')?.defaultSeverity, 'error');
   assert.equal(registry.get('stage.cancelled')?.defaultSeverity, 'notice');
   assert.equal(registry.get('approval.required')?.defaultSeverity, 'notice');
+});
+
+test('registers the additive P2B Process fact definitions without changing M3 lifecycle types', () => {
+  const registry = createM3RuntimeEventRegistry();
+  assert.equal(M4_PROCESS_EVENT_DEFINITIONS.length, 13);
+  assert.equal(M3_RUNTIME_EVENT_TYPES.length, 26);
+  for (const definition of M4_PROCESS_EVENT_DEFINITIONS) {
+    assert.equal(registry.get(definition.type)?.domain, 'process');
+    assert.equal(registry.get(definition.type)?.source, 'process-manager');
+    assert.equal(registry.get(definition.type)?.defaultDurability, 'durable');
+  }
+
+  const base = {
+    id: 'evt_01J4P2B0000000000000000000',
+    schemaVersion: 1,
+    workspaceId: 'ws_01J4P2B0000000000000000000',
+    taskId: 'task_01J4P2B0000000000000000000',
+    runId: 'run_01J4P2B0000000000000000000',
+    stageId: 'stage_01J4P2B0000000000000000000',
+    processId: 'proc_01J4P2B0000000000000000000',
+    providerSessionId: 'psess_01J4P2B0000000000000000000',
+    sequence: 1,
+    timestamp: '2026-08-14T00:00:00.000Z',
+    source: 'process-manager' as const,
+    correlationId: 'm4-p2b-test',
+    payload: {
+      stageAttempt: 1,
+      authorityRole: 'primary-provider',
+      claimEpoch: 1,
+      runtimeMode: 'cli',
+    },
+    type: 'process.session_claimed',
+  };
+  const sessionEvent = registry.publish(base);
+  assert.equal(sessionEvent.type, 'process.session_claimed');
+  assert.throws(
+    () => registry.publish({
+      ...base,
+      id: 'evt_01J4P2B0000000000000000001',
+      processId: undefined,
+      payload: {
+        processType: 'provider',
+        executable: 'tool',
+        argsRedacted: [],
+        cwd: 'workspace',
+        shell: false,
+        timeoutPolicyDigest: '0'.repeat(64),
+        claimEpoch: 1,
+      },
+      type: 'process.launch_requested',
+    }),
+    (error: unknown) => error instanceof RuntimeEventRegistryError && error.code === 'MISSING_PROCESS_ID',
+  );
 });
 
 test('registers and strictly validates the P6C stream text Events', () => {
