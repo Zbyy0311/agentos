@@ -475,7 +475,8 @@ export class DurableOutputWriter {
   }
 
   /**
-   * Append one P1 persist-safe chunk and checkpoint the monotonic counters.
+   * Append one P1 persist-safe chunk for this exact stream and source offset,
+   * then checkpoint the monotonic counters.
    * The retained cap is enforced BEFORE any byte reaches the sink; a
    * checkpoint failure reverts the uncommitted sink tail so a retry appends
    * from the last committed offset without duplication.
@@ -499,6 +500,20 @@ export class DurableOutputWriter {
       );
     }
     const current = this.#reference;
+    if (chunk.stream !== current.stream) {
+      throw new DurableCoordinatorError(
+        'DURABLE_COORDINATOR_FAILED: StreamChunk stream does not match the output writer',
+      );
+    }
+    if (
+      !Number.isSafeInteger(chunk.sourceOffset)
+      || chunk.sourceOffset < 0
+      || chunk.sourceOffset !== current.nextSourceOffset
+    ) {
+      throw new DurableCoordinatorError(
+        'DURABLE_COORDINATOR_FAILED: StreamChunk sourceOffset is not the next committed offset',
+      );
+    }
     const sourceBytesSeen = current.sourceBytesSeen + chunk.sourceBytes;
     const retainedBytes = current.retainedBytes + chunk.bytes.length;
     const nextSourceOffset = current.nextSourceOffset + chunk.sourceBytes;

@@ -73,7 +73,6 @@ function assertSafeStorageKey(storageKey: string, root: string): string {
 class FileArtifactWriteSession implements ArtifactWriteSession {
   readonly #handle: Awaited<ReturnType<typeof open>>;
   #hash: Hash;
-  readonly #hashSnapshots: Array<{ readonly retainedBytes: number; readonly hash: Hash }>;
   #retainedBytes = 0;
   #writeOffset = 0;
   #closed = false;
@@ -87,7 +86,6 @@ class FileArtifactWriteSession implements ArtifactWriteSession {
   ) {
     this.#handle = handle;
     this.#hash = createHash('sha256');
-    this.#hashSnapshots = [{ retainedBytes: 0, hash: this.#hash.copy() }];
   }
 
   async append(bytes: Uint8Array): Promise<void> {
@@ -119,10 +117,6 @@ class FileArtifactWriteSession implements ArtifactWriteSession {
     this.#hash.update(bytes);
     this.#writeOffset = startingOffset + bytes.length;
     this.#retainedBytes = this.#writeOffset;
-    this.#hashSnapshots.push({
-      retainedBytes: this.#retainedBytes,
-      hash: this.#hash.copy(),
-    });
   }
 
   async truncateTo(retainedBytes: number): Promise<void> {
@@ -132,22 +126,38 @@ class FileArtifactWriteSession implements ArtifactWriteSession {
     if (!Number.isSafeInteger(retainedBytes) || retainedBytes < 0 || retainedBytes > this.#retainedBytes) {
       throw new Error('RESTRICTED_SINK_INVALID_TRUNCATE: retainedBytes is out of range');
     }
-    const snapshot = [...this.#hashSnapshots]
-      .reverse()
-      .find((entry) => entry.retainedBytes === retainedBytes);
-    if (snapshot === undefined) {
-      throw new Error('RESTRICTED_SINK_INVALID_TRUNCATE: retainedBytes is not a committed offset');
-    }
+    // Rollback is rare (only after a checkpoint CAS failure). Recompute the
+    // prefix digest in bounded chunks so bookkeeping remains O(1) per append.
+    const restoredHash = await this.#hashPrefix(retainedBytes);
     await this.#handle.truncate(retainedBytes);
     this.#retainedBytes = retainedBytes;
     this.#writeOffset = retainedBytes;
-    this.#hash = snapshot.hash.copy();
-    while (
-      this.#hashSnapshots.length > 1
-      && this.#hashSnapshots[this.#hashSnapshots.length - 1]!.retainedBytes > retainedBytes
-    ) {
-      this.#hashSnapshots.pop();
+    this.#hash = restoredHash;
+  }
+
+  async #hashPrefix(length: number): Promise<Hash> {
+    const hash = createHash('sha256');
+    const blockSize = 64 * 1024;
+    let position = 0;
+    while (position < length) {
+      const block = Buffer.allocUnsafe(Math.min(blockSize, length - position));
+      let read = 0;
+      while (read < block.length) {
+        const result = await this.#handle.read(
+          block,
+          read,
+          block.length - read,
+          position + read,
+        );
+        if (result.bytesRead <= 0) {
+          throw new Error('RESTRICTED_SINK_READ_FAILED: unable to restore hash prefix');
+        }
+        read += result.bytesRead;
+      }
+      hash.update(block);
+      position += block.length;
     }
+    return hash;
   }
 
   async finalize(): Promise<ArtifactFinalizeResult> {
@@ -200,7 +210,7 @@ export class FileArtifactSink implements RestrictedArtifactSink {
     const dir = path.slice(0, Math.max(path.lastIndexOf('/'), path.lastIndexOf(sep)));
     if (dir.length > 0) await mkdir(dir, { recursive: true });
     // Exclusive create: an existing artifact file can never be overwritten.
-    const handle = await open(path, 'wx');
+    const handle = await open(path, 'wx+');
     return new FileArtifactWriteSession(artifactId, safeKey, path, handle);
   }
 }

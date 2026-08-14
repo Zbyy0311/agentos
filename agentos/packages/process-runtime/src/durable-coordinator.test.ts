@@ -10,7 +10,7 @@ import {
   OUTPUT_SEGMENT_RETAINED_BYTES,
 } from './durable-coordinator.js';
 import type { NativeProcessHandle, PlatformProcessDriver } from './driver.js';
-import { BoundedProcessStream, type StreamChunk } from './streams.js';
+import { BoundedProcessStream, type StreamChunk, type StreamName } from './streams.js';
 import type {
   DurableAtomicSeam,
   DurableCasConflictKind,
@@ -218,11 +218,16 @@ function makeHandle(pid: number): NativeProcessHandle {
   };
 }
 
-function makeChunk(bytes: Uint8Array, sourceBytes = bytes.length): StreamChunk {
+function makeChunk(
+  bytes: Uint8Array,
+  sourceBytes = bytes.length,
+  sourceOffset = 0,
+  stream: StreamName = 'stdout',
+): StreamChunk {
   return {
-    stream: 'stdout',
+    stream,
     sequence: 1,
-    sourceOffset: 0,
+    sourceOffset,
     sourceBytes,
     bytes,
     text: new TextDecoder('utf-8', { fatal: false }).decode(bytes),
@@ -1105,6 +1110,64 @@ describe('DurableProcessCoordinator', () => {
     await expect(writer.append(makeChunk(new Uint8Array([1])))).rejects.toThrow(/closed/);
   });
 
+  it('rejects replayed StreamChunk before writing duplicate artifact bytes', async () => {
+    const { sink, coordinator } = makeCoordinator();
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const writer = await coordinator.beginOutput(outputCreate(established.process));
+    const chunk = makeChunk(new TextEncoder().encode('abc'), 3, 0);
+    await expect(writer.append(chunk)).resolves.toMatchObject({ kind: 'applied' });
+    await expect(writer.append(chunk)).rejects.toThrow(/sourceOffset/);
+    expect(sink.bytesOf(writer.reference.artifactId).toString('utf8')).toBe('abc');
+    expect(writer.reference.nextSourceOffset).toBe(3);
+  });
+
+  it('rejects a sourceOffset gap before the sink is touched', async () => {
+    const { sink, coordinator } = makeCoordinator();
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const writer = await coordinator.beginOutput(outputCreate(established.process));
+    await expect(
+      writer.append(makeChunk(new TextEncoder().encode('gap'), 3, 3)),
+    ).rejects.toThrow(/sourceOffset/);
+    expect(sink.bytesOf(writer.reference.artifactId).length).toBe(0);
+    expect(writer.reference.nextSourceOffset).toBe(0);
+  });
+
+  it('rejects a stderr StreamChunk on a stdout writer before writing', async () => {
+    const { sink, coordinator } = makeCoordinator();
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const writer = await coordinator.beginOutput(outputCreate(established.process));
+    await expect(
+      writer.append(makeChunk(new TextEncoder().encode('err'), 3, 0, 'stderr')),
+    ).rejects.toThrow(/stream does not match/);
+    expect(sink.bytesOf(writer.reference.artifactId).length).toBe(0);
+    expect(writer.reference.nextSourceOffset).toBe(0);
+  });
+
+  it('accepts normal continuous source offsets 0 -> N -> M', async () => {
+    const { sink, coordinator } = makeCoordinator();
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const writer = await coordinator.beginOutput(outputCreate(established.process));
+    const first = applied(await writer.append(makeChunk(new TextEncoder().encode('abc'), 3, 0)));
+    const second = applied(await writer.append(makeChunk(new TextEncoder().encode('def'), 3, 3)));
+    const third = applied(await writer.append(makeChunk(new TextEncoder().encode('ghi'), 3, 6)));
+    expect(first.nextSourceOffset).toBe(3);
+    expect(second.nextSourceOffset).toBe(6);
+    expect(third.nextSourceOffset).toBe(9);
+    expect(sink.bytesOf(writer.reference.artifactId).toString('utf8')).toBe('abcdefghi');
+  });
+
   it('raw Uint8Array can never be handed to the writer (StreamChunk seam only)', async () => {
     const { coordinator } = makeCoordinator();
     const established = await coordinator.establishClaimAndReservation({
@@ -1128,7 +1191,7 @@ describe('DurableProcessCoordinator', () => {
     const first = applied(await writer.append(makeChunk(new TextEncoder().encode('abcdefgh'))));
     expect(first.retainedBytes).toBe(8);
     await expect(
-      writer.append(makeChunk(new TextEncoder().encode('more'))),
+      writer.append(makeChunk(new TextEncoder().encode('more'), 4, 8)),
     ).rejects.toThrow(/retained cap exceeded/);
     expect(sink.bytesOf(writer.reference.artifactId).length).toBe(8);
     expect(writer.reference.truncated).toBe(true);
@@ -1145,11 +1208,11 @@ describe('DurableProcessCoordinator', () => {
     await writer.append(makeChunk(new TextEncoder().encode('first')));
     const before = sink.bytesOf(writer.reference.artifactId).length;
     outputRepository.failNextCheckpoint = true;
-    const conflicted = await writer.append(makeChunk(new TextEncoder().encode('-tail')));
+    const conflicted = await writer.append(makeChunk(new TextEncoder().encode('-tail'), 5, 5));
     expect(conflicted.kind).toBe('version-conflict');
     // The uncommitted tail was reverted: sink length equals last commit.
     expect(sink.bytesOf(writer.reference.artifactId).length).toBe(before);
-    const retry = await writer.append(makeChunk(new TextEncoder().encode('-tail')));
+    const retry = await writer.append(makeChunk(new TextEncoder().encode('-tail'), 5, 5));
     expect(retry.kind).toBe('applied');
     expect(sink.bytesOf(writer.reference.artifactId).toString('utf8')).toBe('first-tail');
   });
@@ -1175,10 +1238,10 @@ describe('DurableProcessCoordinator', () => {
       const writer = await coordinator.beginOutput(outputCreate(established.process));
       await writer.append(makeChunk(new TextEncoder().encode('first')));
       outputRepository.failNextCheckpoint = true;
-      const conflicted = await writer.append(makeChunk(new TextEncoder().encode('-tail')));
+      const conflicted = await writer.append(makeChunk(new TextEncoder().encode('-tail'), 5, 5));
       expect(conflicted.kind).toBe('version-conflict');
 
-      const retried = await writer.append(makeChunk(new TextEncoder().encode('-tail')));
+      const retried = await writer.append(makeChunk(new TextEncoder().encode('-tail'), 5, 5));
       expect(retried.kind).toBe('applied');
       const finalized = await writer.finalize();
       const path = join(root, ...writer.reference.storageKey.split('/'));
@@ -1201,7 +1264,9 @@ describe('DurableProcessCoordinator', () => {
     await writer.append(makeChunk(new TextEncoder().encode('first')));
     const before = sink.bytesOf(writer.reference.artifactId).length;
     outputRepository.throwNextCheckpoint = true;
-    await expect(writer.append(makeChunk(new TextEncoder().encode('-tail')))).rejects.toThrow(/checkpoint exploded/);
+    await expect(
+      writer.append(makeChunk(new TextEncoder().encode('-tail'), 5, 5)),
+    ).rejects.toThrow(/checkpoint exploded/);
     expect(sink.bytesOf(writer.reference.artifactId).length).toBe(before);
   });
 
