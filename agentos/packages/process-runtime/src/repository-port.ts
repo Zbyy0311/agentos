@@ -42,7 +42,7 @@ export type DurableCasConflictKind =
   | 'non-monotonic';
 
 export type DurableCasOutcome<T> =
-  | { readonly kind: 'applied'; readonly value: T }
+  | { readonly kind: 'applied'; readonly value: T; readonly eventId?: string }
   | { readonly kind: 'duplicate'; readonly value: T }
   | { readonly kind: DurableCasConflictKind; readonly value?: T };
 
@@ -156,7 +156,7 @@ export interface SessionClaimTransferInput extends DurableClaimFence {
 
 export interface DurableSessionRepository {
   createSessionClaim(input: SessionClaimCreate): Promise<
-    { readonly kind: 'created'; readonly session: DurableSessionView }
+    { readonly kind: 'created'; readonly session: DurableSessionView; readonly eventId?: string }
     | { readonly kind: 'joined'; readonly session: DurableSessionView }
   >;
   casSetAdapterStartRequested(input: SessionStartRequestedInput): Promise<DurableCasOutcome<DurableSessionView>>;
@@ -333,7 +333,7 @@ export interface ProcessClaimTransferInput extends DurableClaimFence {
 
 export interface DurableProcessRepository {
   createProcessReservation(input: ProcessReservationCreate): Promise<
-    { readonly kind: 'created'; readonly process: DurableProcessView }
+    { readonly kind: 'created'; readonly process: DurableProcessView; readonly eventId?: string }
     | { readonly kind: 'joined'; readonly process: DurableProcessView }
   >;
   casConsumeSpawnRight(input: ConsumeSpawnRightInput): Promise<DurableCasOutcome<DurableProcessView>>;
@@ -351,6 +351,8 @@ export interface AtomicSessionRootResult {
   readonly session: DurableSessionView;
   readonly process: DurableProcessView;
   readonly joinedExisting: boolean;
+  readonly sessionEventId?: string;
+  readonly processEventId?: string;
 }
 
 /**
@@ -369,6 +371,8 @@ export interface DurableAtomicSeam {
       readonly kind: 'applied';
       readonly session: DurableSessionView;
       readonly process: DurableProcessView;
+      readonly sessionEventId?: string;
+      readonly processEventId?: string;
     }
     | {
       readonly kind: 'conflict';
@@ -436,7 +440,7 @@ export interface OutputFinalizeInput {
 
 export interface DurableOutputReferenceRepository {
   createReference(input: OutputReferenceCreate): Promise<
-    { readonly kind: 'created'; readonly reference: DurableOutputReferenceView }
+    { readonly kind: 'created'; readonly reference: DurableOutputReferenceView; readonly eventId?: string }
     | { readonly kind: 'joined'; readonly reference: DurableOutputReferenceView }
   >;
   checkpoint(input: OutputCheckpointInput): Promise<DurableCasOutcome<DurableOutputReferenceView>>;

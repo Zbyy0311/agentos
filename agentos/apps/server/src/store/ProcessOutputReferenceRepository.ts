@@ -109,17 +109,17 @@ export interface CreateOutputReferenceInput {
 }
 
 export type CreateOutputReferenceResult =
-  | { readonly kind: 'created'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'joined'; readonly reference: ProcessOutputReference };
+  | { readonly kind: 'created'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'joined'; readonly reference: ProcessOutputReference; readonly eventId?: string };
 
 export type OutputReferenceMutationOutcome =
-  | { readonly kind: 'applied'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'duplicate'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'finalized'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'non-monotonic'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'version-conflict'; readonly reference: ProcessOutputReference }
-  | { readonly kind: 'workspace-mismatch' }
-  | { readonly kind: 'not-found' };
+  | { readonly kind: 'applied'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'duplicate'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'finalized'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'non-monotonic'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'version-conflict'; readonly reference: ProcessOutputReference; readonly eventId?: string }
+  | { readonly kind: 'workspace-mismatch'; readonly eventId?: string }
+  | { readonly kind: 'not-found'; readonly eventId?: string };
 
 export interface OutputReferenceCheckpointInput {
   readonly workspaceId: string;
@@ -480,10 +480,10 @@ export class ProcessOutputReferenceRepository {
     const hasAdvance = reference.retainedBytes > 0
       || reference.nextSourceOffset > 0
       || reference.segmentCount > 0;
-    if (hasAdvance) {
-      this.#appendAdvance(reference, 0, reference.updatedAt, false, input.eventContext);
-    }
-    return { kind: 'created', reference };
+    const eventId = hasAdvance
+      ? this.#appendAdvance(reference, 0, reference.updatedAt, false, input.eventContext)
+      : undefined;
+    return { kind: 'created', reference, ...(eventId === undefined ? {} : { eventId }) };
   }
 
   findReference(
@@ -611,7 +611,7 @@ export class ProcessOutputReferenceRepository {
 
     if (result.changes === 1) {
       const reference = this.findReference(workspaceId, processId, input.stream)!;
-      this.#appendAdvance(
+      const eventId = this.#appendAdvance(
         reference,
         current.nextSourceOffset,
         input.updatedAt ?? reference.updatedAt,
@@ -621,6 +621,7 @@ export class ProcessOutputReferenceRepository {
       return {
         kind: 'applied',
         reference,
+        ...(eventId === undefined ? {} : { eventId }),
       };
     }
     const after = this.findReference(workspaceId, processId, input.stream)!;
@@ -685,7 +686,7 @@ export class ProcessOutputReferenceRepository {
 
     if (result.changes === 1) {
       const reference = this.findReference(workspaceId, processId, input.stream)!;
-      this.#appendAdvance(
+      const eventId = this.#appendAdvance(
         reference,
         current.nextSourceOffset,
         input.finalizedAt ?? reference.updatedAt,
@@ -695,6 +696,7 @@ export class ProcessOutputReferenceRepository {
       return {
         kind: 'applied',
         reference,
+        ...(eventId === undefined ? {} : { eventId }),
       };
     }
     const after = this.findReference(workspaceId, processId, input.stream)!;
@@ -708,8 +710,8 @@ export class ProcessOutputReferenceRepository {
     timestamp: string,
     finalizedMutation: boolean,
     eventContext?: RuntimeEventContext,
-  ): void {
-    if (this.factWriter === undefined) return;
+  ): string | undefined {
+    if (this.factWriter === undefined) return undefined;
     if (eventContext === undefined) {
       throw new OutputReferenceValidationError(
         'PROCESS_OUTPUT_REFERENCE_VALIDATION_FAILED: eventContext is required for durable output facts',
@@ -724,7 +726,7 @@ export class ProcessOutputReferenceRepository {
       stage_id: string | null;
       provider_session_id: string | null;
     } | undefined;
-    this.factWriter.appendWithinTransaction({
+    const result = this.factWriter.appendWithinTransaction({
       type: 'process.output_reference_advanced',
       workspaceId: reference.workspaceId,
       ...(binding?.task_id === null || binding?.task_id === undefined ? {} : { taskId: binding.task_id }),
@@ -750,5 +752,6 @@ export class ProcessOutputReferenceRepository {
         ...(reference.finalizedAt === null ? {} : { finalizedAt: reference.finalizedAt }),
       },
     });
+    return result.event.id;
   }
 }

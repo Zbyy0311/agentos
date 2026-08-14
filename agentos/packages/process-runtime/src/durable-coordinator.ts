@@ -22,6 +22,7 @@ import type {
   DurableSessionView,
   NativeSpawnIdentity,
   OutputReferenceCreate,
+  ProcessTransitionInput,
   ProcessClaimTransferInput,
   ProcessReservationCreate,
   RuntimeEventContext,
@@ -98,6 +99,8 @@ export interface DurableEstablishment {
   readonly session: DurableSessionView;
   readonly process: DurableProcessView;
   readonly joinedExisting: boolean;
+  readonly sessionEventId?: string;
+  readonly processEventId?: string;
 }
 
 export interface ConsumeSpawnInput {
@@ -109,9 +112,8 @@ export interface ConsumeSpawnInput {
   readonly timestamp: string;
   /** Accepted command/Run context; forwarded to every durable fact. */
   readonly eventContext: RuntimeEventContext;
-  /** Original cancel evidence when a spawn failure races an accepted stop. */
+  /** Original cancel reason when a spawn failure races an accepted stop. */
   readonly cancelReason?: string;
-  readonly cancelCausationId?: string;
   /** Exactly-once Driver call; the returned native handle is retained. */
   readonly spawn: () => Promise<NativeProcessHandle>;
 }
@@ -138,6 +140,8 @@ export class DurableProcessCoordinator {
   readonly #atomicSeam: DurableAtomicSeam;
   readonly #driver: PlatformProcessDriver;
   readonly #now: () => string;
+  readonly #causalCursors = new Map<string, { readonly correlationId: string; readonly eventId: string }>();
+  readonly #stoppingCursors = new Map<string, { readonly correlationId: string; readonly eventId: string }>();
   /** Retained native handles (memory-only) keyed by AgentOS Process id. */
   readonly #handles = new Map<string, NativeProcessHandle>();
 
@@ -170,7 +174,15 @@ export class DurableProcessCoordinator {
     readonly session: SessionClaimCreate;
     readonly process: ProcessReservationCreate;
   }): Promise<DurableEstablishment> {
-    return this.#atomicSeam.createSessionAndRootProcess(input);
+    const result = await this.#atomicSeam.createSessionAndRootProcess(input);
+    if (result.processEventId !== undefined) {
+      this.#setProcessCursor(
+        result.process.processId,
+        input.process.eventContext.correlationId,
+        result.processEventId,
+      );
+    }
+    return result;
   }
 
   /**
@@ -182,7 +194,23 @@ export class DurableProcessCoordinator {
   async transferClaimPair(
     input: TransferClaimPairInput,
   ): Promise<Awaited<ReturnType<DurableAtomicSeam['casTransferClaimPair']>>> {
-    return this.#atomicSeam.casTransferClaimPair(input);
+    const result = await this.#atomicSeam.casTransferClaimPair(input);
+    if (result.kind === 'applied' && result.processEventId !== undefined) {
+      this.#setProcessCursor(
+        result.process.processId,
+        input.process.eventContext.correlationId,
+        result.processEventId,
+      );
+    }
+    return result;
+  }
+
+  /**
+   * Apply a Process transition through the coordinator so a concurrent
+   * stop/cancel records its accepted Event ID as the next causal cursor.
+   */
+  async transitionProcess(input: ProcessTransitionInput): Promise<DurableCasOutcome<DurableProcessView>> {
+    return this.#transitionProcess(input);
   }
 
   /**
@@ -197,6 +225,7 @@ export class DurableProcessCoordinator {
    * spawn.
    */
   async consumeSpawnRightAndSpawn(input: ConsumeSpawnInput): Promise<SpawnFlowResult> {
+    const spawnContext = this.#processContext(input.workspaceId, input.processId, input.eventContext);
     const consumed = await this.#processRepository.casConsumeSpawnRight({
       workspaceId: input.workspaceId,
       processId: input.processId,
@@ -204,8 +233,9 @@ export class DurableProcessCoordinator {
       expectedClaimEpoch: input.expectedClaimEpoch,
       expectedClaimOwner: input.expectedClaimOwner,
       timestamp: input.timestamp,
-      eventContext: input.eventContext,
+      eventContext: spawnContext,
     });
+    this.#recordProcessOutcome(input.workspaceId, input.processId, spawnContext, consumed);
     if (consumed.kind !== 'applied') {
       return { kind: 'joined', outcome: consumed, spawned: false };
     }
@@ -214,32 +244,49 @@ export class DurableProcessCoordinator {
     try {
       handle = await input.spawn();
     } catch (error) {
-      const current = await this.#processRepository.getProcess(
+      let current = await this.#processRepository.getProcess(
         starting.workspaceId,
         starting.processId,
       );
-      const afterCancel = current?.status === 'stopping';
-      const failed = await this.#processRepository.casProcessTransition({
-        workspaceId: starting.workspaceId,
-        processId: starting.processId,
-        expectedVersion: current?.version ?? starting.version,
-        expectedClaimEpoch: current?.claimEpoch ?? starting.claimEpoch,
-        expectedClaimOwner: current?.claimOwnerId ?? starting.claimOwnerId,
-        expectedFrom: current?.status ?? starting.status,
-        to: 'failed',
-        timestamp: this.#now(),
-        errorCode: 'PROCESS_SPAWN_FAILED',
-        errorDetailRedacted: SPAWN_FAILED_DETAIL,
-        eventContext: input.eventContext,
-        failureOutcome: afterCancel ? 'spawn-failure-after-cancel' : 'spawn-failure',
-        ...(afterCancel
-          ? {
-            cancelReason: input.cancelReason ?? current?.terminationReason,
-            cancelCausationId: input.cancelCausationId,
-            spawnFailureEvidence: 'PROCESS_SPAWN_FAILED',
-          }
-          : { spawnFailureEvidence: 'PROCESS_SPAWN_FAILED' }),
-      });
+      let failed: DurableCasOutcome<DurableProcessView> = { kind: 'not-found' };
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const afterCancel = current?.status === 'stopping';
+        const failureContext = this.#processContext(
+          starting.workspaceId,
+          starting.processId,
+          input.eventContext,
+        );
+        const cancelCausationId = afterCancel
+          ? this.#requireProcessCursor(starting.workspaceId, starting.processId)
+          : undefined;
+        failed = await this.#transitionProcess({
+          workspaceId: starting.workspaceId,
+          processId: starting.processId,
+          expectedVersion: current?.version ?? starting.version,
+          expectedClaimEpoch: current?.claimEpoch ?? starting.claimEpoch,
+          expectedClaimOwner: current?.claimOwnerId ?? starting.claimOwnerId,
+          expectedFrom: current?.status ?? starting.status,
+          to: 'failed',
+          timestamp: this.#now(),
+          errorCode: 'PROCESS_SPAWN_FAILED',
+          errorDetailRedacted: SPAWN_FAILED_DETAIL,
+          eventContext: failureContext,
+          failureOutcome: afterCancel ? 'spawn-failure-after-cancel' : 'spawn-failure',
+          ...(afterCancel
+            ? {
+              cancelReason: current?.terminationReason ?? input.cancelReason ?? undefined,
+              cancelCausationId,
+              spawnFailureEvidence: 'PROCESS_SPAWN_FAILED',
+            }
+            : { spawnFailureEvidence: 'PROCESS_SPAWN_FAILED' }),
+        });
+        if (failed.kind === 'applied' || failed.kind === 'terminal' || failed.kind === 'not-found') break;
+        current = await this.#processRepository.getProcess(
+          starting.workspaceId,
+          starting.processId,
+        );
+        if (current === null) break;
+      }
       return { kind: 'spawned', outcome: failed, spawned: true };
     }
     this.#handles.set(starting.processId, handle);
@@ -265,7 +312,7 @@ export class DurableProcessCoordinator {
       this.#handles.delete(starting.processId);
       return { kind: 'spawned', outcome: { kind: 'terminal', value: fresh }, spawned: true };
     }
-    const bound = await this.#processRepository.casBindNativeIdentity({
+    const bound = await this.#bindNativeIdentity({
       workspaceId: starting.workspaceId,
       processId: starting.processId,
       expectedVersion: fresh.version,
@@ -301,7 +348,7 @@ export class DurableProcessCoordinator {
     }
     const verdict = await this.#terminateAndVerify(handle);
     if (verdict.classification === 'complete') {
-      const failed = await this.#processRepository.casProcessTransition({
+      const failed = await this.#transitionProcess({
         workspaceId: current.workspaceId,
         processId: current.processId,
         expectedVersion: current.version,
@@ -319,7 +366,7 @@ export class DurableProcessCoordinator {
       this.#handles.delete(current.processId);
       return { kind: 'spawned', outcome: failed, spawned: true };
     }
-    const uncertain = await this.#processRepository.casProcessTransition({
+    const uncertain = await this.#transitionProcess({
       workspaceId: current.workspaceId,
       processId: current.processId,
       expectedVersion: current.version,
@@ -345,16 +392,27 @@ export class DurableProcessCoordinator {
     input: OutputReferenceCreate,
     options: { readonly retainedCapBytes?: number } = {},
   ): Promise<DurableOutputWriter> {
-    const created = await this.#outputReferenceRepository.createReference(input);
+    const context = this.#processContext(input.workspaceId, input.processId, input.eventContext);
+    const created = await this.#outputReferenceRepository.createReference({
+      ...input,
+      eventContext: context,
+    });
+    if (created.kind === 'created' && created.eventId !== undefined) {
+      this.#setProcessCursor(input.processId, context.correlationId, created.eventId);
+    }
     const reference = created.reference;
     const session = await this.#artifactSink.open(reference.artifactId, reference.storageKey);
+    const writerContext = created.kind !== 'created' || created.eventId === undefined
+      ? context
+      : { ...context, causationId: created.eventId };
     return new DurableOutputWriter(
       this.#outputReferenceRepository,
       reference,
       session,
       this.#now,
       options.retainedCapBytes,
-      input.eventContext,
+      writerContext,
+      eventId => this.#setProcessCursor(input.processId, writerContext.correlationId, eventId),
     );
   }
 
@@ -403,6 +461,82 @@ export class DurableProcessCoordinator {
     }
   }
 
+  #processKey(processId: string): string {
+    return processId;
+  }
+
+  #setProcessCursor(processId: string, correlationId: string, eventId: string): void {
+    if (!eventId.startsWith('evt_')) {
+      throw new DurableCoordinatorError(
+        'DURABLE_COORDINATOR_FAILED: accepted durable mutation returned a non-canonical Event id',
+      );
+    }
+    this.#causalCursors.set(this.#processKey(processId), { correlationId, eventId });
+  }
+
+  #requireProcessCursor(workspaceId: string, processId: string): string {
+    const cursor = this.#stoppingCursors.get(this.#processKey(processId));
+    if (cursor === undefined) {
+      throw new DurableCoordinatorError(
+        `DURABLE_COORDINATOR_FAILED: stopping Event id is unavailable for ${workspaceId}/${processId}`,
+      );
+    }
+    return cursor.eventId;
+  }
+
+  #processContext(
+    workspaceId: string,
+    processId: string,
+    context: RuntimeEventContext,
+  ): RuntimeEventContext {
+    void workspaceId;
+    const cursor = this.#causalCursors.get(this.#processKey(processId));
+    if (cursor === undefined || cursor.correlationId !== context.correlationId) return context;
+    return { ...context, causationId: cursor.eventId };
+  }
+
+  #recordProcessOutcome(
+    workspaceId: string,
+    processId: string,
+    context: RuntimeEventContext,
+    outcome: DurableCasOutcome<DurableProcessView>,
+  ): void {
+    if (outcome.kind === 'applied' && outcome.eventId !== undefined) {
+      this.#setProcessCursor(processId, context.correlationId, outcome.eventId);
+    }
+    void workspaceId;
+  }
+
+  async #bindNativeIdentity(
+    input: Parameters<DurableProcessRepository['casBindNativeIdentity']>[0],
+  ): Promise<DurableCasOutcome<DurableProcessView>> {
+    const context = this.#processContext(input.workspaceId, input.processId, input.eventContext);
+    const outcome = await this.#processRepository.casBindNativeIdentity({
+      ...input,
+      eventContext: context,
+    });
+    this.#recordProcessOutcome(input.workspaceId, input.processId, context, outcome);
+    return outcome;
+  }
+
+  async #transitionProcess(
+    input: ProcessTransitionInput,
+  ): Promise<DurableCasOutcome<DurableProcessView>> {
+    const context = this.#processContext(input.workspaceId, input.processId, input.eventContext);
+    const outcome = await this.#processRepository.casProcessTransition({
+      ...input,
+      eventContext: context,
+    });
+    this.#recordProcessOutcome(input.workspaceId, input.processId, context, outcome);
+    if (input.to === 'stopping' && outcome.kind === 'applied' && outcome.eventId !== undefined) {
+      this.#stoppingCursors.set(this.#processKey(input.processId), {
+        correlationId: context.correlationId,
+        eventId: outcome.eventId,
+      });
+    }
+    return outcome;
+  }
+
   /**
    * starting x cancel late success: the Process is already stopping with the
    * native identity bound to the same proc_ id. Clean up immediately; only a
@@ -416,7 +550,7 @@ export class DurableProcessCoordinator {
   ): Promise<void> {
     const verdict = await this.#terminateAndVerify(handle);
     if (verdict.classification === 'complete') {
-      await this.#processRepository.casProcessTransition({
+      await this.#transitionProcess({
         workspaceId: process.workspaceId,
         processId: process.processId,
         expectedVersion: process.version,
@@ -432,7 +566,7 @@ export class DurableProcessCoordinator {
         eventContext,
       });
     } else {
-      await this.#processRepository.casProcessTransition({
+      await this.#transitionProcess({
         workspaceId: process.workspaceId,
         processId: process.processId,
         expectedVersion: process.version,
@@ -484,7 +618,8 @@ export class DurableOutputWriter {
   readonly #session: ArtifactWriteSession;
   readonly #now: () => string;
   readonly #retainedCapBytes: number;
-  readonly #eventContext: OutputReferenceCreate['eventContext'];
+  #eventContext: OutputReferenceCreate['eventContext'];
+  readonly #onEvent?: (eventId: string) => void;
   #closed = false;
 
   constructor(
@@ -494,6 +629,7 @@ export class DurableOutputWriter {
     now: () => string,
     retainedCapBytes: number = STREAM_RETAINED_CAP_BYTES,
     eventContext: OutputReferenceCreate['eventContext'],
+    onEvent?: (eventId: string) => void,
   ) {
     this.#repository = repository;
     this.#reference = reference;
@@ -501,6 +637,7 @@ export class DurableOutputWriter {
     this.#now = now;
     this.#retainedCapBytes = retainedCapBytes;
     this.#eventContext = eventContext;
+    this.#onEvent = onEvent;
   }
 
   get reference(): DurableOutputReferenceView {
@@ -591,6 +728,10 @@ export class DurableOutputWriter {
       return outcome;
     }
     this.#reference = outcome.value;
+    if (outcome.kind === 'applied' && outcome.eventId !== undefined) {
+      this.#eventContext = { ...this.#eventContext, causationId: outcome.eventId };
+      this.#onEvent?.(outcome.eventId);
+    }
     return outcome;
   }
 
@@ -655,6 +796,10 @@ export class DurableOutputWriter {
     this.#closed = true;
     if (outcome.kind === 'applied' || outcome.kind === 'duplicate') {
       this.#reference = outcome.value;
+      if (outcome.kind === 'applied' && outcome.eventId !== undefined) {
+        this.#eventContext = { ...this.#eventContext, causationId: outcome.eventId };
+        this.#onEvent?.(outcome.eventId);
+      }
     }
     return { outcome, sha256: result.sha256, retainedBytes: result.retainedBytes };
   }
@@ -684,6 +829,10 @@ export class DurableOutputWriter {
     });
     if (outcome.kind === 'applied' || outcome.kind === 'duplicate') {
       this.#reference = outcome.value;
+      if (outcome.kind === 'applied' && outcome.eventId !== undefined) {
+        this.#eventContext = { ...this.#eventContext, causationId: outcome.eventId };
+        this.#onEvent?.(outcome.eventId);
+      }
     }
     return outcome;
   }

@@ -160,18 +160,18 @@ export interface CreateProviderSessionInput {
 }
 
 export type CreateProviderSessionResult =
-  | { readonly kind: 'created'; readonly session: ProviderSession }
-  | { readonly kind: 'joined'; readonly session: ProviderSession };
+  | { readonly kind: 'created'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'joined'; readonly session: ProviderSession; readonly eventId?: string };
 
 export type ProviderSessionMutationOutcome =
-  | { readonly kind: 'applied'; readonly session: ProviderSession }
-  | { readonly kind: 'already-requested'; readonly session: ProviderSession }
-  | { readonly kind: 'terminal'; readonly session: ProviderSession }
-  | { readonly kind: 'state-mismatch'; readonly session: ProviderSession }
-  | { readonly kind: 'version-conflict'; readonly session: ProviderSession }
-  | { readonly kind: 'fence-conflict'; readonly session: ProviderSession }
-  | { readonly kind: 'workspace-mismatch' }
-  | { readonly kind: 'not-found' };
+  | { readonly kind: 'applied'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'already-requested'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'terminal'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'state-mismatch'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'version-conflict'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'fence-conflict'; readonly session: ProviderSession; readonly eventId?: string }
+  | { readonly kind: 'workspace-mismatch'; readonly eventId?: string }
+  | { readonly kind: 'not-found'; readonly eventId?: string };
 
 export interface SessionClaimFence {
   readonly expectedClaimEpoch: number;
@@ -571,13 +571,14 @@ export class ProviderSessionRepository {
           'PROVIDER_SESSION_VALIDATION_FAILED: inserted session not found',
         );
       }
+      let eventId: string | undefined;
       if (this.factWriter !== undefined) {
         if (input.eventContext === undefined) {
           throw new ProviderSessionValidationError(
             'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
           );
         }
-        this.factWriter.appendWithinTransaction({
+        const fact = this.factWriter.appendWithinTransaction({
         type: 'process.session_claimed',
         workspaceId: session.workspaceId,
         taskId: session.taskId,
@@ -593,8 +594,9 @@ export class ProviderSessionRepository {
           runtimeMode: session.runtimeMode,
         },
         });
+        eventId = fact.event.id;
       }
-      return { kind: 'created' as const, session };
+      return { kind: 'created' as const, session, ...(eventId === undefined ? {} : { eventId }) };
     };
     // Match ProcessRepository: BEGIN IMMEDIATE serializes the claim read +
     // insert, while an existing repository transaction reuses its lock and
@@ -661,13 +663,14 @@ export class ProviderSessionRepository {
 
     if (result.changes === 1) {
       const session = this.findById(input.workspaceId, input.sessionId)!;
+      let eventId: string | undefined;
       if (this.factWriter !== undefined) {
         if (input.eventContext === undefined) {
           throw new ProviderSessionValidationError(
             'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
           );
         }
-        this.factWriter.appendWithinTransaction({
+        const fact = this.factWriter.appendWithinTransaction({
         type: 'process.session_state_changed',
         workspaceId: session.workspaceId,
         taskId: session.taskId,
@@ -683,8 +686,9 @@ export class ProviderSessionRepository {
           terminal: false,
         },
         });
+        eventId = fact.event.id;
       }
-      return { kind: 'applied', session };
+      return { kind: 'applied', session, ...(eventId === undefined ? {} : { eventId }) };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,
@@ -777,13 +781,14 @@ export class ProviderSessionRepository {
 
     if (result.changes === 1) {
       const session = this.findById(input.workspaceId, input.sessionId)!;
+      let eventId: string | undefined;
       if (this.factWriter !== undefined) {
         if (input.eventContext === undefined) {
           throw new ProviderSessionValidationError(
             'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
           );
         }
-        this.factWriter.appendWithinTransaction({
+        const fact = this.factWriter.appendWithinTransaction({
         type: 'process.session_state_changed',
         workspaceId: session.workspaceId,
         taskId: session.taskId,
@@ -800,8 +805,9 @@ export class ProviderSessionRepository {
           ...(session.errorCode === null ? {} : { errorCode: session.errorCode }),
         },
         });
+        eventId = fact.event.id;
       }
-      return { kind: 'applied', session };
+      return { kind: 'applied', session, ...(eventId === undefined ? {} : { eventId }) };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,
@@ -875,13 +881,14 @@ export class ProviderSessionRepository {
 
     if (result.changes === 1) {
       const session = this.findById(input.workspaceId, input.sessionId)!;
+      let eventId: string | undefined;
       if (this.factWriter !== undefined) {
         if (input.eventContext === undefined) {
           throw new ProviderSessionValidationError(
             'PROVIDER_SESSION_VALIDATION_FAILED: eventContext is required for durable session facts',
           );
         }
-        this.factWriter.appendWithinTransaction({
+        const fact = this.factWriter.appendWithinTransaction({
         type: 'process.claim_transferred',
         workspaceId: session.workspaceId,
         taskId: session.taskId,
@@ -896,8 +903,9 @@ export class ProviderSessionRepository {
           ownerChanged: true,
         },
         });
+        eventId = fact.event.id;
       }
-      return { kind: 'applied', session };
+      return { kind: 'applied', session, ...(eventId === undefined ? {} : { eventId }) };
     }
     return this.#classifyMutationFailure(
       input.workspaceId,

@@ -60,10 +60,9 @@ function eventContext(causationId: string, parentEventId?: string) {
   };
 }
 
-function eventIdAt(events: RuntimeEventRepository, sequence: number): string {
-  const record = events.findByRunAndSequence(RUN, sequence);
-  assert.equal(record?.kind, 'known');
-  return record.event.id;
+function acceptedEventId(value: { readonly eventId?: string }): string {
+  assert.equal(typeof value.eventId, 'string');
+  return value.eventId!;
 }
 
 function migratedDb(): Db {
@@ -207,12 +206,13 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
     }));
     assert.equal(createdSession.kind, 'created');
     const session = createdSession.session;
-    const sessionEventId = eventIdAt(events, 1);
+    const sessionEventId = acceptedEventId(createdSession);
     const createdProcess = processes.createProcess(processInput(session.id, {
       eventContext: eventContext(sessionEventId, sessionEventId),
     }));
     assert.equal(createdProcess.kind, 'created');
     const process = createdProcess.process;
+    const processEventId = acceptedEventId(createdProcess);
     const afterCreate = counts(db);
     assert.equal(afterCreate.events, 2);
     assert.equal(afterCreate.outbox, 2);
@@ -231,7 +231,7 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
-      eventContext: eventContext(eventIdAt(events, 2), eventIdAt(events, 2)),
+      eventContext: eventContext(processEventId, processEventId),
     });
     assert.equal(starting.kind, 'applied');
     assert.equal(counts(db).events, 3);
@@ -255,7 +255,7 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       nativePid: 1234,
       nativeStartedAt: LATER,
       timestamp: LATER,
-      eventContext: eventContext(eventIdAt(events, 3), eventIdAt(events, 3)),
+      eventContext: eventContext(acceptedEventId(starting), acceptedEventId(starting)),
     });
     assert.equal(bound.kind, 'applied');
     assert.equal(counts(db).events, 4);
@@ -270,7 +270,7 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       encoding: 'utf-8',
       redactionMode: 'scan',
       createdAt: LATER,
-      eventContext: eventContext(eventIdAt(events, 4), eventIdAt(events, 4)),
+      eventContext: eventContext(acceptedEventId(bound), acceptedEventId(bound)),
     });
     assert.equal(refCreated.kind, 'created');
     const ref = refCreated.reference;
@@ -286,7 +286,7 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       segmentCount: 1,
       truncated: false,
       updatedAt: LATER,
-      eventContext: eventContext(eventIdAt(events, 4), eventIdAt(events, 4)),
+      eventContext: eventContext(acceptedEventId(bound), acceptedEventId(bound)),
     });
     assert.equal(checkpoint.kind, 'applied');
     assert.equal(counts(db).events, 5);
@@ -297,7 +297,7 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       expectedVersion: checkpoint.reference.version,
       sha256: 'a'.repeat(64),
       finalizedAt: LATER,
-      eventContext: eventContext(eventIdAt(events, 5), eventIdAt(events, 5)),
+      eventContext: eventContext(acceptedEventId(checkpoint), acceptedEventId(checkpoint)),
     });
     assert.equal(finalized.kind, 'applied');
     assert.equal(counts(db).events, 6);
@@ -335,7 +335,7 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
       durationMs: 3600000,
       graceful: true,
       force: false,
-      eventContext: eventContext(eventIdAt(events, 7), eventIdAt(events, 7)),
+      eventContext: eventContext(acceptedEventId(stopping), acceptedEventId(stopping)),
     });
     assert.equal(exited.kind, 'applied');
     assert.equal(counts(db).events, 8);
@@ -355,13 +355,13 @@ test('P2B-2 A/B/C/G: accepted facts emit one ordered Event+Outbox; replay/CAS lo
     assert.deepEqual(records.map(record => record.event.correlationId), Array(8).fill(RUN));
     assert.deepEqual(records.map(record => record.event.causationId), [
       'op_m4_session_claim',
-      eventIdAt(events, 1),
-      eventIdAt(events, 2),
-      eventIdAt(events, 3),
-      eventIdAt(events, 4),
-      eventIdAt(events, 5),
+      sessionEventId,
+      acceptedEventId(createdProcess),
+      acceptedEventId(starting),
+      acceptedEventId(bound),
+      acceptedEventId(checkpoint),
       'op_m4_cancel',
-      eventIdAt(events, 7),
+      acceptedEventId(stopping),
     ]);
     for (const record of records) {
       assert.equal(record.kind, 'known');

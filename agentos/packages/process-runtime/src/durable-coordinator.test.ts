@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -24,6 +25,7 @@ import type {
   OutputReferenceCreate,
   ProcessClaimTransferInput,
   ProcessReservationCreate,
+  RuntimeEventContext,
   SessionClaimCreate,
   SessionClaimTransferInput,
 } from './repository-port.js';
@@ -42,6 +44,23 @@ const EVENT_CONTEXT = {
   correlationId: 'run_m4',
   causationId: 'op_m4',
 } as const;
+
+interface FakeEventRecord {
+  readonly eventId: string;
+  readonly type: string;
+  readonly context: RuntimeEventContext;
+  readonly payload: Record<string, unknown>;
+}
+
+class FakeEventLedger {
+  readonly records: FakeEventRecord[] = [];
+
+  append(type: string, context: RuntimeEventContext, payload: Record<string, unknown> = {}): string {
+    const eventId = `evt_${String(this.records.length + 1).padStart(26, '0')}`;
+    this.records.push({ eventId, type, context: { ...context }, payload: { ...payload } });
+    return eventId;
+  }
+}
 
 function baseSessionView(overrides: Partial<DurableSessionView> = {}): DurableSessionView {
   return {
@@ -246,6 +265,8 @@ class FakeSessionRepository implements DurableSessionRepository {
   sessions = new Map<string, DurableSessionView>();
   failNextCreate = false;
 
+  constructor(readonly ledger = new FakeEventLedger()) {}
+
   async createSessionClaim(input: SessionClaimCreate) {
     if (this.failNextCreate) throw new Error('fake session failure');
     const existing = [...this.sessions.values()].find((s) => (
@@ -266,7 +287,10 @@ class FakeSessionRepository implements DurableSessionRepository {
       claimLeaseExpiresAt: input.claimLeaseExpiresAt ?? null,
     });
     this.sessions.set(input.workspaceId + '/' + session.sessionId, session);
-    return { kind: 'created' as const, session };
+    const eventId = this.ledger.append('process.session_claimed', input.eventContext, {
+      sessionId: session.sessionId,
+    });
+    return { kind: 'created' as const, session, eventId };
   }
 
   remove(sessionId: string): void {
@@ -287,7 +311,10 @@ class FakeSessionRepository implements DurableSessionRepository {
     }
     const next = { ...session, adapterStartRequestedAt: input.timestamp, version: session.version + 1 };
     this.sessions.set(input.workspaceId + '/' + input.sessionId, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append('process.session_state_changed', input.eventContext, {
+      sessionId: input.sessionId,
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async casSessionTransition(input: Parameters<DurableSessionRepository['casSessionTransition']>[0]) {
@@ -304,7 +331,11 @@ class FakeSessionRepository implements DurableSessionRepository {
     }
     const next = { ...session, status: input.to, version: session.version + 1 };
     this.sessions.set(input.workspaceId + '/' + input.sessionId, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append('process.session_state_changed', input.eventContext, {
+      sessionId: input.sessionId,
+      to: input.to,
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async casTransferClaim(input: SessionClaimTransferInput) {
@@ -324,7 +355,10 @@ class FakeSessionRepository implements DurableSessionRepository {
       version: session.version + 1,
     };
     this.sessions.set(input.workspaceId + '/' + input.sessionId, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append('process.claim_transferred', input.eventContext, {
+      sessionId: input.sessionId,
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async getSession(workspaceId: string, sessionId: string) {
@@ -337,6 +371,8 @@ class FakeProcessRepository implements DurableProcessRepository {
   rootClaims = new Map<string, string>();
   failNextCreate = false;
   failNextBind = false;
+
+  constructor(readonly ledger = new FakeEventLedger()) {}
 
   async createProcessReservation(input: ProcessReservationCreate) {
     if (this.failNextCreate) throw new Error('fake reservation failure');
@@ -354,7 +390,10 @@ class FakeProcessRepository implements DurableProcessRepository {
       });
       this.rootClaims.set(claimKey, input.workspaceId + '/' + process.processId);
       this.processes.set(input.workspaceId + '/' + process.processId, process);
-      return { kind: 'created' as const, process };
+      const eventId = this.ledger.append('process.launch_requested', input.eventContext, {
+        processId: process.processId,
+      });
+      return { kind: 'created' as const, process, eventId };
     }
     const process = baseProcessView({
       processId: 'proc_' + Math.random().toString(36).slice(2, 12),
@@ -364,7 +403,10 @@ class FakeProcessRepository implements DurableProcessRepository {
       claimOwnerId: input.claimOwnerId ?? null,
     });
     this.processes.set(input.workspaceId + '/' + process.processId, process);
-    return { kind: 'created' as const, process };
+    const eventId = this.ledger.append('process.launch_requested', input.eventContext, {
+      processId: process.processId,
+    });
+    return { kind: 'created' as const, process, eventId };
   }
 
   remove(processId: string): void {
@@ -382,7 +424,10 @@ class FakeProcessRepository implements DurableProcessRepository {
     }
     const next = { ...process, status: 'starting' as const, version: process.version + 1 };
     this.processes.set(input.workspaceId + '/' + input.processId, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append('process.starting', input.eventContext, {
+      processId: input.processId,
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async casBindNativeIdentity(input: Parameters<DurableProcessRepository['casBindNativeIdentity']>[0]) {
@@ -406,7 +451,10 @@ class FakeProcessRepository implements DurableProcessRepository {
       version: process.version + 1,
     };
     this.processes.set(input.workspaceId + '/' + input.processId, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append('process.started', input.eventContext, {
+      processId: input.processId,
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async casProcessTransition(input: Parameters<DurableProcessRepository['casProcessTransition']>[0]) {
@@ -429,10 +477,18 @@ class FakeProcessRepository implements DurableProcessRepository {
       errorDetailRedacted: input.errorDetailRedacted ?? process.errorDetailRedacted,
       exitedAt: (input.to === 'exited' || input.to === 'failed') ? input.timestamp : process.exitedAt,
       exitCode: input.exitCode ?? process.exitCode,
+      terminationReason: input.terminationReason ?? process.terminationReason,
       version: process.version + 1,
     };
     this.processes.set(input.workspaceId + '/' + input.processId, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append(`process.${input.to}`, input.eventContext, {
+      processId: input.processId,
+      ...(input.failureOutcome === undefined ? {} : { outcome: input.failureOutcome }),
+      ...(input.cancelReason === undefined ? {} : { cancelReason: input.cancelReason }),
+      ...(input.cancelCausationId === undefined ? {} : { cancelCausationId: input.cancelCausationId }),
+      ...(input.spawnFailureEvidence === undefined ? {} : { spawnFailureEvidence: input.spawnFailureEvidence }),
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async casTransferClaim(input: ProcessClaimTransferInput) {
@@ -452,7 +508,10 @@ class FakeProcessRepository implements DurableProcessRepository {
       version: process.version + 1,
     };
     this.processes.set(input.workspaceId + '/' + input.processId, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append('process.claim_transferred', input.eventContext, {
+      processId: input.processId,
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async getProcess(workspaceId: string, processId: string) {
@@ -476,6 +535,9 @@ class FakeAtomicSeam implements DurableAtomicSeam {
         ...input.process,
         providerSessionId: input.process.providerSessionId
           ?? (input.process.authorityRole ? sessionResult.session.sessionId : null),
+        eventContext: sessionResult.eventId === undefined
+          ? input.process.eventContext
+          : { ...input.process.eventContext, causationId: sessionResult.eventId },
       });
     } catch (error) {
       // Atomic rollback: a created Session is removed when the paired
@@ -489,6 +551,8 @@ class FakeAtomicSeam implements DurableAtomicSeam {
       session: sessionResult.session,
       process: processResult.process,
       joinedExisting: processResult.kind === 'joined',
+      sessionEventId: sessionResult.eventId,
+      processEventId: processResult.eventId,
     };
   }
 
@@ -545,7 +609,23 @@ class FakeAtomicSeam implements DurableAtomicSeam {
     };
     this.sessionRepository.sessions.set(input.session.workspaceId + '/' + input.session.sessionId, sessionNext);
     this.processRepository.processes.set(input.process.workspaceId + '/' + input.process.processId, processNext);
-    return { kind: 'applied' as const, session: sessionNext, process: processNext };
+    const sessionEventId = this.sessionRepository.ledger.append(
+      'process.claim_transferred',
+      input.session.eventContext,
+      { sessionId: input.session.sessionId },
+    );
+    const processEventId = this.processRepository.ledger.append(
+      'process.claim_transferred',
+      { ...input.process.eventContext, causationId: sessionEventId },
+      { processId: input.process.processId },
+    );
+    return {
+      kind: 'applied' as const,
+      session: sessionNext,
+      process: processNext,
+      sessionEventId,
+      processEventId,
+    };
   }
 }
 
@@ -592,6 +672,8 @@ class FakeOutputReferenceRepository implements DurableOutputReferenceRepository 
   failNextCheckpoint = false;
   throwNextCheckpoint = false;
   failNextFinalizeVersion: number | null = null;
+
+  constructor(readonly ledger = new FakeEventLedger()) {}
 
   async createReference(input: OutputReferenceCreate) {
     const key = input.workspaceId + '/' + input.processId + '/' + input.stream;
@@ -657,7 +739,12 @@ class FakeOutputReferenceRepository implements DurableOutputReferenceRepository 
       version: reference.version + 1,
     };
     this.references.set(key, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append('process.output_reference_advanced', input.eventContext, {
+      processId: input.processId,
+      stream: input.stream,
+      nextSourceOffset: input.nextSourceOffset,
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async finalizeReference(input: Parameters<DurableOutputReferenceRepository['finalizeReference']>[0]) {
@@ -682,7 +769,12 @@ class FakeOutputReferenceRepository implements DurableOutputReferenceRepository 
       version: reference.version + 1,
     };
     this.references.set(key, next);
-    return { kind: 'applied' as const, value: next };
+    const eventId = this.ledger.append('process.output_reference_advanced', input.eventContext, {
+      processId: input.processId,
+      stream: input.stream,
+      finalized: true,
+    });
+    return { kind: 'applied' as const, value: next, eventId };
   }
 
   async getReference(workspaceId: string, processId: string, stream: 'stdout' | 'stderr') {
@@ -751,9 +843,10 @@ function makeCoordinator(
     driver?: FakeDriver;
   } = {},
 ) {
-  const sessionRepository = overrides.sessionRepository ?? new FakeSessionRepository();
-  const processRepository = overrides.processRepository ?? new FakeProcessRepository();
-  const outputRepository = overrides.outputRepository ?? new FakeOutputReferenceRepository();
+  const ledger = new FakeEventLedger();
+  const sessionRepository = overrides.sessionRepository ?? new FakeSessionRepository(ledger);
+  const processRepository = overrides.processRepository ?? new FakeProcessRepository(ledger);
+  const outputRepository = overrides.outputRepository ?? new FakeOutputReferenceRepository(ledger);
   const sink = overrides.sink ?? new FakeArtifactSink();
   const driver = overrides.driver ?? new FakeDriver();
   const coordinator = new DurableProcessCoordinator({
@@ -764,7 +857,7 @@ function makeCoordinator(
     atomicSeam: new FakeAtomicSeam(sessionRepository, processRepository),
     driver,
   });
-  return { sessionRepository, processRepository, outputRepository, sink, driver, coordinator };
+  return { sessionRepository, processRepository, outputRepository, sink, driver, coordinator, ledger };
 }
 
 describe('DurableProcessCoordinator', () => {
@@ -865,7 +958,7 @@ describe('DurableProcessCoordinator', () => {
   });
 
   it('only the winning created->starting CAS calls spawn; losers join without spawning', async () => {
-    const { coordinator } = makeCoordinator();
+    const { coordinator, ledger } = makeCoordinator();
     const established = await coordinator.establishClaimAndReservation({
       session: sessionClaim(),
       process: processReservation(),
@@ -893,6 +986,20 @@ describe('DurableProcessCoordinator', () => {
     expect(spawnCalls).toBe(1);
     expect(coordinator.retainedHandleCount).toBe(1);
     expect(coordinator.isHandleRetained(process.processId)).toBe(true);
+    const launch = ledger.records.find(record => record.type === 'process.launch_requested');
+    const starting = ledger.records.find(record => record.type === 'process.starting');
+    const started = ledger.records.find(record => record.type === 'process.started');
+    assert.ok(launch);
+    assert.ok(starting);
+    assert.ok(started);
+    expect(starting.context).toMatchObject({
+      correlationId: EVENT_CONTEXT.correlationId,
+      causationId: launch.eventId,
+    });
+    expect(started.context).toMatchObject({
+      correlationId: EVENT_CONTEXT.correlationId,
+      causationId: starting.eventId,
+    });
     const loser = await coordinator.consumeSpawnRightAndSpawn({
       workspaceId: process.workspaceId,
       processId: process.processId,
@@ -1067,7 +1174,7 @@ describe('DurableProcessCoordinator', () => {
         // Cancel races during spawn: starting -> stopping before the handle
         // returns, exactly like the P1 starting x cancel schedule.
         const current = await processRepository.getProcess(process.workspaceId, process.processId);
-        await processRepository.casProcessTransition({
+        await coordinator.transitionProcess({
           workspaceId: process.workspaceId,
           processId: process.processId,
           expectedVersion: current!.version,
@@ -1093,12 +1200,85 @@ describe('DurableProcessCoordinator', () => {
     expect(spawnCalls).toBe(1);
   });
 
-  it('output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes', async () => {
-    const { outputRepository, sink, coordinator } = makeCoordinator();
+  it('starting x cancel x spawn failure chains the real stopping Event and emits one failed fact', async () => {
+    const { processRepository, coordinator, ledger } = makeCoordinator();
     const established = await coordinator.establishClaimAndReservation({
       session: sessionClaim(),
       process: processReservation(),
     });
+    const process = established.process;
+    let spawnCalls = 0;
+    const result = await coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
+      // The caller does not know the cancel Event ID before spawn starts.
+      spawn: async () => {
+        spawnCalls += 1;
+        const current = await processRepository.getProcess(process.workspaceId, process.processId);
+        const cancelled = await coordinator.transitionProcess({
+          workspaceId: process.workspaceId,
+          processId: process.processId,
+          expectedVersion: current!.version,
+          expectedClaimEpoch: current!.claimEpoch,
+          expectedClaimOwner: current!.claimOwnerId,
+          expectedFrom: 'starting',
+          to: 'stopping',
+          timestamp: NOW,
+          terminationReason: 'user-cancelled',
+          gracefulRequested: true,
+          graceDeadline: '2026-08-13T00:00:05.000Z',
+          forceDeadline: '2026-08-13T00:00:10.000Z',
+          idempotencyKeyHash: 'd'.repeat(64),
+          eventContext: EVENT_CONTEXT,
+        });
+        expect(cancelled.kind).toBe('applied');
+        throw new Error('native spawn failed after accepted cancel');
+      },
+    });
+    expect(spawnCalls).toBe(1);
+    expect(result.kind).toBe('spawned');
+    const failed = applied(result.outcome);
+    expect(failed.status).toBe('failed');
+    expect(ledger.records.filter(record => record.type === 'process.failed')).toHaveLength(1);
+    expect(ledger.records.filter(record => record.type === 'process.exited')).toHaveLength(0);
+    const stopping = ledger.records.find(record => record.type === 'process.stopping');
+    const failedFact = ledger.records.find(record => record.type === 'process.failed');
+    assert.ok(stopping);
+    assert.ok(failedFact);
+    expect(failedFact.context).toMatchObject({
+      correlationId: EVENT_CONTEXT.correlationId,
+      causationId: stopping.eventId,
+    });
+    expect(failedFact.payload).toMatchObject({
+      outcome: 'spawn-failure-after-cancel',
+      cancelReason: 'user-cancelled',
+      cancelCausationId: stopping.eventId,
+      spawnFailureEvidence: 'PROCESS_SPAWN_FAILED',
+    });
+  });
+
+  it('output writer persists only redacted chunk bytes, advances monotonic checkpoints and finalizes', async () => {
+    const { outputRepository, sink, coordinator, ledger } = makeCoordinator();
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const spawned = await coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: established.process.workspaceId,
+      processId: established.process.processId,
+      expectedVersion: established.process.version,
+      expectedClaimEpoch: established.process.claimEpoch,
+      expectedClaimOwner: established.process.claimOwnerId,
+      timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
+      spawn: async () => makeHandle(4242),
+    });
+    expect(spawned.kind).toBe('spawned');
     const writer = await coordinator.beginOutput(outputCreate(established.process));
     const sourceBytes = 64;
     const redacted = new TextEncoder().encode('hello [REDACTED] world');
@@ -1124,10 +1304,22 @@ describe('DurableProcessCoordinator', () => {
     });
     expect(duplicate.kind).toBe('duplicate');
     expect(duplicate.value!.version).toBe(first.version);
+    const second = applied(await writer.append(
+      makeChunk(new TextEncoder().encode(' next'), 32, sourceBytes),
+    ));
+    expect(second.nextSourceOffset).toBe(sourceBytes + 32);
     const finalized = await writer.finalize();
     expect(applied(finalized.outcome).finalized).toBe(true);
     const hash = createHash('sha256').update(sink.bytesOf(writer.reference.artifactId)).digest('hex');
     expect(finalized.sha256).toBe(hash);
+    const started = ledger.records.find(record => record.type === 'process.started');
+    const outputFacts = ledger.records.filter(record => record.type === 'process.output_reference_advanced');
+    assert.ok(started);
+    expect(outputFacts).toHaveLength(3);
+    expect(outputFacts[0].context).toMatchObject({ causationId: started.eventId });
+    expect(outputFacts[1].context).toMatchObject({ causationId: outputFacts[0].eventId });
+    expect(outputFacts[2].context).toMatchObject({ causationId: outputFacts[1].eventId });
+    expect(outputFacts.every(record => record.context.correlationId === EVENT_CONTEXT.correlationId)).toBe(true);
     await expect(writer.append(makeChunk(new Uint8Array([1])))).rejects.toThrow(/closed/);
   });
 
