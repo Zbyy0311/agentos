@@ -89,4 +89,16 @@ describe('ProviderValidationService', () => {
     expect(JSON.stringify(mismatchResult)).not.toContain('PROVIDER_VALIDATION_FAILED');
     expect(mismatchResult.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(true);
   });
+
+  it('normalizes adapter exceptions into a stable internal provider error', async () => {
+    const adapter = new KimiCodeProviderAdapter();
+    adapter.validate = async () => { throw new Error('raw token should not escape'); };
+    const validator = new ProviderValidationService(new ProviderRegistry([adapter]));
+    const result = await validator.validate(config());
+    expect(result.errors).toEqual([expect.objectContaining({
+      code: 'PROVIDER_INTERNAL_ERROR',
+      message: 'Provider validation could not be completed',
+    })]);
+    expect(JSON.stringify(result)).not.toContain('raw token');
+  });
 });

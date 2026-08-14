@@ -123,16 +123,27 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     if (canonicalOverride) candidates.push({ executable: canonicalOverride, source: 'environment', confidence: 0.95 });
     if (legacyOverride && legacyOverride !== canonicalOverride) candidates.push({ executable: legacyOverride, source: 'environment', confidence: 0.9 });
 
-    const pathCandidate = await findOnPath(KIMICODE_DEFAULT_EXECUTABLE, input.environment);
+    const platform = input.platform ?? process.platform;
+    const pathCandidate = await findOnPath(KIMICODE_DEFAULT_EXECUTABLE, input.environment, platform);
     if (pathCandidate) candidates.push({ executable: pathCandidate, source: 'path', confidence: 0.8 });
     const home = input.homeDirectory ?? input.environment.USERPROFILE ?? input.environment.HOME;
     if (home) {
-      const defaultCandidate = join(home, '.kimi-code', 'bin', process.platform === 'win32' ? 'kimi.exe' : 'kimi');
+      const defaultCandidate = join(home, '.kimi-code', 'bin', platform === 'win32' ? 'kimi.exe' : 'kimi');
       if (await exists(defaultCandidate)) candidates.push({ executable: defaultCandidate, source: 'default-location', confidence: 0.7 });
     }
 
     const deduped = dedupeCandidates(candidates);
-    const selected = await firstUsableCandidate(deduped);
+    // An explicitly configured executable or override is authoritative. Never silently
+    // fall back to a different binary when that preferred candidate is inaccessible.
+    const preferredExecutable = input.configuredExecutable
+      ?? canonicalOverride
+      ?? legacyOverride;
+    const preferred = preferredExecutable === undefined
+      ? undefined
+      : deduped.find(candidate => candidate.executable === preferredExecutable);
+    const selected = preferred
+      ? await firstUsableCandidate([preferred])
+      : await firstUsableCandidate(deduped);
     return {
       found: selected !== undefined,
       ...(selected === undefined ? {} : { selected }),
@@ -362,10 +373,10 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     try {
       const output = await (input.run ?? this.run)(executable, ['auth', 'status'], timeoutMs);
       const normalized = output.trim().toLowerCase();
+      if (/not[ -]?required|anonymous|none/.test(normalized)) return 'not-required';
       if (/authenticated|logged[ -]?in|signed[ -]?in/.test(normalized)) return 'authenticated';
       if (/expired/.test(normalized)) return 'expired';
       if (/required|login|unauthenticated|not authenticated/.test(normalized)) return 'required';
-      if (/not required|anonymous|none/.test(normalized)) return 'not-required';
     } catch {
       // Auth status is optional for some Kimi builds; retain unknown without leaking native output.
     }
@@ -432,9 +443,9 @@ async function exists(path: string): Promise<boolean> {
   try { await access(path); return true; } catch { return false; }
 }
 
-async function findOnPath(command: string, environment: Readonly<Record<string, string | undefined>>): Promise<string | undefined> {
+async function findOnPath(command: string, environment: Readonly<Record<string, string | undefined>>, platform: NodeJS.Platform): Promise<string | undefined> {
   const pathValue = environment.PATH ?? environment.Path ?? '';
-  const extensions = process.platform === 'win32' ? (environment.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : [''];
+  const extensions = platform === 'win32' ? (environment.PATHEXT ?? '.EXE;.CMD;.BAT').split(';') : [''];
   for (const directory of pathValue.split(delimiter).filter(Boolean)) {
     for (const extension of extensions) {
       const candidate = join(directory, `${command}${extension.toLowerCase()}`);

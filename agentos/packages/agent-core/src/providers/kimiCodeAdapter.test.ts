@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { KimiCodeProviderAdapter } from './kimiCodeAdapter.js';
 import type { ProviderConfigurationInput, ProviderProcessPort } from './types.js';
 
@@ -141,6 +143,44 @@ describe('KimiCodeProviderAdapter', () => {
       environment: { AGENTOS_KIMICODE_CLI: 'C:/canonical.exe', AGENTOS_KIMI_CLI: 'C:/legacy.exe' },
     });
     expect(plan.executable).toBe('C:/canonical.exe');
+  });
+
+  it('does not fall back to another executable when a configured binary is inaccessible', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'agentos-kimicode-discovery-'));
+    const pathExecutable = join(root, process.platform === 'win32' ? 'kimi.exe' : 'kimi');
+    writeFileSync(pathExecutable, 'fixture', 'utf8');
+    try {
+      const result = await new KimiCodeProviderAdapter().discover({
+        providerType: 'kimicode',
+        configuredExecutable: join(root, 'missing-kimi'),
+        environment: { PATH: root, PATHEXT: process.platform === 'win32' ? '.EXE;.CMD;.BAT' : undefined },
+        platform: process.platform,
+        homeDirectory: root,
+      });
+      expect(result.found).toBe(false);
+      expect(result.selected).toBeUndefined();
+      expect(result.candidates.some(candidate => candidate.executable === pathExecutable)).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it('preserves the not-required authentication state without misclassifying it as required', async () => {
+    const adapter = new KimiCodeProviderAdapter({
+      run: async (_command, args) => args[0] === '--version' ? '0.23.5' : args[0] === '--help' ? '--output-format stream-json' : 'not required',
+    });
+    const result = await adapter.validate({
+      configuration: config(),
+      environment: {},
+      discover: async input => ({
+        found: true,
+        selected: input.configuredExecutable,
+        candidates: [{ executable: input.configuredExecutable!, source: 'configuration', confidence: 1 }],
+        warnings: [],
+      }),
+    });
+    expect(result.authentication).toBe('not-required');
+    expect(result.errors).toEqual([]);
   });
 
   it('parses golden, malformed, unknown and usage output without fabricating provider semantics', () => {

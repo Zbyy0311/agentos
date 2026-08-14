@@ -57,15 +57,31 @@ export class ProviderValidationService {
         checkedAt,
       };
     }
-    return adapter.validate({
-      configuration,
-      environment: overrides.environment,
-      workspaceRoot: overrides.workspaceRoot,
-      forceRefresh: overrides.forceRefresh,
-      now: checkedAt,
-      discover: overrides.discover ?? this.options.discover,
-      run: overrides.run ?? this.options.run,
-      auth: overrides.auth ?? this.options.auth,
-    });
+    try {
+      return await adapter.validate({
+        configuration,
+        environment: overrides.environment,
+        workspaceRoot: overrides.workspaceRoot,
+        forceRefresh: overrides.forceRefresh,
+        now: checkedAt,
+        discover: overrides.discover ?? this.options.discover,
+        run: overrides.run ?? this.options.run,
+        auth: overrides.auth ?? this.options.auth,
+      });
+    } catch {
+      return {
+        valid: false,
+        capabilities: configuration.capabilities,
+        outputMode: configuration.outputMode,
+        warnings: [],
+        errors: [{
+          code: 'PROVIDER_INTERNAL_ERROR',
+          phase: 'internal',
+          message: 'Provider validation could not be completed',
+          retryable: false,
+        }],
+        checkedAt,
+      };
+    }
   }
 }
