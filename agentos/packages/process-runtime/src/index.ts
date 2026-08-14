@@ -21,4 +21,7 @@ export * from './store.js';
 export * from './streams.js';
 export * from './timeouts.js';
 export * from './manager.js';
+export * from './repository-port.js';
+export * from './artifact-sink.js';
+export * from './durable-coordinator.js';
 export * from './testing/mock-driver.js';

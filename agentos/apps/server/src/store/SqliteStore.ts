@@ -55,6 +55,9 @@ import { RunSnapshotRepository } from './RunSnapshotRepository.js';
 import { RunStageRepository } from './RunStageRepository.js';
 import { IdempotencyRepository } from './IdempotencyRepository.js';
 import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
+import { ProviderSessionRepository } from './ProviderSessionRepository.js';
+import { ProcessRepository } from './ProcessRepository.js';
+import { ProcessOutputReferenceRepository } from './ProcessOutputReferenceRepository.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
@@ -422,6 +425,9 @@ export class SqliteStore implements Store {
   private readonly runStageRepo: RunStageRepository;
   private readonly idempotencyRepo: IdempotencyRepository;
   private readonly providerConfigRepo: ProviderConfigurationRepository;
+  private readonly providerSessionRepo: ProviderSessionRepository;
+  private readonly processRepo: ProcessRepository;
+  private readonly processOutputReferenceRepo: ProcessOutputReferenceRepository;
   private readonly runtimeEventNotifier: RuntimeEventNotifier;
   private readonly runtimeEventRepo: RuntimeEventRepository;
   private readonly runStreamServiceRepo: RunStreamService;
@@ -453,6 +459,9 @@ export class SqliteStore implements Store {
       this.runStageRepo = new RunStageRepository(this.database as any);
       this.idempotencyRepo = new IdempotencyRepository(this.database as any);
       this.providerConfigRepo = new ProviderConfigurationRepository(this.database as any);
+      this.providerSessionRepo = new ProviderSessionRepository(this.database as any);
+      this.processRepo = new ProcessRepository(this.database as any);
+      this.processOutputReferenceRepo = new ProcessOutputReferenceRepository(this.database as any);
       const runtimeEventRegistry = createM3RuntimeEventRegistry();
       this.runtimeEventNotifier = new RuntimeEventNotifier();
       this.runtimeEventRepo = new RuntimeEventRepository(
@@ -514,6 +523,21 @@ export class SqliteStore implements Store {
 
   providerConfigurationRepository(): ProviderConfigurationRepository {
     return this.providerConfigRepo;
+  }
+
+  /** M4-P2B durable Provider Session repository (shares this store's SQLite handle). */
+  providerSessionRepository(): ProviderSessionRepository {
+    return this.providerSessionRepo;
+  }
+
+  /** M4-P2B durable Runtime Process repository (shares this store's SQLite handle). */
+  processRepository(): ProcessRepository {
+    return this.processRepo;
+  }
+
+  /** M4-P2B durable per-stream output reference repository (shares this store's SQLite handle). */
+  processOutputReferenceRepository(): ProcessOutputReferenceRepository {
+    return this.processOutputReferenceRepo;
   }
 
   runtimeEventRepository(): RuntimeEventRepository {
