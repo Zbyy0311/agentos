@@ -65,6 +65,7 @@ const SAFE_ENVIRONMENT_KEYS = new Set([
   'USERPROFILE', 'HOME', 'LANG', 'LC_ALL', 'NODE_ENV',
 ]);
 const SECRET_KEY_PATTERN = /(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|COOKIE|AUTH)/i;
+const SENSITIVE_WARNING_PATTERN = /(?:bearer\s+|oauth|(?:token|api[_-]?key|password|secret|credential)\s*[:=]|-----begin)/i;
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
@@ -187,7 +188,10 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
       platform: process.platform,
       homeDirectory: environment.USERPROFILE ?? environment.HOME,
     });
-    warnings.push(...discovered.warnings.map(message => ({ code: 'PROVIDER_DISCOVERY_WARNING', message })));
+    warnings.push(...discovered.warnings.map(message => ({
+      code: 'PROVIDER_DISCOVERY_WARNING',
+      message: sanitizeWarning(message),
+    })));
     if (!discovered.found || !discovered.selected) {
       const explicitlyConfigured = Boolean(
         configuration.executable
@@ -469,6 +473,12 @@ function dedupeCandidates<T extends { executable: string }>(candidates: readonly
     seen.add(candidate.executable);
     return true;
   });
+}
+
+function sanitizeWarning(value: string): string {
+  const message = value.trim();
+  if (!message || SENSITIVE_WARNING_PATTERN.test(message)) return 'Provider discovery warning';
+  return message.length > 256 ? `${message.slice(0, 256)}…` : message;
 }
 
 function canonicalizeEvent(event: import('../adapters/types.js').NormalizedCliEvent): ProviderNormalizedEvent {

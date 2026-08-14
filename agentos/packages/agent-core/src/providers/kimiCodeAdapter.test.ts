@@ -106,6 +106,21 @@ describe('KimiCodeProviderAdapter', () => {
     expect(result.errors).toEqual([expect.objectContaining({ code: 'PROVIDER_EXECUTABLE_NOT_ACCESSIBLE' })]);
   });
 
+  it('sanitizes discovery warning text before returning validation evidence', async () => {
+    const adapter = new KimiCodeProviderAdapter();
+    const result = await adapter.validate({
+      configuration: config(),
+      environment: {},
+      discover: async input => ({
+        found: false,
+        candidates: [],
+        warnings: [`token=secret-value for ${input.configuredExecutable}`],
+      }),
+    });
+    expect(result.warnings).toEqual([{ code: 'PROVIDER_DISCOVERY_WARNING', message: 'Provider discovery warning' }]);
+    expect(JSON.stringify(result)).not.toContain('secret-value');
+  });
+
   it('builds a canonical direct launch plan with separated args and secret references only', async () => {
     const adapter = new KimiCodeProviderAdapter();
     const plan = await adapter.buildLaunchPlan({

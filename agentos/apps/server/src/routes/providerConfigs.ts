@@ -157,8 +157,11 @@ export function createProviderConfigRoutes(
         workspaceId: workspace.id,
         validation,
       });
-    } catch (error) {
-      return sendInternalError(res, 'validate provider configuration failed', error);
+    } catch {
+      // Validation adapters own potentially sensitive probe details; keep them out of
+      // both the response and route-level logs when an unexpected exception escapes.
+      console.error('[provider-configs] validate provider configuration failed');
+      return res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_ERROR' });
     }
   });
 
