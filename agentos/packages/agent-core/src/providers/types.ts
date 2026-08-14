@@ -253,6 +253,7 @@ export interface ProviderNormalizedError {
 
 export interface RuntimeProviderAdapter {
   readonly manifest: ProviderAdapterManifest;
+  normalizeConfiguration?(configuration: ProviderConfigurationInput): ProviderConfigurationInput;
   getDefaultCapabilities(configuration: Partial<ProviderConfigurationInput>): ProviderCapabilities;
   discover(input: ProviderDiscoveryInput): Promise<ProviderDiscoveryResult>;
   validate(input: ProviderValidationInput): Promise<ProviderValidationResult>;

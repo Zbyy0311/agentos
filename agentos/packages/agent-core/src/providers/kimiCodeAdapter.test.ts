@@ -64,10 +64,12 @@ function runnerFor(version: string, help = 'Usage: kimi --output-format stream-j
 describe('KimiCodeProviderAdapter', () => {
   it('normalizes the legacy kimi input token without changing canonical adapter identity', () => {
     const adapter = new KimiCodeProviderAdapter();
-    const normalized = adapter.normalizeConfiguration(config({ providerType: 'kimi' }));
+    const input = config({ providerType: 'kimi' });
+    const originalArgs = input.argsTemplate;
+    const normalized = adapter.normalizeConfiguration(input);
     expect(normalized.providerType).toBe('kimicode');
     expect(normalized.adapterId).toBe('builtin.kimicode');
-    expect(normalized.argsTemplate).not.toBe(config().argsTemplate);
+    expect(normalized.argsTemplate).not.toBe(originalArgs);
   });
 
   it('validates direct KimiCode fixtures without emitting the forbidden generic validation error', async () => {
