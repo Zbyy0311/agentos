@@ -50,7 +50,7 @@ export type {
   ProviderNormalizedEvent,
   ProviderParseContext,
   ProviderParseResult,
-  ProviderProbeRunner,
+  ProcessProbePort,
   ProviderProcessPort,
   ProviderStartInput,
   ProviderType,

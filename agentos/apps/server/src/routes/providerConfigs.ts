@@ -4,7 +4,10 @@ import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
-import { KimiCodeProviderAdapter, ProviderRegistry, ProviderValidationService } from '@agentos/agent-core';
+import { KimiCodeProviderAdapter, ProviderRegistry, ProviderValidationService } from '@agentos/agent-core/providers';
+import { NodeProcessProbePort } from '@agentos/process-runtime';
+import type { ProviderValidationResult } from '@agentos/agent-core/providers';
+import { createHash } from 'node:crypto';
 
 const VALID_PROVIDER_TYPES = ['codex','claude-code','kimicode','opencode','gemini-cli','custom-cli','remote'] as const;
 const VALID_RUNTIME_MODES = ['cli','api','ssh','container'] as const;
@@ -75,6 +78,14 @@ function validateStructuredFields(body: Record<string, unknown>): string | undef
   return undefined;
 }
 
+function publicValidationProjection(validation: ProviderValidationResult): Omit<ProviderValidationResult, 'executableResolved'> & { executableFingerprint?: string } {
+  const { executableResolved, ...safe } = validation;
+  return {
+    ...safe,
+    ...(executableResolved === undefined ? {} : { executableFingerprint: `sha256:${createHash('sha256').update(executableResolved, 'utf8').digest('hex').slice(0, 16)}` }),
+  };
+}
+
 /** Returns the trimmed name, or undefined when absent. Sends a 400 when present but invalid. */
 function readValidName(body: Record<string, unknown>, res: Response, required: boolean): string | undefined {
   if (body.name === undefined) {
@@ -108,7 +119,7 @@ export function createProviderConfigRoutes(
   const router = Router({ mergeParams: true });
   const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
   const validationService = options.validationService
-    ?? new ProviderValidationService(new ProviderRegistry([new KimiCodeProviderAdapter()]));
+    ?? new ProviderValidationService(new ProviderRegistry([new KimiCodeProviderAdapter({ probe: new NodeProcessProbePort() })]));
 
   router.get('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
@@ -155,7 +166,7 @@ export function createProviderConfigRoutes(
       return res.status(200).json({
         providerConfigId: config.id,
         workspaceId: workspace.id,
-        validation,
+        validation: publicValidationProjection(validation),
       });
     } catch {
       // Validation adapters own potentially sensitive probe details; keep them out of

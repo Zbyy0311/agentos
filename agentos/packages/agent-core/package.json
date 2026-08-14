@@ -5,6 +5,16 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./providers": {
+      "types": "./dist/providers/index.d.ts",
+      "import": "./dist/providers/index.js"
+    }
+  },
   "scripts": {
     "build": "tsc",
     "clean": "rm -rf dist",
@@ -13,6 +23,7 @@
     "test:smoke": "vitest run smoke"
   },
   "dependencies": {
+    "@agentos/process-runtime": "workspace:*",
     "@agentos/shared": "workspace:*"
   },
   "devDependencies": {

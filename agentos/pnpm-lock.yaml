@@ -13,6 +13,9 @@ importers:
       '@agentos/agent-core':
         specifier: workspace:*
         version: link:../../packages/agent-core
+      '@agentos/process-runtime':
+        specifier: workspace:*
+        version: link:../../packages/process-runtime
       '@agentos/shared':
         specifier: workspace:*
         version: link:../../packages/shared
@@ -105,6 +108,9 @@ importers:
 
   packages/agent-core:
     dependencies:
+      '@agentos/process-runtime':
+        specifier: workspace:*
+        version: link:../process-runtime
       '@agentos/shared':
         specifier: workspace:*
         version: link:../shared

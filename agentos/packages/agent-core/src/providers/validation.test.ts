@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { KimiCodeProviderAdapter } from './kimiCodeAdapter.js';
 import { ProviderRegistry } from './registry.js';
 import { ProviderValidationService } from './validation.js';
-import type { ProviderConfigurationInput } from './types.js';
+import type { ProcessProbePort, ProviderConfigurationInput } from './types.js';
 
 function config(overrides: Partial<ProviderConfigurationInput> = {}): ProviderConfigurationInput {
   return {
@@ -11,6 +11,7 @@ function config(overrides: Partial<ProviderConfigurationInput> = {}): ProviderCo
     name: 'KimiCode Local',
     providerType: 'kimicode',
     adapterId: 'builtin.kimicode',
+    adapterVersion: '1.0.0',
     runtimeMode: 'cli',
     executable: 'kimi',
     argsTemplate: [],
@@ -31,9 +32,20 @@ function config(overrides: Partial<ProviderConfigurationInput> = {}): ProviderCo
   };
 }
 
+function probeFor(version = '0.23.5', help = '--output-format stream-json', auth = 'authenticated'): ProcessProbePort {
+  return {
+    probe: async request => ({
+      stdout: request.args[0] === '--version' ? version : request.args[0] === '--help' ? help : auth,
+      stderr: '',
+      exitCode: 0,
+      signal: null,
+    }),
+  };
+}
+
 function service(options: ConstructorParameters<typeof ProviderValidationService>[1] = {}): ProviderValidationService {
   return new ProviderValidationService(new ProviderRegistry([new KimiCodeProviderAdapter({
-    run: async (_command, args) => args[0] === '--version' ? '0.23.5' : args[0] === '--help' ? '--output-format stream-json' : 'authenticated',
+    probe: probeFor(),
   })]), {
     discover: async input => ({
       found: true,
@@ -48,7 +60,7 @@ function service(options: ConstructorParameters<typeof ProviderValidationService
 describe('ProviderValidationService', () => {
   it('fails closed for disabled and archived configurations without probing', async () => {
     let calls = 0;
-    const validator = service({ run: async () => { calls += 1; return ''; } });
+    const validator = service({ probe: { probe: async () => { calls += 1; return { stdout: '', stderr: '', exitCode: 0, signal: null }; } } });
     const disabled = await validator.validate(config({ enabled: false }));
     const archived = await validator.validate(config({ archivedAt: '2026-08-15T00:00:00.000Z' }));
     expect(disabled.errors[0]?.code).toBe('PROVIDER_CONFIG_INVALID');
@@ -63,7 +75,7 @@ describe('ProviderValidationService', () => {
 
     const unsupported = service({
       discover: async () => ({ found: true, selected: 'C:/kimi.exe', candidates: [{ executable: 'C:/kimi.exe', source: 'configuration', confidence: 1 }], warnings: [] }),
-      run: async (_command, args) => args[0] === '--version' ? '0.10.0' : '--output-format stream-json',
+      probe: probeFor('0.10.0'),
     });
     const unsupportedResult = await unsupported.validate(config());
     expect(unsupportedResult.errors.map(error => error.code)).toContain('PROVIDER_VERSION_UNSUPPORTED');
@@ -74,13 +86,21 @@ describe('ProviderValidationService', () => {
     expect(result.errors).toEqual([expect.objectContaining({ code: 'PROVIDER_ADAPTER_NOT_FOUND' })]);
   });
 
+  it('rejects legacy configurations without a frozen adapter version before probing', async () => {
+    let calls = 0;
+    const validator = service({ probe: { probe: async () => { calls += 1; return { stdout: '', stderr: '', exitCode: 0, signal: null }; } } });
+    const result = await validator.validate(config({ adapterVersion: undefined }));
+    expect(result.errors).toEqual([expect.objectContaining({ code: 'PROVIDER_VERSION_UNSUPPORTED' })]);
+    expect(calls).toBe(0);
+  });
+
   it('preserves auth states, reports capability/output mismatches, and never emits generic validation failed', async () => {
-    const authRequired = service({ auth: async () => 'required' });
+    const authRequired = service({ probe: probeFor('0.23.5', '--output-format stream-json', 'required') });
     const authResult = await authRequired.validate(config());
     expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');
     expect(authResult.authentication).toBe('required');
 
-    const mismatch = service({ auth: async () => 'unknown' });
+    const mismatch = service({ probe: probeFor('0.23.5', '--output-format stream-json', 'unknown') });
     const mismatchResult = await mismatch.validate(config({ outputMode: 'raw-stream', capabilities: { ...config().capabilities, nativeApprovals: true } }));
     expect(mismatchResult.errors.map(error => error.code)).toEqual(expect.arrayContaining([
       'PROVIDER_CAPABILITY_UNAVAILABLE',

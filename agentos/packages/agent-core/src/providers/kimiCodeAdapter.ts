@@ -1,7 +1,7 @@
 import { access } from 'node:fs/promises';
 import { delimiter, join } from 'node:path';
-import { KimiAdapter } from '../adapters/kimiAdapter.js';
-import { runProbeCommand } from '../adapters/capabilityProbe.js';
+import type { ProcessProbeResult } from '@agentos/process-runtime';
+import { createKimiJsonParser } from '../adapters/kimiParser.js';
 import { normalizedProviderError } from './errors.js';
 import type {
   ProviderAdapterManifest,
@@ -19,7 +19,7 @@ import type {
   ProviderNormalizedEvent,
   ProviderParseContext,
   ProviderParseResult,
-  ProviderProbeRunner,
+  ProcessProbePort,
   ProviderStartInput,
   ProviderValidationError,
   ProviderValidationInput,
@@ -35,9 +35,8 @@ import {
 } from './types.js';
 
 export interface KimiCodeProviderAdapterOptions {
-  readonly run?: ProviderProbeRunner;
+  readonly probe?: ProcessProbePort;
   readonly discover?: (input: ProviderDiscoveryInput) => Promise<ProviderDiscoveryResult>;
-  readonly auth?: (executable: string, timeoutMs: number) => Promise<ProviderAuthenticationState>;
   readonly minSupportedVersion?: string;
   readonly maxSupportedVersionExclusive?: string;
 }
@@ -81,17 +80,14 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     description: 'Direct KimiCode CLI provider adapter',
   };
 
-  private readonly legacyAdapter = new KimiAdapter();
-  private readonly run: ProviderProbeRunner;
+  private readonly probe?: ProcessProbePort;
   private readonly discoverOverride?: (input: ProviderDiscoveryInput) => Promise<ProviderDiscoveryResult>;
-  private readonly authOverride?: (executable: string, timeoutMs: number) => Promise<ProviderAuthenticationState>;
   private readonly minSupportedVersion: string;
   private readonly maxSupportedVersionExclusive: string;
 
   constructor(options: KimiCodeProviderAdapterOptions = {}) {
-    this.run = options.run ?? runProbeCommand;
+    this.probe = options.probe;
     this.discoverOverride = options.discover;
-    this.authOverride = options.auth;
     this.minSupportedVersion = options.minSupportedVersion ?? '0.23.0';
     this.maxSupportedVersionExclusive = options.maxSupportedVersionExclusive ?? '1.0.0';
   }
@@ -174,10 +170,15 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     if (configuration.outputMode !== 'structured') {
       errors.push({ code: 'PROVIDER_CONFIG_INVALID', phase: 'configuration', message: 'KimiCode requires structured output mode', retryable: false });
     }
+    if (configuration.adapterVersion === undefined) {
+      errors.push({ code: 'PROVIDER_VERSION_UNSUPPORTED', phase: 'validation', message: 'An exact KimiCode adapter version is required', retryable: false });
+    } else if (configuration.adapterVersion !== this.manifest.version) {
+      errors.push({ code: 'PROVIDER_VERSION_UNSUPPORTED', phase: 'validation', message: 'The configured KimiCode adapter version is not available', retryable: false });
+    }
     const fatalConfigurationError = errors.some(error =>
       error.phase === 'configuration' && error.message !== 'KimiCode requires structured output mode',
     );
-    if (fatalConfigurationError) {
+    if (fatalConfigurationError || errors.some(error => error.code === 'PROVIDER_VERSION_UNSUPPORTED')) {
       return { valid: false, capabilities: this.getDefaultCapabilities(configuration), outputMode: configuration.outputMode, warnings, errors, checkedAt };
     }
 
@@ -207,14 +208,39 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
       return { valid: false, capabilities: this.getDefaultCapabilities(configuration), outputMode: configuration.outputMode, warnings, errors, checkedAt };
     }
 
+    const probe = input.probe ?? this.probe;
+    if (!probe) {
+      errors.push({ code: 'PROVIDER_INTERNAL_ERROR', phase: 'validation', message: 'Provider validation probe port is unavailable', retryable: false });
+      return { valid: false, executableResolved: discovered.selected, capabilities: this.getDefaultCapabilities(configuration), outputMode: configuration.outputMode, warnings, errors, checkedAt };
+    }
+
     let versionOutput: string;
     let helpOutput: string;
     try {
-      const run = input.run ?? this.run;
-      versionOutput = await run(discovered.selected, ['--version'], configuration.timeoutPolicy.validationTimeoutMs);
-      helpOutput = await run(discovered.selected, ['--help'], configuration.timeoutPolicy.validationTimeoutMs);
+      const probeEnvironment = safeProbeEnvironment(environment);
+      const version = await probe.probe({
+        executable: discovered.selected,
+        args: ['--version'],
+        environment: probeEnvironment,
+        timeoutMs: configuration.timeoutPolicy.validationTimeoutMs,
+      });
+      const versionFailure = providerProbeError(version, 'discovery');
+      if (versionFailure && !probeOutput(version).trim()) throw versionFailure;
+      versionOutput = probeOutput(version);
+
+      const help = await probe.probe({
+        executable: discovered.selected,
+        args: ['--help'],
+        environment: probeEnvironment,
+        timeoutMs: configuration.timeoutPolicy.validationTimeoutMs,
+      });
+      const helpFailure = providerProbeError(help, 'validation');
+      if (helpFailure && !probeOutput(help).trim()) throw helpFailure;
+      helpOutput = probeOutput(help);
     } catch (error) {
-      const normalized = this.normalizeError(error, { phase: 'discovery' });
+      const normalized = isProviderNormalizedError(error)
+        ? error
+        : this.normalizeError(error, { phase: 'discovery' });
       errors.push({ code: normalized.code, phase: normalized.phase, message: normalized.message, retryable: normalized.retryable });
       return { valid: false, executableResolved: discovered.selected, capabilities: this.getDefaultCapabilities(configuration), outputMode: configuration.outputMode, warnings, errors, checkedAt };
     }
@@ -227,7 +253,7 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
       errors.push({ code: 'PROVIDER_CAPABILITY_UNAVAILABLE', phase: 'validation', message: 'KimiCode does not advertise structured stream output', retryable: false });
     }
 
-    const authentication = await this.resolveAuth(input, discovered.selected, configuration.timeoutPolicy.validationTimeoutMs, warnings);
+    const authentication = await this.resolveAuth(probe, discovered.selected, environment, configuration.timeoutPolicy.validationTimeoutMs, warnings);
     if (authentication === 'unknown' && !warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')) {
       warnings.push({ code: 'PROVIDER_AUTH_UNKNOWN', message: 'KimiCode authentication state could not be determined' });
     }
@@ -260,6 +286,12 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     const configuration = this.normalizeConfiguration(input.configuration);
     if (!configuration.enabled || configuration.archivedAt || canonicalProviderType(configuration.providerType) !== KIMICODE_PROVIDER_TYPE) {
       throw new Error('PROVIDER_CONFIG_INVALID');
+    }
+    if (configuration.adapterId !== this.manifest.id) {
+      throw new Error('PROVIDER_ADAPTER_NOT_FOUND');
+    }
+    if (configuration.adapterVersion !== this.manifest.version) {
+      throw new Error('PROVIDER_VERSION_UNSUPPORTED');
     }
     if (configuration.runtimeMode !== 'cli' || configuration.outputMode !== 'structured') {
       throw new Error('PROVIDER_CONFIG_INVALID');
@@ -310,30 +342,32 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
   }
 
   createParseContext(): ProviderParseContext {
-    return { parser: this.legacyAdapter.createParser() };
+    return { parser: createKimiJsonParser() };
   }
 
   parseChunk(chunk: string, context: ProviderParseContext = this.createParseContext()): ProviderParseResult {
-    const parser = context.parser ?? this.legacyAdapter.createParser();
+    const parser = context.parser ?? createKimiJsonParser();
     const events = parser.push(chunk).map(canonicalizeEvent);
     return { context: { parser }, events, diagnostics: events.filter(event => event.type === 'diagnostic') };
   }
 
   finishParse(context: ProviderParseContext): ProviderParseResult {
-    const parser = context.parser ?? this.legacyAdapter.createParser();
+    const parser = context.parser ?? createKimiJsonParser();
     const events = parser.finish().map(canonicalizeEvent);
     return { context: { parser }, events, diagnostics: events.filter(event => event.type === 'diagnostic') };
   }
 
   async finalize(input: ProviderFinalizeInput): Promise<ProviderFinalResult> {
     if (input.cancelled) return { status: 'cancelled', events: input.parsedEvents };
+    if (input.providerError) return { status: 'failed', events: input.parsedEvents, error: input.providerError };
     const parseFailure = input.parsedEvents.some(event => event.type === 'diagnostic' && (event.code === 'adapter.invalid_json' || event.code === 'adapter.oversized_json'));
     if (parseFailure) {
       return { status: 'failed', events: input.parsedEvents, error: normalizedProviderError('PROVIDER_OUTPUT_PARSE_FAILED', 'output-parse', 'KimiCode output could not be parsed') };
     }
     if (input.exitCode !== 0 || input.signal !== null) {
       const error = this.normalizeError(input.stderr, { phase: 'finalize' });
-      return { status: 'failed', events: input.parsedEvents, error: error.code === 'PROVIDER_AUTH_REQUIRED' ? error : normalizedProviderError('PROVIDER_SESSION_FAILED', 'finalize', 'KimiCode session exited unsuccessfully') };
+      const precise = error.code !== 'PROVIDER_INTERNAL_ERROR' && error.code !== 'PROVIDER_UNKNOWN_ERROR';
+      return { status: 'failed', events: input.parsedEvents, error: precise ? error : normalizedProviderError('PROVIDER_SESSION_FAILED', 'finalize', 'KimiCode session exited unsuccessfully') };
     }
     const output = input.parsedEvents
       .filter((event): event is Extract<typeof event, { type: 'assistant.message' }> => event.type === 'assistant.message')
@@ -362,8 +396,12 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
   normalizeError(error: unknown, context: { readonly phase?: import('./types.js').ProviderErrorPhase } = {}): ProviderNormalizedError {
     const text = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
     const phase = context.phase ?? 'internal';
-    if (/auth|login|unauthenticated|credential/i.test(text)) return normalizedProviderError('PROVIDER_AUTH_REQUIRED', 'authentication', 'KimiCode authentication is required');
     if (/expired/i.test(text)) return normalizedProviderError('PROVIDER_AUTH_EXPIRED', 'authentication', 'KimiCode authentication has expired');
+    if (/auth|login|unauthenticated|credential/i.test(text)) return normalizedProviderError('PROVIDER_AUTH_REQUIRED', 'authentication', 'KimiCode authentication is required');
+    if (/rate[ -]?limit|too many requests/i.test(text)) return normalizedProviderError('PROVIDER_RATE_LIMITED', 'runtime', 'KimiCode rate limit reached', true);
+    if (/quota/i.test(text)) return normalizedProviderError('PROVIDER_QUOTA_EXCEEDED', 'runtime', 'KimiCode quota was exceeded');
+    if (/model.*unavailable|unknown model/i.test(text)) return normalizedProviderError('PROVIDER_MODEL_UNAVAILABLE', 'validation', 'KimiCode model is unavailable');
+    if (/network|connect|timed out|timeout/i.test(text)) return normalizedProviderError('PROVIDER_NETWORK_ERROR', 'runtime', 'KimiCode network operation failed', true);
     if (/version|unsupported/i.test(text)) return normalizedProviderError('PROVIDER_VERSION_UNSUPPORTED', 'validation', 'KimiCode version is unsupported');
     if (/ENOENT|not found|access denied|EACCES|EPERM/i.test(text)) return normalizedProviderError('PROVIDER_EXECUTABLE_NOT_ACCESSIBLE', 'discovery', 'KimiCode executable is not accessible');
     if (/output-format|stream-json|structured/i.test(text)) return normalizedProviderError('PROVIDER_CAPABILITY_UNAVAILABLE', 'validation', 'KimiCode structured output is unavailable');
@@ -371,15 +409,19 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     return normalizedProviderError('PROVIDER_INTERNAL_ERROR', phase, 'KimiCode provider operation failed');
   }
 
-  private async resolveAuth(input: ProviderValidationInput, executable: string, timeoutMs: number, warnings: ProviderValidationWarning[]): Promise<ProviderAuthenticationState> {
-    if (input.auth) return input.auth(executable, timeoutMs);
-    if (this.authOverride) return this.authOverride(executable, timeoutMs);
+  private async resolveAuth(probe: ProcessProbePort, executable: string, environment: Readonly<Record<string, string | undefined>>, timeoutMs: number, warnings: ProviderValidationWarning[]): Promise<ProviderAuthenticationState> {
     try {
-      const output = await (input.run ?? this.run)(executable, ['auth', 'status'], timeoutMs);
+      const result = await probe.probe({
+        executable,
+        args: ['auth', 'status'],
+        environment: safeProbeEnvironment(environment),
+        timeoutMs,
+      });
+      const output = probeOutput(result);
       const normalized = output.trim().toLowerCase();
       if (/not[ -]?required|anonymous|none/.test(normalized)) return 'not-required';
-      if (/authenticated|logged[ -]?in|signed[ -]?in/.test(normalized)) return 'authenticated';
       if (/expired/.test(normalized)) return 'expired';
+      if (/authenticated|logged[ -]?in|signed[ -]?in/.test(normalized)) return 'authenticated';
       if (/required|login|unauthenticated|not authenticated/.test(normalized)) return 'required';
     } catch {
       // Auth status is optional for some Kimi builds; retain unknown without leaking native output.
@@ -478,7 +520,43 @@ function dedupeCandidates<T extends { executable: string }>(candidates: readonly
 function sanitizeWarning(value: string): string {
   const message = value.trim();
   if (!message || SENSITIVE_WARNING_PATTERN.test(message)) return 'Provider discovery warning';
+  /*
   return message.length > 256 ? `${message.slice(0, 256)}…` : message;
+  */
+  return message.length > 256 ? `${message.slice(0, 256)}...` : message;
+}
+
+function probeOutput(result: ProcessProbeResult): string {
+  return `${result.stdout}${result.stderr}`;
+}
+
+function providerProbeError(result: ProcessProbeResult, phase: 'discovery' | 'validation'): ProviderNormalizedError | undefined {
+  switch (result.errorCode) {
+    case 'PROCESS_EXECUTABLE_NOT_FOUND':
+      return normalizedProviderError('PROVIDER_NOT_FOUND', 'discovery', 'KimiCode executable was not found');
+    case 'PROCESS_EXECUTABLE_NOT_ACCESSIBLE':
+      return normalizedProviderError('PROVIDER_EXECUTABLE_NOT_ACCESSIBLE', 'discovery', 'KimiCode executable is not accessible');
+    case 'PROCESS_STARTUP_TIMEOUT':
+      return normalizedProviderError('PROVIDER_INTERNAL_ERROR', phase, 'KimiCode validation probe timed out', true);
+    case 'PROCESS_REQUEST_INVALID':
+    case 'PROCESS_UNKNOWN_ERROR':
+      return normalizedProviderError('PROVIDER_INTERNAL_ERROR', phase, 'KimiCode validation probe failed');
+    default:
+      return undefined;
+  }
+}
+
+function safeProbeEnvironment(environment: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const key of SAFE_ENVIRONMENT_KEYS) {
+    const value = environment[key];
+    if (value !== undefined && !SECRET_KEY_PATTERN.test(key)) result[key] = value;
+  }
+  return result;
+}
+
+function isProviderNormalizedError(value: unknown): value is ProviderNormalizedError {
+  return typeof value === 'object' && value !== null && 'code' in value && 'phase' in value && 'message' in value;
 }
 
 function canonicalizeEvent(event: import('../adapters/types.js').NormalizedCliEvent): ProviderNormalizedEvent {

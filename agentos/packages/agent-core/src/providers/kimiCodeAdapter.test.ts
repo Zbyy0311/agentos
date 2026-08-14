@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KimiCodeProviderAdapter } from './kimiCodeAdapter.js';
-import type { ProviderConfigurationInput, ProviderProcessPort } from './types.js';
+import type { ProcessProbePort, ProviderConfigurationInput, ProviderProcessPort } from './types.js';
 
 const sessionFixture = readFileSync(new URL('./fixtures/kimi-session-complete.jsonl', import.meta.url), 'utf8');
 
@@ -14,6 +14,7 @@ function config(overrides: Partial<ProviderConfigurationInput> = {}): ProviderCo
     name: 'KimiCode Local',
     providerType: 'kimicode',
     adapterId: 'builtin.kimicode',
+    adapterVersion: '1.0.0',
     runtimeMode: 'cli',
     executable: 'C:/tools/kimi.exe',
     argsTemplate: ['-m', 'kimi-code/kimi-for-coding', '-p'],
@@ -54,12 +55,14 @@ function config(overrides: Partial<ProviderConfigurationInput> = {}): ProviderCo
   };
 }
 
-function runnerFor(version: string, help = 'Usage: kimi --output-format stream-json'): (command: string, args: readonly string[], timeoutMs: number) => Promise<string> {
-  return async (_command, args, _timeoutMs) => {
-    if (args[0] === '--version') return version;
-    if (args[0] === '--help') return help;
-    if (args[0] === 'auth' && args[1] === 'status') return 'authenticated';
-    return '';
+function probeFor(version: string, help = 'Usage: kimi --output-format stream-json', auth = 'authenticated'): ProcessProbePort {
+  return {
+    probe: async request => ({
+      stdout: request.args[0] === '--version' ? version : request.args[0] === '--help' ? help : request.args[0] === 'auth' && request.args[1] === 'status' ? auth : '',
+      stderr: '',
+      exitCode: 0,
+      signal: null,
+    }),
   };
 }
 
@@ -75,7 +78,7 @@ describe('KimiCodeProviderAdapter', () => {
   });
 
   it('validates direct KimiCode fixtures without emitting the forbidden generic validation error', async () => {
-    const adapter = new KimiCodeProviderAdapter({ run: runnerFor('0.23.5') });
+    const adapter = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5') });
     const result = await adapter.validate({
       configuration: config(),
       environment: {},
@@ -94,6 +97,25 @@ describe('KimiCodeProviderAdapter', () => {
     expect(result.authentication).toBe('authenticated');
     expect(result.errors).toEqual([]);
     expect(JSON.stringify(result)).not.toContain('PROVIDER_VALIDATION_FAILED');
+  });
+
+  it('routes version, help, and auth probes through the injected Process Runtime port', async () => {
+    const requests: string[][] = [];
+    const adapter = new KimiCodeProviderAdapter({
+      probe: {
+        probe: async request => {
+          requests.push([...request.args]);
+          return { stdout: request.args[0] === '--version' ? '0.23.5' : request.args[0] === '--help' ? '--output-format stream-json' : 'authenticated', stderr: '', exitCode: 0, signal: null };
+        },
+      },
+    });
+    const result = await adapter.validate({
+      configuration: config(),
+      environment: {},
+      discover: async input => ({ found: true, selected: input.configuredExecutable, candidates: [], warnings: [] }),
+    });
+    expect(result.valid).toBe(true);
+    expect(requests).toEqual([['--version'], ['--help'], ['auth', 'status']]);
   });
 
   it('distinguishes an explicitly configured inaccessible executable from no discovery candidate', async () => {
@@ -149,6 +171,15 @@ describe('KimiCodeProviderAdapter', () => {
     expect(JSON.stringify(plan)).not.toContain('api-key');
   });
 
+  it('refuses to build an execution plan without the frozen manifest version', async () => {
+    const adapter = new KimiCodeProviderAdapter();
+    await expect(adapter.buildLaunchPlan({
+      configuration: config({ adapterVersion: undefined }),
+      workspaceRoot: 'C:/workspace',
+      prompt: 'hello',
+    })).rejects.toThrow('PROVIDER_VERSION_UNSUPPORTED');
+  });
+
   it('uses canonical environment override before the legacy Kimi override when config is unset', async () => {
     const adapter = new KimiCodeProviderAdapter();
     const plan = await adapter.buildLaunchPlan({
@@ -181,9 +212,7 @@ describe('KimiCodeProviderAdapter', () => {
   });
 
   it('preserves the not-required authentication state without misclassifying it as required', async () => {
-    const adapter = new KimiCodeProviderAdapter({
-      run: async (_command, args) => args[0] === '--version' ? '0.23.5' : args[0] === '--help' ? '--output-format stream-json' : 'not required',
-    });
+    const adapter = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5', '--output-format stream-json', 'not required') });
     const result = await adapter.validate({
       configuration: config(),
       environment: {},
@@ -237,6 +266,17 @@ describe('KimiCodeProviderAdapter', () => {
     });
     expect(cancelled).toEqual({ accepted: true });
     expect(calls).toEqual([{ processId: 'proc_1', sessionId: 'psess_1', reason: 'user' }]);
+  });
+
+  it('keeps precise auth-required, auth-expired, and generic session classifications', async () => {
+    const adapter = new KimiCodeProviderAdapter();
+    const parsedEvents = adapter.parseChunk('{"role":"assistant","content":"done"}\n', adapter.createParseContext()).events;
+    const required = await adapter.finalize({ exitCode: 1, signal: null, parsedEvents, stderr: 'login required' });
+    const expired = await adapter.finalize({ exitCode: 1, signal: null, parsedEvents, stderr: 'OAuth token expired' });
+    const generic = await adapter.finalize({ exitCode: 1, signal: null, parsedEvents, stderr: 'native provider failure' });
+    expect(required.error?.code).toBe('PROVIDER_AUTH_REQUIRED');
+    expect(expired.error?.code).toBe('PROVIDER_AUTH_EXPIRED');
+    expect(generic.error?.code).toBe('PROVIDER_SESSION_FAILED');
   });
 
   it('has no direct child_process or spawn/exec dependency in the adapter source', async () => {

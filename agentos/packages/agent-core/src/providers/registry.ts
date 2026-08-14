@@ -52,12 +52,7 @@ export class ProviderRegistry {
 
   resolve(input: ProviderResolveInput | ProviderType): RuntimeProviderAdapter {
     if (typeof input === 'string') {
-      const matches = this.findByType(input);
-      const first = matches[0];
-      if (first === undefined) {
-        throw new ProviderRegistryError('PROVIDER_ADAPTER_NOT_FOUND', `no adapter registered for ${input}`, 'PROVIDER_ADAPTER_NOT_FOUND');
-      }
-      return first;
+      throw new ProviderRegistryError('PROVIDER_VERSION_UNSUPPORTED', `exact adapter identity is required for ${input}`);
     }
     if (input.adapterId !== undefined && input.adapterVersion === undefined) {
       throw new ProviderRegistryError('PROVIDER_VERSION_UNSUPPORTED', `exact adapter version is required for ${input.adapterId}`);

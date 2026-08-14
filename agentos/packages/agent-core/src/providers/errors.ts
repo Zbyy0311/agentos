@@ -35,8 +35,16 @@ export function providerErrorStatus(code: ProviderErrorCode): number {
     case 'PROVIDER_AUTH_REQUIRED':
     case 'PROVIDER_AUTH_EXPIRED':
     case 'PROVIDER_CAPABILITY_UNAVAILABLE':
+    case 'PROVIDER_MODEL_UNAVAILABLE':
+    case 'PROVIDER_SESSION_NOT_RESUMABLE':
+    case 'PROVIDER_APPROVAL_FAILED':
     case 'PROVIDER_CANCEL_FAILED': return 409;
+    case 'PROVIDER_RATE_LIMITED':
+    case 'PROVIDER_QUOTA_EXCEEDED': return 429;
     case 'PROVIDER_START_FAILED': return 503;
+    case 'PROVIDER_NETWORK_ERROR': return 503;
+    case 'PROVIDER_PAUSE_UNSUPPORTED':
+    case 'PROVIDER_RESUME_FAILED': return 409;
     case 'PROVIDER_ADAPTER_NOT_FOUND': return 409;
     default: return 500;
   }

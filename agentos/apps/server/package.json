@@ -14,6 +14,7 @@
   },
   "dependencies": {
     "@agentos/agent-core": "workspace:*",
+    "@agentos/process-runtime": "workspace:*",
     "@agentos/shared": "workspace:*",
     "cors": "^2.8.5",
     "express": "^4.19.2",

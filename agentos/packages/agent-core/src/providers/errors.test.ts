@@ -1,5 +1,7 @@
-/** Authoritative 23-member ProviderErrorCode union from Runtime Specification §31. */
-export const PROVIDER_ERROR_CODES = Object.freeze([
+import { describe, expect, it } from 'vitest';
+import { PROVIDER_ERROR_CODES } from './types.js';
+
+const AUTHORITATIVE_PROVIDER_ERROR_CODES = [
   'PROVIDER_ADAPTER_NOT_FOUND',
   'PROVIDER_CONFIG_INVALID',
   'PROVIDER_NOT_FOUND',
@@ -23,20 +25,11 @@ export const PROVIDER_ERROR_CODES = Object.freeze([
   'PROVIDER_NETWORK_ERROR',
   'PROVIDER_INTERNAL_ERROR',
   'PROVIDER_UNKNOWN_ERROR',
-] as const);
+] as const;
 
-export type ProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[number];
-
-export type ProviderAuthenticationState =
-  | 'authenticated'
-  | 'required'
-  | 'expired'
-  | 'unknown'
-  | 'not-required';
-
-export interface ProviderErrorDto {
-  readonly code: ProviderErrorCode;
-  readonly phase: string;
-  readonly retryable: boolean;
-  readonly message: string;
-}
+describe('Provider error contract', () => {
+  it('uses the authoritative 23-member Runtime Specification union', () => {
+    expect(PROVIDER_ERROR_CODES).toEqual(AUTHORITATIVE_PROVIDER_ERROR_CODES);
+    expect(PROVIDER_ERROR_CODES).toHaveLength(23);
+  });
+});

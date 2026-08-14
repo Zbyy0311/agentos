@@ -49,6 +49,8 @@ describe('ProviderRegistry', () => {
     expect(registry.resolve({ adapterId: 'builtin.kimicode', adapterVersion: adapter.manifest.version }).manifest).toEqual(adapter.manifest);
     expect(registry.resolve({ providerType: 'kimicode', adapterId: 'builtin.kimicode', adapterVersion: adapter.manifest.version })).toBe(adapter);
     expect(registry.resolve({ providerType: 'kimi', adapterId: 'builtin.kimicode', adapterVersion: adapter.manifest.version })).toBe(adapter);
+    expect(() => registry.resolve('kimicode')).toThrowError(expect.objectContaining({ code: 'PROVIDER_VERSION_UNSUPPORTED' }));
+    expect(() => registry.resolve({ providerType: 'kimicode' })).toThrowError(expect.objectContaining({ code: 'PROVIDER_VERSION_UNSUPPORTED' }));
     expect(registry.findByType('kimicode')).toEqual([adapter]);
     expect(registry.list()).toEqual([adapter.manifest]);
   });

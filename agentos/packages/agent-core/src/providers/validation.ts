@@ -1,9 +1,8 @@
 import { ProviderRegistry } from './registry.js';
 import type {
-  ProviderAuthProbe,
   ProviderConfigurationInput,
   ProviderDiscoveryResult,
-  ProviderProbeRunner,
+  ProcessProbePort,
   ProviderValidationResult,
   ProviderType,
 } from './types.js';
@@ -11,8 +10,7 @@ import { canonicalProviderType } from './types.js';
 
 export interface ProviderValidationServiceOptions {
   readonly discover?: (input: Parameters<NonNullable<import('./types.js').RuntimeProviderAdapter['discover']>>[0]) => Promise<ProviderDiscoveryResult>;
-  readonly run?: ProviderProbeRunner;
-  readonly auth?: ProviderAuthProbe;
+  readonly probe?: ProcessProbePort;
   readonly now?: () => string;
 }
 
@@ -25,28 +23,35 @@ export class ProviderValidationService {
 
   async validate(
     configuration: ProviderConfigurationInput,
-    overrides: Partial<Pick<import('./types.js').ProviderValidationInput, 'environment' | 'workspaceRoot' | 'forceRefresh' | 'now' | 'discover' | 'run' | 'auth'>> = {},
+    overrides: Partial<Pick<import('./types.js').ProviderValidationInput, 'environment' | 'workspaceRoot' | 'forceRefresh' | 'now' | 'discover' | 'probe'>> = {},
   ): Promise<ProviderValidationResult> {
     const checkedAt = overrides.now ?? this.options.now?.() ?? new Date().toISOString();
     const canonicalType = canonicalProviderType(configuration.providerType as ProviderType);
-    let adapter;
-    if (configuration.adapterVersion !== undefined) {
-      try {
-        adapter = this.registry.get(configuration.adapterId, configuration.adapterVersion);
-      } catch {
-        return {
-          valid: false,
-          capabilities: configuration.capabilities,
-          outputMode: configuration.outputMode,
-          warnings: [],
-          errors: [{ code: 'PROVIDER_ADAPTER_NOT_FOUND', phase: 'validation', message: 'The configured Provider adapter version is not registered', retryable: false }],
-          checkedAt,
-        };
-      }
-      if (!adapter.manifest.providerTypes.includes(canonicalType)) adapter = undefined;
-    } else {
-      adapter = this.registry.findByType(canonicalType).find(candidate => candidate.manifest.id === configuration.adapterId);
+    if (configuration.adapterVersion === undefined) {
+      return {
+        valid: false,
+        capabilities: configuration.capabilities,
+        outputMode: configuration.outputMode,
+        warnings: [],
+        errors: [{ code: 'PROVIDER_VERSION_UNSUPPORTED', phase: 'validation', message: 'An exact Provider adapter version is required', retryable: false }],
+        checkedAt,
+      };
     }
+
+    let adapter;
+    try {
+      adapter = this.registry.get(configuration.adapterId, configuration.adapterVersion);
+    } catch {
+      return {
+        valid: false,
+        capabilities: configuration.capabilities,
+        outputMode: configuration.outputMode,
+        warnings: [],
+        errors: [{ code: 'PROVIDER_ADAPTER_NOT_FOUND', phase: 'validation', message: 'The configured Provider adapter version is not registered', retryable: false }],
+        checkedAt,
+      };
+    }
+    if (!adapter.manifest.providerTypes.includes(canonicalType)) adapter = undefined;
     if (adapter === undefined) {
       return {
         valid: false,
@@ -65,8 +70,7 @@ export class ProviderValidationService {
         forceRefresh: overrides.forceRefresh,
         now: checkedAt,
         discover: overrides.discover ?? this.options.discover,
-        run: overrides.run ?? this.options.run,
-        auth: overrides.auth ?? this.options.auth,
+        probe: overrides.probe ?? this.options.probe,
       });
     } catch {
       return {

@@ -1,3 +1,4 @@
+import { PROVIDER_ERROR_CODES as SHARED_PROVIDER_ERROR_CODES } from '@agentos/shared';
 import type {
   ApprovalModeV1,
   OutputModeV1,
@@ -7,7 +8,11 @@ import type {
   RuntimeModeV1,
   WorkingDirectoryModeV1,
 } from '@agentos/shared';
+import type { ProviderErrorCode as SharedProviderErrorCode } from '@agentos/shared';
+import type { ProcessProbePort } from '@agentos/process-runtime';
 import type { CliEventParser, NormalizedCliEvent } from '../adapters/types.js';
+
+export type { ProcessProbePort } from '@agentos/process-runtime';
 
 export const KIMICODE_PROVIDER_TYPE = 'kimicode' as const;
 export const LEGACY_KIMI_PROVIDER_TYPE = 'kimi' as const;
@@ -119,20 +124,8 @@ export interface ProviderValidationInput {
   readonly forceRefresh?: boolean;
   readonly now?: string;
   readonly discover?: (input: ProviderDiscoveryInput) => Promise<ProviderDiscoveryResult>;
-  readonly run?: ProviderProbeRunner;
-  readonly auth?: ProviderAuthProbe;
+  readonly probe?: ProcessProbePort;
 }
-
-export type ProviderProbeRunner = (
-  command: string,
-  args: readonly string[],
-  timeoutMs: number,
-) => Promise<string>;
-
-export type ProviderAuthProbe = (
-  executable: string,
-  timeoutMs: number,
-) => Promise<ProviderAuthenticationState>;
 
 export interface ProviderStartInput {
   readonly configuration: ProviderConfigurationInput;
@@ -183,6 +176,7 @@ export interface ProviderFinalizeInput {
   readonly parsedEvents: readonly ProviderNormalizedEvent[];
   readonly stderr?: string;
   readonly cancelled?: boolean;
+  readonly providerError?: ProviderNormalizedError;
 }
 
 export interface ProviderFinalResult {
@@ -219,30 +213,15 @@ export type ProviderErrorPhase =
   | 'validation'
   | 'authentication'
   | 'startup'
+  | 'runtime'
   | 'output-parse'
   | 'finalize'
   | 'cancel'
   | 'internal';
 
-export const PROVIDER_ERROR_CODES = Object.freeze([
-  'PROVIDER_ADAPTER_NOT_FOUND',
-  'PROVIDER_CONFIG_INVALID',
-  'PROVIDER_NOT_FOUND',
-  'PROVIDER_EXECUTABLE_NOT_ACCESSIBLE',
-  'PROVIDER_VERSION_UNSUPPORTED',
-  'PROVIDER_AUTH_REQUIRED',
-  'PROVIDER_AUTH_EXPIRED',
-  'PROVIDER_CAPABILITY_UNAVAILABLE',
-  'PROVIDER_START_FAILED',
-  'PROVIDER_SESSION_FAILED',
-  'PROVIDER_OUTPUT_PARSE_FAILED',
-  'PROVIDER_OUTPUT_INVALID',
-  'PROVIDER_CANCEL_FAILED',
-  'PROVIDER_INTERNAL_ERROR',
-  'PROVIDER_UNKNOWN_ERROR',
-] as const);
+export const PROVIDER_ERROR_CODES = SHARED_PROVIDER_ERROR_CODES;
 
-export type ProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[number];
+export type ProviderErrorCode = SharedProviderErrorCode;
 
 export interface ProviderNormalizedError {
   readonly code: ProviderErrorCode;
