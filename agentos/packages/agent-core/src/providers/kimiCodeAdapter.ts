@@ -29,9 +29,11 @@ import type {
 } from './types.js';
 import {
   KIMICODE_ADAPTER_ID,
+  KIMICODE_ADAPTER_VERSION,
   KIMICODE_DEFAULT_EXECUTABLE,
   KIMICODE_PROVIDER_TYPE,
   canonicalProviderType,
+  resolveFrozenProviderIdentity,
 } from './types.js';
 
 export interface KimiCodeProviderAdapterOptions {
@@ -71,7 +73,7 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
   readonly manifest: ProviderAdapterManifest = {
     id: KIMICODE_ADAPTER_ID,
     name: 'KimiCode',
-    version: '1.0.0',
+    version: KIMICODE_ADAPTER_VERSION,
     providerTypes: [KIMICODE_PROVIDER_TYPE],
     runtimeModes: ['cli'],
     capabilities: KIMICODE_CAPABILITIES,
@@ -98,12 +100,17 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
 
   /** Normalize legacy agent-core input at the provider boundary only. */
   normalizeConfiguration(configuration: ProviderConfigurationInput): ProviderConfigurationInput {
-    return {
+    const normalized = {
       ...configuration,
       providerType: canonicalProviderType(configuration.providerType),
       ...(configuration.argsTemplate === undefined ? {} : { argsTemplate: [...configuration.argsTemplate] }),
       capabilities: { ...configuration.capabilities },
       timeoutPolicy: { ...configuration.timeoutPolicy },
+    };
+    const frozenIdentity = resolveFrozenProviderIdentity(normalized);
+    return {
+      ...normalized,
+      ...(configuration.adapterVersion === undefined && frozenIdentity === undefined ? {} : frozenIdentity ? { adapterVersion: frozenIdentity.adapterVersion } : {}),
     };
   }
 
@@ -170,9 +177,10 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     if (configuration.outputMode !== 'structured') {
       errors.push({ code: 'PROVIDER_CONFIG_INVALID', phase: 'configuration', message: 'KimiCode requires structured output mode', retryable: false });
     }
-    if (configuration.adapterVersion === undefined) {
+    const frozenIdentity = resolveFrozenProviderIdentity(configuration);
+    if (frozenIdentity === undefined) {
       errors.push({ code: 'PROVIDER_VERSION_UNSUPPORTED', phase: 'validation', message: 'An exact KimiCode adapter version is required', retryable: false });
-    } else if (configuration.adapterVersion !== this.manifest.version) {
+    } else if (frozenIdentity.adapterId !== this.manifest.id || frozenIdentity.adapterVersion !== this.manifest.version) {
       errors.push({ code: 'PROVIDER_VERSION_UNSUPPORTED', phase: 'validation', message: 'The configured KimiCode adapter version is not available', retryable: false });
     }
     const fatalConfigurationError = errors.some(error =>
@@ -287,10 +295,11 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     if (!configuration.enabled || configuration.archivedAt || canonicalProviderType(configuration.providerType) !== KIMICODE_PROVIDER_TYPE) {
       throw new Error('PROVIDER_CONFIG_INVALID');
     }
-    if (configuration.adapterId !== this.manifest.id) {
+    const frozenIdentity = resolveFrozenProviderIdentity(configuration);
+    if (frozenIdentity === undefined || frozenIdentity.adapterId !== this.manifest.id) {
       throw new Error('PROVIDER_ADAPTER_NOT_FOUND');
     }
-    if (configuration.adapterVersion !== this.manifest.version) {
+    if (frozenIdentity.adapterVersion !== this.manifest.version) {
       throw new Error('PROVIDER_VERSION_UNSUPPORTED');
     }
     if (configuration.runtimeMode !== 'cli' || configuration.outputMode !== 'structured') {
@@ -333,7 +342,7 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
       metadata: {
         providerType: KIMICODE_PROVIDER_TYPE,
         adapterId: this.manifest.id,
-        adapterVersion: this.manifest.version,
+        adapterVersion: frozenIdentity.adapterVersion,
         providerConfigId: configuration.id,
         providerConfigVersion: configuration.version,
         configSchemaVersion: this.manifest.configSchemaVersion,

@@ -6,7 +6,7 @@ import type {
   ProviderValidationResult,
   ProviderType,
 } from './types.js';
-import { canonicalProviderType } from './types.js';
+import { canonicalProviderType, resolveFrozenProviderIdentity } from './types.js';
 
 export interface ProviderValidationServiceOptions {
   readonly discover?: (input: Parameters<NonNullable<import('./types.js').RuntimeProviderAdapter['discover']>>[0]) => Promise<ProviderDiscoveryResult>;
@@ -27,7 +27,8 @@ export class ProviderValidationService {
   ): Promise<ProviderValidationResult> {
     const checkedAt = overrides.now ?? this.options.now?.() ?? new Date().toISOString();
     const canonicalType = canonicalProviderType(configuration.providerType as ProviderType);
-    if (configuration.adapterVersion === undefined) {
+    const frozenIdentity = resolveFrozenProviderIdentity(configuration);
+    if (frozenIdentity === undefined) {
       return {
         valid: false,
         capabilities: configuration.capabilities,
@@ -40,7 +41,7 @@ export class ProviderValidationService {
 
     let adapter;
     try {
-      adapter = this.registry.get(configuration.adapterId, configuration.adapterVersion);
+      adapter = this.registry.get(frozenIdentity.adapterId, frozenIdentity.adapterVersion);
     } catch {
       return {
         valid: false,

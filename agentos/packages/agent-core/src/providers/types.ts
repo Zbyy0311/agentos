@@ -17,6 +17,7 @@ export type { ProcessProbePort } from '@agentos/process-runtime';
 export const KIMICODE_PROVIDER_TYPE = 'kimicode' as const;
 export const LEGACY_KIMI_PROVIDER_TYPE = 'kimi' as const;
 export const KIMICODE_ADAPTER_ID = 'builtin.kimicode' as const;
+export const KIMICODE_ADAPTER_VERSION = '1.0.0' as const;
 export const KIMICODE_DEFAULT_EXECUTABLE = 'kimi' as const;
 
 export type ProviderType = ProviderTypeV1 | typeof LEGACY_KIMI_PROVIDER_TYPE;
@@ -51,6 +52,30 @@ export interface ProviderConfigurationInput {
   readonly enabled: boolean;
   readonly version: number;
   readonly archivedAt?: string;
+}
+
+export interface FrozenProviderIdentity {
+  readonly adapterId: string;
+  readonly adapterVersion: string;
+}
+
+/**
+ * Resolve the only compatibility identity permitted for an absent persisted
+ * adapterVersion. Every other missing-version configuration fails closed.
+ */
+export function resolveFrozenProviderIdentity(
+  configuration: Pick<ProviderConfigurationInput, 'providerType' | 'adapterId' | 'adapterVersion'>,
+): FrozenProviderIdentity | undefined {
+  if (configuration.adapterVersion !== undefined) {
+    return { adapterId: configuration.adapterId, adapterVersion: configuration.adapterVersion };
+  }
+  if (
+    canonicalProviderType(configuration.providerType) === KIMICODE_PROVIDER_TYPE
+    && configuration.adapterId === KIMICODE_ADAPTER_ID
+  ) {
+    return { adapterId: KIMICODE_ADAPTER_ID, adapterVersion: KIMICODE_ADAPTER_VERSION };
+  }
+  return undefined;
 }
 
 export interface ProviderAdapterManifest {

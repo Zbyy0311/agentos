@@ -75,6 +75,9 @@ describe('KimiCodeProviderAdapter', () => {
     expect(normalized.providerType).toBe('kimicode');
     expect(normalized.adapterId).toBe('builtin.kimicode');
     expect(normalized.argsTemplate).not.toBe(originalArgs);
+
+    const compatibility = adapter.normalizeConfiguration(config({ adapterVersion: undefined }));
+    expect(compatibility.adapterVersion).toBe('1.0.0');
   });
 
   it('validates direct KimiCode fixtures without emitting the forbidden generic validation error', async () => {
@@ -171,13 +174,23 @@ describe('KimiCodeProviderAdapter', () => {
     expect(JSON.stringify(plan)).not.toContain('api-key');
   });
 
-  it('refuses to build an execution plan without the frozen manifest version', async () => {
+  it('freezes an absent persisted Kimi version to the manifest compatibility version', async () => {
     const adapter = new KimiCodeProviderAdapter();
-    await expect(adapter.buildLaunchPlan({
+    const plan = await adapter.buildLaunchPlan({
       configuration: config({ adapterVersion: undefined }),
       workspaceRoot: 'C:/workspace',
       prompt: 'hello',
-    })).rejects.toThrow('PROVIDER_VERSION_UNSUPPORTED');
+    });
+    expect(plan.metadata.adapterVersion).toBe('1.0.0');
+  });
+
+  it('refuses to build an execution plan for an unfreezable missing-version adapter', async () => {
+    const adapter = new KimiCodeProviderAdapter();
+    await expect(adapter.buildLaunchPlan({
+      configuration: config({ providerType: 'custom-cli', adapterId: 'builtin.custom-cli', adapterVersion: undefined }),
+      workspaceRoot: 'C:/workspace',
+      prompt: 'hello',
+    })).rejects.toThrow('PROVIDER_CONFIG_INVALID');
   });
 
   it('uses canonical environment override before the legacy Kimi override when config is unset', async () => {

@@ -26,11 +26,13 @@ export { ProviderValidationService } from './providers/validation.js';
 export { ProviderRegistryError, normalizedProviderError, providerErrorStatus } from './providers/errors.js';
 export {
   KIMICODE_ADAPTER_ID,
+  KIMICODE_ADAPTER_VERSION,
   KIMICODE_DEFAULT_EXECUTABLE,
   KIMICODE_PROVIDER_TYPE,
   LEGACY_KIMI_PROVIDER_TYPE,
   canonicalProviderType,
   PROVIDER_ERROR_CODES,
+  resolveFrozenProviderIdentity,
 } from './providers/types.js';
 export type {
   ProviderAdapterManifest,
@@ -45,6 +47,7 @@ export type {
   ProviderErrorCode,
   ProviderFinalizeInput,
   ProviderFinalResult,
+  FrozenProviderIdentity,
   ProviderLaunchPlan,
   ProviderNormalizedError,
   ProviderNormalizedEvent,

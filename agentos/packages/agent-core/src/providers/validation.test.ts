@@ -86,12 +86,33 @@ describe('ProviderValidationService', () => {
     expect(result.errors).toEqual([expect.objectContaining({ code: 'PROVIDER_ADAPTER_NOT_FOUND' })]);
   });
 
-  it('rejects legacy configurations without a frozen adapter version before probing', async () => {
-    let calls = 0;
-    const validator = service({ probe: { probe: async () => { calls += 1; return { stdout: '', stderr: '', exitCode: 0, signal: null }; } } });
+  it('freezes a persisted Kimi configuration without adapterVersion to builtin.kimicode@1.0.0', async () => {
+    const result = await service().validate(config({ adapterVersion: undefined }));
+    expect(result.valid).toBe(true);
+    expect(result.cliVersion).toBe('0.23.5');
+  });
+
+  it('keeps persisted Kimi compatibility on 1.0.0 when Registry also contains 1.1.0', async () => {
+    const stable = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5') });
+    const newer = new KimiCodeProviderAdapter({ probe: probeFor('0.10.0') });
+    (newer.manifest as { version: string; builtIn: boolean }).version = '1.1.0';
+    (newer.manifest as { version: string; builtIn: boolean }).builtIn = false;
+    const validator = new ProviderValidationService(new ProviderRegistry([stable, newer]), {
+      discover: async input => ({
+        found: true,
+        selected: input.configuredExecutable ?? 'C:/kimi.exe',
+        candidates: [{ executable: input.configuredExecutable ?? 'C:/kimi.exe', source: 'configuration', confidence: 1 }],
+        warnings: [],
+      }),
+    });
     const result = await validator.validate(config({ adapterVersion: undefined }));
+    expect(result.valid).toBe(true);
+    expect(result.cliVersion).toBe('0.23.5');
+  });
+
+  it('fails closed for missing-version adapters without an explicit compatibility freeze', async () => {
+    const result = await service().validate(config({ providerType: 'custom-cli', adapterId: 'builtin.custom-cli', adapterVersion: undefined }));
     expect(result.errors).toEqual([expect.objectContaining({ code: 'PROVIDER_VERSION_UNSUPPORTED' })]);
-    expect(calls).toBe(0);
   });
 
   it('preserves auth states, reports capability/output mismatches, and never emits generic validation failed', async () => {
