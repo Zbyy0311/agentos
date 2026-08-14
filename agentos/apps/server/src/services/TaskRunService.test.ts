@@ -1894,7 +1894,7 @@ test('P3C1-S19 production SqliteStore enables foreign keys and busy_timeout 5000
     assert.equal((db.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number }).foreign_keys, 1);
     const applied = db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
     assert.deepEqual(applied.map(row => row.migration_id), [
-      '001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013',
+      '001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014',
     ]);
   } finally {
     store.close();

@@ -984,9 +984,9 @@ describe('M2.5 — Migration 009 run_stages', () => {
 });
 
 describe('M2.5 — Registry and integrity', () => {
-  it('REG-01 registry IDs are exactly 001-013 in order with no duplicates', () => {
+  it('REG-01 registry IDs are exactly 001-014 in order with no duplicates', () => {
     const ids = DEFAULT_REGISTRY_MIGRATIONS.map((m) => m.id);
-    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
+    assert.deepEqual(ids, ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014']);
     assert.equal(new Set(ids).size, ids.length);
     assert.equal(migration007.id, '007');
     assert.equal(migration008.id, '008');
@@ -1005,11 +1005,11 @@ describe('M2.5 — Registry and integrity', () => {
     }
   });
 
-  it('REG-03 migration records are exactly 001-013', () => {
+  it('REG-03 migration records are exactly 001-014', () => {
     const db = migratedDb();
     try {
       const rows = db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-      assert.deepEqual(rows.map((r) => r.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
+      assert.deepEqual(rows.map((r) => r.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014']);
     } finally {
       db.close();
     }

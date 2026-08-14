@@ -11,6 +11,7 @@ import { migration010 } from './migrations/010-idempotency-records.js';
 import { migration011 } from './migrations/011-legacy-data-migration-foundation.js';
 import { migration012 } from './migrations/012-m3-runtime-schema.js';
 import { migration013 } from './migrations/013-workflow-creation-metadata-v2.js';
+import { migration014 } from './migrations/014-m4-process-runtime-schema.js';
 import type { Migration } from './types.js';
 
 /**
@@ -28,6 +29,7 @@ import type { Migration } from './types.js';
  * 011: legacy data migration foundation registry + compatibility storage (M2.7)
  * 012: M3 Runtime Event, Operation, Stage, Outbox, Dead Letter and Recovery schema
  * 013: M3 Workflow creation metadata V2 definitions
+ * 014: M4 process runtime schema (provider sessions, runtime processes, output references)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -43,4 +45,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration011,
   migration012,
   migration013,
+  migration014,
 ];

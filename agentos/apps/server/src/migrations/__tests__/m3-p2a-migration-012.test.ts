@@ -27,7 +27,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
 type Db = InstanceType<typeof DatabaseSync>;
 
 const NOW = '2026-08-02T00:00:00.000Z';
-const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013'];
+const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014'];
 
 function freshDb(): Db {
   const db = new DatabaseSync(':memory:');
@@ -36,7 +36,7 @@ function freshDb(): Db {
 }
 
 function registryBefore012(): MigrationRegistry {
-  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '012' && migration.id !== '013'));
+  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '012' && migration.id !== '013' && migration.id !== '014'));
 }
 
 function migration012(): Migration {
@@ -286,9 +286,22 @@ test('existing 001-011 file DB is backed up under the lock before Migration 012'
     new MigrationRunner(observedDb, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), { backupProvider }).run();
     assert.deepEqual(events.slice(0, 2), ['lock', 'backup']);
 
+    // The full-registry run now crosses two destructive migrations: the runner
+    // takes one verified backup before 012 and another before 014.
     const backupFiles = readdirSync(backupDir).filter(file => file.endsWith('.db'));
-    assert.equal(backupFiles.length, 1);
-    const backupPath = join(backupDir, backupFiles[0]!);
+    assert.equal(backupFiles.length, 2);
+    let backupPath: string | undefined;
+    for (const file of backupFiles) {
+      const candidate = join(backupDir, file);
+      const candidateDb = new DatabaseSync(candidate);
+      try {
+        const ids = (candidateDb.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>).map(row => row.migration_id);
+        if (ids.length === 11) backupPath = candidate;
+      } finally {
+        candidateDb.close();
+      }
+    }
+    assert.ok(backupPath, 'the pre-012 backup must contain only the 001-011 records');
     const firstBackupBytes = readFileSync(backupPath);
     const backupDb = new DatabaseSync(backupPath);
     try {
@@ -318,7 +331,7 @@ test('existing 001-011 file DB is backed up under the lock before Migration 012'
 
     fileProvider.backup(ctx.path);
     const backupFilesAfterSecondCopy = readdirSync(backupDir).filter(file => file.endsWith('.db'));
-    assert.equal(backupFilesAfterSecondCopy.length, 2, 'existing backup must not be overwritten');
+    assert.equal(backupFilesAfterSecondCopy.length, 3, 'existing backup must not be overwritten');
     assert.deepEqual(readFileSync(backupPath), firstBackupBytes);
   } finally {
     ctx.close();
