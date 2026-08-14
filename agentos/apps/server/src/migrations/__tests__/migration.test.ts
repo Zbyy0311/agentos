@@ -393,7 +393,7 @@ function tableRowCounts(db: { prepare(sql: string): { all(): Array<unknown> } })
   return counts;
 }
 
-it('[M27-P5-T003] Closing and reopening a fully migrated database keeps 001-014 idempotent', () => {
+it('[M27-P5-T003] Closing and reopening a fully migrated database keeps 001-013 idempotent', () => {
   const ctx = tempDbPath();
   try {
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();

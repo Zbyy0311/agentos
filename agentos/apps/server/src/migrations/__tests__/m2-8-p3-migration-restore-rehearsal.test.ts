@@ -21,7 +21,6 @@ import type { TaskItem, Workspace } from '@agentos/shared';
 import { MigrationRunner } from '../MigrationRunner.js';
 import { MigrationRegistry } from '../registry.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../default-registry.js';
-import { createFileBackupProvider } from '../backup.js';
 import { LegacyDataMigrationRepository } from '../../store/LegacyDataMigrationRepository.js';
 import { LegacyBackupVerifier, type LegacyBackupResult } from '../../services/LegacyBackupVerifier.js';
 import { LegacyTaskItemImportService } from '../../services/LegacyTaskItemImportService.js';
@@ -42,7 +41,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string, options?: { readOnly?: boolean }) => SqliteDb;
 };
 
-const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014'];
+const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013'];
 const NOW = '2026-07-31T00:00:00.000Z';
 const KEY_TABLES = [
   'agent_profiles',
@@ -88,7 +87,6 @@ function assertMigrationState(db: SqliteDb): void {
   assert.deepEqual(migrationIds(db), EXPECTED_MIGRATIONS);
   assert.equal(migrationIds(db).includes('012'), true);
   assert.equal(migrationIds(db).includes('013'), true);
-  assert.equal(migrationIds(db).includes('014'), true);
   const integrity = db.prepare('PRAGMA integrity_check').all() as Array<{ integrity_check: string }>;
   assert.equal(integrity.length, 1);
   assert.equal(integrity[0]?.integrity_check, 'ok');
@@ -454,12 +452,7 @@ test('P3 real-copy migration, verified Backup, isolated Restore, and source hash
       agent_profiles: tableCount(workingDb, 'agent_profiles'),
       agent_runs: tableCount(workingDb, 'agent_runs'),
     };
-    // Migration 014 is destructive: the runner's mandatory-backup gate requires
-    // a backup provider for this non-empty upgrade. The gate itself is covered
-    // by m4-p2-migration-014.test.ts.
-    new MigrationRunner(workingDb, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS]), {
-      backupProvider: createFileBackupProvider(join(sourceRootTemp, 'runner-backups')),
-    }).run();
+    new MigrationRunner(workingDb, new MigrationRegistry([...DEFAULT_REGISTRY_MIGRATIONS])).run();
     assertMigrationState(workingDb);
     const preApplyMigrations = workingDb.prepare('SELECT migration_id, checksum FROM _schema_migrations ORDER BY migration_id').all();
     const preApplyEvidence = tableEvidence(workingDb);
