@@ -29,6 +29,7 @@ export type ProviderErrorCode = (typeof PROVIDER_ERROR_CODES)[number];
 
 export type ProviderAuthenticationState =
   | 'authenticated'
+  | 'unauthenticated'
   | 'required'
   | 'expired'
   | 'unknown'

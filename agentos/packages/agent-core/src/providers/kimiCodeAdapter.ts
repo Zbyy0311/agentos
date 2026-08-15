@@ -43,6 +43,9 @@ export interface KimiCodeProviderAdapterOptions {
   readonly maxSupportedVersionExclusive?: string;
 }
 
+/** Bounded deterministic prompt for the real authentication evidence probe. */
+const KIMICODE_AUTH_PROBE_PROMPT = 'Reply with the single word: ok' as const;
+
 const KIMICODE_CAPABILITIES: ProviderCapabilities = {
   sessionResume: false,
   structuredEvents: true,
@@ -265,7 +268,7 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
     if (authentication === 'unknown' && !warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')) {
       warnings.push({ code: 'PROVIDER_AUTH_UNKNOWN', message: 'KimiCode authentication state could not be determined' });
     }
-    if (authentication === 'required') {
+    if (authentication === 'required' || authentication === 'unauthenticated') {
       errors.push({ code: 'PROVIDER_AUTH_REQUIRED', phase: 'authentication', message: 'KimiCode authentication is required', retryable: false });
     } else if (authentication === 'expired') {
       errors.push({ code: 'PROVIDER_AUTH_EXPIRED', phase: 'authentication', message: 'KimiCode authentication has expired', retryable: false });
@@ -419,24 +422,57 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
   }
 
   private async resolveAuth(probe: ProcessProbePort, executable: string, environment: Readonly<Record<string, string | undefined>>, timeoutMs: number, warnings: ProviderValidationWarning[]): Promise<ProviderAuthenticationState> {
+    let result: ProcessProbeResult;
     try {
-      const result = await probe.probe({
+      result = await probe.probe({
         executable,
-        args: ['auth', 'status'],
+        args: ['-p', KIMICODE_AUTH_PROBE_PROMPT, '--output-format', 'stream-json'],
         environment: safeProbeEnvironment(environment),
         timeoutMs,
       });
-      const output = probeOutput(result);
-      const normalized = output.trim().toLowerCase();
-      if (/not[ -]?required|anonymous|none/.test(normalized)) return 'not-required';
-      if (/expired/.test(normalized)) return 'expired';
-      if (/authenticated|logged[ -]?in|signed[ -]?in/.test(normalized)) return 'authenticated';
-      if (/required|login|unauthenticated|not authenticated/.test(normalized)) return 'required';
     } catch {
-      // Auth status is optional for some Kimi builds; retain unknown without leaking native output.
+      warnings.push(authUnknownWarning());
+      return 'unknown';
     }
-    warnings.push({ code: 'PROVIDER_AUTH_UNKNOWN', message: 'KimiCode authentication state could not be determined' });
+    if (
+      result.errorCode === 'PROCESS_STARTUP_TIMEOUT'
+      || result.errorCode === 'PROCESS_EXECUTABLE_NOT_FOUND'
+      || result.errorCode === 'PROCESS_EXECUTABLE_NOT_ACCESSIBLE'
+      || result.errorCode === 'PROCESS_REQUEST_INVALID'
+    ) {
+      warnings.push(authUnknownWarning());
+      return 'unknown';
+    }
+    if (isExplicitAuthenticationFailure(result.stdout + result.stderr)) return 'unauthenticated';
+    if (result.exitCode !== 0) {
+      warnings.push(authUnknownWarning());
+      return 'unknown';
+    }
+    if (hasStructuredAssistantResponse(result.stdout)) return 'authenticated';
+    warnings.push(authUnknownWarning());
     return 'unknown';
+  }
+}
+
+function authUnknownWarning(): ProviderValidationWarning {
+  return { code: 'PROVIDER_AUTH_UNKNOWN', message: 'KimiCode authentication state could not be determined' };
+}
+
+function isExplicitAuthenticationFailure(value: string): boolean {
+  const normalized = value.toLowerCase();
+  return /(?:login to sign in|not logged in|not authenticated|authentication required|unauthori[sz]ed|invalid (?:api[ _-]?key|credential|token)|(?:api[ _-]?key|credential|token|session)[^.]*(?:invalid|expired|revoked|required)|401)/.test(normalized);
+}
+
+function hasStructuredAssistantResponse(stdout: string): boolean {
+  try {
+    const parser = createKimiJsonParser();
+    const events = [
+      ...parser.push(stdout).map(canonicalizeEvent),
+      ...parser.finish().map(canonicalizeEvent),
+    ];
+    return events.some(event => event.type === 'assistant.message' && typeof event.text === 'string' && event.text.trim().length > 0);
+  } catch {
+    return false;
   }
 }
 

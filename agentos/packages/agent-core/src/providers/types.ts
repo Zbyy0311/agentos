@@ -113,6 +113,7 @@ export interface ProviderDiscoveryResult {
 
 export type ProviderAuthenticationState =
   | 'authenticated'
+  | 'unauthenticated'
   | 'required'
   | 'expired'
   | 'unknown'
