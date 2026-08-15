@@ -1,6 +1,6 @@
 # AgentOS M4-P5 Cancellation, Process Tree, Timeout and Transport — Acceptance Test Matrix
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — TEST ARCHITECTURE FROZEN — NO TEST OR PRODUCTION IMPLEMENTATION AUTHORIZED
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — REMEDIATED PER INDEPENDENT PLAN REVIEW (DOCS ONLY) — TEST ARCHITECTURE FROZEN — NO TEST OR PRODUCTION IMPLEMENTATION AUTHORIZED
 
 ## 1. Traceability
 
@@ -9,7 +9,7 @@ real-provider gate required. `N/A` allowed only with the reason shown.
 
 | Exit gate | Unit | Contract | Integration | Platform | Recovery | Negative/mutation | Real Provider | Required proof |
 |---|---|---|---|---|---|---|---|---|
-| E04 Cancel covers owned Process Tree | D: stop ticket/state/race model | D: driver cleanup-result/survivor vocabulary | D: explicit Run cancel reaches Adapter graceful + Process tree once | D: Windows Job/fallback and POSIX group fixtures | D: restart stopping/survivor classifications | D: root exits while grandchild survives; cancel must fail closed | R: bounded Kimi cancel + descendant check where safe | successful cancel requires verified no known/unknown survivor |
+| E04 Cancel covers owned Process Tree | D: stop ticket/state/race model | D: driver cleanup-result/survivor vocabulary | D: explicit Run cancel reaches Adapter graceful + Process tree once | D: Windows fallback owned-tree proof (required); POSIX group proof (POSIX host required, else PLATFORM_GATE_BLOCKED) | N/A: restart classification is P6-owned evidence, deferred to P6; P5 proves stopping/survivor facts pre-restart | D: root exits while grandchild survives; cancel must fail closed | R: bounded Kimi cancel + descendant check where safe | successful cancel requires verified no known/unknown survivor |
 | E08 disconnect does not terminate | D: subscriber dispose has no stop call | D: transport ownership contract | D: close socket, Process/Event/Run continue; explicit cancel works | D: Windows/POSIX Process remains alive after transport close | D: reconnect resumes persisted cursor/reference | D: mutate close handler to call stop and require failure | R: Kimi task survives client close and reconnect | browser owns subscription only; explicit cancel is the only termination command |
 | E06 Kimi vertical slice (P5 real gate) | D: Kimi fixtures unchanged | D: Registry/Snapshot/Adapter version contract | D: fake Kimi canonical Run -> Stage outcome | D: Windows tree fixtures | D: interrupted Kimi stays uncertain | D: PlainText/OpenCode fallback prohibited | R: installed Kimi direct validation + bounded task + cancel/disconnect | direct KimiCode through canonical chain; not M4 final completion |
 | E10 M3 contracts preserved | D: existing lifecycle/Event/idempotency units | D: envelope/Registry/ApiProblem compatibility | D: full M3 Run/Operation/Event/Outbox/SSE/Legacy regression | N/A: M3 semantics platform-independent; platform suites still run integration | D: `recovery_required`/uncertainty regressions | D: duplicate Event/Outbox, sequence rollback, replay-spawn mutations | R: Kimi evidence bound to same M3 Events/Operation | no second lifecycle; Event/Outbox and transitions atomic and replay-safe |
@@ -27,7 +27,7 @@ outcome.
 | CAN-03 | cancel during fenced `starting` (unresolved spawn, null PID) | UNIT | `starting -> stopping`; null PID not unspawned; spawn count 1; no second spawn (RACE-S2) |
 | CAN-04 | cancel immediately after spawn | UNIT | late success binds identity, stays `stopping`, cleanup runs once (RACE-S3) |
 | CAN-05 | cancel while `running` | UNIT/INTEGRATION | graceful -> grace -> force -> verify -> `exited`/`TERMINATED`; one terminal fact |
-| CAN-06 | cancel while `waiting` (M3 approval) | UNIT | idle paused; stop proceeds; terminal reason `cancel` |
+| CAN-06 | cancel during M3 `waiting_approval` | UNIT/INTEGRATION | routed through the frozen approval-cancellation composite: `approval.resolved` -> `stage.cancelled` -> `run.cancelled` via `resolveApprovalToCancellation` (OD-M4-P5-19); the ordering is asserted, not merely final status; paired Process joins the single stop pipeline with cancel causation; the generic cancel seam still rejects approval states |
 | CAN-07 | cancel while output streams drain | INTEGRATION | finalization before terminal fact; artifacts finalized; bounded backpressure |
 | CAN-08 | cancel vs natural exit | UNIT | first terminal observation wins; cancel causation retained (OD-M4-P5-07) |
 | CAN-09 | cancel after Process exited, before Provider finalize | INTEGRATION | terminal Process fact committed; Provider finalize sees stop ticket; exactly one Session terminal |
@@ -40,7 +40,7 @@ outcome.
 | CAN-16 | unknown tree ownership | UNIT | `orphaned` + `UNKNOWN_PLATFORM_UNAVAILABLE`; fail closed |
 | CAN-17 | graceful-stop failure | UNIT | bounded progression to force |
 | CAN-18 | force-kill failure | UNIT | `UNKNOWN_PLATFORM_UNAVAILABLE`/`PROCESS_TREE_TERMINATION_FAILED`; uncertainty |
-| CAN-19 | P4 active-CAS-after-spawn closure | INTEGRATION | spawn succeeds -> activation CAS fails -> stop pipeline runs once -> Process `exited`/`orphaned`, Session `failed`, one terminal fact, no second spawn (OD-M4-P5-16) |
+| CAN-19 | P4 active-CAS-after-spawn closure (phase-split, OD-M4-P5-16) | INTEGRATION | coordination/state half (P5A, MockDriver): spawn succeeds -> activation CAS fails -> stop pipeline runs once -> Process `exited`/`orphaned`, Session `failed`, one terminal fact, no second spawn; full production tree-cleanup proof completes in P5B (real owned-tree termination + survivor verification against this schedule) |
 
 ## 3. Tree cases
 
@@ -58,24 +58,39 @@ outcome.
 
 ## 4. Windows cases
 
+The REQUIRED Windows gate is the observable fallback owned-tree proof
+(WIN-06). Job Object is an OPTIONAL FUTURE CAPABILITY SLOT (OD-M4-P5-04/05):
+no new native/FFI/helper dependency is authorized by P5, and WIN-05/WIN-07
+are capability evidence only, never a silent skip and never a condition for
+base P5 acceptance.
+
 | ID | Case | Class | Required assertions |
 |---|---|---|---|
-| WIN-01 | executable `.exe` | WINDOWS-SPECIFIC | Job assignment; kill-on-close; tree gone |
+| WIN-01 | executable `.exe` | WINDOWS-SPECIFIC | fallback tree proof; tree gone; `complete` only from re-enumeration |
 | WIN-02 | `.cmd` via validated wrapper | WINDOWS-SPECIFIC | wrapper policy; separated args; tree gone |
 | WIN-03 | path containing spaces | WINDOWS-SPECIFIC | array args preserved; no re-quoting |
 | WIN-04 | Unicode path | WINDOWS-SPECIFIC | Unicode preserved end-to-end |
-| WIN-05 | Job Object path | WINDOWS-SPECIFIC | `treeMode='job'`; force via Job |
-| WIN-06 | fallback path (assignment denied) | WINDOWS-SPECIFIC / ENV-GATED | `treeMode='fallback'`; warning; `taskkill /T /F` constrained; survivor verify |
-| WIN-07 | nested Job restriction | WINDOWS-SPECIFIC / ENV-GATED | compatible strategy or fallback; never silent |
+| WIN-05 | Job Object capability (optional slot) | OPTIONAL_CAPABILITY / ENV-GATED | PASS only if a separately authorized Job implementation exists (`treeMode='job'`, kill-on-close, job-membership proof); otherwise explicit UNSUPPORTED/BLOCKED capability evidence; not required for base P5 acceptance while WIN-06 proves E04 |
+| WIN-06 | fallback owned-tree proof (REQUIRED Windows gate) | WINDOWS-SPECIFIC | observable `treeMode='fallback'` + warning + reduced-reliability marker; bounded descendant enumeration; identity fence before signal; `taskkill /PID <owned-root> /T /F` separated args; survivor re-enumeration after force; success never inferred from taskkill exit alone |
+| WIN-07 | nested Job restriction (future capability context) | OPTIONAL_CAPABILITY / ENV-GATED | relevant only under an authorized Job implementation: compatible strategy or observable fallback; never silent; with no Job capability, capability evidence records it as inapplicable |
 | WIN-08 | access-denied / already-exited races | WINDOWS-SPECIFIC | identity re-check; fail closed |
 
 ## 5. POSIX cases
 
+Group creation mechanism is frozen in OD-M4-P5-05 / implementation plan §6.2:
+the driver internally uses `detached: true` on POSIX only as the Node
+group/session creation mechanism, with stdio piped, handle retained, no
+`unref()`, PGID in `NativeIdentity.groupId`, and PGID/start revalidation
+before every `-pgid` signal. Required POSIX real-OS evidence needs an actual
+POSIX host/capability: if no such environment exists during P5 verification,
+return `PLATFORM_GATE_BLOCKED` with evidence — do not silently skip and do
+not claim full cross-platform P5 acceptance (OD/plan L-3).
+
 | ID | Case | Class | Required assertions |
 |---|---|---|---|
-| POSIX-01 | process group TERM | POSIX-SPECIFIC | `-pgid` SIGTERM; group members receive it |
+| POSIX-01 | process group TERM | POSIX-SPECIFIC | group created via driver-internal mechanism with OD-M4-P5-05 invariants; `-pgid` SIGTERM; group members receive it |
 | POSIX-02 | grace interval | POSIX-SPECIFIC | injected clock; deadline honored |
-| POSIX-03 | group KILL | POSIX-SPECIFIC | `-pgid` SIGKILL after grace |
+| POSIX-03 | group KILL | POSIX-SPECIFIC | `-pgid` SIGKILL after grace; PGID/start evidence revalidated first |
 | POSIX-04 | survivor verification | POSIX-SPECIFIC | group membership + descendants; complete/survivors/unknown |
 | POSIX-05 | group escape attempt | POSIX-SPECIFIC | escaped member detected or `unknown`; fail closed |
 | POSIX-06 | natural-exit race | POSIX-SPECIFIC | exit before signal -> `ALREADY_EXITED` |
@@ -112,7 +127,7 @@ outcome.
 | ID | Case | Class | Required assertions |
 |---|---|---|---|
 | DUR-01 | Process state | INTEGRATION | stopping/exited/orphaned persisted with columns (audit CS-11) |
-| DUR-02 | Session state | INTEGRATION | starting/active -> cancelled/failed per OD-M4-P5-10 |
+| DUR-02 | Session state | INTEGRATION | starting/active -> cancelled/failed per OD-M4-P5-10; durability proven via `provider_sessions.status` + existing registered facts; `provider.session_cancelled` is NOT required (stays Registry-gated, OD-M4-P5-18) |
 | DUR-03 | cleanup result | INTEGRATION | one of the five frozen values persisted |
 | DUR-04 | termination reason | INTEGRATION | cancel/timeout/non-zero-exit etc. persisted |
 | DUR-05 | survivor list | INTEGRATION | restricted redacted JSON; count only in public projection |
@@ -135,9 +150,17 @@ outcome.
 `UNIT` = deterministic package-local, injected clock/driver. `INTEGRATION` =
 durable repositories + coordinator + routes with MockDriver. `REAL OS CHILD` =
 spawns real OS child/grandchild fixtures under platform gate. `WINDOWS-SPECIFIC`
-/ `POSIX-SPECIFIC` = platform-gated real fixtures. `REAL KIMI` = P5E authorized
-real executable gate. `ENV-GATED` = depends on OS capability availability;
-blocked capability returns `BLOCKED` with evidence, never silent pass.
+/ `POSIX-SPECIFIC` = platform-gated real fixtures. `OPTIONAL_CAPABILITY /
+ENV-GATED` = depends on a separately authorized capability or OS availability;
+blocked capability returns `BLOCKED`/`UNSUPPORTED` with evidence, never silent
+pass and never a base-acceptance condition (WIN-05/WIN-07). `REAL KIMI` = P5E
+authorized real executable gate.
+
+Boundary guarantees after remediation: no P5 acceptance depends on
+`provider.session_cancelled`; no P5 acceptance depends on server-shutdown
+integration (P6-owned, OD-M4-P5-17); no P5 acceptance requires P6 restart
+classification (P6-owned evidence); E04 still requires verified survivor
+evidence everywhere.
 
 ## 11. No-rerun-until-green rule
 

@@ -2,6 +2,13 @@
 
 Status: M4-P5 PRE-IMPLEMENTATION PLANNING — DOCS ONLY — M4-P5 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
 
+Remediation note (2026-08-16): after the Independent Plan Review, the four
+planning documents were remediated in a follow-up docs commit. This audit's
+facts describe the accepted M4-P4 base `750a780c` and remain unchanged except
+the CS-01 clarification below; all ownership/strategy corrections live in the
+remediated owner-decisions, implementation-plan and acceptance-matrix
+documents.
+
 ## 1. Metadata / exact base
 
 | Field | Value |
@@ -54,7 +61,7 @@ Status vocabulary matches the M4 convention:
 
 | Row | Area | Source file / symbol | Existing behavior | Authoritative contract | Gap | Status | Proposed P5 owner |
 |---|---|---|---|---|---|---|---|
-| CS-01 | Explicit Run cancel (canonical) | `routes/canonicalRuns.ts:116`; `routes/v2Runs.ts:40`; `TaskRunService.cancelQueuedRunForV2` | Only `queued` Run is cancellable; `RUN_NOT_CANCELLABLE` otherwise; `LifecycleTransactionService.cancelRunWithinTransaction` accepts `queued|starting|running|paused` and rejects `waiting_approval` | explicit cancel must propagate once through Session/Process tree to canonical terminal | no active-Process tree propagation; approval-waiting Run not cancellable via this seam | PARTIAL / CONFLICTING | P5A cancel coordinator + route seam |
+| CS-01 | Explicit Run cancel (canonical) | `routes/canonicalRuns.ts:116`; `routes/v2Runs.ts:40`; `TaskRunService.cancelQueuedRunForV2` | Only `queued` Run is cancellable; `RUN_NOT_CANCELLABLE` otherwise; `LifecycleTransactionService.cancelRunWithinTransaction` accepts `queued|starting|running|paused` and rejects `waiting_approval`. Clarification (remediation): the frozen M3 contract already authorizes `waiting_approval -> cancelled` and `LifecycleTransactionService.resolveApprovalToCancellation` implements the canonical composite (`approval.resolved -> stage.cancelled -> run.cancelled`); the PLAIN cancel seam intentionally does not, so P5 routes approval-wait cancellation through that existing composite (OD-M4-P5-19) | explicit cancel must propagate once through Session/Process tree to canonical terminal | no active-Process tree propagation; approval-waiting Run not cancellable via the plain seam | PARTIAL / CONFLICTING | P5A cancel coordinator + route seam |
 | CS-02 | Operation cancel | `routes/operations.ts:152-202`; `OperationService.cancel` | M3 authorization revocation; no OS/Process side effect | Operation cancel is M3 semantics; P5 coordinates, never reinterprets | cancel authority does not correlate an active execution | IMPLEMENTED (M3), needs P5 coordination | P5A |
 | CS-03 | Execution/Stage-attempt cancel | `StageExecutionCoordinator.execute` | no canonical attempt-cancel command exists | exactly-one authority; Run cancel revokes the Stage attempt | MISSING | P5A |
 | CS-04 | Provider Session cancel | `repository-port.ts` `DurableSessionStatus` includes `cancelled`; `provider.sessions` migration 014 | status exists; no production transition path to `cancelled`; `provider.session_cancelled` is `SPEC_RECONCILIATION_REQUIRED` (P0 event-error contract) | successful cancellation finalizes Session as `cancelled` only after proven cleanup | MISSING | P5A (finalize) / P3-reconciliation gate |
@@ -75,7 +82,7 @@ Status vocabulary matches the M4 convention:
 | CS-19 | SSE disconnect (Conversation resume) | `routes/conversations.ts:540-567` | close -> unsubscribe only | E08 | satisfies | IMPLEMENTED | P5D regression |
 | CS-20 | Conversation explicit cancel | `routes/conversations.ts:510-518`; `RunStreamRegistry.cancel` | aborts the stored controller (reaches legacy CLI child, not tree) | explicit cancel is the only termination command, through canonical authority | legacy controller abort only; no tree | PARTIAL / LEGACY | P5D/P5A |
 | CS-21 | Conversation transport ownership | `RunStreamRegistry.ts:80-84` | `cancel()` aborts controller; disconnect triggers abort in initial path | transport owns subscription; explicit cancel owns termination | conflation of transport close and cancel | CONFLICTING | P5D |
-| CS-22 | Server shutdown | `index.ts:300-324` | closes HTTP, publishers, SQLite; does not enumerate/stop provider processes | shutdown interaction defined; active processes receive stable shutdown treatment and facts | no active-Process stop/recording | CONFLICTING | P5A (stop) / P6 (recovery) |
+| CS-22 | Server shutdown | `index.ts:300-324` | closes HTTP, publishers, SQLite; does not enumerate/stop provider processes | shutdown interaction defined; active processes receive stable shutdown treatment and facts | no active-Process stop/recording | CONFLICTING | P6 owns the shutdown stop (enumeration/ordering/deadline/recording), invoking the P5 reusable stop pipeline — OD-M4-P5-17 as remediated; P5 ships the pipeline only |
 | CS-23 | Legacy route ownership | `LegacyCanonicalExecutionService.ts:81-164` -> `AgentRunner` -> `CLIExecutor` | production task execution still runs through legacy spawn path | Legacy routes stay compatibility-only; no second authority | outside P5 core; transport/parity only | OUTSIDE_P5 | P4/P7 |
 | CS-24 | Provider adapter cancel | `kimiCodeAdapter.ts:394-409` | `cancel()` requires accepted stop ticket, then `processPort.requestGraceful` | Adapter-native graceful only after durable stop ticket accepted | interface present; not wired to any coordinator | PARTIAL | P5A |
 | CS-25 | Process tree platform impl | search: no `taskkill`, no Job Object, no process-group, no `detached` production use (`validation.ts:85-86` denies `detached`) | P1 explicitly deferred tree to P5 | MISSING | P5B |
