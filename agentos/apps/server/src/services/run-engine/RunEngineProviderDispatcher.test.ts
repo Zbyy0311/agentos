@@ -42,6 +42,7 @@ const RUN = 'run_m4';
 const OP = 'op_' + 'A'.repeat(26);
 const KIMI_EXE = 'C:/kimi.exe';
 let REAL_EXECUTABLE = KIMI_EXE;
+let ORIGIN: 'v2_api' | 'legacy_pipeline' = 'v2_api';
 const STAGE_KEYS = ['codex_manager', 'kimi_worker', 'opencode_reviewer', 'codex_final_review'] as const;
 
 function migratedDb(): Db {
@@ -75,7 +76,7 @@ function snapshotPayload(): RunSnapshotPayloadV2 {
   }));
   return {
     schemaVersion: 2, capturedAt: NOW,
-    run: { workspaceId: WS, taskId: TASK, origin: 'v2_api', reason: 'initial', parentRunId: null, rootRunId: RUN },
+    run: { workspaceId: WS, taskId: TASK, origin: ORIGIN, reason: 'initial', parentRunId: null, rootRunId: RUN },
     workflow: {
       definitionId: M3_013_LEGACY_WORKFLOW_V2_ID, definitionKey: 'legacy-pipeline', definitionVersion: 2, name: 'legacy-pipeline-v2',
       definitionHash: '9ea35ef455c5fefa45d0b28d1433933b2cc6b3fb9e412b4d4452afb7862a6b6d', worktreeMode: 'preferred',
@@ -88,7 +89,7 @@ function snapshotPayload(): RunSnapshotPayloadV2 {
 function seed(db: Db): void {
   db.prepare(`INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at) VALUES (?, '/tmp/m4', '/tmp/m4', '/tmp/m4', ?, ?, ?)`).run(WS, NOW, NOW, NOW);
   db.prepare(`INSERT INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at) VALUES (?, ?, 'M4 task', 'open', 'normal', 'test', ?, ?)`).run(TASK, WS, NOW, NOW);
-  db.prepare(`INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, next_event_sequence, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 'initial', 'v2_api', 1, 'test', ?, ?)`).run(RUN, WS, TASK, RUN, NOW, NOW);
+  db.prepare(`INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, next_event_sequence, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, 'queued', 'initial', ?, 1, 'test', ?, ?)`).run(RUN, WS, TASK, RUN, ORIGIN, NOW, NOW);
   db.prepare(`INSERT INTO provider_configurations (id, workspace_id, name, provider_type, adapter_id, runtime_mode, capabilities_json, timeout_policy_json, created_at, updated_at) VALUES (?, ?, 'M4 provider', 'kimicode', 'builtin.kimicode', 'cli', '{}', '{}', ?, ?)`).run('pcfg_m4', WS, NOW, NOW);
   db.prepare(`INSERT INTO agent_profiles (workspace_id, id, name, agent_role, role_title, system_prompt, permissions_json, enabled, cli_command, cli_args_json, created_at, updated_at) VALUES (?, ?, 'Agent', 'worker', 'Worker', '', '[]', 1, 'agent', '[]', ?, ?)`).run(WS, 'agent_m4', NOW, NOW);
   db.prepare(`INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, created_at, updated_at, version) VALUES (?, 'run.start', 'queued', ?, 'run', ?, ?, ?, ?, ?, 1)`).run(OP, WS, RUN, RUN, OP, NOW, NOW);
@@ -306,5 +307,20 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.equal(outboxCount, eventCount);
       assert.ok(eventCount > 0);
     } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+  });
+  it('legacy-originated runs flow through the same authority to completion (legacy projection parity)', async () => {
+    ORIGIN = 'legacy_pipeline';
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      const run = fx.runRepo.findById(WS, RUN)!;
+      assert.equal(run.status, 'completed');
+      assert.equal(run.origin, 'legacy_pipeline');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+      const replay = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(replay.outcome, 'noop');
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+    } finally { close(fx); ORIGIN = 'v2_api'; }
   });
 });
