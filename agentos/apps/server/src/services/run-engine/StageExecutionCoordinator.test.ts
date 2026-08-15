@@ -8,6 +8,7 @@ import { createM3RuntimeEventRegistry, type AgentSnapshotV1, type ProviderConfig
 import {
   DurableProcessCoordinator,
   FileArtifactSink,
+  NodeProcessDriver,
   type ExitEvidence,
   type NativeIdentity,
   type NativeProcessHandle,
@@ -33,7 +34,7 @@ import {
   DurableProcessRepositoryAdapter,
   DurableSessionRepositoryAdapter,
 } from '../../store/process-runtime-adapters.js';
-import { StageExecutionCoordinator, type StageExecutionInput } from './StageExecutionCoordinator.js';
+import { StageExecutionCoordinator, type StageExecutionInput, StageExecutionOutcome } from './StageExecutionCoordinator.js';
 
 const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string) => {
@@ -186,7 +187,7 @@ function asyncIterable(lines: string[]): AsyncIterable<Uint8Array> {
 
 class FakeDriver implements PlatformProcessDriver {
   spawnCalls = 0;
-  constructor(private readonly handle: FakeHandle | null, private readonly spawnError?: Error) {}
+  constructor(private readonly handle: FakeHandle | FakeByteHandle | null, private readonly spawnError?: Error) {}
   async spawn() { this.spawnCalls += 1; if (this.spawnError !== undefined) throw this.spawnError; return this.handle!; }
   gracefulStop = async () => ({ delivered: true, detail: 'ok' });
   terminateTree = async (): Promise<TreeTerminationResult> => ({ classification: 'complete', attemptedMembers: [], errors: [] });
@@ -194,7 +195,16 @@ class FakeDriver implements PlatformProcessDriver {
   inspectIdentity = async (identity: NativeIdentity): Promise<{ kind: 'match'; identity: NativeIdentity }> => ({ kind: 'match', identity });
 }
 
-function fixture(driver: FakeDriver, authFailure = false) {
+interface FixtureOptions {
+  readonly authFailure?: boolean;
+  readonly probe?: ProcessProbePort;
+  readonly sessionAdapterFactory?: (repo: ProviderSessionRepository) => DurableSessionRepositoryAdapter;
+  readonly outputAdapterFactory?: (repo: ProcessOutputReferenceRepository) => DurableOutputReferenceRepositoryAdapter;
+}
+
+function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolean = false) {
+  const opts: FixtureOptions = typeof options === 'boolean' ? { authFailure: options } : options;
+  const probe = opts.probe ?? probeFor(opts.authFailure ?? false);
   const db = migratedDb();
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-coord-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
@@ -204,9 +214,9 @@ function fixture(driver: FakeDriver, authFailure = false) {
   const processRepo = new ProcessRepository(db, factWriter);
   const outputRepo = new ProcessOutputReferenceRepository(db, factWriter);
   const seam = new DurableAtomicSeamImpl(db, sessionRepo, processRepo);
-  const sessionAdapter = new DurableSessionRepositoryAdapter(sessionRepo);
+  const sessionAdapter = opts.sessionAdapterFactory === undefined ? new DurableSessionRepositoryAdapter(sessionRepo) : opts.sessionAdapterFactory(sessionRepo);
   const processAdapter = new DurableProcessRepositoryAdapter(processRepo);
-  const outputAdapter = new DurableOutputReferenceRepositoryAdapter(outputRepo);
+  const outputAdapter = opts.outputAdapterFactory === undefined ? new DurableOutputReferenceRepositoryAdapter(outputRepo) : opts.outputAdapterFactory(outputRepo);
   const durableCoordinator = new DurableProcessCoordinator({
     sessionRepository: sessionAdapter,
     processRepository: processAdapter,
@@ -216,7 +226,7 @@ function fixture(driver: FakeDriver, authFailure = false) {
     driver,
   });
   const adapter = new KimiCodeProviderAdapter({
-    probe: probeFor(authFailure),
+    probe: probe,
     discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
   });
   const registry = new ProviderRegistry([adapter]);
@@ -225,7 +235,7 @@ function fixture(driver: FakeDriver, authFailure = false) {
     durableCoordinator,
     sessionRepository: sessionAdapter,
     driver,
-    probe: probeFor(authFailure),
+    probe: probe,
     claimOwner: 'run-engine',
     claimLeaseMs: 60000,
     now: () => NOW,
@@ -238,6 +248,53 @@ function close(fx: ReturnType<typeof fixture>): void {
   rmSync(fx.root, { recursive: true, force: true });
 }
 
+class SlowSessionAdapter extends DurableSessionRepositoryAdapter {
+  async casSessionTransition(input: Parameters<DurableSessionRepositoryAdapter['casSessionTransition']>[0]) {
+    if (input.to === 'active') await new Promise(resolve => setTimeout(resolve, 250));
+    return super.casSessionTransition(input);
+  }
+}
+
+class FinalizeFailOutputAdapter extends DurableOutputReferenceRepositoryAdapter {
+  async finalizeReference(_input: Parameters<DurableOutputReferenceRepositoryAdapter['finalizeReference']>[0]) {
+    return { kind: 'not-found' as const };
+  }
+}
+
+class TerminalFailSessionAdapter extends DurableSessionRepositoryAdapter {
+  async casSessionTransition(input: Parameters<DurableSessionRepositoryAdapter['casSessionTransition']>[0]) {
+    if (input.to === 'completed') return { kind: 'state-mismatch' as const };
+    return super.casSessionTransition(input);
+  }
+}
+
+
+class FakeByteHandle implements NativeProcessHandle {
+  readonly pid = 4242;
+  readonly identity: NativeIdentity = { pid: 4242, startedAtMs: Date.parse(NOW), executablePath: KIMI_EXE };
+  readonly streams: NativeProcessStreams;
+  private readonly exit: Promise<ExitEvidence>;
+  constructor(stdoutChunks: Uint8Array[], exitCode = 0) {
+    this.streams = { stdout: asyncIterableBytes(stdoutChunks), stderr: asyncIterableBytes([]) };
+    this.exit = Promise.resolve({ exitCode, signal: null, exitedAt: Date.now() });
+  }
+  waitExit(): Promise<ExitEvidence> { return this.exit; }
+}
+
+function asyncIterableBytes(chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
+  return { async *[Symbol.asyncIterator]() { for (const c of chunks) yield c; } };
+}function countingProbe(): { counts: { version: number; help: number; auth: number }; probe: ProcessProbePort } {
+  const counts = { version: 0, help: 0, auth: 0 };
+  const probe: ProcessProbePort = {
+    probe: async request => {
+      if (request.args[0] === '--version') { counts.version += 1; return { stdout: '0.36.1', stderr: '', exitCode: 0, signal: null }; }
+      if (request.args[0] === '--help') { counts.help += 1; return { stdout: 'Usage: kimi --output-format stream-json', stderr: '', exitCode: 0, signal: null }; }
+      counts.auth += 1;
+      return { stdout: '{"type":"assistant","role":"assistant","content":"ok"}', stderr: '', exitCode: 0, signal: null };
+    },
+  };
+  return { counts, probe };
+}
 describe('StageExecutionCoordinator', () => {
   it('runs a successful Kimi vertical slice: one Session, one Process, completed outcome, durable facts', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
@@ -248,7 +305,7 @@ describe('StageExecutionCoordinator', () => {
       if (outcome.kind !== 'completed') return;
       assert.equal(outcome.artifactIds.length, 2);
       assert.equal(outcome.outputContractSatisfied, true);
-      assert.equal(fx.driver.spawnCalls, 1);
+      assert.equal((fx.driver as unknown as { spawnCalls: number }).spawnCalls, 1);
       const sessions = fx.db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number };
       const processes = fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number };
       assert.equal(sessions.c, 1);
@@ -275,7 +332,7 @@ describe('StageExecutionCoordinator', () => {
       assert.equal(outcome.problem.code, 'PROVIDER_AUTH_REQUIRED');
       assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c, 0);
       assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c, 0);
-      assert.equal(fx.driver.spawnCalls, 0);
+      assert.equal((fx.driver as unknown as { spawnCalls: number }).spawnCalls, 0);
     } finally {
       close(fx);
     }
@@ -288,7 +345,7 @@ describe('StageExecutionCoordinator', () => {
       assert.equal(outcome.kind, 'failed');
       if (outcome.kind !== 'failed') return;
       assert.equal(outcome.problem.code, 'PROVIDER_START_FAILED');
-      assert.equal(fx.driver.spawnCalls, 1);
+      assert.equal((fx.driver as unknown as { spawnCalls: number }).spawnCalls, 1);
       const process = fx.processRepo.findById(WS, (fx.db.prepare('SELECT id FROM runtime_processes').get() as { id: string }).id);
       assert.equal(process?.status, 'failed');
       const session = fx.sessionRepo.findById(WS, (fx.db.prepare('SELECT id FROM provider_sessions').get() as { id: string }).id);
@@ -334,11 +391,90 @@ describe('StageExecutionCoordinator', () => {
       ]);
       assert.equal(first.kind, 'completed');
       assert.equal(second.kind, 'active');
-      assert.equal(fx.driver.spawnCalls, 1);
+      assert.equal((fx.driver as unknown as { spawnCalls: number }).spawnCalls, 1);
       assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c, 1);
       assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c, 1);
     } finally {
       close(fx);
     }
   });
-});
+
+  it('HIGH-1: real child floods stderr while stdout stays open -> concurrent drain completes', { timeout: 60000 }, async () => {
+    const script = "const b = Buffer.alloc(1048576, 120); process.stderr.write(b, () => { process.stdout.end('{\"type\":\"assistant\",\"role\":\"assistant\",\"content\":\"ok\"}\\n', () => process.exit(0)); });";
+    const fx = fixture(new NodeProcessDriver());
+    try {
+      let timeoutHandle: NodeJS.Timeout | undefined;
+      const outcome = await Promise.race([
+        fx.coordinator.execute(stageInput({ providerSnapshot: { ...providerSnapshot(), executable: process.execPath, argsTemplate: ['-e', script, '--'] }, workspaceRoot: fx.root })),
+        new Promise<string>(resolve => { timeoutHandle = setTimeout(() => resolve('TIMEOUT-30s'), 30000); }),
+      ]);
+      if (timeoutHandle !== undefined) clearTimeout(timeoutHandle);
+      assert.notEqual(outcome, 'TIMEOUT-30s');
+      assert.equal((outcome as StageExecutionOutcome).kind, 'completed');
+    } finally { close(fx); }
+  });
+
+  it('HIGH-2: split UTF-8 matrix preserves exact assistant text and raw artifact bytes', async () => {
+    const { readFileSync } = await import('node:fs');
+    const content = '\u4f60\u597d';
+    const line = '{"type":"assistant","role":"assistant","content":"' + content + '"}\n';
+    const bytes = new TextEncoder().encode(line);
+    for (let split = 1; split < bytes.length; split += 1) {
+      const fx = fixture(new FakeDriver(new FakeByteHandle([bytes.slice(0, split), bytes.slice(split)])));
+      try {
+        const outcome = await fx.coordinator.execute(stageInput());
+        assert.equal(outcome.kind, 'completed', 'split at ' + split);
+        if (outcome.kind !== 'completed') continue;
+        assert.equal(outcome.output, content, 'exact text at split ' + split);
+        assert.equal((outcome.output ?? '').includes('\uFFFD'), false, 'no replacement at split ' + split);
+        const row = fx.db.prepare("SELECT storage_key FROM process_output_references WHERE stream = 'stdout'").get() as { storage_key: string };
+        const raw = readFileSync(join(fx.root, 'sink', row.storage_key));
+        assert.deepEqual([...raw], [...bytes], 'raw bytes at split ' + split);
+      } finally { close(fx); }
+    }
+  });
+
+  it('MEDIUM-2: output finalize failure fails the stage closed instead of reporting completed', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), { outputAdapterFactory: repo => new FinalizeFailOutputAdapter(repo) });
+    try {
+      const outcome = await fx.coordinator.execute(stageInput());
+      assert.equal(outcome.kind, 'failed');
+      if (outcome.kind !== 'failed') return;
+      assert.equal(outcome.problem.code, 'PROVIDER_INTERNAL_ERROR');
+      assert.equal(outcome.phase, 'runtime');
+    } finally { close(fx); }
+  });
+
+  it('HIGH-3A: immediate exit cannot race ahead of durable Session active persistence', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), { sessionAdapterFactory: repo => new SlowSessionAdapter(repo) });
+    try {
+      const outcome = await fx.coordinator.execute(stageInput());
+      assert.equal(outcome.kind, 'completed');
+      const session = fx.sessionRepo.findById(WS, (fx.db.prepare('SELECT id FROM provider_sessions').get() as { id: string }).id);
+      assert.equal(session?.status, 'completed');
+    } finally { close(fx); }
+  });
+
+  it('HIGH-3D: terminal Session CAS failure fails closed and never reports completed', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), { sessionAdapterFactory: repo => new TerminalFailSessionAdapter(repo) });
+    try {
+      const outcome = await fx.coordinator.execute(stageInput());
+      assert.notEqual(outcome.kind, 'completed');
+    } finally { close(fx); }
+  });
+
+  it('MEDIUM-1B: concurrent identical execute coalesces validation to 1/1/1 and keeps exactly-one Session/Process/spawn', async () => {
+    const cp = countingProbe();
+    const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n']));
+    const fx = fixture(driver, { probe: cp.probe });
+    try {
+      const [a, b] = await Promise.all([fx.coordinator.execute(stageInput()), fx.coordinator.execute(stageInput())]);
+      assert.equal(cp.counts.version, 1);
+      assert.equal(cp.counts.help, 1);
+      assert.equal(cp.counts.auth, 1);
+      assert.equal(driver.spawnCalls, 1);
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM provider_sessions').get() as { c: number }).c, 1);
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes').get() as { c: number }).c, 1);
+      assert.deepEqual([a.kind, b.kind].sort(), ['active', 'completed']);
+    } finally { close(fx); }
+  });});

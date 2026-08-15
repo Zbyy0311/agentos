@@ -9,6 +9,16 @@
  * Adapter finalize -> Stage/Run outcome for the existing
  * LifecycleTransactionService. Duplicate dispatch joins the same durable
  * claim and never spawns a second Session/Process/Adapter start.
+ *
+ * Remediation notes (Independent Review):
+ * - stdout and stderr are drained concurrently to avoid pipe backpressure
+ *   deadlock; stream bytes remain the raw artifact truth.
+ * - each stream uses a persistent streaming TextDecoder so multibyte UTF-8
+ *   split across chunks is decoded losslessly.
+ * - the durable starting->active Session state is handed to the terminal
+ *   path through an execution-local deferred (no module-global map); the
+ *   terminal Session CAS outcome is verified and failures fail closed.
+ * - identical concurrent validation is coalesced in-flight only.
  */
 import { createHash } from 'node:crypto';
 import type {
@@ -21,8 +31,10 @@ import {
   redactArgs,
 } from '@agentos/process-runtime';
 import type {
+  DurableCasOutcome,
   DurableProcessCoordinator,
   DurableProcessView,
+  DurableSessionView,
   NativeProcessHandle,
   PlatformProcessDriver,
   ProcessProbePort,
@@ -37,6 +49,7 @@ import type {
   ProviderLaunchPlan,
   ProviderNormalizedEvent,
   ProviderParseContext,
+  ProviderValidationResult,
   RuntimeProviderAdapter,
 } from '@agentos/agent-core/providers';
 import type { DurableSessionRepositoryAdapter } from '../../store/process-runtime-adapters.js';
@@ -63,6 +76,7 @@ export type StageExecutionOutcome =
       readonly durationMs: number;
       readonly artifactIds: string[];
       readonly outputContractSatisfied: boolean;
+      readonly output?: string;
     }
   | { readonly kind: 'failed'; readonly problem: ApiProblem; readonly phase: string };
 
@@ -96,6 +110,13 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
+interface ActiveSessionState {
+  readonly sessionId: string;
+  readonly version: number;
+  readonly claimEpoch: number;
+  readonly claimOwnerId: string | null;
+}
+
 export class StageExecutionCoordinator {
   private readonly registry: ProviderRegistry;
   private readonly durableCoordinator: DurableProcessCoordinator;
@@ -107,6 +128,7 @@ export class StageExecutionCoordinator {
   private readonly claimLeaseMs: number;
   private readonly now: () => string;
   private readonly stderrRetainedBytes: number;
+  private readonly inFlightValidation = new Map<string, Promise<ProviderValidationResult>>();
 
   constructor(options: StageExecutionCoordinatorOptions) {
     this.registry = options.registry;
@@ -133,11 +155,7 @@ export class StageExecutionCoordinator {
     } catch (error) {
       return this.failedFromError(error, 'validation', input);
     }
-    const validation = await adapter.validate({
-      configuration,
-      probe: this.probe,
-      environment: this.environment,
-    });
+    const validation = await this.validateInFlight(input, adapter, configuration);
     if (!validation.valid) {
       const first = validation.errors[0];
       return this.failed(first.code, first.message, first.phase, input, first.retryable);
@@ -250,6 +268,8 @@ export class StageExecutionCoordinator {
 
     const final = deferred<StageExecutionOutcome>();
     const bound = deferred<DurableProcessView>();
+    const activeSession = deferred<ActiveSessionState>();
+    activeSession.promise.catch(() => undefined);
     const startedAtMs = Date.parse(this.now());
     const spawned = await this.durableCoordinator.consumeSpawnRightAndSpawn({
       workspaceId: input.workspaceId,
@@ -273,11 +293,11 @@ export class StageExecutionCoordinator {
           adapter,
           input,
           eventContext,
-          sessionId: established.session.sessionId,
           stdoutWriter,
           stderrWriter,
           startedAtMs,
           bound: bound.promise,
+          activeSession: activeSession.promise,
           final,
         });
         return handle;
@@ -287,6 +307,7 @@ export class StageExecutionCoordinator {
       && spawned.outcome.kind === 'applied'
       && spawned.outcome.value.status === 'running';
     if (!spawnSucceeded) {
+      activeSession.reject(new Error('PROVIDER_START_FAILED'));
       await this.sessionRepository.casSessionTransition({
         workspaceId: input.workspaceId,
         sessionId: established.session.sessionId,
@@ -317,10 +338,46 @@ export class StageExecutionCoordinator {
         eventContext,
       });
       if (active.kind === 'applied') {
-        runToFinalSessionVersion.set(established.session.sessionId, active.value.version);
+        activeSession.resolve({
+          sessionId: active.value.sessionId,
+          version: active.value.version,
+          claimEpoch: active.value.claimEpoch,
+          claimOwnerId: active.value.claimOwnerId,
+        });
+      } else {
+        activeSession.reject(new Error('PROVIDER_SESSION_ACTIVE_FAILED'));
+        final.resolve(this.failed('PROVIDER_SESSION_FAILED', 'Provider session could not transition to active', 'startup', input, false));
       }
     }
     return final.promise;
+  }
+
+  private async validateInFlight(
+    input: StageExecutionInput,
+    adapter: RuntimeProviderAdapter,
+    configuration: ProviderConfigurationInput,
+  ): Promise<ProviderValidationResult> {
+    const key = [
+      input.workspaceId,
+      input.runId,
+      input.stageId,
+      String(input.stageAttempt),
+      input.providerSnapshot.providerConfigId,
+      String(input.providerSnapshot.version),
+      adapter.manifest.id,
+      adapter.manifest.version,
+    ].join('|');
+    const existing = this.inFlightValidation.get(key);
+    if (existing !== undefined) return existing;
+    const promise = adapter.validate({
+      configuration,
+      probe: this.probe,
+      environment: this.environment,
+    }).finally(() => {
+      this.inFlightValidation.delete(key);
+    });
+    this.inFlightValidation.set(key, promise);
+    return promise;
   }
 
   private async runToFinal(
@@ -329,55 +386,37 @@ export class StageExecutionCoordinator {
       readonly adapter: RuntimeProviderAdapter;
       readonly input: StageExecutionInput;
       readonly eventContext: RuntimeEventContext;
-      readonly sessionId: string;
       readonly stdoutWriter: Awaited<ReturnType<DurableProcessCoordinator['beginOutput']>>;
       readonly stderrWriter: Awaited<ReturnType<DurableProcessCoordinator['beginOutput']>>;
       readonly startedAtMs: number;
       readonly bound: Promise<DurableProcessView>;
+      readonly activeSession: Promise<ActiveSessionState>;
       readonly final: Deferred<StageExecutionOutcome>;
     },
   ): Promise<void> {
     const parseContext: ProviderParseContext = (context.adapter as unknown as { createParseContext(): ProviderParseContext }).createParseContext();
-    let parsedEvents: ProviderNormalizedEvent[] = [];
+    const parsed: { events: ProviderNormalizedEvent[] } = { events: [] };
     let stderrText = '';
-    let stdoutOffset = 0;
-    let stderrOffset = 0;
     try {
-      for await (const chunk of handle.streams.stdout) {
-        const bytes = toBytes(chunk);
-        const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-        parsedEvents = [...parsedEvents, ...context.adapter.parseChunk(text, parseContext).events];
-        stdoutOffset += bytes.length;
-        await context.stdoutWriter.append({
-          stream: 'stdout',
-          sequence: stdoutOffset,
-          sourceOffset: stdoutOffset - bytes.length,
-          sourceBytes: bytes.length,
-          bytes,
-          text,
-          binary: false,
-        });
+      const stdoutDecoder = new TextDecoder('utf-8');
+      const stderrDecoder = new TextDecoder('utf-8');
+      await Promise.all([
+        this.drainStdout(handle, context, stdoutDecoder, parseContext, parsed),
+        this.drainStderr(handle, context, stderrDecoder, (value: string) => { stderrText = value; }),
+      ]);
+      const stdoutTail = stdoutDecoder.decode();
+      if (stdoutTail.length > 0) {
+        parsed.events = [...parsed.events, ...context.adapter.parseChunk(stdoutTail, parseContext).events];
       }
-      parsedEvents = [...parsedEvents, ...context.adapter.finishParse(parseContext).events];
-      for await (const chunk of handle.streams.stderr) {
-        const bytes = toBytes(chunk);
-        const text = new TextDecoder('utf-8', { fatal: false }).decode(bytes);
-        stderrText = boundedAppend(stderrText, text, this.stderrRetainedBytes);
-        stderrOffset += bytes.length;
-        await context.stderrWriter.append({
-          stream: 'stderr',
-          sequence: stderrOffset,
-          sourceOffset: stderrOffset - bytes.length,
-          sourceBytes: bytes.length,
-          bytes,
-          text,
-          binary: false,
-        });
+      parsed.events = [...parsed.events, ...context.adapter.finishParse(parseContext).events];
+      const stderrTail = stderrDecoder.decode();
+      if (stderrTail.length > 0) {
+        stderrText = boundedAppend(stderrText, stderrTail, this.stderrRetainedBytes);
       }
       const exit = await handle.waitExit();
       const durationMs = Date.now() - context.startedAtMs;
       const processView = await context.bound;
-      await this.durableCoordinator.transitionProcess({
+      const procOutcome = await this.durableCoordinator.transitionProcess({
         workspaceId: context.input.workspaceId,
         processId: processView.processId,
         expectedVersion: processView.version,
@@ -395,25 +434,28 @@ export class StageExecutionCoordinator {
         force: false,
         eventContext: context.eventContext,
       });
+      requireDurable(procOutcome, 'PROCESS_EXITED');
       const stdoutFinal = await context.stdoutWriter.finalize();
       const stderrFinal = await context.stderrWriter.finalize();
+      requireOutputFinalize(stdoutFinal, 'STDOUT_FINALIZE');
+      requireOutputFinalize(stderrFinal, 'STDERR_FINALIZE');
       const artifactIds = [stdoutFinal, stderrFinal]
-        .map(result => result.outcome.kind === 'applied' || result.outcome.kind === 'duplicate' ? result.outcome.value.artifactId : undefined)
+        .map(result => result.outcome.kind === 'applied' || result.outcome.kind === 'duplicate' || result.outcome.kind === 'finalized' ? (result.outcome as { value: { artifactId: string } }).value.artifactId : undefined)
         .filter((id): id is string => typeof id === 'string');
       const finalized = await context.adapter.finalize({
         exitCode: exit.exitCode,
         signal: exit.signal,
-        parsedEvents,
+        parsedEvents: parsed.events,
         stderr: stderrText,
         cancelled: false,
       });
-      const activeVersion = runToFinalSessionVersion.get(context.sessionId) ?? (context.sessionId ? -1 : 0);
-      await this.sessionRepository.casSessionTransition({
+      const session = await context.activeSession;
+      const terminalOutcome = await this.sessionRepository.casSessionTransition({
         workspaceId: context.input.workspaceId,
-        sessionId: context.sessionId,
-        expectedVersion: activeVersion,
-        expectedClaimEpoch: 1,
-        expectedClaimOwner: this.claimOwner,
+        sessionId: session.sessionId,
+        expectedVersion: session.version,
+        expectedClaimEpoch: session.claimEpoch,
+        expectedClaimOwner: session.claimOwnerId,
         expectedFrom: 'active',
         to: finalized.status === 'completed' ? 'completed' : 'failed',
         timestamp: this.now(),
@@ -421,12 +463,16 @@ export class StageExecutionCoordinator {
         failureDetailRedacted: finalized.status === 'completed' ? undefined : 'provider session terminal',
         eventContext: context.eventContext,
       });
+      if (terminalOutcome.kind !== 'applied' && terminalOutcome.kind !== 'terminal') {
+        throw new Error('PROVIDER_SESSION_TERMINAL_FAILED');
+      }
       if (finalized.status === 'completed') {
         context.final.resolve({
           kind: 'completed',
           durationMs,
           artifactIds,
           outputContractSatisfied: true,
+          ...(finalized.output === undefined ? {} : { output: finalized.output }),
         });
       } else {
         const error = finalized.error ?? { code: 'PROVIDER_SESSION_FAILED', phase: 'finalize', retryable: false, message: 'Provider session failed' };
@@ -435,6 +481,61 @@ export class StageExecutionCoordinator {
     } catch (error) {
       context.final.resolve(this.failedFromError(error, 'runtime', context.input));
     }
+  }
+
+  private async drainStdout(
+    handle: NativeProcessHandle,
+    context: { readonly adapter: RuntimeProviderAdapter; readonly stdoutWriter: Awaited<ReturnType<DurableProcessCoordinator['beginOutput']>> },
+    decoder: TextDecoder,
+    parseContext: ProviderParseContext,
+    parsed: { events: ProviderNormalizedEvent[] },
+  ): Promise<void> {
+    let offset = 0;
+    for await (const chunk of handle.streams.stdout) {
+      const bytes = toBytes(chunk);
+      const text = decoder.decode(bytes, { stream: true });
+      if (text.length > 0) {
+        parsed.events = [...parsed.events, ...context.adapter.parseChunk(text, parseContext).events];
+      }
+      offset += bytes.length;
+      const outcome = await context.stdoutWriter.append({
+        stream: 'stdout',
+        sequence: offset,
+        sourceOffset: offset - bytes.length,
+        sourceBytes: bytes.length,
+        bytes,
+        text,
+        binary: false,
+      });
+      requireAppend(outcome, 'STDOUT_APPEND');
+    }
+  }
+
+  private async drainStderr(
+    handle: NativeProcessHandle,
+    context: { readonly stderrWriter: Awaited<ReturnType<DurableProcessCoordinator['beginOutput']>> },
+    decoder: TextDecoder,
+    setText: (value: string) => void,
+  ): Promise<void> {
+    let stderrText = '';
+    let offset = 0;
+    for await (const chunk of handle.streams.stderr) {
+      const bytes = toBytes(chunk);
+      const text = decoder.decode(bytes, { stream: true });
+      stderrText = boundedAppend(stderrText, text, this.stderrRetainedBytes);
+      offset += bytes.length;
+      const outcome = await context.stderrWriter.append({
+        stream: 'stderr',
+        sequence: offset,
+        sourceOffset: offset - bytes.length,
+        sourceBytes: bytes.length,
+        bytes,
+        text,
+        binary: false,
+      });
+      requireAppend(outcome, 'STDERR_APPEND');
+    }
+    setText(stderrText);
   }
 
   private failed(
@@ -453,8 +554,20 @@ export class StageExecutionCoordinator {
   }
 }
 
-/** In-memory mapping of the Session version after the starting -> active CAS. */
-const runToFinalSessionVersion = new Map<string, number>();
+function requireAppend<T>(outcome: DurableCasOutcome<T>, label: string): void {
+  if (outcome.kind === 'applied' || outcome.kind === 'duplicate') return;
+  throw new Error(label + ': ' + outcome.kind);
+}
+
+function requireDurable<T>(outcome: DurableCasOutcome<T>, label: string): void {
+  if (outcome.kind === 'applied' || outcome.kind === 'duplicate' || outcome.kind === 'terminal') return;
+  throw new Error(label + ': ' + outcome.kind);
+}
+
+function requireOutputFinalize(result: { outcome: DurableCasOutcome<{ artifactId: string }> }, label: string): void {
+  if (result.outcome.kind === 'applied' || result.outcome.kind === 'duplicate' || result.outcome.kind === 'finalized') return;
+  throw new Error(label + ': ' + result.outcome.kind);
+}
 
 function configurationFromSnapshot(snapshot: ProviderConfigurationSnapshotV1): ProviderConfigurationInput {
   return {

@@ -80,7 +80,12 @@ export class RunEngineProviderDispatcher {
       const stages = this.runStageRepository.listByRun(workspaceId, runId);
       const active = stages.find(stage => stage.status === 'running' || stage.status === 'starting');
       if (active !== undefined && active.status === 'running') {
-        await this.executeProviderStage(workspaceId, runId, active, stages);
+        const stageOutcome = await this.executeProviderStage(workspaceId, runId, active, stages);
+        if (stageOutcome === 'active') {
+          // Another durable authority owns/completes this stage; this drive has
+          // nothing further to progress now.
+          break;
+        }
         continue;
       }
       const result = this.engine.dispatch({ workspaceId, runId });
@@ -94,7 +99,7 @@ export class RunEngineProviderDispatcher {
     runId: string,
     stage: RunStage,
     stages: readonly RunStage[],
-  ): Promise<void> {
+  ): Promise<'progressed' | 'active'> {
     const snapshot = this.runSnapshotRepository.findByRunId(workspaceId, runId);
     if (snapshot === undefined || snapshot.payload.schemaVersion !== 2) {
       throw new Error('RUN_ENGINE_SNAPSHOT_INVALID: provider execution requires a V2 snapshot');
@@ -128,7 +133,7 @@ export class RunEngineProviderDispatcher {
     }
     if (outcome.kind === 'active') {
       // Converged on an existing authority claim; never re-dispatch.
-      return;
+      return 'active';
     }
     if (outcome.kind === 'completed') {
       const othersComplete = stages.every(
@@ -175,6 +180,7 @@ export class RunEngineProviderDispatcher {
         correlationId: operation.id,
       });
     }
+    return 'progressed';
   }
 
   private requireRun(workspaceId: string, runId: string): Run {

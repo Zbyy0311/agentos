@@ -145,7 +145,7 @@ function probeFor(authFailure: boolean): ProcessProbePort {
   };
 }
 
-function fixture(driver: FakeDriver, authFailure = false) {
+function fixture(driver: FakeDriver, authFailure = false, behavior: { readonly returnActive?: boolean } = {}) {
   const db = migratedDb();
   seedGraph(db);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-e2e-'));
@@ -165,10 +165,18 @@ function fixture(driver: FakeDriver, authFailure = false) {
   });
   const adapter = new KimiCodeProviderAdapter({ probe: probeFor(authFailure), discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }) });
   const registry = new ProviderRegistry([adapter]);
-  const coordinator = new StageExecutionCoordinator({
+  const coordinatorCalls = { count: 0 };
+  const realCoordinator = new StageExecutionCoordinator({
     registry, durableCoordinator, sessionRepository: sessionAdapter, driver, probe: probeFor(authFailure),
     claimOwner: 'run-engine', claimLeaseMs: 60000, now: () => NOW,
   });
+  const coordinator = {
+    execute: async (input: Parameters<StageExecutionCoordinator['execute']>[0]) => {
+      coordinatorCalls.count += 1;
+      if (behavior.returnActive === true) return { kind: 'active' as const };
+      return realCoordinator.execute(input);
+    },
+  } as unknown as StageExecutionCoordinator;
   const runRepo = new RunRepository(db);
   const runStageRepo = new RunStageRepository(db);
   const runSnapshotRepo = new RunSnapshotRepository(db);
@@ -189,7 +197,7 @@ function fixture(driver: FakeDriver, authFailure = false) {
     operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => 'C:/ws',
     worktreePathFor: () => 'C:/ws/.agentos/worktrees/run-1',
   });
-  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher };
+  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, coordinatorCalls };
 }
 
 function close(fx: ReturnType<typeof fixture>): void { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
@@ -266,6 +274,16 @@ describe('RunEngineProviderDispatcher E2E', () => {
       const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
       assert.equal(outboxCount, eventCount);
       assert.ok(eventCount > 0);
+    } finally { close(fx); }
+  });
+
+  it('MEDIUM-1A: joined-existing active stage causes ONE coordinator attempt per drive (no 128 no-progress loop)', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { returnActive: true });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      assert.equal(fx.coordinatorCalls.count, 1);
+      assert.equal(fx.driver.spawnCalls, 0);
     } finally { close(fx); }
   });
 
