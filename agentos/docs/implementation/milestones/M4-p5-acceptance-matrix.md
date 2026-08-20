@@ -1,6 +1,6 @@
 # AgentOS M4-P5 Cancellation, Process Tree, Timeout and Transport — Acceptance Test Matrix
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — SECOND DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — TEST ARCHITECTURE FROZEN — NO TEST OR PRODUCTION IMPLEMENTATION AUTHORIZED
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — THIRD DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — TEST ARCHITECTURE FROZEN — NO TEST OR PRODUCTION IMPLEMENTATION AUTHORIZED
 
 ## 1. Traceability
 
@@ -9,7 +9,7 @@ real-provider gate required. `N/A` allowed only with the reason shown.
 
 | Exit gate | Unit | Contract | Integration | Platform | Recovery | Negative/mutation | Real Provider | Required proof |
 |---|---|---|---|---|---|---|---|---|
-| E04 Cancel covers owned Process Tree | D: stop ticket/state/race model; bare `complete`/no-proof rejection | D: driver cleanup-result/survivor vocabulary + `owned-tree-enumeration` proof provenance | D: explicit Run cancel reaches Adapter graceful + Process tree once | D: Windows fallback owned-tree proof (required); POSIX group proof is REQUIRED (if unavailable, `PLATFORM_GATE_BLOCKED` means P5B/P5 incomplete) | N/A: restart classification is P6-owned evidence, deferred to P6; P5 proves stopping/survivor facts pre-restart | D: root exits while grandchild survives; bare `complete` without proof must fail closed | R: bounded Kimi cancel + descendant check where safe, with proof marker | successful cancel requires verified no known/unknown survivor **and** valid owned-tree proof |
+| E04 Cancel covers owned Process Tree | D: P5A internal stop ticket/state/race model; shared proof normalizer; bare `complete` rejection | D: driver cleanup-result/survivor vocabulary + `owned-tree-enumeration` proof provenance | D: P5A internal Stage cancel; P5D later activates public command and LTS hand-off | D: Windows fallback owned-tree proof (required); POSIX group proof REQUIRED (if unavailable, `PLATFORM_GATE_BLOCKED` means P5B/P5 incomplete) | N/A: restart classification is P6-owned evidence | D: every Manager/Durable/ProcessCancelCoordinator path rejects proof removal | R: bounded Kimi gate only after P5D | successful active cancel requires normalized `proven=true`, no unknown survivor, and valid proof |
 | E08 disconnect does not terminate | D: subscriber dispose has no stop call | D: transport ownership contract | D: close socket, Process/Event/Run continue; explicit cancel works | D: Windows/POSIX Process remains alive after transport close | D: reconnect resumes persisted cursor/reference | D: mutate close handler to call stop and require failure | R: Kimi task survives client close and reconnect | browser owns subscription only; explicit cancel is the only termination command |
 | E06 Kimi vertical slice (P5 real gate) | D: Kimi fixtures unchanged | D: Registry/Snapshot/Adapter version contract | D: fake Kimi canonical Run -> Stage outcome | D: Windows tree fixtures | D: interrupted Kimi stays uncertain | D: PlainText/OpenCode fallback prohibited | R: installed Kimi direct validation + bounded task + cancel/disconnect | direct KimiCode through canonical chain; not M4 final completion |
 | E10 M3 contracts preserved | D: existing lifecycle/Event/idempotency units | D: envelope/Registry/ApiProblem compatibility | D: full M3 Run/Operation/Event/Outbox/SSE/Legacy regression | N/A: M3 semantics platform-independent; platform suites still run integration | D: `recovery_required`/uncertainty regressions | D: duplicate Event/Outbox, sequence rollback, replay-spawn mutations | R: Kimi evidence bound to same M3 Events/Operation | no second lifecycle; Event/Outbox and transitions atomic and replay-safe |
@@ -27,7 +27,7 @@ outcome.
 | CAN-03 | cancel during fenced `starting` (unresolved spawn, null PID) | UNIT | `starting -> stopping`; null PID not unspawned; spawn count 1; no second spawn (RACE-S2) |
 | CAN-04 | cancel immediately after spawn | UNIT | late success binds identity, stays `stopping`, cleanup runs once (RACE-S3) |
 | CAN-05 | cancel while `running` | UNIT/INTEGRATION | graceful -> grace -> force -> verify -> `exited`/`TERMINATED`; one terminal fact |
-| CAN-06 | cancel during M3 `waiting_approval` | UNIT/INTEGRATION | routed through the frozen approval-cancellation composite: `approval.resolved` -> `stage.cancelled` -> `run.cancelled` via `resolveApprovalToCancellation` (OD-M4-P5-19); the ordering is asserted, not merely final status; paired Process joins the single stop pipeline with cancel causation; the generic cancel seam still rejects approval states |
+| CAN-06 | cancel during M3 `waiting_approval` | UNIT/INTEGRATION | P5A cleans the paired Process internally; only P5D, after proof, calls the frozen composite `approval.resolved` -> `stage.cancelled` -> `run.cancelled` via `resolveApprovalToCancellation`; the generic plain cancel seam still rejects approval states |
 | CAN-07 | cancel while output streams drain | INTEGRATION | finalization before terminal fact; artifacts finalized; bounded backpressure |
 | CAN-08 | cancel vs natural exit | UNIT | first terminal observation wins; cancel causation retained (OD-M4-P5-07) |
 | CAN-09 | cancel after Process exited, before Provider finalize | INTEGRATION | terminal Process fact committed; Provider finalize sees stop ticket; exactly one Session terminal |
@@ -40,9 +40,30 @@ outcome.
 | CAN-16 | unknown tree ownership | UNIT | `orphaned` + `UNKNOWN_PLATFORM_UNAVAILABLE`; fail closed |
 | CAN-17 | graceful-stop failure | UNIT | bounded progression to force |
 | CAN-18 | force-kill failure | UNIT | `UNKNOWN_PLATFORM_UNAVAILABLE`/`PROCESS_TREE_TERMINATION_FAILED`; uncertainty |
-| CAN-19 | P4 active-CAS-after-spawn closure (phase-split, OD-M4-P5-16) | INTEGRATION | coordination/state half (P5A, MockDriver): spawn succeeds -> activation CAS fails -> stop pipeline runs once -> Process `exited` only with valid proof or `orphaned`/unknown, Session `failed`, one terminal fact, no second spawn; full production tree-cleanup proof completes in P5B (real owned-tree termination + survivor verification against this schedule) |
-| CAN-20 | bare complete cleanup result has no proof | UNIT/INTEGRATION | Mock/real-driver result `classification='complete'`, `knownPids=[]`, no proof -> ProcessCancelCoordinator maps UNKNOWN/unproven; no successful Process/Session/Run cancellation, no successful LifecycleTransactionService hand-off, no false terminal Event, no second stop/spawn |
-| CAN-21 | valid owned-tree proof | UNIT/INTEGRATION | MockDriver `classification='complete'` + proof semantic `OWNED_TREE_ENUMERATION_VERIFIED` (`proof.kind='owned-tree-enumeration'`) -> deterministic P5A cancellation may proceed once; terminal facts and lifecycle hand-off are ordered and idempotent |
+| CAN-19 | P4 active-CAS-after-spawn closure (phase-split, OD-M4-P5-16) | INTEGRATION | P5A internal: spawn succeeds -> activation CAS fails -> one stop ticket -> shared normalizer; valid proof may exit, bare proof becomes orphaned/unknown, Session failed, one fact, no second spawn; P5B later proves the real tree |
+| CAN-20 | bare complete cleanup result has no proof | UNIT/INTEGRATION | `classification='complete'`, `knownPids=[]`, no proof -> shared normalizer returns `unknown`/`UNKNOWN_PLATFORM_UNAVAILABLE`/`proven=false`; Process orphaned, Session failed, Run/Stage nonterminal, LTS call count 0, no false terminal Event, no second stop/spawn |
+| CAN-21 | valid owned-tree proof | UNIT/INTEGRATION | MockDriver `classification='complete'` + `proof.kind='owned-tree-enumeration'` -> normalized `proven=true`; P5A internal cancellation may proceed once; Session/LTS hand-off is ordered and idempotent only at the owning later command seam |
+| CAN-22 | Manager proof-bypass mutation | UNIT/MUTATION | remove proof from complete verification; Manager must never emit `process.exited` or `TERMINATED` |
+| CAN-23 | Durable registration proof-bypass mutation | UNIT/INTEGRATION | bare complete in bind/registration cleanup -> `orphaned`/unknown; no `failed` successful-cleanup terminal |
+| CAN-24 | Durable late-success proof-bypass mutation | UNIT/INTEGRATION | bare complete in starting-cancel late success -> `orphaned`; no `exited` |
+| CAN-25 | ProcessCancelCoordinator proof-bypass mutation | UNIT | bare complete through new coordinator -> same shared normalized unknown result; no second authority |
+| CAN-26 | P5A exact Session/Process claim correlation | UNIT/INTEGRATION | `cancelAttempt` resolves exact workspace/run/stage/stageAttempt/authority claims; mismatch or missing claim fails closed; no PID/Event/latest-process lookup |
+| CAN-27 | P5A public route boundary | ARCHITECTURE/UNIT | canonical/v2/Operation active routes remain unactivated; internal P5A port works; absent injected authority returns stable failure with no mutation |
+| CAN-28 | P5A active cleanup has no LTS hand-off | UNIT/INTEGRATION | bare complete/no proof -> Session failed, Run/Stage nonterminal, LTS successful call count 0, no terminatedProcessId |
+
+### 2.1 Public command and Operation cases (P5D)
+
+| ID | Case | Class | Required assertions |
+|---|---|---|---|
+| CMD-01 | queued/no-Process cancellation | INTEGRATION | existing M3 cancellation may use empty `terminatedProcessIds` only when no Process claim/spawn right exists |
+| CMD-02 | active proven cancellation | INTEGRATION | runtime stop occurs outside SQLite; final version revalidation succeeds; non-empty proof-backed terminatedProcessIds reach the correct LTS seam |
+| CMD-03 | active unproven cancellation | INTEGRATION | no LTS success, no Run/Stage terminal, stable cancellation-incomplete result, durable Process/Session uncertainty |
+| CMD-04 | uninjected active route | INTEGRATION | canonical/v2 active cancel returns `RUN_CANCEL_AUTHORITY_UNAVAILABLE` (or frozen equivalent); no Run/Process mutation |
+| CMD-05 | waiting_approval after proof | INTEGRATION | only after Process proof, `resolveApprovalToCancellation` emits `approval.resolved` -> `stage.cancelled` -> `run.cancelled`; generic plain cancel remains rejected |
+| OP-01 | active Operation legacy bypass | INTEGRATION/MUTATION | `OperationService` never calls old empty-ID LTS path before runtime proof; active Operation remains nonterminal on uncertainty |
+| OP-02 | Operation runtime outside transaction | INTEGRATION | OS wait/stop is outside SQLite transaction; final transaction revalidates Operation/Run versions and commits exactly once |
+| OP-03 | Operation final version race | UNIT/INTEGRATION | lost revalidation returns conflict/evidence without second stop/spawn or duplicate terminal Event |
+| OP-04 | duplicate active Operation cancel | UNIT/INTEGRATION | duplicates join the same Process stop ticket and return identical evidence |
 
 ## 3. Tree cases
 
@@ -119,15 +140,17 @@ as an optional cross-platform label.
 | TO-07 | approval-wait idle suspension | UNIT | durable `approval.required` (`running -> waiting_approval`) enters paired Process `waiting`; idle pauses; remaining budget resumes only on normal `approval.resolved`; total unaffected (OD-M4-P5-14) |
 | TO-08 | simultaneous timeout/exit/cancel | UNIT | single `process.stopping` reason; single terminal fact |
 | TO-09 | policy propagation | INTEGRATION | snapshot `startupTimeoutMs/idleTimeoutMs/totalTimeoutMs` reach the durable Process (audit CS-14 closure) |
-| TO-10 | duplicate/replayed approval.required | UNIT | same durable event/cursor replay pauses the paired Process at most once |
-| TO-11 | stale approval event | UNIT | prior `stageAttempt` or wrong workspace/run/stage event is ignored; no timer mutation |
-| TO-12 | normal approval.resolved | UNIT | same `approvalRequestId`, decision `approve_once`/`approve_run`/`approve_workspace` resumes only an active waiting Process with remaining idle budget |
+| TO-10 | duplicate/replayed approval.required | UNIT | observer starts at cursor 0, matching `stage.started` arms once, and replay pauses the paired Process at most once |
+| TO-11 | stale/pre-anchor approval event | UNIT | events before matching `stage.started` anchor, prior attempt, or wrong workspace/run/stage are ignored; no timer mutation |
+| TO-12 | normal approval.resolved | UNIT | later same attempt/sequence and same `approvalRequestId`, decision `approve_once`/`approve_run`/`approve_workspace` resumes only an active waiting Process with remaining idle budget |
 | TO-13 | approval reject/cancel resolution | INTEGRATION | `reject` or `cancel_run` never resumes; the existing approval-cancellation composite/stop ticket wins |
 | TO-14 | terminal Process resolution | UNIT | `approval.resolved` after `stopping`/terminal is ignored; no resume side effect |
-| TO-15 | observation overflow/failure | UNIT/INTEGRATION | narrow observation port closes/fails; no guessed waiting/running state and no timer side effect |
+| TO-15 | observation overflow/failure | UNIT/INTEGRATION | `RunStreamService` invokes `onFailure(reason,lastSafeSequence)`; narrow observation closes; no guessed waiting/running state and no timer side effect |
 | TO-16 | total timeout during approval wait | UNIT | total deadline remains active while idle is paused |
 | TO-17 | startup readiness before approval wait | UNIT | startup timer is disarmed at readiness before `approval.required` can pause idle |
 | TO-18 | observation transport boundary | ARCHITECTURE/UNIT | fake narrow port only; no HTTP/SSE object, polling loop, or second Event repository participates |
+| TO-19 | stage.started attempt anchor | UNIT/INTEGRATION | `afterSequence=0`; observer remains disarmed until exact `stageId` + `payload.attempt`; a newer attempt invalidates the old observer |
+| TO-20 | observation failure ownership | UNIT/INTEGRATION | overflow, durability mismatch, subscriber callback failure and close produce explicit failure callback and observer cleanup only |
 
 ## 7. Transport cases
 
@@ -147,12 +170,12 @@ as an optional cross-platform label.
 | ID | Case | Class | Required assertions |
 |---|---|---|---|
 | DUR-01 | Process state | INTEGRATION | stopping/exited/orphaned persisted with columns (audit CS-11) |
-| DUR-02 | Session state | INTEGRATION | starting/active -> cancelled/failed per OD-M4-P5-10; durability proven via `provider_sessions.status` + existing `process.session_state_changed`/Process terminal facts; no `provider.*` Event family is required; `provider.session_cancelled` remains Registry-gated and is NOT required (OD-M4-P5-18) |
+| DUR-02 | Session state | INTEGRATION | proven cleanup -> `provider_sessions.status='cancelled'`; no proof/survivor/unknown -> exactly one `failed` Session; durability uses existing `process.session_state_changed`/Process facts; no `provider.*` Event family is required; `provider.session_cancelled` remains Registry-gated and is NOT required |
 | DUR-03 | cleanup result | INTEGRATION | one of the five frozen values persisted |
 | DUR-04 | termination reason | INTEGRATION | cancel/timeout/non-zero-exit etc. persisted |
 | DUR-05 | survivor list | INTEGRATION | restricted redacted JSON; count only in public projection |
 | DUR-06 | Event/Outbox parity | INTEGRATION | stop/terminal facts 1:1; atomic rollback |
-| DUR-07 | replay/idempotency | INTEGRATION | replay returns prior evidence; no second stop/spawn |
+| DUR-07 | replay/idempotency | INTEGRATION | replay returns prior evidence; duplicate cancel joins one ticket; no second stop/spawn/fact |
 | DUR-08 | no duplicate Process | INTEGRATION | one root reservation per Stage attempt |
 
 ## 9. Regression sets
@@ -176,16 +199,19 @@ blocked capability returns `BLOCKED`/`UNSUPPORTED` with evidence, never silent
 pass and never a base-acceptance condition (WIN-05/WIN-07). `REAL KIMI` = P5E
 authorized real executable gate.
 
-Boundary guarantees after remediation: no P5 acceptance depends on any
-unregistered `provider.*` Event; `provider.session_cancelled` remains gated and
-is not an acceptance dependency; no P5 acceptance depends on server-shutdown
-integration (P6-owned, OD-M4-P5-17); no P5 acceptance requires P6 restart
-classification (P6-owned evidence); E04 still requires verified survivor
-evidence everywhere plus the `owned-tree-enumeration` proof marker.
+Boundary guarantees after the third remediation: no P5 acceptance depends on
+any unregistered `provider.*` Event; `provider.session_cancelled` remains gated
+and is not an acceptance dependency; no P5 acceptance depends on
+server-shutdown integration (P6-owned, OD-M4-P5-17); no P5 acceptance requires
+P6 restart classification; active public commands are not activated before
+P5D; and E04 requires the shared proof normalizer everywhere.
 
-Phase boundary: `P5A COMPLETE != PRODUCTION TREE CANCELLATION PROVEN`.
-P5A proves authority/state safety and fail-closed exposure; P5B proves the
-real platform-owned-tree algorithm and emits accepted proof.
+Phase boundary:
+`P5A COMPLETE = INTERNAL CANCEL AUTHORITY + STATE SAFETY + PROOF GATE`.
+`P5A COMPLETE != PUBLIC ACTIVE CANCEL ACTIVATED`.
+`P5A COMPLETE != PRODUCTION TREE CANCELLATION PROVEN`.
+P5B emits accepted real-platform proof; P5C owns timeout/observation; P5D
+activates public command surfaces.
 
 ## 11. No-rerun-until-green rule
 

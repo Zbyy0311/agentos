@@ -1,6 +1,6 @@
 # AgentOS M4-P5 — Cancellation, Process Tree, Timeout and Transport Independence — Implementation Plan / Objective
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — SECOND DOCS-ONLY REMEDIATION (FRESH PLAN REVIEW PENDING) — M4-P5 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — THIRD DOCS-ONLY REMEDIATION (FRESH PLAN REVIEW PENDING) — M4-P5 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
 
 ## 1. Metadata / exact base
 
@@ -22,52 +22,43 @@ must name this exact base; this plan does not silently transfer if `main` moves.
 
 ## 2. P5 objective
 
-Make active Run cancellation reliable across the owned Process Tree and remove
-HTTP/SSE ownership of execution, per M4 implementation plan §7. The frozen
-architecture separates a SERVER/STAGE orchestration layer from a PROCESS-SIDE
-Process Runtime stop pipeline (OD-M4-P5-01):
+Make owned-tree cancellation safe without activating a public command before
+its application composition exists. The third remediation freezes an internal
+P5A attempt-cancellation core, a later P5D command/application seam, and one
+proof-aware Process Runtime normalization authority:
 
 ```text
-USER CANCEL
-  -> M3 command/Operation boundary
-  -> server Stage cancellation orchestration (StageExecutionCoordinator)
-       -> accept/correlate Session + Process
-       -> ensure Process stop ticket (durable process.stopping)
-       -> optional Adapter graceful request
-            (RuntimeProviderAdapter.cancel through the constrained
-             ProviderProcessPort, ticket-gated, within the grace window)
-       -> Process Runtime cleanup (ProcessCancelCoordinator, PROCESS-SIDE ONLY)
-            -> platform graceful
-            -> grace deadline
-            -> owned-tree force
-            -> survivor verification
-            -> require `complete` + `owned-tree-enumeration` proof
-            -> durable Process facts
-            -> Provider-neutral typed cleanup result returned upward
-       -> Adapter finalize
-       -> durable Session terminal (provider_sessions.status + registered facts)
-       -> LifecycleTransactionService
-  -> canonical Stage/Run cancellation
+P5A INTERNAL ATTEMPT CANCEL
+  -> StageExecutionCoordinator.cancelAttempt({workspaceId, runId, stageId,
+       stageAttempt, correlationId, causationId})
+  -> exact Session claim + exact root Process claim
+  -> accepted durable Process stop ticket
+  -> optional ticket-gated Adapter graceful request
+  -> ProcessCancelCoordinator
+       -> platform graceful -> grace -> force tree -> verify
+       -> cleanupVerdictFromVerification(verification, exitedBeforeCleanup)
+       -> durable Process fact + Provider-neutral typed result
+  -> Provider finalize
+  -> Session cancelled only with proven cleanup, otherwise Session failed
 
-If the driver returns `classification='complete'` without the proof marker,
-the ProcessCancelCoordinator maps the cleanup to `UNKNOWN`/unproven, does not
-terminalize a successful cancellation, and does not invoke the successful
-LifecycleTransactionService hand-off. This is the required safe P5A-before-P5B
-behavior; P5B upgrades the real NodeProcessDriver to emit the proof only after
-platform enumeration and post-force verification.
+P5D PUBLIC COMMAND ACTIVATION (only after P5A + P5B + P5C)
+  -> TaskRunService / OperationService command validation
+  -> injected internal StageExecutionCoordinator cancellation port
+  -> proven terminatedProcessIds only
+  -> LifecycleTransactionService canonical Run/Stage cancellation
 
-TIMEOUT
-  -> ProcessTimers
-  -> SAME Process stop authority (ProcessCancelCoordinator stop pipeline)
-  -> same upward completion chain
+P5A COMPLETE != PUBLIC ACTIVE CANCEL ACTIVATED
+P5A COMPLETE != PRODUCTION TREE CANCELLATION PROVEN
 
-TRANSPORT DISCONNECT
-  -> unsubscribe only
-  -> NEVER enters stop authority
+If the driver returns `classification='complete'` without a valid proof, the
+single shared normalizer returns `unknown` + `UNKNOWN_PLATFORM_UNAVAILABLE`.
+The Process becomes `orphaned`, the Session becomes `failed`, no successful
+LTS hand-off occurs, and no Run/Stage terminal event is emitted. P5B is the
+only phase that may make the real NodeProcessDriver emit the proof.
 
-P6 SHUTDOWN
-  -> future caller of the reusable P5 stop pipeline (reason='shutdown')
-  -> P6-owned server ordering/recovery classification (OD-M4-P5-17)
+TIMEOUT -> ProcessTimers -> the SAME ProcessCancelCoordinator stop authority
+TRANSPORT DISCONNECT -> unsubscribe only; NEVER enters stop authority
+P6 SHUTDOWN -> future caller with reason='shutdown'; P6 owns server ordering
 ```
 
 ## 3. Frozen rules (authoritative; no renegotiation)
@@ -87,10 +78,15 @@ P6 SHUTDOWN
 11. Explicit cancel API remains a termination command; disconnect never is.
 12. All waits use observable deadlines and the injected clock; no sleep-based
    correctness, no rerun-until-green acceptance.
-13. A successful tree cleanup requires `classification='complete'` AND an
-    explicit enumeration-backed proof marker whose semantic kind is
-    `owned-tree-enumeration`; bare `complete`/empty survivors is
-    `UNKNOWN`/unproven and cannot authorize cancellation success.
+13. Every production cleanup caller MUST consume the one shared
+    `cleanupVerdictFromVerification(verification, exitedBeforeCleanup)` seam
+    in `packages/process-runtime/src/driver.ts`. It consumes the complete
+    `SurvivorVerification`, never only `classification`. Only
+    `classification='complete'` with `proof.kind='owned-tree-enumeration'`
+    normalizes to `complete` + `TERMINATED`/`ALREADY_EXITED` + `proven=true`.
+    Bare `complete`, survivors, and unknown normalize to
+    `UNKNOWN_PLATFORM_UNAVAILABLE`/`SURVIVORS` with `proven=false`; no direct
+    `classification === 'complete'` terminal branch is permitted.
 14. POSIX real-OS group/survivor evidence is a REQUIRED P5B gate. If no valid
     POSIX environment exists, record `PLATFORM_GATE_BLOCKED`; P5B and overall
     P5 remain INCOMPLETE, and Windows-only evidence cannot close P5.
@@ -99,7 +95,9 @@ P6 SHUTDOWN
 
 ### 4.1 Included
 
-- Run / Operation / Execution / Process cancel coordination (one authority).
+- Internal Stage-attempt / Process cancel coordination (one authority).
+- Public Run / Operation command activation is P5D-owned and remains
+  fail-closed/unactivated during P5A.
 - Provider graceful stop via the accepted ticket (OD-M4-P5-02).
 - Grace deadline (OD-M4-P5-03).
 - Windows Job Object / process-group / bounded fallback force tree termination.
@@ -107,7 +105,8 @@ P6 SHUTDOWN
 - Startup timeout, idle timeout, total timeout with frozen terminal reasons.
 - Approval-wait idle suspension only where M3 `waiting_approval` proves it.
 - Initial Conversation disconnect decoupling (E08 closure).
-- Explicit cancel API remains the termination command.
+- Explicit cancel API remains the termination command, but its public active
+  route activation is deferred to P5D.
 - P4 LOW residual closure: startup compensation for spawned-but-unactivated
   Processes (OD-M4-P5-16, REQUIRED_P5_CLOSURE) — the coordination/state half
   in P5A (MockDriver), full production tree proof in P5B.
@@ -137,53 +136,40 @@ P6 SHUTDOWN
 
 ## 5. Cancel authority model
 
-### 5.1 Chain (exactly one, two layers)
+### 5.1 Chain (internal P5A, public P5D)
 
 ```text
-Run Cancel Command (POST /api/runs/:runId/cancel, V2 idempotency)
-  -> M3 command boundary: Operation/version/concurrency validation
-  -> SERVER / STAGE ORCHESTRATION (apps/server, StageExecutionCoordinator.cancel):
-       accept/correlate cancellation for the Stage attempt
-       resolve active Provider Session + paired root Process (durable)
-       ensure the durable Process stop ticket is accepted
-         (process.stopping, grace deadline from snapshot cancelGracePeriodMs)
-       -> optional Adapter-native graceful request
-          (RuntimeProviderAdapter.cancel through the constrained
-           ProviderProcessPort, ticket-gated, within the grace window)
-       -> PROCESS RUNTIME CLEANUP (ProcessCancelCoordinator at
-          packages/process-runtime/src/process-cancel-coordinator.ts,
-          PROCESS-SIDE ONLY):
-            PlatformDriver.gracefulStop (bounded)
-            -> grace deadline (snapshot cancelGracePeriodMs)
-            -> PlatformDriver.terminateTree (Windows fallback / POSIX group)
-            -> PlatformDriver.verifySurvivors
-            -> require `complete` + `owned-tree-enumeration` proof
-            -> durable Process terminal/uncertainty fact
-                 (exited + TERMINATED|ALREADY_EXITED, or orphaned +
-                  SURVIVORS|IDENTITY_MISMATCH|UNKNOWN_PLATFORM_UNAVAILABLE)
-            -> Provider-neutral typed cleanup result returned upward
-       -> Adapter finalize (after Process cleanup evidence)
-       -> durable Session terminal (provider_sessions.status
-          'cancelled'|'failed' via existing registered facts;
-          provider.session_cancelled stays gated — OD-M4-P5-10/18)
-       -> LifecycleTransactionService.cancelRunWithinTransaction(terminatedProcessIds, ...)
-            -> canonical Stage/Run cancelled (only after evidence known)
+P5A INTERNAL:
+StageExecutionCoordinator.cancelAttempt({workspaceId, runId, stageId,
+  stageAttempt, correlationId, causationId})
+  -> DurableSessionRepository.getSessionByClaimKey(...)
+  -> DurableProcessRepository.getRootProcessByClaim(...)
+  -> validate same workspace/run/stage/attempt
+  -> ProcessCancelCoordinator.acceptStop(processId, reason, idempotencyKey)
+  -> optional RuntimeProviderAdapter.cancel through accepted ProviderProcessPort
+  -> proof-aware Process cleanup + Session finalization
+  -> typed Provider-neutral CancellationOutcome
+
+P5D PUBLIC:
+TaskRunService / OperationService validates API version and idempotency
+  -> injects the SAME internal cancellation port from the accepted provider
+     execution composition
+  -> queued/no-Process may use existing M3 zero-Process cancellation
+  -> active requires proven terminatedProcessIds
+  -> LifecycleTransactionService performs the only Run/Stage terminal mutation
 ```
 
-Mutations: the command boundary owns command acceptance; the SERVER/STAGE
-orchestration owns correlation, the ticket-gated Adapter graceful request,
-Provider finalize and the `LifecycleTransactionService` invocation; Process
-Runtime owns the stop ticket, Process state transitions, tree mechanics and
-Process facts, and returns facts/outcomes only; Adapter owns Provider facts;
-`LifecycleTransactionService` owns canonical Run/Stage. No layer crosses.
+`ProcessCancelCoordinator` owns no Provider, command, or lifecycle semantics.
+`StageExecutionCoordinator` owns exact attempt correlation, Adapter graceful
+request, Provider finalization and the typed result, but does not own HTTP or
+idempotency storage. P5A never activates public active-cancel routes; P5D owns
+that application seam after P5A/P5B/P5C. `RunEngine.ts` and `index.ts` remain
+forbidden.
 
-RunEngine scheduling stop is EMERGENT, not a new gate: while the cancelled
-Stage attempt's Session/Process claim remains active (non-terminal), any
-re-dispatch joins the same durable claim (`joinedExisting`) and never spawns
-a second Process; once `LifecycleTransactionService` terminalizes the Run as
-cancelled, `RunEngine.dispatch` returns `run-terminal`. P5A proves both
-guards with regression tests. `RunEngine.ts` is in no P5 allowlist and must
-not be modified.
+RunEngine scheduling remains emergent: while an internal cancellation leaves
+the claim non-terminal, re-dispatch joins `joinedExisting` and never spawns a
+second Process; after an LTS terminal mutation, `RunEngine.dispatch` returns
+`run-terminal`. These are regression guards, not new P5 production gates.
 
 ### 5.2 Freeze per cancel window
 
@@ -193,8 +179,8 @@ not be modified.
 | cancel concurrently with spawn | `created -> starting` consumed the right; cancel CASes `starting -> stopping` even with null PID; the single in-flight spawn result is awaited (RACE-S2). |
 | cancel immediately after spawn | late success binds native identity to the same Process, stays `stopping`, and immediately runs the cleanup pipeline (RACE-S3). |
 | cancel while Session is starting | Session remains non-terminal until Process cleanup evidence; then Session `failed` (activation/start) or `cancelled` (verified clean with cancel causation). |
-| cancel while Session is active | normal stopping -> exited/TERMINATED (verified) -> Session `cancelled` (durable status + registered facts; `provider.session_cancelled` stays gated) -> LifecycleTransactionService cancelled. |
-| cancel during M3 `waiting_approval` | routed through the EXISTING approval-cancellation composite: `approval.resolved -> stage.cancelled -> run.cancelled` via `resolveApprovalToCancellation` (frozen ordering); the paired Process enters the same single stop pipeline with cancel causation; the generic cancel seam keeps rejecting approval states (OD-M4-P5-19). |
+| cancel while Session is active | internal P5A stop transitions Process to `stopping`; only a proof-backed normalized `complete` reaches `exited`/`TERMINATED` and Session `cancelled`; bare complete/survivors/unknown becomes `orphaned` + `UNKNOWN_PLATFORM_UNAVAILABLE`, Session `failed`, and no LTS call. |
+| cancel during M3 `waiting_approval` | P5A cleans the paired Process first. Only P5D, after proven cleanup, calls the EXISTING approval-cancellation composite: `approval.resolved -> stage.cancelled -> run.cancelled` via `resolveApprovalToCancellation`; the generic cancel seam still rejects approval states (OD-M4-P5-19). |
 | cancel while output streams drain | output finalization joins the stop pipeline; artifact references finalize before the terminal fact; bounded backpressure never blocks stop. |
 | cancel while Process exits naturally | first terminal observation wins; natural exit with no survivors finalizes `exited` with the cancel reason correlated (OD-M4-P5-07). |
 | cancel after Process exited but before Provider finalize | the terminal Process fact is already committed; the coordinator finalizes Provider with the cancel evidence; `provider_sessions.status='cancelled'` requires the cleanup result (the gated `provider.session_cancelled` Event is not a P5 dependency). |
@@ -204,25 +190,22 @@ not be modified.
 | cancel after terminal completion | returns the existing terminal result; no mutation, no duplicate Event. |
 | cancellation failure (graceful fails) | force still runs; result driven by tree verification. |
 | survivor detected | `orphaned` + `SURVIVORS`; cancellation not successful; Run uncertainty preserved via M3 seam. |
-| unknown tree ownership | `orphaned` + `UNKNOWN_PLATFORM_UNAVAILABLE`; fail closed; no signal on unverified identity. |
+| unknown tree ownership or missing proof | `stopping -> orphaned`; `cleanupResult=UNKNOWN_PLATFORM_UNAVAILABLE`; `terminationReason` retains cancel causation; `process.orphaned(cleanupRequired=true)` only; Session `failed`; Run/Stage remain non-terminal; no LTS call. |
 | graceful-stop failure | bounded progression to force; no guessing. |
 | force-kill failure | `UNKNOWN_PLATFORM_UNAVAILABLE`/`PROCESS_TREE_TERMINATION_FAILED` evidence; uncertainty preserved. |
 
 ### 5.3 P4 LOW residual closure (OD-M4-P5-16)
 
-Spawn succeeded but `starting -> active` Session CAS failed: the coordinator
-issues the stop pipeline with a startup/activation stop reason against the
-already-retained handle; the Process terminalizes `exited` only when the
-cleanup is `complete` **with** `owned-tree-enumeration` proof, otherwise it
-stays `orphaned`/unknown with cleanup evidence; the Session terminalizes
-`failed` with `PROVIDER_SESSION_FAILED`; the caller outcome stays fail-closed.
-Duplicate cleanup is prevented by the single idempotent stop ticket; uncertain
-cleanup stays non-terminal for P6. **Phase split:** P5A proves the
-coordination/state half on a controllable MockDriver, including a negative
-bare-`complete`/no-proof case and a positive valid-proof case (single stop,
-terminal facts, no second spawn); the full production tree-cleanup proof (real
-owned-tree termination and survivor verification against this schedule)
-completes in P5B.
+Spawn succeeded but `starting -> active` Session CAS failed: the internal
+StageExecutionCoordinator compensation enters the same single stop authority
+against the retained handle. The shared normalizer is the only cleanup result
+decision. A valid proof may produce Process `exited`; bare complete/no proof
+produces `stopping -> orphaned`, `UNKNOWN_PLATFORM_UNAVAILABLE`,
+`process.orphaned(cleanupRequired=true)`, and Session `failed` with
+`PROVIDER_SESSION_FAILED`. The caller remains fail-closed, no second spawn or
+successful lifecycle hand-off occurs, and P6—not P5—folds persistent
+orphan/unknown evidence into restart recovery. P5A proves this on MockDriver;
+P5B proves the real tree-cleanup half.
 
 ## 6. Process tree contract
 
@@ -261,43 +244,59 @@ A successful cancellation means the owned-tree cleanup result satisfies the
 frozen contract (`TERMINATED`/`ALREADY_EXITED` with verified `complete`), not
 merely that the parent PID disappeared.
 
-### 6.3 Tree-verification proof provenance
+### 6.3 Tree-verification proof provenance and the one normalizer
 
-The cancellation contract carries an additive, backward-compatible optional
-proof marker on `SurvivorVerification` (or the repository-equivalent tree
-result):
+`packages/process-runtime/src/driver.ts` is the sole planned normalization
+seam. The additive proof is intentionally minimal:
 
 ```text
-proof?: {
-  kind: 'owned-tree-enumeration'
-  ...platform-neutral proof metadata...
+SurvivorVerification {
+  classification: 'complete' | 'survivors' | 'unknown'
+  knownPids: readonly number[]
+  proof?: { kind: 'owned-tree-enumeration' }
+}
+
+cleanupVerdictFromVerification(
+  verification: SurvivorVerification,
+  exitedBeforeCleanup: boolean,
+): {
+  classification: 'complete' | 'survivors' | 'unknown'
+  cleanupResult: 'TERMINATED' | 'ALREADY_EXITED' | 'SURVIVORS' | 'IDENTITY_MISMATCH' | 'UNKNOWN_PLATFORM_UNAVAILABLE'
+  proven: boolean
 }
 ```
 
-The exact metadata is implementation-owned, but the semantic proof is frozen:
-the marker means `OWNED_TREE_ENUMERATION_VERIFIED`: the platform implementation
-enumerated the owned root/tree using its P5 contract, covered the root plus
-required known/new descendants, and performed post-force verification. The
-proof MUST NOT be derived from root exit,
-`child.kill()`, `taskkill` exit status, or PID liveness alone. Therefore:
+The function consumes the COMPLETE verification object and is the only
+production mapping from tree evidence to cleanup vocabulary:
 
 ```text
-classification='complete' + valid proof
-  -> cleanup may be TERMINATED/ALREADY_EXITED and successful cancellation may proceed
+complete + proof.kind='owned-tree-enumeration'
+  -> { classification:'complete',
+       cleanupResult: exitedBeforeCleanup ? 'ALREADY_EXITED' : 'TERMINATED',
+       proven:true }
 
-classification='complete' + no proof
-  -> UNKNOWN/unproven; ProcessCancelCoordinator fails closed; no successful
-     Session/Run cancellation hand-off
+complete + missing/invalid proof
+  -> { classification:'unknown', cleanupResult:'UNKNOWN_PLATFORM_UNAVAILABLE',
+       proven:false }
+
+survivors -> { classification:'survivors', cleanupResult:'SURVIVORS', proven:false }
+unknown   -> { classification:'unknown',
+               cleanupResult:'UNKNOWN_PLATFORM_UNAVAILABLE', proven:false }
 ```
 
-P5A may define/consume the additive marker and must prove both the no-proof
-negative and valid-proof MockDriver paths. P5B is the only phase that may make
-the real `NodeProcessDriver` emit the marker, and only after its Windows/POSIX
-enumeration and post-force algorithm succeeds.
+Identity mismatch remains the separately fenced `IDENTITY_MISMATCH` path.
+`manager.ts`, `durable-coordinator.ts`, `process-cancel-coordinator.ts`, and
+all future timeout/compensation callers MUST consume this normalized verdict;
+none may branch directly on `verification.classification === 'complete'` or
+`terminateTree(...).classification === 'complete'`. The old
+`cleanupResultFrom(classification, exitedBeforeCleanup)` helper is removed from
+production use (or retained only as a non-cancellation compatibility helper).
 
-P5B MUST NOT emit the proof when inspection is incomplete, access is denied,
-identity mismatches exist, a survivor remains, only root exit is known, or a
-`taskkill`/`process.kill` call reports success without enumeration evidence.
+P5A proves both bare-complete negative and valid-proof MockDriver positive
+paths. P5B is the only phase that may make the real `NodeProcessDriver` emit
+the marker, and only after platform enumeration, identity fencing, destructive
+action, post-force verification, and no unknown survivor. Root exit,
+`child.kill()`, taskkill exit status, or PID liveness alone can never emit it.
 
 The phase statement is frozen:
 
@@ -351,45 +350,56 @@ owns the transition.
 Approval-wait seam (OD-M4-P5-14): P5C owns exactly one narrow
 `CanonicalRunEventObservationPort` dependency on `StageExecutionCoordinator`.
 The production `createProviderExecutionChain(...)` composition root adapts
-`store.runStreamService()` (which already combines `RuntimeEventNotifier` with
-durable `RuntimeEventRepository` verification, ordered catch-up and callbacks)
-to that port; no HTTP/SSE object participates. The port subscribes by
-`workspaceId` + `runId` after a known sequence/cursor, delivers
-`RuntimeEventRecord`, returns an unsubscribe function, and fails/overflows
-closed. Its minimum shape is repository-convention equivalent to:
+`store.runStreamService()` (one notifier, one durable repository, ordered
+catch-up and dedupe) to that port; no HTTP/SSE object participates.
+
+The correctness-first observation contract is frozen as:
 
 ```text
-subscribe({ workspaceId, runId, afterSequence, onEvent, onOverflow }) -> unsubscribe()
+subscribe({workspaceId, runId, afterSequence: 0, onEvent, onFailure}) -> unsubscribe()
 ```
 
-where `onEvent` receives one durable `RuntimeEventRecord` and `onOverflow`
-receives the last safe sequence/cursor; an overflow or delivery failure closes
-the observation and produces no guessed Process/timer transition.
-
-The exact event flow is:
+The observer starts DISARMED and scans ordered durable events until it sees:
 
 ```text
-approval.required (same approvalRequestId, Run/Stage running -> waiting_approval)
-  -> verify workspace/run/stage/stageAttempt
-  -> paired Process running -> waiting -> pauseIdle()
-
-approval.resolved (same approvalRequestId)
-  -> approve_once/approve_run/approve_workspace:
-       if the same Process is still active, waiting -> running -> resumeIdle()
-  -> reject or decision=cancel_run:
-       no resume; cancellation/failure composite owns the terminal path
+stage.started
+  where event.stageId == input.stageId
+    and payload.attempt == input.stageAttempt
 ```
 
-The `cancel_run` resolution is the first event of the existing
-`approval-cancellation` composite (`approval.resolved` -> `stage.cancelled` ->
-`run.cancelled`), so a stop ticket that has won always prevents a later resume.
-Duplicate/replayed events are idempotent; stale stageAttempt or wrong
-workspace/run/stage events are ignored; terminal/stopping Processes ignore
-resolution; overflow/observation failure fails closed without guessed timer
-state; reconnecting the internal observation does not replay Process side
-effects twice. No second approval state machine and no polling are allowed.
-Total timeout remains active during waiting; startup is already disarmed after
-readiness; only idle pauses.
+Only that event arms the exact Stage-attempt observer. Before the anchor, all
+approval events are ignored for timer side effects. After the anchor:
+
+```text
+approval.required
+  -> same workspace/run/stage, sequence after anchor, non-empty request id
+  -> record approvalRequestId once
+  -> Process running -> waiting -> pauseIdle() once
+
+approval.resolved
+  -> same workspace/run/stage, sequence after required, same request id
+  -> approve_once/approve_run/approve_workspace: waiting -> running/resumeIdle()
+  -> reject/cancel_run: no resume
+```
+
+A newer `stage.started` for the same stage with a higher/different attempt
+invalidates and closes the old observer. A stopping/orphaned/terminal Process
+ignores resolution. Duplicate/replayed events are cursor-idempotent. The
+initial cursor is always `0`; `RunStreamService` supplies bounded durable
+catch-up and subscribe-before-catch-up ordering. Any overflow,
+durability-mismatch, subscriber callback failure, or other observation close
+calls `onFailure(reason, lastSafeSequence)`, performs no guessed waiting/running
+transition, and leaves total-timeout truth untouched. P5C may add this optional
+backward-compatible callback to `RunStreamService.ts`; notifier and repository
+remain unchanged unless an unavoidable blocker is demonstrated and planning is
+re-entered. No polling, inferred approval state, second repository, or second
+state machine is allowed.
+
+The `cancel_run` resolution remains the first event of the existing
+approval-cancellation composite, but that public Run/Stage composite is P5D
+owned and is invoked only after proven Process cleanup. Total timeout remains
+active during waiting; startup is already disarmed after readiness; only idle
+pauses.
 
 ## 8. Transport independence (E08) design
 
@@ -414,23 +424,23 @@ semantics); P5B is the platform tree proof; P5C the timeout integration; P5D
 the transport decoupling; P5E the integrated real-Kimi/tree gate; P5F the
 independent review/closeout.
 
-### P5A — Cancel authority + state/race model
+### P5A — Internal cancel authority + proof/state safety
 
 | Field | Value |
 |---|---|
-| Goal | Freeze and prove the two-layer cancel pipeline end-to-end on the in-memory + durable seams with a controllable driver: SERVER/STAGE orchestration (`StageExecutionCoordinator.cancel`) + PROCESS-SIDE `ProcessCancelCoordinator` stop pipeline, Run cancel route propagation, approval-wait composite routing, duplicate convergence, P4 LOW residual startup compensation (coordination half). |
-| Exact dependency | P4 accepted; P0/P2B durable Process/Session repositories; `ProcessManager` stop pipeline. |
-| Allowed files/packages | `packages/process-runtime/src` (manager, durable-coordinator, NEW `process-cancel-coordinator.ts` — PROCESS-SIDE ONLY per OD-M4-P5-01, additive driver/types proof marker, errors, testing/mock-driver, index exports), `apps/server/src/services/run-engine/StageExecutionCoordinator.ts` (the server-side cancel orchestration entry), `apps/server/src/services/TaskRunService.ts` cancel seam, `apps/server/src/routes/canonicalRuns.ts` + `v2Runs.ts` cancel routing, `LifecycleTransactionService.cancelRunWithinTransaction` / `resolveApprovalToCancellation` CALL SITES ONLY (evidence hand-off; the `LifecycleTransactionService.ts` file itself is not modified), package/server tests/fixtures. |
-| Forbidden files | platform tree implementations (P5B), timeout wiring beyond grace (P5C), Conversation route changes (P5D), `node-driver.ts` tree internals, migration/schema files, agent-core adapters beyond the already-accepted `cancel()` interface, Legacy route behavior, `RunEngine.ts` (scheduling stop is emergent and regression-proven, not re-implemented), server shutdown wiring (`index.ts`; P6-owned per OD-M4-P5-17). |
-| Production changes | server cancel orchestration entry + process-side `ProcessCancelCoordinator` + run-cancel propagation + approval-wait composite routing + activation-failure compensation + durable stop surface on `DurableProcessCoordinator`. |
-| Test changes | RACE-S1..S5 reuse + active-CAS-failure schedule; duplicate/concurrent/after-terminal cancel; cancel-vs-exit; cancel-vs-finalize; approval-wait composite ordering (`approval.resolved` first, OD-M4-P5-19); Session/Process fact ordering; no-second-spawn; Event/Outbox 1:1; emergent scheduling guards (re-dispatch joins the claim; terminal Run refused); package-level `reason='shutdown'` stop support; architecture-negative: process-runtime imports no agent-core/provider module; bare `complete` with no proof is rejected and valid MockDriver proof proceeds. |
-| Platform scope | none (MockDriver only). |
-| Stop conditions | cancellation can mark Run terminal before tree evidence; bare `complete` without proof is accepted; a second spawn appears; duplicate terminal fact; survivors treated as success; process-runtime grows a provider import or a LifecycleTransactionService call. |
-| Acceptance criteria | E04 state-model half on mock driver; every §5.2 window has a deterministic test; P4 LOW coordination half has both no-proof negative and valid-proof positive regressions; no production transport change; no `RunEngine.ts`/`index.ts` change; P5A-only exposure with the unchanged P4 driver fails closed rather than reporting successful cancellation. |
-| Rollback boundary | revert cancel routing/coordinator additions; Process facts preserved. |
-| Fresh regression suites | P4 dispatcher/coordinator suites, M3 lifecycle/cancel suites, architecture-negative imports. |
-| Independent review gate | lifecycle-race + state-machine review (BLOCKER/HIGH 0). |
-| Real Kimi gate | not required (mock-driver determinism is the gate). |
+| Goal | Prove the internal Stage-attempt cancellation authority, one proof-aware Process Runtime normalizer, exact Session/Process claim correlation, durable stop-ticket races, Provider graceful/finalize behavior, P4 LOW compensation, and fail-closed behavior with the unchanged P4 driver. |
+| Exact dependency | P4 accepted; P0/P2B durable Process/Session repositories; `ProcessManager`/`DurableProcessCoordinator` stop surfaces. |
+| Allowed files/packages | `packages/process-runtime/src/driver.ts` (additive proof type + `cleanupVerdictFromVerification`), `manager.ts`, `durable-coordinator.ts`, NEW `process-cancel-coordinator.ts`, `repository-port.ts` (claim lookup ports), `testing/mock-driver.ts`, package exports/errors/tests; `apps/server/src/store/process-runtime-adapters.ts` (lookup adapters only), existing `ProviderSessionRepository.findByClaimKey` and `ProcessRepository.findByRootClaim` adapters/tests, `apps/server/src/services/run-engine/StageExecutionCoordinator.ts` internal `cancelAttempt`/Session finalization, server/package tests/fixtures. |
+| Forbidden files | `TaskRunService.ts`, `canonicalRuns.ts`, `v2Runs.ts`, `OperationService.ts`, `routes/operations.ts`, `routes/conversations.ts`, `RunStreamRegistry.ts`, `index.ts`, public command activation, P5B `node-driver.ts` tree internals, P5C timeout/observation wiring, migrations/schema, package.json/lockfile, `RunEngine.ts`, agent-core adapter changes, LifecycleTransactionService implementation. |
+| Production changes | Shared proof-aware normalization; Manager/DurableCoordinator enforcement; ProcessCancelCoordinator stop ticket; exact claim lookup ports; StageExecutionCoordinator internal cancellation; ticket-gated Adapter graceful request; Provider finalization; Session cancelled only with proven cleanup or failed on uncertainty; P4 LOW compensation. |
+| Test changes | RACE-S1..S5; active-CAS-failure; duplicate/concurrent/after-terminal stop; proof mutation through Manager, registration failure, late success and ProcessCancelCoordinator; valid MockDriver proof; claim workspace/run/stage/attempt mismatch; Session/Process facts; no second spawn; no LTS call on unproven result; architecture-negative Provider imports. |
+| Platform scope | MockDriver only; the unchanged P4 NodeProcessDriver is intentionally no-proof. |
+| Stop conditions | any direct classification-only terminal branch; bare complete accepted; wrong claim joined; Session cancelled without proof; LTS/Run/Stage mutation; second spawn/ticket/fact; public active route activated. |
+| Acceptance criteria | `P5A COMPLETE = INTERNAL CANCEL AUTHORITY + STATE SAFETY + PROOF GATE`; exact normalized no-proof result; P4 LOW coordination half; no public active cancel; no `RunEngine.ts`/`index.ts` change; unchanged P4 driver fails closed. |
+| Rollback boundary | revert internal cancel/proof/correlation additions; no public command or Process evidence is deleted. |
+| Fresh regression suites | Process package, durable coordinator/repository, StageExecutionCoordinator and lifecycle regression suites. |
+| Independent review gate | internal lifecycle-race + proof/state-machine review (BLOCKER/HIGH 0). |
+| Real Kimi gate | not required. |
 
 ### P5B — Platform process-tree termination
 
@@ -456,10 +466,10 @@ independent review/closeout.
 |---|---|
 | Goal | Wire frozen startup/idle/total policies from the Provider Configuration snapshot into the durable path; approval-wait idle suspension; timeout terminal reasons and races. |
 | Exact dependency | P5A stop pipeline; P0 timer machinery already in `ProcessTimers`. |
-| Allowed files/packages | `packages/process-runtime/src` (timeouts consumption), `StageExecutionCoordinator.ts` timeout-policy propagation plus the narrow `CanonicalRunEventObservationPort` dependency, `apps/server/src/services/run-engine/providerExecutionChain.ts` (the existing production composition root; adapt `store.runStreamService()` into the port), `ProcessRepository`/`process-runtime-adapters.ts` policy persistence, `apps/server/src/services/SnapshotService.ts` snapshot `timeoutPolicy` mapping (exact existing symbol: `timeoutPolicy: structuredClone(provider.timeoutPolicy)`), tests. `RunStreamService`, `RuntimeEventNotifier` and `RuntimeEventRepository` are consumed through their existing public surfaces and are not modified unless source evidence proves it technically necessary. |
+| Allowed files/packages | `packages/process-runtime/src` (timeouts consumption), `StageExecutionCoordinator.ts` timeout-policy propagation plus the narrow `CanonicalRunEventObservationPort`, `apps/server/src/services/run-engine/providerExecutionChain.ts` (adapt `store.runStreamService()`), `apps/server/src/services/RunStreamService.ts` (optional additive failure callback only), `ProcessRepository`/`process-runtime-adapters.ts` policy persistence, `SnapshotService.ts` snapshot `timeoutPolicy`, tests. `RuntimeEventNotifier.ts` and `RuntimeEventRepository.ts` remain unchanged unless an unavoidable blocker is proven and planning is re-entered. |
 | Forbidden files | platform driver tree internals, transport routes, `apps/server/src/index.ts` or other server-shutdown wiring, migration/schema. |
-| Production changes | propagate `startupMs/idleMs/totalMs`; `markReady` on Session active; inject one `CanonicalRunEventObservationPort` into `StageExecutionCoordinator`; wire `createProviderExecutionChain(...)` to `store.runStreamService()`; consume durable `approval.required` and `approval.resolved` records with cursor, replay, overflow and stageAttempt fencing; canonical `waiting_approval` -> paired Process `enterWaiting`/`pauseIdle`; normal approval resolution -> `exitWaiting`/`resumeIdle`; `reject`/`cancel_run` -> no resume; cancel -> M3 approval-cancellation composite -> same stop pipeline; durable timeout reasons. No HTTP/SSE dependency, polling, second Event repository or second state machine. |
-| Test changes | fake-clock startup/idle/total; activity resets idle; `approval.required` pauses idle once; duplicate/replayed event no double pause; normal `approval.resolved` resumes remaining budget; stale stageAttempt and wrong run/stage ignored; `cancel_run` stop wins with no resume; terminal Process ignores resolution; observation overflow/failure fails closed; total unaffected by waiting; startup already disarmed post-readiness; timeout-vs-exit/cancel; terminal reasons; no flaky wall-clock tests; no second approval state machine, no polling; no HTTP/SSE object participates. |
+| Production changes | propagate `startupMs/idleMs/totalMs`; `markReady` on Session active; inject one `CanonicalRunEventObservationPort`; wire `createProviderExecutionChain(...)` to `store.runStreamService()`; start with `afterSequence=0`, arm only after matching `stage.started`/`payload.attempt`, fence approvalRequestId and newer attempts, and map every RunStream failure callback to fail-closed observer cleanup; `approval.required` -> paired Process `enterWaiting`/`pauseIdle`; normal `approval.resolved` -> `exitWaiting`/`resumeIdle`; `reject`/`cancel_run` -> no resume. Public Run/Operation/LTS activation remains P5D-owned. No HTTP/SSE dependency, polling, second Event repository or second state machine. |
+| Test changes | fake-clock startup/idle/total; activity resets idle; stage.started anchor; pre-anchor approvals ignored; wrong attempt/newer attempt invalidates; approvalRequestId pair fencing; duplicate/replayed event no double pause; normal `approval.resolved` resumes remaining budget; overflow/durability-mismatch/callback-failure callback fails closed; total unaffected by waiting; startup disarmed; timeout-vs-exit/cancel; no flaky wall-clock tests; no second approval state machine, polling or HTTP/SSE. |
 | Platform scope | none (injected clock). |
 | Stop conditions | timeout marks success; idle suspension without exact M3 `approval.required`/`approval.resolved` evidence; missing cursor/stageAttempt fencing; observation overflow/failure guessed as a timer transition; HTTP/SSE enters the seam; flaky timing tests. |
 | Acceptance criteria | every timeout produces the frozen Process/Provider/Stage mapping; approval-wait suspension only under M3 `waiting_approval`; the narrow port is wired at `providerExecutionChain.ts` from `store.runStreamService()` and no HTTP/SSE/polling path participates. |
@@ -468,22 +478,22 @@ independent review/closeout.
 | Independent review gate | timer/race review. |
 | Real Kimi gate | not required. |
 
-### P5D — Transport independence
+### P5D — Public command activation + transport independence
 
 | Field | Value |
 |---|---|
-| Goal | Close the Conversation initial-disconnect FAIL path; prove disconnect never terminates and explicit cancel does. |
-| Exact dependency | P5A cancel authority (explicit cancel already terminates through the chain). |
-| Allowed files/packages | `apps/server/src/routes/conversations.ts` (initial-message close handler), `RunStreamRegistry.ts` (only if required for explicit-cancel routing), transport tests, disconnect E2E fixtures. |
-| Forbidden files | canonical Run/Stage lifecycle, Process Runtime, adapters, other route behavior. |
-| Production changes | remove abort-on-close in the initial Conversation path; keep AbortController for explicit cancel. |
-| Test changes | HTTP disconnect continues; SSE disconnect continues; explicit cancel terminates tree; reconnect resumes cursor; spy asserts close never calls stop/cancel. |
-| Platform scope | none. |
-| Stop conditions | any transport close can still terminate canonical execution; disconnect and cancel remain conflated. |
-| Acceptance criteria | E08 passes for all four transport paths; explicit-cancel-vs-disconnect demonstrably different commands. |
-| Rollback boundary | revert the close-handler change; no Process facts lost. |
-| Fresh regression suites | canonicalRunStream, tasks SSE, conversations suites. |
-| Independent review gate | transport + E08 review. |
+| Goal | After P5A/P5B/P5C, activate public canonical/v2/Operation explicit cancellation through the injected internal authority, preserve queued compatibility, close the Conversation disconnect path, and keep disconnect distinct from cancel. |
+| Exact dependency | P5A internal authority + P5B proof + P5C accepted; no public active cancel before these dependencies. |
+| Allowed files/packages | `apps/server/src/services/TaskRunService.ts` active cancel application seam; `apps/server/src/routes/canonicalRuns.ts`; `apps/server/src/routes/v2Runs.ts`; `apps/server/src/services/OperationService.ts`; `apps/server/src/routes/operations.ts`; `apps/server/src/routes/conversations.ts`; `RunStreamRegistry.ts` only if explicit cancel compatibility requires it; route/application tests and disconnect E2E fixtures. |
+| Forbidden files | `index.ts` default Provider cutover unless a later review proves it strictly necessary and re-enters planning; Process Runtime/tree internals; migrations/schema; `RunEngine.ts`; unrelated route behavior; new singleton/second Process Runtime. |
+| Production changes | inject the SAME StageExecutionCoordinator internal cancel port into canonical/v2/Operation composition; queued/no-Process retains existing M3 zero-ID path; active path performs runtime cleanup outside SQLite transactions, revalidates versions, invokes LTS only with proof-backed terminatedProcessIds; waiting_approval uses `resolveApprovalToCancellation` only after proof; Operation active cancel uses the same two-phase flow; Conversation initial close no longer aborts execution; explicit Conversation cancel remains distinct. Default/uninjected active cancellation returns `RUN_CANCEL_AUTHORITY_UNAVAILABLE` (or frozen equivalent) with no mutation. |
+| Test changes | queued empty-ID legal path; active proven non-empty-ID path; active unproven LTS call count zero; route fail-closed without injection; same-ticket duplicate; waiting_approval event ordering; Operation cleanup outside transaction and final version revalidation; race/conflict no second stop; HTTP/SSE disconnect continues; explicit cancel terminates through canonical authority. |
+| Platform scope | none; consumes P5B/P5C evidence. |
+| Stop conditions | any public active route before P5B/P5C; empty-ID active success; OS wait inside SQLite transaction; second Process Runtime; disconnect cancellation; duplicate stop/fact. |
+| Acceptance criteria | public active Run/Operation cancellation is activated only after P5A/P5B/P5C; every active success has proven terminatedProcessIds; uncertainty leaves Run/Stage nonterminal and returns stable failure; E08 remains independent. |
+| Rollback boundary | revert public application/route activation; preserve internal Process evidence. |
+| Fresh regression suites | full M3 command/idempotency/Operation/routes/Conversation suites plus P5A-C evidence. |
+| Independent review gate | command authority + transaction/race + transport review. |
 | Real Kimi gate | optional inside P5E only. |
 
 ### P5E — Integrated real-Kimi / tree gate
@@ -522,10 +532,48 @@ independent review/closeout.
 | Independent review gate | this gate is the review. |
 | Real Kimi gate | evidence from P5E. |
 
-Slice boundaries are serial: P5A owns the shared cancel/state surface, P5B the
-driver, P5C the timeout policy, P5D the transport, P5E the integrated evidence,
-P5F the review. No two agents may concurrently mutate the coordinator, driver,
-run-cancel route or `RunStreamRegistry` without a new coordination boundary.
+Slice boundaries are serial: P5A owns the internal cancel/proof/state surface,
+P5B the driver, P5C timeout/observation integration, P5D public command and
+transport activation, P5E integrated evidence, and P5F review. No two agents
+may concurrently mutate the coordinator, driver, command seam or
+`RunStreamRegistry` without a new coordination boundary.
+
+## 9.1 Code-level responsibility map (P5A)
+
+| Responsibility | Existing symbol to extend / new symbol | Exact owner and boundary |
+|---|---|---|
+| proof type | `driver.ts` `SurvivorVerification` | additive `proof?: {kind:'owned-tree-enumeration'}`; P5B is the only emitter |
+| proof normalizer | new `cleanupVerdictFromVerification` in `driver.ts` | sole mapping from complete verification to cleanup result; all callers use it |
+| Manager stop cleanup | `manager.ts` `#runCleanup`/registration compensation | consumes normalized verdict; no direct classification branch |
+| Durable cleanup | `durable-coordinator.ts` `#terminateAndVerify`/late-success paths | consumes normalized verdict for registration and late-success cleanup |
+| ProcessCancelCoordinator | new `process-cancel-coordinator.ts` | process-side stop ticket, platform cleanup and Provider-neutral result only |
+| Session claim lookup | new `DurableSessionRepository.getSessionByClaimKey` + adapter | backed by existing `ProviderSessionRepository.findByClaimKey` |
+| Root Process lookup | new `DurableProcessRepository.getRootProcessByClaim` + adapter | backed by existing `ProcessRepository.findByRootClaim` |
+| Stage internal cancel | `StageExecutionCoordinator.cancelAttempt` | exact workspace/run/stage/stageAttempt; no Run/Stage mutation |
+| Session finalization | existing `DurableSessionRepository.casSessionTransition` | cancelled only with proven cleanup; failed on uncertainty |
+| P4 LOW compensation | `StageExecutionCoordinator.execute` activation-CAS failure path | same stop ticket; bare complete becomes orphaned/failed, no false success |
+| MockDriver proof behavior | `testing/mock-driver.ts` | explicit valid-proof and bare-complete negative modes |
+
+No P5A row may be implemented through a module-global map, PID lookup, Event
+history scan for ownership, public route, OperationService, `index.ts`, or a
+second Process Runtime.
+
+## 9.2 Code-level responsibility map (P5D)
+
+| Responsibility | Existing symbol to extend / new symbol | Exact owner and boundary |
+|---|---|---|
+| TaskRunService application seam | `TaskRunService` active cancel method | queued/no-Process keeps M3 path; active calls injected internal port outside DB transaction |
+| canonical route injection | `canonicalRuns.ts` route factory option | inject accepted composition port; absent active authority returns stable fail-closed error |
+| v2 route injection | `v2Runs.ts` route factory option | same port and same DurableProcessCoordinator; no singleton |
+| Operation two-phase active cancel | `OperationService.cancelWithinTransaction` split into validation/runtime/revalidation | runtime stop outside SQLite transaction; final Operation/LTS commit only after proof |
+| operations route | `routes/operations.ts` | delegates to OperationService; no direct lifecycle mutation |
+| LTS successful hand-off | existing `cancelRunWithinTransaction` / `resolveApprovalToCancellation` call sites | active success requires proven non-empty terminatedProcessIds; queued zero-ID exception only |
+| waiting_approval composite | existing `resolveApprovalToCancellation` | P5D invokes after Process proof; ordering is approval.resolved -> stage.cancelled -> run.cancelled |
+| Conversation disconnect | `routes/conversations.ts` | close only unsubscribes; no abort on disconnect |
+| explicit Conversation cancel | `RunStreamRegistry` only if required | explicit cancel remains distinct and routes to canonical authority |
+| accepted composition | `createProviderExecutionChain` + route factory options | same StageExecutionCoordinator/DurableProcessCoordinator; `index.ts` default cutover forbidden |
+
+No P5D row is UNKNOWN, TBD, or selected during implementation.
 
 ## 10. Test / acceptance matrix
 
@@ -585,8 +633,13 @@ Stop and require re-entry if any occurs:
 
 - base or frozen contract drifts without authorization;
 - cancellation can mark Run terminal before tree/survivor evidence is known;
-- `classification='complete'` is accepted without an
-  `owned-tree-enumeration` proof marker;
+- any production caller maps `classification='complete'` without
+  `cleanupVerdictFromVerification` proof validation;
+- `manager.ts`, `durable-coordinator.ts`, or `process-cancel-coordinator.ts`
+  contains a direct `classification === 'complete'` terminal branch;
+- active cleanup returns an empty `terminatedProcessIds` as successful;
+- OperationService uses the legacy active empty-ID LTS path;
+- public active routes activate before P5D or without an injected authority;
 - a second spawn, second Run state machine, or second terminal Event appears;
 - `complete` tree result is produced without survivor enumeration;
 - browser/SSE close can still terminate canonical execution;
@@ -595,8 +648,8 @@ Stop and require re-entry if any occurs:
 - P5B evidence silently changes the selected Windows inspection facility,
   parses `CreationDate` nondeterministically, or guesses identity when
   `ExecutablePath` is null/access-denied/incomplete;
-- P5C observes approval through HTTP/SSE, polling, an unverified cursor, or a
-  missing `providerExecutionChain.ts` composition adapter;
+- P5C observes approval through HTTP/SSE, polling, an unverified cursor, a
+  missing `stage.started` attempt anchor, or a missing failure callback;
 - timeout or cancel marks Provider success;
 - `LifecycleTransactionService` is bypassed for a canonical terminal;
 - Adapter spawns/kills/mutates lifecycle;
@@ -604,17 +657,20 @@ Stop and require re-entry if any occurs:
 - M3 lifecycle/Event/Outbox/idempotency/replay/Legacy regression appears;
 - a test passes only by rerun, sleep inflation or weakened assertion;
 - BLOCKER/HIGH independent finding remains open;
-- P5 expands into pause/resume, orphan destruction, M7 recovery, M5 process
+- P5 expands into public active command activation before P5D, pause/resume,
+  orphan destruction, M7 recovery, M5 process
   migration, Legacy retirement, cutover, P6 recovery classification, or
   P6-owned server shutdown wiring (`index.ts` shutdown enumeration/ordering).
 
 ## 14. Rollback boundaries
 
-- P5A: revert cancel routing/coordinator and the no-proof exposure boundary; Process facts preserved; no P5A-only deployment may report successful cancellation from a bare `complete`.
+- P5A: revert internal cancel/proof/correlation additions; public command
+  routes remain unchanged; Process facts preserved; no P5A-only deployment
+  may report successful cancellation from a bare `complete`.
 - P5B: revert driver tree internals; P5A semantics unchanged.
 - P5C: revert timeout propagation; P5A/B unchanged.
 - P5C observation composition: revert the narrow event-observation injection and `providerExecutionChain.ts` adapter; existing RunStreamService and transport ownership remain unchanged.
-- P5D: revert the Conversation close-handler change; no durable loss.
+- P5D: revert public command/Operation/Conversation activation; no durable loss.
 - P5E: evidence/tests only.
 - P5F: closeout docs only.
 
@@ -625,21 +681,22 @@ rollback mechanisms authorized here.
 
 ```text
 M4-P5 PRE-IMPLEMENTATION PLANNING:
-SECOND DOCS-ONLY REMEDIATION / PENDING FRESH INDEPENDENT PLAN REVIEW
+THIRD DOCS-ONLY REMEDIATION / PENDING FRESH INDEPENDENT PLAN REVIEW
 
 Independent Plan Review (latest):
-NOT ACCEPTED — this remediation closes H-4 P5A/P5B exposure, explicit POSIX
-`PLATFORM_GATE_BLOCKED` semantics, CAN-10 vocabulary, exact P5C approval-event
-observation/composition wiring, and the `providerExecutionChain.ts` allowlist
-gap. A fresh independent plan review is still required.
+NOT ACCEPTED — the prior review found HIGH-A..D, MEDIUM-A..B and LOW. This
+third docs-only remediation freezes one proof normalizer, exact no-proof
+durable semantics, the internal P5A/public P5D split, claim-correlation ports,
+Operation two-phase cancellation, and the P5C attempt-anchor/failure-callback
+contract. A fresh independent plan review is still required.
 
 M4-P5 PRODUCTION IMPLEMENTATION:
 NOT AUTHORIZED
 
 M4-P5 PLANNING COMMITS:
-943b383b (original planning) -> d9ed0d0a (first remediation) -> THIS second
-remediation commit (ordinary forward docs commits on docs/m4-p5-planning;
-no amend/rebase/squash)
+943b383b (original planning) -> d9ed0d0a (first remediation) -> a3a4c422
+(second remediation) -> THIS third remediation commit (ordinary forward docs
+commit on docs/m4-p5-planning; no amend/rebase/squash)
 
 M4-P4:
 COMPLETE (unchanged)
