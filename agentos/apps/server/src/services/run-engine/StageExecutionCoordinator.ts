@@ -463,26 +463,44 @@ export class StageExecutionCoordinator {
     }
 
     const entry = this.liveAttempts.get(inputKey(input));
-    if (process.status === 'created') {
-      const ticket = await this.durableCoordinator.processCancelCoordinator.acceptStop({
-        workspaceId: process.workspaceId,
-        processId: process.processId,
-        expectedClaimEpoch: process.claimEpoch,
-        expectedClaimOwner: process.claimOwnerId,
-        reason: 'cancel',
-        idempotencyKey: 'attempt-cancel:' + inputKey(input),
-        timestamp: this.now(),
-        eventContext: { correlationId: input.correlationId, causationId: input.causationId },
-        stopOrigin: 'EXPLICIT_CANCEL',
-      });
+    const ticket = await this.durableCoordinator.processCancelCoordinator.acceptStop({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      reason: 'cancel',
+      idempotencyKey: 'attempt-cancel:' + inputKey(input),
+      timestamp: this.now(),
+      eventContext: { correlationId: input.correlationId, causationId: input.causationId },
+      stopOrigin: 'EXPLICIT_CANCEL',
+    });
+    if (ticket.authority === 'natural-terminal') {
+      if (entry !== undefined) {
+        await this.stopEntry(entry, 'EXPLICIT_CANCEL', input.correlationId, input.causationId, ticket);
+        return entry.final.promise;
+      }
+      const natural = await ticket.result;
+      throw new Error(`LIVE_EXECUTION_UNAVAILABLE: natural terminal has no live rendezvous (${natural.process.processId})`);
+    }
+    if (ticket.authority === 'created-before-spawn') {
+      if (entry !== undefined) {
+        await this.stopEntry(entry, 'EXPLICIT_CANCEL', input.correlationId, input.causationId, ticket);
+        return entry.final.promise;
+      }
       const stopped = await ticket.result;
       await this.failSessionIfNonTerminal(session, input, 'PROVIDER_CANCELLED_BEFORE_START');
       return stoppedOutcome(stopped, 'EXPLICIT_CANCEL');
     }
     if (entry === undefined) {
+      if (this.durableCoordinator.isHandleRetained(process.processId)) {
+        await ticket.startCleanup();
+      } else {
+        await ticket.failCleanupClosed();
+      }
+      await ticket.result;
       throw new Error('LIVE_EXECUTION_UNAVAILABLE: exact live Stage-attempt rendezvous is unavailable');
     }
-    await this.stopEntry(entry, 'EXPLICIT_CANCEL', input.correlationId, input.causationId);
+    await this.stopEntry(entry, 'EXPLICIT_CANCEL', input.correlationId, input.causationId, ticket);
     return entry.final.promise;
   }
 
@@ -658,10 +676,13 @@ export class StageExecutionCoordinator {
     origin: ProcessStopOrigin,
     correlationId = entry.eventContext.correlationId,
     causationId = entry.eventContext.causationId,
+    acceptedTicket?: ProcessStopTicket,
   ): Promise<StageExecutionOutcome> {
     if (entry.stopRequestPromise === undefined) {
       entry.stopOrigin = entry.stopOrigin ?? origin;
-      entry.stopRequestPromise = this.acceptEntryStop(entry, origin, correlationId, causationId);
+      entry.stopRequestPromise = acceptedTicket === undefined
+        ? this.acceptEntryStop(entry, origin, correlationId, causationId)
+        : this.adoptStopTicket(entry, acceptedTicket, origin);
     }
     const ticket = await entry.stopRequestPromise;
     entry.stopAccepted = ticket.stopAccepted;
@@ -697,7 +718,19 @@ export class StageExecutionCoordinator {
       eventContext: { correlationId, causationId },
       stopOrigin: origin,
     });
-    await this.authorizeAcceptedStop(entry, ticket, origin);
+    await this.adoptStopTicket(entry, ticket, origin);
+    return ticket;
+  }
+
+  private async adoptStopTicket(
+    entry: LiveAttemptRendezvous,
+    ticket: ProcessStopTicket,
+    origin: ProcessStopOrigin,
+  ): Promise<ProcessStopTicket> {
+    entry.stopAccepted = ticket.stopAccepted;
+    if (ticket.authority === 'active-stop') {
+      await this.authorizeAcceptedStop(entry, ticket, origin);
+    }
     return ticket;
   }
 
@@ -706,7 +739,7 @@ export class StageExecutionCoordinator {
     ticket: ProcessStopTicket,
     origin: ProcessStopOrigin,
   ): Promise<void> {
-    if (!ticket.stopAccepted) return;
+    if (!ticket.stopAccepted || ticket.authority !== 'active-stop') return;
     entry.stopAccepted = true;
     if (entry.cleanupAuthorizationPromise === undefined) {
       entry.captureStopped = true;
@@ -841,6 +874,13 @@ export class StageExecutionCoordinator {
     origin: ProcessStopOrigin,
   ): Promise<StageExecutionOutcome> {
     const explicit = origin === 'EXPLICIT_CANCEL';
+    if (stopped.authority === 'created-before-spawn') {
+      await this.abortWriters(entry.stdoutWriter, entry.stderrWriter);
+      await this.reconcileSession(entry, 'failed', 'PROVIDER_START_FAILED', 'provider process cancelled before spawn');
+      const outcome = stoppedOutcome(stopped, origin);
+      entry.final.resolve(outcome);
+      return outcome;
+    }
     if (stopped.proven) {
       if (explicit && stopped.cleanup !== null) {
         this.finishParserTail(entry);

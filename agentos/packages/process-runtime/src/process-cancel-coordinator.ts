@@ -25,6 +25,11 @@ export type ProcessStopOrigin =
   | 'P4_ACTIVATION_FAILURE'
   | 'SHUTDOWN';
 
+export type ProcessStopAuthority =
+  | 'created-before-spawn'
+  | 'active-stop'
+  | 'natural-terminal';
+
 export interface ProcessStopRequest {
   readonly workspaceId: string;
   readonly processId: string;
@@ -50,6 +55,8 @@ export interface ProcessStopResult {
   readonly cleanup: ProcessCleanupDisposition | null;
   readonly proven: boolean;
   readonly stopAccepted: boolean;
+  readonly authority: ProcessStopAuthority;
+  readonly cleanupRequired: boolean;
   readonly reason: string;
   readonly stopOrigin: ProcessStopOrigin;
 }
@@ -59,7 +66,10 @@ export interface ProcessStopTicket {
   readonly reason: string;
   readonly acceptedAt: string;
   readonly stopAccepted: boolean;
+  readonly authority: ProcessStopAuthority;
+  readonly cleanupRequired: boolean;
   readonly startCleanup: () => Promise<void>;
+  readonly failCleanupClosed: () => Promise<void>;
   readonly result: Promise<ProcessStopResult>;
 }
 
@@ -99,6 +109,8 @@ interface StopState {
   handle: NativeProcessHandle | undefined;
   stopReady: boolean;
   stopAccepted: boolean;
+  authority: ProcessStopAuthority;
+  cleanupRequired: boolean;
   safeTerminal: boolean;
   cleanupAuthorized: boolean;
   cleanupStarted: boolean;
@@ -156,6 +168,8 @@ export class ProcessCancelCoordinator {
       cleanup: storedCleanup,
       proven: state.safeTerminal || storedCleanup?.proven === true,
       stopAccepted: state.stopAccepted,
+      authority: state.authority,
+      cleanupRequired: state.cleanupRequired,
       reason: state.input.reason,
       stopOrigin: state.input.stopOrigin ?? 'EXPLICIT_CANCEL',
     });
@@ -180,7 +194,14 @@ export class ProcessCancelCoordinator {
       get stopAccepted() {
         return state.stopAccepted;
       },
+      get authority() {
+        return state.authority;
+      },
+      get cleanupRequired() {
+        return state.cleanupRequired;
+      },
       startCleanup: () => this.#authorizeCleanup(state),
+      failCleanupClosed: () => this.#failCleanupClosed(state),
       result: result.promise,
     };
     state = {
@@ -191,6 +212,8 @@ export class ProcessCancelCoordinator {
       handle: this.#handles.get(input.processId),
       stopReady: false,
       stopAccepted: false,
+      authority: 'natural-terminal',
+      cleanupRequired: false,
       safeTerminal: false,
       cleanupAuthorized: false,
       cleanupStarted: false,
@@ -212,6 +235,8 @@ export class ProcessCancelCoordinator {
 
       if (isTerminal(process.status)) {
         state.stopAccepted = false;
+        state.authority = 'natural-terminal';
+        state.cleanupRequired = false;
         state.ticketReady.resolve(state.ticket);
         state.result.resolve(this.#resultFromTerminal(process, state.input, undefined, false));
         return;
@@ -240,18 +265,28 @@ export class ProcessCancelCoordinator {
         if (isTerminal(process.status)) {
           state.stopAccepted = true;
           state.safeTerminal = true;
+          state.authority = 'created-before-spawn';
+          state.cleanupRequired = false;
           state.ticketReady.resolve(state.ticket);
           state.result.resolve({
             process,
             cleanup: null,
             proven: true,
             stopAccepted: true,
+            authority: state.authority,
+            cleanupRequired: state.cleanupRequired,
             reason: state.input.reason,
             stopOrigin: state.input.stopOrigin ?? 'EXPLICIT_CANCEL',
           });
           return;
         }
-        throw new Error('PROCESS_CANCEL_FAILED: created process did not become terminal');
+        // The created -> failed CAS can lose to the single spawn-right CAS.
+        // Re-read evidence above is authoritative: continue through the
+        // active-stop path for starting/running/stopping instead of treating
+        // the caller's original created snapshot as final.
+        if (process.status === 'created') {
+          throw new Error('PROCESS_CANCEL_FAILED: created process did not become terminal');
+        }
       }
 
       if (process.status !== 'stopping') {
@@ -277,10 +312,14 @@ export class ProcessCancelCoordinator {
         process = await this.#readTransitionResult(stopping, process);
         if (isTerminal(process.status)) {
           state.safeTerminal = state.stopAccepted;
+          state.authority = state.stopAccepted ? 'active-stop' : 'natural-terminal';
+          state.cleanupRequired = state.stopAccepted;
           state.ticketReady.resolve(state.ticket);
           state.result.resolve({
             ...this.#resultFromTerminal(process, state.input, undefined, state.stopAccepted),
             proven: state.safeTerminal,
+            authority: state.authority,
+            cleanupRequired: state.cleanupRequired,
           });
           return;
         }
@@ -291,6 +330,8 @@ export class ProcessCancelCoordinator {
       }
 
       state.stopAccepted = true;
+      state.authority = 'active-stop';
+      state.cleanupRequired = true;
       state.stopReady = true;
       state.ticketReady.resolve(state.ticket);
     } catch (error) {
@@ -305,6 +346,17 @@ export class ProcessCancelCoordinator {
     if (!state.stopAccepted) return;
     state.cleanupAuthorized = true;
     this.#maybeStartCleanup(state);
+  }
+
+  async #failCleanupClosed(state: StopState): Promise<void> {
+    if (!state.stopAccepted || state.cleanupStarted) return;
+    state.cleanupAuthorized = true;
+    state.cleanupStarted = true;
+    await this.#finishUncertain(
+      state,
+      { classification: 'unknown', cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE', proven: false, knownPids: [] },
+      'LIVE_EXECUTION_UNAVAILABLE',
+    );
   }
 
   #maybeStartCleanup(state: StopState): void {
@@ -411,7 +463,7 @@ export class ProcessCancelCoordinator {
       return;
     }
     if (isTerminal(current.status)) {
-      state.result.resolve(this.#resultFromTerminal(current, state.input, cleanup, state.stopAccepted));
+      state.result.resolve(this.#resultFromTerminal(current, state.input, cleanup, state.stopAccepted, state.authority, state.cleanupRequired));
       return;
     }
     const transitionInput: ProcessTransitionInput = {
@@ -440,6 +492,8 @@ export class ProcessCancelCoordinator {
         cleanup,
         proven: cleanup.proven,
         stopAccepted: state.stopAccepted,
+        authority: state.authority,
+        cleanupRequired: state.cleanupRequired,
         reason: state.input.reason,
         stopOrigin: state.input.stopOrigin ?? 'EXPLICIT_CANCEL',
       });
@@ -467,7 +521,7 @@ export class ProcessCancelCoordinator {
       return;
     }
     if (isTerminal(current.status)) {
-      state.result.resolve(this.#resultFromTerminal(current, state.input, cleanup, state.stopAccepted));
+      state.result.resolve(this.#resultFromTerminal(current, state.input, cleanup, state.stopAccepted, state.authority, state.cleanupRequired));
       return;
     }
     const transitionInput: ProcessTransitionInput = {
@@ -492,6 +546,8 @@ export class ProcessCancelCoordinator {
       cleanup,
       proven: false,
       stopAccepted: state.stopAccepted,
+      authority: state.authority,
+      cleanupRequired: state.cleanupRequired,
       reason: state.input.reason,
       stopOrigin: state.input.stopOrigin ?? 'EXPLICIT_CANCEL',
     });
@@ -516,6 +572,8 @@ export class ProcessCancelCoordinator {
     input: ProcessStopRequest,
     fallbackCleanup?: ProcessCleanupDisposition,
     stopAccepted = false,
+    authority: ProcessStopAuthority = 'natural-terminal',
+    cleanupRequired = false,
   ): ProcessStopResult {
     const cleanup = fallbackCleanup ?? cleanupFromStoredResult(process.cleanupResult);
     return {
@@ -523,6 +581,8 @@ export class ProcessCancelCoordinator {
       cleanup,
       proven: cleanup?.proven === true,
       stopAccepted,
+      authority,
+      cleanupRequired,
       reason: input.reason,
       stopOrigin: input.stopOrigin ?? 'EXPLICIT_CANCEL',
     };

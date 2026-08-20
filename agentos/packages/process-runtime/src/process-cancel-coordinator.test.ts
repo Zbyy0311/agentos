@@ -13,6 +13,12 @@ import { ProcessCancelCoordinator } from './process-cancel-coordinator.js';
 const NOW = '2026-08-20T00:00:00.000Z';
 const CONTEXT: RuntimeEventContext = { correlationId: 'corr_1', causationId: 'cause_1' };
 
+function deferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(resolveValue => { resolve = resolveValue; });
+  return { promise, resolve };
+}
+
 function processView(overrides: Partial<DurableProcessView> = {}): DurableProcessView {
   return {
     processId: 'proc_1',
@@ -76,6 +82,9 @@ class FakeProcessRepository implements DurableProcessRepository {
   process: DurableProcessView;
   readonly transitions: ProcessTransitionInput[] = [];
   getProcessError: Error | undefined;
+  blockCreatedCancel = false;
+  readonly createdCancelEntered = deferred<void>();
+  readonly releaseCreatedCancel = deferred<void>();
 
   constructor(process: DurableProcessView) {
     this.process = process;
@@ -94,6 +103,11 @@ class FakeProcessRepository implements DurableProcessRepository {
   }
 
   async casProcessTransition(input: ProcessTransitionInput): Promise<DurableCasOutcome<DurableProcessView>> {
+    if (this.blockCreatedCancel && input.expectedFrom === 'created' && input.to === 'failed') {
+      this.blockCreatedCancel = false;
+      this.createdCancelEntered.resolve(undefined);
+      await this.releaseCreatedCancel.promise;
+    }
     this.transitions.push(input);
     if (input.expectedVersion !== this.process.version || input.expectedFrom !== this.process.status) {
       return { kind: 'version-conflict', value: this.process };
@@ -137,6 +151,35 @@ function request(overrides: Partial<Parameters<ProcessCancelCoordinator['acceptS
 }
 
 describe('ProcessCancelCoordinator', () => {
+  it('P5A-REMED2-00: re-reads created to starting after losing the cancel CAS', async () => {
+    const repository = new FakeProcessRepository(processView({ status: 'created', nativePid: null }));
+    repository.blockCreatedCancel = true;
+    const driver = new MockProcessDriver();
+    const coordinator = new ProcessCancelCoordinator({
+      processRepository: repository,
+      driver,
+      now: () => NOW,
+      gracePeriodMs: 0,
+    });
+    coordinator.attachHandle('proc_1', new MockNativeProcessHandle(4100, 'agent'));
+
+    const ticketPromise = coordinator.acceptStop(request());
+    await repository.createdCancelEntered.promise;
+    repository.process = { ...repository.process, status: 'starting', version: repository.process.version + 1 };
+    repository.releaseCreatedCancel.resolve(undefined);
+
+    const ticket = await ticketPromise;
+    expect(ticket.authority).toBe('active-stop');
+    expect(ticket.stopAccepted).toBe(true);
+    await ticket.startCleanup();
+    const result = await ticket.result;
+
+    expect(result.authority).toBe('active-stop');
+    expect(result.proven).toBe(true);
+    expect(result.process.status).toBe('exited');
+    expect(repository.transitions.map(transition => transition.to)).toEqual(['failed', 'stopping', 'exited']);
+  });
+
   it('P5A-REMED-09: accepts one proof-backed stop ticket and joins duplicate requests', async () => {
     const repository = new FakeProcessRepository(processView());
     const driver = new MockProcessDriver();
@@ -182,6 +225,8 @@ describe('ProcessCancelCoordinator', () => {
     coordinator.attachHandle('proc_1', handle);
 
     const ticket = await coordinator.acceptStop(request());
+    expect(ticket.authority).toBe('active-stop');
+    expect(ticket.cleanupRequired).toBe(true);
     await ticket.startCleanup();
     const result = await ticket.result;
 
@@ -236,6 +281,8 @@ describe('ProcessCancelCoordinator', () => {
     });
 
     const ticket = await coordinator.acceptStop(request());
+    expect(ticket.authority).toBe('created-before-spawn');
+    expect(ticket.cleanupRequired).toBe(false);
     const result = await ticket.result;
 
     expect(result.process.status).toBe('failed');
@@ -343,6 +390,8 @@ describe('ProcessCancelCoordinator', () => {
     });
 
     const ticket = await coordinator.acceptStop(request());
+    expect(ticket.authority).toBe('natural-terminal');
+    expect(ticket.cleanupRequired).toBe(false);
     const result = await ticket.result;
 
     expect(ticket.stopAccepted).toBe(false);
@@ -359,6 +408,8 @@ describe('ProcessCancelCoordinator', () => {
     });
 
     const ticket = await coordinator.acceptStop(request());
+    expect(ticket.authority).toBe('natural-terminal');
+    expect(ticket.cleanupRequired).toBe(false);
     const result = await ticket.result;
 
     expect(ticket.stopAccepted).toBe(false);

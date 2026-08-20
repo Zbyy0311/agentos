@@ -46,6 +46,12 @@ const EVENT_CONTEXT = {
   causationId: 'op_m4',
 } as const;
 
+function testDeferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(res => { resolve = res; });
+  return { promise, resolve };
+}
+
 interface FakeEventRecord {
   readonly eventId: string;
   readonly type: string;
@@ -382,6 +388,10 @@ class FakeProcessRepository implements DurableProcessRepository {
   rootClaims = new Map<string, string>();
   failNextCreate = false;
   failNextBind = false;
+  raceNextBind = false;
+  blockNextBind = false;
+  readonly bindEntered = testDeferred<void>();
+  readonly releaseBind = testDeferred<void>();
 
   constructor(readonly ledger = new FakeEventLedger()) {}
 
@@ -444,12 +454,23 @@ class FakeProcessRepository implements DurableProcessRepository {
   }
 
   async casBindNativeIdentity(input: Parameters<DurableProcessRepository['casBindNativeIdentity']>[0]) {
+    if (this.blockNextBind) {
+      this.blockNextBind = false;
+      this.bindEntered.resolve(undefined);
+      await this.releaseBind.promise;
+    }
     const process = this.processes.get(input.workspaceId + '/' + input.processId);
     if (process === undefined) return { kind: 'not-found' as const };
     if (process.status !== 'starting' && process.status !== 'stopping') {
       return { kind: 'state-mismatch' as const, value: process };
     }
     if (this.failNextBind) return { kind: 'state-mismatch' as const, value: process };
+    if (this.raceNextBind) {
+      this.raceNextBind = false;
+      const raced = { ...process, status: 'stopping' as const, version: process.version + 1 };
+      this.processes.set(input.workspaceId + '/' + input.processId, raced);
+      return { kind: 'version-conflict' as const, value: raced };
+    }
     if (process.version !== input.expectedVersion) {
       return { kind: 'version-conflict' as const, value: process };
     }
@@ -664,6 +685,7 @@ class FakeDriver implements PlatformProcessDriver {
     knownPids: [],
     proof: { kind: 'owned-tree-enumeration' },
   };
+  readonly gracefulStopEntered = testDeferred<void>();
   gracefulStopCalls = 0;
   terminateTreeCalls = 0;
   verifySurvivorsCalls = 0;
@@ -675,6 +697,7 @@ class FakeDriver implements PlatformProcessDriver {
   }
   async gracefulStop() {
     this.gracefulStopCalls += 1;
+    this.gracefulStopEntered.resolve(undefined);
     return { delivered: true, detail: 'ok' };
   }
   async terminateTree() {
@@ -1257,6 +1280,205 @@ describe('DurableProcessCoordinator', () => {
     expect(finalProcess!.status).not.toBe('running');
     expect(coordinator.retainedHandleCount).toBe(0);
     expect(spawnCalls).toBe(1);
+  });
+
+  it('P5A-REMED2-04/05: authorized late cleanup waits for durable native bind', async () => {
+    const { processRepository, driver, coordinator } = makeCoordinator();
+    processRepository.blockNextBind = true;
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation({ timeoutPolicy: { graceMs: 0 } }),
+    });
+    const process = established.process;
+    let spawnCalls = 0;
+    const spawnedPromise = coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
+      spawn: async () => {
+        spawnCalls += 1;
+        const current = await processRepository.getProcess(process.workspaceId, process.processId);
+        const stopping = await coordinator.transitionProcess({
+          workspaceId: current!.workspaceId,
+          processId: current!.processId,
+          expectedVersion: current!.version,
+          expectedClaimEpoch: current!.claimEpoch,
+          expectedClaimOwner: current!.claimOwnerId,
+          expectedFrom: 'starting',
+          to: 'stopping',
+          timestamp: NOW,
+          terminationReason: 'cancel',
+          gracefulRequested: true,
+          graceDeadline: NOW,
+          forceDeadline: NOW,
+          idempotencyKeyHash: 'd'.repeat(64),
+          eventContext: EVENT_CONTEXT,
+        });
+        const stoppingProcess = stopping.value!;
+        const ticket = await coordinator.processCancelCoordinator.acceptStop({
+          workspaceId: stoppingProcess.workspaceId,
+          processId: stoppingProcess.processId,
+          expectedClaimEpoch: stoppingProcess.claimEpoch,
+          expectedClaimOwner: stoppingProcess.claimOwnerId,
+          reason: 'cancel',
+          idempotencyKey: 'late-bind-order',
+          timestamp: NOW,
+          eventContext: EVENT_CONTEXT,
+          stopOrigin: 'EXPLICIT_CANCEL',
+        });
+        await ticket.startCleanup();
+        return makeHandle(4242);
+      },
+    });
+
+    try {
+      const firstGate = await Promise.race([
+        processRepository.bindEntered.promise.then(() => 'bind' as const),
+        driver.gracefulStopEntered.promise.then(() => 'cleanup' as const),
+      ]);
+      expect(firstGate).toBe('bind');
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+      expect(driver.gracefulStopCalls).toBe(0);
+      expect(driver.terminateTreeCalls).toBe(0);
+      expect(driver.verifySurvivorsCalls).toBe(0);
+
+      processRepository.releaseBind.resolve(undefined);
+      const result = await spawnedPromise;
+      expect(result.kind).toBe('spawned');
+      expect(spawnCalls).toBe(1);
+      expect(driver.gracefulStopCalls).toBe(1);
+      expect(driver.terminateTreeCalls).toBe(0);
+      const terminal = await processRepository.getProcess(process.workspaceId, process.processId);
+      expect(terminal?.nativePid).toBe(4242);
+      expect(terminal?.nativeStartedAt).not.toBeNull();
+    } finally {
+      processRepository.releaseBind.resolve(undefined);
+      await Promise.allSettled([spawnedPromise]);
+    }
+  });
+
+  it('P5A-REMED2-06: bind version race re-reads stopping and binds before cleanup', async () => {
+    const { processRepository, driver, coordinator } = makeCoordinator();
+    processRepository.raceNextBind = true;
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation({ timeoutPolicy: { graceMs: 0 } }),
+    });
+    const process = established.process;
+    const spawned = await coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
+      spawn: async () => {
+        const current = await processRepository.getProcess(process.workspaceId, process.processId);
+        const stopping = await coordinator.transitionProcess({
+          workspaceId: current!.workspaceId,
+          processId: current!.processId,
+          expectedVersion: current!.version,
+          expectedClaimEpoch: current!.claimEpoch,
+          expectedClaimOwner: current!.claimOwnerId,
+          expectedFrom: 'starting',
+          to: 'stopping',
+          timestamp: NOW,
+          terminationReason: 'cancel',
+          gracefulRequested: true,
+          graceDeadline: NOW,
+          forceDeadline: NOW,
+          idempotencyKeyHash: 'e'.repeat(64),
+          eventContext: EVENT_CONTEXT,
+        });
+        const ticket = await coordinator.processCancelCoordinator.acceptStop({
+          workspaceId: stopping.value!.workspaceId,
+          processId: stopping.value!.processId,
+          expectedClaimEpoch: stopping.value!.claimEpoch,
+          expectedClaimOwner: stopping.value!.claimOwnerId,
+          reason: 'cancel',
+          idempotencyKey: 'bind-race',
+          timestamp: NOW,
+          eventContext: EVENT_CONTEXT,
+          stopOrigin: 'EXPLICIT_CANCEL',
+        });
+        await ticket.startCleanup();
+        return makeHandle(4242);
+      },
+    });
+
+    expect(spawned.kind).toBe('spawned');
+    expect(driver.gracefulStopCalls).toBe(1);
+    const terminal = await processRepository.getProcess(process.workspaceId, process.processId);
+    expect(terminal?.nativePid).toBe(4242);
+    expect(terminal?.nativeStartedAt).not.toBeNull();
+    expect(terminal?.status).toBe('exited');
+  });
+
+  it('P5A-REMED2-07: unbound stopping handle cannot create ProcessCancelCoordinator proof', async () => {
+    const { processRepository, driver, coordinator } = makeCoordinator();
+    processRepository.failNextBind = true;
+    let ticketResult: Promise<unknown> | undefined;
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    const result = await coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: established.process.workspaceId,
+      processId: established.process.processId,
+      expectedVersion: established.process.version,
+      expectedClaimEpoch: established.process.claimEpoch,
+      expectedClaimOwner: established.process.claimOwnerId,
+      timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
+      spawn: async () => {
+        const current = await processRepository.getProcess(established.process.workspaceId, established.process.processId);
+        const stopping = await coordinator.transitionProcess({
+          workspaceId: current!.workspaceId,
+          processId: current!.processId,
+          expectedVersion: current!.version,
+          expectedClaimEpoch: current!.claimEpoch,
+          expectedClaimOwner: current!.claimOwnerId,
+          expectedFrom: 'starting',
+          to: 'stopping',
+          timestamp: NOW,
+          terminationReason: 'cancel',
+          gracefulRequested: true,
+          graceDeadline: NOW,
+          forceDeadline: NOW,
+          idempotencyKeyHash: 'f'.repeat(64),
+          eventContext: EVENT_CONTEXT,
+        });
+        const ticket = await coordinator.processCancelCoordinator.acceptStop({
+          workspaceId: stopping.value!.workspaceId,
+          processId: stopping.value!.processId,
+          expectedClaimEpoch: stopping.value!.claimEpoch,
+          expectedClaimOwner: stopping.value!.claimOwnerId,
+          reason: 'cancel',
+          idempotencyKey: 'unbound-handle',
+          timestamp: NOW,
+          eventContext: EVENT_CONTEXT,
+          stopOrigin: 'EXPLICIT_CANCEL',
+        });
+        await ticket.startCleanup();
+        ticketResult = ticket.result;
+        return makeHandle(4244);
+      },
+    });
+
+    const terminal = applied(result.outcome);
+    expect(['failed', 'unknown', 'orphaned']).toContain(terminal.status);
+    expect(terminal.nativePid).toBeNull();
+    expect(driver.gracefulStopCalls).toBe(0);
+    expect(driver.terminateTreeCalls).toBe(1);
+    expect(ticketResult).toBeDefined();
+    const ticket = await ticketResult! as { readonly proven: boolean; readonly process: { readonly status: string } };
+    expect(ticket.proven).toBe(false);
+    expect(ticket.process.status).toBe('orphaned');
   });
 
   it('starting x cancel x spawn failure chains the real stopping Event and emits one failed fact', async () => {
