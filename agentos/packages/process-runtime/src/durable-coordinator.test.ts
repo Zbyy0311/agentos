@@ -11,6 +11,7 @@ import {
   OUTPUT_SEGMENT_RETAINED_BYTES,
 } from './durable-coordinator.js';
 import type { NativeProcessHandle, PlatformProcessDriver } from './driver.js';
+import type { ProcessStopTicket } from './process-cancel-coordinator.js';
 import { BoundedProcessStream, type StreamChunk, type StreamName } from './streams.js';
 import type {
   DurableAtomicSeam,
@@ -1210,6 +1211,7 @@ describe('DurableProcessCoordinator', () => {
     });
     const process = established.process;
     let spawnCalls = 0;
+    let acceptedTicket: ProcessStopTicket | undefined;
     const result = await coordinator.consumeSpawnRightAndSpawn({
       workspaceId: process.workspaceId,
       processId: process.processId,
@@ -1218,6 +1220,12 @@ describe('DurableProcessCoordinator', () => {
       expectedClaimOwner: process.claimOwnerId,
       timestamp: NOW,
       eventContext: EVENT_CONTEXT,
+      onAcceptedStop: async ticket => {
+        acceptedTicket = ticket;
+        expect(ticket.stopAccepted).toBe(true);
+        expect(driver.gracefulStopCalls).toBe(0);
+        await ticket.startCleanup();
+      },
       spawn: async () => {
         spawnCalls += 1;
         // Cancel races during spawn: starting -> stopping before the handle
@@ -1241,6 +1249,7 @@ describe('DurableProcessCoordinator', () => {
     expect(spawnCalls).toBe(1);
     expect(driver.terminateTreeCalls).toBe(1);
     expect(driver.verifySurvivorsCalls).toBe(1);
+    expect(acceptedTicket).toBeDefined();
     const finalProcess = await processRepository.getProcess(process.workspaceId, process.processId);
     expect(finalProcess!.status).toBe('exited');
     expect(finalProcess!.nativePid).toBe(4242);

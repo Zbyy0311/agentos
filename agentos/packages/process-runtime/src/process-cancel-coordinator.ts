@@ -49,6 +49,7 @@ export interface ProcessStopResult {
   readonly process: DurableProcessView;
   readonly cleanup: ProcessCleanupDisposition | null;
   readonly proven: boolean;
+  readonly stopAccepted: boolean;
   readonly reason: string;
   readonly stopOrigin: ProcessStopOrigin;
 }
@@ -57,6 +58,8 @@ export interface ProcessStopTicket {
   readonly idempotencyKey: string;
   readonly reason: string;
   readonly acceptedAt: string;
+  readonly stopAccepted: boolean;
+  readonly startCleanup: () => Promise<void>;
   readonly result: Promise<ProcessStopResult>;
 }
 
@@ -95,6 +98,9 @@ interface StopState {
   readonly result: Deferred<ProcessStopResult>;
   handle: NativeProcessHandle | undefined;
   stopReady: boolean;
+  stopAccepted: boolean;
+  safeTerminal: boolean;
+  cleanupAuthorized: boolean;
   cleanupStarted: boolean;
   cleanupGracePeriodMs?: number;
 }
@@ -138,13 +144,18 @@ export class ProcessCancelCoordinator {
   /** Resolve a stop that was waiting for a spawn result which failed. */
   observeTerminal(process: DurableProcessView): void {
     const state = this.#stops.get(process.processId);
-    if (state === undefined || !isTerminal(process.status)) return;
+    if (state === undefined || !state.stopReady || !isTerminal(process.status)) return;
+    if (state.stopAccepted && state.handle === undefined && process.status === 'failed') {
+      state.safeTerminal = true;
+    }
     state.stopReady = true;
     state.ticketReady.resolve(state.ticket);
+    const storedCleanup = cleanupFromStoredResult(process.cleanupResult);
     state.result.resolve({
       process,
-      cleanup: cleanupFromStoredResult(process.cleanupResult),
-      proven: cleanupFromStoredResult(process.cleanupResult)?.proven ?? process.status === 'failed',
+      cleanup: storedCleanup,
+      proven: state.safeTerminal || storedCleanup?.proven === true,
+      stopAccepted: state.stopAccepted,
       reason: state.input.reason,
       stopOrigin: state.input.stopOrigin ?? 'EXPLICIT_CANCEL',
     });
@@ -161,19 +172,27 @@ export class ProcessCancelCoordinator {
 
     const ticketReady = deferred<ProcessStopTicket>();
     const result = deferred<ProcessStopResult>();
+    let state!: StopState;
     const ticket: ProcessStopTicket = {
       idempotencyKey: input.idempotencyKey,
       reason: input.reason,
       acceptedAt: input.timestamp,
+      get stopAccepted() {
+        return state.stopAccepted;
+      },
+      startCleanup: () => this.#authorizeCleanup(state),
       result: result.promise,
     };
-    const state: StopState = {
+    state = {
       input,
       ticket,
       ticketReady,
       result,
       handle: this.#handles.get(input.processId),
       stopReady: false,
+      stopAccepted: false,
+      safeTerminal: false,
+      cleanupAuthorized: false,
       cleanupStarted: false,
     };
     this.#stops.set(input.processId, state);
@@ -192,8 +211,9 @@ export class ProcessCancelCoordinator {
       state.cleanupGracePeriodMs = this.#gracePeriod(state.input, process);
 
       if (isTerminal(process.status)) {
+        state.stopAccepted = false;
         state.ticketReady.resolve(state.ticket);
-        state.result.resolve(this.#resultFromTerminal(process, state.input));
+        state.result.resolve(this.#resultFromTerminal(process, state.input, undefined, false));
         return;
       }
 
@@ -218,11 +238,14 @@ export class ProcessCancelCoordinator {
         const cancelled = await this.#transition(cancellationInput);
         process = await this.#readTransitionResult(cancelled, process);
         if (isTerminal(process.status)) {
+          state.stopAccepted = true;
+          state.safeTerminal = true;
           state.ticketReady.resolve(state.ticket);
           state.result.resolve({
             process,
             cleanup: null,
-            proven: process.status === 'failed',
+            proven: true,
+            stopAccepted: true,
             reason: state.input.reason,
             stopOrigin: state.input.stopOrigin ?? 'EXPLICIT_CANCEL',
           });
@@ -249,27 +272,43 @@ export class ProcessCancelCoordinator {
           eventContext: state.input.eventContext,
         };
         const stopping = await this.#transition(stoppingInput);
+        state.stopAccepted = stopping.kind === 'applied'
+          || (stopping.kind === 'duplicate' && stopping.value?.status === 'stopping');
         process = await this.#readTransitionResult(stopping, process);
         if (isTerminal(process.status)) {
-          state.result.resolve(this.#resultFromTerminal(process, state.input));
+          state.safeTerminal = state.stopAccepted;
+          state.ticketReady.resolve(state.ticket);
+          state.result.resolve({
+            ...this.#resultFromTerminal(process, state.input, undefined, state.stopAccepted),
+            proven: state.safeTerminal,
+          });
           return;
         }
         if (process.status !== 'stopping') {
           throw new Error('PROCESS_CANCEL_FAILED: stop claim was not accepted');
         }
+        state.stopAccepted = true;
       }
 
+      state.stopAccepted = true;
       state.stopReady = true;
       state.ticketReady.resolve(state.ticket);
-      this.#maybeStartCleanup(state);
     } catch (error) {
+      if (!state.stopAccepted && this.#stops.get(state.input.processId) === state) {
+        this.#stops.delete(state.input.processId);
+      }
       state.ticketReady.reject(error instanceof Error ? error : new Error('PROCESS_CANCEL_FAILED'));
-      state.result.reject(error instanceof Error ? error : new Error('PROCESS_CANCEL_FAILED'));
     }
   }
 
+  async #authorizeCleanup(state: StopState): Promise<void> {
+    if (!state.stopAccepted) return;
+    state.cleanupAuthorized = true;
+    this.#maybeStartCleanup(state);
+  }
+
   #maybeStartCleanup(state: StopState): void {
-    if (!state.stopReady || state.cleanupStarted || state.handle === undefined) return;
+    if (!state.stopReady || !state.cleanupAuthorized || state.cleanupStarted || state.handle === undefined) return;
     state.cleanupStarted = true;
     void this.#runCleanup(state).catch(error => {
       void this.#finishUncertain(
@@ -372,7 +411,7 @@ export class ProcessCancelCoordinator {
       return;
     }
     if (isTerminal(current.status)) {
-      state.result.resolve(this.#resultFromTerminal(current, state.input, cleanup));
+      state.result.resolve(this.#resultFromTerminal(current, state.input, cleanup, state.stopAccepted));
       return;
     }
     const transitionInput: ProcessTransitionInput = {
@@ -400,6 +439,7 @@ export class ProcessCancelCoordinator {
         process,
         cleanup,
         proven: cleanup.proven,
+        stopAccepted: state.stopAccepted,
         reason: state.input.reason,
         stopOrigin: state.input.stopOrigin ?? 'EXPLICIT_CANCEL',
       });
@@ -427,7 +467,7 @@ export class ProcessCancelCoordinator {
       return;
     }
     if (isTerminal(current.status)) {
-      state.result.resolve(this.#resultFromTerminal(current, state.input, cleanup));
+      state.result.resolve(this.#resultFromTerminal(current, state.input, cleanup, state.stopAccepted));
       return;
     }
     const transitionInput: ProcessTransitionInput = {
@@ -451,6 +491,7 @@ export class ProcessCancelCoordinator {
       process,
       cleanup,
       proven: false,
+      stopAccepted: state.stopAccepted,
       reason: state.input.reason,
       stopOrigin: state.input.stopOrigin ?? 'EXPLICIT_CANCEL',
     });
@@ -460,9 +501,8 @@ export class ProcessCancelCoordinator {
     outcome: DurableCasOutcome<DurableProcessView>,
     fallback: DurableProcessView,
   ): Promise<DurableProcessView> {
-    if (outcome.value !== undefined) return outcome.value;
     const current = await this.#processRepository.getProcess(fallback.workspaceId, fallback.processId);
-    return current ?? fallback;
+    return current ?? outcome.value ?? fallback;
   }
 
   async #transition(input: ProcessTransitionInput): Promise<DurableCasOutcome<DurableProcessView>> {
@@ -475,12 +515,14 @@ export class ProcessCancelCoordinator {
     process: DurableProcessView,
     input: ProcessStopRequest,
     fallbackCleanup?: ProcessCleanupDisposition,
+    stopAccepted = false,
   ): ProcessStopResult {
     const cleanup = fallbackCleanup ?? cleanupFromStoredResult(process.cleanupResult);
     return {
       process,
       cleanup,
-      proven: cleanup?.proven ?? process.status === 'failed',
+      proven: cleanup?.proven === true,
+      stopAccepted,
       reason: input.reason,
       stopOrigin: input.stopOrigin ?? 'EXPLICIT_CANCEL',
     };
@@ -559,7 +601,7 @@ function durationMs(startedAt: string | null, now: string): number {
 function cleanupFromStoredResult(value: string | null): ProcessCleanupDisposition | null {
   if (value === null) return null;
   if (value === 'TERMINATED' || value === 'ALREADY_EXITED') {
-    return { classification: 'complete', cleanupResult: value, proven: true, knownPids: [] };
+    return { classification: 'complete', cleanupResult: value, proven: false, knownPids: [] };
   }
   if (value === 'SURVIVORS') {
     return { classification: 'survivors', cleanupResult: value, proven: false, knownPids: [] };

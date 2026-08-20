@@ -6,7 +6,7 @@ import type {
   PlatformProcessDriver,
 } from './driver.js';
 import { cleanupVerdictFromVerification } from './driver.js';
-import { ProcessCancelCoordinator } from './process-cancel-coordinator.js';
+import { ProcessCancelCoordinator, type ProcessStopTicket } from './process-cancel-coordinator.js';
 import {
   STREAM_CHUNK_LIMIT_BYTES,
   STREAM_RETAINED_CAP_BYTES,
@@ -119,6 +119,8 @@ export interface ConsumeSpawnInput {
   readonly eventContext: RuntimeEventContext;
   /** Original cancel reason when a spawn failure races an accepted stop. */
   readonly cancelReason?: string;
+  /** Stage-owned gate for Adapter graceful coordination before Process cleanup. */
+  readonly onAcceptedStop?: (ticket: ProcessStopTicket) => Promise<void>;
   /** Exactly-once Driver call; the returned native handle is retained. */
   readonly spawn: () => Promise<NativeProcessHandle>;
 }
@@ -379,7 +381,7 @@ export class DurableProcessCoordinator {
     });
     if (bound.kind === 'applied') {
       if (bound.value.status === 'stopping') {
-        await this.#lateSuccessCleanup(bound.value, handle, input.eventContext);
+        await this.#lateSuccessCleanup(bound.value, handle, input.eventContext, input.onAcceptedStop);
         return { kind: 'spawned', outcome: await this.#readOutcome(bound.value), spawned: true };
       }
       return { kind: 'spawned', outcome: bound, spawned: true };
@@ -415,6 +417,10 @@ export class DurableProcessCoordinator {
         timestamp: this.#now(),
         eventContext: input.eventContext,
       });
+      if (ticket.stopAccepted) {
+        if (input.onAcceptedStop !== undefined) await input.onAcceptedStop(ticket);
+        else await ticket.startCleanup();
+      }
       await ticket.result;
       this.#handles.delete(current.processId);
       this.#processCancelCoordinator.detachHandle(current.processId);
@@ -622,6 +628,7 @@ export class DurableProcessCoordinator {
     process: DurableProcessView,
     handle: NativeProcessHandle,
     eventContext: ConsumeSpawnInput['eventContext'],
+    onAcceptedStop?: ConsumeSpawnInput['onAcceptedStop'],
   ): Promise<void> {
     this.#processCancelCoordinator.attachHandle(process.processId, handle);
     const ticket = await this.#processCancelCoordinator.acceptStop({
@@ -634,6 +641,10 @@ export class DurableProcessCoordinator {
       timestamp: this.#now(),
       eventContext,
     });
+    if (ticket.stopAccepted) {
+      if (onAcceptedStop !== undefined) await onAcceptedStop(ticket);
+      else await ticket.startCleanup();
+    }
     await ticket.result;
     this.#handles.delete(process.processId);
     this.#processCancelCoordinator.detachHandle(process.processId);

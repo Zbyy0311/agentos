@@ -75,6 +75,7 @@ function processView(overrides: Partial<DurableProcessView> = {}): DurableProces
 class FakeProcessRepository implements DurableProcessRepository {
   process: DurableProcessView;
   readonly transitions: ProcessTransitionInput[] = [];
+  getProcessError: Error | undefined;
 
   constructor(process: DurableProcessView) {
     this.process = process;
@@ -112,6 +113,7 @@ class FakeProcessRepository implements DurableProcessRepository {
   }
 
   async getProcess(): Promise<DurableProcessView | null> {
+    if (this.getProcessError !== undefined) throw this.getProcessError;
     return this.process;
   }
 
@@ -135,7 +137,7 @@ function request(overrides: Partial<Parameters<ProcessCancelCoordinator['acceptS
 }
 
 describe('ProcessCancelCoordinator', () => {
-  it('accepts one durable stop ticket and joins duplicate requests', async () => {
+  it('P5A-REMED-09: accepts one proof-backed stop ticket and joins duplicate requests', async () => {
     const repository = new FakeProcessRepository(processView());
     const driver = new MockProcessDriver();
     driver.verifyProofMode = 'bare';
@@ -154,6 +156,9 @@ describe('ProcessCancelCoordinator', () => {
     ]);
 
     expect(duplicate).toBe(first);
+    expect(duplicate.result).toBe(first.result);
+    expect(duplicate.stopAccepted).toBe(true);
+    await first.startCleanup();
     const result = await first.result;
     expect(result.proven).toBe(false);
     expect(result.cleanup?.cleanupResult).toBe('UNKNOWN_PLATFORM_UNAVAILABLE');
@@ -177,6 +182,7 @@ describe('ProcessCancelCoordinator', () => {
     coordinator.attachHandle('proc_1', handle);
 
     const ticket = await coordinator.acceptStop(request());
+    await ticket.startCleanup();
     const result = await ticket.result;
 
     expect(result.proven).toBe(true);
@@ -205,6 +211,7 @@ describe('ProcessCancelCoordinator', () => {
     coordinator.attachHandle('proc_1', handle);
 
     const ticket = await coordinator.acceptStop(request());
+    await ticket.startCleanup();
     await driver.awaitGracefulStopEntered();
     for (let turn = 0; turn < 8; turn += 1) await Promise.resolve();
     clock.advance(16);
@@ -262,5 +269,100 @@ describe('ProcessCancelCoordinator', () => {
     expect(result.process.status).toBe('failed');
     expect(result.cleanup).toBeNull();
     expect(result.proven).toBe(true);
+  });
+
+  it('P5A-REMED-03: returns accepted authority without auto-starting platform cleanup', async () => {
+    const repository = new FakeProcessRepository(processView());
+    const driver = new MockProcessDriver();
+    const handle = new MockNativeProcessHandle(4100, 'agent');
+    const coordinator = new ProcessCancelCoordinator({
+      processRepository: repository,
+      driver,
+      now: () => NOW,
+      gracePeriodMs: 0,
+    });
+    coordinator.attachHandle('proc_1', handle);
+
+    const ticket = await coordinator.acceptStop(request());
+
+    expect(ticket.stopAccepted).toBe(true);
+    expect(driver.gracefulStopCalls).toBe(0);
+    expect(driver.terminateTreeCalls).toBe(0);
+    expect(driver.verifySurvivorsCalls).toBe(0);
+  });
+
+  it('P5A-REMED-05: authorizes cleanup before handle arrival and starts it once after attach', async () => {
+    const repository = new FakeProcessRepository(processView({ status: 'starting', nativePid: null }));
+    const driver = new MockProcessDriver();
+    const coordinator = new ProcessCancelCoordinator({
+      processRepository: repository,
+      driver,
+      now: () => NOW,
+      gracePeriodMs: 0,
+    });
+
+    const ticket = await coordinator.acceptStop(request());
+    expect(ticket.stopAccepted).toBe(true);
+    const startCleanup = ticket.startCleanup();
+    await Promise.resolve();
+    expect(driver.gracefulStopCalls).toBe(0);
+
+    coordinator.attachHandle('proc_1', new MockNativeProcessHandle(4100, 'agent'));
+    await startCleanup;
+    await ticket.startCleanup();
+    const result = await ticket.result;
+
+    expect(result.proven).toBe(true);
+    expect(driver.gracefulStopCalls).toBe(1);
+    expect(driver.terminateTreeCalls).toBe(1);
+  });
+
+  it('P5A-REMED-06: does not let a failed pre-acceptance claim poison a corrected retry', async () => {
+    const repository = new FakeProcessRepository(processView());
+    repository.getProcessError = new Error('claim lookup failed');
+    const coordinator = new ProcessCancelCoordinator({
+      processRepository: repository,
+      driver: new MockProcessDriver(),
+      now: () => NOW,
+      gracePeriodMs: 0,
+    });
+
+    await expect(coordinator.acceptStop(request())).rejects.toThrow('claim lookup failed');
+    repository.getProcessError = undefined;
+
+    const retry = await coordinator.acceptStop(request({ idempotencyKey: 'corrected-retry' }));
+    expect(retry.stopAccepted).toBe(true);
+  });
+
+  it('P5A-REMED-07: does not infer proof from a legacy TERMINATED cleanup result', async () => {
+    const repository = new FakeProcessRepository(processView({ status: 'exited', cleanupResult: 'TERMINATED' }));
+    const coordinator = new ProcessCancelCoordinator({
+      processRepository: repository,
+      driver: new MockProcessDriver(),
+      now: () => NOW,
+    });
+
+    const ticket = await coordinator.acceptStop(request());
+    const result = await ticket.result;
+
+    expect(ticket.stopAccepted).toBe(false);
+    expect(result.proven).toBe(false);
+    expect(result.cleanup?.cleanupResult).toBe('TERMINATED');
+  });
+
+  it('P5A-REMED-08: does not infer proof from a legacy ALREADY_EXITED cleanup result', async () => {
+    const repository = new FakeProcessRepository(processView({ status: 'exited', cleanupResult: 'ALREADY_EXITED' }));
+    const coordinator = new ProcessCancelCoordinator({
+      processRepository: repository,
+      driver: new MockProcessDriver(),
+      now: () => NOW,
+    });
+
+    const ticket = await coordinator.acceptStop(request());
+    const result = await ticket.result;
+
+    expect(ticket.stopAccepted).toBe(false);
+    expect(result.proven).toBe(false);
+    expect(result.cleanup?.cleanupResult).toBe('ALREADY_EXITED');
   });
 });

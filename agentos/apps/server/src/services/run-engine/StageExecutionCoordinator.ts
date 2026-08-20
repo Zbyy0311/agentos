@@ -41,6 +41,7 @@ import type {
   PlatformProcessDriver,
   ProcessCleanupDisposition,
   ProcessStopOrigin,
+  ProcessStopTicket,
   ProcessStopResult,
   ProcessProbePort,
   ValidatedLaunch,
@@ -162,7 +163,9 @@ interface LiveAttemptRendezvous {
   stderrDecoder?: TextDecoder;
   parserFinished?: boolean;
   finalizationPromise?: Promise<StageExecutionOutcome>;
-  stopPromise?: Promise<ProcessStopResult>;
+  stopRequestPromise?: Promise<ProcessStopTicket>;
+  stopAccepted: boolean;
+  cleanupAuthorizationPromise?: Promise<void>;
   stopOrigin?: ProcessStopOrigin;
   naturalDisposition?: Extract<AttemptDisposition, { readonly kind: 'natural' }>;
 }
@@ -356,6 +359,7 @@ export class StageExecutionCoordinator {
       startedAtMs: Date.parse(this.now()),
       stderrText: '',
       captureStopped: false,
+      stopAccepted: false,
     };
     this.liveAttempts.set(entry.key, entry);
 
@@ -370,6 +374,11 @@ export class StageExecutionCoordinator {
       expectedClaimOwner: established.process.claimOwnerId,
       timestamp: this.now(),
       eventContext,
+      onAcceptedStop: ticket => this.authorizeAcceptedStop(
+        entry,
+        ticket,
+        entry.stopOrigin ?? 'EXPLICIT_CANCEL',
+      ),
       spawn: async () => {
         const launch: ValidatedLaunch = {
           executable: plan.executable,
@@ -390,12 +399,12 @@ export class StageExecutionCoordinator {
       && spawned.outcome.value.status === 'running';
     if (!spawnSucceeded) {
       const current = await this.durableCoordinator.getProcess(input.workspaceId, established.process.processId);
-      if (entry.stopPromise === undefined && current?.status === 'stopping') {
+      if (entry.stopRequestPromise === undefined && current?.status === 'stopping') {
         await this.stopEntry(entry, 'EXPLICIT_CANCEL');
-      } else if (entry.stopPromise === undefined) {
+      } else if (entry.stopRequestPromise === undefined) {
         await this.finalizeAttemptOnce(entry, { kind: 'startup-failure' });
       } else {
-        await entry.stopPromise;
+        await this.stopEntry(entry, entry.stopOrigin ?? 'EXPLICIT_CANCEL');
       }
       return entry.final.promise;
     }
@@ -410,13 +419,15 @@ export class StageExecutionCoordinator {
         to: 'active',
         timestamp: this.now(),
         eventContext,
-      });
+    });
     if (active.kind === 'applied') {
-      if (entry.stopPromise === undefined) void this.runToFinal(entry);
-    } else if (entry.stopPromise === undefined) {
+      void this.runToFinal(entry);
+    } else if (entry.stopRequestPromise === undefined) {
       await this.stopEntry(entry, 'P4_ACTIVATION_FAILURE');
     }
-    if (entry.stopPromise !== undefined) await entry.stopPromise;
+    // This only joins an in-flight request; stopEntry decides ownership from
+    // the ticket's durable stopAccepted result, never from Promise presence.
+    if (entry.stopRequestPromise !== undefined) await this.stopEntry(entry, entry.stopOrigin ?? 'EXPLICIT_CANCEL');
     return entry.final.promise;
   }
 
@@ -522,13 +533,16 @@ export class StageExecutionCoordinator {
         return;
       }
       await Promise.all([entry.stdoutDrain, entry.stderrDrain]);
-      if (entry.captureStopped || entry.stopPromise !== undefined) return;
+      if (entry.captureStopped || entry.stopAccepted) return;
 
       this.finishParserTail(entry);
 
       const processView = await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
       if (processView === null) throw new Error('PROCESS_EXITED: process claim disappeared');
-      if (processView.status === 'stopping' || entry.stopPromise !== undefined) return;
+      if (processView.status === 'stopping') {
+        await this.stopEntry(entry, stopOriginFromReason(processView.terminationReason));
+        return;
+      }
       const durationMs = Math.max(0, Date.parse(this.now()) - entry.startedAtMs);
       const procOutcome = await this.durableCoordinator.transitionProcess({
         workspaceId: entry.input.workspaceId,
@@ -550,15 +564,21 @@ export class StageExecutionCoordinator {
       });
       if (procOutcome.kind !== 'applied' && procOutcome.kind !== 'terminal') {
         const current = await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
-        if (current?.status === 'stopping' && entry.stopPromise !== undefined) return;
+        if (current?.status === 'stopping') {
+          await this.stopEntry(entry, stopOriginFromReason(current.terminationReason));
+          return;
+        }
         throw new Error('PROCESS_EXITED: durable Process terminal CAS failed');
       }
       const terminalProcess = procOutcome.value ?? await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
-      if (entry.stopPromise !== undefined || terminalProcess?.status === 'stopping') return;
+      if (terminalProcess?.status === 'stopping') {
+        await this.stopEntry(entry, stopOriginFromReason(terminalProcess.terminationReason));
+        return;
+      }
       entry.naturalDisposition = { kind: 'natural', exit: observed.exit, durationMs };
       await this.finalizeAttemptOnce(entry, entry.naturalDisposition);
     } catch (error) {
-      if (entry.stopPromise !== undefined) return;
+      if (entry.stopAccepted) return;
       await this.finalizeAttemptOnce(entry, { kind: 'runtime-failure', error });
     }
   }
@@ -639,16 +659,18 @@ export class StageExecutionCoordinator {
     correlationId = entry.eventContext.correlationId,
     causationId = entry.eventContext.causationId,
   ): Promise<StageExecutionOutcome> {
-    if (entry.stopPromise === undefined) {
+    if (entry.stopRequestPromise === undefined) {
       entry.stopOrigin = entry.stopOrigin ?? origin;
-      const stopPromise = this.acceptEntryStop(entry, origin, correlationId, causationId);
-      entry.stopPromise = stopPromise;
+      entry.stopRequestPromise = this.acceptEntryStop(entry, origin, correlationId, causationId);
     }
-    const stopped = await entry.stopPromise;
+    const ticket = await entry.stopRequestPromise;
+    entry.stopAccepted = ticket.stopAccepted;
+    if (!ticket.stopAccepted) {
+      if (entry.finalizationPromise !== undefined) return entry.finalizationPromise;
+      return entry.final.promise;
+    }
     if (entry.finalizationPromise !== undefined) return entry.finalizationPromise;
-    if (entry.naturalDisposition !== undefined && stopped.process.status === 'exited') {
-      return this.finalizeAttemptOnce(entry, entry.naturalDisposition);
-    }
+    const stopped = await ticket.result;
     const winningOrigin = entry.stopOrigin ?? origin;
     const disposition: AttemptDisposition = winningOrigin === 'P4_ACTIVATION_FAILURE'
       ? { kind: 'p4-activation-failure', stop: stopped }
@@ -661,7 +683,7 @@ export class StageExecutionCoordinator {
     origin: ProcessStopOrigin,
     correlationId: string,
     causationId: string,
-  ): Promise<ProcessStopResult> {
+  ): Promise<ProcessStopTicket> {
     const process = await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
     if (process === null) throw new Error('LIVE_EXECUTION_UNAVAILABLE: Process claim disappeared');
     const ticket = await this.durableCoordinator.processCancelCoordinator.acceptStop({
@@ -675,22 +697,37 @@ export class StageExecutionCoordinator {
       eventContext: { correlationId, causationId },
       stopOrigin: origin,
     });
-    entry.captureStopped = true;
-    entry.captureStop.resolve(undefined);
-    if (process.status !== 'exited' && process.status !== 'failed' && process.status !== 'orphaned' && process.status !== 'unknown') {
-      try {
-        await entry.adapter.cancel({
-          sessionId: entry.sessionId,
-          processId: entry.processId,
-          reason: origin === 'EXPLICIT_CANCEL' ? 'cancel' : origin,
-          stopTicketAccepted: true,
-          processPort: { requestGraceful: async () => ({ accepted: true }) },
-        });
-      } catch {
-        // Provider graceful is optional; Process tree cleanup remains required.
-      }
+    await this.authorizeAcceptedStop(entry, ticket, origin);
+    return ticket;
+  }
+
+  private async authorizeAcceptedStop(
+    entry: LiveAttemptRendezvous,
+    ticket: ProcessStopTicket,
+    origin: ProcessStopOrigin,
+  ): Promise<void> {
+    if (!ticket.stopAccepted) return;
+    entry.stopAccepted = true;
+    if (entry.cleanupAuthorizationPromise === undefined) {
+      entry.captureStopped = true;
+      entry.captureStop.resolve(undefined);
+      entry.cleanupAuthorizationPromise = (async () => {
+        try {
+          await entry.adapter.cancel({
+            sessionId: entry.sessionId,
+            processId: entry.processId,
+            reason: origin === 'EXPLICIT_CANCEL' ? 'cancel' : origin,
+            stopTicketAccepted: true,
+            processPort: { requestGraceful: async () => ({ accepted: true }) },
+          });
+        } catch {
+          // Provider graceful is optional; Process tree cleanup remains required.
+        } finally {
+          await ticket.startCleanup();
+        }
+      })();
     }
-    return ticket.result;
+    await entry.cleanupAuthorizationPromise;
   }
 
   private finalizeAttemptOnce(
@@ -827,7 +864,19 @@ export class StageExecutionCoordinator {
         entry.final.resolve(outcome);
         return outcome;
       }
-      await this.finalizeOrAbortOutputs(entry, true);
+      this.finishParserTail(entry);
+      await this.finalizeOutputs(entry);
+      const providerError = origin === 'STARTUP_TIMEOUT'
+        ? { code: 'PROVIDER_START_FAILED' as const, phase: 'startup' as const, retryable: false, message: 'Provider process could not start before timeout' }
+        : { code: 'PROVIDER_SESSION_FAILED' as const, phase: 'runtime' as const, retryable: false, message: 'Provider session timed out' };
+      await entry.adapter.finalize({
+        exitCode: null,
+        signal: null,
+        parsedEvents: entry.parsedEvents,
+        stderr: entry.stderrText,
+        cancelled: false,
+        providerError,
+      });
       await this.reconcileSession(entry, 'failed', origin === 'STARTUP_TIMEOUT' ? 'PROVIDER_START_FAILED' : 'PROVIDER_SESSION_FAILED', 'provider timeout terminal');
       const outcome = this.failed(
         origin === 'STARTUP_TIMEOUT' ? 'PROVIDER_START_FAILED' : 'PROVIDER_SESSION_FAILED',
@@ -842,7 +891,7 @@ export class StageExecutionCoordinator {
 
     await this.abortWriters(entry.stdoutWriter, entry.stderrWriter);
     await this.reconcileSession(entry, 'failed', 'PROVIDER_SESSION_FAILED', 'provider process cleanup could not be proven');
-    if (explicit || origin === 'IDLE_TIMEOUT' || origin === 'TOTAL_TIMEOUT') {
+    if (explicit || origin === 'STARTUP_TIMEOUT' || origin === 'IDLE_TIMEOUT' || origin === 'TOTAL_TIMEOUT') {
       const outcome = stoppedOutcome(stopped, origin);
       entry.final.resolve(outcome);
       return outcome;
@@ -1056,6 +1105,13 @@ function stoppedOutcome(stop: ProcessStopResult, stopOrigin: ProcessStopOrigin):
     proven: stop.proven,
     stopOrigin,
   };
+}
+
+function stopOriginFromReason(reason: string | null): ProcessStopOrigin {
+  if (reason === 'STARTUP_TIMEOUT' || reason === 'IDLE_TIMEOUT' || reason === 'TOTAL_TIMEOUT' || reason === 'P4_ACTIVATION_FAILURE' || reason === 'SHUTDOWN') {
+    return reason;
+  }
+  return 'EXPLICIT_CANCEL';
 }
 
 function configurationFromSnapshot(snapshot: ProviderConfigurationSnapshotV1): ProviderConfigurationInput {
