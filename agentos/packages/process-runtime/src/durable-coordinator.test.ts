@@ -364,6 +364,16 @@ class FakeSessionRepository implements DurableSessionRepository {
   async getSession(workspaceId: string, sessionId: string) {
     return this.sessions.get(workspaceId + '/' + sessionId) ?? null;
   }
+
+  async getSessionByClaimKey(workspaceId: string, runId: string, stageId: string, stageAttempt: number, authorityRole: string) {
+    return [...this.sessions.values()].find(session => (
+      session.workspaceId === workspaceId
+      && session.runId === runId
+      && session.stageId === stageId
+      && session.stageAttempt === stageAttempt
+      && session.authorityRole === authorityRole
+    )) ?? null;
+  }
 }
 
 class FakeProcessRepository implements DurableProcessRepository {
@@ -387,6 +397,7 @@ class FakeProcessRepository implements DurableProcessRepository {
         runId: input.runId,
         claimEpoch: input.claimEpoch,
         claimOwnerId: input.claimOwnerId ?? null,
+        timeoutPolicyJson: JSON.stringify(input.timeoutPolicy),
       });
       this.rootClaims.set(claimKey, input.workspaceId + '/' + process.processId);
       this.processes.set(input.workspaceId + '/' + process.processId, process);
@@ -401,6 +412,7 @@ class FakeProcessRepository implements DurableProcessRepository {
       runId: input.runId,
       claimEpoch: input.claimEpoch,
       claimOwnerId: input.claimOwnerId ?? null,
+      timeoutPolicyJson: JSON.stringify(input.timeoutPolicy),
     });
     this.processes.set(input.workspaceId + '/' + process.processId, process);
     const eventId = this.ledger.append('process.launch_requested', input.eventContext, {
@@ -516,6 +528,17 @@ class FakeProcessRepository implements DurableProcessRepository {
 
   async getProcess(workspaceId: string, processId: string) {
     return this.processes.get(workspaceId + '/' + processId) ?? null;
+  }
+
+  async getRootProcessByClaim(workspaceId: string, runId: string, stageId: string, stageAttempt: number, authorityRole: string) {
+    return [...this.processes.values()].find(process => (
+      process.workspaceId === workspaceId
+      && process.runId === runId
+      && process.stageId === stageId
+      && process.stageAttempt === stageAttempt
+      && process.authorityRole === authorityRole
+      && process.parentProcessId === null
+    )) ?? null;
   }
 }
 
@@ -638,6 +661,7 @@ class FakeDriver implements PlatformProcessDriver {
   verifyResult: Awaited<ReturnType<PlatformProcessDriver['verifySurvivors']>> = {
     classification: 'complete',
     knownPids: [],
+    proof: { kind: 'owned-tree-enumeration' },
   };
   gracefulStopCalls = 0;
   terminateTreeCalls = 0;
@@ -1073,6 +1097,31 @@ describe('DurableProcessCoordinator', () => {
     expect(coordinator.retainedHandleCount).toBe(0);
   });
 
+  it('registration failure with bare complete remains uncertain', async () => {
+    const { processRepository, driver, coordinator } = makeCoordinator();
+    driver.verifyResult = { classification: 'complete', knownPids: [] };
+    const established = await coordinator.establishClaimAndReservation({
+      session: sessionClaim(),
+      process: processReservation(),
+    });
+    processRepository.failNextBind = true;
+
+    const result = await coordinator.consumeSpawnRightAndSpawn({
+      workspaceId: established.process.workspaceId,
+      processId: established.process.processId,
+      expectedVersion: established.process.version,
+      expectedClaimEpoch: established.process.claimEpoch,
+      expectedClaimOwner: established.process.claimOwnerId,
+      timestamp: NOW,
+      eventContext: EVENT_CONTEXT,
+      spawn: async () => makeHandle(4243),
+    });
+
+    const uncertain = applied(result.outcome);
+    expect(uncertain.status).toBe('unknown');
+    expect(uncertain.cleanupResult).toBe('UNKNOWN_PLATFORM_UNAVAILABLE');
+  });
+
   it('registration failure with survivors stays uncertainty (orphaned), never fake success', async () => {
     const { processRepository, driver, coordinator } = makeCoordinator();
     const established = await coordinator.establishClaimAndReservation({
@@ -1157,7 +1206,7 @@ describe('DurableProcessCoordinator', () => {
     const { processRepository, driver, coordinator } = makeCoordinator();
     const established = await coordinator.establishClaimAndReservation({
       session: sessionClaim(),
-      process: processReservation(),
+      process: processReservation({ timeoutPolicy: { graceMs: 0 } }),
     });
     const process = established.process;
     let spawnCalls = 0;
@@ -1185,7 +1234,8 @@ describe('DurableProcessCoordinator', () => {
           timestamp: NOW,
           eventContext: EVENT_CONTEXT,
         });
-        return makeHandle(4242);
+        const handle = makeHandle(4242);
+        return { ...handle, waitExit: () => new Promise<never>(() => undefined) };
       },
     });
     expect(spawnCalls).toBe(1);

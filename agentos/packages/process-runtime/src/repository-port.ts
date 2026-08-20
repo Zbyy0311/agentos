@@ -162,6 +162,13 @@ export interface DurableSessionRepository {
   casSetAdapterStartRequested(input: SessionStartRequestedInput): Promise<DurableCasOutcome<DurableSessionView>>;
   casSessionTransition(input: SessionTransitionInput): Promise<DurableCasOutcome<DurableSessionView>>;
   getSession(workspaceId: string, sessionId: string): Promise<DurableSessionView | null>;
+  getSessionByClaimKey(
+    workspaceId: string,
+    runId: string,
+    stageId: string,
+    stageAttempt: number,
+    authorityRole: string,
+  ): Promise<DurableSessionView | null>;
 }
 
 export type DurableProcessType =
@@ -340,6 +347,13 @@ export interface DurableProcessRepository {
   casBindNativeIdentity(input: BindNativeIdentityInput): Promise<DurableCasOutcome<DurableProcessView>>;
   casProcessTransition(input: ProcessTransitionInput): Promise<DurableCasOutcome<DurableProcessView>>;
   getProcess(workspaceId: string, processId: string): Promise<DurableProcessView | null>;
+  getRootProcessByClaim(
+    workspaceId: string,
+    runId: string,
+    stageId: string,
+    stageAttempt: number,
+    authorityRole: string,
+  ): Promise<DurableProcessView | null>;
 }
 
 export interface AtomicSessionRootCreate {

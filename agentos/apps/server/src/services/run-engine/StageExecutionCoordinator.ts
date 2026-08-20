@@ -34,9 +34,14 @@ import type {
   DurableCasOutcome,
   DurableProcessCoordinator,
   DurableProcessView,
+  DurableOutputWriter,
   DurableSessionView,
+  ExitEvidence,
   NativeProcessHandle,
   PlatformProcessDriver,
+  ProcessCleanupDisposition,
+  ProcessStopOrigin,
+  ProcessStopResult,
   ProcessProbePort,
   ValidatedLaunch,
 } from '@agentos/process-runtime';
@@ -78,7 +83,24 @@ export type StageExecutionOutcome =
       readonly outputContractSatisfied: boolean;
       readonly output?: string;
     }
+  | {
+      readonly kind: 'stopped';
+      readonly cleanup: ProcessCleanupDisposition | null;
+      readonly proven: boolean;
+      readonly stopOrigin: ProcessStopOrigin;
+    }
   | { readonly kind: 'failed'; readonly problem: ApiProblem; readonly phase: string };
+
+export interface StageAttemptCancelInput {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly stageId: string;
+  readonly stageAttempt: number;
+  readonly correlationId: string;
+  readonly causationId: string;
+}
+
+export type StageStopOutcome = Extract<StageExecutionOutcome, { readonly kind: 'stopped' }>;
 
 export interface StageExecutionCoordinatorOptions {
   readonly registry: ProviderRegistry;
@@ -110,11 +132,39 @@ function deferred<T>(): Deferred<T> {
   return { promise, resolve, reject };
 }
 
-interface ActiveSessionState {
+type AttemptDisposition =
+  | { readonly kind: 'natural'; readonly exit: ExitEvidence; readonly durationMs: number }
+  | { readonly kind: 'stop'; readonly stop: ProcessStopResult; readonly stopOrigin: ProcessStopOrigin }
+  | { readonly kind: 'startup-failure' }
+  | { readonly kind: 'runtime-failure'; readonly error: unknown }
+  | { readonly kind: 'p4-activation-failure'; readonly stop: ProcessStopResult };
+
+interface LiveAttemptRendezvous {
+  readonly key: string;
+  readonly input: StageExecutionInput;
+  readonly adapter: RuntimeProviderAdapter;
+  readonly eventContext: RuntimeEventContext;
   readonly sessionId: string;
-  readonly version: number;
-  readonly claimEpoch: number;
-  readonly claimOwnerId: string | null;
+  readonly processId: string;
+  readonly stdoutWriter: DurableOutputWriter;
+  readonly stderrWriter: DurableOutputWriter;
+  readonly final: Deferred<StageExecutionOutcome>;
+  readonly captureStop: Deferred<void>;
+  readonly parserContext: ProviderParseContext;
+  readonly parsedEvents: ProviderNormalizedEvent[];
+  readonly startedAtMs: number;
+  handle?: NativeProcessHandle;
+  stderrText: string;
+  captureStopped: boolean;
+  stdoutDrain?: Promise<void>;
+  stderrDrain?: Promise<void>;
+  stdoutDecoder?: TextDecoder;
+  stderrDecoder?: TextDecoder;
+  parserFinished?: boolean;
+  finalizationPromise?: Promise<StageExecutionOutcome>;
+  stopPromise?: Promise<ProcessStopResult>;
+  stopOrigin?: ProcessStopOrigin;
+  naturalDisposition?: Extract<AttemptDisposition, { readonly kind: 'natural' }>;
 }
 
 export class StageExecutionCoordinator {
@@ -129,6 +179,7 @@ export class StageExecutionCoordinator {
   private readonly now: () => string;
   private readonly stderrRetainedBytes: number;
   private readonly inFlightValidation = new Map<string, Promise<ProviderValidationResult>>();
+  private readonly liveAttempts = new Map<string, LiveAttemptRendezvous>();
 
   constructor(options: StageExecutionCoordinatorOptions) {
     this.registry = options.registry;
@@ -243,35 +294,75 @@ export class StageExecutionCoordinator {
       return { kind: 'active' };
     }
 
-    const stdoutWriter = await this.durableCoordinator.beginOutput({
-      workspaceId: input.workspaceId,
-      runId: input.runId,
-      processId: established.process.processId,
-      stream: 'stdout',
-      storageKey: 'sink/' + input.workspaceId + '/stdout/' + established.process.processId,
-      contentType: 'text/plain',
-      encoding: 'utf-8',
-      redactionMode: 'scan',
-      eventContext,
-    });
-    const stderrWriter = await this.durableCoordinator.beginOutput({
-      workspaceId: input.workspaceId,
-      runId: input.runId,
-      processId: established.process.processId,
-      stream: 'stderr',
-      storageKey: 'sink/' + input.workspaceId + '/stderr/' + established.process.processId,
-      contentType: 'text/plain',
-      encoding: 'utf-8',
-      redactionMode: 'scan',
-      eventContext,
-    });
+    let stdoutWriter: DurableOutputWriter | undefined;
+    let stderrWriter: DurableOutputWriter | undefined;
+    try {
+      stdoutWriter = await this.durableCoordinator.beginOutput({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        processId: established.process.processId,
+        stream: 'stdout',
+        storageKey: 'sink/' + input.workspaceId + '/stdout/' + established.process.processId,
+        contentType: 'text/plain',
+        encoding: 'utf-8',
+        redactionMode: 'scan',
+        eventContext,
+      });
+      stderrWriter = await this.durableCoordinator.beginOutput({
+        workspaceId: input.workspaceId,
+        runId: input.runId,
+        processId: established.process.processId,
+        stream: 'stderr',
+        storageKey: 'sink/' + input.workspaceId + '/stderr/' + established.process.processId,
+        contentType: 'text/plain',
+        encoding: 'utf-8',
+        redactionMode: 'scan',
+        eventContext,
+      });
+    } catch {
+      await this.abortWriters(stdoutWriter, stderrWriter);
+      await this.failBeforeSpawn(input, established.session.sessionId, established.process);
+      return this.failed('PROVIDER_INTERNAL_ERROR', 'Provider output initialization failed', 'startup', input, false);
+    }
 
-    const final = deferred<StageExecutionOutcome>();
-    const bound = deferred<DurableProcessView>();
-    const activeSession = deferred<ActiveSessionState>();
-    activeSession.promise.catch(() => undefined);
-    const startedAtMs = Date.parse(this.now());
-    const spawned = await this.durableCoordinator.consumeSpawnRightAndSpawn({
+    const currentSession = await this.sessionRepository.getSession(input.workspaceId, established.session.sessionId);
+    const currentProcess = await this.durableCoordinator.getProcess(input.workspaceId, established.process.processId);
+    if (
+      currentSession === null
+      || currentProcess === null
+      || !sameSessionClaim(currentSession, established.session)
+      || !sameProcessClaim(currentProcess, established.process)
+      || currentSession.status !== 'starting'
+      || currentProcess.status !== 'created'
+    ) {
+      await this.abortWriters(stdoutWriter, stderrWriter);
+      await this.failBeforeSpawn(input, established.session.sessionId, currentProcess ?? established.process);
+      return this.failed('LIVE_EXECUTION_UNAVAILABLE', 'Provider process authority is no longer startable', 'startup', input, false);
+    }
+
+    const entry: LiveAttemptRendezvous = {
+      key: attemptKey(input),
+      input,
+      adapter,
+      eventContext,
+      sessionId: established.session.sessionId,
+      processId: established.process.processId,
+      stdoutWriter,
+      stderrWriter,
+      final: deferred<StageExecutionOutcome>(),
+      captureStop: deferred<void>(),
+      parserContext: (adapter as unknown as { createParseContext(): ProviderParseContext }).createParseContext(),
+      parsedEvents: [],
+      startedAtMs: Date.parse(this.now()),
+      stderrText: '',
+      captureStopped: false,
+    };
+    this.liveAttempts.set(entry.key, entry);
+
+    // Keep this call adjacent to registration: cancellation can observe the
+    // live entry before the one spawn right is consumed, with no await in
+    // between that would create a reconstruction window.
+    const spawnedPromise = this.durableCoordinator.consumeSpawnRightAndSpawn({
       workspaceId: input.workspaceId,
       processId: established.process.processId,
       expectedVersion: established.process.version,
@@ -289,47 +380,30 @@ export class StageExecutionCoordinator {
           shell: false,
         };
         const handle = await this.driver.spawn(launch);
-        void this.runToFinal(handle, {
-          adapter,
-          input,
-          eventContext,
-          stdoutWriter,
-          stderrWriter,
-          startedAtMs,
-          bound: bound.promise,
-          activeSession: activeSession.promise,
-          final,
-        });
+        entry.handle = handle;
         return handle;
       },
     });
+    const spawned = await spawnedPromise;
     const spawnSucceeded = spawned.kind === 'spawned'
       && spawned.outcome.kind === 'applied'
       && spawned.outcome.value.status === 'running';
     if (!spawnSucceeded) {
-      activeSession.reject(new Error('PROVIDER_START_FAILED'));
-      await this.sessionRepository.casSessionTransition({
+      const current = await this.durableCoordinator.getProcess(input.workspaceId, established.process.processId);
+      if (entry.stopPromise === undefined && current?.status === 'stopping') {
+        await this.stopEntry(entry, 'EXPLICIT_CANCEL');
+      } else if (entry.stopPromise === undefined) {
+        await this.finalizeAttemptOnce(entry, { kind: 'startup-failure' });
+      } else {
+        await entry.stopPromise;
+      }
+      return entry.final.promise;
+    }
+
+    const active = await this.sessionRepository.casSessionTransition({
         workspaceId: input.workspaceId,
         sessionId: established.session.sessionId,
-        expectedVersion: established.session.version + 1,
-        expectedClaimEpoch: established.session.claimEpoch,
-        expectedClaimOwner: established.session.claimOwnerId,
-        expectedFrom: 'starting',
-        to: 'failed',
-        timestamp: this.now(),
-        failureCode: 'PROVIDER_START_FAILED',
-        failureDetailRedacted: 'provider process could not start',
-        eventContext,
-      });
-      await stdoutWriter.abort();
-      await stderrWriter.abort();
-      final.resolve(this.failed('PROVIDER_START_FAILED', 'Provider process could not start', 'startup', input, false));
-    } else {
-      bound.resolve(spawned.outcome.value);
-      const active = await this.sessionRepository.casSessionTransition({
-        workspaceId: input.workspaceId,
-        sessionId: established.session.sessionId,
-        expectedVersion: established.session.version + 1,
+        expectedVersion: currentSession.version,
         expectedClaimEpoch: established.session.claimEpoch,
         expectedClaimOwner: established.session.claimOwnerId,
         expectedFrom: 'starting',
@@ -337,19 +411,68 @@ export class StageExecutionCoordinator {
         timestamp: this.now(),
         eventContext,
       });
-      if (active.kind === 'applied') {
-        activeSession.resolve({
-          sessionId: active.value.sessionId,
-          version: active.value.version,
-          claimEpoch: active.value.claimEpoch,
-          claimOwnerId: active.value.claimOwnerId,
-        });
-      } else {
-        activeSession.reject(new Error('PROVIDER_SESSION_ACTIVE_FAILED'));
-        final.resolve(this.failed('PROVIDER_SESSION_FAILED', 'Provider session could not transition to active', 'startup', input, false));
-      }
+    if (active.kind === 'applied') {
+      if (entry.stopPromise === undefined) void this.runToFinal(entry);
+    } else if (entry.stopPromise === undefined) {
+      await this.stopEntry(entry, 'P4_ACTIVATION_FAILURE');
     }
-    return final.promise;
+    if (entry.stopPromise !== undefined) await entry.stopPromise;
+    return entry.final.promise;
+  }
+
+  async cancelAttempt(input: StageAttemptCancelInput): Promise<StageExecutionOutcome> {
+    const session = await this.sessionRepository.getSessionByClaimKey(
+      input.workspaceId,
+      input.runId,
+      input.stageId,
+      input.stageAttempt,
+      'primary-provider',
+    );
+    const process = await this.durableCoordinator.getRootProcessByClaim(
+      input.workspaceId,
+      input.runId,
+      input.stageId,
+      input.stageAttempt,
+      'primary-provider',
+    );
+    if (
+      session === null
+      || process === null
+      || session.workspaceId !== input.workspaceId
+      || session.runId !== input.runId
+      || session.stageId !== input.stageId
+      || session.stageAttempt !== input.stageAttempt
+      || process.workspaceId !== input.workspaceId
+      || process.runId !== input.runId
+      || process.stageId !== input.stageId
+      || process.stageAttempt !== input.stageAttempt
+      || process.authorityRole !== 'primary-provider'
+    ) {
+      throw new Error('LIVE_EXECUTION_UNAVAILABLE: exact Stage-attempt claim is unavailable');
+    }
+
+    const entry = this.liveAttempts.get(inputKey(input));
+    if (process.status === 'created') {
+      const ticket = await this.durableCoordinator.processCancelCoordinator.acceptStop({
+        workspaceId: process.workspaceId,
+        processId: process.processId,
+        expectedClaimEpoch: process.claimEpoch,
+        expectedClaimOwner: process.claimOwnerId,
+        reason: 'cancel',
+        idempotencyKey: 'attempt-cancel:' + inputKey(input),
+        timestamp: this.now(),
+        eventContext: { correlationId: input.correlationId, causationId: input.causationId },
+        stopOrigin: 'EXPLICIT_CANCEL',
+      });
+      const stopped = await ticket.result;
+      await this.failSessionIfNonTerminal(session, input, 'PROVIDER_CANCELLED_BEFORE_START');
+      return stoppedOutcome(stopped, 'EXPLICIT_CANCEL');
+    }
+    if (entry === undefined) {
+      throw new Error('LIVE_EXECUTION_UNAVAILABLE: exact live Stage-attempt rendezvous is unavailable');
+    }
+    await this.stopEntry(entry, 'EXPLICIT_CANCEL', input.correlationId, input.causationId);
+    return entry.final.promise;
   }
 
   private async validateInFlight(
@@ -380,44 +503,35 @@ export class StageExecutionCoordinator {
     return promise;
   }
 
-  private async runToFinal(
-    handle: NativeProcessHandle,
-    context: {
-      readonly adapter: RuntimeProviderAdapter;
-      readonly input: StageExecutionInput;
-      readonly eventContext: RuntimeEventContext;
-      readonly stdoutWriter: Awaited<ReturnType<DurableProcessCoordinator['beginOutput']>>;
-      readonly stderrWriter: Awaited<ReturnType<DurableProcessCoordinator['beginOutput']>>;
-      readonly startedAtMs: number;
-      readonly bound: Promise<DurableProcessView>;
-      readonly activeSession: Promise<ActiveSessionState>;
-      readonly final: Deferred<StageExecutionOutcome>;
-    },
-  ): Promise<void> {
-    const parseContext: ProviderParseContext = (context.adapter as unknown as { createParseContext(): ProviderParseContext }).createParseContext();
-    const parsed: { events: ProviderNormalizedEvent[] } = { events: [] };
-    let stderrText = '';
+  private async runToFinal(entry: LiveAttemptRendezvous): Promise<void> {
+    const handle = entry.handle;
+    if (handle === undefined) return;
+    const stdoutDecoder = new TextDecoder('utf-8');
+    const stderrDecoder = new TextDecoder('utf-8');
+    entry.stdoutDecoder = stdoutDecoder;
+    entry.stderrDecoder = stderrDecoder;
+    entry.stdoutDrain = this.drainStdout(entry, stdoutDecoder);
+    entry.stderrDrain = this.drainStderr(entry, stderrDecoder);
     try {
-      const stdoutDecoder = new TextDecoder('utf-8');
-      const stderrDecoder = new TextDecoder('utf-8');
-      await Promise.all([
-        this.drainStdout(handle, context, stdoutDecoder, parseContext, parsed),
-        this.drainStderr(handle, context, stderrDecoder, (value: string) => { stderrText = value; }),
+      const observed = await Promise.race([
+        handle.waitExit().then(exit => ({ kind: 'exit' as const, exit })),
+        entry.captureStop.promise.then(() => ({ kind: 'stop' as const })),
       ]);
-      const stdoutTail = stdoutDecoder.decode();
-      if (stdoutTail.length > 0) {
-        parsed.events = [...parsed.events, ...context.adapter.parseChunk(stdoutTail, parseContext).events];
+      if (observed.kind === 'stop') {
+        await Promise.allSettled([entry.stdoutDrain, entry.stderrDrain]);
+        return;
       }
-      parsed.events = [...parsed.events, ...context.adapter.finishParse(parseContext).events];
-      const stderrTail = stderrDecoder.decode();
-      if (stderrTail.length > 0) {
-        stderrText = boundedAppend(stderrText, stderrTail, this.stderrRetainedBytes);
-      }
-      const exit = await handle.waitExit();
-      const durationMs = Date.now() - context.startedAtMs;
-      const processView = await context.bound;
+      await Promise.all([entry.stdoutDrain, entry.stderrDrain]);
+      if (entry.captureStopped || entry.stopPromise !== undefined) return;
+
+      this.finishParserTail(entry);
+
+      const processView = await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
+      if (processView === null) throw new Error('PROCESS_EXITED: process claim disappeared');
+      if (processView.status === 'stopping' || entry.stopPromise !== undefined) return;
+      const durationMs = Math.max(0, Date.parse(this.now()) - entry.startedAtMs);
       const procOutcome = await this.durableCoordinator.transitionProcess({
-        workspaceId: context.input.workspaceId,
+        workspaceId: entry.input.workspaceId,
         processId: processView.processId,
         expectedVersion: processView.version,
         expectedClaimEpoch: processView.claimEpoch,
@@ -425,80 +539,54 @@ export class StageExecutionCoordinator {
         expectedFrom: 'running',
         to: 'exited',
         timestamp: this.now(),
-        exitCode: exit.exitCode,
-        exitSignal: exit.signal,
-        terminationReason: exit.exitCode === 0 ? null : 'non-zero-exit',
+        exitCode: observed.exit.exitCode,
+        exitSignal: observed.exit.signal,
+        terminationReason: observed.exit.exitCode === 0 ? null : 'non-zero-exit',
         cleanupResult: null,
         durationMs,
         graceful: false,
         force: false,
-        eventContext: context.eventContext,
+        eventContext: entry.eventContext,
       });
-      requireDurable(procOutcome, 'PROCESS_EXITED');
-      const stdoutFinal = await context.stdoutWriter.finalize();
-      const stderrFinal = await context.stderrWriter.finalize();
-      requireOutputFinalize(stdoutFinal, 'STDOUT_FINALIZE');
-      requireOutputFinalize(stderrFinal, 'STDERR_FINALIZE');
-      const artifactIds = [stdoutFinal, stderrFinal]
-        .map(result => result.outcome.kind === 'applied' || result.outcome.kind === 'duplicate' || result.outcome.kind === 'finalized' ? (result.outcome as { value: { artifactId: string } }).value.artifactId : undefined)
-        .filter((id): id is string => typeof id === 'string');
-      const finalized = await context.adapter.finalize({
-        exitCode: exit.exitCode,
-        signal: exit.signal,
-        parsedEvents: parsed.events,
-        stderr: stderrText,
-        cancelled: false,
-      });
-      const session = await context.activeSession;
-      const terminalOutcome = await this.sessionRepository.casSessionTransition({
-        workspaceId: context.input.workspaceId,
-        sessionId: session.sessionId,
-        expectedVersion: session.version,
-        expectedClaimEpoch: session.claimEpoch,
-        expectedClaimOwner: session.claimOwnerId,
-        expectedFrom: 'active',
-        to: finalized.status === 'completed' ? 'completed' : 'failed',
-        timestamp: this.now(),
-        failureCode: finalized.status === 'completed' ? undefined : finalized.error?.code,
-        failureDetailRedacted: finalized.status === 'completed' ? undefined : 'provider session terminal',
-        eventContext: context.eventContext,
-      });
-      if (terminalOutcome.kind !== 'applied' && terminalOutcome.kind !== 'terminal') {
-        throw new Error('PROVIDER_SESSION_TERMINAL_FAILED');
+      if (procOutcome.kind !== 'applied' && procOutcome.kind !== 'terminal') {
+        const current = await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
+        if (current?.status === 'stopping' && entry.stopPromise !== undefined) return;
+        throw new Error('PROCESS_EXITED: durable Process terminal CAS failed');
       }
-      if (finalized.status === 'completed') {
-        context.final.resolve({
-          kind: 'completed',
-          durationMs,
-          artifactIds,
-          outputContractSatisfied: true,
-          ...(finalized.output === undefined ? {} : { output: finalized.output }),
-        });
-      } else {
-        const error = finalized.error ?? { code: 'PROVIDER_SESSION_FAILED', phase: 'finalize', retryable: false, message: 'Provider session failed' };
-        context.final.resolve(this.failed(error.code, error.message, error.phase, context.input, error.retryable));
-      }
+      const terminalProcess = procOutcome.value ?? await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
+      if (entry.stopPromise !== undefined || terminalProcess?.status === 'stopping') return;
+      entry.naturalDisposition = { kind: 'natural', exit: observed.exit, durationMs };
+      await this.finalizeAttemptOnce(entry, entry.naturalDisposition);
     } catch (error) {
-      context.final.resolve(this.failedFromError(error, 'runtime', context.input));
+      if (entry.stopPromise !== undefined) return;
+      await this.finalizeAttemptOnce(entry, { kind: 'runtime-failure', error });
     }
   }
 
-  private async drainStdout(
-    handle: NativeProcessHandle,
-    context: { readonly adapter: RuntimeProviderAdapter; readonly stdoutWriter: Awaited<ReturnType<DurableProcessCoordinator['beginOutput']>> },
-    decoder: TextDecoder,
-    parseContext: ProviderParseContext,
-    parsed: { events: ProviderNormalizedEvent[] },
-  ): Promise<void> {
+  private async drainStdout(entry: LiveAttemptRendezvous, decoder: TextDecoder): Promise<void> {
+    const handle = entry.handle;
+    if (handle === undefined) return;
+    const iterator = handle.streams.stdout[Symbol.asyncIterator]();
     let offset = 0;
-    for await (const chunk of handle.streams.stdout) {
-      const bytes = toBytes(chunk);
+    for (;;) {
+      const nextPromise = iterator.next().then(result => ({ kind: 'next' as const, result }));
+      const winner = await Promise.race([
+        nextPromise,
+        entry.captureStop.promise.then(() => ({ kind: 'stop' as const })),
+      ]);
+      if (winner.kind === 'stop') {
+        try { void iterator.return?.(); } catch { /* best effort interruption */ }
+        return;
+      }
+      if (winner.result.done || entry.captureStopped) return;
+      const bytes = toBytes(winner.result.value);
       const text = decoder.decode(bytes, { stream: true });
       if (text.length > 0) {
-        parsed.events = [...parsed.events, ...context.adapter.parseChunk(text, parseContext).events];
+        entry.parsedEvents.push(...entry.adapter.parseChunk(text, entry.parserContext).events);
       }
+      if (entry.captureStopped) return;
       offset += bytes.length;
-      const outcome = await context.stdoutWriter.append({
+      const outcome = await entry.stdoutWriter.append({
         stream: 'stdout',
         sequence: offset,
         sourceOffset: offset - bytes.length,
@@ -511,20 +599,28 @@ export class StageExecutionCoordinator {
     }
   }
 
-  private async drainStderr(
-    handle: NativeProcessHandle,
-    context: { readonly stderrWriter: Awaited<ReturnType<DurableProcessCoordinator['beginOutput']>> },
-    decoder: TextDecoder,
-    setText: (value: string) => void,
-  ): Promise<void> {
-    let stderrText = '';
+  private async drainStderr(entry: LiveAttemptRendezvous, decoder: TextDecoder): Promise<void> {
+    const handle = entry.handle;
+    if (handle === undefined) return;
+    const iterator = handle.streams.stderr[Symbol.asyncIterator]();
     let offset = 0;
-    for await (const chunk of handle.streams.stderr) {
-      const bytes = toBytes(chunk);
+    for (;;) {
+      const nextPromise = iterator.next().then(result => ({ kind: 'next' as const, result }));
+      const winner = await Promise.race([
+        nextPromise,
+        entry.captureStop.promise.then(() => ({ kind: 'stop' as const })),
+      ]);
+      if (winner.kind === 'stop') {
+        try { void iterator.return?.(); } catch { /* best effort interruption */ }
+        return;
+      }
+      if (winner.result.done || entry.captureStopped) return;
+      const bytes = toBytes(winner.result.value);
       const text = decoder.decode(bytes, { stream: true });
-      stderrText = boundedAppend(stderrText, text, this.stderrRetainedBytes);
+      entry.stderrText = boundedAppend(entry.stderrText, text, this.stderrRetainedBytes);
+      if (entry.captureStopped) return;
       offset += bytes.length;
-      const outcome = await context.stderrWriter.append({
+      const outcome = await entry.stderrWriter.append({
         stream: 'stderr',
         sequence: offset,
         sourceOffset: offset - bytes.length,
@@ -535,7 +631,357 @@ export class StageExecutionCoordinator {
       });
       requireAppend(outcome, 'STDERR_APPEND');
     }
-    setText(stderrText);
+  }
+
+  private async stopEntry(
+    entry: LiveAttemptRendezvous,
+    origin: ProcessStopOrigin,
+    correlationId = entry.eventContext.correlationId,
+    causationId = entry.eventContext.causationId,
+  ): Promise<StageExecutionOutcome> {
+    if (entry.stopPromise === undefined) {
+      entry.stopOrigin = entry.stopOrigin ?? origin;
+      const stopPromise = this.acceptEntryStop(entry, origin, correlationId, causationId);
+      entry.stopPromise = stopPromise;
+    }
+    const stopped = await entry.stopPromise;
+    if (entry.finalizationPromise !== undefined) return entry.finalizationPromise;
+    if (entry.naturalDisposition !== undefined && stopped.process.status === 'exited') {
+      return this.finalizeAttemptOnce(entry, entry.naturalDisposition);
+    }
+    const winningOrigin = entry.stopOrigin ?? origin;
+    const disposition: AttemptDisposition = winningOrigin === 'P4_ACTIVATION_FAILURE'
+      ? { kind: 'p4-activation-failure', stop: stopped }
+      : { kind: 'stop', stop: stopped, stopOrigin: winningOrigin };
+    return this.finalizeAttemptOnce(entry, disposition);
+  }
+
+  private async acceptEntryStop(
+    entry: LiveAttemptRendezvous,
+    origin: ProcessStopOrigin,
+    correlationId: string,
+    causationId: string,
+  ): Promise<ProcessStopResult> {
+    const process = await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
+    if (process === null) throw new Error('LIVE_EXECUTION_UNAVAILABLE: Process claim disappeared');
+    const ticket = await this.durableCoordinator.processCancelCoordinator.acceptStop({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      reason: origin === 'EXPLICIT_CANCEL' ? 'cancel' : origin,
+      idempotencyKey: 'attempt-stop:' + entry.key,
+      timestamp: this.now(),
+      eventContext: { correlationId, causationId },
+      stopOrigin: origin,
+    });
+    entry.captureStopped = true;
+    entry.captureStop.resolve(undefined);
+    if (process.status !== 'exited' && process.status !== 'failed' && process.status !== 'orphaned' && process.status !== 'unknown') {
+      try {
+        await entry.adapter.cancel({
+          sessionId: entry.sessionId,
+          processId: entry.processId,
+          reason: origin === 'EXPLICIT_CANCEL' ? 'cancel' : origin,
+          stopTicketAccepted: true,
+          processPort: { requestGraceful: async () => ({ accepted: true }) },
+        });
+      } catch {
+        // Provider graceful is optional; Process tree cleanup remains required.
+      }
+    }
+    return ticket.result;
+  }
+
+  private finalizeAttemptOnce(
+    entry: LiveAttemptRendezvous,
+    disposition: AttemptDisposition,
+  ): Promise<StageExecutionOutcome> {
+    if (entry.finalizationPromise !== undefined) return entry.finalizationPromise;
+    const promise = this.performFinalization(entry, disposition);
+    entry.finalizationPromise = promise;
+    void promise.then(
+      () => {
+        if (this.liveAttempts.get(entry.key) === entry) this.liveAttempts.delete(entry.key);
+      },
+      () => {
+        if (this.liveAttempts.get(entry.key) === entry) this.liveAttempts.delete(entry.key);
+      },
+    );
+    return promise;
+  }
+
+  private async performFinalization(
+    entry: LiveAttemptRendezvous,
+    disposition: AttemptDisposition,
+  ): Promise<StageExecutionOutcome> {
+    try {
+      await Promise.allSettled([entry.stdoutDrain, entry.stderrDrain].filter((task): task is Promise<void> => task !== undefined));
+      if (disposition.kind === 'natural') {
+        return await this.finalizeNatural(entry, disposition);
+      }
+      if (disposition.kind === 'stop') {
+        return await this.finalizeStopped(entry, disposition.stop, disposition.stopOrigin);
+      }
+      if (disposition.kind === 'p4-activation-failure') {
+        await this.finalizeOrAbortOutputs(entry, disposition.stop.proven);
+        await this.reconcileSession(entry, 'failed', 'PROVIDER_SESSION_FAILED', 'provider session activation failed');
+        const outcome = this.failed('PROVIDER_SESSION_FAILED', 'Provider session could not transition to active', 'startup', entry.input, false);
+        entry.final.resolve(outcome);
+        return outcome;
+      }
+      if (disposition.kind === 'runtime-failure') {
+        await this.abortWriters(entry.stdoutWriter, entry.stderrWriter);
+        await this.reconcileSession(entry, 'failed', 'PROVIDER_SESSION_FAILED', 'provider session failed during capture');
+        const outcome = this.failedFromError(disposition.error, 'runtime', entry.input);
+        entry.final.resolve(outcome);
+        return outcome;
+      }
+      await this.abortWriters(entry.stdoutWriter, entry.stderrWriter);
+      await this.reconcileSession(entry, 'failed', 'PROVIDER_START_FAILED', 'provider process could not start');
+      const outcome = this.failed('PROVIDER_START_FAILED', 'Provider process could not start', 'startup', entry.input, false);
+      entry.final.resolve(outcome);
+      return outcome;
+    } catch (error) {
+      try {
+        await this.abortWriters(entry.stdoutWriter, entry.stderrWriter);
+      } catch {
+        // A failed writer abort is itself fail-closed; it must not create a
+        // second finalization rejection or bypass the shared Deferred.
+      }
+      try {
+        await this.reconcileSession(entry, 'failed', 'PROVIDER_SESSION_FAILED', 'provider session terminalization failed');
+      } catch {
+        // The returned Stage failure is already fail-closed; persisted state
+        // remains the source of truth for recovery.
+      }
+      const outcome = this.failedFromError(error, 'runtime', entry.input);
+      entry.final.resolve(outcome);
+      return outcome;
+    }
+  }
+
+  private async finalizeNatural(
+    entry: LiveAttemptRendezvous,
+    disposition: Extract<AttemptDisposition, { readonly kind: 'natural' }>,
+  ): Promise<StageExecutionOutcome> {
+    this.finishParserTail(entry);
+    const artifactIds = await this.finalizeOutputs(entry);
+    const finalized = await entry.adapter.finalize({
+      exitCode: disposition.exit.exitCode,
+      signal: disposition.exit.signal,
+      parsedEvents: entry.parsedEvents,
+      stderr: entry.stderrText,
+      cancelled: false,
+    });
+    const desired = finalized.status === 'completed' ? 'completed' : 'failed';
+    const session = await this.reconcileSession(
+      entry,
+      desired,
+      finalized.status === 'completed' ? undefined : finalized.error?.code,
+      finalized.status === 'completed' ? undefined : 'provider session terminal',
+    );
+    if (session.status === 'completed' && finalized.status === 'completed') {
+      const outcome: StageExecutionOutcome = {
+        kind: 'completed',
+        durationMs: disposition.durationMs,
+        artifactIds,
+        outputContractSatisfied: true,
+        ...(finalized.output === undefined ? {} : { output: finalized.output }),
+      };
+      entry.final.resolve(outcome);
+      return outcome;
+    }
+    const error = finalized.error ?? { code: 'PROVIDER_SESSION_FAILED', phase: 'finalize', retryable: false, message: 'Provider session failed' };
+    const outcome = this.failed(error.code, error.message, error.phase, entry.input, error.retryable);
+    entry.final.resolve(outcome);
+    return outcome;
+  }
+
+  private async finalizeStopped(
+    entry: LiveAttemptRendezvous,
+    stopped: ProcessStopResult,
+    origin: ProcessStopOrigin,
+  ): Promise<StageExecutionOutcome> {
+    const explicit = origin === 'EXPLICIT_CANCEL';
+    if (stopped.proven) {
+      if (explicit && stopped.cleanup !== null) {
+        this.finishParserTail(entry);
+        await this.finalizeOutputs(entry);
+        await entry.adapter.finalize({
+          exitCode: null,
+          signal: null,
+          parsedEvents: entry.parsedEvents,
+          stderr: entry.stderrText,
+          cancelled: true,
+        });
+        await this.reconcileSession(entry, 'cancelled', undefined, undefined);
+        const outcome = stoppedOutcome(stopped, origin);
+        entry.final.resolve(outcome);
+        return outcome;
+      }
+      if (explicit && stopped.cleanup === null) {
+        await this.abortWriters(entry.stdoutWriter, entry.stderrWriter);
+        await this.reconcileSession(entry, 'failed', 'PROVIDER_START_FAILED', 'provider process could not start');
+        const outcome = this.failed('PROVIDER_START_FAILED', 'Provider process could not start', 'startup', entry.input, false);
+        entry.final.resolve(outcome);
+        return outcome;
+      }
+      await this.finalizeOrAbortOutputs(entry, true);
+      await this.reconcileSession(entry, 'failed', origin === 'STARTUP_TIMEOUT' ? 'PROVIDER_START_FAILED' : 'PROVIDER_SESSION_FAILED', 'provider timeout terminal');
+      const outcome = this.failed(
+        origin === 'STARTUP_TIMEOUT' ? 'PROVIDER_START_FAILED' : 'PROVIDER_SESSION_FAILED',
+        origin === 'STARTUP_TIMEOUT' ? 'Provider process could not start before timeout' : 'Provider session timed out',
+        origin === 'STARTUP_TIMEOUT' ? 'startup' : 'runtime',
+        entry.input,
+        false,
+      );
+      entry.final.resolve(outcome);
+      return outcome;
+    }
+
+    await this.abortWriters(entry.stdoutWriter, entry.stderrWriter);
+    await this.reconcileSession(entry, 'failed', 'PROVIDER_SESSION_FAILED', 'provider process cleanup could not be proven');
+    if (explicit || origin === 'IDLE_TIMEOUT' || origin === 'TOTAL_TIMEOUT') {
+      const outcome = stoppedOutcome(stopped, origin);
+      entry.final.resolve(outcome);
+      return outcome;
+    }
+    const outcome = this.failed('PROVIDER_SESSION_FAILED', 'Provider process cleanup could not be proven', 'runtime', entry.input, false);
+    entry.final.resolve(outcome);
+    return outcome;
+  }
+
+  private async finalizeOutputs(entry: LiveAttemptRendezvous): Promise<string[]> {
+    const stdoutFinal = await entry.stdoutWriter.finalize();
+    const stderrFinal = await entry.stderrWriter.finalize();
+    requireOutputFinalize(stdoutFinal, 'STDOUT_FINALIZE');
+    requireOutputFinalize(stderrFinal, 'STDERR_FINALIZE');
+    return [stdoutFinal, stderrFinal]
+      .map(result => result.outcome.kind === 'applied' || result.outcome.kind === 'duplicate' || result.outcome.kind === 'finalized'
+        ? (result.outcome as { value: { artifactId: string } }).value.artifactId
+        : undefined)
+      .filter((id): id is string => typeof id === 'string');
+  }
+
+  private async finalizeOrAbortOutputs(entry: LiveAttemptRendezvous, proven: boolean): Promise<void> {
+    if (proven) {
+      await this.finalizeOutputs(entry);
+    } else {
+      await this.abortWriters(entry.stdoutWriter, entry.stderrWriter);
+    }
+  }
+
+  private finishParserTail(entry: LiveAttemptRendezvous): void {
+    if (entry.parserFinished) return;
+    entry.parserFinished = true;
+    const stdoutTail = entry.stdoutDecoder?.decode() ?? '';
+    if (stdoutTail.length > 0) {
+      entry.parsedEvents.push(...entry.adapter.parseChunk(stdoutTail, entry.parserContext).events);
+    }
+    entry.parsedEvents.push(...entry.adapter.finishParse(entry.parserContext).events);
+    const stderrTail = entry.stderrDecoder?.decode() ?? '';
+    if (stderrTail.length > 0) {
+      entry.stderrText = boundedAppend(entry.stderrText, stderrTail, this.stderrRetainedBytes);
+    }
+  }
+
+  private async abortWriters(stdout: DurableOutputWriter | undefined, stderr: DurableOutputWriter | undefined): Promise<void> {
+    await Promise.all([
+      stdout === undefined ? Promise.resolve() : stdout.abort(),
+      stderr === undefined ? Promise.resolve() : stderr.abort(),
+    ]);
+  }
+
+  private async reconcileSession(
+    entry: LiveAttemptRendezvous,
+    to: 'completed' | 'failed' | 'cancelled',
+    failureCode?: string,
+    failureDetailRedacted?: string,
+  ): Promise<DurableSessionView> {
+    const current = await this.sessionRepository.getSession(entry.input.workspaceId, entry.sessionId);
+    if (current === null) throw new Error('PROVIDER_SESSION_TERMINAL_FAILED: session disappeared');
+    if (isTerminalSession(current.status)) return current;
+    const outcome = await this.sessionRepository.casSessionTransition({
+      workspaceId: current.workspaceId,
+      sessionId: current.sessionId,
+      expectedVersion: current.version,
+      expectedClaimEpoch: current.claimEpoch,
+      expectedClaimOwner: current.claimOwnerId,
+      expectedFrom: current.status,
+      to,
+      timestamp: this.now(),
+      failureCode,
+      failureDetailRedacted,
+      eventContext: entry.eventContext,
+    });
+    if (outcome.kind === 'applied' || outcome.kind === 'duplicate' || outcome.kind === 'terminal') {
+      if (outcome.value !== undefined) return outcome.value;
+    }
+    const persisted = await this.sessionRepository.getSession(entry.input.workspaceId, entry.sessionId);
+    if (persisted !== null && isTerminalSession(persisted.status)) return persisted;
+    throw new Error('PROVIDER_SESSION_TERMINAL_FAILED: terminal Session CAS did not settle');
+  }
+
+  private async failBeforeSpawn(
+    input: StageExecutionInput,
+    sessionId: string,
+    process: DurableProcessView,
+  ): Promise<void> {
+    if (process.status === 'created') {
+      await this.durableCoordinator.transitionProcess({
+        workspaceId: process.workspaceId,
+        processId: process.processId,
+        expectedVersion: process.version,
+        expectedClaimEpoch: process.claimEpoch,
+        expectedClaimOwner: process.claimOwnerId,
+        expectedFrom: 'created',
+        to: 'failed',
+        timestamp: this.now(),
+        errorCode: 'PROCESS_ARTIFACT_WRITE_FAILED',
+        errorDetailRedacted: 'provider output initialization failed',
+        failureOutcome: 'cancelled-before-spawn',
+        eventContext: { correlationId: input.operationId, causationId: input.operationId },
+      });
+    }
+    const session = await this.sessionRepository.getSession(input.workspaceId, sessionId);
+    if (session !== null && !isTerminalSession(session.status)) {
+      await this.sessionRepository.casSessionTransition({
+        workspaceId: session.workspaceId,
+        sessionId: session.sessionId,
+        expectedVersion: session.version,
+        expectedClaimEpoch: session.claimEpoch,
+        expectedClaimOwner: session.claimOwnerId,
+        expectedFrom: session.status,
+        to: 'failed',
+        timestamp: this.now(),
+        failureCode: 'PROVIDER_START_FAILED',
+        failureDetailRedacted: 'provider process could not start',
+        eventContext: { correlationId: input.operationId, causationId: input.operationId },
+      });
+    }
+  }
+
+  private async failSessionIfNonTerminal(
+    session: DurableSessionView,
+    input: StageAttemptCancelInput,
+    failureCode: string,
+  ): Promise<void> {
+    const current = await this.sessionRepository.getSession(input.workspaceId, session.sessionId);
+    if (current === null || isTerminalSession(current.status)) return;
+    await this.sessionRepository.casSessionTransition({
+      workspaceId: current.workspaceId,
+      sessionId: current.sessionId,
+      expectedVersion: current.version,
+      expectedClaimEpoch: current.claimEpoch,
+      expectedClaimOwner: current.claimOwnerId,
+      expectedFrom: current.status,
+      to: 'failed',
+      timestamp: this.now(),
+      failureCode,
+      failureDetailRedacted: 'provider process cancelled before start',
+      eventContext: { correlationId: input.correlationId, causationId: input.causationId },
+    });
   }
 
   private failed(
@@ -567,6 +1013,49 @@ function requireDurable<T>(outcome: DurableCasOutcome<T>, label: string): void {
 function requireOutputFinalize(result: { outcome: DurableCasOutcome<{ artifactId: string }> }, label: string): void {
   if (result.outcome.kind === 'applied' || result.outcome.kind === 'duplicate' || result.outcome.kind === 'finalized') return;
   throw new Error(label + ': ' + result.outcome.kind);
+}
+
+function attemptKey(input: Pick<StageExecutionInput, 'workspaceId' | 'runId' | 'stageId' | 'stageAttempt'>): string {
+  return [input.workspaceId, input.runId, input.stageId, String(input.stageAttempt)].join('|');
+}
+
+function inputKey(input: StageAttemptCancelInput): string {
+  return attemptKey(input);
+}
+
+function sameSessionClaim(left: DurableSessionView, right: DurableSessionView): boolean {
+  return left.sessionId === right.sessionId
+    && left.workspaceId === right.workspaceId
+    && left.runId === right.runId
+    && left.stageId === right.stageId
+    && left.stageAttempt === right.stageAttempt
+    && left.authorityRole === right.authorityRole
+    && left.claimEpoch === right.claimEpoch
+    && left.claimOwnerId === right.claimOwnerId;
+}
+
+function sameProcessClaim(left: DurableProcessView, right: DurableProcessView): boolean {
+  return left.processId === right.processId
+    && left.workspaceId === right.workspaceId
+    && left.runId === right.runId
+    && left.stageId === right.stageId
+    && left.stageAttempt === right.stageAttempt
+    && left.authorityRole === right.authorityRole
+    && left.claimEpoch === right.claimEpoch
+    && left.claimOwnerId === right.claimOwnerId;
+}
+
+function isTerminalSession(status: DurableSessionView['status']): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
+function stoppedOutcome(stop: ProcessStopResult, stopOrigin: ProcessStopOrigin): StageStopOutcome {
+  return {
+    kind: 'stopped',
+    cleanup: stop.cleanup,
+    proven: stop.proven,
+    stopOrigin,
+  };
 }
 
 function configurationFromSnapshot(snapshot: ProviderConfigurationSnapshotV1): ProviderConfigurationInput {

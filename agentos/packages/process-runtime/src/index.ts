@@ -24,6 +24,7 @@ export * from './manager.js';
 export * from './repository-port.js';
 export * from './artifact-sink.js';
 export * from './durable-coordinator.js';
+export * from './process-cancel-coordinator.js';
 export * from './node-driver.js';
 export * from './probe.js';
 export * from './testing/mock-driver.js';

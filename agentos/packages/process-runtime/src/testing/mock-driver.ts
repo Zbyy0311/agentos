@@ -89,6 +89,10 @@ export class MockByteStream implements AsyncIterable<Uint8Array> {
           this.#waiters.push(resolve);
         });
       },
+      return: async (): Promise<IteratorResult<Uint8Array>> => {
+        this.end();
+        return { value: undefined, done: true };
+      },
     };
   }
 }
@@ -165,6 +169,7 @@ export class MockProcessDriver implements PlatformProcessDriver {
   terminateError: unknown = null;
   verifyMode: 'auto' | 'manual' = 'auto';
   verifyClassification: SurvivorClassification = 'complete';
+  verifyProofMode: 'valid' | 'bare' = 'valid';
   verifyError: unknown = null;
 
   readonly #spawnEntered = new Signal();
@@ -243,7 +248,7 @@ export class MockProcessDriver implements PlatformProcessDriver {
     if (pending === null) throw new Error('no held verification to settle');
     this.#pendingVerify = null;
     this.verifyMode = 'auto';
-    pending.resolve({ classification, knownPids });
+    pending.resolve(this.verification(classification, knownPids));
   }
 
   spawn(launch: ValidatedLaunch): Promise<NativeProcessHandle> {
@@ -280,7 +285,7 @@ export class MockProcessDriver implements PlatformProcessDriver {
       this.#pendingVerify = deferred<SurvivorVerification>();
       return this.#pendingVerify.promise;
     }
-    return Promise.resolve({ classification: this.verifyClassification, knownPids: [] });
+    return Promise.resolve(this.verification(this.verifyClassification, []));
   }
 
   inspectIdentity(identity: NativeIdentity): Promise<IdentityInspection> {
@@ -306,5 +311,18 @@ export class MockProcessDriver implements PlatformProcessDriver {
     this.#nextPid += 1;
     this.handles.push(handle);
     return handle;
+  }
+
+  private verification(
+    classification: SurvivorClassification,
+    knownPids: readonly number[],
+  ): SurvivorVerification {
+    return {
+      classification,
+      knownPids,
+      ...(classification === 'complete' && this.verifyProofMode === 'valid'
+        ? { proof: { kind: 'owned-tree-enumeration' as const } }
+        : {}),
+    };
   }
 }

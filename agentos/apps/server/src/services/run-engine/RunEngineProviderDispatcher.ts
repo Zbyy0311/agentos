@@ -86,6 +86,7 @@ export class RunEngineProviderDispatcher {
           // nothing further to progress now.
           break;
         }
+        if (stageOutcome === 'stopped') break;
         continue;
       }
       const result = this.engine.dispatch({ workspaceId, runId });
@@ -99,7 +100,7 @@ export class RunEngineProviderDispatcher {
     runId: string,
     stage: RunStage,
     stages: readonly RunStage[],
-  ): Promise<'progressed' | 'active'> {
+  ): Promise<'progressed' | 'active' | 'stopped'> {
     const snapshot = this.runSnapshotRepository.findByRunId(workspaceId, runId);
     if (snapshot === undefined || snapshot.payload.schemaVersion !== 2) {
       throw new Error('RUN_ENGINE_SNAPSHOT_INVALID: provider execution requires a V2 snapshot');
@@ -126,6 +127,11 @@ export class RunEngineProviderDispatcher {
       operationId: operation.id,
     };
     const outcome = await this.coordinator.execute(input);
+    if (outcome.kind === 'stopped') {
+      // Internal P5A stop outcomes are deliberately non-lifecycle. P5D owns
+      // any later proven cancellation hand-off to canonical Run/Stage state.
+      return 'stopped';
+    }
     const freshRun = this.requireRun(workspaceId, runId);
     const freshStage = this.runStageRepository.listByRun(workspaceId, runId).find(candidate => candidate.id === stage.id);
     if (freshStage === undefined) {

@@ -8,6 +8,7 @@ import { createM3RuntimeEventRegistry, type AgentSnapshotV1, type ProviderConfig
 import {
   DurableProcessCoordinator,
   FileArtifactSink,
+  MockNativeProcessHandle,
   NodeProcessDriver,
   type ExitEvidence,
   type NativeIdentity,
@@ -195,11 +196,157 @@ class FakeDriver implements PlatformProcessDriver {
   inspectIdentity = async (identity: NativeIdentity): Promise<{ kind: 'match'; identity: NativeIdentity }> => ({ kind: 'match', identity });
 }
 
+class BlockingCancelDriver implements PlatformProcessDriver {
+  readonly handle = new MockNativeProcessHandle(5252, KIMI_EXE);
+  readonly spawnEntered: Promise<void>;
+  spawnCalls = 0;
+  gracefulStopCalls = 0;
+  terminateTreeCalls = 0;
+  verifySurvivorsCalls = 0;
+
+  constructor(private readonly validProof = true) {
+    this.spawnEntered = new Promise(resolve => { this.resolveSpawnEntered = resolve; });
+  }
+
+  private resolveSpawnEntered: () => void = () => undefined;
+
+  async spawn() {
+    this.spawnCalls += 1;
+    this.resolveSpawnEntered();
+    return this.handle;
+  }
+
+  async gracefulStop() {
+    this.gracefulStopCalls += 1;
+    return { delivered: true, detail: 'blocking mock graceful stop' };
+  }
+
+  async terminateTree() {
+    this.terminateTreeCalls += 1;
+    return { classification: 'complete' as const, attemptedMembers: [this.handle.pid], errors: [] };
+  }
+
+  async verifySurvivors() {
+    this.verifySurvivorsCalls += 1;
+    return {
+      classification: 'complete' as const,
+      knownPids: [this.handle.pid],
+      ...(this.validProof ? { proof: { kind: 'owned-tree-enumeration' as const } } : {}),
+    };
+  }
+
+  async inspectIdentity(identity: NativeIdentity) {
+    return { kind: 'match' as const, identity };
+  }
+}
+
+class TailCancelHandle implements NativeProcessHandle {
+  readonly pid = 6262;
+  readonly identity: NativeIdentity = { pid: this.pid, startedAtMs: Date.parse(NOW), executablePath: KIMI_EXE };
+  readonly stdoutStarted: Promise<void>;
+  readonly streams: NativeProcessStreams;
+  private resolveStdoutStarted: () => void = () => undefined;
+  private readonly releaseChunkPromise: Promise<void>;
+  private releaseChunk: () => void = () => undefined;
+  private sent = false;
+
+  constructor(private readonly chunk: string) {
+    this.stdoutStarted = new Promise(resolve => { this.resolveStdoutStarted = resolve; });
+    this.releaseChunkPromise = new Promise(resolve => { this.releaseChunk = resolve; });
+    this.streams = {
+      stdout: {
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<Uint8Array>> => {
+            if (!this.sent) {
+              this.resolveStdoutStarted();
+              await this.releaseChunkPromise;
+              this.sent = true;
+              return { done: false, value: new TextEncoder().encode(this.chunk) };
+            }
+            return new Promise<IteratorResult<Uint8Array>>(() => undefined);
+          },
+          return: async (): Promise<IteratorResult<Uint8Array>> => ({ done: true, value: undefined }),
+        }),
+      },
+      stderr: {
+        [Symbol.asyncIterator]: () => ({
+          next: (): Promise<IteratorResult<Uint8Array>> => new Promise(() => undefined),
+          return: async (): Promise<IteratorResult<Uint8Array>> => ({ done: true, value: undefined }),
+        }),
+      },
+    };
+  }
+
+  waitExit(): Promise<ExitEvidence> {
+    return new Promise(() => undefined);
+  }
+
+  release(): void {
+    this.releaseChunk();
+  }
+}
+
+class TailCancelDriver implements PlatformProcessDriver {
+  readonly handle = new TailCancelHandle('{"role":"assistant","content":"buffered"}');
+  spawnCalls = 0;
+  gracefulStopCalls = 0;
+  terminateTreeCalls = 0;
+  verifySurvivorsCalls = 0;
+
+  async spawn(): Promise<NativeProcessHandle> {
+    this.spawnCalls += 1;
+    return this.handle;
+  }
+
+  async gracefulStop(): Promise<{ readonly delivered: boolean; readonly detail: string }> {
+    this.gracefulStopCalls += 1;
+    return { delivered: true, detail: 'tail test graceful stop' };
+  }
+
+  async terminateTree(): Promise<TreeTerminationResult> {
+    this.terminateTreeCalls += 1;
+    return { classification: 'complete', attemptedMembers: [this.handle.pid], errors: [] };
+  }
+
+  async verifySurvivors(): Promise<SurvivorVerification> {
+    this.verifySurvivorsCalls += 1;
+    return { classification: 'complete', knownPids: [this.handle.pid], proof: { kind: 'owned-tree-enumeration' } };
+  }
+
+  async inspectIdentity(identity: NativeIdentity): Promise<{ readonly kind: 'match'; readonly identity: NativeIdentity }> {
+    return { kind: 'match', identity };
+  }
+}
+
+class RecordingKimiAdapter extends KimiCodeProviderAdapter {
+  readonly finalizedInputs: Array<Parameters<KimiCodeProviderAdapter['finalize']>[0]> = [];
+  readonly parsed: Promise<void>;
+  private resolveParsed: () => void = () => undefined;
+
+  constructor(options: ConstructorParameters<typeof KimiCodeProviderAdapter>[0]) {
+    super(options);
+    this.parsed = new Promise(resolve => { this.resolveParsed = resolve; });
+  }
+
+  override parseChunk(chunk: string, context?: Parameters<KimiCodeProviderAdapter['parseChunk']>[1]) {
+    const result = super.parseChunk(chunk, context);
+    this.resolveParsed();
+    return result;
+  }
+
+  override async finalize(input: Parameters<KimiCodeProviderAdapter['finalize']>[0]) {
+    this.finalizedInputs.push(input);
+    return super.finalize(input);
+  }
+}
+
 interface FixtureOptions {
   readonly authFailure?: boolean;
   readonly probe?: ProcessProbePort;
   readonly sessionAdapterFactory?: (repo: ProviderSessionRepository) => DurableSessionRepositoryAdapter;
   readonly outputAdapterFactory?: (repo: ProcessOutputReferenceRepository) => DurableOutputReferenceRepositoryAdapter;
+  readonly failStderrOutput?: boolean;
+  readonly adapter?: KimiCodeProviderAdapter;
 }
 
 function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolean = false) {
@@ -217,15 +364,18 @@ function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolea
   const sessionAdapter = opts.sessionAdapterFactory === undefined ? new DurableSessionRepositoryAdapter(sessionRepo) : opts.sessionAdapterFactory(sessionRepo);
   const processAdapter = new DurableProcessRepositoryAdapter(processRepo);
   const outputAdapter = opts.outputAdapterFactory === undefined ? new DurableOutputReferenceRepositoryAdapter(outputRepo) : opts.outputAdapterFactory(outputRepo);
-  const durableCoordinator = new DurableProcessCoordinator({
+  const coordinatorOptions = {
     sessionRepository: sessionAdapter,
     processRepository: processAdapter,
     outputReferenceRepository: outputAdapter,
     artifactSink: new FileArtifactSink(join(root, 'sink')),
     atomicSeam: seam,
     driver,
-  });
-  const adapter = new KimiCodeProviderAdapter({
+  } satisfies ConstructorParameters<typeof DurableProcessCoordinator>[0];
+  const durableCoordinator = opts.failStderrOutput
+    ? new PartialWriterCoordinator(coordinatorOptions)
+    : new DurableProcessCoordinator(coordinatorOptions);
+  const adapter = opts.adapter ?? new KimiCodeProviderAdapter({
     probe: probe,
     discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
   });
@@ -258,6 +408,13 @@ class SlowSessionAdapter extends DurableSessionRepositoryAdapter {
 class FinalizeFailOutputAdapter extends DurableOutputReferenceRepositoryAdapter {
   async finalizeReference(_input: Parameters<DurableOutputReferenceRepositoryAdapter['finalizeReference']>[0]) {
     return { kind: 'not-found' as const };
+  }
+}
+
+class PartialWriterCoordinator extends DurableProcessCoordinator {
+  async beginOutput(input: Parameters<DurableProcessCoordinator['beginOutput']>[0]) {
+    if (input.stream === 'stderr') throw new Error('stderr writer unavailable');
+    return super.beginOutput(input);
   }
 }
 
@@ -296,6 +453,150 @@ function asyncIterableBytes(chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return { counts, probe };
 }
 describe('StageExecutionCoordinator', () => {
+  it('aborts a partial stdout writer when stderr writer creation fails and never spawns', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), { failStderrOutput: true });
+    try {
+      const outcome = await fx.coordinator.execute(stageInput());
+      assert.equal(outcome.kind, 'failed');
+      assert.equal((fx.driver as unknown as { spawnCalls: number }).spawnCalls, 0);
+      const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(process?.status, 'failed');
+      const session = fx.sessionRepo.findByClaimKey(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(session?.status, 'failed');
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('cancels the exact live attempt through one proof-backed internal stop outcome', async () => {
+    const driver = new BlockingCancelDriver();
+    const fx = fixture(driver);
+    try {
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+      }));
+      await driver.spawnEntered;
+      assert.equal(driver.spawnCalls, 1);
+
+      const outcome = await fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'cancel-correlation',
+        causationId: 'cancel-causation',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      assert.equal(outcome.proven, true);
+      assert.equal((await execution).kind, 'stopped');
+      assert.equal(driver.spawnCalls, 1);
+      assert.equal(driver.terminateTreeCalls, 1);
+      assert.equal(driver.verifySurvivorsCalls, 1);
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('returns stopped but unproven when cancellation receives bare complete', async () => {
+    const driver = new BlockingCancelDriver(false);
+    const fx = fixture(driver);
+    try {
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+      }));
+      await driver.spawnEntered;
+      const outcome = await fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'cancel-bare-correlation',
+        causationId: 'cancel-bare-causation',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      assert.equal(outcome.proven, false);
+      assert.equal((await execution).kind, 'stopped');
+      const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(process?.status, 'orphaned');
+      const session = fx.sessionRepo.findByClaimKey(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(session?.status, 'failed');
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('flushes a buffered parser tail before proven cancellation finalization', async () => {
+    const driver = new TailCancelDriver();
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({
+        found: true,
+        selected: KIMI_EXE,
+        candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }],
+        warnings: [],
+      }),
+    });
+    const fx = fixture(driver, {
+      adapter,
+    });
+    try {
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+      }));
+      await driver.handle.stdoutStarted;
+      driver.handle.release();
+      await adapter.parsed;
+
+      const outcome = await fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'cancel-tail-correlation',
+        causationId: 'cancel-tail-causation',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      assert.equal(outcome.proven, true);
+      const finalized = adapter.finalizedInputs[0];
+      assert.ok(finalized);
+      assert.equal(finalized.cancelled, true);
+      assert.ok(finalized.parsedEvents.some(event => event.type === 'assistant.message'));
+      assert.equal((await execution).kind, 'stopped');
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('fails closed when the cancellation claim uses a different Stage attempt', async () => {
+    const driver = new BlockingCancelDriver();
+    const fx = fixture(driver);
+    try {
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+      }));
+      await driver.spawnEntered;
+      await assert.rejects(
+        fx.coordinator.cancelAttempt({
+          workspaceId: WS,
+          runId: RUN,
+          stageId: STAGE,
+          stageAttempt: 2,
+          correlationId: 'wrong-attempt-correlation',
+          causationId: 'wrong-attempt-causation',
+        }),
+        /LIVE_EXECUTION_UNAVAILABLE/,
+      );
+      driver.handle.pushStdout('{"type":"assistant","role":"assistant","content":"ok"}\n');
+      driver.handle.emitExit();
+      assert.equal((await execution).kind, 'completed');
+    } finally {
+      close(fx);
+    }
+  });
+
   it('runs a successful Kimi vertical slice: one Session, one Process, completed outcome, durable facts', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
     try {
