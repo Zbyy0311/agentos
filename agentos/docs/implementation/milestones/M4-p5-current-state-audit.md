@@ -2,12 +2,14 @@
 
 Status: M4-P5 PRE-IMPLEMENTATION PLANNING — DOCS ONLY — M4-P5 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
 
-Remediation note (2026-08-16): after the Independent Plan Review, the four
-planning documents were remediated in a follow-up docs commit. This audit's
-facts describe the accepted M4-P4 base `750a780c` and remain unchanged except
-the CS-01 clarification below; all ownership/strategy corrections live in the
-remediated owner-decisions, implementation-plan and acceptance-matrix
-documents.
+Remediation note (2026-08-20): after the first Independent Plan Review, the
+four planning documents were remediated in a follow-up docs commit. This
+second docs-only remediation adds the H-4 proof/exposure boundary, explicit
+POSIX blocking semantics, CAN-10 vocabulary correction, and the exact P5C
+event-observation/composition gap. This audit's production facts still
+describe the accepted M4-P4 base `750a780c`; planning ownership/strategy
+corrections live in the owner-decisions, implementation-plan and
+acceptance-matrix documents.
 
 ## 1. Metadata / exact base
 
@@ -87,6 +89,9 @@ Status vocabulary matches the M4 convention:
 | CS-24 | Provider adapter cancel | `kimiCodeAdapter.ts:394-409` | `cancel()` requires accepted stop ticket, then `processPort.requestGraceful` | Adapter-native graceful only after durable stop ticket accepted | interface present; not wired to any coordinator | PARTIAL | P5A |
 | CS-25 | Process tree platform impl | search: no `taskkill`, no Job Object, no process-group, no `detached` production use (`validation.ts:85-86` denies `detached`) | P1 explicitly deferred tree to P5 | MISSING | P5B |
 | CS-26 | Approval-wait idle suspension | `timeouts.ts:85-99` `pauseIdle`/`resumeIdle`; M3 `waiting_approval` evidence in `m3-lifecycle-transition-contracts.ts:72` (stage running->waiting_approval) | idle pauses only during Process `waiting`; no production caller enters `waiting` on the durable path | approval-wait idle suspension only where M3 state proves it | `enterWaiting` exists but no durable-path caller | PARTIAL | P5C |
+| CS-27 | Tree-cleanup proof provenance | `packages/process-runtime/src/driver.ts` / `types.ts` `TreeTerminationResult` + `SurvivorVerification` | current P4 driver surfaces a bare `classification='complete'` / `knownPids=[]` without owned-tree enumeration proof | successful cleanup must require `complete` **and** an enumeration-backed proof marker; no proof is `UNKNOWN`/unproven | MISSING — P5A must reject bare completion; P5B must emit proof only after platform enumeration | P5A/P5B |
+| CS-28 | Canonical approval-event observation composition | `StageExecutionCoordinator.ts`; `run-engine/providerExecutionChain.ts`; `RunStreamService.ts`; `SqliteStore.runStreamService()` | `StageExecutionCoordinator` has no event-observation dependency; the existing production chain does not inject `RunStreamService` | P5C needs one narrow durable-verified Run-event observation port with cursor, replay, fencing and overflow failure semantics | MISSING — no polling or HTTP/SSE dependency may be invented | P5C |
+| CS-29 | Windows inspection evidence fidelity | `packages/process-runtime/src/node-driver.ts` identity inspection is currently liveness-only; no P5B evidence schema yet | the plan must identify the selected inspection facility/version, normalize CIM `CreationDate`, and define incomplete `ExecutablePath` behavior | one auditable facility per run; malformed/missing start time or null/access-denied/incomplete executable identity -> `UNKNOWN`/fail closed; no guessed identity | MISSING | P5B |
 
 ## 4. P4 LOW residual — confirmed current behavior
 
@@ -113,6 +118,16 @@ Consequences confirmed by code reading:
   failure branch deletes it in this path;
 - the caller fails closed with `PROVIDER_SESSION_FAILED` (no false completed,
   no duplicate spawn, no P4 contract violation).
+
+The P5 planning boundary now freezes the required follow-up: P5A may only
+accept a successful cleanup result when `classification='complete'` carries an
+explicit proof whose semantic meaning is `OWNED_TREE_ENUMERATION_VERIFIED`
+(represented by the repository-neutral `owned-tree-enumeration` kind); the unchanged P4 NodeProcessDriver's
+bare `complete` is `UNKNOWN`/unproven and cannot successfully cancel a Run.
+P5B owns emitting that proof after platform-specific enumeration and
+post-force verification. The P5C observation seam must consume the existing
+durable `approval.required` and `approval.resolved` events through a narrow
+Run-event port wired at `providerExecutionChain.ts`.
 
 ## 5. Cancellation authority chain — current wiring gaps
 
@@ -148,6 +163,12 @@ Target (P0 §13, M4 plan §12) versus current at `750a780c`:
 - Approval wait: Process `waiting` + `pauseIdle` exist; the durable path never
   calls `enterWaiting`, and the canonical Run/Stage `waiting_approval` state is
   proven by M3 transition contracts (`m3-lifecycle-transition-contracts.ts:72`).
+- Exact approval observations: `approval.required` is the durable event for
+  `running -> waiting_approval`; `approval.resolved` resolves the same
+  `approvalRequestId`. Its decision is `approve_once`/`approve_run`/
+  `approve_workspace` for resume, `reject` for failure, or `cancel_run` for
+  the approval-cancellation composite; only the normal approval decisions may
+  resume an active Process.
 
 ## 7. Transport current wiring
 
@@ -171,7 +192,7 @@ IMPLEMENTED : CS-11 (durable state machine), CS-13 (timer machinery),
               CS-16/17/19 (canonical + legacy disconnect)                     = 5
 PARTIAL     : CS-01, CS-02, CS-05, CS-06, CS-07, CS-10, CS-12, CS-15,
               CS-20, CS-23, CS-24, CS-26                                      = 12
-MISSING     : CS-03, CS-04, CS-25                                             = 3
+MISSING     : CS-03, CS-04, CS-25, CS-27, CS-28, CS-29                       = 6
 CONFLICTING : CS-01 (approval-wait), CS-08, CS-09, CS-14, CS-18,
               CS-21, CS-22                                                    = 7
 OUTSIDE_P5  : CS-15, CS-23 (compatibility-only; regression-guarded)           = 2
@@ -179,4 +200,14 @@ OUTSIDE_P5  : CS-15, CS-23 (compatibility-only; regression-guarded)           = 
 
 No P5 acceptance criterion may be claimed from the current tree: E04 (tree
 cancel) and E08 (disconnect independence) both fail today on the Conversation
-initial path and the Node driver tree surface.
+initial path and the Node driver tree surface. POSIX real-OS evidence is a
+required P5B acceptance gate: if no valid POSIX environment exists, the result
+is recorded as `PLATFORM_GATE_BLOCKED`, P5B is incomplete, and overall P5 is
+incomplete; it is not a pass or silent skip.
+
+The Windows fallback remains an evidence contract, not a tool preference:
+P5B records the selected inspection facility plus host/tool version and
+capability for the run, parses and normalizes CIM `CreationDate` deterministically,
+and maps null/access-denied/incomplete `ExecutablePath` or identity to
+`UNKNOWN`/fail closed. No facility may be silently swapped and no executable
+identity may be guessed.

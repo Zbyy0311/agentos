@@ -1,6 +1,6 @@
 # AgentOS M4-P5 Cancellation, Process Tree, Timeout and Transport — Owner Decision Register
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — REMEDIATED PER INDEPENDENT PLAN REVIEW (DOCS ONLY, SECOND REVIEW PENDING) — ALL P5 DECISIONS RESOLVED AS TECHNICAL DECISIONS — 0 USER OWNER DECISIONS — NO PRODUCTION AUTHORIZATION
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — SECOND DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — ALL P5 DECISIONS RESOLVED AS TECHNICAL DECISIONS — 0 USER OWNER DECISIONS — NO PRODUCTION AUTHORIZATION
 
 ## 1. Classification rule (inherited from M4 register §2)
 
@@ -19,7 +19,7 @@ user-visible semantic alternative, the phase must STOP and raise a new
 
 ```text
 USER OWNER DECISIONS REQUIRED BEFORE M4-P5 IMPLEMENTATION = 0
-TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 19
+TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 20
 ```
 
 ## 2. Decision register
@@ -78,11 +78,11 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 19
 
 | Field | Value |
 |---|---|
-| Decision | `verifySurvivors` enumerates the owned tree (Job members / process group membership plus known descendants) and classifies `complete` (root and all known + newly discovered members absent), `survivors` (any member alive), or `unknown` (inspection unavailable/insufficient). A root exit alone is never `complete`. |
-| Evidence | P0 §9 survivor verification capability; CS-09 currently returns `complete` on root exit — the contract violation P5 closes. |
+| Decision | `verifySurvivors` enumerates the owned tree (Job members / process group membership plus known descendants) and classifies `complete` (root and all known + newly discovered members absent), `survivors` (any member alive), or `unknown` (inspection unavailable/insufficient). A root exit alone is never `complete`. A successful cleanup result requires BOTH `classification='complete'` and an explicit optional proof marker whose semantic meaning is `OWNED_TREE_ENUMERATION_VERIFIED` (represented by the repository-neutral kind `owned-tree-enumeration`); the proof means the platform implementation enumerated the owned root/tree, covered required known/new descendants, and performed post-force verification. Bare `complete` with no proof is `unknown`/unproven and cannot authorize successful cancellation. |
+| Evidence | P0 §9 survivor verification capability; CS-09 currently returns `complete` on root exit — the contract violation P5 closes; P5A/P5B phase split requires an explicit proof provenance marker. |
 | Alternatives rejected | Root-exit-as-tree-proof (P0 explicitly forbids: "Child exit is not tree proof"); PID liveness as tree proof. |
 | Contract consequence | A successful cancel requires `complete`; `survivors`/`unknown` -> `SURVIVORS`/`UNKNOWN_PLATFORM_UNAVAILABLE` cleanup result and `orphaned` Process state, never a successful-cancel terminal. |
-| Tests required | No-survivor, known survivor, disappearing survivor on recheck, inaccessible process, unknown inspection. |
+| Tests required | No-survivor with valid proof; bare `complete`/empty `knownPids` with no proof -> `UNKNOWN`/unproven and no successful cancel; known survivor, disappearing survivor on recheck, inaccessible process, unknown inspection. |
 
 ### OD-M4-P5-07 — Natural-exit vs cancel precedence
 
@@ -120,14 +120,14 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 19
 | Decision | A Session stays `starting`/`active` while its Process stop is accepted and running; it finalizes as `cancelled` only after the Process cleanup result proves termination with no survivors (or `failed` when finalization/cancellation fails). `provider.session_cancelled` remains reconciliation-gated and absent from the current Registry (OD-M4-P5-18); no P5 acceptance may depend on it. Successful cancelled-Session durability is proven through `provider_sessions.status='cancelled'` plus the already-authorized existing Session/Process fact vocabulary (`process.session_state_changed` and Process terminal facts). |
 | Evidence | P0 §5 Session identity; event-error contract §2 (`provider.session_cancelled` exactly-once successful cancellation finalization); CS-04 no production path today. |
 | Alternatives rejected | Marking Session `cancelled` before Process tree proof (violates the frozen causal chain: `process.stopping` -> `process.exited`/`process.cleanup_required` -> durable Session terminal; the gated `provider.session_cancelled` would follow only after its reconciliation gate). |
-| Contract consequence | Session terminal always follows the Process cleanup fact; `provider.session_failed` is used when cancellation/finalization fails. |
+| Contract consequence | Session terminal always follows the Process cleanup fact; a failed Session is proven by `provider_sessions.status='failed'` plus the existing Session/Process facts when cancellation/finalization fails. |
 | Tests required | Session stays non-terminal during stop; terminal mapping after complete/survivor outcomes. |
 
 ### OD-M4-P5-11 — Process state during cancellation
 
 | Field | Value |
 |---|---|
-| Decision | The Process is `stopping` from the accepted stop through cleanup; it terminalizes `exited` only when tree verification is `complete` (with `TERMINATED`/`ALREADY_EXITED` cleanup result), and `orphaned` on `SURVIVORS`/`IDENTITY_MISMATCH`/`UNKNOWN_PLATFORM_UNAVAILABLE`. `failed` remains reserved for pre-managed-running failure (including cancellation-before-spawn and late spawn failure). |
+| Decision | The Process is `stopping` from the accepted stop through cleanup; it terminalizes `exited` only when tree verification is `complete` **with** `owned-tree-enumeration` proof (with `TERMINATED`/`ALREADY_EXITED` cleanup result), and `orphaned` on `SURVIVORS`/`IDENTITY_MISMATCH`/`UNKNOWN_PLATFORM_UNAVAILABLE` or missing proof. `failed` remains reserved for pre-managed-running failure (including cancellation-before-spawn and late spawn failure). |
 | Evidence | P0 §7 state machine and terminal rules; M4 plan §7 P5 "no owned survivors after successful cancel". |
 | Alternatives rejected | Terminalizing `exited` from a live/unknown tree; treating `orphaned` as successful cancel. |
 | Contract consequence | Cancellation is successful only when the frozen contract result is met. |
@@ -157,11 +157,11 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 19
 
 | Field | Value |
 |---|---|
-| Decision | Idle-timer suspension during `waiting` is allowed only when the canonical M3 Stage/Run is in `waiting_approval` (proven by `m3-lifecycle-transition-contracts.ts:72` and the `waiting` Process state + `pauseIdle`). The durable Provider execution path currently has NO caller linking the canonical transition to the Process state, so **P5C explicitly owns creating exactly one observation/coordination seam**: canonical `waiting_approval` entered -> the Stage coordinator receives the canonical transition/fact -> paired Process `running -> waiting` -> `pauseIdle()`; approval resolved -> paired Process `waiting -> running` (if execution remains active) -> `resumeIdle()` using the remaining budget; cancel during `waiting_approval` -> the M3 approval-cancellation composite (OD-M4-P5-19) -> the paired Process enters the same single P5 stop pipeline. The seam MUST NOT create another approval state, another Run/Stage state machine, or polling-based inferred approval state — it is a hook from the existing canonical M3 approval transition into the existing Process state/timer machinery. Total timeout remains active during waiting; the startup deadline is already finished after readiness; only idle pauses. |
-| Evidence | M3 transition contracts (`stage running -> waiting_approval`); spec §31.1 (waiting_approval excludes idle); M4 plan P5 scope wording "approval-wait idle suspension only where existing M3 state proves it"; `ProcessTimers.pauseIdle/resumeIdle` and `ProcessManager.enterWaiting/exitWaiting` already implemented with no durable-path caller; Independent Plan Review MEDIUM-4. |
+| Decision | Idle-timer suspension during `waiting` is allowed only when the canonical M3 Stage/Run is in `waiting_approval` (proven by `m3-lifecycle-transition-contracts.ts:72` and the `waiting` Process state + `pauseIdle`). P5C owns exactly one narrow server-internal `CanonicalRunEventObservationPort` dependency on `StageExecutionCoordinator`, subscribed by the existing durable-verified `RunStreamService`; `createProviderExecutionChain(...)` is the production composition root and adapts `store.runStreamService()` into that port. The port is repository-convention equivalent to `subscribe({workspaceId, runId, afterSequence, onEvent, onOverflow}) -> unsubscribe()`, where `onEvent` receives `RuntimeEventRecord` and `onOverflow` receives the last safe cursor. The exact observations are durable `approval.required` (`running -> waiting_approval`) and `approval.resolved` for the same `approvalRequestId`; only `approve_once`/`approve_run`/`approve_workspace` resumes, while `reject` and `cancel_run` do not. The port starts after a known sequence, verifies workspace/run/stage/stageAttempt, deduplicates replay, and fails/overflows closed. The paired Process transitions `running -> waiting`/`pauseIdle()` and `waiting -> running`/`resumeIdle()` only while still active; cancellation wins over any later resolution. The seam MUST NOT create another approval state, another Run/Stage state machine, HTTP/SSE dependency, or polling. Total timeout remains active during waiting; the startup deadline is already finished after readiness; only idle pauses. |
+| Evidence | M3 transition contracts (`stage running -> waiting_approval`); event registry `approval.required`/`approval.resolved`; `LifecycleTransactionService.resolveApprovalToCancellation` emits the `cancel_run` resolution before `stage.cancelled`/`run.cancelled`; spec §31.1 (waiting_approval excludes idle); `RunStreamService` already provides durable catch-up + notifier delivery + overflow; `SqliteStore.runStreamService()` is the existing backing surface; `ProcessTimers.pauseIdle/resumeIdle` and `ProcessManager.enterWaiting/exitWaiting` already exist with no durable-path caller. |
 | Alternatives rejected | Suspending idle on any `waiting`-like state without M3 evidence; inventing a second approval state; polling-based inferred approval state. |
 | Contract consequence | Idle deadline pauses only during proven M3 approval wait; total and startup deadlines are unaffected; one seam, no second state machine. |
-| Tests required | waiting_approval pauses idle (fake clock); resume restores remaining budget; total unaffected; startup already disarmed post-readiness; non-approval waiting cannot be entered from the durable path. |
+| Tests required | `approval.required` pauses idle once; duplicate/replayed event does not double-pause; normal `approval.resolved` resumes remaining budget; stale stageAttempt and wrong run/stage are ignored; `cancel_run` wins with no resume; terminal Process ignores resolution; observation overflow/failure fails closed; total timeout remains active; startup is already disarmed; no HTTP/SSE object participates. |
 
 ### OD-M4-P5-15 — Transport disconnect ownership
 
@@ -177,7 +177,7 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 19
 
 | Field | Value |
 |---|---|
-| Decision | **REQUIRED_P5_CLOSURE.** When Session activation CAS fails after a successful spawn, the spawned Process is not left orphaned-active: the SERVER/STAGE orchestration invokes the PROCESS-SIDE P5 stop pipeline (graceful -> grace -> force tree -> survivor verification) with a startup/activation stop reason, the Process terminalizes `exited` (verified clean, cleanup result recorded) or `orphaned` (unverified), the Session terminalizes `failed` with `PROVIDER_SESSION_FAILED`/`PROVIDER_START_FAILED`, and the caller outcome remains fail-closed. Cleanup runs once via the idempotent stop ticket; duplicate cleanup is prevented by the single-ticket rule. If cleanup is uncertain, the Process stays non-terminal with cleanup evidence for P6 classification. Phase split per implementation plan §5.3: the coordination/state half is proven in P5A on the controllable MockDriver; full production tree-cleanup proof completes in P5B. |
+| Decision | **REQUIRED_P5_CLOSURE.** When Session activation CAS fails after a successful spawn, the spawned Process is not left orphaned-active: the SERVER/STAGE orchestration invokes the PROCESS-SIDE P5 stop pipeline (graceful -> grace -> force tree -> survivor verification) with a startup/activation stop reason, the Process terminalizes `exited` only with `complete` **and** `owned-tree-enumeration` proof (otherwise `orphaned`/unknown), the Session terminalizes `failed` with `PROVIDER_SESSION_FAILED`/`PROVIDER_START_FAILED`, and the caller outcome remains fail-closed. Cleanup runs once via the idempotent stop ticket; duplicate cleanup is prevented by the single-ticket rule. If the unchanged P4 NodeProcessDriver returns bare `complete` without proof, P5A treats it as `UNKNOWN`/unproven, does not report successful cancellation, and does not invoke a successful lifecycle hand-off. Phase split per implementation plan §5.3: the coordination/state half is proven in P5A on the controllable MockDriver (both no-proof negative and valid-proof positive); full production tree-cleanup proof completes in P5B. |
 | Evidence | Section 4 of `M4-p5-current-state-audit.md` reproduces the residual; P5's own contract (cancel while Session starting, survivor-before-terminal) naturally owns a spawned-but-unactivated Process. The residual is not a P4 bug; it is P5 startup compensation scope. |
 | Alternatives rejected | (a) Treating it as a P4 contract violation (no violation exists — caller fails closed); (b) P6_RECOVERY_OWNED (the process is not a restart case; it is an in-flight start that P5's own tree contract governs); (c) silent omission (forbidden). |
 | Contract consequence | Every successfully spawned root receives an explicit tree-cleanup result before the Stage attempt terminal; no spawned child survives a failed activation. |
@@ -197,10 +197,10 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 19
 
 | Field | Value |
 |---|---|
-| Decision | P5 reuses the frozen Process fact vocabulary. The following facts are ALREADY registered (P2B `M4_PROCESS_RUNTIME_EVENT_TYPES` in `packages/shared/src/types/m3-runtime.ts`) and ALREADY have durable fact writers in `ProcessRepository`/`ProviderSessionRepository`; P5 may emit them and does NOT require Event Registry expansion for them: `process.launch_requested`, `process.starting`, `process.started`, `process.stopping`, `process.exited`, `process.failed`, `process.cleanup_required`, `process.orphaned`, plus the existing Session/state-change facts (`process.session_claimed`, `process.session_state_changed`, `process.claim_transferred`, `process.state_changed`, `process.output_reference_advanced`) as applicable. `provider.session_cancelled` remains reconciliation-gated and ABSENT from the current Registry; no P5 acceptance may depend on it, and successful cancelled-Session durability is proven through `provider_sessions.status='cancelled'` plus the already-authorized vocabulary (OD-M4-P5-10). No new P5-specific Event type is proposed and no P5 slice may silently expand the shared Registry/spec. |
+| Decision | P5 reuses the frozen Process fact vocabulary. The following facts are ALREADY registered (P2B `M4_PROCESS_RUNTIME_EVENT_TYPES` in `packages/shared/src/types/m3-runtime.ts`) and ALREADY have durable fact writers in `ProcessRepository`/`ProviderSessionRepository`; P5 may emit them and does NOT require Event Registry expansion for them: `process.launch_requested`, `process.starting`, `process.started`, `process.stopping`, `process.exited`, `process.failed`, `process.cleanup_required`, `process.orphaned`, plus the existing Session/state-change facts (`process.session_claimed`, `process.session_state_changed`, `process.claim_transferred`, `process.state_changed`, `process.output_reference_advanced`) as applicable. There is no registered `provider.*` Event family in current P5 scope. `provider.session_cancelled` remains reconciliation-gated and ABSENT from the current Registry; no P5 acceptance may depend on it, and successful cancelled-Session durability is proven through `provider_sessions.status='cancelled'` plus the already-authorized vocabulary (OD-M4-P5-10). A failed Session is proven by `provider_sessions.status='failed'` plus the same existing Session/Process facts, not by an unregistered provider Event. No new P5-specific Event type is proposed and no P5 slice may silently expand the shared Registry/spec. |
 | Evidence | P0 event-error contract §1/§2 and the SPEC_RECONCILIATION_REQUIRED list (which does NOT contain `process.cleanup_required`/`process.orphaned` — they reuse Runtime Specification names); the P2B registry expansion already landed them with repository fact writers (`ProcessRepository.ts` orphaned/cleanup_required writers); Independent Plan Review MEDIUM-2 (the prior wording claiming they "require Registry expansion review" was stale). |
 | Alternatives rejected | New ad-hoc cancel Event types; reusing `process.exited` for survivors; treating registered Process facts as still-gated (would block the evidence OD-M4-P5-06/11/12 require). |
-| Contract consequence | Every P5 fact rides the accepted M3 Event/Outbox envelope; unknown-Event handling stays forward-compatible; the only still-gated P5-adjacent vocabulary is `provider.session_cancelled` (and P6-owned recovery vocabulary). |
+| Contract consequence | Every P5 fact rides the accepted M3 Event/Outbox envelope; unknown-Event handling stays forward-compatible; the only still-gated P5-adjacent vocabulary is `provider.session_cancelled` (and P6-owned recovery vocabulary), and it is never an acceptance dependency. |
 | Tests required | Event/Outbox 1:1 for stop/terminal facts; replay idempotency; no duplicate terminal Event; no P5 assertion requires an unregistered Event type. |
 
 ### OD-M4-P5-19 — Approval-wait cancellation routing
@@ -213,17 +213,55 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 19
 | Contract consequence | User-visible semantics unchanged; the cancel window table gains an explicit approval-wait row; the generic cancel seam keeps rejecting approval states. |
 | Tests required | Cancel during `waiting_approval` asserts the frozen event ORDER (`approval.resolved` before `stage.cancelled` before `run.cancelled`), not merely final status; the paired Process stop joins the single ticket; duplicate cancel converges. |
 
+### OD-M4-P5-20 — POSIX platform-gate blocking semantics
+
+| Field | Value |
+|---|---|
+| Decision | POSIX real-OS evidence is a REQUIRED P5B acceptance gate under the authoritative P0/M4 contract. If no valid POSIX environment/capability is available, record `PLATFORM_GATE_BLOCKED` with the host and missing-capability evidence; this is not PASS, not a substitute result, and not a silent skip. P5B acceptance is incomplete, overall P5 acceptance is incomplete, and M4-P5 MUST NOT be declared COMPLETE. Windows-only evidence cannot close the POSIX gate. |
+| Evidence | P0 §9/§13 owned-group and survivor requirements; M4-P5 plan §6.2 and acceptance matrix §5 require POSIX group proof; the platform gate is a required cross-platform contract, not an optional label. |
+| Alternatives rejected | Treating `PLATFORM_GATE_BLOCKED` as an acceptable substitute; silently skipping POSIX fixtures; declaring P5 complete from Windows-only evidence. No CI infrastructure change is authorized by this decision. |
+| Contract consequence | A blocked POSIX environment honestly preserves an incomplete P5B/P5 status and blocks any later slice whose dependency requires accepted P5B evidence. |
+| Tests required | Real POSIX group TERM/grace/KILL and survivor fixtures when available; otherwise a deterministic gate record showing `PLATFORM_GATE_BLOCKED`, `POSIX gate NOT PASS`, `P5B INCOMPLETE`, and `P5 INCOMPLETE`. |
+
+### OD-M4-P5-21 — Windows inspection evidence fidelity
+
+| Field | Value |
+|---|---|
+| Decision | P5B Windows evidence records the exact selected existing inspection facility (for example PowerShell `Get-CimInstance`), its host/tool version and capability, and uses that facility consistently for one evidence run; no silent facility switch is allowed. CIM `CreationDate` serialization is parsed and normalized deterministically to the identity comparison representation; malformed, missing or unparseable values are `UNKNOWN`. `ExecutablePath` null, access-denied or otherwise incomplete identity is `UNKNOWN` and fails closed; the driver never guesses executable identity. |
+| Evidence | P0 §9 identity fencing; M4-P5 Windows fallback requires start-time/executable evidence before signaling and re-enumeration after force; this decision makes the evidence source and normalization auditable without adding a dependency. |
+| Alternatives rejected | Switching inspection tools mid-run; treating a `taskkill` result or PID liveness as identity evidence; guessing an executable path when CIM access is unavailable. |
+| Contract consequence | A P5B Windows run is reproducible and auditable: facility/version/capability, normalized start time and executable identity are recorded; any unavailable or incomplete identity maps to `UNKNOWN`/fail closed and cannot emit owned-tree proof. |
+| Tests required | Selected-facility/version evidence; deterministic CIM `CreationDate` parsing/normalization (including malformed input); null/access-denied/incomplete `ExecutablePath` -> `UNKNOWN`; no silent fallback or guessed identity. |
+
 ## 3. Decision conclusion
 
 ```text
 CURRENT M4-P5 OWNER DECISION COUNT            = 0 (USER)
-CURRENT M4-P5 TECHNICAL DECISION COUNT        = 19 (ALL RESOLVED)
+CURRENT M4-P5 TECHNICAL DECISION COUNT        = 21 (ALL RESOLVED)
 
 BLOCKING UNRESOLVED DECISIONS                 = 0
 
 P4 LOW RESIDUAL DISPOSITION                   = REQUIRED_P5_CLOSURE (OD-M4-P5-16)
                                                coordination/state half in P5A (MockDriver);
+                                               no-proof P5A path fails closed;
                                                full production tree proof in P5B
+
+P5A/P5B TREE-PROOF BOUNDARY                   = bare `complete` is unproven;
+                                               `owned-tree-enumeration` proof is
+                                               required for successful cleanup
+
+PHASE STATEMENT                                = P5A COMPLETE != PRODUCTION TREE
+                                               CANCELLATION PROVEN; P5A is
+                                               authority/state safety + fail-closed
+                                               exposure, P5B owns real proof
+
+POSIX PLATFORM GATE                            = REQUIRED P5B evidence;
+                                               `PLATFORM_GATE_BLOCKED` means
+                                               P5B/P5 INCOMPLETE, never PASS
+
+WINDOWS EVIDENCE FIDELITY                      = selected facility/version/capability
+                                               recorded per run; CreationDate normalized;
+                                               missing ExecutablePath/identity = UNKNOWN
 
 WINDOWS JOB OBJECT                            = OPTIONAL FUTURE CAPABILITY SLOT (OD-M4-P5-04/05);
                                                authorized P5 implementation is the observable

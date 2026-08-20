@@ -1,6 +1,6 @@
 # AgentOS M4-P5 Cancellation, Process Tree, Timeout and Transport — Acceptance Test Matrix
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — REMEDIATED PER INDEPENDENT PLAN REVIEW (DOCS ONLY) — TEST ARCHITECTURE FROZEN — NO TEST OR PRODUCTION IMPLEMENTATION AUTHORIZED
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — SECOND DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — TEST ARCHITECTURE FROZEN — NO TEST OR PRODUCTION IMPLEMENTATION AUTHORIZED
 
 ## 1. Traceability
 
@@ -9,7 +9,7 @@ real-provider gate required. `N/A` allowed only with the reason shown.
 
 | Exit gate | Unit | Contract | Integration | Platform | Recovery | Negative/mutation | Real Provider | Required proof |
 |---|---|---|---|---|---|---|---|---|
-| E04 Cancel covers owned Process Tree | D: stop ticket/state/race model | D: driver cleanup-result/survivor vocabulary | D: explicit Run cancel reaches Adapter graceful + Process tree once | D: Windows fallback owned-tree proof (required); POSIX group proof (POSIX host required, else PLATFORM_GATE_BLOCKED) | N/A: restart classification is P6-owned evidence, deferred to P6; P5 proves stopping/survivor facts pre-restart | D: root exits while grandchild survives; cancel must fail closed | R: bounded Kimi cancel + descendant check where safe | successful cancel requires verified no known/unknown survivor |
+| E04 Cancel covers owned Process Tree | D: stop ticket/state/race model; bare `complete`/no-proof rejection | D: driver cleanup-result/survivor vocabulary + `owned-tree-enumeration` proof provenance | D: explicit Run cancel reaches Adapter graceful + Process tree once | D: Windows fallback owned-tree proof (required); POSIX group proof is REQUIRED (if unavailable, `PLATFORM_GATE_BLOCKED` means P5B/P5 incomplete) | N/A: restart classification is P6-owned evidence, deferred to P6; P5 proves stopping/survivor facts pre-restart | D: root exits while grandchild survives; bare `complete` without proof must fail closed | R: bounded Kimi cancel + descendant check where safe, with proof marker | successful cancel requires verified no known/unknown survivor **and** valid owned-tree proof |
 | E08 disconnect does not terminate | D: subscriber dispose has no stop call | D: transport ownership contract | D: close socket, Process/Event/Run continue; explicit cancel works | D: Windows/POSIX Process remains alive after transport close | D: reconnect resumes persisted cursor/reference | D: mutate close handler to call stop and require failure | R: Kimi task survives client close and reconnect | browser owns subscription only; explicit cancel is the only termination command |
 | E06 Kimi vertical slice (P5 real gate) | D: Kimi fixtures unchanged | D: Registry/Snapshot/Adapter version contract | D: fake Kimi canonical Run -> Stage outcome | D: Windows tree fixtures | D: interrupted Kimi stays uncertain | D: PlainText/OpenCode fallback prohibited | R: installed Kimi direct validation + bounded task + cancel/disconnect | direct KimiCode through canonical chain; not M4 final completion |
 | E10 M3 contracts preserved | D: existing lifecycle/Event/idempotency units | D: envelope/Registry/ApiProblem compatibility | D: full M3 Run/Operation/Event/Outbox/SSE/Legacy regression | N/A: M3 semantics platform-independent; platform suites still run integration | D: `recovery_required`/uncertainty regressions | D: duplicate Event/Outbox, sequence rollback, replay-spawn mutations | R: Kimi evidence bound to same M3 Events/Operation | no second lifecycle; Event/Outbox and transitions atomic and replay-safe |
@@ -31,7 +31,7 @@ outcome.
 | CAN-07 | cancel while output streams drain | INTEGRATION | finalization before terminal fact; artifacts finalized; bounded backpressure |
 | CAN-08 | cancel vs natural exit | UNIT | first terminal observation wins; cancel causation retained (OD-M4-P5-07) |
 | CAN-09 | cancel after Process exited, before Provider finalize | INTEGRATION | terminal Process fact committed; Provider finalize sees stop ticket; exactly one Session terminal |
-| CAN-10 | cancel during Provider finalize | INTEGRATION | cancelled/failed finalization; one `provider.session_*` fact |
+| CAN-10 | cancel during Provider finalize | INTEGRATION | cancelled/failed finalization; exactly one durable `provider_sessions.status='cancelled'|'failed'` transition, corresponding existing `process.session_state_changed`/Process terminal fact evidence, and no duplicate Session terminal; no `provider.*` Event is required |
 | CAN-11 | duplicate cancel (same key) | UNIT | joins first ticket; same result; one cleanup |
 | CAN-12 | concurrent duplicate cancel | UNIT | CAS winner owns ticket; losers join; one terminal fact |
 | CAN-13 | cancel after terminal completion | UNIT | existing result returned; no mutation; no duplicate Event |
@@ -40,26 +40,30 @@ outcome.
 | CAN-16 | unknown tree ownership | UNIT | `orphaned` + `UNKNOWN_PLATFORM_UNAVAILABLE`; fail closed |
 | CAN-17 | graceful-stop failure | UNIT | bounded progression to force |
 | CAN-18 | force-kill failure | UNIT | `UNKNOWN_PLATFORM_UNAVAILABLE`/`PROCESS_TREE_TERMINATION_FAILED`; uncertainty |
-| CAN-19 | P4 active-CAS-after-spawn closure (phase-split, OD-M4-P5-16) | INTEGRATION | coordination/state half (P5A, MockDriver): spawn succeeds -> activation CAS fails -> stop pipeline runs once -> Process `exited`/`orphaned`, Session `failed`, one terminal fact, no second spawn; full production tree-cleanup proof completes in P5B (real owned-tree termination + survivor verification against this schedule) |
+| CAN-19 | P4 active-CAS-after-spawn closure (phase-split, OD-M4-P5-16) | INTEGRATION | coordination/state half (P5A, MockDriver): spawn succeeds -> activation CAS fails -> stop pipeline runs once -> Process `exited` only with valid proof or `orphaned`/unknown, Session `failed`, one terminal fact, no second spawn; full production tree-cleanup proof completes in P5B (real owned-tree termination + survivor verification against this schedule) |
+| CAN-20 | bare complete cleanup result has no proof | UNIT/INTEGRATION | Mock/real-driver result `classification='complete'`, `knownPids=[]`, no proof -> ProcessCancelCoordinator maps UNKNOWN/unproven; no successful Process/Session/Run cancellation, no successful LifecycleTransactionService hand-off, no false terminal Event, no second stop/spawn |
+| CAN-21 | valid owned-tree proof | UNIT/INTEGRATION | MockDriver `classification='complete'` + proof semantic `OWNED_TREE_ENUMERATION_VERIFIED` (`proof.kind='owned-tree-enumeration'`) -> deterministic P5A cancellation may proceed once; terminal facts and lifecycle hand-off are ordered and idempotent |
 
 ## 3. Tree cases
 
 | ID | Case | Class | Required assertions |
 |---|---|---|---|
-| TREE-01 | child process terminated | REAL OS CHILD | root+child absent after force; `complete` |
-| TREE-02 | grandchild terminated | REAL OS CHILD | 3-level tree absent; `complete` |
-| TREE-03 | no survivors | REAL OS CHILD | `verifySurvivors` = `complete`, empty list |
+| TREE-01 | child process terminated | REAL OS CHILD | root+child absent after force; `complete` + `owned-tree-enumeration` proof |
+| TREE-02 | grandchild terminated | REAL OS CHILD | 3-level tree absent; `complete` + `owned-tree-enumeration` proof |
+| TREE-03 | no survivors | REAL OS CHILD | `verifySurvivors` = `complete` + proof, empty list |
 | TREE-04 | known survivor failure | REAL OS CHILD / UNIT | survivor PID reported (restricted); `SURVIVORS`; cancel fails closed |
 | TREE-05 | already exited | REAL OS CHILD | `ALREADY_EXITED`; no signal attempted |
 | TREE-06 | partial cleanup | REAL OS CHILD / UNIT | some members remain; `SURVIVORS` |
 | TREE-07 | inaccessible process | ENV-GATED / UNIT | inspection `unknown`; no signal; fail closed |
 | TREE-08 | identity mismatch (PID reuse) | UNIT / REAL OS CHILD | start-time/executable differs; `IDENTITY_MISMATCH`; no signal (OD-M4-P5-05) |
 | TREE-09 | root exits while grandchild survives | UNIT mutation | cancel must NOT report success |
+| TREE-10 | complete without proof | UNIT mutation | `classification='complete'` + empty `knownPids` without `proof.kind='owned-tree-enumeration'` maps UNKNOWN/unproven; no successful cancellation |
 
 ## 4. Windows cases
 
 The REQUIRED Windows gate is the observable fallback owned-tree proof
-(WIN-06). Job Object is an OPTIONAL FUTURE CAPABILITY SLOT (OD-M4-P5-04/05):
+(WIN-06), and `complete` requires the explicit `owned-tree-enumeration` proof
+marker. Job Object is an OPTIONAL FUTURE CAPABILITY SLOT (OD-M4-P5-04/05):
 no new native/FFI/helper dependency is authorized by P5, and WIN-05/WIN-07
 are capability evidence only, never a silent skip and never a condition for
 base P5 acceptance.
@@ -74,6 +78,9 @@ base P5 acceptance.
 | WIN-06 | fallback owned-tree proof (REQUIRED Windows gate) | WINDOWS-SPECIFIC | observable `treeMode='fallback'` + warning + reduced-reliability marker; bounded descendant enumeration; identity fence before signal; `taskkill /PID <owned-root> /T /F` separated args; survivor re-enumeration after force; success never inferred from taskkill exit alone |
 | WIN-07 | nested Job restriction (future capability context) | OPTIONAL_CAPABILITY / ENV-GATED | relevant only under an authorized Job implementation: compatible strategy or observable fallback; never silent; with no Job capability, capability evidence records it as inapplicable |
 | WIN-08 | access-denied / already-exited races | WINDOWS-SPECIFIC | identity re-check; fail closed |
+| WIN-09 | selected inspection facility evidence | WINDOWS-SPECIFIC / EVIDENCE | record the exact existing facility (for example PowerShell `Get-CimInstance`), host/tool version and capability; one facility per run; no silent switch |
+| WIN-10 | CIM `CreationDate` normalization | WINDOWS-SPECIFIC / UNIT | serialized `CreationDate` parses to the deterministic identity comparison representation; missing/malformed/unparseable -> `UNKNOWN` and fail closed |
+| WIN-11 | incomplete executable identity | WINDOWS-SPECIFIC / UNIT | null/access-denied/incomplete `ExecutablePath` -> `UNKNOWN`; no guessed executable identity and no owned-tree proof |
 
 ## 5. POSIX cases
 
@@ -82,9 +89,12 @@ the driver internally uses `detached: true` on POSIX only as the Node
 group/session creation mechanism, with stdio piped, handle retained, no
 `unref()`, PGID in `NativeIdentity.groupId`, and PGID/start revalidation
 before every `-pgid` signal. Required POSIX real-OS evidence needs an actual
-POSIX host/capability: if no such environment exists during P5 verification,
-return `PLATFORM_GATE_BLOCKED` with evidence — do not silently skip and do
-not claim full cross-platform P5 acceptance (OD/plan L-3).
+POSIX host/capability. This is a REQUIRED P5B acceptance gate: if no such
+environment exists during P5 verification, record `PLATFORM_GATE_BLOCKED`
+with evidence; POSIX is NOT PASS, P5B acceptance is INCOMPLETE, overall P5
+acceptance is INCOMPLETE, and M4-P5 MUST NOT be declared COMPLETE. Do not
+silently skip, substitute Windows-only evidence, or treat the blocked result
+as an optional cross-platform label.
 
 | ID | Case | Class | Required assertions |
 |---|---|---|---|
@@ -94,6 +104,7 @@ not claim full cross-platform P5 acceptance (OD/plan L-3).
 | POSIX-04 | survivor verification | POSIX-SPECIFIC | group membership + descendants; complete/survivors/unknown |
 | POSIX-05 | group escape attempt | POSIX-SPECIFIC | escaped member detected or `unknown`; fail closed |
 | POSIX-06 | natural-exit race | POSIX-SPECIFIC | exit before signal -> `ALREADY_EXITED` |
+| POSIX-07 | blocked POSIX gate | ENV-GATED | no valid POSIX host/capability -> evidence records `PLATFORM_GATE_BLOCKED`, POSIX NOT PASS, P5B INCOMPLETE, P5 INCOMPLETE |
 
 ## 6. Timeout cases
 
@@ -105,9 +116,18 @@ not claim full cross-platform P5 acceptance (OD/plan L-3).
 | TO-04 | total timeout | UNIT | `PROCESS_TOTAL_TIMEOUT` from native start |
 | TO-05 | timeout vs exit | UNIT | first terminal observation wins; one terminal fact |
 | TO-06 | timeout vs cancel | UNIT | first accepted stop reason owns; correlated diagnostics |
-| TO-07 | approval-wait idle suspension | UNIT | `waiting` entered only from M3 `waiting_approval`; idle pauses; remaining budget resumes; total unaffected (OD-M4-P5-14) |
+| TO-07 | approval-wait idle suspension | UNIT | durable `approval.required` (`running -> waiting_approval`) enters paired Process `waiting`; idle pauses; remaining budget resumes only on normal `approval.resolved`; total unaffected (OD-M4-P5-14) |
 | TO-08 | simultaneous timeout/exit/cancel | UNIT | single `process.stopping` reason; single terminal fact |
 | TO-09 | policy propagation | INTEGRATION | snapshot `startupTimeoutMs/idleTimeoutMs/totalTimeoutMs` reach the durable Process (audit CS-14 closure) |
+| TO-10 | duplicate/replayed approval.required | UNIT | same durable event/cursor replay pauses the paired Process at most once |
+| TO-11 | stale approval event | UNIT | prior `stageAttempt` or wrong workspace/run/stage event is ignored; no timer mutation |
+| TO-12 | normal approval.resolved | UNIT | same `approvalRequestId`, decision `approve_once`/`approve_run`/`approve_workspace` resumes only an active waiting Process with remaining idle budget |
+| TO-13 | approval reject/cancel resolution | INTEGRATION | `reject` or `cancel_run` never resumes; the existing approval-cancellation composite/stop ticket wins |
+| TO-14 | terminal Process resolution | UNIT | `approval.resolved` after `stopping`/terminal is ignored; no resume side effect |
+| TO-15 | observation overflow/failure | UNIT/INTEGRATION | narrow observation port closes/fails; no guessed waiting/running state and no timer side effect |
+| TO-16 | total timeout during approval wait | UNIT | total deadline remains active while idle is paused |
+| TO-17 | startup readiness before approval wait | UNIT | startup timer is disarmed at readiness before `approval.required` can pause idle |
+| TO-18 | observation transport boundary | ARCHITECTURE/UNIT | fake narrow port only; no HTTP/SSE object, polling loop, or second Event repository participates |
 
 ## 7. Transport cases
 
@@ -127,7 +147,7 @@ not claim full cross-platform P5 acceptance (OD/plan L-3).
 | ID | Case | Class | Required assertions |
 |---|---|---|---|
 | DUR-01 | Process state | INTEGRATION | stopping/exited/orphaned persisted with columns (audit CS-11) |
-| DUR-02 | Session state | INTEGRATION | starting/active -> cancelled/failed per OD-M4-P5-10; durability proven via `provider_sessions.status` + existing registered facts; `provider.session_cancelled` is NOT required (stays Registry-gated, OD-M4-P5-18) |
+| DUR-02 | Session state | INTEGRATION | starting/active -> cancelled/failed per OD-M4-P5-10; durability proven via `provider_sessions.status` + existing `process.session_state_changed`/Process terminal facts; no `provider.*` Event family is required; `provider.session_cancelled` remains Registry-gated and is NOT required (OD-M4-P5-18) |
 | DUR-03 | cleanup result | INTEGRATION | one of the five frozen values persisted |
 | DUR-04 | termination reason | INTEGRATION | cancel/timeout/non-zero-exit etc. persisted |
 | DUR-05 | survivor list | INTEGRATION | restricted redacted JSON; count only in public projection |
@@ -156,11 +176,16 @@ blocked capability returns `BLOCKED`/`UNSUPPORTED` with evidence, never silent
 pass and never a base-acceptance condition (WIN-05/WIN-07). `REAL KIMI` = P5E
 authorized real executable gate.
 
-Boundary guarantees after remediation: no P5 acceptance depends on
-`provider.session_cancelled`; no P5 acceptance depends on server-shutdown
+Boundary guarantees after remediation: no P5 acceptance depends on any
+unregistered `provider.*` Event; `provider.session_cancelled` remains gated and
+is not an acceptance dependency; no P5 acceptance depends on server-shutdown
 integration (P6-owned, OD-M4-P5-17); no P5 acceptance requires P6 restart
 classification (P6-owned evidence); E04 still requires verified survivor
-evidence everywhere.
+evidence everywhere plus the `owned-tree-enumeration` proof marker.
+
+Phase boundary: `P5A COMPLETE != PRODUCTION TREE CANCELLATION PROVEN`.
+P5A proves authority/state safety and fail-closed exposure; P5B proves the
+real platform-owned-tree algorithm and emits accepted proof.
 
 ## 11. No-rerun-until-green rule
 
