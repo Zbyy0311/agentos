@@ -2,12 +2,16 @@
 
 Status: M4-P5 PRE-IMPLEMENTATION PLANNING — DOCS ONLY — M4-P5 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
 
-Remediation note (2026-08-20): after the first and second Independent Plan
-Reviews, the four planning documents were remediated in two docs-only commits.
-This third docs-only remediation closes HIGH-A..D, MEDIUM-A..B and LOW by
-freezing one proof-aware normalization seam, exact no-proof durable outcome,
-the internal P5A/public P5D split, exact claim lookup ports, Operation
-two-phase cancellation, and the P5C stage-attempt/cursor failure contract.
+Remediation note (2026-08-20): after the first, second and third Independent
+Plan Reviews, the four planning documents were remediated in three docs-only
+commits. This fourth narrow docs-only remediation closes HIGH-E (the dual
+finalizer race) by freezing one Stage-attempt finalization arbiter, an
+instance-local live-execution rendezvous, exact natural-exit/accepted-stop
+precedence, terminal-CAS loser reconciliation, and an explicit internal stop
+outcome. The earlier proof-aware normalization seam, exact no-proof durable
+outcome, internal P5A/public P5D split, exact claim lookup ports, Operation
+two-phase cancellation, and P5C stage-attempt/cursor failure contract remain
+authoritative.
 This audit's production facts still describe the accepted M4-P4 base
 `750a780c`; no production or test implementation is authorized by this
 remediation.
@@ -102,6 +106,7 @@ Status vocabulary matches the M4 convention:
 | CS-33 | Exact no-proof durable consequence | ProcessRepository / ProviderSessionRepository existing state/fact writers | current code can terminalize bare complete; no single active-cancel consequence is implemented | no proof -> Process orphaned + UNKNOWN, Session failed, Run/Stage nonterminal, no LTS, P6 recovery folding | HIGH-D requires one frozen result and duplicate behavior | MISSING / BLOCKING | P5A |
 | CS-34 | P5C Stage-attempt anchor | `RuntimeEventEnvelope`; approval events; `stage.started` payload | approval events have stageId/requestId but no stageAttempt | observer starts at cursor 0, arms only on matching `stage.started` payload.attempt, newer attempt invalidates | MEDIUM-A mechanism was previously unspecified | MISSING | P5C |
 | CS-35 | P5C observation failure ownership | `RunStreamService.subscribe` | callback throw closes without an explicit internal failure reason | optional `onFailure(reason,lastSafeSequence)` maps every close to fail-closed observer cleanup | MEDIUM-B owner/cursor behavior was previously unspecified | MISSING | P5C |
+| CS-36 | Stage execution finalization ownership | `StageExecutionCoordinator.ts:72,383-477`; `RunEngineProviderDispatcher.ts:134-164`; `durable-coordinator.ts:615-813` | `runToFinal` is the sole natural Provider/output/Session finalizer; no cancel-aware arbitration exists; `terminalOutcome.kind === 'terminal'` is accepted without reading the persisted terminal state; current `StageExecutionOutcome` has only `active`/`completed`/`failed`; Dispatcher maps those coordinator results directly into canonical lifecycle | one instance-local `finalizeAttemptOnce` arbiter per live attempt; natural exit, accepted cancel, timeout and P4 compensation all join it; exactly one Adapter/output/Session finalization; a terminal-CAS loser reads/joins persisted Session state; explicit internal `stopped` never mutates canonical lifecycle | HIGH-E dual-finalizer race and loser-result ambiguity | CONFLICTING / MISSING | P5A |
 
 ## 4. P4 LOW residual — confirmed current behavior
 
@@ -147,7 +152,7 @@ verification. The P5C observation seam consumes the existing durable
 
 Target (P0 §13, M4 plan §12) versus current at `750a780c`:
 
-The third-remediation target deliberately stops at the internal
+The remediated target deliberately stops at the internal
 `StageExecutionCoordinator.cancelAttempt` authority in P5A. Public
 TaskRunService/canonical/v2/Operation/Conversation command activation is P5D
 and is not implied by the internal P5A rows below.
@@ -213,9 +218,9 @@ IMPLEMENTED : CS-11 (durable state machine), CS-13 (timer machinery),
 PARTIAL     : CS-01, CS-05, CS-06, CS-07, CS-10, CS-12, CS-15, CS-20,
               CS-23, CS-24, CS-26, CS-31, CS-35                                = 13
 MISSING     : CS-03, CS-04, CS-25, CS-27, CS-28, CS-29, CS-30, CS-33,
-              CS-34                                                                 = 9
+              CS-34, CS-36                                                        = 10
 CONFLICTING : CS-01, CS-02, CS-08, CS-09, CS-14, CS-18, CS-21, CS-22,
-              CS-32                                                                = 9
+              CS-32, CS-36                                                        = 10
 OUTSIDE_P5  : CS-15, CS-23 (compatibility-only; regression-guarded)           = 2
 ```
 
@@ -233,7 +238,7 @@ and maps null/access-denied/incomplete `ExecutablePath` or identity to
 `UNKNOWN`/fail closed. No facility may be silently swapped and no executable
 identity may be guessed.
 
-## 9. Third-remediation closure contract
+## 9. Remediation closure contract
 
 The following are frozen as planning requirements; they do not describe
 implemented production behavior at the accepted P4 base.
@@ -293,3 +298,63 @@ the seam.
 
 This is a docs-only remediation. P5A, P5B and P6 remain unauthorized until a
 fresh independent plan review returns BLOCKER/HIGH zero.
+
+### 9.6 Fourth-remediation finalization closure (HIGH-E)
+
+The current P4 implementation has one natural finalizer but no shared
+cancel-aware arbiter. `runToFinal` currently owns stdout/stderr draining,
+parser completion, output-reference finalization, `RuntimeProviderAdapter.finalize`
+and the terminal Session CAS. When that CAS returns
+`terminalOutcome.kind === 'terminal'`, the current path still resolves its own
+desired local result instead of joining the persisted terminal Session. The
+current `StageExecutionOutcome` has no non-lifecycle stop kind. A future
+`cancelAttempt`, timeout caller or P4
+activation-CAS compensation MUST NOT add a second finalizer.
+
+The P5A contract is one `StageExecutionCoordinator.finalizeAttemptOnce(...)`
+arbiter (an `AttemptFinalizationGate`/promise latch) per instance-local live
+attempt key:
+
+```text
+workspaceId | runId | stageId | stageAttempt
+```
+
+Durable claim lookup occurs first through the exact Session/Process claim ports.
+Only then may `execute`, `runToFinal`, `cancelAttempt`, timeout and P4
+compensation rendezvous on the same live entry. The entry may retain only the
+live `NativeProcessHandle`, parser/parsed-event state, stdout/stderr writers,
+bounded stderr and final Deferred. It is not module-global, durable, identity
+authority, restart truth, or a source for a replacement spawn; absent live
+rendezvous fails closed for P5A and leaves recovery classification to P6.
+
+The arbiter first inspects accepted durable Process stop/terminal evidence:
+
+- natural Process terminal evidence committed before a stop ticket: natural
+  finalization owns; a later cancel reads/joins the persisted terminal result;
+- an accepted stop ticket before natural terminal evidence: the natural path
+  joins the stop finalization and cannot call `finalize(cancelled=false)`, mark
+  Session completed, or resolve a completed Stage outcome;
+- the first accepted timeout/cancel/compensation reason remains authoritative.
+
+Natural completion drains both streams, finishes parsing, calls each writer's
+`finalize()` once, calls Adapter `finalize(cancelled=false)` once, and reconciles
+the Session terminal state. Proven cancellation closes bounded streams/parser
+tail once, calls each writer's `finalize()` once, calls Adapter
+`finalize(cancelled=true, parsedEvents=...)` once, and can persist Session
+`cancelled`. Uncertain cleanup uses the existing `DurableOutputWriter.abort()`
+method for each writer (bounded, no unbounded survivor wait), persists Process
+orphan/unknown evidence and Session `failed`, and performs no Provider
+completion or canonical LTS cancellation. The arbiter persists at most one
+Session terminal transition and resolves the attempt's final Deferred at most
+once; losers only read/join.
+
+If a Session terminal CAS returns `terminal`, the contender reads/joins the
+persisted terminal Session state and MUST NOT resolve its own desired local
+completed/failed/cancelled result. The shared Stage outcome is an explicit
+non-lifecycle `{ kind: 'stopped', cleanup, proven }`; Dispatcher consumes it
+with zero Stage/Run/LTS mutation and returns from that drive. P5D alone may
+perform a later canonical cancellation after proven cleanup.
+
+The deterministic FINAL-01..FINAL-12 cases in the acceptance matrix are the
+required evidence for this contract. This remains planning only: no production
+or test implementation is authorized by the audit.

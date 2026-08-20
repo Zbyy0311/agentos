@@ -1,6 +1,6 @@
 # AgentOS M4-P5 Cancellation, Process Tree, Timeout and Transport — Acceptance Test Matrix
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — THIRD DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — TEST ARCHITECTURE FROZEN — NO TEST OR PRODUCTION IMPLEMENTATION AUTHORIZED
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — FOURTH NARROW DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — TEST ARCHITECTURE FROZEN — NO TEST OR PRODUCTION IMPLEMENTATION AUTHORIZED
 
 ## 1. Traceability
 
@@ -9,7 +9,7 @@ real-provider gate required. `N/A` allowed only with the reason shown.
 
 | Exit gate | Unit | Contract | Integration | Platform | Recovery | Negative/mutation | Real Provider | Required proof |
 |---|---|---|---|---|---|---|---|---|
-| E04 Cancel covers owned Process Tree | D: P5A internal stop ticket/state/race model; shared proof normalizer; bare `complete` rejection | D: driver cleanup-result/survivor vocabulary + `owned-tree-enumeration` proof provenance | D: P5A internal Stage cancel; P5D later activates public command and LTS hand-off | D: Windows fallback owned-tree proof (required); POSIX group proof REQUIRED (if unavailable, `PLATFORM_GATE_BLOCKED` means P5B/P5 incomplete) | N/A: restart classification is P6-owned evidence | D: every Manager/Durable/ProcessCancelCoordinator path rejects proof removal | R: bounded Kimi gate only after P5D | successful active cancel requires normalized `proven=true`, no unknown survivor, and valid proof |
+| E04 Cancel covers owned Process Tree | D: P5A internal stop ticket/state/race model; shared proof normalizer; bare `complete` rejection; one attempt finalization arbiter and stopped outcome | D: driver cleanup-result/survivor vocabulary + `owned-tree-enumeration` proof provenance | D: P5A internal Stage cancel; P5D later activates public command and LTS hand-off | D: Windows fallback owned-tree proof (required); POSIX group proof REQUIRED (if unavailable, `PLATFORM_GATE_BLOCKED` means P5B/P5 incomplete) | N/A: restart classification is P6-owned evidence | D: every Manager/Durable/ProcessCancelCoordinator path rejects proof removal; finalizer races reject double Adapter/output/Session completion | R: bounded Kimi gate only after P5D | successful active cancel requires normalized `proven=true`, no unknown survivor, valid proof and one finalization body |
 | E08 disconnect does not terminate | D: subscriber dispose has no stop call | D: transport ownership contract | D: close socket, Process/Event/Run continue; explicit cancel works | D: Windows/POSIX Process remains alive after transport close | D: reconnect resumes persisted cursor/reference | D: mutate close handler to call stop and require failure | R: Kimi task survives client close and reconnect | browser owns subscription only; explicit cancel is the only termination command |
 | E06 Kimi vertical slice (P5 real gate) | D: Kimi fixtures unchanged | D: Registry/Snapshot/Adapter version contract | D: fake Kimi canonical Run -> Stage outcome | D: Windows tree fixtures | D: interrupted Kimi stays uncertain | D: PlainText/OpenCode fallback prohibited | R: installed Kimi direct validation + bounded task + cancel/disconnect | direct KimiCode through canonical chain; not M4 final completion |
 | E10 M3 contracts preserved | D: existing lifecycle/Event/idempotency units | D: envelope/Registry/ApiProblem compatibility | D: full M3 Run/Operation/Event/Outbox/SSE/Legacy regression | N/A: M3 semantics platform-independent; platform suites still run integration | D: `recovery_required`/uncertainty regressions | D: duplicate Event/Outbox, sequence rollback, replay-spawn mutations | R: Kimi evidence bound to same M3 Events/Operation | no second lifecycle; Event/Outbox and transitions atomic and replay-safe |
@@ -51,7 +51,29 @@ outcome.
 | CAN-27 | P5A public route boundary | ARCHITECTURE/UNIT | canonical/v2/Operation active routes remain unactivated; internal P5A port works; absent injected authority returns stable failure with no mutation |
 | CAN-28 | P5A active cleanup has no LTS hand-off | UNIT/INTEGRATION | bare complete/no proof -> Session failed, Run/Stage nonterminal, LTS successful call count 0, no terminatedProcessId |
 
-### 2.1 Public command and Operation cases (P5D)
+### 2.1 Attempt-finalization race cases (P5A)
+
+Each case must assert one live-attempt arbiter, one finalization body and the
+persisted Session state as the only terminal authority. `DurableOutputWriter`
+uses `finalize()` for natural/proven completion and `abort()` for uncertain
+cleanup.
+
+| ID | Case | Class | Required assertions |
+|---|---|---|---|
+| FINAL-01 | natural exit wins before stop ticket | UNIT/INTEGRATION | durable Process terminal evidence commits first; exactly one natural finalization; later cancel joins persisted terminal evidence; no second Adapter/output/Session/Deferred finalization |
+| FINAL-02 | stop ticket wins before exit | UNIT/INTEGRATION | accepted stop ticket precedes natural terminal evidence; `runToFinal` cannot call `finalize(cancelled=false)`, complete Session or resolve completed Stage; one internal `stopped` result |
+| FINAL-03 | cancel vs `exitCode=0` | UNIT | accepted stop wins even with zero exit code; no Provider completed status, canonical completion or completed Stage outcome |
+| FINAL-04 | cancel vs Provider finalize | UNIT/INTEGRATION | `finalizeAttemptOnce` invoked once; Adapter.finalize call count = 1; output finalization count = 1 per stream; Session terminal count = 1 |
+| FINAL-05 | Session CAS loser observes persisted cancelled | UNIT/INTEGRATION | losing natural/timeout contender reads/joins persisted `cancelled`; it cannot resolve completed or failed from local desired state |
+| FINAL-06 | Session CAS loser observes persisted failed | UNIT/INTEGRATION | losing cancel contender reads/joins persisted `failed`; it cannot resolve cancelled from local desired state |
+| FINAL-07 | stdout/stderr draining during proven cancellation | INTEGRATION | bounded stream joins and parser tail finish once; both writers finalize once; no hanging drain or duplicate artifact reference |
+| FINAL-08 | uncertain cleanup with live survivor | UNIT/INTEGRATION | Process orphan/unknown + Session failed; both writers call existing `abort()`; capture is bounded; no Provider completion, LTS success or unbounded finalizer wait |
+| FINAL-09 | Dispatcher receives internal stopped outcome | UNIT/INTEGRATION | `RunEngineProviderDispatcher.ts` breaks/returns with LTS/Stage/Run complete/failed/cancel calls = 0; `RunEngine.ts` is untouched |
+| FINAL-10 | P5D proven active cancel | INTEGRATION | internal `stopped` is followed only by the owning P5D command seam; one proven non-empty terminatedProcessIds hand-off and exactly one canonical terminal path |
+| FINAL-11 | timeout vs runToFinal completion | UNIT | timeout stop enters the same arbiter; first accepted stop reason prevents false Provider completion even if native exit is 0 |
+| FINAL-12 | P4 activation-CAS failure | INTEGRATION | accepted compensation stop, `runToFinal` and compensation converge on one finalization result; final Deferred resolves once; no live child continues without durable uncertainty |
+
+### 2.2 Public command and Operation cases (P5D)
 
 | ID | Case | Class | Required assertions |
 |---|---|---|---|
@@ -199,12 +221,15 @@ blocked capability returns `BLOCKED`/`UNSUPPORTED` with evidence, never silent
 pass and never a base-acceptance condition (WIN-05/WIN-07). `REAL KIMI` = P5E
 authorized real executable gate.
 
-Boundary guarantees after the third remediation: no P5 acceptance depends on
+Boundary guarantees after the fourth remediation: no P5 acceptance depends on
 any unregistered `provider.*` Event; `provider.session_cancelled` remains gated
 and is not an acceptance dependency; no P5 acceptance depends on
 server-shutdown integration (P6-owned, OD-M4-P5-17); no P5 acceptance requires
 P6 restart classification; active public commands are not activated before
-P5D; and E04 requires the shared proof normalizer everywhere.
+P5D; E04 requires the shared proof normalizer everywhere; and FINAL-01..12
+require one Stage-attempt finalization arbiter, one terminal Session result,
+bounded/aborted uncertain output and no Dispatcher lifecycle mutation for
+internal `stopped`.
 
 Phase boundary:
 `P5A COMPLETE = INTERNAL CANCEL AUTHORITY + STATE SAFETY + PROOF GATE`.

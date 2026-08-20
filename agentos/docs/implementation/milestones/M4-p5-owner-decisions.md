@@ -1,6 +1,6 @@
 # AgentOS M4-P5 Cancellation, Process Tree, Timeout and Transport — Owner Decision Register
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — THIRD DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — ALL P5 DECISIONS RESOLVED AS TECHNICAL DECISIONS — 0 USER OWNER DECISIONS — NO PRODUCTION AUTHORIZATION
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — FOURTH NARROW DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — ALL P5 DECISIONS RESOLVED AS TECHNICAL DECISIONS — 0 USER OWNER DECISIONS — NO PRODUCTION AUTHORIZATION
 
 ## 1. Classification rule (inherited from M4 register §2)
 
@@ -19,7 +19,7 @@ user-visible semantic alternative, the phase must STOP and raise a new
 
 ```text
 USER OWNER DECISIONS REQUIRED BEFORE M4-P5 IMPLEMENTATION = 0
-TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 29
+TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 30
 ```
 
 ## 2. Decision register
@@ -28,10 +28,10 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 29
 
 | Field | Value |
 |---|---|
-| Decision | Cancellation has three ordered layers. **A. COMMAND APPLICATION (P5D):** `TaskRunService`/`OperationService` own API acceptance, version/idempotency semantics, queued-vs-active selection and public route composition; they call the internal Stage port only for active execution and invoke `LifecycleTransactionService` only after proven cleanup. **B. STAGE EXECUTION (P5A internal):** `StageExecutionCoordinator.cancelAttempt({workspaceId,runId,stageId,stageAttempt,correlationId,causationId})` resolves exact Session/Process claims, accepts/joins the stop ticket, makes the ticket-gated `RuntimeProviderAdapter.cancel` request through `ProviderProcessPort`, finalizes the Provider Session, and returns typed Provider-neutral evidence; it owns no HTTP/idempotency storage and does not mutate Run/Stage. **C. PROCESS RUNTIME (P5A):** new `ProcessCancelCoordinator` at `packages/process-runtime/src/process-cancel-coordinator.ts` owns the idempotent stop ticket, Process state/facts, platform graceful/force, survivor verification and the shared proof-aware normalizer; it MUST NOT import/call Provider or lifecycle services. Public active command activation is P5D-owned and is not part of P5A. |
+| Decision | Cancellation has three ordered layers. **A. COMMAND APPLICATION (P5D):** `TaskRunService`/`OperationService` own API acceptance, version/idempotency semantics, queued-vs-active selection and public route composition; they call the internal Stage port only for active execution and invoke `LifecycleTransactionService` only after proven cleanup. **B. STAGE EXECUTION (P5A internal):** `StageExecutionCoordinator.cancelAttempt({workspaceId,runId,stageId,stageAttempt,correlationId,causationId})` resolves exact Session/Process claims, accepts/joins the stop ticket, makes the ticket-gated `RuntimeProviderAdapter.cancel` request through `ProviderProcessPort`, submits the stop disposition to the shared `finalizeAttemptOnce` arbiter, and returns typed Provider-neutral evidence; it owns no HTTP/idempotency storage and does not mutate Run/Stage. **C. PROCESS RUNTIME (P5A):** new `ProcessCancelCoordinator` at `packages/process-runtime/src/process-cancel-coordinator.ts` owns the idempotent stop ticket, Process state/facts, platform graceful/force, survivor verification and the shared proof-aware normalizer; it MUST NOT import/call Provider or lifecycle services. Public active command activation is P5D-owned and is not part of P5A. |
 | Evidence | P0 §2/§3/§8/§13 (the §8 stop row closes with "ProcessManager receives no Provider callback/parser and Provider-native graceful coordination remains outside it"; §13 sequences the Adapter-native request at the Stage coordinator); M4 plan §12; workspace dependency direction `@agentos/agent-core -> @agentos/process-runtime` (a reverse import would be circular and is architecture-negative); `LifecycleTransactionService.cancelRunWithinTransaction` already carries `terminatedProcessIds` (the hand-off seam). |
 | Alternatives rejected | (a) `ProcessCancelCoordinator` in process-runtime owning Adapter graceful/finalize/LifecycleTransactionService hand-off — violates P0 §8's final clause, P0 §6 ("RunEngine invokes LifecycleTransactionService") and frozen rule 7 (Process Runtime remains Provider-agnostic); (b) route-owned tree kill — violates E01/E02 and the frozen authority chain; (c) Adapter-owned tree stop — Adapter cannot force/kill (P0 §10); (d) `TaskRunService`-owned platform pipeline — would place OS process logic outside the Process Runtime boundary. |
-| Contract consequence | One internal Stage-attempt cancel -> one accepted stop ticket -> one normalized Process result -> one Session finalization. Only P5D may turn proven active cleanup into a canonical LTS terminal transition. No second Run state machine, no public P5A route and no Process Runtime crossing upward. |
+| Contract consequence | One internal Stage-attempt cancel -> one accepted stop ticket -> one normalized Process result -> one shared Stage-attempt finalization -> one Session terminal result. Natural exit, timeout and P4 compensation join that same arbiter; only P5D may turn proven active cleanup into a canonical LTS terminal transition. No second Run state machine, no public P5A route and no Process Runtime crossing upward. |
 | Tests required | Internal cancel correlation spy (exact claim -> stop ticket -> driver call count 1); duplicate/parallel convergence; valid/bare proof paths; Session failed vs cancelled mapping; no LTS call on unproven result; architecture-negative: `packages/process-runtime` imports no agent-core/provider module. |
 
 ### OD-M4-P5-02 — Graceful-stop owner
@@ -88,7 +88,7 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 29
 
 | Field | Value |
 |---|---|
-| Decision | Observed native exit wins the terminal CAS if it commits first; otherwise the accepted stop reason is retained while exit/tree evidence finalizes the Process. Duplicate close/exit observations return the existing terminal result. |
+| Decision | Observed native exit wins the shared attempt-finalization arbiter only when accepted durable Process terminal evidence commits before a stop ticket. If a stop ticket is accepted first, natural `runToFinal` joins the stop finalization and cannot reinterpret the exit as normal Provider completion. Duplicate close/exit observations return the existing terminal result. |
 | Evidence | P0 §7 race rules ("exit vs cancel or timeout: observed exit wins terminal CAS if first; otherwise stop reason is retained"). |
 | Alternatives rejected | Cancel always overriding exit (would mislabel naturally-finished work); exit always overriding cancel (would drop cancel causation). |
 | Contract consequence | One terminal fact; `terminationReason`/`cancelCausation` recorded; no duplicate terminal Event. |
@@ -177,7 +177,7 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 29
 
 | Field | Value |
 |---|---|
-| Decision | **REQUIRED_P5_CLOSURE.** When Session activation CAS fails after a successful spawn, the internal Stage coordinator enters the single Process stop authority with a startup/activation reason. The shared normalizer is the only cleanup decision: valid proof may produce Process `exited`; bare complete/no proof produces `stopping -> orphaned`, `UNKNOWN_PLATFORM_UNAVAILABLE`, cleanup-required evidence and Session `failed` with `PROVIDER_SESSION_FAILED`/`PROVIDER_START_FAILED`. The caller remains fail-closed, no LTS hand-off or false cleanup success occurs, cleanup runs once, and no second spawn is possible. P5A proves coordination/state with MockDriver; P5B proves the real tree half. |
+| Decision | **REQUIRED_P5_CLOSURE.** When Session activation CAS fails after a successful spawn, the internal Stage coordinator enters the single Process stop authority with a startup/activation reason and submits the result to the same `finalizeAttemptOnce` arbiter used by `runToFinal`. The shared normalizer is the only cleanup decision: valid proof may produce Process `exited`; bare complete/no proof produces `stopping -> orphaned`, `UNKNOWN_PLATFORM_UNAVAILABLE`, cleanup-required evidence and Session `failed` with `PROVIDER_SESSION_FAILED`/`PROVIDER_START_FAILED`. The caller remains fail-closed, no LTS hand-off or false cleanup success occurs, cleanup runs once, and no second spawn is possible. P5A proves coordination/state with MockDriver; P5B proves the real tree half. |
 | Evidence | Section 4 of `M4-p5-current-state-audit.md` reproduces the residual; P5's own contract (cancel while Session starting, survivor-before-terminal) naturally owns a spawned-but-unactivated Process. The residual is not a P4 bug; it is P5 startup compensation scope. |
 | Alternatives rejected | (a) Treating it as a P4 contract violation (no violation exists — caller fails closed); (b) P6_RECOVERY_OWNED (the process is not a restart case; it is an in-flight start that P5's own tree contract governs); (c) silent omission (forbidden). |
 | Contract consequence | Every successfully spawned root receives an explicit tree-cleanup result before the Stage attempt terminal; no spawned child survives a failed activation. |
@@ -305,13 +305,27 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 29
 | Contract consequence | Observation failure is fail-closed and owned by the internal P5C observer, not by HTTP/SSE or Process Runtime. |
 | Tests required | each failure reason, last-safe-cursor handling, no double pause/resume and existing HTTP/SSE compatibility. |
 
+### OD-M4-P5-30 — Single Stage-attempt finalization authority
+
+| Field | Value |
+|---|---|
+| Decision | `StageExecutionCoordinator` owns one `finalizeAttemptOnce(...)` arbiter (an instance-local `AttemptFinalizationGate`/promise latch) per live execution key `workspaceId|runId|stageId|stageAttempt`. Durable Session/Process claim lookup occurs first through the exact claim ports; the live rendezvous may retain only the `NativeProcessHandle`, parser/parsed-event state, stdout/stderr writers, bounded stderr and final Deferred. It is not module-global, persisted, identity authority, restart truth or a replacement-spawn source. Natural exit, accepted explicit cancel, timeout, P4 activation-CAS compensation and Provider-finalize races all submit to and join this same arbiter; exactly one finalization body may run. |
+| Precedence | The winner is not whichever JavaScript callback runs first: the arbiter first reads accepted durable Process stop/terminal evidence. If terminal evidence commits before a stop ticket, natural finalization owns. If a stop ticket is accepted first, `runToFinal` joins the stop path and cannot call `Adapter.finalize(cancelled=false)`, complete the Session or resolve a completed Stage outcome. The first accepted stop reason remains authoritative. |
+| Finalization body | Natural completion drains both streams, finishes the parser, calls each `DurableOutputWriter.finalize()` once, calls `Adapter.finalize(cancelled=false)` once and reconciles one Session terminal result. Proven cancellation joins/bounds streams, finishes the parser tail once, calls each writer `finalize()` once, calls `Adapter.finalize(cancelled=true, parsedEvents=...)` once and may persist Session `cancelled`. Uncertain cleanup uses the existing `DurableOutputWriter.abort()` method for each writer, persists Process orphan/unknown evidence and Session `failed`, and never waits unboundedly or performs Provider/LTS success. The arbiter persists at most one Session terminal transition and resolves the attempt's final Deferred at most once; losers only read/join. |
+| Session loser | A terminal Session CAS loser reads/joins the persisted terminal Session state and MUST NOT resolve its own desired completed/failed/cancelled result. Exactly one persisted terminal Session state is authoritative. |
+| Internal outcome / Dispatcher | Stage execution returns explicit non-lifecycle `{ kind:'stopped', cleanup, proven }` for accepted internal stops. `RunEngineProviderDispatcher.ts` consumes it by making zero canonical Stage/Run/LTS mutations and returning from that drive; P5D owns any later canonical cancellation after proven cleanup. `RunEngine.ts` remains forbidden. |
+| Missing rendezvous | A durable claim with no same-process live rendezvous returns a stable `live execution unavailable / recovery required` internal result. P5A does not reconstruct a native handle from PID, spawn again, create a second coordinator or guess successful cancellation; P6 owns restart/recovery classification. |
+| Evidence | Current `runToFinal` owns the natural Provider/output/Session finalization and accepts `terminal` CAS without reconciling persisted state; `DurableOutputWriter` exposes the existing `finalize()` and `abort()` methods; the new contract closes the HIGH-E dual-finalizer race without changing schema. |
+| Alternatives rejected | Independent cancel/timeout finalizers; module-global live maps; durable rendezvous as restart truth; treating exit code 0 as Provider completion after an accepted stop; resolving a loser from local desired state; using `finalize()` for uncertain survivor capture when the existing safe artifact API provides `abort()`. |
+| Tests required | FINAL-01..FINAL-12: precedence, single Adapter/output/Session/Deferred counts, parser/stream closure, uncertain abort, terminal-CAS loser persisted-state join, stopped Dispatcher no-op, timeout/P4 compensation convergence, and missing-live-rendezvous fail-closed behavior. |
+
 ## 3. Decision conclusion
 
 ```text
 CURRENT M4-P5 OWNER DECISION COUNT            = 0 (USER)
-CURRENT M4-P5 TECHNICAL DECISION COUNT        = 29 (ALL RESOLVED)
-HIGHEST OD-M4-P5 NUMBER                       = 29
-DECISION COUNT CHECK                          = 21 inherited + 8 third-remediation = 29
+CURRENT M4-P5 TECHNICAL DECISION COUNT        = 30 (ALL RESOLVED)
+HIGHEST OD-M4-P5 NUMBER                       = 30
+DECISION COUNT CHECK                          = 21 inherited + 9 remediation = 30
 
 BLOCKING UNRESOLVED DECISIONS                 = 0
 
@@ -346,7 +360,7 @@ SERVER SHUTDOWN STOP                          = P6-OWNED (OD-M4-P5-17); P5 expos
 
 REQUIRED BEFORE M4-P5 IMPLEMENTATION ENTRY    = separate explicit P5 authorization
                                                 naming exact base/files/owner/tests,
-                                                plus second independent plan review BLOCKER/HIGH 0
+                                                plus fresh independent plan review BLOCKER/HIGH 0
 
 M4-P5 PRODUCTION IMPLEMENTATION               = NOT AUTHORIZED
 P6                                              = MUST NOT START
