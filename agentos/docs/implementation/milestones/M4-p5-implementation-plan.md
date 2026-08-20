@@ -1,6 +1,6 @@
 # AgentOS M4-P5 — Cancellation, Process Tree, Timeout and Transport Independence — Implementation Plan / Objective
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — FOURTH NARROW DOCS-ONLY REMEDIATION (FRESH PLAN REVIEW PENDING) — M4-P5 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — FIFTH NARROW DOCS-ONLY REMEDIATION (FRESH PLAN REVIEW PENDING) — M4-P5 PRODUCTION IMPLEMENTATION NOT AUTHORIZED
 
 ## 1. Metadata / exact base
 
@@ -23,10 +23,12 @@ must name this exact base; this plan does not silently transfer if `main` moves.
 ## 2. P5 objective
 
 Make owned-tree cancellation safe without activating a public command before
-its application composition exists. The fourth narrow remediation freezes an
+its application composition exists. The fifth narrow remediation freezes an
 internal P5A attempt-cancellation core, a later P5D command/application seam,
-one proof-aware Process Runtime normalization authority, and one shared
-Stage-attempt finalization authority:
+one proof-aware Process Runtime normalization authority, one exact
+Stage-attempt rendezvous lifecycle, a non-circular finalization/capture wait
+protocol, reason-specific timeout outcomes, and one shared Stage-attempt
+finalization authority:
 
 ```text
 P5A INTERNAL ATTEMPT CANCEL
@@ -121,6 +123,42 @@ P6 SHUTDOWN -> future caller with reason='shutdown'; P6 owns server ordering
     persists Process/Session uncertainty, and performs no Provider completion or
     canonical LTS success. A durable claim without a live rendezvous fails
     closed for P5A; P6 owns restart/recovery classification.
+21. `StageExecutionCoordinator.liveAttempts` is private instance state keyed by
+    `workspaceId|runId|stageId|stageAttempt`; it is ephemeral and never a
+    durable/restart/ownership authority or replacement-spawn source.
+22. For a new claim, the exact registration order is claim reservation,
+    adapter-start CAS, writer creation, exact Session/Process revalidation,
+    synchronous map insertion, then `consumeSpawnRightAndSpawn`; no await may
+    occur between insertion and spawn-right consumption. Created-before-spawn
+    cancel needs no entry; `joinedExisting` creates/replaces no entry.
+23. A starting/running/waiting/stopping claim without an exact same-process
+    live entry fails closed as `LIVE_EXECUTION_UNAVAILABLE` /
+    `RECOVERY_REQUIRED`; no PID, Event scan, respawn or new coordinator may
+    reconstruct it. Entry removal occurs only after finalization Promise,
+    writer actions, Adapter decision, Session reconciliation and final Deferred
+    settlement, with identity-checked deletion.
+24. Drain tasks use explicit AsyncIterators and race `iterator.next()` against
+    one-shot `captureStop`; they never await ProcessCancelCoordinator,
+    finalization or Stage outcome. `iterator.return?.()` is best effort and
+    never correctness-critical. The finalizer waits for drain-task quiescence,
+    not native EOF after stop; no new append starts after stop ownership.
+25. Stop ownership resolves `captureStop` before Adapter graceful coordination,
+    grace expiry, force cleanup or survivor verification. ProcessCancelCoordinator
+    waits on none of the drain/finalization promises. `runToFinal` submits
+    natural disposition only after native exit, natural drain completion and
+    the durable natural Process CAS; otherwise it joins the stop Promise.
+26. `StopOrigin` is `EXPLICIT_CANCEL`, `STARTUP_TIMEOUT`, `IDLE_TIMEOUT`,
+    `TOTAL_TIMEOUT` or `P4_ACTIVATION_FAILURE`. Proven explicit cancellation is
+    `stopped` with zero lifecycle mutation; proven startup timeout is Provider
+    start failure/Stage failed; proven idle/total timeout is Provider runtime
+    failure/Stage failed; every unproven timeout is `stopped/proven=false` with
+    zero lifecycle mutation. Timeout never uses Adapter `cancelled=true` merely
+    because the Process stopped; P4 activation failure is Stage failed.
+27. `DurableProcessCoordinator.#terminateStray` is in the P5A proof audit. A
+    compensation-only stray result cannot satisfy E04 or successful
+    cancellation; where verification is consumed it follows
+    `terminateTree -> verifySurvivors -> cleanupVerdictFromVerification`, and
+    bare complete is never promoted to proof.
 
 ## 4. Scope
 
@@ -237,73 +275,200 @@ second Process; after an LTS terminal mutation, `RunEngine.dispatch` returns
 
 ### 5.3 P4 LOW residual closure (OD-M4-P5-16)
 
-Spawn succeeded but `starting -> active` Session CAS failed: the internal
-StageExecutionCoordinator compensation enters the same single stop authority
-against the retained handle. The shared normalizer is the only cleanup result
-decision. A valid proof may produce Process `exited`; bare complete/no proof
-produces `stopping -> orphaned`, `UNKNOWN_PLATFORM_UNAVAILABLE`,
-`process.orphaned(cleanupRequired=true)`, and Session `failed` with
-`PROVIDER_SESSION_FAILED`. The caller remains fail-closed, no second spawn or
-successful lifecycle hand-off occurs, and P6—not P5—folds persistent
-orphan/unknown evidence into restart recovery. P5A proves this on MockDriver;
-P5B proves the real tree-cleanup half.
+Spawn succeeded but `starting -> active` Session CAS failed: `execute` MUST
+NOT directly resolve the final Deferred with `PROVIDER_SESSION_FAILED`.
+Compensation accepts/joins the Process stop ticket, resolves `captureStop`
+immediately, lets the same ProcessCancelCoordinator produce cleanup evidence,
+and submits a `P4_ACTIVATION_FAILURE` disposition to the same finalization
+arbiter. `runToFinal` observes the accepted stop and joins; writer terminal
+action, Session terminal transition and final Deferred settlement each occur
+once. The canonical Stage outcome is failed because Session activation failure
+is independently proven; tree uncertainty is recorded separately and never
+claimed as successful cancellation. A valid proof may produce Process
+`exited`; bare complete/no proof produces `stopping -> orphaned`,
+`UNKNOWN_PLATFORM_UNAVAILABLE`, `process.orphaned(cleanupRequired=true)`, and
+Session `failed`. No second spawn or successful lifecycle hand-off occurs, and
+P6—not P5—folds persistent orphan/unknown evidence into restart recovery.
+P5A proves this on MockDriver; P5B proves the real tree-cleanup half.
 
-### 5.4 Single Stage-attempt finalization authority (HIGH-E closure)
+### 5.4 Exact live Stage-attempt rendezvous lifecycle
 
-`StageExecutionCoordinator.finalizeAttemptOnce(...)` is the only planned
-Provider/output/Session finalization seam. It is an instance-local arbiter
-(`AttemptFinalizationGate` or equivalent promise latch) attached to the live
-execution rendezvous keyed by:
+`StageExecutionCoordinator` owns a private instance map named `liveAttempts`
+(or the repository-conventional equivalent), keyed by:
 
 ```text
 workspaceId | runId | stageId | stageAttempt
 ```
 
-Durable claim lookup through `getSessionByClaimKey(...)` and
-`getRootProcessByClaim(...)` occurs first. The rendezvous then joins
-`execute`, `runToFinal`, `cancelAttempt`, timeout and P4 activation-CAS
-compensation for the same already-proven attempt. It may retain only the live
-`NativeProcessHandle`, parser context, parsed events, stdout/stderr writers,
-bounded stderr and final Deferred. It is not module-global, persisted,
-identity authority, restart/recovery truth or a source for a replacement
-Process. A durable claim without a same-process live entry returns a stable
-`LIVE_EXECUTION_UNAVAILABLE` / `RECOVERY_REQUIRED` internal result; P5A does
-not reconstruct a handle from PID, spawn again or guess success.
-
-The winner is not whichever JavaScript callback happens to run first. The
-arbiter first inspects accepted durable Process stop/terminal evidence:
-
-| Evidence order | Arbiter owner and allowed work |
-|---|---|
-| Process terminal evidence committed before stop ticket | Natural finalization owns; later cancel joins the persisted terminal result. |
-| Stop ticket accepted before terminal Process evidence | Stop finalization owns; `runToFinal` joins it and cannot call `Adapter.finalize(cancelled=false)`, complete the Session or resolve a completed Stage outcome even when `exitCode=0`. |
-| Timeout/cancel/compensation race | First accepted stop reason remains authoritative; later reasons are diagnostics only. |
-
-Exactly one finalization body may run. Natural completion drains stdout/stderr,
-finishes parsing, calls both `DurableOutputWriter.finalize()` methods once,
-calls `Adapter.finalize(cancelled=false)` once and reconciles one Session
-terminal state. Proven cancellation joins/bounds streams, finishes the parser
-tail once, calls both writers' `finalize()` methods once, calls
-`Adapter.finalize(cancelled=true, parsedEvents=...)` once and may persist
-Session `cancelled`. Uncertain cleanup persists Process orphan/unknown and
-Session `failed`, calls both writers' existing `abort()` methods, bounds the
-capture and emits no Provider completion or canonical LTS success. The arbiter
-persists at most one Session terminal transition and resolves the attempt's
-final Deferred at most once; losers only read/join.
-
-If a Session terminal CAS returns `terminal`, the contender reads/joins the
-persisted terminal Session state. It never resolves a local desired
-completed/failed/cancelled result. The coordinator exposes an explicit
-non-lifecycle stop result:
+The exact new-claim order is:
 
 ```text
-{ kind: 'stopped', cleanup: <typed cleanup disposition>, proven: boolean }
+establishClaimAndReservation(joinedExisting=false)
+  -> casSetAdapterStartRequested succeeds
+  -> open stdout/stderr writers
+  -> re-read and revalidate exact Session + root Process ownership
+  -> construct complete LiveAttemptRendezvous
+  -> synchronously liveAttempts.set(key, entry)
+  -> consumeSpawnRightAndSpawn(...)
 ```
 
-`RunEngineProviderDispatcher.ts` consumes `stopped` by breaking/returning from
-the current drive with zero canonical Stage/Run/LTS mutation. P5D owns any
-later canonical cancellation after proven cleanup. `RunEngine.ts` remains
-forbidden.
+There is no await between `liveAttempts.set` and the call that can consume
+`created -> starting`. A created-before-spawn cancellation needs no entry. If
+pre-spawn revalidation finds the Process no longer startable, abort opened
+writers, do not register an entry and do not call Driver.spawn. When
+`established.joinedExisting === true`, create/replacement/spawn/runToFinal and
+new Adapter-start behavior are all forbidden; the original authority retains
+ownership and the existing active/join semantics remain.
+
+The entry retains only the exact key and Session/Process IDs, the
+`NativeProcessHandle` once available, both writers, parser/parsed-event state,
+bounded stderr, the final Stage Deferred, one `captureStop` latch, stdout and
+stderr drain tasks, one `finalizationPromise`, and accepted stop disposition.
+It is ephemeral, instance-local and non-authoritative. A durable
+starting/running/waiting/stopping claim without an exact same-process entry
+returns `LIVE_EXECUTION_UNAVAILABLE` / `RECOVERY_REQUIRED`; P5A does not
+reconstruct a handle from PID, scan Events, respawn, create a coordinator or
+guess success.
+
+The original entry is removed only after its finalization Promise has completed
+writer terminal actions, Adapter finalization decision, Session reconciliation
+and final Deferred settlement:
+
+```text
+finalizationPromise.finally(() => {
+  if (liveAttempts.get(key) === thisEntry) liveAttempts.delete(key)
+})
+```
+
+A loser or duplicate cannot remove another entry. P6 owns later restart and
+recovery classification.
+
+### 5.5 Non-circular finalization wait graph and stream interruption
+
+`NativeProcessHandle` remains unchanged in P5A: stdout/stderr are generic
+`AsyncIterable<Uint8Array>` values and the handle exposes `waitExit()` only.
+StageExecutionCoordinator drain helpers refactor `for await` into explicit
+AsyncIterator loops. Each loop races `iterator.next()` against the one-shot
+`captureStop` latch:
+
+```text
+nextPromise = iterator.next()
+winner = await Promise.race([nextPromise -> NEXT(result), captureStop -> STOP])
+```
+
+On STOP, `iterator.return?.()` is best-effort and is never awaited for
+correctness. A pending `next()` cannot gate finalization after STOP wins. An
+append already in progress may quiesce, but no new chunk is appended after
+stop ownership. Both drain tasks must quiesce before any writer `finalize()` or
+`abort()`, preventing append-after-close races. No custom Driver cancellation
+API, `Readable.destroy()` or `node-driver.ts` change is authorized in P5A.
+
+The wait graph is frozen as follows:
+
+```text
+drain task       -> iterator.next() OR captureStop only
+runToFinal       -> stdout drain + stderr drain + handle.waitExit in parallel
+stop producer    -> durable ticket -> captureStop.resolve immediately
+                 -> Adapter graceful / ProcessCancelCoordinator cleanup
+                 -> finalizeAttemptOnce
+ProcessCancelCoordinator -> no drain/finalization/Stage Deferred wait
+finalizer        -> quiesced drains only; never native EOF after accepted stop
+```
+
+`runToFinal` submits NATURAL only after native exit, natural drain completion
+and the durable natural Process CAS. If a stop wins the Process evidence, it
+submits no natural disposition and joins the stop Promise. Cancellation joins
+the finalization Promise only after the stop ticket is accepted/joined and the
+frozen cleanup disposition is available. No finalizer -> cancelAttempt ->
+finalizer cycle and no finalizer -> runToFinal -> EOF cycle is permitted after
+stop ownership.
+
+### 5.6 Single Stage-attempt finalization authority
+
+`StageExecutionCoordinator.finalizeAttemptOnce(...)` is the only Provider,
+output and Session finalization seam. `LiveAttemptRendezvous.finalizationPromise`
+starts undefined; the first contender with PROVEN durable authority installs
+exactly one Promise:
+
+```text
+entry.finalizationPromise ??= performFinalization(entry, disposition)
+```
+
+All other contenders only join it. The owning disposition must match durable
+Process truth: terminal Process evidence before a stop ticket gives natural
+ownership; a stop ticket first gives stop ownership; later timeout/cancel/
+compensation origins are diagnostics only. A Session terminal CAS loser reads
+and joins persisted terminal Session truth and never resolves a local desired
+result.
+
+The contender protocol is explicit:
+
+```text
+NATURAL runToFinal:
+  observe native exit and quiesced natural drains
+  attempt durable natural Process terminal CAS
+  applied/terminal natural evidence -> install NATURAL only if no stop won
+  stopping/stop-owned evidence -> install nothing; join existing stop Promise
+
+STOP cancel/timeout/compensation:
+  accept or join durable stop ticket
+  terminal natural evidence -> install nothing; read/join natural Promise
+  stopping accepted -> resolve captureStop
+                   -> ProcessCancelCoordinator cleanup disposition
+                   -> install STOP/P4 disposition exactly once
+```
+
+No contender may install a local disposition before this durable evidence
+check, and no JavaScript callback order may choose ownership.
+
+Natural finalization drains and parses normally, finalizes both writers once,
+calls `Adapter.finalize(cancelled=false)` once and reconciles one Session
+terminal result. Proven explicit cancellation finalizes both writers once,
+calls `Adapter.finalize(cancelled=true, parsedEvents=...)` once and may persist
+Session `cancelled`. Uncertain explicit or timeout cleanup aborts both writers
+at most once, persists Process orphan/unknown and Session failed, and emits no
+Provider success or LTS success. Proven timeout uses the Provider failure path
+with `Adapter.finalize(cancelled=false, providerError=<timeout>)`, never user
+cancel success. P4 activation failure returns Stage failed because its
+activation failure is independently proven; tree uncertainty remains recorded.
+
+The internal Stage result is:
+
+```text
+{ kind: 'stopped', cleanup: <typed cleanup disposition>, proven: boolean,
+  stopOrigin: EXPLICIT_CANCEL | STARTUP_TIMEOUT | IDLE_TIMEOUT | TOTAL_TIMEOUT }
+```
+
+P4 activation failure uses the existing failed outcome. Dispatcher consumes
+stopped explicit cancellation and unproven timeout by returning with zero
+canonical Stage/Run/LTS mutation. `RunEngine.ts` remains forbidden.
+
+### 5.7 Stop-origin timeout mapping and stray cleanup
+
+| Stop origin | Proven cleanup | Unproven cleanup |
+|---|---|---|
+| `EXPLICIT_CANCEL` | `stopped`, `proven=true`; Dispatcher zero lifecycle mutation; P5D later owns canonical cancellation | `stopped`, `proven=false`; Dispatcher zero lifecycle mutation; Run/Stage nonterminal |
+| `STARTUP_TIMEOUT` | `PROVIDER_START_FAILED`, phase `startup`, Stage failed | Process orphan/unknown + Session failed; `stopped`, `proven=false`; Stage remains nonterminal |
+| `IDLE_TIMEOUT` / `TOTAL_TIMEOUT` | `PROVIDER_SESSION_FAILED`, phase `runtime`, Stage failed | Process orphan/unknown + Session failed; `stopped`, `proven=false`; Stage remains nonterminal |
+| `P4_ACTIVATION_FAILURE` | Stage failed; cleanup evidence recorded separately | Stage failed; cleanup uncertainty recorded separately |
+
+Timeout never uses `Adapter.finalize(cancelled=true)` merely because the
+Process was stopped. `#terminateStray` is explicitly audited: a compensation-
+only result cannot satisfy E04, create successful cancellation evidence or
+promote bare `terminateTree().classification === 'complete'` to proof. Where
+verification is consumed it follows `terminateTree -> verifySurvivors ->
+cleanupVerdictFromVerification`; otherwise it remains fail-closed diagnostic
+cleanup only.
+
+Dispatcher mapping is frozen as:
+
+| Coordinator result | Dispatcher behavior |
+|---|---|
+| `completed` | existing completion lifecycle |
+| `failed` | existing failure lifecycle |
+| `active` | existing joined-authority behavior |
+| `stopped` with `EXPLICIT_CANCEL` or unproven timeout | zero Stage/Run/LTS lifecycle mutation |
+| P4 activation failure | existing failed Stage path |
 
 ## 6. Process tree contract
 
@@ -427,7 +592,8 @@ this planning remediation.
 | Durable evidence | `PROCESS_STARTUP_TIMEOUT` stop reason + `process.stopping` + terminal fact | `PROCESS_IDLE_TIMEOUT` stop reason + facts | `PROCESS_TOTAL_TIMEOUT` stop reason + facts |
 | Process termination reason | timeout (outcome `timeout`) | timeout | timeout |
 | Provider error mapping | `PROVIDER_START_FAILED` (startup phase) | `PROVIDER_SESSION_FAILED` (runtime) | `PROVIDER_SESSION_FAILED` (runtime) |
-| Run/Stage outcome | Stage failed (lifecycle owner) | Stage failed | Stage failed |
+| Proven cleanup outcome | `PROVIDER_START_FAILED` / Stage failed | `PROVIDER_SESSION_FAILED` / Stage failed | `PROVIDER_SESSION_FAILED` / Stage failed |
+| Unproven cleanup outcome | `stopped`, `proven=false`; Dispatcher zero lifecycle mutation; Stage remains nonterminal | `stopped`, `proven=false`; Dispatcher zero lifecycle mutation; Stage remains nonterminal | `stopped`, `proven=false`; Dispatcher zero lifecycle mutation; Stage remains nonterminal |
 | vs user cancel | first accepted stop reason wins | first accepted stop reason wins | first accepted stop reason wins |
 | vs natural exit | first terminal observation wins (CAS) | first wins | first wins |
 | Simultaneous timeout/exit/cancel | single-terminal-CAS; one `process.stopping` reason; other causes correlated diagnostics | same | same |
@@ -443,7 +609,12 @@ is wired — audit CS-14). Timer tests use the injected `Clock`; no wall-clock
 only flaky tests. Every timeout routes through the SAME Process-side stop
 authority as user cancel (`ProcessTimers.onFire -> ProcessCancelCoordinator
 stop pipeline -> same upward completion chain`); first accepted stop reason
-owns the transition.
+owns the transition. Timeout and explicit cancellation share Process evidence
+but not canonical Stage semantics: proven timeout uses the Provider failure
+path with `Adapter.finalize(cancelled=false, providerError=<timeout>)`, while
+unproven timeout returns `stopped/proven=false` and leaves Stage/Run
+nonterminal. P4 activation-CAS failure is independently proven and returns
+Stage failed.
 
 Approval-wait seam (OD-M4-P5-14): P5C owns exactly one narrow
 `CanonicalRunEventObservationPort` dependency on `StageExecutionCoordinator`.
@@ -530,11 +701,11 @@ independent review/closeout.
 | Exact dependency | P4 accepted; P0/P2B durable Process/Session repositories; `ProcessManager`/`DurableProcessCoordinator` stop surfaces. |
 | Allowed files/packages | `packages/process-runtime/src/driver.ts` (additive proof type + `cleanupVerdictFromVerification`), `manager.ts`, `durable-coordinator.ts`, NEW `process-cancel-coordinator.ts`, `repository-port.ts` (claim lookup ports), `testing/mock-driver.ts`, package exports/errors/tests; `apps/server/src/store/process-runtime-adapters.ts` (lookup adapters only), existing `ProviderSessionRepository.findByClaimKey` and `ProcessRepository.findByRootClaim` adapters/tests, `apps/server/src/services/run-engine/StageExecutionCoordinator.ts` internal `cancelAttempt`/`finalizeAttemptOnce`/Session finalization, `apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts` stopped-outcome consumption only, server/package tests/fixtures. |
 | Forbidden files | `TaskRunService.ts`, `canonicalRuns.ts`, `v2Runs.ts`, `OperationService.ts`, `routes/operations.ts`, `routes/conversations.ts`, `RunStreamRegistry.ts`, `index.ts`, public command activation, P5B `node-driver.ts` tree internals, P5C timeout/observation wiring, migrations/schema, package.json/lockfile, `RunEngine.ts`, agent-core adapter changes, LifecycleTransactionService implementation. |
-| Production changes | Shared proof-aware normalization; Manager/DurableCoordinator enforcement; ProcessCancelCoordinator stop ticket; exact claim lookup ports; StageExecutionCoordinator live rendezvous and single `finalizeAttemptOnce` arbiter; natural/cancel/timeout/P4 compensation convergence; ticket-gated Adapter graceful request; one Provider/output/Session finalization body; explicit internal `stopped` outcome; Session cancelled only with proven cleanup or failed on uncertainty; P4 LOW compensation. |
-| Test changes | RACE-S1..S5; FINAL-01..FINAL-12; active-CAS-failure; duplicate/concurrent/after-terminal stop; proof mutation through Manager, registration failure, late success and ProcessCancelCoordinator; valid MockDriver proof; claim workspace/run/stage/attempt mismatch; Session/Process facts; no second spawn; no LTS call on unproven/stopped result; terminal-CAS loser persisted-state join; architecture-negative Provider imports. |
+| Production changes | Shared proof-aware normalization; Manager/DurableCoordinator enforcement; ProcessCancelCoordinator stop ticket; exact claim lookup ports; StageExecutionCoordinator live rendezvous with exact pre-spawn registration/removal; explicit AsyncIterator capture interruption using `captureStop` without changing the Driver API; non-circular single `finalizeAttemptOnce` arbiter; natural/cancel/timeout/P4 compensation convergence; ticket-gated Adapter graceful request; one Provider/output/Session finalization body; explicit internal `stopped` outcome; reason-specific timeout mapping; Session cancelled only with proven explicit cleanup or failed on uncertainty; P4 LOW compensation; explicit `#terminateStray` audit. |
+| Test changes | RACE-S1..S5; FINAL-01..FINAL-26; TO-19..TO-25; STRAY-01; active-CAS-failure; duplicate/concurrent/after-terminal stop; proof mutation through Manager, registration failure, late success, `#terminateStray` and ProcessCancelCoordinator; valid MockDriver proof; claim workspace/run/stage/attempt mismatch; Session/Process facts; no second spawn; no LTS call on unproven/stopped result; terminal-CAS loser persisted-state join; architecture-negative Provider imports and Driver-API mutation. |
 | Platform scope | MockDriver only; the unchanged P4 NodeProcessDriver is intentionally no-proof. |
 | Stop conditions | any direct classification-only terminal branch; bare complete accepted; wrong claim joined; Session cancelled without proof; LTS/Run/Stage mutation; second spawn/ticket/fact; public active route activated. |
-| Acceptance criteria | `P5A COMPLETE = INTERNAL CANCEL AUTHORITY + STATE SAFETY + PROOF GATE + SINGLE ATTEMPT FINALIZER`; exact normalized no-proof result; P4 LOW coordination half; stopped Dispatcher path makes zero canonical mutation; no public active cancel; no `RunEngine.ts`/`index.ts` change; unchanged P4 driver fails closed. |
+| Acceptance criteria | `P5A COMPLETE = INTERNAL CANCEL AUTHORITY + STATE SAFETY + PROOF GATE + SINGLE ATTEMPT FINALIZER`; exact normalized no-proof result; exact live-entry lifecycle; non-circular capture/finalization wait graph; P4 LOW coordination half; reason-specific timeout origin contract ready for P5C; stopped Dispatcher path makes zero canonical mutation; no public active cancel; no `RunEngine.ts`/`index.ts` change; unchanged P4 driver fails closed; `#terminateStray` cannot create proof. |
 | Rollback boundary | revert internal cancel/proof/correlation additions; no public command or Process evidence is deleted. |
 | Fresh regression suites | Process package, durable coordinator/repository, StageExecutionCoordinator and lifecycle regression suites. |
 | Independent review gate | internal lifecycle-race + proof/state-machine review (BLOCKER/HIGH 0). |
@@ -647,18 +818,29 @@ may concurrently mutate the coordinator, driver, command seam or
 | ProcessCancelCoordinator | new `process-cancel-coordinator.ts` | process-side stop ticket, platform cleanup and Provider-neutral result only |
 | Session claim lookup | new `DurableSessionRepository.getSessionByClaimKey` + adapter | backed by existing `ProviderSessionRepository.findByClaimKey` |
 | Root Process lookup | new `DurableProcessRepository.getRootProcessByClaim` + adapter | backed by existing `ProcessRepository.findByRootClaim` |
-| Live attempt rendezvous | `StageExecutionCoordinator` private instance state | key `workspaceId|runId|stageId|stageAttempt`; ephemeral NativeProcess/parser/writer/final Deferred only; no module-global/persistence/recovery authority |
-| Attempt finalization latch | `StageExecutionCoordinator.finalizeAttemptOnce` / `AttemptFinalizationGate` | one arbiter body; natural exit, cancel, timeout, P4 compensation and Provider-finalize races join; durable stop/terminal evidence decides precedence |
-| Natural `runToFinal` | existing `runToFinal` refactored through the arbiter | cannot finalize `cancelled=false` after an accepted stop; terminal-CAS loser joins persisted Session state |
+| Live attempt rendezvous | `StageExecutionCoordinator` private `liveAttempts` instance state | key `workspaceId|runId|stageId|stageAttempt`; exact claim IDs, handle, parser, writers, bounded stderr, Deferred, captureStop, drain tasks, finalization Promise and stop disposition only; no module-global/persistence/recovery authority |
+| Rendezvous registration | `StageExecutionCoordinator.execute` | after new-claim start-request CAS, writer creation and exact Session/Process revalidation; synchronous map insertion immediately before `consumeSpawnRightAndSpawn`, with no await between insertion and spawn-right consumption |
+| Pre-spawn revalidation | `StageExecutionCoordinator.execute` | created-before-spawn cancel needs no entry; a no-longer-startable Process aborts opened writers, registers no entry and never spawns |
+| Joined-existing behavior | `StageExecutionCoordinator.execute` | `joinedExisting` creates/replaces no entry, starts no `runToFinal` or Adapter start and remains the existing active/join path |
+| Missing live entry | `StageExecutionCoordinator.cancelAttempt` | starting/running/waiting/stopping exact durable claim without same-instance entry returns `LIVE_EXECUTION_UNAVAILABLE`/`RECOVERY_REQUIRED`; no PID/Event reconstruction or respawn |
+| Rendezvous removal | `StageExecutionCoordinator` finalization Promise | identity-checked `finally` deletion only after writers, Adapter decision, Session reconciliation and final Deferred settlement; loser cannot remove a replacement |
+| Capture interruption latch | `LiveAttemptRendezvous.captureStop` | one-shot Stage-local latch; stop owner resolves it before Adapter graceful/Process cleanup; no Driver API or `node-driver.ts` change |
+| Explicit stream iterator drain | `StageExecutionCoordinator` drain helpers | `iterator.next()` races `captureStop`; `iterator.return?.()` is best effort and never awaited; no pending `next()`/EOF gates stop finalization; one in-flight append may quiesce and no later append starts |
+| Drain task ownership | `LiveAttemptRendezvous` stdout/stderr drain tasks | natural path runs both drains plus `waitExit` in parallel; finalizer awaits task quiescence, not native EOF after stop |
+| Attempt finalization latch | `StageExecutionCoordinator.finalizeAttemptOnce` / `AttemptFinalizationGate` | first contender with durable authority installs `entry.finalizationPromise ??= performFinalization(entry, disposition)`; all other contenders join; durable stop/terminal evidence decides precedence |
+| Finalization body | `StageExecutionCoordinator.performFinalization` private helper | exactly one body owns parser tail, writer terminal actions, Adapter finalization decision, Session terminal reconciliation and final Deferred settlement |
+| Natural `runToFinal` | existing `runToFinal` refactored through the arbiter | submits natural only after native exit, natural drain completion and durable natural Process CAS; stop winner causes join, never `cancelled=false` completion |
 | Stage internal cancel | `StageExecutionCoordinator.cancelAttempt` | exact workspace/run/stage/stageAttempt; no Run/Stage mutation |
 | Timeout finalization | `ProcessTimers` -> `ProcessCancelCoordinator` | same attempt arbiter in P5C; first accepted stop reason prevents false Provider completion |
 | P4 LOW compensation | `StageExecutionCoordinator.execute` activation-CAS failure path | same stop ticket and same attempt arbiter; runToFinal loser joins one result |
 | Output finalize/abort | existing `DurableOutputWriter.finalize` / `abort` | proven/natural paths finalize once; uncertain path aborts each writer and never waits unboundedly |
 | Adapter finalization | existing `RuntimeProviderAdapter.finalize` | exactly one arbiter-owned call with `cancelled=false` or `true` as evidence permits |
 | Session finalization | existing `DurableSessionRepository.casSessionTransition` | exactly one arbiter-owned CAS/result reconciliation; terminal loser reads persisted Session; cancelled only with proven cleanup; failed on uncertainty |
-| Stage stop outcome | `StageExecutionCoordinator` `StageExecutionOutcome` | explicit non-lifecycle `{kind:'stopped',cleanup,proven}`; canonical lifecycle remains untouched |
+| Stage stop outcome | `StageExecutionCoordinator` `StageExecutionOutcome` | explicit non-lifecycle `{kind:'stopped',cleanup,proven,stopOrigin}` for explicit cancel and unproven timeout; canonical lifecycle remains untouched |
 | Dispatcher stop consumption | `RunEngineProviderDispatcher.ts` | P5A-only narrow consumer; `stopped` breaks/returns with zero Stage/Run/LTS mutation |
 | MockDriver proof behavior | `testing/mock-driver.ts` | explicit valid-proof and bare-complete negative modes |
+| Timeout origin mapping | `StageExecutionCoordinator` / P5C integration | explicit cancel, startup/idle/total timeout and P4 activation failure have distinct proven/unproven Stage outcomes; timeout uses Provider failure finalization, never user-cancel success |
+| Stray proof audit | `durable-coordinator.ts` `#terminateStray` | compensation-only cleanup cannot satisfy E04 or create successful cancellation evidence; verification, when consumed, uses the shared normalizer |
 
 No P5A row may be implemented through a module-global map, PID lookup, Event
 history scan for ownership, public route, OperationService, `index.ts`, or a
@@ -764,14 +946,26 @@ Stop and require re-entry if any occurs:
 - timeout or cancel marks Provider success;
 - natural exit, cancel, timeout or P4 compensation can execute more than one
   Provider/output/Session finalizer for one attempt;
+- a spawned Process can exist after `created -> starting` without a same-instance
+  live rendezvous, or a `joinedExisting` execution creates/replaces an entry;
+- entry removal can occur before writer/Adapter/Session/Deferred terminal work
+  settles, or a loser can delete a replacement entry;
+- drain correctness depends on native EOF, an unresolved `iterator.next()` or
+  an awaited `iterator.return()` after `captureStop` wins;
+- a stop producer, ProcessCancelCoordinator or finalizer waits in a cycle on
+  drain/finalization/Stage Deferred promises;
 - a stop ticket accepted before natural terminal Process evidence is later
   reinterpreted as Provider completion from `exitCode=0`;
 - a terminal Session CAS loser resolves its own desired local outcome instead
   of reading/joining the persisted terminal state;
 - an internal `stopped` outcome is mapped by Dispatcher to Stage/Run failed,
   completed or cancelled, or `RunEngine.ts` becomes a second owner;
+- proven timeout is represented as user-cancelled Provider success, or
+  unproven timeout terminalizes the canonical Stage;
 - uncertain cleanup waits unboundedly or calls writer `finalize()` instead of
   the existing safe `DurableOutputWriter.abort()` path;
+- `#terminateStray` promotes a bare `terminateTree().classification` to E04,
+  Process, Session or canonical cancellation proof;
 - `LifecycleTransactionService` is bypassed for a canonical terminal;
 - Adapter spawns/kills/mutates lifecycle;
 - raw secret/stderr/env leaks into Events/logs/ApiProblem;
@@ -802,25 +996,29 @@ rollback mechanisms authorized here.
 
 ```text
 M4-P5 PRE-IMPLEMENTATION PLANNING:
-FOURTH NARROW DOCS-ONLY REMEDIATION / PENDING FRESH INDEPENDENT PLAN REVIEW
+FIFTH NARROW DOCS-ONLY REMEDIATION / PENDING FRESH INDEPENDENT PLAN REVIEW
 
 Independent Plan Review (latest):
 NOT ACCEPTED — the prior review found HIGH-A..D, MEDIUM-A..B and LOW; the next
-review found HIGH-E (dual finalizer race). This fourth narrow docs-only
-remediation freezes one proof normalizer, exact no-proof durable semantics, the
-internal P5A/public P5D split, claim-correlation ports, Operation two-phase
-cancellation, the P5C attempt-anchor/failure-callback contract, and one shared
-Stage-attempt finalization arbiter with an explicit internal stopped outcome.
-A fresh independent plan review is still required.
+review found HIGH-E (dual finalizer race), HIGH-F1 (rendezvous lifecycle/wait
+protocol), HIGH-F2 (stream interruption), MEDIUM-F1 (timeout outcome mapping)
+and LOW-F1 (`#terminateStray` audit). This fifth narrow docs-only remediation
+freezes one proof normalizer, exact no-proof durable semantics, the internal
+P5A/public P5D split, claim-correlation ports, Operation two-phase
+cancellation, the P5C attempt-anchor/failure-callback contract, exact live
+entry registration/removal, a non-circular AsyncIterator capture protocol,
+reason-specific timeout outcomes, and the shared Stage-attempt finalization
+arbiter with an explicit internal stopped outcome. A fresh independent plan
+review is still required.
 
 M4-P5 PRODUCTION IMPLEMENTATION:
 NOT AUTHORIZED
 
 M4-P5 PLANNING COMMITS:
 943b383b (original planning) -> d9ed0d0a (first remediation) -> a3a4c422
-(second remediation) -> 501970c8 (third remediation) -> THIS fourth narrow
-remediation commit (ordinary forward docs commit on docs/m4-p5-planning; no
-amend/rebase/squash)
+(second remediation) -> 501970c8 (third remediation) -> 0d46ab39 (fourth
+remediation) -> THIS fifth narrow remediation commit (ordinary forward docs
+commit on docs/m4-p5-planning; no amend/rebase/squash)
 
 M4-P4:
 COMPLETE (unchanged)

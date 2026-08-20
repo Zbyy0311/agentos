@@ -1,6 +1,6 @@
 # AgentOS M4-P5 Cancellation, Process Tree, Timeout and Transport — Owner Decision Register
 
-Status: M4-P5 PRE-IMPLEMENTATION PLANNING — FOURTH NARROW DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — ALL P5 DECISIONS RESOLVED AS TECHNICAL DECISIONS — 0 USER OWNER DECISIONS — NO PRODUCTION AUTHORIZATION
+Status: M4-P5 PRE-IMPLEMENTATION PLANNING — FIFTH NARROW DOCS-ONLY REMEDIATION (FRESH REVIEW PENDING) — ALL P5 DECISIONS RESOLVED AS TECHNICAL DECISIONS — 0 USER OWNER DECISIONS — NO PRODUCTION AUTHORIZATION
 
 ## 1. Classification rule (inherited from M4 register §2)
 
@@ -19,7 +19,7 @@ user-visible semantic alternative, the phase must STOP and raise a new
 
 ```text
 USER OWNER DECISIONS REQUIRED BEFORE M4-P5 IMPLEMENTATION = 0
-TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 30
+TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 35
 ```
 
 ## 2. Decision register
@@ -317,15 +317,65 @@ TECHNICAL DECISIONS FROZEN IN THIS PACKAGE               = 30
 | Missing rendezvous | A durable claim with no same-process live rendezvous returns a stable `live execution unavailable / recovery required` internal result. P5A does not reconstruct a native handle from PID, spawn again, create a second coordinator or guess successful cancellation; P6 owns restart/recovery classification. |
 | Evidence | Current `runToFinal` owns the natural Provider/output/Session finalization and accepts `terminal` CAS without reconciling persisted state; `DurableOutputWriter` exposes the existing `finalize()` and `abort()` methods; the new contract closes the HIGH-E dual-finalizer race without changing schema. |
 | Alternatives rejected | Independent cancel/timeout finalizers; module-global live maps; durable rendezvous as restart truth; treating exit code 0 as Provider completion after an accepted stop; resolving a loser from local desired state; using `finalize()` for uncertain survivor capture when the existing safe artifact API provides `abort()`. |
-| Tests required | FINAL-01..FINAL-12: precedence, single Adapter/output/Session/Deferred counts, parser/stream closure, uncertain abort, terminal-CAS loser persisted-state join, stopped Dispatcher no-op, timeout/P4 compensation convergence, and missing-live-rendezvous fail-closed behavior. |
+| Tests required | FINAL-01..FINAL-26: precedence, single Adapter/output/Session/Deferred counts, exact registration/removal, joinedExisting and created-cancel behavior, parser/stream interruption, uncertain abort, terminal-CAS loser persisted-state join, stopped Dispatcher no-op, timeout/P4 compensation convergence, and missing-live-rendezvous fail-closed behavior; TO-19..TO-25 and STRAY-01 cover reason-specific timeout and stray cleanup semantics. |
+
+### OD-M4-P5-31 — Exact live-attempt rendezvous lifecycle
+
+| Field | Value |
+|---|---|
+| Decision | `StageExecutionCoordinator` owns a private instance-local `liveAttempts` map keyed by `workspaceId|runId|stageId|stageAttempt`. For a new claim, registration occurs only after `establishClaimAndReservation(joinedExisting=false)`, successful `casSetAdapterStartRequested`, writer creation, and exact Session/root-Process revalidation, and synchronously before `consumeSpawnRightAndSpawn` can consume `created -> starting`; no await is permitted between `set` and spawn-right consumption. Created-before-spawn cancellation needs no entry. `joinedExisting` creates/replaces no entry and starts no finalizer. A starting/running/waiting/stopping durable claim without the exact same-process entry returns `LIVE_EXECUTION_UNAVAILABLE`/`RECOVERY_REQUIRED`; it is never reconstructed. The entry is removed only after its finalization Promise has completed writer actions, Adapter decision, Session reconciliation and final Deferred settlement, using identity-checked `finally` deletion so a loser cannot remove a replacement. |
+| Evidence | Current `StageExecutionCoordinator.execute` creates the claim before spawn and current P4 LOW compensation begins after spawn; P0/M4 require one execution authority and no PID/restart reconstruction. |
+| Alternatives rejected | Registration after spawn (ownership gap); registration for created-before-spawn cancel (invented handle); replacing a joined entry (second authority); immediate deletion on loser observation (late joiner race); module-global or durable rendezvous (wrong authority). |
+| Contract consequence | Every Process state after spawn-right consumption in this coordinator has a same-instance live entry; missing live state fails closed and P6 owns recovery. |
+| Tests required | FINAL-13 registration-before-CAS, FINAL-14 joinedExisting, FINAL-15 created cancel/pre-spawn revalidation, FINAL-26 identity-checked removal, and missing-live-rendezvous negative coverage. |
+
+### OD-M4-P5-32 — Non-circular finalization wait graph
+
+| Field | Value |
+|---|---|
+| Decision | Drain tasks wait only on `iterator.next()` or the one-shot `captureStop` latch. They never await ProcessCancelCoordinator, the finalization Promise or the Stage Deferred. The stop producer accepts/joins the durable ticket, resolves `captureStop` immediately, then performs Adapter graceful coordination and Process cleanup. ProcessCancelCoordinator waits on neither drains nor Stage finalization. `finalizeAttemptOnce` may await already-interrupted drain-task quiescence; `runToFinal` submits natural disposition only after native exit, natural drain completion and the durable natural Process CAS, otherwise it joins the stop Promise. `cancelAttempt` waits for accepted/joined stop and frozen cleanup disposition before joining finalization. No finalizer -> cancelAttempt -> finalizer cycle and no finalizer -> runToFinal -> EOF cycle is legal after stop ownership. |
+| Evidence | Current `runToFinal` starts before the spawn coordinator returns and drains both streams before natural terminal work; the P0 race rule requires durable Process evidence, not JavaScript callback order. |
+| Alternatives rejected | Waiting for EOF before resolving stop ownership; letting ProcessCancelCoordinator await output; independent timeout/cancel finalizers; using callback order as precedence. |
+| Contract consequence | Accepted stop ownership interrupts capture before platform cleanup can wait on survivor-owned pipes, while natural completion retains concurrent stdout/stderr draining. |
+| Tests required | FINAL-16, FINAL-17, FINAL-18, FINAL-22, FINAL-23 and FINAL-24, including never-resolving `next()` and natural/stop CAS races. |
+
+### OD-M4-P5-33 — Provider-independent AsyncIterator capture interruption
+
+| Field | Value |
+|---|---|
+| Decision | P5A refactors each `for await` drain to an explicit `AsyncIterator`: race `iterator.next()` against `captureStop`; on stop, best-effort `iterator.return?.()` is invoked but never awaited for correctness; a pending `next()` cannot gate finalization; an append already in progress may quiesce, but no new chunk is appended after stop ownership; both drain tasks must quiesce before writer `finalize()`/`abort()`. No custom Driver cancellation method, `Readable.destroy()` or `NativeProcessHandle` API expansion is authorized. |
+| Evidence | Current `NativeProcessHandle` exposes only generic `AsyncIterable` stdout/stderr and `waitExit`; existing `DurableOutputWriter.abort()` aborts the artifact sink only. |
+| Alternatives rejected | Expanding the Driver API in P5A; authorizing `node-driver.ts` in P5A; awaiting `iterator.return()`; waiting for native EOF after uncertainty. |
+| Contract consequence | Capture interruption is Stage-local and Provider/platform-independent; uncertain cleanup can abort bounded artifacts without claiming that the underlying iterator supplied EOF. |
+| Tests required | FINAL-17..FINAL-21, including absent or never-resolving `iterator.return()` and append-in-progress quiescence. |
+
+### OD-M4-P5-34 — Stop-origin-specific timeout mapping
+
+| Field | Value |
+|---|---|
+| Decision | `StopOrigin` is one of `EXPLICIT_CANCEL`, `STARTUP_TIMEOUT`, `IDLE_TIMEOUT`, `TOTAL_TIMEOUT` or `P4_ACTIVATION_FAILURE`. Proven explicit cancel returns `stopped/proven=true` and Dispatcher performs zero lifecycle mutation; unproven explicit cancel returns `stopped/proven=false` with Run/Stage nonterminal. Proven startup timeout maps to `PROVIDER_START_FAILED`/startup and Stage failed; unproven startup timeout returns stopped/unproven with zero lifecycle mutation. Proven idle/total timeout maps to `PROVIDER_SESSION_FAILED`/runtime and Stage failed; unproven idle/total timeout returns stopped/unproven with zero lifecycle mutation. Timeout never uses `Adapter.finalize(cancelled=true)` merely because the Process stopped; proven timeout uses `cancelled=false` with the normalized timeout Provider error. P4 activation failure returns Stage failed because activation failure is independently proven, while tree uncertainty remains recorded. |
+| Evidence | Existing timeout policy table collapses timeout and explicit cancellation into Stage failed/stopped semantics; the same Process stop authority is required but canonical outcomes differ by origin and cleanup proof. |
+| Alternatives rejected | Always mapping timeout to stopped; always mapping timeout to Stage failed despite uncertain owned-process cleanup; treating timeout as user-cancelled Provider success. |
+| Contract consequence | Timeout and explicit cancellation share stop-ticket/tree evidence without sharing user-visible canonical semantics; uncertain cleanup never terminalizes the canonical Stage. |
+| Tests required | TO-19..TO-25 plus FINAL-11 and P4 activation failure coverage. |
+
+### OD-M4-P5-35 — `#terminateStray` proof audit
+
+| Field | Value |
+|---|---|
+| Decision | `DurableProcessCoordinator.#terminateStray` is explicitly audited. If it remains compensation-only because the durable owner row is absent or already terminal, its result cannot satisfy E04, create successful cancellation evidence or promote `terminateTree().classification === 'complete'` to proof. Where verification is consumed, the path is `terminateTree -> verifySurvivors -> cleanupVerdictFromVerification`; otherwise the result is fail-closed diagnostic cleanup only. |
+| Evidence | The current helper performs best-effort `terminateTree` on a stray handle and has no durable owner to terminalize; P0 forbids treating root/kill classification alone as owned-tree proof. |
+| Alternatives rejected | Silent promotion of bare complete; using stray cleanup as a successful Session/Run cancellation; omitting the path from the architecture-negative audit. |
+| Contract consequence | Stray cleanup cannot create a false E04 success, a terminated Process ID or a canonical LTS hand-off. |
+| Tests required | STRAY-01: bare complete through `#terminateStray` cannot satisfy proof/E04/successful cancellation. |
 
 ## 3. Decision conclusion
 
 ```text
 CURRENT M4-P5 OWNER DECISION COUNT            = 0 (USER)
-CURRENT M4-P5 TECHNICAL DECISION COUNT        = 30 (ALL RESOLVED)
-HIGHEST OD-M4-P5 NUMBER                       = 30
-DECISION COUNT CHECK                          = 21 inherited + 9 remediation = 30
+CURRENT M4-P5 TECHNICAL DECISION COUNT        = 35 (ALL RESOLVED)
+HIGHEST OD-M4-P5 NUMBER                       = 35
+DECISION COUNT CHECK                          = 21 inherited + 14 remediation = 35
 
 BLOCKING UNRESOLVED DECISIONS                 = 0
 
