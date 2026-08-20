@@ -263,6 +263,19 @@ export class ProcessCancelCoordinator {
         const cancelled = await this.#transition(cancellationInput);
         process = await this.#readTransitionResult(cancelled, process);
         if (isTerminal(process.status)) {
+          if (cancelled.kind !== 'applied') {
+            // A terminal re-read after a losing CAS is only persisted truth;
+            // it is not proof that this cancellation created the terminal
+            // fact. Ownership comes from the CAS outcome, never from copied
+            // termination fields or the terminal status alone.
+            state.stopAccepted = false;
+            state.safeTerminal = false;
+            state.authority = 'natural-terminal';
+            state.cleanupRequired = false;
+            state.ticketReady.resolve(state.ticket);
+            state.result.resolve(this.#resultFromTerminal(process, state.input, undefined, false, state.authority, false));
+            return;
+          }
           state.stopAccepted = true;
           state.safeTerminal = true;
           state.authority = 'created-before-spawn';

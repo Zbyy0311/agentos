@@ -151,7 +151,46 @@ function request(overrides: Partial<Parameters<ProcessCancelCoordinator['acceptS
 }
 
 describe('ProcessCancelCoordinator', () => {
-  it('P5A-REMED2-00: re-reads created to starting after losing the cancel CAS', async () => {
+  it('P5A-REMED3-01: losing created cancel cannot claim another owner\'s failed terminal', async () => {
+    const repository = new FakeProcessRepository(processView({ status: 'created', nativePid: null }));
+    repository.blockCreatedCancel = true;
+    const driver = new MockProcessDriver();
+    const coordinator = new ProcessCancelCoordinator({
+      processRepository: repository,
+      driver,
+      now: () => NOW,
+      gracePeriodMs: 0,
+    });
+
+    const ticketPromise = coordinator.acceptStop(request());
+    await repository.createdCancelEntered.promise;
+    repository.process = {
+      ...repository.process,
+      status: 'failed',
+      version: repository.process.version + 1,
+      terminationReason: null,
+      errorCode: 'PROCESS_ARTIFACT_WRITE_FAILED',
+      errorDetailRedacted: 'artifact write failed',
+    };
+    repository.releaseCreatedCancel.resolve(undefined);
+
+    const ticket = await ticketPromise;
+    const result = await ticket.result;
+
+    expect(ticket.authority).toBe('natural-terminal');
+    expect(ticket.stopAccepted).toBe(false);
+    expect(ticket.cleanupRequired).toBe(false);
+    expect(result.authority).toBe('natural-terminal');
+    expect(result.stopAccepted).toBe(false);
+    expect(result.cleanupRequired).toBe(false);
+    expect(result.proven).toBe(false);
+    expect(result.process.errorCode).toBe('PROCESS_ARTIFACT_WRITE_FAILED');
+    expect(driver.gracefulStopCalls).toBe(0);
+    expect(driver.terminateTreeCalls).toBe(0);
+    expect(driver.verifySurvivorsCalls).toBe(0);
+  });
+
+  it('P5A-REMED3-03 / P5A-REMED2-00: re-reads created to starting after losing the cancel CAS', async () => {
     const repository = new FakeProcessRepository(processView({ status: 'created', nativePid: null }));
     repository.blockCreatedCancel = true;
     const driver = new MockProcessDriver();
@@ -171,6 +210,7 @@ describe('ProcessCancelCoordinator', () => {
     const ticket = await ticketPromise;
     expect(ticket.authority).toBe('active-stop');
     expect(ticket.stopAccepted).toBe(true);
+    expect(ticket.cleanupRequired).toBe(true);
     await ticket.startCleanup();
     const result = await ticket.result;
 
@@ -270,7 +310,7 @@ describe('ProcessCancelCoordinator', () => {
     expect(result.proven).toBe(true);
   });
 
-  it('does not spawn or require a native handle for created-before-spawn cancellation', async () => {
+  it('P5A-REMED3-02: created cancel CAS winner owns pre-spawn failure', async () => {
     const repository = new FakeProcessRepository(processView({ status: 'created', nativePid: null, version: 1 }));
     const driver = new MockProcessDriver();
     const coordinator = new ProcessCancelCoordinator({
