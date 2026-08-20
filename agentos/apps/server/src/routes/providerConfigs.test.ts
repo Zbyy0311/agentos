@@ -284,7 +284,7 @@ test('provider validation route returns stable sanitized Kimi validation evidenc
           ? '0.23.5'
           : request.args[0] === '--help'
             ? '--output-format stream-json'
-            : 'authenticated',
+            : '{"type":"assistant","role":"assistant","content":"ok"}',
         stderr: '',
         exitCode: 0,
         signal: null,

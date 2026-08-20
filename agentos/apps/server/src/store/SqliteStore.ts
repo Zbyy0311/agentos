@@ -57,6 +57,7 @@ import { IdempotencyRepository } from './IdempotencyRepository.js';
 import { ProviderConfigurationRepository } from './ProviderConfigurationRepository.js';
 import { ProviderSessionRepository } from './ProviderSessionRepository.js';
 import { ProcessRepository } from './ProcessRepository.js';
+import { DurableAtomicSeamImpl } from './DurableAtomicSeam.js';
 import { ProcessOutputReferenceRepository } from './ProcessOutputReferenceRepository.js';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { MigrationRegistry } from '../migrations/registry.js';
@@ -547,6 +548,11 @@ export class SqliteStore implements Store {
   /** M4-P2B durable per-stream output reference repository (shares this store's SQLite handle). */
   processOutputReferenceRepository(): ProcessOutputReferenceRepository {
     return this.processOutputReferenceRepo;
+  }
+
+  /** M4-P4 exactly-one Session + root Process atomic seam over this store's SQLite handle. */
+  atomicSeam(): DurableAtomicSeamImpl {
+    return new DurableAtomicSeamImpl(this.database as never, this.providerSessionRepo, this.processRepo);
   }
 
   runtimeEventRepository(): RuntimeEventRepository {

@@ -32,14 +32,28 @@ function config(overrides: Partial<ProviderConfigurationInput> = {}): ProviderCo
   };
 }
 
-function probeFor(version = '0.23.5', help = '--output-format stream-json', auth = 'authenticated'): ProcessProbePort {
+interface AuthProbeFixture {
+  readonly stdout?: string;
+  readonly stderr?: string;
+  readonly exitCode?: number | null;
+  readonly errorCode?: 'PROCESS_STARTUP_TIMEOUT' | 'PROCESS_EXECUTABLE_NOT_ACCESSIBLE' | 'PROCESS_EXECUTABLE_NOT_FOUND' | 'PROCESS_REQUEST_INVALID';
+}
+
+const AUTH_OK_JSONL = '{"type":"assistant","role":"assistant","content":"ok"}';
+
+function probeFor(version = '0.23.5', help = '--output-format stream-json', auth: AuthProbeFixture = {}): ProcessProbePort {
   return {
-    probe: async request => ({
-      stdout: request.args[0] === '--version' ? version : request.args[0] === '--help' ? help : auth,
-      stderr: '',
-      exitCode: 0,
-      signal: null,
-    }),
+    probe: async request => {
+      if (request.args[0] === '--version') return { stdout: version, stderr: '', exitCode: 0, signal: null };
+      if (request.args[0] === '--help') return { stdout: help, stderr: '', exitCode: 0, signal: null };
+      return {
+        stdout: auth.stdout ?? AUTH_OK_JSONL,
+        stderr: auth.stderr ?? '',
+        exitCode: auth.exitCode ?? 0,
+        signal: null,
+        ...(auth.errorCode === undefined ? {} : { errorCode: auth.errorCode }),
+      };
+    },
   };
 }
 
@@ -116,12 +130,12 @@ describe('ProviderValidationService', () => {
   });
 
   it('preserves auth states, reports capability/output mismatches, and never emits generic validation failed', async () => {
-    const authRequired = service({ probe: probeFor('0.23.5', '--output-format stream-json', 'required') });
+    const authRequired = service({ probe: probeFor('0.23.5', '--output-format stream-json', { stderr: 'No model configured. Run `kimi` and use /login to sign in', exitCode: 1 }) });
     const authResult = await authRequired.validate(config());
     expect(authResult.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');
-    expect(authResult.authentication).toBe('required');
+    expect(authResult.authentication).toBe('unauthenticated');
 
-    const mismatch = service({ probe: probeFor('0.23.5', '--output-format stream-json', 'unknown') });
+    const mismatch = service({ probe: probeFor('0.23.5', '--output-format stream-json', { stdout: 'unknown' }) });
     const mismatchResult = await mismatch.validate(config({ outputMode: 'raw-stream', capabilities: { ...config().capabilities, nativeApprovals: true } }));
     expect(mismatchResult.errors.map(error => error.code)).toEqual(expect.arrayContaining([
       'PROVIDER_CAPABILITY_UNAVAILABLE',

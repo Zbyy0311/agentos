@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { KimiCodeProviderAdapter } from './kimiCodeAdapter.js';
+import type { ProcessProbeResult } from '@agentos/process-runtime';
 import type { ProcessProbePort, ProviderConfigurationInput, ProviderProcessPort } from './types.js';
 
 const sessionFixture = readFileSync(new URL('./fixtures/kimi-session-complete.jsonl', import.meta.url), 'utf8');
@@ -55,14 +56,28 @@ function config(overrides: Partial<ProviderConfigurationInput> = {}): ProviderCo
   };
 }
 
-function probeFor(version: string, help = 'Usage: kimi --output-format stream-json', auth = 'authenticated'): ProcessProbePort {
+interface AuthProbeFixture {
+  readonly stdout?: string;
+  readonly stderr?: string;
+  readonly exitCode?: number | null;
+  readonly errorCode?: ProcessProbeResult['errorCode'];
+}
+
+const AUTH_OK_JSONL = '{"type":"assistant","role":"assistant","content":"ok"}';
+
+function probeFor(version: string, help = 'Usage: kimi --output-format stream-json', auth: AuthProbeFixture = {}): ProcessProbePort {
   return {
-    probe: async request => ({
-      stdout: request.args[0] === '--version' ? version : request.args[0] === '--help' ? help : request.args[0] === 'auth' && request.args[1] === 'status' ? auth : '',
-      stderr: '',
-      exitCode: 0,
-      signal: null,
-    }),
+    probe: async request => {
+      if (request.args[0] === '--version') return { stdout: version, stderr: '', exitCode: 0, signal: null };
+      if (request.args[0] === '--help') return { stdout: help, stderr: '', exitCode: 0, signal: null };
+      return {
+        stdout: auth.stdout ?? AUTH_OK_JSONL,
+        stderr: auth.stderr ?? '',
+        exitCode: auth.exitCode ?? 0,
+        signal: null,
+        ...(auth.errorCode === undefined ? {} : { errorCode: auth.errorCode }),
+      };
+    },
   };
 }
 
@@ -108,7 +123,7 @@ describe('KimiCodeProviderAdapter', () => {
       probe: {
         probe: async request => {
           requests.push([...request.args]);
-          return { stdout: request.args[0] === '--version' ? '0.23.5' : request.args[0] === '--help' ? '--output-format stream-json' : 'authenticated', stderr: '', exitCode: 0, signal: null };
+          return { stdout: request.args[0] === '--version' ? '0.23.5' : request.args[0] === '--help' ? '--output-format stream-json' : AUTH_OK_JSONL, stderr: '', exitCode: 0, signal: null };
         },
       },
     });
@@ -118,7 +133,12 @@ describe('KimiCodeProviderAdapter', () => {
       discover: async input => ({ found: true, selected: input.configuredExecutable, candidates: [], warnings: [] }),
     });
     expect(result.valid).toBe(true);
-    expect(requests).toEqual([['--version'], ['--help'], ['auth', 'status']]);
+    expect(requests).toEqual([
+      ['--version'],
+      ['--help'],
+      ['-p', expect.any(String), '--output-format', 'stream-json'],
+    ]);
+    expect(String(requests[2]![1]).length).toBeGreaterThan(0);
   });
 
   it('distinguishes an explicitly configured inaccessible executable from no discovery candidate', async () => {
@@ -224,8 +244,8 @@ describe('KimiCodeProviderAdapter', () => {
     }
   });
 
-  it('preserves the not-required authentication state without misclassifying it as required', async () => {
-    const adapter = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5', '--output-format stream-json', 'not required') });
+  it('marks authentication authenticated from a successful structured assistant response', async () => {
+    const adapter = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5') });
     const result = await adapter.validate({
       configuration: config(),
       environment: {},
@@ -236,8 +256,62 @@ describe('KimiCodeProviderAdapter', () => {
         warnings: [],
       }),
     });
-    expect(result.authentication).toBe('not-required');
+    expect(result.authentication).toBe('authenticated');
     expect(result.errors).toEqual([]);
+    expect(result.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(false);
+  });
+
+  it('marks authentication unauthenticated on explicit login-required evidence', async () => {
+    const adapter = new KimiCodeProviderAdapter({
+      probe: probeFor('0.23.5', '--output-format stream-json', {
+        stdout: '',
+        stderr: 'error: failed to run prompt: No model configured. Run `kimi` and use /login to sign in, then retry.',
+        exitCode: 1,
+      }),
+    });
+    const result = await adapter.validate({
+      configuration: config(),
+      environment: {},
+      discover: async input => ({
+        found: true,
+        selected: input.configuredExecutable,
+        candidates: [{ executable: input.configuredExecutable!, source: 'configuration', confidence: 1 }],
+        warnings: [],
+      }),
+    });
+    expect(result.authentication).toBe('unauthenticated');
+    expect(result.errors.map(error => error.code)).toContain('PROVIDER_AUTH_REQUIRED');
+    expect(result.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(false);
+  });
+
+  it('fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence', async () => {
+    const cases: AuthProbeFixture[] = [
+      { errorCode: 'PROCESS_STARTUP_TIMEOUT' },
+      { errorCode: 'PROCESS_EXECUTABLE_NOT_ACCESSIBLE' },
+      { stderr: 'boom', exitCode: 1 },
+      { stdout: 'not-json' },
+    ];
+    for (const fixture of cases) {
+      const adapter = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5', '--output-format stream-json', fixture) });
+      const result = await adapter.validate({
+        configuration: config(),
+        environment: {},
+        discover: async input => ({
+          found: true,
+          selected: input.configuredExecutable,
+          candidates: [{ executable: input.configuredExecutable!, source: 'configuration', confidence: 1 }],
+          warnings: [],
+        }),
+      });
+      expect(result.authentication).toBe('unknown');
+      expect(result.warnings.some(warning => warning.code === 'PROVIDER_AUTH_UNKNOWN')).toBe(true);
+    }
+  });
+
+  it('no longer probes the stale auth status command', async () => {
+    const source = await import('node:fs/promises').then(fs => fs.readFile(new URL('./kimiCodeAdapter.ts', import.meta.url), 'utf8'));
+    expect(source).not.toContain("'auth'");
+    expect(source).not.toContain('auth status');
   });
 
   it('parses golden, malformed, unknown and usage output without fabricating provider semantics', () => {
