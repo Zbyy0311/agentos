@@ -3,14 +3,13 @@ import type { Clock } from './clock.js';
 import { ProcessError } from './errors.js';
 import type { P1ProcessErrorCode } from './errors.js';
 import type {
+  CleanupVerdict,
   IdentityInspection,
   NativeProcessHandle,
   PlatformProcessDriver,
-  SurvivorClassification,
   SurvivorVerification,
-  TreeTerminationResult,
 } from './driver.js';
-import { cleanupResultFrom } from './driver.js';
+import { cleanupVerdictFromVerification } from './driver.js';
 import { ProcessHandleRegistry } from './handle-registry.js';
 import { newProcessId } from './process-id.js';
 import { createRecord, InMemoryProcessStore } from './store.js';
@@ -642,14 +641,14 @@ export class ProcessManager {
     const kind = await action;
     if (kind === 'terminate-stray') {
       // Best effort only: the owning Process has already concluded.
-      await this.#terminateAndVerifyClassification(handle);
+      await this.#terminateAndVerify(handle);
     }
     if (kind === 'registration-failure') {
       // Terminate/verify evidence is never discarded: only a proven-clean
       // tree allows the failed terminal; survivors or an unknown verdict
       // stay non-terminal uncertainty with cleanup evidence.
-      const classification = await this.#terminateAndVerifyClassification(handle);
-      if (classification === 'complete') {
+      const verdict = await this.#terminateAndVerify(handle);
+      if (verdict.proven) {
         return this.#store.withLock(() => {
           const record = this.#requireRecord(id);
           this.#terminalizeLocked(record, {
@@ -663,12 +662,12 @@ export class ProcessManager {
               detail: 'native identity registration failed',
             },
             exit: null,
-            cleanup: 'TERMINATED',
+            cleanup: verdict.cleanupResult,
           }, 'process.failed');
           return this.#store.snapshotOf(record);
         });
       }
-      await this.#orphan(id, cleanupResultFrom(classification, false));
+      await this.#orphan(id, verdict.cleanupResult);
       return this.#store.withLock(() =>
         this.#store.snapshotOf(this.#requireRecord(id)),
       );
@@ -872,41 +871,28 @@ export class ProcessManager {
     const exitDuringGrace = await this.#waitExitBounded(handle, graceMs);
     if (exitDuringGrace !== null) {
       const verify = await this.#safeVerify(handle);
-      if (verify.classification === 'complete') {
-        await this.#finalizeExited(id, exitDuringGrace, 'ALREADY_EXITED');
+      const verdict = cleanupVerdictFromVerification(verify, true);
+      if (verdict.proven) {
+        await this.#finalizeExited(id, exitDuringGrace, verdict.cleanupResult);
       } else {
-        await this.#orphan(
-          id,
-          verify.classification === 'survivors' ? 'SURVIVORS' : 'UNKNOWN_PLATFORM_UNAVAILABLE',
-        );
+        await this.#orphan(id, verdict.cleanupResult);
       }
       return;
     }
 
-    let termination: TreeTerminationResult;
     try {
-      termination = await this.#driver.terminateTree(handle);
+      await this.#driver.terminateTree(handle);
     } catch {
       await this.#orphan(id, 'UNKNOWN_PLATFORM_UNAVAILABLE');
       return;
     }
-    if (termination.classification === 'survivors') {
-      const verify = await this.#safeVerify(handle);
-      await this.#orphan(
-        id,
-        verify.classification === 'survivors' ? 'SURVIVORS' : 'UNKNOWN_PLATFORM_UNAVAILABLE',
-      );
-      return;
-    }
     const exitEvidence = await this.#waitExitBounded(handle, graceMs);
     const verify = await this.#safeVerify(handle);
-    if (verify.classification === 'complete') {
-      await this.#finalizeExited(id, exitEvidence, 'TERMINATED');
+    const verdict = cleanupVerdictFromVerification(verify, false);
+    if (verdict.proven) {
+      await this.#finalizeExited(id, exitEvidence, verdict.cleanupResult);
     } else {
-      await this.#orphan(
-        id,
-        verify.classification === 'survivors' ? 'SURVIVORS' : 'UNKNOWN_PLATFORM_UNAVAILABLE',
-      );
+      await this.#orphan(id, verdict.cleanupResult);
     }
   }
 
@@ -938,16 +924,18 @@ export class ProcessManager {
    * Terminate-then-verify for a handle that never became ours. The verdict
    * is retained by the caller: only 'complete' proves the tree is gone.
    */
-  async #terminateAndVerifyClassification(
-    handle: NativeProcessHandle,
-  ): Promise<SurvivorClassification> {
+  async #terminateAndVerify(handle: NativeProcessHandle): Promise<CleanupVerdict> {
     try {
       await this.#driver.terminateTree(handle);
     } catch {
-      return 'unknown';
+      return {
+        classification: 'unknown',
+        cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE',
+        proven: false,
+      };
     }
     const verify = await this.#safeVerify(handle);
-    return verify.classification;
+    return cleanupVerdictFromVerification(verify, false);
   }
 
   async #finalizeExited(

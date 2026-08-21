@@ -1,10 +1,12 @@
 import type { ArtifactWriteSession, RestrictedArtifactSink } from './artifact-sink.js';
+import type { Clock } from './clock.js';
 import type {
+  CleanupVerdict as DriverCleanupVerdict,
   NativeProcessHandle,
   PlatformProcessDriver,
-  SurvivorClassification,
 } from './driver.js';
-import { cleanupResultFrom } from './driver.js';
+import { cleanupVerdictFromVerification } from './driver.js';
+import { ProcessCancelCoordinator, type ProcessStopTicket } from './process-cancel-coordinator.js';
 import {
   STREAM_CHUNK_LIMIT_BYTES,
   STREAM_RETAINED_CAP_BYTES,
@@ -29,6 +31,7 @@ import type {
   SessionClaimCreate,
   SessionClaimTransferInput,
 } from './repository-port.js';
+import type { CleanupResult } from './types.js';
 
 /**
  * M4-P2B durable orchestration seam (schema-light).
@@ -93,6 +96,8 @@ export interface DurableCoordinatorOptions {
   /** Native process/tree driver used only for cleanup and survivor proof. */
   readonly driver: PlatformProcessDriver;
   readonly now?: () => string;
+  readonly clock?: Clock;
+  readonly gracePeriodMs?: number;
 }
 
 export interface DurableEstablishment {
@@ -114,6 +119,8 @@ export interface ConsumeSpawnInput {
   readonly eventContext: RuntimeEventContext;
   /** Original cancel reason when a spawn failure races an accepted stop. */
   readonly cancelReason?: string;
+  /** Stage-owned gate for Adapter graceful coordination before Process cleanup. */
+  readonly onAcceptedStop?: (ticket: ProcessStopTicket) => Promise<void>;
   /** Exactly-once Driver call; the returned native handle is retained. */
   readonly spawn: () => Promise<NativeProcessHandle>;
 }
@@ -128,8 +135,9 @@ export interface TransferClaimPairInput {
 }
 
 interface CleanupVerdict {
-  readonly classification: SurvivorClassification;
-  readonly cleanupResult: DurableProcessView['cleanupResult'];
+  readonly classification: DriverCleanupVerdict['classification'];
+  readonly cleanupResult: CleanupResult;
+  readonly proven: boolean;
 }
 
 export class DurableProcessCoordinator {
@@ -140,6 +148,7 @@ export class DurableProcessCoordinator {
   readonly #atomicSeam: DurableAtomicSeam;
   readonly #driver: PlatformProcessDriver;
   readonly #now: () => string;
+  readonly #processCancelCoordinator: ProcessCancelCoordinator;
   readonly #causalCursors = new Map<string, { readonly correlationId: string; readonly eventId: string }>();
   readonly #stoppingCursors = new Map<string, { readonly correlationId: string; readonly eventId: string }>();
   /** Retained native handles (memory-only) keyed by AgentOS Process id. */
@@ -153,6 +162,22 @@ export class DurableProcessCoordinator {
     this.#atomicSeam = options.atomicSeam;
     this.#driver = options.driver;
     this.#now = options.now ?? (() => new Date().toISOString());
+    this.#processCancelCoordinator = new ProcessCancelCoordinator({
+      processRepository: this.#processRepository,
+      driver: this.#driver,
+      clock: options.clock,
+      now: this.#now,
+      gracePeriodMs: options.gracePeriodMs,
+      onProcessOutcome: (input, outcome) => {
+        this.#recordProcessOutcome(input.workspaceId, input.processId, input.eventContext, outcome);
+        if (input.to === 'stopping' && outcome.kind === 'applied' && outcome.eventId !== undefined) {
+          this.#stoppingCursors.set(this.#processKey(input.processId), {
+            correlationId: input.eventContext.correlationId,
+            eventId: outcome.eventId,
+          });
+        }
+      },
+    });
   }
 
   /** Number of native handles currently retained (evidence for tests). */
@@ -162,6 +187,28 @@ export class DurableProcessCoordinator {
 
   isHandleRetained(processId: string): boolean {
     return this.#handles.has(processId);
+  }
+
+  get processCancelCoordinator(): ProcessCancelCoordinator {
+    return this.#processCancelCoordinator;
+  }
+
+  async getProcess(workspaceId: string, processId: string): Promise<DurableProcessView | null> {
+    return this.#processRepository.getProcess(workspaceId, processId);
+  }
+
+  async getRootProcessByClaim(
+    workspaceId: string,
+    runId: string,
+    stageId: string,
+    stageAttempt: number,
+    authorityRole: string,
+  ): Promise<DurableProcessView | null> {
+    const lookup = this.#processRepository.getRootProcessByClaim;
+    if (lookup === undefined) {
+      return null;
+    }
+    return lookup.call(this.#processRepository, workspaceId, runId, stageId, stageAttempt, authorityRole);
   }
 
   /**
@@ -287,9 +334,15 @@ export class DurableProcessCoordinator {
         );
         if (current === null) break;
       }
+      const terminal = failed.value ?? await this.#processRepository.getProcess(
+        starting.workspaceId,
+        starting.processId,
+      );
+      if (terminal !== null && terminal !== undefined) {
+        this.#processCancelCoordinator.observeTerminal(terminal);
+      }
       return { kind: 'spawned', outcome: failed, spawned: true };
     }
-    this.#handles.set(starting.processId, handle);
     // The Process may have moved (for example starting -> stopping by a
     // racing cancel) while the Driver call was in flight: re-read the
     // current snapshot so the bind CAS uses the fresh version/status and
@@ -301,6 +354,7 @@ export class DurableProcessCoordinator {
     if (fresh === null) {
       await this.#terminateStray(handle);
       this.#handles.delete(starting.processId);
+      this.#processCancelCoordinator.detachHandle(starting.processId);
       return {
         kind: 'spawned',
         outcome: { kind: 'not-found' },
@@ -310,21 +364,37 @@ export class DurableProcessCoordinator {
     if (fresh.status === 'exited' || fresh.status === 'failed') {
       await this.#terminateStray(handle);
       this.#handles.delete(starting.processId);
+      this.#processCancelCoordinator.detachHandle(starting.processId);
       return { kind: 'spawned', outcome: { kind: 'terminal', value: fresh }, spawned: true };
     }
-    const bound = await this.#bindNativeIdentity({
-      workspaceId: starting.workspaceId,
-      processId: starting.processId,
-      expectedVersion: fresh.version,
-      expectedClaimEpoch: fresh.claimEpoch,
-      expectedClaimOwner: fresh.claimOwnerId,
+    const nativeIdentity = identityFromHandle(handle);
+    const bindInput = (process: DurableProcessView) => ({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
       timestamp: this.#now(),
-      identity: identityFromHandle(handle),
+      identity: nativeIdentity,
       eventContext: input.eventContext,
     });
+    let bound = await this.#bindNativeIdentity(bindInput(fresh));
+    if (bound.kind !== 'applied') {
+      const reread = await this.#processRepository.getProcess(
+        starting.workspaceId,
+        starting.processId,
+      );
+      if (reread !== null && reread.status === 'stopping' && sameProcessClaim(reread, starting)) {
+        bound = await this.#bindNativeIdentity(bindInput(reread));
+      }
+    }
     if (bound.kind === 'applied') {
+      // Cleanup is not runnable until the native identity is durably bound to
+      // this exact Process row.
+      this.#handles.set(starting.processId, handle);
+      this.#processCancelCoordinator.attachHandle(starting.processId, handle);
       if (bound.value.status === 'stopping') {
-        await this.#lateSuccessCleanup(bound.value, handle, input.eventContext);
+        await this.#lateSuccessCleanup(bound.value, input.eventContext, input.onAcceptedStop);
         return { kind: 'spawned', outcome: await this.#readOutcome(bound.value), spawned: true };
       }
       return { kind: 'spawned', outcome: bound, spawned: true };
@@ -339,15 +409,46 @@ export class DurableProcessCoordinator {
     if (current === null) {
       await this.#terminateStray(handle);
       this.#handles.delete(starting.processId);
+      this.#processCancelCoordinator.detachHandle(starting.processId);
       return { kind: 'spawned', outcome: bound, spawned: true };
     }
     if (current.status === 'exited' || current.status === 'failed') {
       await this.#terminateStray(handle);
       this.#handles.delete(starting.processId);
+      this.#processCancelCoordinator.detachHandle(starting.processId);
       return { kind: 'spawned', outcome: { kind: 'terminal', value: current }, spawned: true };
     }
+    if (current.status === 'stopping') {
+      // A stopping Process without a durably bound identity cannot enter the
+      // ProcessCancelCoordinator cleanup pipeline: that pipeline's proof
+      // boundary is the exact native identity bind. Join the accepted stop,
+      // close it as unproven uncertainty, and compensate the returned handle
+      // only as a stray. The stray path is never cleanup proof for this
+      // Process and never runs graceful Process cleanup.
+      const ticket = await this.#processCancelCoordinator.acceptStop({
+        workspaceId: current.workspaceId,
+        processId: current.processId,
+        expectedClaimEpoch: current.claimEpoch,
+        expectedClaimOwner: current.claimOwnerId,
+        reason: current.terminationReason ?? input.cancelReason ?? 'cancel',
+        idempotencyKey: 'unbound-stopping:' + current.processId,
+        timestamp: this.#now(),
+        eventContext: input.eventContext,
+        stopOrigin: 'EXPLICIT_CANCEL',
+      });
+      await ticket.failCleanupClosed();
+      const stopped = await ticket.result;
+      await this.#terminateStray(handle);
+      this.#handles.delete(current.processId);
+      this.#processCancelCoordinator.detachHandle(current.processId);
+      return {
+        kind: 'spawned',
+        outcome: { kind: 'applied', value: stopped.process },
+        spawned: true,
+      };
+    }
     const verdict = await this.#terminateAndVerify(handle);
-    if (verdict.classification === 'complete') {
+    if (verdict.proven) {
       const failed = await this.#transitionProcess({
         workspaceId: current.workspaceId,
         processId: current.processId,
@@ -364,6 +465,7 @@ export class DurableProcessCoordinator {
         failureOutcome: 'registration-failure',
       });
       this.#handles.delete(current.processId);
+      this.#processCancelCoordinator.detachHandle(current.processId);
       return { kind: 'spawned', outcome: failed, spawned: true };
     }
     const uncertain = await this.#transitionProcess({
@@ -373,7 +475,7 @@ export class DurableProcessCoordinator {
       expectedClaimEpoch: current.claimEpoch,
       expectedClaimOwner: current.claimOwnerId,
       expectedFrom: current.status,
-      to: current.status === 'stopping' ? 'orphaned' : 'unknown',
+      to: 'unknown',
       timestamp: this.#now(),
       errorCode: 'PROCESS_REGISTRATION_FAILED',
       errorDetailRedacted: REGISTRATION_FAILED_DETAIL,
@@ -381,6 +483,7 @@ export class DurableProcessCoordinator {
       eventContext: input.eventContext,
     });
     this.#handles.delete(current.processId);
+    this.#processCancelCoordinator.detachHandle(current.processId);
     return { kind: 'spawned', outcome: uncertain, spawned: true };
   }
 
@@ -434,6 +537,7 @@ export class DurableProcessCoordinator {
       return {
         classification: 'unknown',
         cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE',
+        proven: false,
       };
     }
     let verified: Awaited<ReturnType<PlatformProcessDriver['verifySurvivors']>>;
@@ -445,12 +549,10 @@ export class DurableProcessCoordinator {
       return {
         classification: 'unknown',
         cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE',
+        proven: false,
       };
     }
-    return {
-      classification: verified.classification,
-      cleanupResult: cleanupResultFrom(verified.classification, false),
-    };
+    return cleanupVerdictFromVerification(verified, false);
   }
 
   async #terminateStray(handle: NativeProcessHandle): Promise<void> {
@@ -545,43 +647,26 @@ export class DurableProcessCoordinator {
    */
   async #lateSuccessCleanup(
     process: DurableProcessView,
-    handle: NativeProcessHandle,
     eventContext: ConsumeSpawnInput['eventContext'],
+    onAcceptedStop?: ConsumeSpawnInput['onAcceptedStop'],
   ): Promise<void> {
-    const verdict = await this.#terminateAndVerify(handle);
-    if (verdict.classification === 'complete') {
-      await this.#transitionProcess({
-        workspaceId: process.workspaceId,
-        processId: process.processId,
-        expectedVersion: process.version,
-        expectedClaimEpoch: process.claimEpoch,
-        expectedClaimOwner: process.claimOwnerId,
-        expectedFrom: 'stopping',
-        to: 'exited',
-        timestamp: this.#now(),
-        exitCode: null,
-        cleanupResult: verdict.cleanupResult,
-        graceful: true,
-        force: true,
-        eventContext,
-      });
-    } else {
-      await this.#transitionProcess({
-        workspaceId: process.workspaceId,
-        processId: process.processId,
-        expectedVersion: process.version,
-        expectedClaimEpoch: process.claimEpoch,
-        expectedClaimOwner: process.claimOwnerId,
-        expectedFrom: 'stopping',
-        to: 'orphaned',
-        timestamp: this.#now(),
-        errorCode: 'PROCESS_SURVIVORS_DETECTED',
-        errorDetailRedacted: REGISTRATION_FAILED_DETAIL,
-        cleanupResult: verdict.cleanupResult,
-        eventContext,
-      });
+    const ticket = await this.#processCancelCoordinator.acceptStop({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      reason: process.terminationReason ?? 'cancel',
+      idempotencyKey: 'late-success:' + process.processId,
+      timestamp: this.#now(),
+      eventContext,
+    });
+    if (ticket.stopAccepted) {
+      if (onAcceptedStop !== undefined) await onAcceptedStop(ticket);
+      else await ticket.startCleanup();
     }
+    await ticket.result;
     this.#handles.delete(process.processId);
+    this.#processCancelCoordinator.detachHandle(process.processId);
   }
 
   async #readOutcome(process: DurableProcessView): Promise<DurableCasOutcome<DurableProcessView>> {
@@ -601,6 +686,17 @@ function identityFromHandle(handle: NativeProcessHandle): NativeSpawnIdentity {
     nativeStartedAt: isoFromEpochMs(handle.identity.startedAtMs),
     processGroupId: handle.identity.groupId ?? null,
   };
+}
+
+function sameProcessClaim(left: DurableProcessView, right: DurableProcessView): boolean {
+  return left.processId === right.processId
+    && left.workspaceId === right.workspaceId
+    && left.runId === right.runId
+    && left.stageId === right.stageId
+    && left.stageAttempt === right.stageAttempt
+    && left.authorityRole === right.authorityRole
+    && left.claimEpoch === right.claimEpoch
+    && left.claimOwnerId === right.claimOwnerId;
 }
 
 /**

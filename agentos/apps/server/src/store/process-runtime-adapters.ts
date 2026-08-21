@@ -106,6 +106,23 @@ export class DurableSessionRepositoryAdapter implements DurableSessionRepository
     const session = this.repository.findById(workspaceId, sessionId);
     return session === undefined ? null : toDurableSessionView(session);
   }
+
+  async getSessionByClaimKey(
+    workspaceId: string,
+    runId: string,
+    stageId: string,
+    stageAttempt: number,
+    authorityRole: string,
+  ): Promise<DurableSessionView | null> {
+    const session = this.repository.findByClaimKey(
+      workspaceId,
+      runId,
+      stageId,
+      stageAttempt,
+      authorityRole as 'primary-provider',
+    );
+    return session === undefined ? null : toDurableSessionView(session);
+  }
 }
 
 export class DurableProcessRepositoryAdapter implements DurableProcessRepository {
@@ -210,6 +227,23 @@ export class DurableProcessRepositoryAdapter implements DurableProcessRepository
 
   async getProcess(workspaceId: string, processId: string): Promise<DurableProcessView | null> {
     const process = this.repository.findById(workspaceId, processId);
+    return process === undefined ? null : toDurableProcessView(process);
+  }
+
+  async getRootProcessByClaim(
+    workspaceId: string,
+    runId: string,
+    stageId: string,
+    stageAttempt: number,
+    authorityRole: string,
+  ): Promise<DurableProcessView | null> {
+    const process = this.repository.findByRootClaim(
+      workspaceId,
+      runId,
+      stageId,
+      stageAttempt,
+      authorityRole as 'primary-provider',
+    );
     return process === undefined ? null : toDurableProcessView(process);
   }
 }

@@ -274,6 +274,22 @@ describe('ProcessManager exit and stop', () => {
     expect(fx.driver.verifySurvivorsCalls).toBe(1);
     expect(fx.manager.getSnapshot(first.id)?.state).toBe('running');
   });
+
+  it('does not treat bare complete registration cleanup as proven', async () => {
+    const fx = createManagerFixture();
+    const first = await startRunning(fx);
+    fx.driver.verifyProofMode = 'bare';
+    fx.driver.holdNextSpawn();
+    const second = await fx.reserve();
+    const start2 = await fx.manager.start(second.id, second.claim);
+    await fx.driver.awaitSpawnEntered();
+    fx.driver.settleSpawnSuccess(new MockNativeProcessHandle(first.handle.pid, 'tool'));
+
+    const final2 = await start2.settled;
+    expect(final2.state).toBe('unknown');
+    expect(final2.terminal).toBeNull();
+    expect(final2.cleanupEvidence?.result).toBe('UNKNOWN_PLATFORM_UNAVAILABLE');
+  });
 });
 
 describe('ProcessManager tree fail-closed cleanup', () => {

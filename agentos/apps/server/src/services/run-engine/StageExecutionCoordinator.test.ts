@@ -8,12 +8,14 @@ import { createM3RuntimeEventRegistry, type AgentSnapshotV1, type ProviderConfig
 import {
   DurableProcessCoordinator,
   FileArtifactSink,
+  MockNativeProcessHandle,
   NodeProcessDriver,
   type ExitEvidence,
   type NativeIdentity,
   type NativeProcessHandle,
   type NativeProcessStreams,
   type PlatformProcessDriver,
+  type ProcessStopResult,
   type SurvivorVerification,
   type TreeTerminationResult,
 } from '@agentos/process-runtime';
@@ -185,6 +187,153 @@ function asyncIterable(lines: string[]): AsyncIterable<Uint8Array> {
   };
 }
 
+function testDeferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(res => { resolve = res; });
+  return { promise, resolve };
+}
+
+class ControlledExitHandle implements NativeProcessHandle {
+  readonly pid = 7373;
+  readonly identity: NativeIdentity = { pid: this.pid, startedAtMs: Date.parse(NOW), executablePath: KIMI_EXE };
+  readonly streams: NativeProcessStreams;
+  readonly waitExitEntered = testDeferred<void>();
+  private readonly exit = testDeferred<ExitEvidence>();
+
+  constructor(stdout = '{"role":"assistant","content":"natural"}') {
+    this.streams = { stdout: asyncIterable([stdout]), stderr: asyncIterable([]) };
+  }
+
+  waitExit(): Promise<ExitEvidence> {
+    this.waitExitEntered.resolve(undefined);
+    return this.exit.promise;
+  }
+
+  releaseExit(exit: ExitEvidence = { exitCode: 0, signal: null, exitedAt: Date.now() }): void {
+    this.exit.resolve(exit);
+  }
+}
+
+class ControlledExitDriver implements PlatformProcessDriver {
+  readonly handle: ControlledExitHandle;
+  spawnCalls = 0;
+  gracefulStopCalls = 0;
+  terminateTreeCalls = 0;
+  verifySurvivorsCalls = 0;
+
+  constructor(stdout?: string) {
+    this.handle = new ControlledExitHandle(stdout);
+  }
+
+  async spawn(): Promise<NativeProcessHandle> {
+    this.spawnCalls += 1;
+    return this.handle;
+  }
+
+  async gracefulStop(): Promise<{ readonly delivered: boolean; readonly detail: string }> {
+    this.gracefulStopCalls += 1;
+    return { delivered: true, detail: 'controlled graceful stop' };
+  }
+
+  async terminateTree(): Promise<TreeTerminationResult> {
+    this.terminateTreeCalls += 1;
+    return { classification: 'complete', attemptedMembers: [this.handle.pid], errors: [] };
+  }
+
+  async verifySurvivors(): Promise<SurvivorVerification> {
+    this.verifySurvivorsCalls += 1;
+    return { classification: 'complete', knownPids: [this.handle.pid], proof: { kind: 'owned-tree-enumeration' } };
+  }
+
+  async inspectIdentity(identity: NativeIdentity): Promise<{ readonly kind: 'match'; readonly identity: NativeIdentity }> {
+    return { kind: 'match', identity };
+  }
+}
+
+class SpawnGateDriver extends ControlledExitDriver {
+  readonly spawnEntered = testDeferred<void>();
+  readonly releaseSpawn = testDeferred<void>();
+
+  override async spawn(): Promise<NativeProcessHandle> {
+    this.spawnCalls += 1;
+    this.spawnEntered.resolve(undefined);
+    await this.releaseSpawn.promise;
+    return this.handle;
+  }
+}
+
+class StaleCreatedProcessAdapter extends DurableProcessRepositoryAdapter {
+  staleNextStartingRoot = true;
+  blockStaleProcessRead = true;
+  blockNextProcessRead = false;
+  readonly processReadEntered = testDeferred<void>();
+  readonly releaseProcessRead = testDeferred<void>();
+
+  override async getRootProcessByClaim(workspaceId: string, runId: string, stageId: string, stageAttempt: number, authorityRole: string) {
+    const process = await super.getRootProcessByClaim(workspaceId, runId, stageId, stageAttempt, authorityRole);
+    if (process !== null && this.staleNextStartingRoot && (process.status === 'starting' || process.status === 'running' || process.status === 'exited')) {
+      this.staleNextStartingRoot = false;
+      this.blockNextProcessRead = this.blockStaleProcessRead;
+      return {
+        ...process,
+        status: 'created' as const,
+        nativePid: null,
+        nativeStartedAt: null,
+        processGroupId: null,
+        platformHandleId: null,
+        startedAt: null,
+        readyAt: null,
+        stoppingAt: null,
+      };
+    }
+    return process;
+  }
+
+  override async getProcess(workspaceId: string, processId: string) {
+    if (this.blockNextProcessRead) {
+      this.blockNextProcessRead = false;
+      this.processReadEntered.resolve(undefined);
+      await this.releaseProcessRead.promise;
+    }
+    return super.getProcess(workspaceId, processId);
+  }
+}
+
+class SpawnRightGateProcessAdapter extends DurableProcessRepositoryAdapter {
+  readonly spawnRightEntered = testDeferred<void>();
+  readonly releaseSpawnRight = testDeferred<void>();
+
+  override async casConsumeSpawnRight(input: Parameters<DurableProcessRepositoryAdapter['casConsumeSpawnRight']>[0]) {
+    this.spawnRightEntered.resolve(undefined);
+    await this.releaseSpawnRight.promise;
+    return super.casConsumeSpawnRight(input);
+  }
+}
+
+class BlockingStoppingProcessAdapter extends DurableProcessRepositoryAdapter {
+  readonly stoppingEntered = testDeferred<void>();
+  readonly naturalExitCommitted = testDeferred<void>();
+  naturalCasCalls = 0;
+  private readonly release = testDeferred<void>();
+
+  releaseStopping(): void {
+    this.release.resolve(undefined);
+  }
+
+  override async casProcessTransition(input: Parameters<DurableProcessRepositoryAdapter['casProcessTransition']>[0]) {
+    if (input.to === 'stopping') {
+      this.stoppingEntered.resolve(undefined);
+      await this.release.promise;
+    }
+    const outcome = await super.casProcessTransition(input);
+    if (input.to === 'exited') {
+      this.naturalCasCalls += 1;
+      if (outcome.kind === 'applied') this.naturalExitCommitted.resolve(undefined);
+    }
+    return outcome;
+  }
+}
+
 class FakeDriver implements PlatformProcessDriver {
   spawnCalls = 0;
   constructor(private readonly handle: FakeHandle | FakeByteHandle | null, private readonly spawnError?: Error) {}
@@ -195,11 +344,195 @@ class FakeDriver implements PlatformProcessDriver {
   inspectIdentity = async (identity: NativeIdentity): Promise<{ kind: 'match'; identity: NativeIdentity }> => ({ kind: 'match', identity });
 }
 
+class BlockingCancelDriver implements PlatformProcessDriver {
+  readonly handle = new MockNativeProcessHandle(5252, KIMI_EXE);
+  readonly spawnEntered: Promise<void>;
+  spawnCalls = 0;
+  gracefulStopCalls = 0;
+  terminateTreeCalls = 0;
+  verifySurvivorsCalls = 0;
+
+  constructor(private readonly validProof = true) {
+    this.spawnEntered = new Promise(resolve => { this.resolveSpawnEntered = resolve; });
+  }
+
+  private resolveSpawnEntered: () => void = () => undefined;
+
+  async spawn() {
+    this.spawnCalls += 1;
+    this.resolveSpawnEntered();
+    return this.handle;
+  }
+
+  async gracefulStop() {
+    this.gracefulStopCalls += 1;
+    return { delivered: true, detail: 'blocking mock graceful stop' };
+  }
+
+  async terminateTree() {
+    this.terminateTreeCalls += 1;
+    return { classification: 'complete' as const, attemptedMembers: [this.handle.pid], errors: [] };
+  }
+
+  async verifySurvivors() {
+    this.verifySurvivorsCalls += 1;
+    return {
+      classification: 'complete' as const,
+      knownPids: [this.handle.pid],
+      ...(this.validProof ? { proof: { kind: 'owned-tree-enumeration' as const } } : {}),
+    };
+  }
+
+  async inspectIdentity(identity: NativeIdentity) {
+    return { kind: 'match' as const, identity };
+  }
+}
+
+class TailCancelHandle implements NativeProcessHandle {
+  readonly pid = 6262;
+  readonly identity: NativeIdentity = { pid: this.pid, startedAtMs: Date.parse(NOW), executablePath: KIMI_EXE };
+  readonly stdoutStarted: Promise<void>;
+  readonly streams: NativeProcessStreams;
+  private resolveStdoutStarted: () => void = () => undefined;
+  private readonly releaseChunkPromise: Promise<void>;
+  private releaseChunk: () => void = () => undefined;
+  private sent = false;
+
+  constructor(private readonly chunk: string) {
+    this.stdoutStarted = new Promise(resolve => { this.resolveStdoutStarted = resolve; });
+    this.releaseChunkPromise = new Promise(resolve => { this.releaseChunk = resolve; });
+    this.streams = {
+      stdout: {
+        [Symbol.asyncIterator]: () => ({
+          next: async (): Promise<IteratorResult<Uint8Array>> => {
+            if (!this.sent) {
+              this.resolveStdoutStarted();
+              await this.releaseChunkPromise;
+              this.sent = true;
+              return { done: false, value: new TextEncoder().encode(this.chunk) };
+            }
+            return new Promise<IteratorResult<Uint8Array>>(() => undefined);
+          },
+          return: async (): Promise<IteratorResult<Uint8Array>> => ({ done: true, value: undefined }),
+        }),
+      },
+      stderr: {
+        [Symbol.asyncIterator]: () => ({
+          next: (): Promise<IteratorResult<Uint8Array>> => new Promise(() => undefined),
+          return: async (): Promise<IteratorResult<Uint8Array>> => ({ done: true, value: undefined }),
+        }),
+      },
+    };
+  }
+
+  waitExit(): Promise<ExitEvidence> {
+    return new Promise(() => undefined);
+  }
+
+  release(): void {
+    this.releaseChunk();
+  }
+}
+
+class TailCancelDriver implements PlatformProcessDriver {
+  readonly handle = new TailCancelHandle('{"role":"assistant","content":"buffered"}');
+  spawnCalls = 0;
+  gracefulStopCalls = 0;
+  terminateTreeCalls = 0;
+  verifySurvivorsCalls = 0;
+
+  async spawn(): Promise<NativeProcessHandle> {
+    this.spawnCalls += 1;
+    return this.handle;
+  }
+
+  async gracefulStop(): Promise<{ readonly delivered: boolean; readonly detail: string }> {
+    this.gracefulStopCalls += 1;
+    return { delivered: true, detail: 'tail test graceful stop' };
+  }
+
+  async terminateTree(): Promise<TreeTerminationResult> {
+    this.terminateTreeCalls += 1;
+    return { classification: 'complete', attemptedMembers: [this.handle.pid], errors: [] };
+  }
+
+  async verifySurvivors(): Promise<SurvivorVerification> {
+    this.verifySurvivorsCalls += 1;
+    return { classification: 'complete', knownPids: [this.handle.pid], proof: { kind: 'owned-tree-enumeration' } };
+  }
+
+  async inspectIdentity(identity: NativeIdentity): Promise<{ readonly kind: 'match'; readonly identity: NativeIdentity }> {
+    return { kind: 'match', identity };
+  }
+}
+
+class RecordingKimiAdapter extends KimiCodeProviderAdapter {
+  readonly finalizedInputs: Array<Parameters<KimiCodeProviderAdapter['finalize']>[0]> = [];
+  readonly cancelInputs: Array<Parameters<KimiCodeProviderAdapter['cancel']>[0]> = [];
+  readonly parsed: Promise<void>;
+  private resolveParsed: () => void = () => undefined;
+
+  constructor(options: ConstructorParameters<typeof KimiCodeProviderAdapter>[0]) {
+    super(options);
+    this.parsed = new Promise(resolve => { this.resolveParsed = resolve; });
+  }
+
+  override parseChunk(chunk: string, context?: Parameters<KimiCodeProviderAdapter['parseChunk']>[1]) {
+    const result = super.parseChunk(chunk, context);
+    this.resolveParsed();
+    return result;
+  }
+
+  override async finalize(input: Parameters<KimiCodeProviderAdapter['finalize']>[0]) {
+    this.finalizedInputs.push(input);
+    return super.finalize(input);
+  }
+
+  override async cancel(input: Parameters<KimiCodeProviderAdapter['cancel']>[0]) {
+    this.cancelInputs.push(input);
+    return super.cancel(input);
+  }
+}
+
+class BlockingCancelAdapter extends RecordingKimiAdapter {
+  readonly cancelEntered = testDeferred<void>();
+  readonly releaseCancel = testDeferred<void>();
+
+  override async cancel(input: Parameters<KimiCodeProviderAdapter['cancel']>[0]) {
+    this.cancelInputs.push(input);
+    this.cancelEntered.resolve(undefined);
+    await this.releaseCancel.promise;
+    return { accepted: true } as const;
+  }
+}
+
+class ThrowingCancelAdapter extends RecordingKimiAdapter {
+  override async cancel(input: Parameters<KimiCodeProviderAdapter['cancel']>[0]): Promise<Awaited<ReturnType<KimiCodeProviderAdapter['cancel']>>> {
+    this.cancelInputs.push(input);
+    throw new Error('provider graceful cancellation failed');
+  }
+}
+
+class BlockingFinalizeAdapter extends RecordingKimiAdapter {
+  readonly finalizeEntered = testDeferred<void>();
+  readonly releaseFinalize = testDeferred<void>();
+
+  override async finalize(input: Parameters<KimiCodeProviderAdapter['finalize']>[0]) {
+    this.finalizeEntered.resolve(undefined);
+    await this.releaseFinalize.promise;
+    return super.finalize(input);
+  }
+}
+
 interface FixtureOptions {
   readonly authFailure?: boolean;
   readonly probe?: ProcessProbePort;
   readonly sessionAdapterFactory?: (repo: ProviderSessionRepository) => DurableSessionRepositoryAdapter;
+  readonly processRepoFactory?: (db: Db, factWriter: RuntimeEventOutboxWriter) => ProcessRepository;
+  readonly processAdapterFactory?: (repo: ProcessRepository) => DurableProcessRepositoryAdapter;
   readonly outputAdapterFactory?: (repo: ProcessOutputReferenceRepository) => DurableOutputReferenceRepositoryAdapter;
+  readonly failStderrOutput?: boolean;
+  readonly adapter?: KimiCodeProviderAdapter;
 }
 
 function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolean = false) {
@@ -211,21 +544,28 @@ function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolea
   const outbox = new OutboxRepository(db, events);
   const factWriter = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(db), outbox, db);
   const sessionRepo = new ProviderSessionRepository(db, factWriter);
-  const processRepo = new ProcessRepository(db, factWriter);
+  const processRepo = opts.processRepoFactory === undefined
+    ? new ProcessRepository(db, factWriter)
+    : opts.processRepoFactory(db, factWriter);
   const outputRepo = new ProcessOutputReferenceRepository(db, factWriter);
   const seam = new DurableAtomicSeamImpl(db, sessionRepo, processRepo);
   const sessionAdapter = opts.sessionAdapterFactory === undefined ? new DurableSessionRepositoryAdapter(sessionRepo) : opts.sessionAdapterFactory(sessionRepo);
-  const processAdapter = new DurableProcessRepositoryAdapter(processRepo);
+  const processAdapter = opts.processAdapterFactory === undefined
+    ? new DurableProcessRepositoryAdapter(processRepo)
+    : opts.processAdapterFactory(processRepo);
   const outputAdapter = opts.outputAdapterFactory === undefined ? new DurableOutputReferenceRepositoryAdapter(outputRepo) : opts.outputAdapterFactory(outputRepo);
-  const durableCoordinator = new DurableProcessCoordinator({
+  const coordinatorOptions = {
     sessionRepository: sessionAdapter,
     processRepository: processAdapter,
     outputReferenceRepository: outputAdapter,
     artifactSink: new FileArtifactSink(join(root, 'sink')),
     atomicSeam: seam,
     driver,
-  });
-  const adapter = new KimiCodeProviderAdapter({
+  } satisfies ConstructorParameters<typeof DurableProcessCoordinator>[0];
+  const durableCoordinator = opts.failStderrOutput
+    ? new PartialWriterCoordinator(coordinatorOptions)
+    : new DurableProcessCoordinator(coordinatorOptions);
+  const adapter = opts.adapter ?? new KimiCodeProviderAdapter({
     probe: probe,
     discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
   });
@@ -258,6 +598,13 @@ class SlowSessionAdapter extends DurableSessionRepositoryAdapter {
 class FinalizeFailOutputAdapter extends DurableOutputReferenceRepositoryAdapter {
   async finalizeReference(_input: Parameters<DurableOutputReferenceRepositoryAdapter['finalizeReference']>[0]) {
     return { kind: 'not-found' as const };
+  }
+}
+
+class PartialWriterCoordinator extends DurableProcessCoordinator {
+  async beginOutput(input: Parameters<DurableProcessCoordinator['beginOutput']>[0]) {
+    if (input.stream === 'stderr') throw new Error('stderr writer unavailable');
+    return super.beginOutput(input);
   }
 }
 
@@ -296,6 +643,626 @@ function asyncIterableBytes(chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return { counts, probe };
 }
 describe('StageExecutionCoordinator', () => {
+  it('aborts a partial stdout writer when stderr writer creation fails and never spawns', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), { failStderrOutput: true });
+    try {
+      const outcome = await fx.coordinator.execute(stageInput());
+      assert.equal(outcome.kind, 'failed');
+      assert.equal((fx.driver as unknown as { spawnCalls: number }).spawnCalls, 0);
+      const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(process?.status, 'failed');
+      const session = fx.sessionRepo.findByClaimKey(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(session?.status, 'failed');
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED2-01: stale created read follows the later active-stop ticket', async () => {
+    const driver = new SpawnGateDriver();
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    let processAdapter!: StaleCreatedProcessAdapter;
+    const fx = fixture(driver, {
+      adapter,
+      processAdapterFactory: repo => {
+        processAdapter = new StaleCreatedProcessAdapter(repo);
+        return processAdapter;
+      },
+    });
+    const executePromise = fx.coordinator.execute(stageInput({
+      providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+    }));
+    let cancelPromise!: Promise<StageExecutionOutcome>;
+    try {
+      await driver.spawnEntered.promise;
+      cancelPromise = fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'stale-created-correlation',
+        causationId: 'stale-created-causation',
+      });
+      await processAdapter.processReadEntered.promise;
+
+      driver.releaseSpawn.resolve(undefined);
+      for (let turn = 0; turn < 40; turn += 1) {
+        await Promise.resolve();
+        if (fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status === 'running') break;
+      }
+      processAdapter.releaseProcessRead.resolve(undefined);
+
+      const [executeOutcome, cancelOutcome] = await Promise.all([executePromise, cancelPromise]);
+      assert.strictEqual(cancelOutcome, executeOutcome);
+      assert.equal(cancelOutcome.kind, 'stopped');
+      assert.equal(cancelOutcome.proven, true);
+      assert.equal(adapter.cancelInputs.length, 1);
+      assert.equal(driver.spawnCalls, 1);
+    } finally {
+      driver.releaseSpawn.resolve(undefined);
+      processAdapter.releaseProcessRead.resolve(undefined);
+      await Promise.allSettled([executePromise, ...(cancelPromise === undefined ? [] : [cancelPromise])]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED2-02: created-before-spawn cancellation with a live entry converges once', async () => {
+    const driver = new ControlledExitDriver('');
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    let processAdapter!: SpawnRightGateProcessAdapter;
+    const fx = fixture(driver, {
+      adapter,
+      processAdapterFactory: repo => {
+        processAdapter = new SpawnRightGateProcessAdapter(repo);
+        return processAdapter;
+      },
+    });
+    const executePromise = fx.coordinator.execute(stageInput());
+    let cancelPromise!: Promise<StageExecutionOutcome>;
+    try {
+      await processAdapter.spawnRightEntered.promise;
+      cancelPromise = fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'created-entry-correlation',
+        causationId: 'created-entry-causation',
+      });
+      for (let turn = 0; turn < 40; turn += 1) {
+        await Promise.resolve();
+        if (fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status === 'failed') break;
+      }
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'failed');
+      processAdapter.releaseSpawnRight.resolve(undefined);
+
+      const [executeOutcome, cancelOutcome] = await Promise.all([executePromise, cancelPromise]);
+      assert.strictEqual(cancelOutcome, executeOutcome);
+      assert.equal(cancelOutcome.kind, 'stopped');
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(driver.gracefulStopCalls, 0);
+      assert.equal(driver.terminateTreeCalls, 0);
+      assert.equal(driver.verifySurvivorsCalls, 0);
+      assert.equal(adapter.cancelInputs.length, 0);
+    } finally {
+      processAdapter.releaseSpawnRight.resolve(undefined);
+      await Promise.allSettled([executePromise, ...(cancelPromise === undefined ? [] : [cancelPromise])]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED2-03: stale created read joins natural terminal finalization', async () => {
+    const driver = new ControlledExitDriver();
+    const adapter = new BlockingFinalizeAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    let processAdapter!: StaleCreatedProcessAdapter;
+    const fx = fixture(driver, {
+      adapter,
+      processAdapterFactory: repo => {
+        processAdapter = new StaleCreatedProcessAdapter(repo);
+        processAdapter.blockStaleProcessRead = false;
+        return processAdapter;
+      },
+    });
+    const executePromise = fx.coordinator.execute(stageInput());
+    let cancelPromise!: Promise<StageExecutionOutcome>;
+    try {
+      await driver.handle.waitExitEntered.promise;
+      driver.handle.releaseExit();
+      await adapter.finalizeEntered.promise;
+      cancelPromise = fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'natural-after-stale-correlation',
+        causationId: 'natural-after-stale-causation',
+      });
+      adapter.releaseFinalize.resolve(undefined);
+
+      const [natural, joined] = await Promise.all([executePromise, cancelPromise]);
+      assert.equal(natural.kind, 'completed');
+      assert.strictEqual(joined, natural);
+      assert.equal(adapter.cancelInputs.length, 0);
+      assert.equal(driver.gracefulStopCalls, 0);
+      assert.equal(driver.terminateTreeCalls, 0);
+      assert.equal(driver.verifySurvivorsCalls, 0);
+    } finally {
+      driver.handle.releaseExit();
+      adapter.releaseFinalize.resolve(undefined);
+      await Promise.allSettled([executePromise, ...(cancelPromise === undefined ? [] : [cancelPromise])]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED2-08: missing live rendezvous fails closed after retained-handle cleanup', async () => {
+    const driver = new ControlledExitDriver('');
+    const fx = fixture(driver, {
+      adapter: new RecordingKimiAdapter({
+        probe: probeFor(false),
+        discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+      }),
+    });
+    const executePromise = fx.coordinator.execute(stageInput({
+      providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+    }));
+    try {
+      await driver.handle.waitExitEntered.promise;
+      const liveAttempts = (fx.coordinator as unknown as { liveAttempts: Map<string, unknown> }).liveAttempts;
+      assert.ok(liveAttempts.delete(`${WS}|${RUN}|${STAGE}|1`));
+
+      await assert.rejects(
+        fx.coordinator.cancelAttempt({
+          workspaceId: WS,
+          runId: RUN,
+          stageId: STAGE,
+          stageAttempt: 1,
+          correlationId: 'missing-rendezvous-correlation',
+          causationId: 'missing-rendezvous-causation',
+        }),
+        /LIVE_EXECUTION_UNAVAILABLE/,
+      );
+      assert.equal(driver.gracefulStopCalls, 1);
+      assert.equal(driver.terminateTreeCalls, 1);
+      assert.equal(driver.verifySurvivorsCalls, 1);
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([executePromise]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED-01: natural durable CAS wins when cancel acceptance is blocked', async () => {
+    const driver = new ControlledExitDriver('');
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    let processAdapter!: BlockingStoppingProcessAdapter;
+    const fx = fixture(driver, {
+      adapter,
+      processAdapterFactory: repo => {
+        processAdapter = new BlockingStoppingProcessAdapter(repo);
+        return processAdapter;
+      },
+    });
+    const input = stageInput({
+      providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+    });
+    const executePromise = fx.coordinator.execute(input);
+    let cancelPromise: Promise<StageExecutionOutcome> | undefined;
+    try {
+      await driver.handle.waitExitEntered.promise;
+      cancelPromise = fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'natural-race-correlation',
+        causationId: 'natural-race-causation',
+      });
+      await processAdapter.stoppingEntered.promise;
+
+      driver.handle.releaseExit();
+      for (let turn = 0; turn < 40; turn += 1) await Promise.resolve();
+
+      assert.equal(processAdapter.naturalCasCalls, 1);
+      const natural = await executePromise;
+      assert.equal(natural.kind, 'failed');
+      assert.equal(fx.sessionRepo.findByClaimKey(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'failed');
+      assert.equal(adapter.cancelInputs.length, 0);
+      assert.equal(driver.gracefulStopCalls, 0);
+      assert.equal(driver.terminateTreeCalls, 0);
+
+      processAdapter.releaseStopping();
+      const joined = await cancelPromise;
+      assert.strictEqual(joined, natural);
+    } finally {
+      processAdapter.releaseStopping();
+      await Promise.allSettled([executePromise, ...(cancelPromise === undefined ? [] : [cancelPromise])]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED-02: durable stop acceptance owns finalization before a later natural exit', async () => {
+    const driver = new ControlledExitDriver();
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { adapter });
+    const executePromise = fx.coordinator.execute(stageInput({
+      providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+    }));
+    try {
+      await driver.handle.waitExitEntered.promise;
+      const stopped = await fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'stop-race-correlation',
+        causationId: 'stop-race-causation',
+      });
+
+      assert.equal(stopped.kind, 'stopped');
+      assert.equal(stopped.proven, true);
+      assert.equal(adapter.cancelInputs.length, 1);
+      assert.equal(adapter.finalizedInputs.length, 1);
+      assert.equal(adapter.finalizedInputs[0]?.cancelled, true);
+      assert.equal(fx.sessionRepo.findByClaimKey(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'cancelled');
+
+      driver.handle.releaseExit();
+      const joined = await executePromise;
+      assert.strictEqual(joined, stopped);
+      assert.equal(adapter.finalizedInputs.length, 1);
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([executePromise]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED-04: Adapter.cancel completes before platform cleanup begins', async () => {
+    const driver = new ControlledExitDriver();
+    const adapter = new BlockingCancelAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { adapter });
+    const executePromise = fx.coordinator.execute(stageInput({
+      providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+    }));
+    let cancelPromise!: Promise<StageExecutionOutcome>;
+    try {
+      await driver.handle.waitExitEntered.promise;
+      cancelPromise = fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'order-correlation',
+        causationId: 'order-causation',
+      });
+      await adapter.cancelEntered.promise;
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+      assert.equal(driver.gracefulStopCalls, 0);
+      assert.equal(driver.terminateTreeCalls, 0);
+
+      adapter.releaseCancel.resolve(undefined);
+      const stopped = await cancelPromise;
+      assert.equal(stopped.kind, 'stopped');
+      assert.equal(driver.gracefulStopCalls, 1);
+      assert.equal(driver.terminateTreeCalls, 1);
+    } finally {
+      adapter.releaseCancel.resolve(undefined);
+      driver.handle.releaseExit();
+      await Promise.allSettled([executePromise, cancelPromise]);
+      close(fx);
+    }
+  });
+
+  it('continues platform cleanup when Adapter.cancel throws', async () => {
+    const driver = new ControlledExitDriver();
+    const adapter = new ThrowingCancelAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { adapter });
+    const executePromise = fx.coordinator.execute(stageInput({
+      providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+    }));
+    let cancelPromise!: Promise<StageExecutionOutcome>;
+    try {
+      await driver.handle.waitExitEntered.promise;
+      cancelPromise = fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'throwing-cancel-correlation',
+        causationId: 'throwing-cancel-causation',
+      });
+      const stopped = await cancelPromise;
+      assert.equal(stopped.kind, 'stopped');
+      assert.equal(driver.gracefulStopCalls, 1);
+      assert.equal(driver.terminateTreeCalls, 1);
+      assert.equal(adapter.cancelInputs.length, 1);
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([executePromise, ...(cancelPromise === undefined ? [] : [cancelPromise])]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED-10: unproven STARTUP_TIMEOUT is stopped without lifecycle failure', async () => {
+    const driver = new ControlledExitDriver();
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { adapter });
+    const executePromise = fx.coordinator.execute(stageInput());
+    try {
+      await driver.handle.waitExitEntered.promise;
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+      const entry = (fx.coordinator as unknown as { liveAttempts: Map<string, unknown> }).liveAttempts.get(`${WS}|${RUN}|${STAGE}|1`);
+      const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.ok(entry);
+      assert.ok(process);
+      const stop = {
+        process,
+        cleanup: { classification: 'unknown', cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE', proven: false, knownPids: [] },
+        proven: false,
+        reason: 'STARTUP_TIMEOUT',
+        stopOrigin: 'STARTUP_TIMEOUT',
+        stopAccepted: true,
+      } as unknown as ProcessStopResult;
+      const finalizer = (fx.coordinator as unknown as {
+        finalizeAttemptOnce(entry: unknown, disposition: unknown): Promise<StageExecutionOutcome>;
+      }).finalizeAttemptOnce.bind(fx.coordinator);
+      const outcome = await finalizer(entry, { kind: 'stop', stop, stopOrigin: 'STARTUP_TIMEOUT' });
+
+      assert.equal(outcome.kind, 'stopped');
+      assert.equal(outcome.proven, false);
+      assert.equal(outcome.stopOrigin, 'STARTUP_TIMEOUT');
+      assert.equal(adapter.finalizedInputs.length, 0);
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([executePromise]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED-11: proven STARTUP_TIMEOUT finalizes as a non-cancelled provider start failure', async () => {
+    const driver = new ControlledExitDriver();
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { adapter });
+    const executePromise = fx.coordinator.execute(stageInput());
+    try {
+      await driver.handle.waitExitEntered.promise;
+      for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+      const entry = (fx.coordinator as unknown as { liveAttempts: Map<string, unknown> }).liveAttempts.get(`${WS}|${RUN}|${STAGE}|1`);
+      const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.ok(entry);
+      assert.ok(process);
+      const stop = {
+        process,
+        cleanup: { classification: 'complete', cleanupResult: 'TERMINATED', proven: true, knownPids: [] },
+        proven: true,
+        reason: 'STARTUP_TIMEOUT',
+        stopOrigin: 'STARTUP_TIMEOUT',
+        stopAccepted: true,
+      } as unknown as ProcessStopResult;
+      const finalizer = (fx.coordinator as unknown as {
+        finalizeAttemptOnce(entry: unknown, disposition: unknown): Promise<StageExecutionOutcome>;
+      }).finalizeAttemptOnce.bind(fx.coordinator);
+      const outcome = await finalizer(entry, { kind: 'stop', stop, stopOrigin: 'STARTUP_TIMEOUT' });
+
+      assert.equal(outcome.kind, 'failed');
+      assert.equal((outcome as Extract<StageExecutionOutcome, { kind: 'failed' }>).problem.code, 'PROVIDER_START_FAILED');
+      assert.equal(adapter.finalizedInputs.length, 1);
+      assert.equal(adapter.finalizedInputs[0]?.cancelled, false);
+      assert.deepEqual((adapter.finalizedInputs[0] as unknown as { providerError: { code: string; phase: string } }).providerError, {
+        code: 'PROVIDER_START_FAILED',
+        phase: 'startup',
+        retryable: false,
+        message: 'Provider process could not start before timeout',
+      });
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([executePromise]);
+      close(fx);
+    }
+  });
+
+  it('P5A-REMED-12: proven IDLE and TOTAL timeout finalization is non-cancelled runtime failure', async () => {
+    for (const origin of ['IDLE_TIMEOUT', 'TOTAL_TIMEOUT'] as const) {
+      const driver = new ControlledExitDriver();
+      const adapter = new RecordingKimiAdapter({
+        probe: probeFor(false),
+        discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+      });
+      const fx = fixture(driver, { adapter });
+      const executePromise = fx.coordinator.execute(stageInput());
+      try {
+        await driver.handle.waitExitEntered.promise;
+        for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+        const entry = (fx.coordinator as unknown as { liveAttempts: Map<string, unknown> }).liveAttempts.get(`${WS}|${RUN}|${STAGE}|1`);
+        const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+        assert.ok(entry);
+        assert.ok(process);
+        const stop = {
+          process,
+          cleanup: { classification: 'complete', cleanupResult: 'TERMINATED', proven: true, knownPids: [] },
+          proven: true,
+          reason: origin,
+          stopOrigin: origin,
+          stopAccepted: true,
+        } as unknown as ProcessStopResult;
+        const finalizer = (fx.coordinator as unknown as {
+          finalizeAttemptOnce(entry: unknown, disposition: unknown): Promise<StageExecutionOutcome>;
+        }).finalizeAttemptOnce.bind(fx.coordinator);
+        const outcome = await finalizer(entry, { kind: 'stop', stop, stopOrigin: origin });
+
+        assert.equal(outcome.kind, 'failed');
+        assert.equal((outcome as Extract<StageExecutionOutcome, { kind: 'failed' }>).problem.code, 'PROVIDER_SESSION_FAILED');
+        assert.equal(adapter.finalizedInputs.length, 1);
+        assert.equal(adapter.finalizedInputs[0]?.cancelled, false);
+        assert.deepEqual((adapter.finalizedInputs[0] as unknown as { providerError: { code: string; phase: string } }).providerError, {
+          code: 'PROVIDER_SESSION_FAILED',
+          phase: 'runtime',
+          retryable: false,
+          message: 'Provider session timed out',
+        });
+      } finally {
+        driver.handle.releaseExit();
+        await Promise.allSettled([executePromise]);
+        close(fx);
+      }
+    }
+  });
+
+  it('cancels the exact live attempt through one proof-backed internal stop outcome', async () => {
+    const driver = new BlockingCancelDriver();
+    const fx = fixture(driver);
+    try {
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+      }));
+      await driver.spawnEntered;
+      assert.equal(driver.spawnCalls, 1);
+
+      const outcome = await fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'cancel-correlation',
+        causationId: 'cancel-causation',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      assert.equal(outcome.proven, true);
+      assert.equal((await execution).kind, 'stopped');
+      assert.equal(driver.spawnCalls, 1);
+      assert.equal(driver.terminateTreeCalls, 1);
+      assert.equal(driver.verifySurvivorsCalls, 1);
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('returns stopped but unproven when cancellation receives bare complete', async () => {
+    const driver = new BlockingCancelDriver(false);
+    const fx = fixture(driver);
+    try {
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+      }));
+      await driver.spawnEntered;
+      const outcome = await fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'cancel-bare-correlation',
+        causationId: 'cancel-bare-causation',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      assert.equal(outcome.proven, false);
+      assert.equal((await execution).kind, 'stopped');
+      const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(process?.status, 'orphaned');
+      const session = fx.sessionRepo.findByClaimKey(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(session?.status, 'failed');
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('flushes a buffered parser tail before proven cancellation finalization', async () => {
+    const driver = new TailCancelDriver();
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({
+        found: true,
+        selected: KIMI_EXE,
+        candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }],
+        warnings: [],
+      }),
+    });
+    const fx = fixture(driver, {
+      adapter,
+    });
+    try {
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+      }));
+      await driver.handle.stdoutStarted;
+      driver.handle.release();
+      await adapter.parsed;
+
+      const outcome = await fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'cancel-tail-correlation',
+        causationId: 'cancel-tail-causation',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      assert.equal(outcome.proven, true);
+      const finalized = adapter.finalizedInputs[0];
+      assert.ok(finalized);
+      assert.equal(finalized.cancelled, true);
+      assert.ok(finalized.parsedEvents.some(event => event.type === 'assistant.message'));
+      assert.equal((await execution).kind, 'stopped');
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('fails closed when the cancellation claim uses a different Stage attempt', async () => {
+    const driver = new BlockingCancelDriver();
+    const fx = fixture(driver);
+    try {
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+      }));
+      await driver.spawnEntered;
+      await assert.rejects(
+        fx.coordinator.cancelAttempt({
+          workspaceId: WS,
+          runId: RUN,
+          stageId: STAGE,
+          stageAttempt: 2,
+          correlationId: 'wrong-attempt-correlation',
+          causationId: 'wrong-attempt-causation',
+        }),
+        /LIVE_EXECUTION_UNAVAILABLE/,
+      );
+      driver.handle.pushStdout('{"type":"assistant","role":"assistant","content":"ok"}\n');
+      driver.handle.emitExit();
+      assert.equal((await execution).kind, 'completed');
+    } finally {
+      close(fx);
+    }
+  });
+
   it('runs a successful Kimi vertical slice: one Session, one Process, completed outcome, durable facts', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
     try {

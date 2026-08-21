@@ -38,6 +38,8 @@ export interface GracefulStopResult {
 export interface SurvivorVerification {
   readonly classification: SurvivorClassification;
   readonly knownPids: readonly number[];
+  /** Present only when the Driver established owned-tree enumeration proof. */
+  readonly proof?: { readonly kind: 'owned-tree-enumeration' };
 }
 
 export type IdentityInspection =
@@ -58,6 +60,44 @@ export interface PlatformProcessDriver {
   terminateTree(handle: NativeProcessHandle): Promise<TreeTerminationResult>;
   verifySurvivors(handle: NativeProcessHandle): Promise<SurvivorVerification>;
   inspectIdentity(identity: NativeIdentity): Promise<IdentityInspection>;
+}
+
+export interface CleanupVerdict {
+  readonly classification: SurvivorClassification;
+  readonly cleanupResult: CleanupResult;
+  readonly proven: boolean;
+}
+
+/**
+ * The single cleanup-proof boundary. A bare `complete` is not evidence that
+ * the owned tree was enumerated and is therefore deliberately unproven.
+ */
+export function cleanupVerdictFromVerification(
+  verification: SurvivorVerification,
+  exitedBeforeCleanup: boolean,
+): CleanupVerdict {
+  if (
+    verification.classification === 'complete'
+    && verification.proof?.kind === 'owned-tree-enumeration'
+  ) {
+    return {
+      classification: 'complete',
+      cleanupResult: exitedBeforeCleanup ? 'ALREADY_EXITED' : 'TERMINATED',
+      proven: true,
+    };
+  }
+  if (verification.classification === 'survivors') {
+    return {
+      classification: 'survivors',
+      cleanupResult: 'SURVIVORS',
+      proven: false,
+    };
+  }
+  return {
+    classification: 'unknown',
+    cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE',
+    proven: false,
+  };
 }
 
 /**

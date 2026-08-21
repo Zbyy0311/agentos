@@ -145,7 +145,7 @@ function probeFor(authFailure: boolean): ProcessProbePort {
   };
 }
 
-function fixture(driver: FakeDriver, authFailure = false, behavior: { readonly returnActive?: boolean } = {}) {
+function fixture(driver: FakeDriver, authFailure = false, behavior: { readonly returnActive?: boolean; readonly returnStopped?: boolean } = {}) {
   const db = migratedDb();
   seedGraph(db);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-e2e-'));
@@ -174,6 +174,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: { readonly r
     execute: async (input: Parameters<StageExecutionCoordinator['execute']>[0]) => {
       coordinatorCalls.count += 1;
       if (behavior.returnActive === true) return { kind: 'active' as const };
+      if (behavior.returnStopped === true) return { kind: 'stopped' as const, cleanup: null, proven: false, stopOrigin: 'EXPLICIT_CANCEL' as const };
       return realCoordinator.execute(input);
     },
   } as unknown as StageExecutionCoordinator;
@@ -254,6 +255,18 @@ function realFixture() {
 }
 
 describe('RunEngineProviderDispatcher E2E', () => {
+  it('consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { returnStopped: true });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const stage = fx.runStageRepo.listByRun(WS, RUN)[0];
+      assert.equal(stage.status, 'running');
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'running');
+      assert.equal(fx.driver.spawnCalls, 0);
+    } finally { close(fx); }
+  });
+
   it('drives one accepted Run through RunEngine -> coordinator -> lifecycle to completed with one spawn per stage', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
     try {
