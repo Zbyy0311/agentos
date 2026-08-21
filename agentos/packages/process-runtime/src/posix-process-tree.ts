@@ -16,14 +16,25 @@ export interface PosixProcessTableEntry {
   readonly sessionId: number;
 }
 
-export type PosixGroupReader = (groupId: number) => Promise<readonly number[]>;
+/**
+ * One enumeration of the complete owned SESSION. AgentOS spawns detached, so
+ * the root PID is the session id; every process with that session id belongs
+ * to AgentOS regardless of its process group.
+ */
+export interface PosixSessionEnumeration {
+  readonly members: readonly number[];
+  readonly groupIds: readonly number[];
+}
+
+export type PosixSessionReader = (sessionId: number) => Promise<PosixSessionEnumeration>;
 export type PosixGroupTerminator = (groupId: number) => void;
 
 interface PosixTreeState {
-  readonly groupId: number;
-  readonly readMembers: PosixGroupReader;
+  readonly sessionId: number;
+  readonly readSession: PosixSessionReader;
   readonly terminateGroup: PosixGroupTerminator;
   cleanupRequested: boolean;
+  closedVerification?: SurvivorVerification;
 }
 
 export function parsePosixProcessTable(output: string): readonly PosixProcessTableEntry[] {
@@ -46,41 +57,62 @@ export function parsePosixProcessTable(output: string): readonly PosixProcessTab
   return entries;
 }
 
-export function membersForPosixGroup(
+/** All processes in the owned session, across every owned process group. */
+export function membersForPosixSession(
   entries: readonly PosixProcessTableEntry[],
-  groupId: number,
+  sessionId: number,
 ): readonly number[] {
-  return [...new Set(entries.filter(entry => entry.groupId === groupId && entry.sessionId === groupId).map(entry => entry.pid))].sort((a, b) => a - b);
+  return [...new Set(entries.filter(entry => entry.sessionId === sessionId).map(entry => entry.pid))].sort((a, b) => a - b);
 }
 
-async function readPosixGroup(groupId: number): Promise<readonly number[]> {
+/** All distinct process groups inside the owned session. */
+export function groupsForPosixSession(
+  entries: readonly PosixProcessTableEntry[],
+  sessionId: number,
+): readonly number[] {
+  return [...new Set(entries.filter(entry => entry.sessionId === sessionId).map(entry => entry.groupId))].sort((a, b) => a - b);
+}
+
+async function readPosixSession(sessionId: number): Promise<PosixSessionEnumeration> {
   const result = await execFileAsync('ps', ['-eo', 'pid=,pgid=,sid='], {
     shell: false,
     windowsHide: true,
     timeout: ENUMERATION_TIMEOUT_MS,
     maxBuffer: ENUMERATION_MAX_BUFFER,
   });
-  return membersForPosixGroup(parsePosixProcessTable(result.stdout), groupId);
+  const entries = parsePosixProcessTable(result.stdout);
+  return {
+    members: membersForPosixSession(entries, sessionId),
+    groupIds: groupsForPosixSession(entries, sessionId),
+  };
 }
 
 function terminatePosixGroup(groupId: number): void {
-  process.kill(-groupId, 'SIGKILL');
+  try {
+    process.kill(-groupId, 'SIGKILL');
+  } catch (error) {
+    // A group that vanished between enumeration and signalling is already
+    // terminated; that is success, not partial termination.
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return;
+    throw error;
+  }
 }
 
 export class PosixProcessTreeController implements ProcessTreeController {
   constructor(
-    private readonly readGroup: PosixGroupReader = readPosixGroup,
+    private readonly readSession: PosixSessionReader = readPosixSession,
     private readonly terminateGroup: PosixGroupTerminator = terminatePosixGroup,
   ) {}
 
   async attach(identity: NativeIdentity): Promise<ProcessTreeHandle> {
-    const groupId = Number(identity.groupId ?? identity.pid);
-    if (!Number.isSafeInteger(groupId) || groupId <= 0) {
+    // Detached spawn makes the root PID the session id of the owned session.
+    const sessionId = identity.pid;
+    if (!Number.isSafeInteger(sessionId) || sessionId <= 0) {
       return { platform: 'unavailable', rootPid: identity.pid, state: undefined };
     }
     const state: PosixTreeState = {
-      groupId,
-      readMembers: this.readGroup,
+      sessionId,
+      readSession: this.readSession,
       terminateGroup: this.terminateGroup,
       cleanupRequested: false,
     };
@@ -92,11 +124,28 @@ export class PosixProcessTreeController implements ProcessTreeController {
       return { classification: 'unknown', attemptedMembers: [], errors: ['posix-handle-mismatch'] };
     }
     const state = handle.state as PosixTreeState;
+    // A frozen terminal proof must never re-target a numerically reused
+    // session that appeared after the owned session was proven empty.
+    if (state.closedVerification?.classification === 'complete') {
+      return { classification: 'complete', attemptedMembers: [], errors: [] };
+    }
     let members: readonly number[] = [];
     try {
-      members = await state.readMembers(state.groupId);
+      const enumeration = await state.readSession(state.sessionId);
+      members = enumeration.members;
       state.cleanupRequested = true;
-      if (members.length > 0) state.terminateGroup(state.groupId);
+      const errors: string[] = [];
+      for (const groupId of enumeration.groupIds) {
+        // Only groups observed inside the owned session are ever signalled.
+        try {
+          state.terminateGroup(groupId);
+        } catch (error) {
+          errors.push(boundedErrorDetail(error, 'posix-group-termination-failed'));
+        }
+      }
+      if (errors.length > 0) {
+        return { classification: 'unknown', attemptedMembers: members, errors };
+      }
       return { classification: 'complete', attemptedMembers: members, errors: [] };
     } catch (error) {
       return {
@@ -110,17 +159,25 @@ export class PosixProcessTreeController implements ProcessTreeController {
   async verifySurvivors(handle: ProcessTreeHandle): Promise<SurvivorVerification> {
     if (handle.platform !== 'posix') return { classification: 'unknown', knownPids: [] };
     const state = handle.state as PosixTreeState;
+    if (state.closedVerification !== undefined) return state.closedVerification;
     const deadline = Date.now() + (state.cleanupRequested ? CLEANUP_DEADLINE_MS : 0);
     while (true) {
       try {
-        const members = [...await state.readMembers(state.groupId)];
-        if (members.length === 0) {
-          return { classification: 'complete', knownPids: [], proof: { kind: 'owned-tree-enumeration' } };
+        const enumeration = await state.readSession(state.sessionId);
+        if (enumeration.members.length === 0) {
+          const verification: SurvivorVerification = {
+            classification: 'complete',
+            knownPids: [],
+            proof: { kind: 'owned-tree-enumeration' },
+          };
+          state.closedVerification = verification;
+          return verification;
         }
         if (!state.cleanupRequested || Date.now() >= deadline) {
-          return { classification: 'survivors', knownPids: members };
+          return { classification: 'survivors', knownPids: enumeration.members };
         }
       } catch {
+        if (state.closedVerification !== undefined) return state.closedVerification;
         return { classification: 'unknown', knownPids: [] };
       }
       await new Promise(resolve => setTimeout(resolve, CLEANUP_POLL_MS));
@@ -128,6 +185,6 @@ export class PosixProcessTreeController implements ProcessTreeController {
   }
 
   async dispose(_handle: ProcessTreeHandle): Promise<void> {
-    // POSIX process-group ownership has no persistent helper resource.
+    // POSIX session ownership has no persistent helper resource.
   }
 }

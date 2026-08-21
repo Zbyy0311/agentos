@@ -1,5 +1,6 @@
+import type { Readable } from 'node:stream';
 import type { SurvivorVerification, TreeTerminationResult } from './driver.js';
-import type { NativeIdentity } from './types.js';
+import type { ExitEvidence, NativeIdentity, ValidatedLaunch } from './types.js';
 import { PosixProcessTreeController } from './posix-process-tree.js';
 import { WindowsProcessTreeController } from './windows-process-tree.js';
 
@@ -14,6 +15,33 @@ export interface ProcessTreeController {
   terminateTree(handle: ProcessTreeHandle): Promise<TreeTerminationResult>;
   verifySurvivors(handle: ProcessTreeHandle): Promise<SurvivorVerification>;
   dispose(handle: ProcessTreeHandle): Promise<void>;
+}
+
+/**
+ * Result of an atomic owned spawn: the provider process was placed under
+ * platform ownership BEFORE any provider-controlled instruction executed, so
+ * no descendant can pre-date ownership. The reported PID is the actual
+ * provider PID, never a wrapper/helper PID.
+ */
+export interface OwnedSpawnResult {
+  readonly pid: number;
+  readonly executablePath: string;
+  readonly stdout: Readable;
+  readonly stderr: Readable;
+  readonly waitExit: () => Promise<ExitEvidence>;
+  /** Terminates the provider root only (Windows SIGTERM-equivalent). */
+  readonly requestGracefulStop: () => Promise<boolean>;
+  readonly tree: ProcessTreeHandle;
+}
+
+export interface OwnedSpawnCapableController extends ProcessTreeController {
+  spawnOwned(launch: ValidatedLaunch): Promise<OwnedSpawnResult>;
+}
+
+export function supportsOwnedSpawn(
+  controller: ProcessTreeController,
+): controller is OwnedSpawnCapableController {
+  return typeof (controller as Partial<OwnedSpawnCapableController>).spawnOwned === 'function';
 }
 
 export function createPlatformProcessTreeController(): ProcessTreeController {
@@ -35,7 +63,7 @@ export class UnavailableProcessTreeController implements ProcessTreeController {
     return {
       classification: 'unknown',
       attemptedMembers: handle.rootPid > 0 ? [handle.rootPid] : [],
-      errors: [`platform-tree-unavailable:${this.reason}`],
+      errors: ['platform-tree-unavailable:' + this.reason],
     };
   }
 
