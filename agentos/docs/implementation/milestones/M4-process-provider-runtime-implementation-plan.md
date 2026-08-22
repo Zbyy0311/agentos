@@ -30,6 +30,21 @@ OPEN / DRAFT / FROZEN / OUTSIDE M4
 Any implementation authorization must name its exact base. This plan does not
 silently transfer authorization if `main` moves.
 
+### 1.1 Current production platform support — OD-M4-02
+
+CURRENT M4 PRODUCTION PLATFORM: WINDOWS ONLY
+
+REQUIRED DELIVERY GATE: Windows
+
+DEFERRED / NON-BLOCKING PLATFORMS: Linux / POSIX / macOS
+
+Windows process ownership, termination, Provider execution and Windows
+real-platform validation are the release-blocking production evidence for the
+current M4 delivery. POSIX implementation and deterministic contract/unit
+coverage remain retained future capability; absence of a POSIX environment is
+not a current Windows-only M4 release blocker. This scope reconciliation does
+not claim POSIX production support or proven POSIX real-OS evidence.
+
 ## 2. M4 objective
 
 Establish one durable, provider-agnostic execution authority that separates
@@ -67,7 +82,12 @@ before final M4 closeout.
 16. No phase automatically authorizes the next phase.
 17. `KIMI VERTICAL SLICE COMPLETE != M4 MILESTONE COMPLETE`.
 18. Every deliverable in Roadmap §§55/59 remains required for M4 final closeout
-    unless an authorized scope/spec reconciliation explicitly changes it.
+    unless an authorized scope/spec reconciliation explicitly changes it. OD-M4-02
+    changes only the current production-platform acceptance matrix.
+19. E04 safety semantics are unchanged: parent-only kill is invalid, root exit is
+    not tree proof, known/unknown survivors fail or remain unproven, and
+    owned-tree-enumeration proof is required wherever successful cleanup is
+    claimed.
 
 ## 4. Scope
 
@@ -466,8 +486,8 @@ conflated; timing tests are flaky or accepted by rerun.
 **Rollback boundary:** revert cancel/transport routing while preserving Process
 facts; compatibility surfaces remain.
 
-**Independent review gate:** Windows/POSIX platform, lifecycle race, transport
-and security review.
+**Independent review gate:** Windows production platform, retained POSIX
+contract, lifecycle race, transport and security review.
 
 **Next phase authorization:** explicit P6 entry required.
 
@@ -758,7 +778,8 @@ authorized implementation/spec reconciliation phase.
 separate future authorization changed repository state before this gate.
 
 **Tests:** complete section 16 matrix across Kimi/Codex/OpenCode/Custom CLI and
-all APIs; E01–E10; Windows/POSIX; M3; migration/schema integrity if authorized;
+all APIs; E01–E10; Windows production platform gate; retained POSIX
+deterministic coverage; M3; migration/schema integrity if authorized;
 architecture/mutation/negative checks; reproducibility on exact head.
 
 **Acceptance criteria:** section 21 final DoD passes; each matrix row is
@@ -828,11 +849,11 @@ accepted canonical Run/Stage
 ### Roadmap M4 Deliverable Reconciliation Matrix
 
 The matrix preserves both authoritative Roadmap truths: Kimi is first
-(`14-Roadmap.md:3630-3688`), while every M4 scope/deliverable remains a final
-closeout obligation (`14-Roadmap.md:1165-1249`). `Deferred? = No` means sequenced
-later, not pulled into the initial slice. Any future deferral requires the exact
-authority shown by `FORMALLY_DEFERRED_PENDING_SPEC_RECONCILIATION`; none is
-claimed by this preplanning package.
+(14-Roadmap.md:3630-3688), while every M4 scope/deliverable remains a final
+closeout obligation (14-Roadmap.md:1165-1249). Deferred? = No means sequenced
+later, not pulled into the initial slice. OD-M4-02 changes the current
+production-platform matrix: Windows remains required, while POSIX real-OS
+release evidence is formally deferred and non-blocking.
 
 | Roadmap Deliverable | Current Status | Initial Kimi Slice Required | Required Before M4 Final Closeout | Proposed Phase | Deferred? | Deferral Authority | Evidence / Reason |
 |---|---|---|---|---|---|---|---|
@@ -846,7 +867,7 @@ claimed by this preplanning package.
 | Raw Output Artifact | MISSING | Yes | REQUIRED_BEFORE_M4_CLOSEOUT | P2 | No | N/A — no deferral | persisted task log records counts/summaries, not restricted raw output artifacts |
 | Idle Timeout | PARTIAL | Yes | REQUIRED_BEFORE_M4_CLOSEOUT | P1/P5 | No | N/A — no deferral | generic inactivity timer exists without durable Process reason/state semantics |
 | Windows Job Object / fallback | MISSING | Yes, platform gate | REQUIRED_BEFORE_M4_CLOSEOUT | P1/P5 | No | N/A — no deferral | Windows uses `child.kill()` with no owned-tree/survivor proof |
-| POSIX Process Group | MISSING | Yes, platform gate | REQUIRED_BEFORE_M4_CLOSEOUT | P1/P5 | No | N/A — no deferral | current POSIX TERM/KILL targets the child rather than a proven process group |
+| POSIX Process Group | MISSING | Retained deterministic contract | FORMALLY_DEFERRED_PENDING_SPEC_RECONCILIATION | P1/P5 | Yes | OD-M4-02 | POSIX implementation and unit/contract design remain retained; real-OS production evidence is future/non-blocking for current Windows-only M4 |
 | ProviderRegistry | PARTIAL | Yes, Kimi registration | REQUIRED_BEFORE_M4_CLOSEOUT | P3/P8/P9 | No | N/A — no deferral | current per-execution Registry has Codex/Kimi only and no stable manifest breadth |
 | Provider Adapter | PARTIAL | Yes | REQUIRED_BEFORE_M4_CLOSEOUT | P3/P8/P9 | No | N/A — no deferral | build/parser adapters exist, but their contract lacks the Process port/session/finalize/error boundary |
 | Provider Configuration | IMPLEMENTED | Yes | REQUIRED_BEFORE_M4_CLOSEOUT | P3/P4/P8/P9 | No | N/A — no deferral | migration 003/repository/snapshot/secret references exist; launch-consumption parity remains a phase gate |
@@ -1046,7 +1067,7 @@ Expected conflict zones and serial owners:
 | RunEngine/StageExecutor/background dispatch | P4 | one integration owner; lifecycle service reviewed, minimally changed |
 | AgentRunner/LegacyCanonicalExecutionService/TaskRunService | P4 compatibility owner | do not refactor unrelated behavior; no parallel shared-core edits |
 | Conversation routes/RunStreamRegistry | P5 transport owner | disconnect-only surgical changes |
-| platform drivers/cancel coordinator | P5 | Windows/POSIX changes reviewed together |
+| platform drivers/cancel coordinator | P5 | Windows production changes; retained POSIX contract reviewed without a current POSIX production gate |
 | TaskRunRecoveryService/server startup/shutdown | P6 | one recovery owner; no concurrent lifecycle changes |
 | Core/Kimi tests/fixtures/verification evidence | P7 | production remediation requires explicit re-entry |
 | Codex adapter/integration/fixtures | P8 | consume accepted Process/Run contracts; no concurrent Provider core redefinition |
@@ -1184,7 +1205,9 @@ M4 implementation may be declared complete only when:
    and old Execution identities are unambiguous.
 7. durable Process state/raw output/Process facts satisfy schema, security and
    replay contracts.
-8. active cancel kills/verifies the owned tree on Windows and POSIX contracts.
+8. active cancel kills/verifies the owned tree on the required Windows
+   production platform; POSIX contract semantics remain retained for future
+   platform acceptance.
 9. disconnect never cancels; explicit Cancel does.
 10. restart classification never guesses success and preserves M3 uncertainty.
 11. Provider auth/config/version/output failures have stable semantics.

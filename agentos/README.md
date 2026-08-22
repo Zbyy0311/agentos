@@ -14,6 +14,10 @@ Agent 配置中的 `provider` 表示用户配置身份，CLI 命令通过 Adapte
 
 计划 D 的隔离发布验收记录见 [docs/acceptance/agentos-collaboration-workbench-final.md](docs/acceptance/agentos-collaboration-workbench-final.md)。Worktree/recovery/storage 核心测试、三 Provider 真实生命周期和双 Agent 隔离 Worktree gate 均已通过。
 
+## 当前平台支持
+
+当前正式支持平台：Windows。Linux/macOS/POSIX 运行路径不属于当前生产支持范围；仓库中的相关实现与单元测试用于未来兼容性保留，不构成当前平台支持承诺。
+
 ## 系统要求
 
 - Node.js >= 22.5
