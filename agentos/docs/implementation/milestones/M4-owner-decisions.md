@@ -1,11 +1,11 @@
 # AgentOS M4 Process & Provider Runtime — Owner Decision Register
 
-Status: OD-M4-01 SELECTED — OPTION A — P2 SCHEMA DESIGN FROZEN IN M4-p2-schema-design.md — MIGRATION 014 IMPLEMENTATION NOT AUTHORIZED — NO PRODUCTION AUTHORIZATION
+Status: OD-M4-01 SELECTED — OPTION A — OD-M4-02 SELECTED — WINDOWS ONLY — P2 SCHEMA DESIGN FROZEN IN M4-p2-schema-design.md — MIGRATION 014 IMPLEMENTATION NOT AUTHORIZED — NO PRODUCTION AUTHORIZATION
 
 ## 1. Current owner decision count
 
 ```text
-CURRENT OWNER DECISION COUNT = 1
+CURRENT OWNER DECISION COUNT = 2
 
 OWNER DECISIONS REQUIRED BEFORE M4-P0 = 0
 
@@ -186,19 +186,19 @@ unrecorded deferral.
 ## 8. Current decision conclusion
 
 ```text
-CURRENT OWNER DECISION COUNT = 1
+CURRENT OWNER DECISION COUNT = 2
 OWNER DECISIONS REQUIRED BEFORE M4-P0 = 0
 OWNER DECISIONS REQUIRED BEFORE M4-P1 = 0
 OWNER DECISIONS REQUIRED BEFORE M4-P2 SCHEMA = 1
 
 AUTHORITATIVE M4 SCOPE:
-PRESERVED
+PRESERVED, WITH CURRENT PRODUCTION PLATFORM NARROWED BY OD-M4-02
 
 KIMI VERTICAL SLICE COMPLETE == M4 MILESTONE COMPLETE:
 NO
 
 SCOPE/SPEC RECONCILIATION:
-P0 CONTRACTS FROZEN; EVENT ADDITIONS REQUIRE OWNING-PHASE REVIEW; NO SCOPE REDUCTION
+P0 CONTRACTS FROZEN; EVENT ADDITIONS REQUIRE OWNING-PHASE REVIEW; CURRENT PRODUCTION PLATFORM = WINDOWS ONLY
 
 M4-P0 CONTRACT PACKAGE:
 COMPLETE / PENDING INDEPENDENT P0 REVIEW
@@ -224,3 +224,27 @@ RESERVED IN DESIGN DOC ONLY; IMPLEMENTATION NOT AUTHORIZED
 Production Cutover:
 NOT AUTHORIZED
 ```
+
+## 9. OD-M4-02 — Current production platform support
+
+| Field | Value |
+|---|---|
+| ID | OD-M4-02 |
+| Decision | SELECTED — WINDOWS ONLY |
+| Current production-supported host platform | Windows |
+| Current M4 production delivery | Windows is required; Windows process ownership, termination and Provider execution evidence is release-blocking; Windows CI and real-platform validation remain authoritative |
+| Deferred production platforms | Linux / POSIX / macOS are not production-supported platforms for current M4 |
+| Retained POSIX implementation | Future capability, experimental/best-effort implementation and deterministic regression coverage; no current production support promise |
+| POSIX real-OS validation | Deferred and non-blocking for M4-P5B closeout, M4 completion, subsequent M4 phases and current Windows delivery |
+| No-environment behavior | Missing WSL2/Linux/Docker/Podman must not produce PLATFORM_GATE_BLOCKED for current Windows-only production acceptance |
+| Support claim boundary | This decision does not claim POSIX support is proven, does not authorize deleting POSIX code and does not weaken deterministic POSIX unit tests |
+| Future POSIX production claim | Requires a new explicit platform-support Owner Decision plus real-OS acceptance evidence on that platform |
+| Nature of decision | Scope/spec reconciliation, not a statement that the POSIX implementation is defective |
+| Historical record | Historical documents and commits remain historical evidence and are not rewritten to erase earlier cross-platform intent |
+
+OD-M4-01 remains unchanged. OD-M4-02 = SELECTED — WINDOWS ONLY.
+
+The current Owner Decision count is 2. This decision supersedes the earlier
+cross-platform production-acceptance condition only for current platform-release
+scope; it does not change process-tree safety semantics or authorize the next
+M4 phase.
