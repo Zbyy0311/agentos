@@ -7,6 +7,7 @@ import type { SurvivorVerification, TreeTerminationResult } from './driver.js';
 import { cleanupVerdictFromVerification } from './driver.js';
 import { NodeProcessDriver } from './node-driver.js';
 import type { ProcessTreeController, ProcessTreeHandle } from './platform-process-tree.js';
+import { STREAM_CHUNK_LIMIT_BYTES } from './streams.js';
 import { WindowsProcessTreeController } from './windows-process-tree.js';
 import type { NativeIdentity } from './types.js';
 
@@ -100,6 +101,26 @@ async function waitForPidGone(pid: number): Promise<void> {
   }
 }
 
+function readAbortedPid(error: unknown): number {
+  const message = error instanceof Error ? error.message : String(error);
+  const marker = 'launch-aborted ';
+  const start = message.indexOf(marker);
+  if (start < 0) throw new Error('missing launch-aborted evidence: ' + message);
+  const pid = Number(message.slice(start + marker.length).split(' ')[0]);
+  if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('invalid aborted provider pid: ' + message);
+  return pid;
+}
+
+async function waitForHelperDrain(baseline: readonly number[]): Promise<void> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const leaked = listPowerShellPids().filter(pid => !baseline.includes(pid));
+    if (leaked.length === 0) return;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+  throw new Error('new PowerShell helper survived: ' + listPowerShellPids().join(','));
+}
+
 async function waitForFile(path: string): Promise<string> {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
@@ -110,11 +131,12 @@ async function waitForFile(path: string): Promise<string> {
 }
 
 function basicLaunch(executable: string, args: readonly string[]) {
+  const env: Record<string, string> = process.platform === 'win32' ? { SystemRoot: process.env.SystemRoot ?? 'C:\\Windows' } : {};
   return {
     executable,
     args: [...args],
     cwd: process.cwd(),
-    env: {},
+    env,
     envDiagnostics: [],
     shell: false as const,
   };
@@ -435,6 +457,174 @@ describe('NodeProcessDriver', () => {
     const driver = new NodeProcessDriver();
     await expect(driver.spawn(basicLaunch('definitely-missing-agentos-bin', []))).rejects.toThrow();
   });
+
+
+  it.skipIf(process.platform !== 'win32')(
+    'BLOCKER-1: assignment failure aborts the suspended provider before user code',
+    { timeout: REAL_SPAWN_TIMEOUT_MS },
+    async () => {
+      const events: string[] = [];
+      const controller = new WindowsProcessTreeController({
+        trace: event => events.push(event.kind + ':' + event.pid),
+        faultInjection: { failJobAssign: true },
+      });
+      const driver = new NodeProcessDriver({ processTreeController: controller });
+      const fixtureDir = mkdtempSync(join(tmpdir(), 'agentos-p5b-assign-failure-'));
+      const marker = join(fixtureDir, 'provider-ran');
+      const helpersBefore = listPowerShellPids();
+      let providerPid: number | undefined;
+      try {
+        const error = await driver.spawn(basicLaunch(process.execPath, [
+          '-e',
+          "require('node:fs').writeFileSync(process.argv[1], 'ran');",
+          marker,
+        ])).then(
+          () => { throw new Error('spawn must reject after injected assignment failure'); },
+          value => value,
+        );
+        providerPid = readAbortedPid(error);
+        expect(error instanceof Error ? error.message : String(error)).toContain('injected-assign-failure');
+        expect(existsSync(marker)).toBe(false);
+        expect(events.some(event => event.startsWith('assigned:'))).toBe(false);
+        expect(events.some(event => event.startsWith('launched:'))).toBe(false);
+        await waitForPidGone(providerPid);
+        expect(pidIsAlive(providerPid)).toBe(false);
+        await waitForHelperDrain(helpersBefore);
+      } finally {
+        if (providerPid !== undefined && pidIsAlive(providerPid)) {
+          try { process.kill(providerPid, 'SIGKILL'); } catch { /* test hygiene */ }
+          await waitForPidGone(providerPid);
+        }
+        await waitForHelperDrain(helpersBefore).catch(() => undefined);
+        rmSync(fixtureDir, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.skipIf(process.platform !== 'win32')(
+    'HIGH-1 B1/B2/B5: bounded backpressure preserves every stdout byte and resumes',
+    { timeout: REAL_SPAWN_TIMEOUT_MS },
+    async () => {
+      const transportEvents: string[] = [];
+      const controller = new WindowsProcessTreeController({
+        transportTrace: event => transportEvents.push(event.kind),
+      });
+      const driver = new NodeProcessDriver({ processTreeController: controller });
+      const rows = 20_000;
+      const providerScript = "for (let i = 0; i < " + rows + "; i++) process.stdout.write('row-' + i + ':' + 'x'.repeat(64) + ';');";
+      const expected = Buffer.from(Array.from({ length: rows }, (_, i) => 'row-' + i + ':' + 'x'.repeat(64) + ';').join(''));
+      const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', providerScript]));
+      track(handle.pid);
+      const pauseDeadline = Date.now() + 10_000;
+      while (!transportEvents.includes('data-paused') && Date.now() < pauseDeadline) {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      expect(transportEvents).toContain('data-paused');
+
+      const chunks: Buffer[] = [];
+      for await (const chunk of handle.streams.stdout) {
+        expect(chunk.length).toBeLessThanOrEqual(STREAM_CHUNK_LIMIT_BYTES);
+        chunks.push(Buffer.from(chunk));
+      }
+      expect(Buffer.concat(chunks)).toEqual(expected);
+      const exit = await handle.waitExit();
+      expect(exit.exitCode).toBe(0);
+      expect(transportEvents).toContain('data-resumed');
+      await expect(driver.verifySurvivors(handle)).resolves.toEqual({
+        classification: 'complete',
+        knownPids: [],
+        proof: { kind: 'owned-tree-enumeration' },
+      });
+    },
+  );
+
+  it.skipIf(process.platform !== 'win32')(
+    'HIGH-1 B3/B4: stalled output still terminates through the control plane',
+    { timeout: REAL_SPAWN_TIMEOUT_MS },
+    async () => {
+      const transportEvents: string[] = [];
+      const helpersBefore = listPowerShellPids();
+      const controller = new WindowsProcessTreeController({
+        transportTrace: event => transportEvents.push(event.kind),
+      });
+      const driver = new NodeProcessDriver({ processTreeController: controller });
+      const providerScript = "setInterval(() => { process.stdout.write('o'.repeat(8192)); process.stderr.write('e'.repeat(8192)); }, 5);";
+      const handle = await driver.spawn(basicLaunch(process.execPath, ['-e', providerScript]));
+      track(handle.pid);
+      try {
+        const pauseDeadline = Date.now() + 10_000;
+        while (!transportEvents.includes('data-paused') && Date.now() < pauseDeadline) {
+          await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        expect(transportEvents).toContain('data-paused');
+
+        await expect(driver.terminateTree(handle)).resolves.toMatchObject({ classification: 'complete' });
+        await expect(driver.verifySurvivors(handle)).resolves.toEqual({
+          classification: 'complete',
+          knownPids: [],
+          proof: { kind: 'owned-tree-enumeration' },
+        });
+        await expect(handle.waitExit()).resolves.toMatchObject({ exitCode: null, signal: null });
+        await expect(Promise.race([
+          collectChunks(handle.streams.stdout),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('stdout did not terminate')), 5_000)),
+        ])).resolves.toBeInstanceOf(Buffer);
+        expect(pidIsAlive(handle.pid)).toBe(false);
+        await waitForHelperDrain(helpersBefore);
+      } finally {
+        try { await driver.terminateTree(handle); } catch { /* test hygiene */ }
+        try { await driver.verifySurvivors(handle); } catch { /* test hygiene */ }
+        await waitForHelperDrain(helpersBefore).catch(() => undefined);
+      }
+    },
+  );
+
+  it.skipIf(process.platform !== 'win32')(
+    'HIGH-2: owned spawn passes exactly the declared environment and launch facts',
+    { timeout: REAL_SPAWN_TIMEOUT_MS },
+    async () => {
+      const fixtureDir = mkdtempSync(join(tmpdir(), 'agentos-p5b-env-'));
+      const env = {
+        AGENTOS_TEST_ONLY: 'p5b-env-sentinel',
+        SystemRoot: process.env.SystemRoot ?? ['C:', String.fromCharCode(92), 'Windows'].join(''),
+      };
+      const launch = {
+        executable: process.execPath,
+        args: ['-e', "process.stdout.write(JSON.stringify({ env: process.env, cwd: process.cwd(), pid: process.pid }));"],
+        cwd: fixtureDir,
+        env,
+        envDiagnostics: [],
+        shell: false as const,
+      };
+      const driver = new NodeProcessDriver();
+      try {
+        const handle = await driver.spawn(launch);
+        track(handle.pid);
+        const observed = JSON.parse((await collectChunks(handle.streams.stdout)).toString('utf8')) as {
+          env: Record<string, string>;
+          cwd: string;
+          pid: number;
+        };
+        await expect(handle.waitExit()).resolves.toMatchObject({ exitCode: 0 });
+        expect(observed.env).toEqual(env);
+        expect(observed.env.PATH).toBeUndefined();
+        expect(observed.env.TEMP).toBeUndefined();
+        expect(observed.env.USERPROFILE).toBeUndefined();
+        expect(observed.cwd).toBe(fixtureDir);
+        expect(observed.pid).toBe(handle.pid);
+        expect(handle.identity.executablePath).toBe(process.execPath);
+        expect(launch.envDiagnostics).toEqual([]);
+        await expect(driver.verifySurvivors(handle)).resolves.toEqual({
+          classification: 'complete',
+          knownPids: [],
+          proof: { kind: 'owned-tree-enumeration' },
+        });
+      } finally {
+        rmSync(fixtureDir, { recursive: true, force: true });
+      }
+    },
+  );
+
 
   it.skipIf(process.platform !== 'win32')('W12: no test-owned or helper survivors remain after the suite', () => {
     const alive = auditPids.filter(pid => pidIsAlive(pid));

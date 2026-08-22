@@ -21,6 +21,8 @@ const MAX_LAUNCH_SPEC_BASE64 = 1_500_000;
 const FRAME_CONTROL = 0;
 const FRAME_STDOUT = 1;
 const FRAME_STDERR = 2;
+const FRAME_STDOUT_EOF = 3;
+const FRAME_STDERR_EOF = 4;
 
 /**
  * Deterministic ownership evidence for tests and audits: 'assigned' is
@@ -33,7 +35,13 @@ export interface WindowsOwnershipTraceEvent {
   readonly at: number;
 }
 
+export interface WindowsTransportTraceEvent {
+  readonly kind: 'data-paused' | 'data-resumed';
+  readonly at: number;
+}
+
 /**
+
  * Fixed helper script. The only dynamic input ever received is a bounded
  * base64-encoded JSON launch spec on stdin; provider arguments, environment
  * and paths are never interpolated into PowerShell source text.
@@ -42,12 +50,20 @@ export interface WindowsOwnershipTraceEvent {
  * -> CreateJobObject(kill-on-close) -> AssignProcessToJobObject -> 'assigned'
  * -> ResumeThread. Provider code cannot execute before Job assignment.
  *
- * Provider stdout/stderr bytes and control messages travel as framed chunks
- * over a dedicated named pipe: [channel:1][length:4 LE][payload]. Channel 0
- * carries UTF-8 control lines, channels 1/2 carry raw provider bytes. The
- * 'exit|pid|code' control line is sent only after the exit monitor observed
- * process termination and both stream pumps drained, so every provider byte
- * strictly precedes the exit frame on the single ordered channel.
+ * Transport uses TWO dedicated named pipes so control can never deadlock
+ * behind data backpressure:
+ * - control pipe: channel-0 frames carrying UTF-8 control lines,
+ * - data pipe: channels 1/2 carrying raw provider stdout/stderr bytes and
+ *   channels 3/4 carrying the matching end-of-stream markers. Every byte
+ *   of a stream strictly precedes its EOF frame on the ordered data pipe.
+ *
+ * The Node side pauses only the data socket when a stream's buffered
+ * bytes reach the PassThrough high-water mark, so provider output is
+ * bounded end-to-end: data socket -> helper pipe write -> provider pipe
+ * write. The control pipe is never paused; members/terminate/close/exit
+ * evidence always progress. The 'exit|pid|code' control line is sent
+ * after process termination plus a bounded pump-drain wait; pumps keep
+ * running after that wait, so late provider bytes are still delivered.
  */
 const WINDOWS_JOB_HELPER_SCRIPT = String.raw`
 $ErrorActionPreference = 'Stop'
@@ -92,6 +108,11 @@ public sealed class AgentOsFrameWriter
         var payload = new byte[count];
         Buffer.BlockCopy(buffer, 0, payload, 0, count);
         WriteFrame(channel, payload);
+    }
+
+    public void WriteEof(byte channel)
+    {
+        WriteFrame(channel, new byte[0]);
     }
 
     private void WriteFrame(byte channel, byte[] payload)
@@ -311,10 +332,13 @@ public sealed class AgentOsOwnedProcess : IDisposable
     private const uint FILE_SHARE_WRITE = 0x00000002;
     private const uint OPEN_EXISTING = 3;
     private const uint INFINITE = 0xFFFFFFFF;
+    private const uint STILL_ACTIVE = 259;
     private const uint HANDLE_FLAG_INHERIT = 0x00000001;
 
     private readonly AgentOsFrameWriter writer;
+    private readonly AgentOsFrameWriter dataWriter;
     private readonly ManualResetEvent exitFrameSent = new ManualResetEvent(false);
+    private bool abortAttempted;
     private IntPtr processHandle;
     private IntPtr threadHandle;
     private IntPtr readOut;
@@ -324,7 +348,7 @@ public sealed class AgentOsOwnedProcess : IDisposable
 
     public readonly int Pid;
 
-    private AgentOsOwnedProcess(int pid, IntPtr processHandle, IntPtr threadHandle, IntPtr readOut, IntPtr readErr, AgentOsFrameWriter writer)
+    private AgentOsOwnedProcess(int pid, IntPtr processHandle, IntPtr threadHandle, IntPtr readOut, IntPtr readErr, AgentOsFrameWriter writer, AgentOsFrameWriter dataWriter)
     {
         Pid = pid;
         this.processHandle = processHandle;
@@ -332,11 +356,12 @@ public sealed class AgentOsOwnedProcess : IDisposable
         this.readOut = readOut;
         this.readErr = readErr;
         this.writer = writer;
+        this.dataWriter = dataWriter;
     }
 
     public IntPtr Handle { get { return processHandle; } }
 
-    public static AgentOsOwnedProcess LaunchSuspended(AgentOsLaunchSpec spec, AgentOsFrameWriter writer)
+    public static AgentOsOwnedProcess LaunchSuspended(AgentOsLaunchSpec spec, AgentOsFrameWriter writer, AgentOsFrameWriter dataWriter)
     {
         var sa = new SECURITY_ATTRIBUTES();
         sa.nLength = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES));
@@ -383,7 +408,7 @@ public sealed class AgentOsOwnedProcess : IDisposable
             {
                 throw new Win32Exception(Marshal.GetLastWin32Error());
             }
-            return new AgentOsOwnedProcess(unchecked((int)pi.dwProcessId), pi.hProcess, pi.hThread, readOut, readErr, writer);
+            return new AgentOsOwnedProcess(unchecked((int)pi.dwProcessId), pi.hProcess, pi.hThread, readOut, readErr, writer, dataWriter);
         }
         finally
         {
@@ -393,13 +418,50 @@ public sealed class AgentOsOwnedProcess : IDisposable
         }
     }
 
+    public void AbortBeforeLaunch()
+    {
+        if (abortAttempted) return;
+        abortAttempted = true;
+        if (processHandle == IntPtr.Zero)
+        {
+            exitFrameSent.Set();
+            return;
+        }
+        uint code = 0;
+        if (!GetExitCodeProcess(processHandle, out code))
+        {
+            Dispose();
+            exitFrameSent.Set();
+            throw new InvalidOperationException("abort-get-exit-code");
+        }
+        if (code == STILL_ACTIVE)
+        {
+            if (!TerminateProcess(processHandle, 1))
+            {
+                var detail = new Win32Exception(Marshal.GetLastWin32Error()).Message;
+                Dispose();
+                exitFrameSent.Set();
+                throw new InvalidOperationException("abort-terminate-failed-" + detail);
+            }
+            var wait = WaitForSingleObject(processHandle, 5000);
+            if (wait != 0)
+            {
+                Dispose();
+                exitFrameSent.Set();
+                throw new InvalidOperationException("abort-wait-failed-" + wait);
+            }
+        }
+        Dispose();
+        exitFrameSent.Set();
+    }
+
     public void Resume()
     {
         if (ResumeThread(threadHandle) == 0xFFFFFFFF) AgentOsJob.ThrowLastError();
         AgentOsJob.CloseHandle(threadHandle);
         threadHandle = IntPtr.Zero;
-        pumpOut = new Thread(delegate() { Pump(readOut, 1); });
-        pumpErr = new Thread(delegate() { Pump(readErr, 2); });
+        pumpOut = new Thread(delegate() { Pump(readOut, 1, 3); });
+        pumpErr = new Thread(delegate() { Pump(readErr, 2, 4); });
         pumpOut.IsBackground = true;
         pumpErr.IsBackground = true;
         pumpOut.Start();
@@ -419,7 +481,7 @@ public sealed class AgentOsOwnedProcess : IDisposable
         return exitFrameSent.WaitOne(milliseconds);
     }
 
-    private void Pump(IntPtr readHandle, byte channel)
+    private void Pump(IntPtr readHandle, byte channel, byte eofChannel)
     {
         try
         {
@@ -430,13 +492,17 @@ public sealed class AgentOsOwnedProcess : IDisposable
                 {
                     var read = stream.Read(buffer, 0, buffer.Length);
                     if (read <= 0) break;
-                    writer.WriteData(channel, buffer, read);
+                    dataWriter.WriteData(channel, buffer, read);
                 }
             }
         }
         catch
         {
-            // Teardown closes the pipe reads; late provider bytes are dropped.
+            // Teardown closes the pipe reads; the session fails closed.
+        }
+        finally
+        {
+            try { dataWriter.WriteEof(eofChannel); } catch { /* teardown */ }
         }
     }
 
@@ -445,6 +511,8 @@ public sealed class AgentOsOwnedProcess : IDisposable
         try
         {
             WaitForSingleObject(processHandle, INFINITE);
+            // The bounded join prevents exit evidence from waiting behind a stalled data consumer.
+            // Pumps remain alive after the deadline so bytes are not silently discarded.
             if (pumpOut != null) pumpOut.Join(2000);
             if (pumpErr != null) pumpErr.Join(2000);
             uint code = 0;
@@ -507,34 +575,17 @@ public sealed class AgentOsOwnedProcess : IDisposable
         return sb.ToString();
     }
 
-    // libuv-compatible bootstrap variables: a missing SystemRoot otherwise
-    // crashes Windows children during BCrypt CSPRNG initialization.
-    private static readonly string[] BootstrapVariables = { "PATH", "SYSTEMROOT", "TEMP", "USERPROFILE" };
-
+    // The provider environment is exactly the validated launch environment.
+    // The helper host environment is never used as an implicit fallback.
     private static byte[] BuildEnvironmentBlock(Dictionary<string, string> env)
     {
         var entries = new List<string>();
-        var keys = new List<string>();
         if (env != null)
         {
             foreach (var pair in env)
             {
                 if (pair.Key.Length == 0 || pair.Key.IndexOf('=') >= 0) throw new InvalidOperationException("launch-env-invalid-key");
                 entries.Add(pair.Key + "=" + (pair.Value ?? string.Empty));
-                keys.Add(pair.Key);
-            }
-        }
-        foreach (var name in BootstrapVariables)
-        {
-            var present = false;
-            foreach (var key in keys)
-            {
-                if (string.Equals(key, name, StringComparison.OrdinalIgnoreCase)) { present = true; break; }
-            }
-            if (!present)
-            {
-                var value = Environment.GetEnvironmentVariable(name);
-                if (value != null) entries.Add(name + "=" + value);
             }
         }
         entries.Sort(StringComparer.OrdinalIgnoreCase);
@@ -615,7 +666,7 @@ public sealed class AgentOsOwnedProcess : IDisposable
 
 public static class AgentOsJobServer
 {
-    private static string Sanitize(string message)
+    internal static string Sanitize(string message)
     {
         var detail = (message == null || message.Length == 0) ? "unknown" : message.Replace('\r', ' ').Replace('\n', ' ').Replace('|', ' ').Trim();
         if (detail.Length > 200) detail = detail.Substring(0, 200);
@@ -634,7 +685,7 @@ public static class AgentOsJobServer
             throw new InvalidOperationException("launch-spec-invalid-base64");
         }
         if (bytes.Length == 0 || bytes.Length > 1048576) throw new InvalidOperationException("launch-spec-too-large");
-        var serializer = new DataContractJsonSerializer(typeof(AgentOsLaunchSpec));
+        var serializer = new DataContractJsonSerializer(typeof(AgentOsLaunchSpec), new DataContractJsonSerializerSettings { UseSimpleDictionaryFormat = true });
         using (var stream = new MemoryStream(bytes))
         {
             var spec = (AgentOsLaunchSpec)serializer.ReadObject(stream);
@@ -645,14 +696,19 @@ public static class AgentOsJobServer
 
     public static void Run()
     {
-        var pipeName = Environment.GetEnvironmentVariable("AGENTOS_JOB_CONTROL_PIPE");
-        if (string.IsNullOrEmpty(pipeName)) throw new InvalidOperationException("missing-control-pipe");
+        var controlPipeName = Environment.GetEnvironmentVariable("AGENTOS_JOB_CONTROL_PIPE");
+        var dataPipeName = Environment.GetEnvironmentVariable("AGENTOS_JOB_DATA_PIPE");
+        if (string.IsNullOrEmpty(controlPipeName)) throw new InvalidOperationException("missing-control-pipe");
+        if (string.IsNullOrEmpty(dataPipeName)) throw new InvalidOperationException("missing-data-pipe");
         AgentOsJob job = null;
         AgentOsOwnedProcess owned = null;
-        using (var pipe = new NamedPipeClientStream(".", pipeName, PipeDirection.Out))
+        using (var controlPipe = new NamedPipeClientStream(".", controlPipeName, PipeDirection.Out))
+        using (var dataPipe = new NamedPipeClientStream(".", dataPipeName, PipeDirection.Out))
         {
-            pipe.Connect(30000);
-            var writer = new AgentOsFrameWriter(pipe);
+            controlPipe.Connect(30000);
+            dataPipe.Connect(30000);
+            var writer = new AgentOsFrameWriter(controlPipe);
+            var dataWriter = new AgentOsFrameWriter(dataPipe);
             writer.WriteLine("ready");
             string line;
             while ((line = Console.In.ReadLine()) != null)
@@ -660,28 +716,44 @@ public static class AgentOsJobServer
                 var closing = false;
                 try
                 {
-                    if (line.StartsWith("launch|"))
+                    if (line.StartsWith("launch|") || line.StartsWith("launch-test-fail-assign|"))
                     {
                         if (owned != null) throw new InvalidOperationException("launch-already-used");
-                        var spec = ParseSpec(line.Substring("launch|".Length));
+                        var separator = line.IndexOf('|');
+                        var failAssign = line.StartsWith("launch-test-fail-assign|");
+                        var spec = ParseSpec(line.Substring(separator + 1));
                         var newJob = AgentOsJob.Create();
                         AgentOsOwnedProcess created = null;
+                        var resumed = false;
+                        var createdPid = 0;
                         try
                         {
-                            created = AgentOsOwnedProcess.LaunchSuspended(spec, writer);
+                            created = AgentOsOwnedProcess.LaunchSuspended(spec, writer, dataWriter);
+                            createdPid = created.Pid;
+                            if (failAssign) throw new InvalidOperationException("injected-assign-failure");
                             newJob.Assign(created.Handle);
+                            job = newJob;
+                            owned = created;
+                            writer.WriteLine("assigned|" + owned.Pid);
+                            owned.Resume();
+                            resumed = true;
+                            writer.WriteLine("launched|" + owned.Pid);
                         }
-                        catch
+                        catch (Exception error)
                         {
-                            if (created != null) created.Dispose();
-                            newJob.Dispose();
+                            if (!resumed && created != null)
+                            {
+                                Exception abortError = null;
+                                try { created.AbortBeforeLaunch(); } catch (Exception abortFailure) { abortError = abortFailure; }
+                                try { newJob.Dispose(); } catch { }
+                                job = null;
+                                owned = null;
+                                if (abortError != null) throw new InvalidOperationException("launch-abort-hard-failure|" + createdPid + "|" + Sanitize(abortError.Message));
+                                throw new InvalidOperationException("launch-aborted|" + createdPid + "|" + Sanitize(error.Message));
+                            }
+                            try { newJob.Dispose(); } catch { }
                             throw;
                         }
-                        job = newJob;
-                        owned = created;
-                        writer.WriteLine("assigned|" + owned.Pid);
-                        owned.Resume();
-                        writer.WriteLine("launched|" + owned.Pid);
                     }
                     else if (line.StartsWith("attach|"))
                     {
@@ -839,6 +911,8 @@ interface WindowsTreeState {
 export interface WindowsProcessTreeOptions {
   readonly shell?: string;
   readonly trace?: (event: WindowsOwnershipTraceEvent) => void;
+  readonly transportTrace?: (event: WindowsTransportTraceEvent) => void;
+  readonly faultInjection?: { readonly failJobAssign?: boolean };
 }
 
 class WindowsJobSession {
@@ -847,6 +921,8 @@ class WindowsJobSession {
   private readonly lines = new ControlLineQueue();
   private readonly exitResolve: (exit: OwnedExit) => void;
   private exitSettled = false;
+  private readonly blockedStreams = new Set<number>();
+  private dataPaused = false;
   rootExited = false;
   readonly exitObserved: Promise<OwnedExit>;
   readonly stdout = new PassThrough({ highWaterMark: 64 * 1024 });
@@ -854,65 +930,107 @@ class WindowsJobSession {
 
   private constructor(
     private readonly helper: ChildProcess,
-    private readonly server: Server,
+    private readonly controlServer: Server,
+    private readonly dataServer: Server,
+    private readonly controlSocket: Socket,
+    private readonly dataSocket: Socket,
     private readonly trace?: (event: WindowsOwnershipTraceEvent) => void,
+    private readonly transportTrace?: (event: WindowsTransportTraceEvent) => void,
   ) {
     let resolver: (exit: OwnedExit) => void = () => undefined;
     this.exitObserved = new Promise<OwnedExit>(resolve => { resolver = resolve; });
     this.exitResolve = resolver;
   }
 
-  static async start(shell: string, trace?: (event: WindowsOwnershipTraceEvent) => void): Promise<WindowsJobSession> {
-    const pipeName = 'agentos-job-' + process.pid + '-' + (pipeSequence++) + '-' + randomBytes(6).toString('hex');
-    const pipePath = '\\\\.\\pipe\\' + pipeName;
-    const server = createServer();
-    const connection = new Promise<Socket>((resolve, reject) => {
-      server.once('connection', resolve);
-      server.once('error', reject);
+  static async start(
+    shell: string,
+    trace?: (event: WindowsOwnershipTraceEvent) => void,
+    transportTrace?: (event: WindowsTransportTraceEvent) => void,
+  ): Promise<WindowsJobSession> {
+    const suffix = process.pid + '-' + (pipeSequence++) + '-' + randomBytes(6).toString('hex');
+    const controlPipeName = 'agentos-job-control-' + suffix;
+    const dataPipeName = 'agentos-job-data-' + suffix;
+    const pipePrefix = String.fromCharCode(92, 92) + '.' + String.fromCharCode(92) + 'pipe' + String.fromCharCode(92);
+    const controlPipePath = pipePrefix + controlPipeName;
+    const dataPipePath = pipePrefix + dataPipeName;
+    const controlServer = createServer();
+    const dataServer = createServer();
+    const controlConnection = new Promise<Socket>((resolve, reject) => {
+      controlServer.once('connection', resolve);
+      controlServer.once('error', reject);
     });
-    await new Promise<void>((resolve, reject) => {
-      server.once('error', reject);
-      server.listen(pipePath, () => resolve());
+    const dataConnection = new Promise<Socket>((resolve, reject) => {
+      dataServer.once('connection', resolve);
+      dataServer.once('error', reject);
     });
-    const helper = spawn(shell, [
-      '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WINDOWS_JOB_HELPER_SCRIPT,
-    ], {
-      shell: false,
-      windowsHide: true,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      env: { ...process.env, AGENTOS_JOB_CONTROL_PIPE: pipeName },
-    });
+    let helper: ChildProcess | undefined;
+    let controlSocket: Socket | undefined;
+    let dataSocket: Socket | undefined;
     let diagnostics = '';
-    const capture = (chunk: unknown): void => {
-      if (diagnostics.length < MAX_DIAGNOSTIC) diagnostics += String(chunk).slice(0, MAX_DIAGNOSTIC - diagnostics.length);
-    };
-    helper.stdout?.setEncoding('utf8');
-    helper.stdout?.on('data', capture);
-    helper.stderr?.setEncoding('utf8');
-    helper.stderr?.on('data', capture);
-    const helperFailure = new Promise<Socket>((_, reject) => {
-      helper.once('error', () => reject(new Error('windows-tree-helper-spawn-failed')));
-      helper.once('exit', code => reject(new Error('windows-tree-helper-exited-' + String(code))));
-    });
     try {
-      const socket = await withTimeout(Promise.race([connection, helperFailure]), READY_TIMEOUT_MS, 'windows-tree-helper-connect-timeout');
-      const session = new WindowsJobSession(helper, server, trace);
-      const demux = new FrameDemux(
+      await Promise.all([
+        new Promise<void>((resolve, reject) => {
+          controlServer.once('error', reject);
+          controlServer.listen(controlPipePath, () => resolve());
+        }),
+        new Promise<void>((resolve, reject) => {
+          dataServer.once('error', reject);
+          dataServer.listen(dataPipePath, () => resolve());
+        }),
+      ]);
+      const spawned = spawn(shell, [
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WINDOWS_JOB_HELPER_SCRIPT,
+      ], {
+        shell: false,
+        windowsHide: true,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        env: { ...process.env, AGENTOS_JOB_CONTROL_PIPE: controlPipeName, AGENTOS_JOB_DATA_PIPE: dataPipeName },
+      });
+      helper = spawned;
+      const capture = (chunk: unknown): void => {
+        if (diagnostics.length < MAX_DIAGNOSTIC) diagnostics += String(chunk).slice(0, MAX_DIAGNOSTIC - diagnostics.length);
+      };
+      spawned.stdout?.setEncoding('utf8');
+      spawned.stdout?.on('data', capture);
+      spawned.stderr?.setEncoding('utf8');
+      spawned.stderr?.on('data', capture);
+      const helperFailure = new Promise<never>((_, reject) => {
+        spawned.once('error', () => reject(new Error('windows-tree-helper-spawn-failed')));
+        spawned.once('exit', code => reject(new Error('windows-tree-helper-exited-' + String(code))));
+      });
+      const connected = await withTimeout(Promise.race([
+        Promise.all([controlConnection, dataConnection]),
+        helperFailure,
+      ]), READY_TIMEOUT_MS, 'windows-tree-helper-connect-timeout');
+      [controlSocket, dataSocket] = connected;
+      const session = new WindowsJobSession(spawned, controlServer, dataServer, controlSocket, dataSocket, trace, transportTrace);
+      const controlDemux = new FrameDemux(
         line => session.handleLine(line),
+        () => session.fail(new Error('windows-tree-control-protocol-violation')),
+      );
+      const dataDemux = new FrameDemux(
+        () => session.fail(new Error('windows-tree-data-protocol-violation')),
         (channel, payload) => session.handleData(channel, payload),
       );
-      socket.on('data', chunk => demux.push(chunk));
-      socket.on('error', error => session.fail(error instanceof Error ? error : new Error(String(error))));
-      socket.on('close', () => session.fail(new Error('windows-tree-helper-closed')));
-      helper.once('error', error => session.fail(error instanceof Error ? error : new Error(String(error))));
-      helper.once('exit', () => session.fail(new Error('windows-tree-helper-exited')));
+      controlSocket.on('data', chunk => controlDemux.push(chunk));
+      dataSocket.on('data', chunk => dataDemux.push(chunk));
+      const socketFailure = (error: unknown): void => session.fail(error instanceof Error ? error : new Error(String(error)));
+      controlSocket.on('error', socketFailure);
+      dataSocket.on('error', socketFailure);
+      controlSocket.on('close', () => session.fail(new Error('windows-tree-control-closed')));
+      dataSocket.on('close', () => session.fail(new Error('windows-tree-data-closed')));
+      spawned.once('error', socketFailure);
+      spawned.once('exit', () => session.fail(new Error('windows-tree-helper-exited')));
       const ready = await withTimeout(session.lines.next(), READY_TIMEOUT_MS, 'windows-tree-helper-ready-timeout');
       if (ready !== 'ready') throw new Error('windows-tree-helper-not-ready');
       return session;
     } catch (error) {
-      server.close();
-      try { helper.stdin?.end(); } catch { /* best effort */ }
-      if (helper.exitCode === null) helper.kill();
+      controlSocket?.destroy();
+      dataSocket?.destroy();
+      controlServer.close();
+      dataServer.close();
+      try { helper?.stdin?.end(); } catch { /* best effort */ }
+      if (helper !== undefined && helper.exitCode === null) helper.kill();
       const detail = diagnostics.replace(/[\r\n|]/g, ' ').trim().slice(0, 400);
       const base = boundedErrorDetail(error, 'windows-tree-helper-start-failed');
       throw new Error(detail.length > 0 ? base + ':' + detail : base);
@@ -935,7 +1053,12 @@ class WindowsJobSession {
       await Promise.race([exited, new Promise<void>(resolve => setTimeout(resolve, 1_000))]);
       if (this.helper.exitCode === null) this.helper.kill();
     }
-    this.server.close();
+    this.controlSocket.destroy();
+    this.dataSocket.destroy();
+    this.controlServer.close();
+    this.dataServer.close();
+    this.settleExit({ exitCode: null, signal: null });
+    this.endStreams();
   }
 
   private async requestNow(command: string): Promise<string> {
@@ -965,23 +1088,66 @@ class WindowsJobSession {
   }
 
   private handleData(channel: number, payload: Buffer): void {
-    if (channel === FRAME_STDOUT && !this.stdout.writableEnded) this.stdout.write(payload);
-    if (channel === FRAME_STDERR && !this.stderr.writableEnded) this.stderr.write(payload);
+    if (channel === FRAME_STDOUT_EOF) {
+      this.unblockStream(FRAME_STDOUT);
+      if (!this.stdout.writableEnded) this.stdout.end();
+      return;
+    }
+    if (channel === FRAME_STDERR_EOF) {
+      this.unblockStream(FRAME_STDERR);
+      if (!this.stderr.writableEnded) this.stderr.end();
+      return;
+    }
+    if (channel !== FRAME_STDOUT && channel !== FRAME_STDERR) {
+      this.fail(new Error('windows-tree-data-channel-invalid'));
+      return;
+    }
+    const stream = channel === FRAME_STDOUT ? this.stdout : this.stderr;
+    if (!stream.writableEnded && !stream.write(payload)) this.blockStream(channel, stream);
+  }
+
+  private blockStream(channel: number, stream: PassThrough): void {
+    if (this.blockedStreams.has(channel)) return;
+    this.blockedStreams.add(channel);
+    if (!this.dataPaused) {
+      this.dataPaused = true;
+      this.dataSocket.pause();
+      this.transportTrace?.({ kind: 'data-paused', at: Date.now() });
+    }
+    stream.once('drain', () => this.unblockStream(channel));
+  }
+
+  private unblockStream(channel: number): void {
+    this.blockedStreams.delete(channel);
+    this.maybeResumeData();
+  }
+
+  private maybeResumeData(): void {
+    if (this.dataPaused && this.blockedStreams.size === 0 && !this.closed) {
+      this.dataPaused = false;
+      this.dataSocket.resume();
+      this.transportTrace?.({ kind: 'data-resumed', at: Date.now() });
+    }
+  }
+
+  private endStreams(): void {
+    if (!this.stdout.writableEnded) this.stdout.end();
+    if (!this.stderr.writableEnded) this.stderr.end();
   }
 
   private settleExit(exit: OwnedExit): void {
     if (this.exitSettled) return;
     this.exitSettled = true;
     this.exitResolve(exit);
-    if (!this.stdout.writableEnded) this.stdout.end();
-    if (!this.stderr.writableEnded) this.stderr.end();
   }
 
   private fail(error: Error): void {
     this.lines.fail(error);
     this.settleExit({ exitCode: null, signal: null });
+    this.endStreams();
   }
 }
+
 
 function parseMembers(response: string): readonly number[] {
   if (!response.startsWith('members|')) throw new Error('windows-tree-helper-invalid-members-response');
@@ -1004,12 +1170,16 @@ function parseLaunchedPid(response: string): number {
 export class WindowsProcessTreeController implements ProcessTreeController {
   private readonly shell: string;
   private readonly trace?: (event: WindowsOwnershipTraceEvent) => void;
+  private readonly transportTrace?: (event: WindowsTransportTraceEvent) => void;
+  private readonly faultInjection?: { readonly failJobAssign?: boolean };
 
   constructor(options: WindowsProcessTreeOptions = {}) {
     this.shell = options.shell ?? (process.env.SystemRoot
       ? join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
       : 'powershell.exe');
     this.trace = options.trace;
+    this.transportTrace = options.transportTrace;
+    this.faultInjection = options.faultInjection;
   }
 
   /**
@@ -1026,10 +1196,11 @@ export class WindowsProcessTreeController implements ProcessTreeController {
     };
     const encoded = Buffer.from(JSON.stringify(spec), 'utf8').toString('base64');
     if (encoded.length > MAX_LAUNCH_SPEC_BASE64) throw new Error('windows-launch-spec-too-large');
-    const session = await WindowsJobSession.start(this.shell, this.trace);
+    const session = await WindowsJobSession.start(this.shell, this.trace, this.transportTrace);
     let pid: number;
     try {
-      const response = await session.request('launch|' + encoded);
+      const command = (this.faultInjection?.failJobAssign === true ? 'launch-test-fail-assign|' : 'launch|') + encoded;
+      const response = await session.request(command);
       pid = parseLaunchedPid(response);
     } catch (error) {
       await session.close();

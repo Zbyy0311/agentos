@@ -318,16 +318,15 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
       if (value === undefined) continue;
       if (SECRET_KEY_PATTERN.test(key)) {
         redactedEnvironmentKeys.push(key);
-        continue;
       }
-      if (!SAFE_ENVIRONMENT_KEYS.has(key)) continue;
-      safeEnvironment[key] = value;
     }
+    Object.assign(safeEnvironment, safeEnvironmentForKimiCode(environment));
     for (const [key, value] of Object.entries(input.environmentOverrides ?? {})) {
       if (!ENV_KEY_PATTERN.test(key) || SECRET_KEY_PATTERN.test(key)) throw new Error('PROVIDER_CONFIG_INVALID');
       if (value.includes('\u0000')) throw new Error('PROVIDER_CONFIG_INVALID');
       safeEnvironment[key] = value;
     }
+    assertNoConflictingEnvironmentAliases(safeEnvironment, process.platform);
     const secretRefs = [...new Set(input.secretRefs ?? (configuration.secretProfileId ? [configuration.secretProfileId] : []))];
     return {
       runtimeMode: configuration.runtimeMode,
@@ -408,6 +407,7 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
   normalizeError(error: unknown, context: { readonly phase?: import('./types.js').ProviderErrorPhase } = {}): ProviderNormalizedError {
     const text = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
     const phase = context.phase ?? 'internal';
+    if (/PROVIDER_CONFIG_INVALID/.test(text)) return normalizedProviderError('PROVIDER_CONFIG_INVALID', 'configuration', 'KimiCode provider configuration is invalid');
     if (/expired/i.test(text)) return normalizedProviderError('PROVIDER_AUTH_EXPIRED', 'authentication', 'KimiCode authentication has expired');
     if (/auth|login|unauthenticated|credential/i.test(text)) return normalizedProviderError('PROVIDER_AUTH_REQUIRED', 'authentication', 'KimiCode authentication is required');
     if (/rate[ -]?limit|too many requests/i.test(text)) return normalizedProviderError('PROVIDER_RATE_LIMITED', 'runtime', 'KimiCode rate limit reached', true);
@@ -592,12 +592,38 @@ function providerProbeError(result: ProcessProbeResult, phase: 'discovery' | 'va
 }
 
 function safeProbeEnvironment(environment: Readonly<Record<string, string | undefined>>): Record<string, string> {
+  return safeEnvironmentForKimiCode(environment);
+}
+
+export function safeEnvironmentForKimiCode(
+  environment: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform = process.platform,
+): Record<string, string> {
+  assertNoConflictingEnvironmentAliases(environment, platform);
   const result: Record<string, string> = {};
-  for (const key of SAFE_ENVIRONMENT_KEYS) {
-    const value = environment[key];
-    if (value !== undefined && !SECRET_KEY_PATTERN.test(key)) result[key] = value;
+  const selectedComparisonKeys = new Set<string>();
+  for (const [key, value] of Object.entries(environment)) {
+    if (value === undefined || SECRET_KEY_PATTERN.test(key)) continue;
+    const comparisonKey = platform === 'win32' ? key.toUpperCase() : key;
+    if (!SAFE_ENVIRONMENT_KEYS.has(comparisonKey) || selectedComparisonKeys.has(comparisonKey)) continue;
+    selectedComparisonKeys.add(comparisonKey);
+    result[key] = value;
   }
   return result;
+}
+
+function assertNoConflictingEnvironmentAliases(
+  environment: Readonly<Record<string, string | undefined>>,
+  platform: NodeJS.Platform,
+): void {
+  const valuesByComparisonKey = new Map<string, string>();
+  for (const [key, value] of Object.entries(environment)) {
+    if (value === undefined) continue;
+    const comparisonKey = platform === 'win32' ? key.toUpperCase() : key;
+    const previousValue = valuesByComparisonKey.get(comparisonKey);
+    if (previousValue !== undefined && previousValue !== value) throw new Error('PROVIDER_CONFIG_INVALID');
+    valuesByComparisonKey.set(comparisonKey, value);
+  }
 }
 
 function isProviderNormalizedError(value: unknown): value is ProviderNormalizedError {
