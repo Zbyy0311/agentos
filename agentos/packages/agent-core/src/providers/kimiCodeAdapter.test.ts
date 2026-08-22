@@ -141,7 +141,9 @@ describe('KimiCodeProviderAdapter', () => {
     expect(String(requests[2]![1]).length).toBeGreaterThan(0);
   });
 
-  it('uses the same Windows safe-environment semantics for validation, auth, and launch', async () => {
+  it.skipIf(process.platform !== 'win32')(
+    'uses the same Windows safe-environment semantics for validation, auth, and launch',
+    async () => {
     const environment = {
       SystemRoot: 'C:\\Windows',
       Path: 'C:\\safe',
@@ -183,13 +185,16 @@ describe('KimiCodeProviderAdapter', () => {
     expect(plan.environment).toMatchObject({ SystemRoot: 'C:\\Windows', Path: 'C:\\safe' });
     expect(plan.environment).not.toHaveProperty('SYSTEMROOT');
     expect(JSON.stringify(plan)).not.toContain('must-not-leak');
-  });
+    },
+  );
 
   it('keeps POSIX safe-environment matching case-sensitive', () => {
     expect(safeEnvironmentForKimiCode({ PATH: '/safe/bin', Path: '/wrong/bin', SystemRoot: '/wrong/root' }, 'linux')).toEqual({ PATH: '/safe/bin' });
   });
 
-  it('fails closed on conflicting Windows safe-environment aliases', async () => {
+  it.skipIf(process.platform !== 'win32')(
+    'fails closed on conflicting Windows safe-environment aliases',
+    async () => {
     const conflictingEnvironment = { SystemRoot: 'C:\\Windows', SYSTEMROOT: 'D:\\Windows' };
     expect(() => safeEnvironmentForKimiCode(conflictingEnvironment, 'win32')).toThrow('PROVIDER_CONFIG_INVALID');
 
@@ -210,7 +215,8 @@ describe('KimiCodeProviderAdapter', () => {
     expect(result.errors).toEqual(expect.arrayContaining([
       expect.objectContaining({ code: 'PROVIDER_CONFIG_INVALID' }),
     ]));
-  });
+    },
+  );
 
   it('distinguishes an explicitly configured inaccessible executable from no discovery candidate', async () => {
     const adapter = new KimiCodeProviderAdapter();
