@@ -1710,7 +1710,7 @@ describe('StageExecutionCoordinator', () => {
         retryable: false,
         message: 'Provider process could not start before timeout',
       });
-      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'STARTUP_TIMEOUT');
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'PROCESS_STARTUP_TIMEOUT');
     } finally {
       sessionAdapter?.releaseActive.resolve(undefined);
       driver.handle.releaseExit();
@@ -1780,7 +1780,7 @@ describe('StageExecutionCoordinator', () => {
       assert.equal(outcome.kind, 'failed');
       if (outcome.kind === 'failed') assert.equal(outcome.problem.code, 'PROVIDER_SESSION_FAILED');
       assert.equal(driver.gracefulStopCalls, 1);
-      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'IDLE_TIMEOUT');
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'PROCESS_IDLE_TIMEOUT');
       assert.equal(observation.unsubscribeCalls, 1);
     } finally {
       driver.handle.releaseExit();
@@ -2057,7 +2057,7 @@ describe('StageExecutionCoordinator', () => {
       assert.equal(adapter.finalizedInputs.length, 1);
       assert.equal(adapter.cancelInputs[0]?.reason, 'IDLE_TIMEOUT');
       assert.equal(adapter.finalizedInputs[0]?.cancelled, false);
-      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'IDLE_TIMEOUT');
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'PROCESS_IDLE_TIMEOUT');
     } finally {
       driver.handle.releaseExit();
       await Promise.allSettled([execution, ...(cancel === undefined ? [] : [cancel])]);
@@ -2095,7 +2095,7 @@ describe('StageExecutionCoordinator', () => {
       const outcome = await execution;
       assert.equal(outcome.kind, 'failed');
       if (outcome.kind === 'failed') assert.equal(outcome.problem.code, 'PROVIDER_SESSION_FAILED');
-      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'TOTAL_TIMEOUT');
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'PROCESS_TOTAL_TIMEOUT');
     } finally {
       driver.handle.releaseExit();
       await Promise.allSettled([execution]);

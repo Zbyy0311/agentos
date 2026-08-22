@@ -954,7 +954,7 @@ export class StageExecutionCoordinator {
       processId: process.processId,
       expectedClaimEpoch: process.claimEpoch,
       expectedClaimOwner: process.claimOwnerId,
-      reason: origin === 'EXPLICIT_CANCEL' ? 'cancel' : origin,
+      reason: processStopReasonFromOrigin(origin),
       idempotencyKey: 'attempt-stop:' + entry.key,
       timestamp: this.now(),
       eventContext: { correlationId, causationId },
@@ -1406,10 +1406,21 @@ function stoppedOutcome(stop: ProcessStopResult, stopOrigin: ProcessStopOrigin):
 }
 
 function stopOriginFromReason(reason: string | null): ProcessStopOrigin {
-  if (reason === 'STARTUP_TIMEOUT' || reason === 'IDLE_TIMEOUT' || reason === 'TOTAL_TIMEOUT' || reason === 'P4_ACTIVATION_FAILURE' || reason === 'SHUTDOWN') {
+  if (reason === 'STARTUP_TIMEOUT' || reason === 'PROCESS_STARTUP_TIMEOUT') return 'STARTUP_TIMEOUT';
+  if (reason === 'IDLE_TIMEOUT' || reason === 'PROCESS_IDLE_TIMEOUT') return 'IDLE_TIMEOUT';
+  if (reason === 'TOTAL_TIMEOUT' || reason === 'PROCESS_TOTAL_TIMEOUT') return 'TOTAL_TIMEOUT';
+  if (reason === 'P4_ACTIVATION_FAILURE' || reason === 'SHUTDOWN') {
     return reason;
   }
   return 'EXPLICIT_CANCEL';
+}
+
+function processStopReasonFromOrigin(origin: ProcessStopOrigin): string {
+  if (origin === 'EXPLICIT_CANCEL') return 'cancel';
+  if (origin === 'STARTUP_TIMEOUT') return 'PROCESS_STARTUP_TIMEOUT';
+  if (origin === 'IDLE_TIMEOUT') return 'PROCESS_IDLE_TIMEOUT';
+  if (origin === 'TOTAL_TIMEOUT') return 'PROCESS_TOTAL_TIMEOUT';
+  return origin;
 }
 
 function configurationFromSnapshot(snapshot: ProviderConfigurationSnapshotV1): ProviderConfigurationInput {
