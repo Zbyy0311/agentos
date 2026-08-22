@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { KimiCodeProviderAdapter } from './kimiCodeAdapter.js';
+import { KimiCodeProviderAdapter, safeEnvironmentForKimiCode } from './kimiCodeAdapter.js';
 import type { ProcessProbeResult } from '@agentos/process-runtime';
 import type { ProcessProbePort, ProviderConfigurationInput, ProviderProcessPort } from './types.js';
 
@@ -140,6 +140,83 @@ describe('KimiCodeProviderAdapter', () => {
     ]);
     expect(String(requests[2]![1]).length).toBeGreaterThan(0);
   });
+
+  it.skipIf(process.platform !== 'win32')(
+    'uses the same Windows safe-environment semantics for validation, auth, and launch',
+    async () => {
+    const environment = {
+      SystemRoot: 'C:\\Windows',
+      Path: 'C:\\safe',
+      API_KEY: 'must-not-leak',
+    };
+    const probeEnvironments: Array<Readonly<Record<string, string>>> = [];
+    const adapter = new KimiCodeProviderAdapter({
+      probe: {
+        probe: async request => {
+          probeEnvironments.push(request.environment ?? {});
+          return {
+            stdout: request.args[0] === '--version' ? '0.23.5' : request.args[0] === '--help' ? '--output-format stream-json' : AUTH_OK_JSONL,
+            stderr: '',
+            exitCode: 0,
+            signal: null,
+          };
+        },
+      },
+    });
+
+    const result = await adapter.validate({
+      configuration: config(),
+      environment,
+      discover: async input => ({ found: true, selected: input.configuredExecutable, candidates: [], warnings: [] }),
+    });
+    const plan = await adapter.buildLaunchPlan({
+      configuration: config(),
+      workspaceRoot: 'C:/workspace',
+      prompt: 'hello',
+      environment,
+    });
+
+    expect(result.valid).toBe(true);
+    expect(probeEnvironments).toEqual([
+      { SystemRoot: 'C:\\Windows', Path: 'C:\\safe' },
+      { SystemRoot: 'C:\\Windows', Path: 'C:\\safe' },
+      { SystemRoot: 'C:\\Windows', Path: 'C:\\safe' },
+    ]);
+    expect(plan.environment).toMatchObject({ SystemRoot: 'C:\\Windows', Path: 'C:\\safe' });
+    expect(plan.environment).not.toHaveProperty('SYSTEMROOT');
+    expect(JSON.stringify(plan)).not.toContain('must-not-leak');
+    },
+  );
+
+  it('keeps POSIX safe-environment matching case-sensitive', () => {
+    expect(safeEnvironmentForKimiCode({ PATH: '/safe/bin', Path: '/wrong/bin', SystemRoot: '/wrong/root' }, 'linux')).toEqual({ PATH: '/safe/bin' });
+  });
+
+  it.skipIf(process.platform !== 'win32')(
+    'fails closed on conflicting Windows safe-environment aliases',
+    async () => {
+    const conflictingEnvironment = { SystemRoot: 'C:\\Windows', SYSTEMROOT: 'D:\\Windows' };
+    expect(() => safeEnvironmentForKimiCode(conflictingEnvironment, 'win32')).toThrow('PROVIDER_CONFIG_INVALID');
+
+    const adapter = new KimiCodeProviderAdapter({ probe: probeFor('0.23.5') });
+    await expect(adapter.buildLaunchPlan({
+      configuration: config(),
+      workspaceRoot: 'C:/workspace',
+      prompt: 'hello',
+      environment: conflictingEnvironment,
+    })).rejects.toThrow('PROVIDER_CONFIG_INVALID');
+
+    const result = await adapter.validate({
+      configuration: config(),
+      environment: conflictingEnvironment,
+      discover: async input => ({ found: true, selected: input.configuredExecutable, candidates: [], warnings: [] }),
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'PROVIDER_CONFIG_INVALID' }),
+    ]));
+    },
+  );
 
   it('distinguishes an explicitly configured inaccessible executable from no discovery candidate', async () => {
     const adapter = new KimiCodeProviderAdapter();
