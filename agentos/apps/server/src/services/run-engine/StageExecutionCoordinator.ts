@@ -26,11 +26,15 @@ import type {
   ApiProblem,
   ProviderConfigurationSnapshotV1,
   RuntimeEventContext,
+  RuntimeEventRecord,
 } from '@agentos/shared';
 import {
+  ProcessTimers,
+  SystemClock,
   redactArgs,
 } from '@agentos/process-runtime';
 import type {
+  Clock,
   DurableCasOutcome,
   DurableProcessCoordinator,
   DurableProcessView,
@@ -44,6 +48,8 @@ import type {
   ProcessStopTicket,
   ProcessStopResult,
   ProcessProbePort,
+  ProcessTimerKind,
+  TimeoutPolicy,
   ValidatedLaunch,
 } from '@agentos/process-runtime';
 import {
@@ -101,6 +107,18 @@ export interface StageAttemptCancelInput {
   readonly causationId: string;
 }
 
+export interface CanonicalRunEventObservationSubscription {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly afterSequence: number;
+  readonly onEvent: (event: RuntimeEventRecord) => void;
+  readonly onFailure: (reason: string, lastSafeSequence: number) => void;
+}
+
+export interface CanonicalRunEventObservationPort {
+  subscribe(input: CanonicalRunEventObservationSubscription): () => void;
+}
+
 export type StageStopOutcome = Extract<StageExecutionOutcome, { readonly kind: 'stopped' }>;
 
 export interface StageExecutionCoordinatorOptions {
@@ -109,9 +127,11 @@ export interface StageExecutionCoordinatorOptions {
   readonly sessionRepository: DurableSessionRepositoryAdapter;
   readonly driver: PlatformProcessDriver;
   readonly probe: ProcessProbePort;
+  readonly runEventObservation?: CanonicalRunEventObservationPort;
   readonly environment?: Readonly<Record<string, string | undefined>>;
   readonly claimOwner?: string;
   readonly claimLeaseMs?: number;
+  readonly clock?: Clock;
   readonly now?: () => string;
   readonly stderrRetainedBytes?: number;
 }
@@ -153,7 +173,16 @@ interface LiveAttemptRendezvous {
   readonly captureStop: Deferred<void>;
   readonly parserContext: ProviderParseContext;
   readonly parsedEvents: ProviderNormalizedEvent[];
-  readonly startedAtMs: number;
+  startedAtMs: number;
+  readonly timers: ProcessTimers;
+  observerAnchorSequence: number | null;
+  approvalRequestId?: string;
+  approvalRequiredSequence?: number;
+  approvalResolved: boolean;
+  observationChain: Promise<void>;
+  observationFailed: boolean;
+  observationClosed: boolean;
+  observerUnsubscribe?: () => void;
   handle?: NativeProcessHandle;
   stderrText: string;
   captureStopped: boolean;
@@ -176,9 +205,11 @@ export class StageExecutionCoordinator {
   private readonly sessionRepository: DurableSessionRepositoryAdapter;
   private readonly driver: PlatformProcessDriver;
   private readonly probe: ProcessProbePort;
+  private readonly runEventObservation: CanonicalRunEventObservationPort | undefined;
   private readonly environment: Readonly<Record<string, string | undefined>> | undefined;
   private readonly claimOwner: string;
   private readonly claimLeaseMs: number;
+  private readonly clock: Clock;
   private readonly now: () => string;
   private readonly stderrRetainedBytes: number;
   private readonly inFlightValidation = new Map<string, Promise<ProviderValidationResult>>();
@@ -190,9 +221,11 @@ export class StageExecutionCoordinator {
     this.sessionRepository = options.sessionRepository;
     this.driver = options.driver;
     this.probe = options.probe;
+    this.runEventObservation = options.runEventObservation;
     this.environment = options.environment;
     this.claimOwner = options.claimOwner ?? DEFAULT_CLAIM_OWNER;
     this.claimLeaseMs = options.claimLeaseMs ?? DEFAULT_CLAIM_LEASE_MS;
+    this.clock = options.clock ?? new SystemClock();
     this.now = options.now ?? (() => new Date().toISOString());
     this.stderrRetainedBytes = options.stderrRetainedBytes ?? MAX_STDERR_RETAINED_BYTES;
   }
@@ -275,7 +308,16 @@ export class StageExecutionCoordinator {
         stdinMode: plan.stdinMode === 'none' ? 'closed' : 'pipe',
         stdoutMode: 'capture',
         stderrMode: 'capture',
-        timeoutPolicy: { graceMs: input.providerSnapshot.timeoutPolicy.cancelGracePeriodMs },
+        timeoutPolicy: {
+          startupMs: input.providerSnapshot.timeoutPolicy.startupTimeoutMs,
+          graceMs: input.providerSnapshot.timeoutPolicy.cancelGracePeriodMs,
+          ...(input.providerSnapshot.timeoutPolicy.idleTimeoutMs === null
+            ? {}
+            : { idleMs: input.providerSnapshot.timeoutPolicy.idleTimeoutMs }),
+          ...(input.providerSnapshot.timeoutPolicy.totalTimeoutMs === null
+            ? {}
+            : { totalMs: input.providerSnapshot.timeoutPolicy.totalTimeoutMs }),
+        },
         securityProfileRef: 'secprofile_default',
         eventContext,
       },
@@ -343,7 +385,8 @@ export class StageExecutionCoordinator {
       return this.failed('LIVE_EXECUTION_UNAVAILABLE', 'Provider process authority is no longer startable', 'startup', input, false);
     }
 
-    const entry: LiveAttemptRendezvous = {
+    let entry!: LiveAttemptRendezvous;
+    entry = {
       key: attemptKey(input),
       input,
       adapter,
@@ -356,7 +399,17 @@ export class StageExecutionCoordinator {
       captureStop: deferred<void>(),
       parserContext: (adapter as unknown as { createParseContext(): ProviderParseContext }).createParseContext(),
       parsedEvents: [],
-      startedAtMs: Date.parse(this.now()),
+      startedAtMs: 0,
+      timers: new ProcessTimers({
+        clock: this.clock,
+        policy: timeoutPolicyFromSnapshot(input.providerSnapshot),
+        onFire: kind => { void this.onTimerFire(entry, kind); },
+      }),
+      observerAnchorSequence: null,
+      approvalResolved: false,
+      observationChain: Promise.resolve(),
+      observationFailed: false,
+      observationClosed: false,
       stderrText: '',
       captureStopped: false,
       stopAccepted: false,
@@ -409,6 +462,14 @@ export class StageExecutionCoordinator {
       return entry.final.promise;
     }
 
+    const nativeStartedAt = spawned.outcome.kind === 'applied'
+      ? spawned.outcome.value.startedAt
+      : null;
+    entry.startedAtMs = nativeStartedAt === null
+      ? Date.parse(this.now())
+      : Date.parse(nativeStartedAt);
+    entry.timers.armFromNativeStart();
+
     const active = await this.sessionRepository.casSessionTransition({
         workspaceId: input.workspaceId,
         sessionId: established.session.sessionId,
@@ -421,6 +482,8 @@ export class StageExecutionCoordinator {
         eventContext,
     });
     if (active.kind === 'applied') {
+      entry.timers.markReady();
+      this.startObservation(entry);
       void this.runToFinal(entry);
     } else if (entry.stopRequestPromise === undefined) {
       await this.stopEntry(entry, 'P4_ACTIVATION_FAILURE');
@@ -532,6 +595,182 @@ export class StageExecutionCoordinator {
     return promise;
   }
 
+  private startObservation(entry: LiveAttemptRendezvous): void {
+    const observation = this.runEventObservation;
+    if (observation === undefined || entry.observationClosed) return;
+
+    let unsubscribe: (() => void) | undefined;
+    try {
+      unsubscribe = observation.subscribe({
+        workspaceId: entry.input.workspaceId,
+        runId: entry.input.runId,
+        afterSequence: 0,
+        onEvent: event => {
+          if (entry.observationClosed || entry.observationFailed) return;
+          entry.observationChain = entry.observationChain
+            .then(() => this.handleObservedEvent(entry, event))
+            .catch(() => {
+              this.failObservation(entry);
+            });
+        },
+        onFailure: reason => {
+          this.failObservation(entry);
+          void reason;
+        },
+      });
+    } catch {
+      this.failObservation(entry);
+      return;
+    }
+
+    entry.observerUnsubscribe = (() => {
+      let called = false;
+      return () => {
+        if (called) return;
+        called = true;
+        unsubscribe?.();
+      };
+    })();
+    if (entry.observationClosed) entry.observerUnsubscribe();
+  }
+
+  private failObservation(entry: LiveAttemptRendezvous): void {
+    if (entry.observationFailed) return;
+    entry.observationFailed = true;
+    this.closeObservation(entry);
+  }
+
+  private closeObservation(entry: LiveAttemptRendezvous): void {
+    if (entry.observationClosed) return;
+    entry.observationClosed = true;
+    const unsubscribe = entry.observerUnsubscribe;
+    entry.observerUnsubscribe = undefined;
+    unsubscribe?.();
+  }
+
+  private async handleObservedEvent(
+    entry: LiveAttemptRendezvous,
+    event: RuntimeEventRecord,
+  ): Promise<void> {
+    if (entry.observationClosed || entry.observationFailed) return;
+    if (event.workspaceId !== entry.input.workspaceId || event.runId !== entry.input.runId) return;
+
+    if (event.type === 'stage.started') {
+      this.handleStageStartedObservation(entry, event);
+      return;
+    }
+    if (entry.observerAnchorSequence === null || event.sequence <= entry.observerAnchorSequence) return;
+    if (event.stageId !== entry.input.stageId) return;
+
+    if (event.type === 'approval.required') {
+      await this.handleApprovalRequired(entry, event);
+      return;
+    }
+    if (event.type === 'approval.resolved') {
+      await this.handleApprovalResolved(entry, event);
+    }
+  }
+
+  private handleStageStartedObservation(
+    entry: LiveAttemptRendezvous,
+    event: RuntimeEventRecord,
+  ): void {
+    if (event.stageId !== entry.input.stageId) return;
+    const attempt = attemptFromEvent(event);
+    if (attempt === undefined || attempt < entry.input.stageAttempt) return;
+    if (attempt > entry.input.stageAttempt) {
+      this.failObservation(entry);
+      return;
+    }
+    if (entry.observerAnchorSequence === null) entry.observerAnchorSequence = event.sequence;
+  }
+
+  private async handleApprovalRequired(
+    entry: LiveAttemptRendezvous,
+    event: RuntimeEventRecord,
+  ): Promise<void> {
+    const requestId = nonEmptyString(event.approvalRequestId);
+    if (requestId === undefined) return;
+    if (entry.approvalRequestId !== undefined) {
+      if (entry.approvalRequestId !== requestId) this.failObservation(entry);
+      return;
+    }
+    entry.approvalRequestId = requestId;
+    entry.approvalRequiredSequence = event.sequence;
+    const process = await this.readLiveProcess(entry, 'running');
+    if (process === null || entry.observationClosed || entry.observationFailed) return;
+    const transitioned = await this.durableCoordinator.transitionProcess({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      expectedFrom: 'running',
+      to: 'waiting',
+      timestamp: this.now(),
+      eventContext: entry.eventContext,
+    });
+    if (!isProcessStateOutcome(transitioned, 'waiting')) {
+      this.failObservation(entry);
+      return;
+    }
+    entry.timers.pauseIdle();
+  }
+
+  private async handleApprovalResolved(
+    entry: LiveAttemptRendezvous,
+    event: RuntimeEventRecord,
+  ): Promise<void> {
+    if (
+      entry.approvalRequestId === undefined
+      || entry.approvalRequiredSequence === undefined
+      || event.sequence <= entry.approvalRequiredSequence
+      || event.approvalRequestId !== entry.approvalRequestId
+      || entry.approvalResolved
+    ) return;
+    entry.approvalResolved = true;
+    const decision = decisionFromEvent(event);
+    if (decision !== 'approve_once' && decision !== 'approve_run' && decision !== 'approve_workspace') return;
+    const process = await this.readLiveProcess(entry, 'waiting');
+    if (process === null || entry.observationClosed || entry.observationFailed) return;
+    const transitioned = await this.durableCoordinator.transitionProcess({
+      workspaceId: process.workspaceId,
+      processId: process.processId,
+      expectedVersion: process.version,
+      expectedClaimEpoch: process.claimEpoch,
+      expectedClaimOwner: process.claimOwnerId,
+      expectedFrom: 'waiting',
+      to: 'running',
+      timestamp: this.now(),
+      eventContext: entry.eventContext,
+    });
+    if (!isProcessStateOutcome(transitioned, 'running')) {
+      this.failObservation(entry);
+      return;
+    }
+    entry.timers.resumeIdle();
+  }
+
+  private async readLiveProcess(
+    entry: LiveAttemptRendezvous,
+    expectedStatus: 'running' | 'waiting',
+  ): Promise<DurableProcessView | null> {
+    const process = await this.durableCoordinator.getProcess(entry.input.workspaceId, entry.processId);
+    if (
+      process === null
+      || process.workspaceId !== entry.input.workspaceId
+      || process.runId !== entry.input.runId
+      || process.stageId !== entry.input.stageId
+      || process.stageAttempt !== entry.input.stageAttempt
+      || process.authorityRole !== 'primary-provider'
+      || process.status !== expectedStatus
+    ) {
+      this.failObservation(entry);
+      return null;
+    }
+    return process;
+  }
+
   private async runToFinal(entry: LiveAttemptRendezvous): Promise<void> {
     const handle = entry.handle;
     if (handle === undefined) return;
@@ -593,6 +832,7 @@ export class StageExecutionCoordinator {
         await this.stopEntry(entry, stopOriginFromReason(terminalProcess.terminationReason));
         return;
       }
+      entry.timers.disarmAll();
       entry.naturalDisposition = { kind: 'natural', exit: observed.exit, durationMs };
       await this.finalizeAttemptOnce(entry, entry.naturalDisposition);
     } catch (error) {
@@ -634,6 +874,7 @@ export class StageExecutionCoordinator {
         binary: false,
       });
       requireAppend(outcome, 'STDOUT_APPEND');
+      entry.timers.notifyActivity();
     }
   }
 
@@ -668,6 +909,7 @@ export class StageExecutionCoordinator {
         binary: false,
       });
       requireAppend(outcome, 'STDERR_APPEND');
+      entry.timers.notifyActivity();
     }
   }
 
@@ -692,7 +934,7 @@ export class StageExecutionCoordinator {
     }
     if (entry.finalizationPromise !== undefined) return entry.finalizationPromise;
     const stopped = await ticket.result;
-    const winningOrigin = entry.stopOrigin ?? origin;
+    const winningOrigin = stopped.stopOrigin;
     const disposition: AttemptDisposition = winningOrigin === 'P4_ACTIVATION_FAILURE'
       ? { kind: 'p4-activation-failure', stop: stopped }
       : { kind: 'stop', stop: stopped, stopOrigin: winningOrigin };
@@ -740,6 +982,10 @@ export class StageExecutionCoordinator {
     origin: ProcessStopOrigin,
   ): Promise<void> {
     if (!ticket.stopAccepted || ticket.authority !== 'active-stop') return;
+    void origin;
+    const durableOrigin = ticket.reason === 'cancel'
+      ? 'EXPLICIT_CANCEL'
+      : stopOriginFromReason(ticket.reason);
     entry.stopAccepted = true;
     if (entry.cleanupAuthorizationPromise === undefined) {
       entry.captureStopped = true;
@@ -749,7 +995,7 @@ export class StageExecutionCoordinator {
           await entry.adapter.cancel({
             sessionId: entry.sessionId,
             processId: entry.processId,
-            reason: origin === 'EXPLICIT_CANCEL' ? 'cancel' : origin,
+            reason: durableOrigin === 'EXPLICIT_CANCEL' ? 'cancel' : durableOrigin,
             stopTicketAccepted: true,
             processPort: { requestGraceful: async () => ({ accepted: true }) },
           });
@@ -768,6 +1014,7 @@ export class StageExecutionCoordinator {
     disposition: AttemptDisposition,
   ): Promise<StageExecutionOutcome> {
     if (entry.finalizationPromise !== undefined) return entry.finalizationPromise;
+    entry.timers.disarmAll();
     const promise = this.performFinalization(entry, disposition);
     entry.finalizationPromise = promise;
     void promise.then(
@@ -781,10 +1028,21 @@ export class StageExecutionCoordinator {
     return promise;
   }
 
+  private async onTimerFire(entry: LiveAttemptRendezvous, kind: ProcessTimerKind): Promise<void> {
+    if (this.liveAttempts.get(entry.key) !== entry || entry.finalizationPromise !== undefined) return;
+    const origin: ProcessStopOrigin = kind === 'startup'
+      ? 'STARTUP_TIMEOUT'
+      : kind === 'idle'
+        ? 'IDLE_TIMEOUT'
+        : 'TOTAL_TIMEOUT';
+    await this.stopEntry(entry, origin).catch(() => undefined);
+  }
+
   private async performFinalization(
     entry: LiveAttemptRendezvous,
     disposition: AttemptDisposition,
   ): Promise<StageExecutionOutcome> {
+    this.closeObservation(entry);
     try {
       await Promise.allSettled([entry.stdoutDrain, entry.stderrDrain].filter((task): task is Promise<void> => task !== undefined));
       if (disposition.kind === 'natural') {
@@ -1177,6 +1435,18 @@ function configurationFromSnapshot(snapshot: ProviderConfigurationSnapshotV1): P
   };
 }
 
+function timeoutPolicyFromSnapshot(
+  snapshot: ProviderConfigurationSnapshotV1,
+): TimeoutPolicy {
+  const policy = snapshot.timeoutPolicy;
+  return {
+    startupMs: policy.startupTimeoutMs,
+    graceMs: policy.cancelGracePeriodMs,
+    ...(policy.idleTimeoutMs === null ? {} : { idleMs: policy.idleTimeoutMs }),
+    ...(policy.totalTimeoutMs === null ? {} : { totalMs: policy.totalTimeoutMs }),
+  };
+}
+
 function providerProblem(
   code: string,
   detail: string,
@@ -1218,4 +1488,30 @@ function boundedAppend(current: string, next: string, maxBytes: number): string 
     keep = keep.slice(Math.max(0, keep.length - 1024));
   }
   return keep;
+}
+
+function nonEmptyString(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function attemptFromEvent(event: RuntimeEventRecord): number | undefined {
+  if (!isRecord(event.payload)) return undefined;
+  const attempt = event.payload.attempt;
+  return typeof attempt === 'number' && Number.isSafeInteger(attempt) && attempt >= 1 ? attempt : undefined;
+}
+
+function decisionFromEvent(event: RuntimeEventRecord): string | undefined {
+  if (!isRecord(event.payload)) return undefined;
+  return typeof event.payload.decision === 'string' ? event.payload.decision : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function isProcessStateOutcome(
+  outcome: DurableCasOutcome<DurableProcessView>,
+  status: DurableProcessView['status'],
+): boolean {
+  return (outcome.kind === 'applied' || outcome.kind === 'duplicate') && outcome.value.status === status;
 }

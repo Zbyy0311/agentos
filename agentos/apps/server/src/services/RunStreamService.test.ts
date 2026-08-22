@@ -237,3 +237,69 @@ test('P5B hint integrity mismatch fails closed without cross-Workspace delivery'
   notifier.publish({ runId: RUN_ID, sequence: 1, eventId: event(1).id });
   assert.deepEqual(received, []);
 });
+
+test('P5C RunStream failure callback reports durable mismatch and subscriber failure with the last safe cursor', () => {
+  const repository = new FakeRunStreamRepository();
+  const notifier = new RuntimeEventNotifier();
+  const failures: Array<{ reason: string; cursor: number }> = [];
+  new RunStreamService(repository, notifier).subscribe({
+    workspaceId: WORKSPACE_ID,
+    runId: RUN_ID,
+    afterSequence: 0,
+    onEvent: () => undefined,
+    onOverflow: () => assert.fail('unexpected overflow'),
+    onFailure: (reason, cursor) => failures.push({ reason, cursor }),
+  });
+  repository.add(event(1));
+  notifier.publish({ runId: RUN_ID, sequence: 1, eventId: 'evt_wrong' });
+  assert.deepEqual(failures, [{ reason: 'durable-event-mismatch', cursor: 0 }]);
+
+  const callbackFailures: Array<{ reason: string; cursor: number }> = [];
+  new RunStreamService(repository, new RuntimeEventNotifier()).subscribe({
+    workspaceId: WORKSPACE_ID,
+    runId: RUN_ID,
+    afterSequence: 0,
+    onEvent: () => { throw new Error('subscriber failed'); },
+    onOverflow: () => assert.fail('unexpected overflow'),
+    onFailure: (reason, cursor) => callbackFailures.push({ reason, cursor }),
+  });
+  assert.deepEqual(callbackFailures, [{ reason: 'subscriber-callback-failure', cursor: 0 }]);
+});
+
+test('P5C RunStream failure callback reports overflow and initial observation errors', () => {
+  const repository = new FakeRunStreamRepository();
+  const notifier = new RuntimeEventNotifier();
+  repository.beforeHighWatermark = () => {
+    for (let sequence = 1; sequence <= 257; sequence += 1) {
+      notifier.publish({ runId: RUN_ID, sequence, eventId: `evt_${String(sequence).padStart(26, '0')}` });
+    }
+  };
+  const failures: Array<{ reason: string; cursor: number }> = [];
+  const overflows: number[] = [];
+  new RunStreamService(repository, notifier).subscribe({
+    workspaceId: WORKSPACE_ID,
+    runId: RUN_ID,
+    afterSequence: 7,
+    onEvent: () => undefined,
+    onOverflow: cursor => overflows.push(cursor),
+    onFailure: (reason, cursor) => failures.push({ reason, cursor }),
+  });
+  assert.deepEqual(overflows, [7]);
+  assert.deepEqual(failures, [{ reason: 'overflow', cursor: 7 }]);
+
+  const brokenRepository: RunStreamRepository = {
+    getRunHighWatermark: () => { throw new Error('read failed'); },
+    queryByRun: repository.queryByRun.bind(repository),
+    findDurableByWorkspaceRunAndSequence: repository.findDurableByWorkspaceRunAndSequence.bind(repository),
+  };
+  const readFailures: Array<{ reason: string; cursor: number }> = [];
+  assert.throws(() => new RunStreamService(brokenRepository, new RuntimeEventNotifier()).subscribe({
+    workspaceId: WORKSPACE_ID,
+    runId: RUN_ID,
+    afterSequence: 0,
+    onEvent: () => undefined,
+    onOverflow: () => assert.fail('unexpected overflow'),
+    onFailure: (reason, cursor) => readFailures.push({ reason, cursor }),
+  }));
+  assert.deepEqual(readFailures, [{ reason: 'observation-error', cursor: 0 }]);
+});
