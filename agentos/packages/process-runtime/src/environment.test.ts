@@ -60,6 +60,27 @@ describe('buildSafeEnvironment', () => {
     ).toThrowError(ProcessError);
   });
 
+  it('rejects newly classified secret-looking keys from base, profile, and overrides', () => {
+    for (const key of ['WEBHOOK_SIGNING_KEY', 'GH_PAT', 'KIMI_SESSION']) {
+      expect(() => buildSafeEnvironment({ base: { [key]: 'x' } })).toThrowError(ProcessError);
+      expect(() => buildSafeEnvironment({ base: {}, profile: { [key]: 'x' } })).toThrowError(ProcessError);
+      expect(() => buildSafeEnvironment({ base: {}, overrides: { [key]: 'x' } })).toThrowError(ProcessError);
+    }
+  });
+
+  it('accepts MONKEY and TURKEY as ordinary plain environment keys', () => {
+    const { env, diagnostics } = buildSafeEnvironment({
+      base: { MONKEY: 'm', TURKEY: 't' },
+    });
+
+    expect(env.MONKEY).toBe('m');
+    expect(env.TURKEY).toBe('t');
+    expect(diagnostics).toEqual([
+      { key: 'MONKEY', source: 'base', classification: 'plain' },
+      { key: 'TURKEY', source: 'base', classification: 'plain' },
+    ]);
+  });
+
   it('accepts ephemeral secret references without exposing values in diagnostics', () => {
     const secret = 'supersecret-value-12345';
     const { env, diagnostics } = buildSafeEnvironment({
@@ -69,6 +90,20 @@ describe('buildSafeEnvironment', () => {
     expect(env.RUNTIME_API_KEY).toBe(secret);
     expect(diagnostics).toEqual([
       { key: 'RUNTIME_API_KEY', source: 'secret-ref', classification: 'secret-ephemeral' },
+    ]);
+    expect(JSON.stringify(diagnostics)).not.toContain(secret);
+  });
+
+  it('accepts GH_PAT through secretRefs without exposing its value in diagnostics', () => {
+    const secret = 'gh_pat-secret-value';
+    const { env, diagnostics } = buildSafeEnvironment({
+      base: {},
+      secretRefs: { GH_PAT: secret },
+    });
+
+    expect(env.GH_PAT).toBe(secret);
+    expect(diagnostics).toEqual([
+      { key: 'GH_PAT', source: 'secret-ref', classification: 'secret-ephemeral' },
     ]);
     expect(JSON.stringify(diagnostics)).not.toContain(secret);
   });

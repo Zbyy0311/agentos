@@ -1,7 +1,7 @@
 import { Router, type Request, type Response } from 'express';
 import { randomUUID } from 'node:crypto';
 import { existsSync, readFileSync, readdirSync, mkdirSync, appendFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import type { Store } from '../store/Store.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
@@ -92,6 +92,27 @@ function errorCode(err: unknown): string | undefined {
 
 function diagnosticText(err: unknown): string {
   return err instanceof Error ? (err.stack ?? err.message) : String(err);
+}
+
+const LEGACY_TASK_ID_PATTERN = /^[A-Za-z0-9_-]+$/;
+
+export function isValidLegacyTaskId(taskId: string): boolean {
+  return LEGACY_TASK_ID_PATTERN.test(taskId);
+}
+
+export function isContainedPath(rootPath: string, candidatePath: string): boolean {
+  const root = resolve(rootPath);
+  const candidate = resolve(candidatePath);
+  const comparableRoot = process.platform === 'win32' ? root.toLowerCase() : root;
+  const comparableCandidate = process.platform === 'win32' ? candidate.toLowerCase() : candidate;
+  return comparableCandidate === comparableRoot || comparableCandidate.startsWith(comparableRoot + sep);
+}
+
+export function resolveLegacyTaskLogDir(workspaceRoot: string, taskId: string): string | null {
+  if (!isValidLegacyTaskId(taskId)) return null;
+  const logsRoot = resolve(workspaceRoot, '.agentos', 'logs');
+  const candidate = resolve(logsRoot, taskId);
+  return isContainedPath(logsRoot, candidate) ? candidate : null;
 }
 
 function legacyBridgeGuardMessage(err: unknown): string | undefined {
@@ -375,7 +396,8 @@ export function createTaskRoutes(store: Store, workspaceManager: WorkspaceManage
     const workspace = workspaceManager.get(workspaceId);
     if (!workspace) return res.status(404).json({ error: 'Workspace not found' });
 
-    const logDir = join(workspace.rootPath, '.agentos', 'logs', taskId);
+    const logDir = resolveLegacyTaskLogDir(workspace.rootPath, taskId);
+    if (logDir === null) return res.status(400).json({ error: 'Invalid taskId' });
     if (!existsSync(logDir)) return res.json({ logs: {} });
 
     const logs: Record<string, string> = {};

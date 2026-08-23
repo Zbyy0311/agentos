@@ -25,7 +25,7 @@ export const MAX_ENV_TOTAL_BYTES = 32 * 1024;
 
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const SECRET_KEY_PATTERN =
-  /(SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|SESSION_?KEY|AUTH_?TOKEN|COOKIE)/i;
+  /(?:^|_)(?:SECRET|TOKEN|PASSWORD|PASSWD|API_?KEY|PRIVATE_?KEY|CREDENTIAL|SESSION_?KEY|SESSION|AUTH_?TOKEN|COOKIE|SIGNING_?KEY|PAT|KEY)(?=_|$)/i;
 
 export interface SafeEnvironment {
   readonly env: Readonly<Record<string, string>>;
