@@ -336,6 +336,13 @@ export interface CancelRunForOperationWithinTransactionInput {
   readonly correlationId: string;
 }
 
+export interface CancelRunForOperationWithEvidenceWithinTransactionInput extends CompositeLifecycleInputBase {
+  readonly runId: string;
+  readonly terminatedProcessIds: string[];
+  readonly worktreePreserved: boolean;
+  readonly reason?: string;
+}
+
 export interface CompleteRunInput extends StageCompositeInput {
   readonly runId: string;
   readonly durationMs: number;
@@ -1346,6 +1353,58 @@ export class LifecycleTransactionService {
     return this.cancelRunWithinTransactionBody(trusted, run.version);
   }
 
+  /**
+   * Hands proof-backed Operation cancellation evidence to the canonical
+   * lifecycle mutation while remaining inside the caller-owned transaction.
+   * Runtime cleanup and evidence collection happen before this seam is called.
+   */
+  cancelRunForOperationWithEvidenceWithinTransaction(
+    input: CancelRunForOperationWithEvidenceWithinTransactionInput,
+  ): CompositeLifecycleTransactionResult {
+    this.validateOperationCancellationWithEvidenceInput(input);
+    const run = this.requireRun(input.workspaceId, input.runId);
+    if (run.workspaceId !== input.workspaceId) {
+      throw new LifecycleTransactionError(
+        'LIFECYCLE_VALIDATION_FAILED',
+        'Operation Run workspace binding is invalid',
+      );
+    }
+    this.assertExpectedVersion('runs', run.id, run.version, input.expectedRunVersion);
+
+    const trusted: CancelRunInput = {
+      workspaceId: input.workspaceId,
+      runId: run.id,
+      expectedRunVersion: input.expectedRunVersion,
+      correlationId: input.correlationId,
+      ...(input.causationId === undefined ? {} : { causationId: input.causationId }),
+      ...(input.parentEventId === undefined ? {} : { parentEventId: input.parentEventId }),
+      ...(input.metadata === undefined ? {} : { metadata: input.metadata }),
+      requestedBy: 'operation_api',
+      terminatedProcessIds: input.terminatedProcessIds,
+      worktreePreserved: input.worktreePreserved,
+      ...(input.reason === undefined ? {} : { reason: input.reason }),
+    };
+
+    if (run.status === 'waiting_approval') {
+      const approval = this.discoverOperationApproval(run, input.workspaceId);
+      const approvalStage = approval.stageId === undefined
+        ? undefined
+        : this.requireStage(input.workspaceId, run.id, approval.stageId);
+      const approvalInput = {
+        ...trusted,
+        ...(approvalStage === undefined
+          ? {}
+          : { stageId: approvalStage.id, expectedStageVersion: approvalStage.version }),
+        approvalRequestId: approval.approvalRequestId,
+        decision: 'cancel_run' as const,
+        decidedBy: 'operation_api',
+      } as ResolveApprovalToCancellationInput;
+      return this.resolveApprovalToCancellationWithinTransaction(approvalInput);
+    }
+
+    return this.cancelRunWithinTransactionBody(trusted, input.expectedRunVersion);
+  }
+
   cancelRun(input: CancelRunInput): CompositeLifecycleTransactionResult {
     this.validateCancellationInput(input);
     const expectedRunVersion = this.expectedRunVersion(input);
@@ -1826,6 +1885,20 @@ export class LifecycleTransactionService {
         'workspaceId, runId, and correlationId are required',
       );
     }
+  }
+
+  private validateOperationCancellationWithEvidenceInput(
+    input: CancelRunForOperationWithEvidenceWithinTransactionInput,
+  ): void {
+    this.validateCompositeCommonInput(input);
+    this.validateRunId(input.runId);
+    if (!Array.isArray(input.terminatedProcessIds) || input.terminatedProcessIds.some(id => !isNonBlankString(id))) {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'terminatedProcessIds must contain strings');
+    }
+    if (typeof input.worktreePreserved !== 'boolean') {
+      throw new LifecycleTransactionError('LIFECYCLE_VALIDATION_FAILED', 'worktreePreserved is required');
+    }
+    this.validateOptionalString(input.reason, 'reason');
   }
 
   private validateCompositeCommonInput(input: CompositeLifecycleInputBase): void {
