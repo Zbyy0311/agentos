@@ -799,6 +799,68 @@ describe('OperationService — result/error and transaction invariants', () => {
 });
 
 describe('OperationService — dedicated atomic cancel', () => {
+  test('P5D evidence-backed cancel passes exact run version and Process evidence to the accepted lifecycle seam', () => {
+    const db = migratedDb();
+    const calls: unknown[] = [];
+    const lifecycle = {
+      cancelRunForOperationWithinTransaction(): void {
+        throw new Error('P5D must use the evidence lifecycle seam');
+      },
+      cancelRunForOperationWithEvidenceWithinTransaction(input: unknown): void {
+        calls.push(input);
+      },
+    };
+    const service = new OperationService(db, {
+      now: () => NOW,
+      lifecycleTransactionService: lifecycle,
+    } as never);
+    const operation = service.create({ workspaceId: WORKSPACE_ID, runId: RUN_ID, type: 'run.start' });
+    db.prepare("UPDATE operations SET status = 'running', started_at = ?, version = 1 WHERE id = ?").run(NOW, operation.id);
+    db.prepare("UPDATE runs SET status = 'running', started_at = ?, version = 1 WHERE id = ?").run(NOW, RUN_ID);
+
+    const cancelled = service.cancel({
+      ...cancelInput(operation),
+      evidence: {
+        expectedRunVersion: 1,
+        processId: 'process-exact',
+        terminatedProcessIds: ['process-exact'],
+        worktreePreserved: true,
+      },
+    });
+
+    assert.equal(cancelled.status, 'cancelled');
+    assert.deepEqual(calls, [{
+      workspaceId: WORKSPACE_ID,
+      runId: RUN_ID,
+      correlationId: operation.correlationId,
+      expectedRunVersion: 1,
+      terminatedProcessIds: ['process-exact'],
+      worktreePreserved: true,
+    }]);
+  });
+
+  test('P5D rejects mismatched Process identity evidence before changing Operation state', () => {
+    const { db, service } = cancelServiceFixture();
+    const operation = createStart(service);
+    db.prepare("UPDATE operations SET status = 'running', started_at = ?, version = 1 WHERE id = ?").run(NOW, operation.id);
+    db.prepare("UPDATE runs SET status = 'running', started_at = ?, version = 1 WHERE id = ?").run(NOW, RUN_ID);
+    const before = db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id);
+
+    assert.throws(
+      () => service.cancel({
+        ...cancelInput(operation),
+        evidence: {
+          expectedRunVersion: 1,
+          processId: 'process-exact',
+          terminatedProcessIds: ['process-other'],
+          worktreePreserved: true,
+        },
+      }),
+      /OPERATION_CANCELLATION_EVIDENCE_INVALID/,
+    );
+    assert.deepEqual(db.prepare('SELECT * FROM operations WHERE id = ?').get(operation.id), before);
+  });
+
   test('dedicated cancel does not widen ALLOWED_TRANSITIONS', () => {
     const { db, service } = cancelServiceFixture();
     const queued = createStart(service);
