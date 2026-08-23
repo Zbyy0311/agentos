@@ -4,7 +4,12 @@ import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createM3RuntimeEventRegistry, type AgentSnapshotV1, type ProviderConfigurationSnapshotV1 } from '@agentos/shared';
+import {
+  createM3RuntimeEventRegistry,
+  type AgentSnapshotV1,
+  type ProviderConfigurationSnapshotV1,
+  type RuntimeEventRecord,
+} from '@agentos/shared';
 import {
   DurableProcessCoordinator,
   FileArtifactSink,
@@ -19,6 +24,7 @@ import {
   type SurvivorVerification,
   type TreeTerminationResult,
 } from '@agentos/process-runtime';
+import { FakeClock } from '@agentos/process-runtime';
 import { KimiCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
 import type { ProcessProbePort } from '@agentos/process-runtime';
 import { MigrationRegistry } from '../../migrations/registry.js';
@@ -187,6 +193,66 @@ function asyncIterable(lines: string[]): AsyncIterable<Uint8Array> {
   };
 }
 
+interface FakeObservationInput {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly afterSequence: number;
+  readonly onEvent: (event: RuntimeEventRecord) => void;
+  readonly onFailure: (reason: string, lastSafeSequence: number) => void;
+}
+
+class FakeObservationPort {
+  input?: FakeObservationInput;
+  afterSequence?: number;
+  unsubscribeCalls = 0;
+
+  subscribe(input: FakeObservationInput): () => void {
+    this.input = input;
+    this.afterSequence = input.afterSequence;
+    return () => {
+      this.unsubscribeCalls += 1;
+      this.input = undefined;
+    };
+  }
+
+  emit(event: RuntimeEventRecord): void {
+    this.input?.onEvent(event);
+  }
+
+  fail(reason = 'observation-error'): void {
+    this.input?.onFailure(reason, this.afterSequence ?? 0);
+  }
+}
+
+function runtimeEvent(
+  type: string,
+  sequence: number,
+  overrides: Partial<Record<string, unknown>> = {},
+): RuntimeEventRecord {
+  return {
+    id: `evt_${String(sequence).padStart(26, '0')}`,
+    schemaVersion: 1,
+    type,
+    workspaceId: WS,
+    taskId: TASK,
+    runId: RUN,
+    stageId: STAGE,
+    sequence,
+    timestamp: NOW,
+    source: type.startsWith('approval.') ? 'approval-service' : 'stage-executor',
+    correlationId: OP,
+    severity: 'info',
+    visibility: 'public',
+    durability: 'durable',
+    payload: { attempt: 1 },
+    ...overrides,
+  } as RuntimeEventRecord;
+}
+
+async function flushObservationChain(): Promise<void> {
+  for (let turn = 0; turn < 12; turn += 1) await Promise.resolve();
+}
+
 function testDeferred<T>(): { readonly promise: Promise<T>; readonly resolve: (value: T) => void } {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>(res => { resolve = res; });
@@ -334,13 +400,47 @@ class BlockingStoppingProcessAdapter extends DurableProcessRepositoryAdapter {
   }
 }
 
+class GatedOutputHandle implements NativeProcessHandle {
+  readonly pid = 8383;
+  readonly identity: NativeIdentity = { pid: this.pid, startedAtMs: Date.parse(NOW), executablePath: KIMI_EXE };
+  readonly stdoutReady = testDeferred<void>();
+  readonly stderrReady = testDeferred<void>();
+  readonly streams: NativeProcessStreams;
+  private readonly releaseChunks = testDeferred<void>();
+  private readonly exit = testDeferred<ExitEvidence>();
+
+  constructor(stdout: string, stderr: string) {
+    this.streams = {
+      stdout: this.gatedStream(stdout, this.stdoutReady),
+      stderr: this.gatedStream(stderr, this.stderrReady),
+    };
+  }
+
+  waitExit(): Promise<ExitEvidence> { return this.exit.promise; }
+
+  releaseOutput(): void { this.releaseChunks.resolve(undefined); }
+
+  releaseExit(): void { this.exit.resolve({ exitCode: 0, signal: null, exitedAt: Date.now() }); }
+
+  private gatedStream(chunk: string, ready: { resolve(value: void): void }): AsyncIterable<Uint8Array> {
+    const release = this.releaseChunks.promise;
+    return {
+      async *[Symbol.asyncIterator]() {
+        ready.resolve(undefined);
+        await release;
+        if (chunk.length > 0) yield new TextEncoder().encode(chunk);
+      },
+    };
+  }
+}
+
 class FakeDriver implements PlatformProcessDriver {
   spawnCalls = 0;
-  constructor(private readonly handle: FakeHandle | FakeByteHandle | null, private readonly spawnError?: Error) {}
+  constructor(private readonly handle: NativeProcessHandle | null, private readonly spawnError?: Error) {}
   async spawn() { this.spawnCalls += 1; if (this.spawnError !== undefined) throw this.spawnError; return this.handle!; }
   gracefulStop = async () => ({ delivered: true, detail: 'ok' });
   terminateTree = async (): Promise<TreeTerminationResult> => ({ classification: 'complete', attemptedMembers: [], errors: [] });
-  verifySurvivors = async (): Promise<SurvivorVerification> => ({ classification: 'complete', knownPids: [] });
+  verifySurvivors = async (): Promise<SurvivorVerification> => ({ classification: 'complete', knownPids: [], proof: { kind: 'owned-tree-enumeration' } });
   inspectIdentity = async (identity: NativeIdentity): Promise<{ kind: 'match'; identity: NativeIdentity }> => ({ kind: 'match', identity });
 }
 
@@ -526,6 +626,8 @@ class BlockingFinalizeAdapter extends RecordingKimiAdapter {
 
 interface FixtureOptions {
   readonly authFailure?: boolean;
+  readonly clock?: FakeClock;
+  readonly observation?: FakeObservationPort;
   readonly probe?: ProcessProbePort;
   readonly sessionAdapterFactory?: (repo: ProviderSessionRepository) => DurableSessionRepositoryAdapter;
   readonly processRepoFactory?: (db: Db, factWriter: RuntimeEventOutboxWriter) => ProcessRepository;
@@ -579,6 +681,8 @@ function fixture(driver: PlatformProcessDriver, options: FixtureOptions | boolea
     claimOwner: 'run-engine',
     claimLeaseMs: 60000,
     now: () => NOW,
+    clock: opts.clock,
+    runEventObservation: opts.observation,
   });
   return { db, root, events, outbox, sessionRepo, processRepo, outputRepo, coordinator, driver, adapter };
 }
@@ -595,6 +699,19 @@ class SlowSessionAdapter extends DurableSessionRepositoryAdapter {
   }
 }
 
+class BlockingActiveSessionAdapter extends DurableSessionRepositoryAdapter {
+  readonly activeEntered = testDeferred<void>();
+  readonly releaseActive = testDeferred<void>();
+
+  override async casSessionTransition(input: Parameters<DurableSessionRepositoryAdapter['casSessionTransition']>[0]) {
+    if (input.to === 'active') {
+      this.activeEntered.resolve(undefined);
+      await this.releaseActive.promise;
+    }
+    return super.casSessionTransition(input);
+  }
+}
+
 class FinalizeFailOutputAdapter extends DurableOutputReferenceRepositoryAdapter {
   async finalizeReference(_input: Parameters<DurableOutputReferenceRepositoryAdapter['finalizeReference']>[0]) {
     return { kind: 'not-found' as const };
@@ -605,6 +722,16 @@ class PartialWriterCoordinator extends DurableProcessCoordinator {
   async beginOutput(input: Parameters<DurableProcessCoordinator['beginOutput']>[0]) {
     if (input.stream === 'stderr') throw new Error('stderr writer unavailable');
     return super.beginOutput(input);
+  }
+}
+
+class CheckpointProbeAdapter extends DurableOutputReferenceRepositoryAdapter {
+  readonly checkpointed = testDeferred<void>();
+
+  override async checkpoint(input: Parameters<DurableOutputReferenceRepositoryAdapter['checkpoint']>[0]) {
+    const outcome = await super.checkpoint(input);
+    this.checkpointed.resolve(undefined);
+    return outcome;
   }
 }
 
@@ -1428,6 +1555,552 @@ describe('StageExecutionCoordinator', () => {
       const outcome = await fx.coordinator.execute(stageInput());
       assert.notEqual(outcome.kind, 'completed');
     } finally { close(fx); }
+  });
+
+  it('P5C-01/P5C-02 persists the full frozen timeout policy and omits disabled deadlines', async () => {
+    const driver = new ControlledExitDriver();
+    const fx = fixture(driver);
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...base,
+        timeoutPolicy: {
+          ...base.timeoutPolicy,
+          startupTimeoutMs: 11,
+          idleTimeoutMs: 22,
+          totalTimeoutMs: 33,
+          cancelGracePeriodMs: 44,
+        },
+      },
+    }));
+    try {
+      await driver.handle.waitExitEntered.promise;
+      const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.ok(process);
+      assert.deepEqual(JSON.parse(process.timeoutPolicyJson), {
+        startupMs: 11,
+        idleMs: 22,
+        totalMs: 33,
+        graceMs: 44,
+      });
+      driver.handle.releaseExit();
+      assert.equal((await execution).kind, 'completed');
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+
+    const disabledDriver = new ControlledExitDriver();
+    const disabledFx = fixture(disabledDriver);
+    const disabledBase = providerSnapshot();
+    const disabledExecution = disabledFx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...disabledBase,
+        timeoutPolicy: {
+          ...disabledBase.timeoutPolicy,
+          startupTimeoutMs: 12,
+          idleTimeoutMs: null,
+          totalTimeoutMs: null,
+          cancelGracePeriodMs: 45,
+        },
+      },
+    }));
+    try {
+      await disabledDriver.handle.waitExitEntered.promise;
+      const process = disabledFx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.ok(process);
+      assert.deepEqual(JSON.parse(process.timeoutPolicyJson), {
+        startupMs: 12,
+        graceMs: 45,
+      });
+      disabledDriver.handle.releaseExit();
+      assert.equal((await disabledExecution).kind, 'completed');
+    } finally {
+      disabledDriver.handle.releaseExit();
+      await Promise.allSettled([disabledExecution]);
+      close(disabledFx);
+    }
+  });
+
+  it('P5C-03/P5C-04 arms after native start and disarms startup at accepted Session active', async () => {
+    const clock = new FakeClock();
+    const driver = new SpawnGateDriver();
+    const fx = fixture(driver, {
+      clock,
+      adapter: new RecordingKimiAdapter({
+        probe: probeFor(false),
+        discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+      }),
+    });
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...base,
+        timeoutPolicy: {
+          ...base.timeoutPolicy,
+          startupTimeoutMs: 100,
+          idleTimeoutMs: 200,
+          totalTimeoutMs: 300,
+        },
+      },
+    }));
+    try {
+      await driver.spawnEntered.promise;
+      assert.equal(clock.pendingCount, 0);
+      driver.releaseSpawn.resolve(undefined);
+      await driver.handle.waitExitEntered.promise;
+      assert.equal(clock.pendingCount, 2);
+      clock.advance(100);
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running');
+      driver.handle.releaseExit();
+      assert.equal((await execution).kind, 'completed');
+      assert.equal(clock.pendingCount, 0);
+      clock.advance(10_000);
+      assert.equal(driver.gracefulStopCalls, 0);
+    } finally {
+      driver.releaseSpawn.resolve(undefined);
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
+  it('P5C-09 startup timeout fires before Session active and maps to non-cancelled start failure', async () => {
+    const clock = new FakeClock();
+    const driver = new ControlledExitDriver();
+    let sessionAdapter!: BlockingActiveSessionAdapter;
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, {
+      clock,
+      adapter,
+      sessionAdapterFactory: repo => {
+        sessionAdapter = new BlockingActiveSessionAdapter(repo);
+        return sessionAdapter;
+      },
+    });
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...base,
+        timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 100, idleTimeoutMs: null, totalTimeoutMs: null },
+      },
+    }));
+    try {
+      await sessionAdapter.activeEntered.promise;
+      assert.equal(clock.pendingCount, 1);
+      clock.advance(99);
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running');
+      clock.advance(1);
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'stopping');
+      sessionAdapter.releaseActive.resolve(undefined);
+      driver.handle.releaseExit();
+      const outcome = await execution;
+      assert.equal(outcome.kind, 'failed');
+      if (outcome.kind === 'failed') assert.equal(outcome.problem.code, 'PROVIDER_START_FAILED');
+      assert.equal(adapter.finalizedInputs.length, 1);
+      assert.equal(adapter.finalizedInputs[0]?.cancelled, false);
+      assert.deepEqual((adapter.finalizedInputs[0] as unknown as { providerError: { code: string; phase: string } }).providerError, {
+        code: 'PROVIDER_START_FAILED',
+        phase: 'startup',
+        retryable: false,
+        message: 'Provider process could not start before timeout',
+      });
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'PROCESS_STARTUP_TIMEOUT');
+    } finally {
+      sessionAdapter?.releaseActive.resolve(undefined);
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
+  it('P5C-05/P5C-06/P5C-07 approval observation anchors, pauses, resumes, and times out through the stop authority', async () => {
+    const clock = new FakeClock();
+    const observation = new FakeObservationPort();
+    const driver = new ControlledExitDriver();
+    const fx = fixture(driver, { clock, observation });
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...base,
+        timeoutPolicy: {
+          ...base.timeoutPolicy,
+          startupTimeoutMs: 1000,
+          idleTimeoutMs: 200,
+          totalTimeoutMs: 500,
+        },
+      },
+    }));
+    try {
+      await driver.handle.waitExitEntered.promise;
+      assert.equal(observation.afterSequence, 0);
+      const preAnchorRequired = runtimeEvent('approval.required', 1, {
+        stageId: STAGE,
+        approvalRequestId: 'approval_pre_anchor',
+        payload: { category: 'network', riskLevel: 'low', title: 'pre', description: 'pre', requestSummary: {} },
+      });
+      observation.emit(preAnchorRequired);
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running');
+
+      observation.emit(runtimeEvent('stage.started', 2, { payload: { attempt: 1 } }));
+      observation.emit(runtimeEvent('approval.required', 3, {
+        approvalRequestId: 'approval_1',
+        payload: { category: 'network', riskLevel: 'low', title: 'request', description: 'request', requestSummary: {} },
+      }));
+      await flushObservationChain();
+      const waiting = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.equal(waiting?.status, 'waiting');
+      const waitingVersion = waiting?.version;
+      observation.emit(runtimeEvent('approval.required', 4, {
+        approvalRequestId: 'approval_1',
+        payload: { category: 'network', riskLevel: 'low', title: 'duplicate', description: 'duplicate', requestSummary: {} },
+      }));
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.version, waitingVersion);
+
+      clock.advance(50);
+      observation.emit(runtimeEvent('approval.resolved', 5, {
+        approvalRequestId: 'approval_1',
+        payload: { decision: 'approve_once', decidedBy: 'test', decidedAt: NOW },
+      }));
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running');
+
+      clock.advance(199);
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running');
+      clock.advance(1);
+      driver.handle.releaseExit();
+      const outcome = await execution;
+      assert.equal(outcome.kind, 'failed');
+      if (outcome.kind === 'failed') assert.equal(outcome.problem.code, 'PROVIDER_SESSION_FAILED');
+      assert.equal(driver.gracefulStopCalls, 1);
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'PROCESS_IDLE_TIMEOUT');
+      assert.equal(observation.unsubscribeCalls, 1);
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
+  it('P5C-05/P5C-06 each accepted stdout/stderr checkpoint resets the full idle budget', async () => {
+    for (const activeStream of ['stdout', 'stderr'] as const) {
+      const clock = new FakeClock();
+      const handle = new GatedOutputHandle(
+        activeStream === 'stdout' ? '{"type":"assistant","role":"assistant","content":"ok"}\n' : '',
+        activeStream === 'stderr' ? 'diagnostic\n' : '',
+      );
+      const driver = new FakeDriver(handle);
+      const adapter = new RecordingKimiAdapter({
+        probe: probeFor(false),
+        discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+      });
+      let outputAdapter!: CheckpointProbeAdapter;
+      const fx = fixture(driver, {
+        clock,
+        adapter,
+        outputAdapterFactory: repo => {
+          outputAdapter = new CheckpointProbeAdapter(repo);
+          return outputAdapter;
+        },
+      });
+      const base = providerSnapshot();
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: {
+          ...base,
+          timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 200, totalTimeoutMs: 1000 },
+        },
+      }));
+      try {
+        await Promise.all([handle.stdoutReady.promise, handle.stderrReady.promise]);
+        clock.advance(100);
+        handle.releaseOutput();
+        await outputAdapter.checkpointed.promise;
+        await flushObservationChain();
+        clock.advance(99);
+        assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running', activeStream);
+        clock.advance(1);
+        await flushObservationChain();
+        assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running', activeStream);
+        clock.advance(100);
+        await flushObservationChain();
+        assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'stopping', activeStream);
+        handle.releaseExit();
+        const outcome = await execution;
+        assert.equal(outcome.kind, 'failed', activeStream);
+        if (outcome.kind === 'failed') assert.equal(outcome.problem.code, 'PROVIDER_SESSION_FAILED', activeStream);
+      } finally {
+        handle.releaseOutput();
+        handle.releaseExit();
+        await Promise.allSettled([execution]);
+        close(fx);
+      }
+    }
+  });
+
+  it('OBS-14/OBS-18 observer failure and newer-attempt fencing make no guessed timer transition', async () => {
+    for (const mode of ['failure', 'newer-attempt'] as const) {
+      const clock = new FakeClock();
+      const observation = new FakeObservationPort();
+      const driver = new ControlledExitDriver();
+      const fx = fixture(driver, { clock, observation });
+      const base = providerSnapshot();
+      const execution = fx.coordinator.execute(stageInput({
+        providerSnapshot: {
+          ...base,
+          timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 200, totalTimeoutMs: 1000 },
+        },
+      }));
+      try {
+        await driver.handle.waitExitEntered.promise;
+        observation.emit(runtimeEvent('stage.started', 1, { payload: { attempt: mode === 'newer-attempt' ? 2 : 1 } }));
+        await flushObservationChain();
+        if (mode === 'failure') observation.fail();
+        await flushObservationChain();
+        assert.equal(observation.unsubscribeCalls, 1);
+        assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running');
+        if (mode === 'failure') {
+          observation.emit(runtimeEvent('approval.required', 2, {
+            approvalRequestId: 'approval_after_failure',
+            payload: { category: 'network', riskLevel: 'low', title: 'ignored', description: 'ignored', requestSummary: {} },
+          }));
+          await flushObservationChain();
+          assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'running');
+        }
+        driver.handle.releaseExit();
+        assert.equal((await execution).kind, 'completed');
+      } finally {
+        driver.handle.releaseExit();
+        await Promise.allSettled([execution]);
+        close(fx);
+      }
+    }
+  });
+
+  it('OBS-11/OBS-12/OBS-13 rejects non-resuming decisions and mismatched approval ids', async () => {
+    const clock = new FakeClock();
+    const observation = new FakeObservationPort();
+    const driver = new ControlledExitDriver();
+    const fx = fixture(driver, { clock, observation });
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...base,
+        timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 200, totalTimeoutMs: 1000 },
+      },
+    }));
+    try {
+      await driver.handle.waitExitEntered.promise;
+      observation.emit(runtimeEvent('stage.started', 1, { payload: { attempt: 1 } }));
+      observation.emit(runtimeEvent('approval.required', 2, {
+        approvalRequestId: 'approval_1',
+        payload: { category: 'network', riskLevel: 'low', title: 'request', description: 'request', requestSummary: {} },
+      }));
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'waiting');
+
+      observation.emit(runtimeEvent('approval.resolved', 3, {
+        approvalRequestId: 'approval_other',
+        payload: { decision: 'approve_once', decidedBy: 'test', decidedAt: NOW },
+      }));
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'waiting');
+
+      observation.emit(runtimeEvent('approval.resolved', 4, {
+        approvalRequestId: 'approval_1',
+        payload: { decision: 'reject', decidedBy: 'test', decidedAt: NOW },
+      }));
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'waiting');
+
+      const cancel = fx.coordinator.cancelAttempt({
+        workspaceId: WS,
+        runId: RUN,
+        stageId: STAGE,
+        stageAttempt: 1,
+        correlationId: 'approval-cancel',
+        causationId: 'approval-cancel',
+      });
+      driver.handle.releaseExit();
+      const cancelled = await cancel;
+      assert.equal(cancelled.kind, 'stopped', JSON.stringify(cancelled));
+      await execution;
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
+  it('OBS-07 conflicting approval requests fail closed without a second pause', async () => {
+    const clock = new FakeClock();
+    const observation = new FakeObservationPort();
+    const driver = new ControlledExitDriver();
+    const fx = fixture(driver, { clock, observation });
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...base,
+        timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 200, totalTimeoutMs: 1000 },
+      },
+    }));
+    try {
+      await driver.handle.waitExitEntered.promise;
+      observation.emit(runtimeEvent('stage.started', 1, { payload: { attempt: 1 } }));
+      observation.emit(runtimeEvent('approval.required', 2, {
+        approvalRequestId: 'approval_1',
+        payload: { category: 'network', riskLevel: 'low', title: 'request', description: 'request', requestSummary: {} },
+      }));
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'waiting');
+      observation.emit(runtimeEvent('approval.required', 3, {
+        approvalRequestId: 'approval_2',
+        payload: { category: 'network', riskLevel: 'low', title: 'conflict', description: 'conflict', requestSummary: {} },
+      }));
+      await flushObservationChain();
+      assert.equal(observation.unsubscribeCalls, 1);
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'waiting');
+
+      const cancel = fx.coordinator.cancelAttempt({
+        workspaceId: WS, runId: RUN, stageId: STAGE, stageAttempt: 1,
+        correlationId: 'approval-conflict-cancel', causationId: 'approval-conflict-cancel',
+      });
+      driver.handle.releaseExit();
+      assert.equal((await cancel).kind, 'stopped');
+      await execution;
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
+  });
+
+  it('P5C-16 explicit cancel wins before idle timeout without a second stop or finalize', async () => {
+    const clock = new FakeClock();
+    const driver = new ControlledExitDriver();
+    let processAdapter!: BlockingStoppingProcessAdapter;
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, {
+      clock,
+      adapter,
+      processAdapterFactory: repo => {
+        processAdapter = new BlockingStoppingProcessAdapter(repo);
+        return processAdapter;
+      },
+    });
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: { ...base, timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 100, totalTimeoutMs: 500 } },
+    }));
+    let cancel!: Promise<StageExecutionOutcome>;
+    try {
+      await driver.handle.waitExitEntered.promise;
+      cancel = fx.coordinator.cancelAttempt({
+        workspaceId: WS, runId: RUN, stageId: STAGE, stageAttempt: 1,
+        correlationId: 'explicit-first', causationId: 'explicit-first',
+      });
+      await processAdapter.stoppingEntered.promise;
+      clock.advance(1000);
+      processAdapter.releaseStopping();
+      driver.handle.releaseExit();
+      const [cancelled, executed] = await Promise.all([cancel, execution]);
+      assert.strictEqual(cancelled, executed);
+      assert.equal(cancelled.kind, 'stopped');
+      assert.equal(adapter.finalizedInputs.length, 1);
+      assert.equal(adapter.cancelInputs[0]?.reason, 'cancel');
+      assert.equal(adapter.finalizedInputs[0]?.cancelled, true);
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'cancel');
+    } finally {
+      processAdapter?.releaseStopping();
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution, ...(cancel === undefined ? [] : [cancel])]);
+      close(fx);
+    }
+  });
+
+  it('P5C-15/P5C-16 idle timeout wins before explicit cancel and finalizes once as provider failure', async () => {
+    const clock = new FakeClock();
+    const driver = new ControlledExitDriver();
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, { clock, adapter });
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: { ...base, timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 100, totalTimeoutMs: 500 } },
+    }));
+    let cancel!: Promise<StageExecutionOutcome>;
+    try {
+      await driver.handle.waitExitEntered.promise;
+      clock.advance(100);
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'stopping');
+      cancel = fx.coordinator.cancelAttempt({
+        workspaceId: WS, runId: RUN, stageId: STAGE, stageAttempt: 1,
+        correlationId: 'timeout-first', causationId: 'timeout-first',
+      });
+      driver.handle.releaseExit();
+      const [timedOut, joined] = await Promise.all([execution, cancel]);
+      assert.strictEqual(timedOut, joined);
+      assert.equal(timedOut.kind, 'failed');
+      if (timedOut.kind === 'failed') assert.equal(timedOut.problem.code, 'PROVIDER_SESSION_FAILED');
+      assert.equal(adapter.finalizedInputs.length, 1);
+      assert.equal(adapter.cancelInputs[0]?.reason, 'IDLE_TIMEOUT');
+      assert.equal(adapter.finalizedInputs[0]?.cancelled, false);
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'PROCESS_IDLE_TIMEOUT');
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution, ...(cancel === undefined ? [] : [cancel])]);
+      close(fx);
+    }
+  });
+
+  it('P5C-08/OBS-19 total timeout continues while approval waiting pauses only idle', async () => {
+    const clock = new FakeClock();
+    const observation = new FakeObservationPort();
+    const driver = new ControlledExitDriver();
+    const fx = fixture(driver, { clock, observation });
+    const base = providerSnapshot();
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: {
+        ...base,
+        timeoutPolicy: { ...base.timeoutPolicy, startupTimeoutMs: 1000, idleTimeoutMs: 100, totalTimeoutMs: 300 },
+      },
+    }));
+    try {
+      await driver.handle.waitExitEntered.promise;
+      observation.emit(runtimeEvent('stage.started', 1, { payload: { attempt: 1 } }));
+      observation.emit(runtimeEvent('approval.required', 2, {
+        approvalRequestId: 'approval_total',
+        payload: { category: 'network', riskLevel: 'low', title: 'request', description: 'request', requestSummary: {} },
+      }));
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'waiting');
+      clock.advance(299);
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'waiting');
+      clock.advance(1);
+      await flushObservationChain();
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.status, 'stopping');
+      driver.handle.releaseExit();
+      const outcome = await execution;
+      assert.equal(outcome.kind, 'failed');
+      if (outcome.kind === 'failed') assert.equal(outcome.problem.code, 'PROVIDER_SESSION_FAILED');
+      assert.equal(fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider')?.terminationReason, 'PROCESS_TOTAL_TIMEOUT');
+    } finally {
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution]);
+      close(fx);
+    }
   });
 
   it('MEDIUM-1B: concurrent identical execute coalesces validation to 1/1/1 and keeps exactly-one Session/Process/spawn', async () => {

@@ -20,7 +20,7 @@ import {
 } from '../../store/process-runtime-adapters.js';
 import { RunEngine } from './RunEngine.js';
 import { StageExecutor } from './StageExecutor.js';
-import { StageExecutionCoordinator } from './StageExecutionCoordinator.js';
+import { StageExecutionCoordinator, type CanonicalRunEventObservationPort } from './StageExecutionCoordinator.js';
 import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
 
 export interface ProviderExecutionChainOptions {
@@ -58,12 +58,23 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   });
   const adapter = new KimiCodeProviderAdapter({ probe });
   const registry = new ProviderRegistry([adapter]);
+  const runEventObservation: CanonicalRunEventObservationPort = {
+    subscribe: input => store.runStreamService().subscribe({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      afterSequence: input.afterSequence,
+      onEvent: input.onEvent,
+      onOverflow: () => undefined,
+      onFailure: input.onFailure,
+    }),
+  };
   const coordinator = new StageExecutionCoordinator({
     registry,
     durableCoordinator,
     sessionRepository: sessionAdapter,
     driver,
     probe,
+    runEventObservation,
     environment: options.environment ?? process.env,
     claimOwner: options.claimOwner,
     claimLeaseMs: options.claimLeaseMs,

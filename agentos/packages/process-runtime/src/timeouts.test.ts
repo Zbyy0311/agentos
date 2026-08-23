@@ -69,6 +69,17 @@ describe('ProcessTimers', () => {
     expect(fired).toEqual(['idle']);
   });
 
+  it('keeps total timeout running while idle is paused', () => {
+    const { clock, timers, fired } = makeTimers({ idleMs: 200, totalMs: 300 });
+    timers.armFromNativeStart();
+    clock.advance(50);
+    timers.pauseIdle();
+    clock.advance(249);
+    expect(fired).toEqual([]);
+    clock.advance(1);
+    expect(fired).toEqual(['total']);
+  });
+
   it('disarmAll silences every deadline', () => {
     const { clock, timers, fired } = makeTimers({ startupMs: 100, idleMs: 200, totalMs: 300 });
     timers.armFromNativeStart();

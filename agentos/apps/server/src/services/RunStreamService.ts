@@ -9,6 +9,12 @@ import type { RuntimeEventCommitHint, RuntimeEventNotifier } from './RuntimeEven
 const MAX_BUFFERED_HINTS = 256;
 const REPLAY_PAGE_SIZE = 200;
 
+export type RunStreamFailureReason =
+  | 'overflow'
+  | 'durable-event-mismatch'
+  | 'subscriber-callback-failure'
+  | 'observation-error';
+
 export interface RunStreamRepository {
   getRunHighWatermark(workspaceId: string, runId: string): number;
   queryByRun(input: RuntimeEventRunQuery): RuntimeEventRunQueryResult;
@@ -25,6 +31,7 @@ export interface RunStreamSubscriptionInput {
   readonly afterSequence: number;
   readonly onEvent: (event: RuntimeEventRecord) => void;
   readonly onOverflow: (lastSafeSequence: number) => void;
+  readonly onFailure?: (reason: RunStreamFailureReason, lastSafeSequence: number) => void;
 }
 
 type SubscriptionMode = 'BUFFERING' | 'LIVE' | 'OVERFLOW' | 'CLOSED';
@@ -35,6 +42,7 @@ interface SubscriptionState {
   processing: boolean;
   readonly queue: RuntimeEventCommitHint[];
   unsubscribeNotifier: () => void;
+  failureReported: boolean;
 }
 
 export class RunStreamService {
@@ -54,6 +62,7 @@ export class RunStreamService {
       processing: false,
       queue: [],
       unsubscribeNotifier: () => {},
+      failureReported: false,
     };
 
     const close = (mode: 'CLOSED' | 'OVERFLOW'): void => {
@@ -65,9 +74,21 @@ export class RunStreamService {
 
     const isStopped = (): boolean => state.mode === 'CLOSED' || state.mode === 'OVERFLOW';
 
+    const reportFailure = (reason: RunStreamFailureReason): void => {
+      if (state.failureReported) return;
+      state.failureReported = true;
+      try { input.onFailure?.(reason, state.cursor); } catch { /* isolate observer failure */ }
+    };
+
+    const fail = (reason: RunStreamFailureReason): void => {
+      close('CLOSED');
+      reportFailure(reason);
+    };
+
     const overflow = (): void => {
       const cursor = state.cursor;
       close('OVERFLOW');
+      reportFailure('overflow');
       try { input.onOverflow(cursor); } catch { /* isolate subscriber callback */ }
     };
 
@@ -76,7 +97,7 @@ export class RunStreamService {
         input.onEvent(event);
         return true;
       } catch {
-        close('CLOSED');
+        fail('subscriber-callback-failure');
         return false;
       }
     };
@@ -114,7 +135,7 @@ export class RunStreamService {
         hint.sequence,
       );
       if (!persisted || persisted.event.id !== hint.eventId || persisted.event.runId !== input.runId) {
-        close('CLOSED');
+        fail('durable-event-mismatch');
         return false;
       }
       return catchUp(hint.sequence);
@@ -151,7 +172,7 @@ export class RunStreamService {
         try {
           drain();
         } catch {
-          close('CLOSED');
+          fail('observation-error');
         }
       }
     };
@@ -172,7 +193,7 @@ export class RunStreamService {
         }
       }
     } catch (error) {
-      close('CLOSED');
+      fail('observation-error');
       throw error;
     }
 
