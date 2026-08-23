@@ -692,6 +692,21 @@ function close(fx: ReturnType<typeof fixture>): void {
   rmSync(fx.root, { recursive: true, force: true });
 }
 
+async function prepareSyntheticFinalizer() {
+  const driver = new ControlledExitDriver();
+  const fx = fixture(driver);
+  const execution = fx.coordinator.execute(stageInput());
+  await driver.handle.waitExitEntered.promise;
+  const entry = (fx.coordinator as unknown as { liveAttempts: Map<string, unknown> }).liveAttempts.get(`${WS}|${RUN}|${STAGE}|1`);
+  const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+  assert.ok(entry);
+  assert.ok(process);
+  const finalizeAttemptOnce = (fx.coordinator as unknown as {
+    finalizeAttemptOnce(entry: unknown, disposition: unknown): Promise<StageExecutionOutcome>;
+  }).finalizeAttemptOnce.bind(fx.coordinator);
+  return { driver, fx, execution, entry, process, finalizeAttemptOnce };
+}
+
 class SlowSessionAdapter extends DurableSessionRepositoryAdapter {
   async casSessionTransition(input: Parameters<DurableSessionRepositoryAdapter['casSessionTransition']>[0]) {
     if (input.to === 'active') await new Promise(resolve => setTimeout(resolve, 250));
@@ -770,6 +785,205 @@ function asyncIterableBytes(chunks: Uint8Array[]): AsyncIterable<Uint8Array> {
   return { counts, probe };
 }
 describe('StageExecutionCoordinator', () => {
+  it('EVID-ID-01 proven explicit active cancellation exposes the exact durable root Process identity', async () => {
+    const prepared = await prepareSyntheticFinalizer();
+    const exactProcessId = prepared.process.id;
+    try {
+      const stop = {
+        process: { ...prepared.process, processId: exactProcessId },
+        cleanup: { classification: 'complete', cleanupResult: 'TERMINATED', proven: true, knownPids: [] },
+        proven: true,
+        reason: 'cancel',
+        stopOrigin: 'EXPLICIT_CANCEL',
+        stopAccepted: true,
+      } as unknown as ProcessStopResult;
+      const outcome = await prepared.finalizeAttemptOnce(prepared.entry, {
+        kind: 'stop', stop, stopOrigin: 'EXPLICIT_CANCEL',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      if (outcome.kind !== 'stopped') return;
+      assert.equal(outcome.stopOrigin, 'EXPLICIT_CANCEL');
+      assert.equal(outcome.proven, true);
+      assert.equal((outcome as unknown as { processId: string }).processId, exactProcessId);
+    } finally {
+      prepared.driver.handle.releaseExit();
+      await Promise.allSettled([prepared.execution]);
+      close(prepared.fx);
+    }
+  });
+
+  it('EVID-ID-02 unproven explicit cancellation exposes identity without claiming terminatedProcessIds', async () => {
+    const prepared = await prepareSyntheticFinalizer();
+    const exactProcessId = prepared.process.id;
+    try {
+      const stop = {
+        process: { ...prepared.process, processId: exactProcessId },
+        cleanup: { classification: 'unknown', cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE', proven: false, knownPids: [] },
+        proven: false,
+        reason: 'cancel',
+        stopOrigin: 'EXPLICIT_CANCEL',
+        stopAccepted: true,
+      } as unknown as ProcessStopResult;
+      const outcome = await prepared.finalizeAttemptOnce(prepared.entry, {
+        kind: 'stop', stop, stopOrigin: 'EXPLICIT_CANCEL',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      if (outcome.kind !== 'stopped') return;
+      assert.equal(outcome.proven, false);
+      assert.equal((outcome as unknown as { processId: string }).processId, exactProcessId);
+      assert.equal('terminatedProcessIds' in outcome, false);
+    } finally {
+      prepared.driver.handle.releaseExit();
+      await Promise.allSettled([prepared.execution]);
+      close(prepared.fx);
+    }
+  });
+
+  it('EVID-ID-03 created-before-spawn cancellation exposes the durable reservation without requiring a native PID', async () => {
+    const prepared = await prepareSyntheticFinalizer();
+    const exactProcessId = prepared.process.id;
+    try {
+      const stop = {
+        process: { ...prepared.process, processId: exactProcessId, nativePid: null, nativeStartedAt: null, processGroupId: null, platformHandleId: null },
+        authority: 'created-before-spawn',
+        cleanup: null,
+        proven: true,
+        reason: 'cancel',
+        stopOrigin: 'EXPLICIT_CANCEL',
+        stopAccepted: true,
+      } as unknown as ProcessStopResult;
+      const outcome = await prepared.finalizeAttemptOnce(prepared.entry, {
+        kind: 'stop', stop, stopOrigin: 'EXPLICIT_CANCEL',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      if (outcome.kind !== 'stopped') return;
+      assert.equal((stop.process as unknown as { nativePid: number | null }).nativePid, null);
+      assert.equal((outcome as unknown as { processId: string }).processId, exactProcessId);
+    } finally {
+      prepared.driver.handle.releaseExit();
+      await Promise.allSettled([prepared.execution]);
+      close(prepared.fx);
+    }
+  });
+
+  it('EVID-ID-04 stopped timeout preserves identity and existing unproven timeout semantics', async () => {
+    const prepared = await prepareSyntheticFinalizer();
+    const exactProcessId = prepared.process.id;
+    try {
+      const stop = {
+        process: { ...prepared.process, processId: exactProcessId },
+        cleanup: { classification: 'unknown', cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE', proven: false, knownPids: [] },
+        proven: false,
+        reason: 'STARTUP_TIMEOUT',
+        stopOrigin: 'STARTUP_TIMEOUT',
+        stopAccepted: true,
+      } as unknown as ProcessStopResult;
+      const outcome = await prepared.finalizeAttemptOnce(prepared.entry, {
+        kind: 'stop', stop, stopOrigin: 'STARTUP_TIMEOUT',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      if (outcome.kind !== 'stopped') return;
+      assert.equal(outcome.stopOrigin, 'STARTUP_TIMEOUT');
+      assert.equal(outcome.proven, false);
+      assert.equal((outcome as unknown as { processId: string }).processId, exactProcessId);
+    } finally {
+      prepared.driver.handle.releaseExit();
+      await Promise.allSettled([prepared.execution]);
+      close(prepared.fx);
+    }
+  });
+
+  it('EVID-ID-05 duplicate explicit cancellation joins one stop ticket and returns one Process identity', async () => {
+    const clock = new FakeClock();
+    const driver = new ControlledExitDriver();
+    let processAdapter!: BlockingStoppingProcessAdapter;
+    const adapter = new RecordingKimiAdapter({
+      probe: probeFor(false),
+      discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }),
+    });
+    const fx = fixture(driver, {
+      clock,
+      adapter,
+      processAdapterFactory: repo => {
+        processAdapter = new BlockingStoppingProcessAdapter(repo);
+        return processAdapter;
+      },
+    });
+    const execution = fx.coordinator.execute(stageInput({
+      providerSnapshot: { ...providerSnapshot(), timeoutPolicy: { ...providerSnapshot().timeoutPolicy, cancelGracePeriodMs: 0 } },
+    }));
+    let firstCancel!: Promise<StageExecutionOutcome>;
+    let secondCancel!: Promise<StageExecutionOutcome>;
+    try {
+      await driver.handle.waitExitEntered.promise;
+      const process = fx.processRepo.findByRootClaim(WS, RUN, STAGE, 1, 'primary-provider');
+      assert.ok(process);
+      firstCancel = fx.coordinator.cancelAttempt({
+        workspaceId: WS, runId: RUN, stageId: STAGE, stageAttempt: 1,
+        correlationId: 'duplicate-cancel-1', causationId: 'duplicate-cancel-1',
+      });
+      await processAdapter.stoppingEntered.promise;
+      secondCancel = fx.coordinator.cancelAttempt({
+        workspaceId: WS, runId: RUN, stageId: STAGE, stageAttempt: 1,
+        correlationId: 'duplicate-cancel-2', causationId: 'duplicate-cancel-2',
+      });
+      processAdapter.releaseStopping();
+      for (let turn = 0; turn < 20 && driver.gracefulStopCalls === 0; turn += 1) await Promise.resolve();
+      clock.advance(5000);
+      for (let turn = 0; turn < 20 && driver.terminateTreeCalls === 0; turn += 1) await Promise.resolve();
+      driver.handle.releaseExit();
+
+      const [first, second, executed] = await Promise.all([firstCancel, secondCancel, execution]);
+      assert.strictEqual(first, second);
+      assert.strictEqual(first, executed);
+      assert.equal(first.kind, 'stopped');
+      if (first.kind !== 'stopped') return;
+      assert.equal((first as unknown as { processId: string }).processId, process.id);
+      assert.equal(driver.gracefulStopCalls, 1);
+      assert.ok(driver.terminateTreeCalls <= 1);
+      assert.ok(driver.verifySurvivorsCalls <= 1);
+      assert.equal(adapter.finalizedInputs.length, 1);
+      assert.equal(adapter.cancelInputs.length, 1);
+    } finally {
+      processAdapter?.releaseStopping();
+      driver.handle.releaseExit();
+      await Promise.allSettled([execution, firstCancel, secondCancel]);
+      close(fx);
+    }
+  });
+
+  it('EVID-ID-06 derives processId from ProcessStopResult.process.processId rather than another identity source', async () => {
+    const prepared = await prepareSyntheticFinalizer();
+    const stopResultProcessId = 'stop-result-process-identity';
+    try {
+      const stop = {
+        process: { ...prepared.process, processId: stopResultProcessId, nativePid: 999999 },
+        cleanup: { classification: 'complete', cleanupResult: 'TERMINATED', proven: true, knownPids: [999999] },
+        proven: true,
+        reason: 'cancel',
+        stopOrigin: 'EXPLICIT_CANCEL',
+        stopAccepted: true,
+      } as unknown as ProcessStopResult;
+      const outcome = await prepared.finalizeAttemptOnce(prepared.entry, {
+        kind: 'stop', stop, stopOrigin: 'EXPLICIT_CANCEL',
+      });
+
+      assert.equal(outcome.kind, 'stopped');
+      if (outcome.kind !== 'stopped') return;
+      assert.notEqual(stopResultProcessId, prepared.process.id);
+      assert.equal((outcome as unknown as { processId: string }).processId, stopResultProcessId);
+      assert.equal('terminatedProcessIds' in outcome, false);
+    } finally {
+      prepared.driver.handle.releaseExit();
+      await Promise.allSettled([prepared.execution]);
+      close(prepared.fx);
+    }
+  });
+
   it('aborts a partial stdout writer when stderr writer creation fails and never spawns', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle([])), { failStderrOutput: true });
     try {

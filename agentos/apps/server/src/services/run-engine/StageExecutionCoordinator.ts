@@ -95,6 +95,7 @@ export type StageExecutionOutcome =
       readonly cleanup: ProcessCleanupDisposition | null;
       readonly proven: boolean;
       readonly stopOrigin: ProcessStopOrigin;
+      readonly processId: string;
     }
   | { readonly kind: 'failed'; readonly problem: ApiProblem; readonly phase: string };
 
@@ -1402,6 +1403,7 @@ function stoppedOutcome(stop: ProcessStopResult, stopOrigin: ProcessStopOrigin):
     cleanup: stop.cleanup,
     proven: stop.proven,
     stopOrigin,
+    processId: stop.process.processId,
   };
 }
 
