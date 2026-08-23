@@ -28,7 +28,7 @@ import { LifecycleTransactionService } from '../LifecycleTransactionService.js';
 import { OperationService } from '../OperationService.js';
 import { RunEngine } from './RunEngine.js';
 import { StageExecutor } from './StageExecutor.js';
-import { StageExecutionCoordinator } from './StageExecutionCoordinator.js';
+import { StageExecutionCoordinator, type StageExecutionOutcome } from './StageExecutionCoordinator.js';
 import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
 import { NodeProcessDriver, NodeProcessProbePort } from '@agentos/process-runtime';
 
@@ -145,7 +145,11 @@ function probeFor(authFailure: boolean): ProcessProbePort {
   };
 }
 
-function fixture(driver: FakeDriver, authFailure = false, behavior: { readonly returnActive?: boolean; readonly returnStopped?: boolean } = {}) {
+function fixture(driver: FakeDriver, authFailure = false, behavior: {
+  readonly returnActive?: boolean;
+  readonly returnStopped?: boolean;
+  readonly cancelOutcome?: StageExecutionOutcome;
+} = {}) {
   const db = migratedDb();
   seedGraph(db);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-e2e-'));
@@ -176,6 +180,10 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: { readonly r
       if (behavior.returnActive === true) return { kind: 'active' as const };
       if (behavior.returnStopped === true) return { kind: 'stopped' as const, cleanup: null, proven: false, stopOrigin: 'EXPLICIT_CANCEL' as const };
       return realCoordinator.execute(input);
+    },
+    cancelAttempt: async () => {
+      if (behavior.cancelOutcome === undefined) throw new Error('cancel outcome not configured');
+      return behavior.cancelOutcome;
     },
   } as unknown as StageExecutionCoordinator;
   const runRepo = new RunRepository(db);
@@ -255,6 +263,56 @@ function realFixture() {
 }
 
 describe('RunEngineProviderDispatcher E2E', () => {
+  it('P5D maps only the exact proven stop identity into cancellation evidence', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, {
+      cancelOutcome: {
+        kind: 'stopped',
+        cleanup: { classification: 'complete', cleanupResult: 'TERMINATED', proven: true, knownPids: [] },
+        proven: true,
+        stopOrigin: 'EXPLICIT_CANCEL',
+        processId: 'process-exact',
+      },
+    });
+    try {
+      fx.db.prepare("UPDATE runs SET status = 'running', version = 1 WHERE id = ?").run(RUN);
+      fx.db.prepare("UPDATE run_stages SET status = 'running' WHERE run_id = ? AND sequence = 1").run(RUN);
+
+      const evidence = await fx.dispatcher.cancelRun({
+        workspaceId: WS,
+        runId: RUN,
+        correlationId: OP,
+      });
+
+      assert.deepEqual(evidence, {
+        expectedRunVersion: 1,
+        processId: 'process-exact',
+        terminatedProcessIds: ['process-exact'],
+        worktreePreserved: true,
+      });
+    } finally { close(fx); }
+  });
+
+  it('P5D rejects an unproven explicit stop before producing lifecycle evidence', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, {
+      cancelOutcome: {
+        kind: 'stopped',
+        cleanup: { classification: 'unknown', cleanupResult: 'UNKNOWN_PLATFORM_UNAVAILABLE', proven: false, knownPids: [] },
+        proven: false,
+        stopOrigin: 'EXPLICIT_CANCEL',
+        processId: 'process-unproven',
+      },
+    });
+    try {
+      fx.db.prepare("UPDATE runs SET status = 'running', version = 1 WHERE id = ?").run(RUN);
+      fx.db.prepare("UPDATE run_stages SET status = 'running' WHERE run_id = ? AND sequence = 1").run(RUN);
+
+      await assert.rejects(
+        fx.dispatcher.cancelRun({ workspaceId: WS, runId: RUN, correlationId: OP }),
+        /RUN_CANCELLATION_EVIDENCE_UNPROVEN/,
+      );
+    } finally { close(fx); }
+  });
+
   it('consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle([])), false, { returnStopped: true });
     try {

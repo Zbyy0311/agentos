@@ -2,11 +2,12 @@ import { json, Router, type NextFunction, type Request, type Response } from 'ex
 import { isClientBodyParseError, sendProblem } from '../problemDetails.js';
 import {
   OperationIntegrityError,
+  OperationCancellationEvidenceError,
   OperationLifecycleDependencyError,
   OperationNotCancellableError,
   OperationValidationError,
 } from '../services/OperationService.js';
-import type { OperationService } from '../services/OperationService.js';
+import type { OperationCancellationEvidence, OperationService } from '../services/OperationService.js';
 import { OperationNotFoundError } from '../store/OperationRepository.js';
 import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { VersionConflictError } from '../store/Version.js';
@@ -15,6 +16,17 @@ import { formatVersionETag } from './versionPrecondition.js';
 export interface OperationRouteStore {
   operationService(): OperationService;
   runtimeEventRepository(): RuntimeEventRepository;
+}
+
+export interface ActiveRunCancellationInput {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly correlationId: string;
+}
+
+export interface OperationRouteOptions {
+  readonly activeRunCancellation?:
+    (input: ActiveRunCancellationInput) => Promise<OperationCancellationEvidence>;
 }
 
 function isOperationNotFound(error: unknown): boolean {
@@ -37,9 +49,10 @@ function respondCancelError(req: Request, res: Response, error: unknown): void {
     return;
   }
   if (error instanceof VersionConflictError) {
-    if (error.entityType === 'operations') {
+    if (error.entityType === 'operations' || error.entityType === 'runs') {
       // Frozen P3D contract: the Operation Cancel version transport is the
-      // body expectedVersion only; its conflict mapping stays 409.
+      // body expectedVersion only; runtime Run version conflicts use the same
+      // deterministic public conflict mapping.
       sendProblem(req, res, { status: 409, code: 'VERSION_CONFLICT', detail: 'Version conflict' });
       return;
     }
@@ -76,10 +89,11 @@ const cancelBodyParser = json({
   },
 });
 
-export function createOperationRoutes(store: OperationRouteStore): Router {
+export function createOperationRoutes(store: OperationRouteStore, options: OperationRouteOptions = {}): Router {
   const router = Router();
   const operationService = store.operationService();
   const runtimeEventRepository = store.runtimeEventRepository();
+  const activeRunCancellation = options.activeRunCancellation;
 
   const resolveOperationWorkspace = (req: Request, res: Response, next: NextFunction): void => {
     const { operationId } = req.params as { operationId: string };
@@ -149,14 +163,34 @@ export function createOperationRoutes(store: OperationRouteStore): Router {
     next();
   };
 
-  const cancelOperation = (req: Request, res: Response): void => {
+  const cancelOperation = async (req: Request, res: Response): Promise<void> => {
     try {
       const workspaceId = cancelWorkspaceByRequest.get(req);
       if (workspaceId === undefined) throw new Error('OPERATION_CANCEL_WORKSPACE_CONTEXT_MISSING');
       const expectedVersion = cancelExpectedVersionByRequest.get(req);
       if (expectedVersion === undefined) throw new Error('OPERATION_CANCEL_EXPECTED_VERSION_MISSING');
       const { operationId } = req.params as { operationId: string };
-      const current = operationService.cancel({ workspaceId, operationId, expectedVersion });
+      const persisted = operationService.findById(workspaceId, operationId);
+      if (persisted.status !== 'cancelled' && persisted.version !== expectedVersion) {
+        throw new VersionConflictError('operations', operationId, expectedVersion);
+      }
+      const cancellable = ['queued', 'running', 'waiting_approval', 'paused'].includes(persisted.status);
+      const evidence = activeRunCancellation === undefined || !cancellable
+        ? undefined
+        : await activeRunCancellation({
+          workspaceId,
+          runId: persisted.runId,
+          correlationId: persisted.correlationId,
+        });
+      if (activeRunCancellation !== undefined && cancellable && evidence === undefined) {
+        throw new OperationCancellationEvidenceError('runtime cancellation evidence is missing');
+      }
+      const current = operationService.cancel({
+        workspaceId,
+        operationId,
+        expectedVersion,
+        ...(evidence === undefined ? {} : { evidence }),
+      });
       res.status(200).json({ data: current });
     } catch (error) {
       respondCancelError(req, res, error);

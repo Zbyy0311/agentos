@@ -11,6 +11,7 @@ import type { ApiOperation, ApiProblem, RuntimeEventEnvelope } from '@agentos/sh
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SnapshotService, type ResolvedRunConfiguration } from '../services/SnapshotService.js';
 import { TaskRunService } from '../services/TaskRunService.js';
+import type { OperationCancellationEvidence } from '../services/OperationService.js';
 import { WorkflowDefinitionResolver } from '../services/WorkflowDefinitionResolver.js';
 import { createEntityId } from '../store/Identity.js';
 import type { OperationType } from '../store/OperationRepository.js';
@@ -58,7 +59,10 @@ async function listen(app: express.Express): Promise<{ server: RouteFixture['ser
   return { server, port: address.port };
 }
 
-async function createRouteFixture(mountStore?: OperationRouteStore): Promise<RouteFixture> {
+async function createRouteFixture(
+  mountStore?: OperationRouteStore,
+  activeRunCancellation?: (input: { workspaceId: string; runId: string; correlationId: string }) => Promise<OperationCancellationEvidence>,
+): Promise<RouteFixture> {
   const root = createProjectRoot();
   const store = new SqliteStore(root);
   const manager = new WorkspaceManager(store);
@@ -73,7 +77,7 @@ async function createRouteFixture(mountStore?: OperationRouteStore): Promise<Rou
   const run = service.createRun(workspace.id, { taskId: task.id, createdBy: 'test' });
 
   const app = express();
-  app.use('/api', createOperationRoutes(mountStore ?? store));
+  app.use('/api', createOperationRoutes(mountStore ?? store, { activeRunCancellation }));
   app.use(express.json());
   const { server, port } = await listen(app);
   return {
@@ -861,6 +865,203 @@ test('C12 valid body expectedVersion governs a conflicting If-Match header', asy
   });
 });
 
+test('P5D active Operation cancel uses runtime proof while preserving the frozen HTTP body', async () => {
+  let cancelCalls = 0;
+  const fx = await createRouteFixture(undefined, async input => {
+    cancelCalls += 1;
+    assert.deepEqual(input, { workspaceId: fx.workspaceId, runId: fx.runId, correlationId: operation.correlationId });
+    return {
+      expectedRunVersion: 1,
+      processId: 'process-route-exact',
+      terminatedProcessIds: ['process-route-exact'],
+      worktreePreserved: true,
+    };
+  });
+  const operation = createOperation(fx);
+  try {
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running');
+
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+
+    assert.equal(response.status, 200);
+    assert.equal(cancelCalls, 1);
+    assert.equal((response.json as { data: ApiOperation }).data.status, 'cancelled');
+    const event = fx.store.runtimeEventRepository().listByRunAfterSequence(fx.runId, 0).at(-1)?.event;
+    assert.deepEqual(event?.payload, {
+      requestedBy: 'operation_api',
+      terminatedProcessIds: ['process-route-exact'],
+      worktreePreserved: true,
+    });
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P5D stale Run version rejects after cleanup evidence and leaves the aggregate unchanged', async () => {
+  const fx = await createRouteFixture(undefined, async () => ({
+      expectedRunVersion: 1,
+      processId: 'process-stale',
+      terminatedProcessIds: ['process-stale'],
+      worktreePreserved: true,
+    }));
+  const operation = createOperation(fx);
+  try {
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running');
+    fx.store.getDatabase().prepare('UPDATE runs SET version = 2 WHERE id = ?').run(fx.runId);
+    const before = cancelSnapshot(fx, operation.id);
+
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+
+    assertError(response, 409, 'VERSION_CONFLICT');
+    assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P5D missing runtime evidence fails closed without changing the aggregate', async () => {
+  const fx = await createRouteFixture(undefined, async () => undefined as unknown as OperationCancellationEvidence);
+  const operation = createOperation(fx);
+  try {
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running');
+    const before = cancelSnapshot(fx, operation.id);
+
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+
+    assertError(response, 500, 'INTERNAL_ERROR');
+    assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P5D mismatched runtime Process evidence fails closed without changing the aggregate', async () => {
+  const fx = await createRouteFixture(undefined, async () => ({
+    expectedRunVersion: 1,
+    processId: 'process-actual',
+    terminatedProcessIds: ['process-other'],
+    worktreePreserved: true,
+  }));
+  const operation = createOperation(fx);
+  try {
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running');
+    const before = cancelSnapshot(fx, operation.id);
+
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+
+    assertError(response, 500, 'INTERNAL_ERROR');
+    assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P5D waiting approval uses the evidence seam and preserves approval-before-run event ordering', async () => {
+  const fx = await createRouteFixture(undefined, async () => ({
+    expectedRunVersion: 1,
+    terminatedProcessIds: [],
+    worktreePreserved: true,
+  }));
+  const operation = createOperation(fx);
+  try {
+    setRunStatusForCancel(fx, 'waiting_approval');
+    setOperationStatusForCancel(fx, operation.id, 'waiting_approval');
+    appendApprovalRequiredForCancel(fx, operation);
+
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+
+    assert.equal(response.status, 200);
+    const types = fx.store.runtimeEventRepository().listByRunAfterSequence(fx.runId, 0).map(record => record.event.type);
+    assert.deepEqual(types.slice(-3), ['approval.required', 'approval.resolved', 'run.cancelled']);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P5D already-terminal Run cannot regress through public active cancellation', async () => {
+  const fx = await createRouteFixture(undefined, async () => ({
+    expectedRunVersion: 1,
+    processId: 'process-terminal',
+    terminatedProcessIds: ['process-terminal'],
+    worktreePreserved: true,
+  }));
+  const operation = createOperation(fx);
+  try {
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running');
+    fx.store.getDatabase().prepare("UPDATE runs SET status = 'completed', version = 2, completed_at = ? WHERE id = ?").run(NOW, fx.runId);
+    const before = cancelSnapshot(fx, operation.id);
+
+    const response = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+
+    assertError(response, 409, 'VERSION_CONFLICT');
+    assert.deepEqual(cancelSnapshot(fx, operation.id), before);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P5D repeated cancellation is idempotent and does not repeat lifecycle events', async () => {
+  let cancelCalls = 0;
+  const fx = await createRouteFixture(undefined, async () => {
+    cancelCalls += 1;
+    return {
+      expectedRunVersion: 1,
+      processId: 'process-duplicate',
+      terminatedProcessIds: ['process-duplicate'],
+      worktreePreserved: true,
+    };
+  });
+  const operation = createOperation(fx);
+  try {
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running');
+
+    const first = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+    const second = await cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 }));
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal(cancelCalls, 1);
+    assert.equal(fx.store.runtimeEventRepository().listByRunAfterSequence(fx.runId, 0).filter(record => record.event.type === 'run.cancelled').length, 1);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
+test('P5D concurrent cancellation converges on one lifecycle winner and one idempotent loser', async () => {
+  const fx = await createRouteFixture(undefined, async () => {
+    await new Promise(resolve => setTimeout(resolve, 5));
+    return {
+      expectedRunVersion: 1,
+      processId: 'process-concurrent',
+      terminatedProcessIds: ['process-concurrent'],
+      worktreePreserved: true,
+    };
+  });
+  const operation = createOperation(fx);
+  try {
+    setRunStatusForCancel(fx, 'running');
+    setOperationStatusForCancel(fx, operation.id, 'running');
+
+    const [first, second] = await Promise.all([
+      cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 })),
+      cancelOperation(fx, operation.id, JSON.stringify({ expectedVersion: 1 })),
+    ]);
+
+    assert.equal(first.status, 200);
+    assert.equal(second.status, 200);
+    assert.equal(fx.store.operationService().findById(fx.workspaceId, operation.id).status, 'cancelled');
+    assert.equal(fx.store.runtimeEventRepository().listByRunAfterSequence(fx.runId, 0).filter(record => record.event.type === 'run.cancelled').length, 1);
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
 test('C13 queued Operation cancels atomically', async () => {
   await withFixture(async fx => {
     const operation = createOperation(fx);
@@ -1066,10 +1267,15 @@ test('R19 index mounts the Operation router once before the global JSON parser',
   const source = readFileSync(new URL('../index.ts', import.meta.url), 'utf8');
   const lifecycleMount = "app.use('/api', createRunLifecycleRoutes(store));";
   const operationImport = "import { createOperationRoutes } from './routes/operations.js';";
-  const operationMount = "app.use('/api', createOperationRoutes(store));";
+  const providerImport = "import { createProviderExecutionChain } from './services/run-engine/providerExecutionChain.js';";
+  const operationMount = "app.use('/api', createOperationRoutes(store, {";
+  const activeCancelWire = 'activeRunCancellation: input => providerExecutionChain.dispatcher.cancelRun(input),';
   const globalJson = 'app.use(express.json({ limit: \'50mb\' }));';
 
   assert.equal(source.includes(operationImport), true);
+  assert.equal(source.includes(providerImport), true);
+  assert.equal(source.includes('const providerExecutionChain = createProviderExecutionChain({'), true);
+  assert.equal(source.includes(activeCancelWire), true);
   assert.equal((source.match(new RegExp(operationMount.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) ?? []).length, 1);
   assert.ok(source.indexOf(lifecycleMount) >= 0);
   assert.ok(source.indexOf(operationMount) > source.indexOf(lifecycleMount));

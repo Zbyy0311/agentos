@@ -31,6 +31,7 @@ import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
 import { TaskRunService } from './services/TaskRunService.js';
 import { LegacyCanonicalExecutionService } from './services/LegacyCanonicalExecutionService.js';
+import { createProviderExecutionChain } from './services/run-engine/providerExecutionChain.js';
 import { RuntimeArtifactService } from './services/RuntimeArtifactService.js';
 import { PreferenceService } from './services/PreferenceService.js';
 import { RetentionService } from './services/RetentionService.js';
@@ -136,6 +137,15 @@ async function bootstrap(): Promise<void> {
     const worktreeManager = new WorktreeManager(process.env.AGENTOS_WORKTREE_ROOT ?? join(PROJECT_ROOT, '.agentos', 'worktrees'));
     const workspaceManager = new WorkspaceManager(store);
     const taskRunService = new TaskRunService(store);
+    const providerExecutionChain = createProviderExecutionChain({
+      store,
+      artifactRoot: join(PROJECT_ROOT, '.agentos', 'artifacts'),
+      workspaceRootFor: workspaceId => {
+        const workspace = workspaceManager.get(workspaceId);
+        if (workspace === undefined) throw new Error('WORKSPACE_NOT_FOUND: ' + workspaceId);
+        return workspace.rootPath;
+      },
+    });
 
     phase = 'recovery';
     let recoveredTaskRuntime: RecoveredTaskRuntime;
@@ -191,7 +201,9 @@ async function bootstrap(): Promise<void> {
     // JSON parser because the route owns a scoped non-strict parser so that
     // non-object JSON bodies reach its frozen VALIDATION_FAILED contract.
     app.use('/api', createRunLifecycleRoutes(store));
-    app.use('/api', createOperationRoutes(store));
+    app.use('/api', createOperationRoutes(store, {
+      activeRunCancellation: input => providerExecutionChain.dispatcher.cancelRun(input),
+    }));
     // M3 P5A read-only Event/Replay routes resolve the opaque Run locator
     // before query validation and do not consume request bodies.
     app.use('/api', createCanonicalRunEventRoutes(store));

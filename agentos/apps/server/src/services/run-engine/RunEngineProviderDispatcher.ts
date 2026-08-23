@@ -15,7 +15,7 @@ import type {
 import type { RunRepository } from '../../store/RunRepository.js';
 import type { RunSnapshotRepository } from '../../store/RunSnapshotRepository.js';
 import type { RunStageRepository } from '../../store/RunStageRepository.js';
-import type { OperationService } from '../OperationService.js';
+import type { OperationCancellationEvidence, OperationService } from '../OperationService.js';
 import type { LifecycleTransactionService } from '../LifecycleTransactionService.js';
 import { RunEngine } from './RunEngine.js';
 import { StageExecutionCoordinator, type StageExecutionInput } from './StageExecutionCoordinator.js';
@@ -39,6 +39,22 @@ export interface RunEngineProviderDispatcherOptions {
 export type RunEngineProviderDriveResult =
   | { readonly outcome: 'claimed-and-progressed' }
   | { readonly outcome: 'noop'; readonly reason: string };
+
+export interface RunEngineProviderCancelInput {
+  readonly workspaceId: string;
+  readonly runId: string;
+  readonly correlationId: string;
+  readonly causationId?: string;
+}
+
+export class PublicCancellationEvidenceError extends Error {
+  readonly code = 'RUN_CANCELLATION_EVIDENCE_UNPROVEN' as const;
+
+  constructor(message: string) {
+    super(`RUN_CANCELLATION_EVIDENCE_UNPROVEN: ${message}`);
+    this.name = 'PublicCancellationEvidenceError';
+  }
+}
 
 function isTerminalRun(status: Run['status']): boolean {
   return status === 'completed' || status === 'failed' || status === 'cancelled';
@@ -93,6 +109,61 @@ export class RunEngineProviderDispatcher {
       if (result.outcome === 'noop') break;
     }
     return { outcome: 'claimed-and-progressed' };
+  }
+
+  async cancelRun(input: RunEngineProviderCancelInput): Promise<OperationCancellationEvidence> {
+    const run = this.requireRun(input.workspaceId, input.runId);
+    if (isTerminalRun(run.status)) {
+      throw new PublicCancellationEvidenceError(`Run ${run.id} is already terminal`);
+    }
+
+    const stages = this.runStageRepository.listByRun(input.workspaceId, input.runId);
+    const liveStages = stages.filter(stage =>
+      stage.status === 'starting'
+      || stage.status === 'running'
+      || stage.status === 'waiting_approval'
+      || stage.status === 'paused',
+    );
+    if (liveStages.length > 1) {
+      throw new PublicCancellationEvidenceError('multiple live Stage attempts are present');
+    }
+
+    const stage = liveStages[0];
+    if (stage === undefined) {
+      if (run.status === 'queued' || run.status === 'waiting_approval') {
+        return {
+          expectedRunVersion: run.version,
+          terminatedProcessIds: [],
+          worktreePreserved: true,
+        };
+      }
+      throw new PublicCancellationEvidenceError(`Run ${run.id} has no cancellable Stage attempt`);
+    }
+
+    const outcome = await this.coordinator.cancelAttempt({
+      workspaceId: input.workspaceId,
+      runId: input.runId,
+      stageId: stage.id,
+      stageAttempt: stage.attempt,
+      correlationId: input.correlationId,
+      causationId: input.causationId ?? input.correlationId,
+    });
+    if (
+      outcome.kind !== 'stopped'
+      || outcome.stopOrigin !== 'EXPLICIT_CANCEL'
+      || outcome.proven !== true
+      || typeof outcome.processId !== 'string'
+      || outcome.processId.trim().length === 0
+    ) {
+      throw new PublicCancellationEvidenceError('explicit Process cleanup was not proven');
+    }
+
+    return {
+      expectedRunVersion: run.version,
+      processId: outcome.processId,
+      terminatedProcessIds: [outcome.processId],
+      worktreePreserved: true,
+    };
   }
 
   private async executeProviderStage(
