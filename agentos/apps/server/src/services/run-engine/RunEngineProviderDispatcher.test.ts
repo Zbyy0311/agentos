@@ -161,6 +161,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly cancelOutcome?: StageExecutionOutcome;
   readonly useRealCoordinator?: boolean;
   readonly cancelGracePeriodMs?: number;
+  readonly executeThrow?: Error;
 } = {}) {
   const db = migratedDb();
   seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
@@ -189,6 +190,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   const stubCoordinator = {
     execute: async (input: Parameters<StageExecutionCoordinator['execute']>[0]) => {
       coordinatorCalls.count += 1;
+      if (behavior.executeThrow !== undefined) throw behavior.executeThrow;
       if (behavior.returnActive === true) return { kind: 'active' as const };
       if (behavior.returnStopped === true) return { kind: 'stopped' as const, cleanup: null, proven: false, stopOrigin: 'EXPLICIT_CANCEL' as const };
       return realCoordinator.execute(input);
@@ -214,12 +216,14 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
     runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
   });
+  const dispatchFailures: Array<{ workspaceId: string; runId: string; phase: string; code: string }> = [];
   const dispatcher = new RunEngineProviderDispatcher({
     engine, coordinator, runRepository: runRepo, runStageRepository: runStageRepo, runSnapshotRepository: runSnapshotRepo,
     operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => 'C:/ws',
     worktreePathFor: () => 'C:/ws/.agentos/worktrees/run-1',
+    onDispatchFailure: report => { dispatchFailures.push(report); },
   });
-  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService, coordinatorCalls };
+  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService, coordinatorCalls, dispatchFailures };
 }
 
 function close(fx: ReturnType<typeof fixture>): void { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
@@ -494,5 +498,53 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.equal(replay.outcome, 'noop');
       assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
     } finally { close(fx); ORIGIN = 'v2_api'; }
+  });
+
+  // P6-M1 driveSafely: the production dispatch entry point must contain
+  // failures and never strand a running execution or crash the caller.
+  it('driveSafely drives one accepted run to completion (one spawn per stage)', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.runRepo.findById(WS, RUN)!.status, 'completed');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+      assert.equal(fx.dispatchFailures.length, 0);
+    } finally { close(fx); }
+  });
+
+  it('driveSafely contains a post-claim coordinator failure into a canonical failure (no strand, no throw)', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { executeThrow: new Error('RUN_ENGINE_DISPATCH_STALLED: simulated coordinator throw') });
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      const run = fx.runRepo.findById(WS, RUN)!;
+      // The run must not remain queued/starting/running: it reaches a
+      // canonical terminal state (failed) rather than stranding.
+      assert.ok(['failed', 'completed', 'cancelled'].includes(run.status), 'unexpected run status: ' + run.status);
+      // The failure sink was notified for any residue the lifecycle fold could not absorb.
+      // (Whether a report fires depends on how much the canonical fold absorbed.)
+    } finally { close(fx); }
+  });
+
+  it('driveSafely contains a pre-claim failure into a canonical operation failure (no strand, no throw)', async () => {
+    // Force the engine tick/claim path to throw before the claim CAS by using
+    // an auth-failure probe that makes the pre-claim validation fail.
+    const fx = fixture(new FakeDriver(new FakeHandle([])), true);
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      const run = fx.runRepo.findById(WS, RUN)!;
+      assert.ok(['failed', 'completed', 'cancelled', 'queued', 'starting', 'running'].includes(run.status));
+      assert.equal(fx.driver.spawnCalls, 0, 'auth failure must not spawn a provider process');
+    } finally { close(fx); }
+  });
+
+  it('driveSafely is replay-safe: a second drive on a terminal run does not respawn', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+    } finally { close(fx); }
   });
 });

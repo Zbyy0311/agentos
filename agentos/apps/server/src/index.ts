@@ -200,7 +200,22 @@ async function bootstrap(): Promise<void> {
     // for POST /api/runs/:runId/start. Mounted ahead of the global strict
     // JSON parser because the route owns a scoped non-strict parser so that
     // non-object JSON bodies reach its frozen VALIDATION_FAILED contract.
-    app.use('/api', createRunLifecycleRoutes(store));
+    // P6-M1 Production Runtime Dispatch Activation. Feature-gated and default
+    // OFF: only when AGENTOS_RUNTIME_DISPATCH_ENABLED=true does an accepted
+    // (non-replayed) canonical start trigger the background
+    // RunEngineProviderDispatcher drive. driveSafely contains failures so the
+    // route never crashes and no run strands silently. Legacy execution,
+    // Process ownership, spawning authority, StageExecutor, and the
+    // Conversation model are unchanged.
+    const runtimeDispatchEnabled = process.env.AGENTOS_RUNTIME_DISPATCH_ENABLED === 'true';
+    app.use('/api', createRunLifecycleRoutes(store, {
+      runtimeDispatch: {
+        enabled: runtimeDispatchEnabled,
+        drive: async (workspaceId, runId) => {
+          await providerExecutionChain.dispatcher.driveSafely(workspaceId, runId);
+        },
+      },
+    }));
     app.use('/api', createOperationRoutes(store, {
       activeRunCancellation: input => providerExecutionChain.dispatcher.cancelRun(input),
     }));
