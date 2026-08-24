@@ -643,6 +643,7 @@ test('R25 startup composition preserves Legacy recovery and then restores canoni
       approvalRestored: [],
       uncertaintyMarked: [],
       startupFailed: [],
+      processMissingFailed: [],
       alreadyRecoveryRequired: [],
     });
     assert.equal(recoveredCanonical.status, 'queued');

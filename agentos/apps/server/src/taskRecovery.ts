@@ -107,6 +107,7 @@ export function recoverInterruptedTaskRuntime(
     approvalRestored: [],
     uncertaintyMarked: [],
     startupFailed: [],
+    processMissingFailed: [],
     alreadyRecoveryRequired: [],
   };
   for (const workspace of workspaces) {
@@ -115,6 +116,7 @@ export function recoverInterruptedTaskRuntime(
     taskDomainRecovery.approvalRestored.push(...workspaceRecovery.approvalRestored);
     taskDomainRecovery.uncertaintyMarked.push(...workspaceRecovery.uncertaintyMarked);
     taskDomainRecovery.startupFailed.push(...workspaceRecovery.startupFailed);
+    taskDomainRecovery.processMissingFailed.push(...workspaceRecovery.processMissingFailed);
     taskDomainRecovery.alreadyRecoveryRequired.push(...workspaceRecovery.alreadyRecoveryRequired);
   }
   return {

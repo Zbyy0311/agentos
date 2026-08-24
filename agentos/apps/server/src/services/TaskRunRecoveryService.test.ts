@@ -263,6 +263,7 @@ function buildRecovery(
   fixture: Fixture,
   operationService: TaskRunRecoveryDependencies['operationService'] = fixture.operationService,
   runRepository: TaskRunRecoveryDependencies['runRepository'] = fixture.runRepository,
+  processRecovery?: TaskRunRecoveryDependencies['processRecovery'],
 ): TaskRunRecoveryService {
   return new TaskRunRecoveryService({
     runRepository,
@@ -271,6 +272,7 @@ function buildRecovery(
     lifecycleTransactionService: fixture.lifecycleTransactionService,
     runtimeEventRepository: fixture.runtimeEventRepository,
     runInTransaction: fn => inTransaction(fixture.db, fn),
+    ...(processRecovery === undefined ? {} : { processRecovery }),
   });
 }
 
@@ -1147,6 +1149,90 @@ test('B14 already flagged running zero mutation/no duplicate', () => withFixture
   assert.equal(outboxRows(fixture).length, 0);
 }));
 
+// --- P6-M2b process-aware running uncertainty resolution ---
+
+function stubProcessRecovery(
+  classification: 'same' | 'missing' | 'mismatch' | 'unknown',
+): TaskRunRecoveryDependencies['processRecovery'] {
+  return {
+    classifyRunningProcess() {
+      return classification;
+    },
+  };
+}
+
+test('P6M2b running + missing process -> canonical terminal failure', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, stubProcessRecovery('missing'));
+  const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
+  assert.equal(disposition, 'process-missing-failed');
+  const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
+  assert.equal(run.status, 'failed', 'Run must not remain running');
+  const stage = fixture.runStageRepository.listByRun(WORKSPACE_ID, fixture.runId)
+    .find(candidate => candidate.status === 'failed');
+  assert.ok(stage, 'active Stage must reach canonical failed');
+}));
+
+test('P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, stubProcessRecovery('mismatch'));
+  const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
+  assert.equal(disposition, 'uncertainty-marked');
+  const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
+  assert.equal(run.status, 'running', 'mismatch must not resume or terminal-fail');
+  assert.equal(run.recoveryRequired, true);
+}));
+
+test('P6M2b running + same process -> no resume, no ownership takeover, stays uncertain', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, stubProcessRecovery('same'));
+  const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
+  assert.equal(disposition, 'uncertainty-marked');
+  const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
+  assert.equal(run.status, 'running', 'same must not resume execution');
+  assert.equal(run.recoveryRequired, true, 'same stays uncertain pending M2c cleanup');
+}));
+
+test('P6M2b running + unknown -> fail-safe, no resume', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, stubProcessRecovery('unknown'));
+  const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
+  assert.equal(disposition, 'uncertainty-marked');
+  const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
+  assert.equal(run.status, 'running', 'unknown must never resume');
+  assert.equal(run.recoveryRequired, true);
+}));
+
+test('P6M2b classifier error -> treated as unknown, no erroneous recovery', () => withFixture({
+  runStatus: 'running',
+  stageStatus: 'running',
+  startStatuses: ['completed'],
+}, fixture => {
+  const throwing: TaskRunRecoveryDependencies['processRecovery'] = {
+    classifyRunningProcess() {
+      throw new Error('classifier blew up');
+    },
+  };
+  fixture.recovery = buildRecovery(fixture, undefined, undefined, throwing);
+  const disposition = fixture.recovery.recoverRun(WORKSPACE_ID, fixture.runId);
+  assert.equal(disposition, 'uncertainty-marked');
+  const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
+  assert.equal(run.status, 'running', 'classifier error must not cause recovery');
+  assert.equal(run.recoveryRequired, true);
+}));
+
 test('B15 coherent waiting approval -> approval-restore; B16 does not resolve Approval', () => withFixture({
   runStatus: 'waiting_approval',
   stageStatus: 'waiting_approval',
@@ -1571,6 +1657,7 @@ test('workspace scan deterministic/active only', () => withFixture({
     approvalRestored: ['run-scan-approval'],
     uncertaintyMarked: ['run-scan-uncertain'],
     startupFailed: [],
+    processMissingFailed: [],
     alreadyRecoveryRequired: [],
   });
   assert.deepEqual(
