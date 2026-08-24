@@ -421,7 +421,9 @@ export function createConversationRoutes(
     res.on('close', () => {
       unsubscribe();
       stopHeartbeat();
-      if (activeRunId && !runStreams.isFinished(activeRunId)) abortController.abort();
+      // The initial stream is a transport subscription; disconnecting it must
+      // not cancel the owned execution. Explicit cancellation uses the public
+      // operation path and its proof-backed Process stop authority.
     });
 
     try {
