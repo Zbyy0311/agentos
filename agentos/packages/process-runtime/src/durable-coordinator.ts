@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import type { ArtifactWriteSession, RestrictedArtifactSink } from './artifact-sink.js';
 import type { Clock } from './clock.js';
 import type {
@@ -685,6 +686,10 @@ function identityFromHandle(handle: NativeProcessHandle): NativeSpawnIdentity {
     nativeParentPid: handle.identity.parentPid ?? null,
     nativeStartedAt: isoFromEpochMs(handle.identity.startedAtMs),
     processGroupId: handle.identity.groupId ?? null,
+    // P6-M2a: one-time random recovery token. The plaintext is never
+    // persisted; the repository stores only its SHA-256 hash so a restart
+    // classifier can prove native-process identity (PID-reuse safe).
+    recoveryToken: randomBytes(32).toString('hex'),
   };
 }
 

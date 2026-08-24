@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -345,6 +346,100 @@ describe('ProcessRepository', () => {
       assert.equal(bound.process.startedAt, LATER);
       assert.equal(bound.process.version, 3);
       assert.equal(repository.findById(WS, process.id)!.nativePid, 4242);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('P6-M2a spawn persists recovery metadata (hash only, never plaintext token)', () => {
+    const db = migratedDb();
+    try {
+      const repository = new ProcessRepository(db);
+      const process = repository.createProcess(rootInput()).process;
+      repository.casStartProcess({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 1,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      const rawToken = 'p6m2a-one-time-recovery-token-0123456789abcdef';
+      const bound = repository.casBindNativeIdentity({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 2,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+        nativePid: 4242,
+        nativeStartedAt: LATER,
+        recoveryToken: rawToken,
+      });
+      assert.equal(bound.kind, 'applied');
+
+      const persisted = repository.findById(WS, process.id)!;
+      // Recovery fields are now written by production code.
+      assert.equal(typeof persisted.recoveryTokenHash, 'string');
+      assert.match(persisted.recoveryTokenHash!, /^[0-9a-f]{64}$/);
+      assert.equal(persisted.recoveryCheckedAt, LATER);
+      assert.equal(typeof persisted.recoveryEvidenceJson, 'string');
+
+      // The hash verifies the token (matches SHA-256 of the raw token).
+      const expectedHash = createHash('sha256').update(rawToken, 'utf8').digest('hex');
+      assert.equal(persisted.recoveryTokenHash, expectedHash);
+
+      // The plaintext token never reaches the database.
+      assert.notEqual(persisted.recoveryTokenHash, rawToken);
+      const evidence = JSON.parse(persisted.recoveryEvidenceJson!) as Record<string, unknown>;
+      assert.equal(evidence.schemaVersion, 1);
+      assert.equal(evidence.nativePid, 4242);
+      assert.equal(evidence.nativeStartedAt, LATER);
+      assert.equal(evidence.recoveryTokenHash, expectedHash);
+      assert.equal(evidence.platform, 'win32');
+      const serializedEvidence = persisted.recoveryEvidenceJson!;
+      assert.ok(!serializedEvidence.includes(rawToken), 'evidence must not embed the raw token');
+
+      // Raw SQL read-back: no column may contain the plaintext token.
+      const row = db.prepare('SELECT * FROM runtime_processes WHERE id = ?').get(process.id) as Record<string, unknown>;
+      for (const [key, value] of Object.entries(row)) {
+        if (typeof value === 'string') {
+          assert.ok(!value.includes(rawToken), `column ${key} must not contain the raw token`);
+        }
+      }
+    } finally {
+      db.close();
+    }
+  });
+
+  it('P6-M2a bind without a recovery token leaves recovery columns null', () => {
+    const db = migratedDb();
+    try {
+      const repository = new ProcessRepository(db);
+      const process = repository.createProcess(rootInput()).process;
+      repository.casStartProcess({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 1,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      const bound = repository.casBindNativeIdentity({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 2,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+        nativePid: 4242,
+        nativeStartedAt: LATER,
+      });
+      assert.equal(bound.kind, 'applied');
+      const persisted = repository.findById(WS, process.id)!;
+      assert.equal(persisted.recoveryTokenHash, null);
+      assert.equal(persisted.recoveryEvidenceJson, null);
+      assert.equal(persisted.recoveryCheckedAt, null);
     } finally {
       db.close();
     }

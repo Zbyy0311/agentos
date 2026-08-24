@@ -27,4 +27,5 @@ export * from './durable-coordinator.js';
 export * from './process-cancel-coordinator.js';
 export * from './node-driver.js';
 export * from './probe.js';
+export * from './recovery-classifier.js';
 export * from './testing/mock-driver.js';

@@ -276,6 +276,12 @@ export interface BindNativeIdentityInput extends ProcessClaimFence {
   readonly nativeStartedAt: string;
   readonly processGroupId?: string | null;
   readonly platformHandleId?: string | null;
+  /**
+   * P6-M2a: one-time random recovery token captured at spawn. Plaintext is
+   * accepted in-transit only; this method stores ONLY its SHA-256 hash and a
+   * classifier-ready recovery_evidence_json. The raw token is never persisted.
+   */
+  readonly recoveryToken?: string;
   readonly eventContext?: RuntimeEventContext;
 }
 
@@ -772,6 +778,28 @@ export class ProcessRepository {
     const processGroupId = input.processGroupId === undefined ? null : input.processGroupId;
     const platformHandleId = input.platformHandleId === undefined ? null : input.platformHandleId;
 
+    // P6-M2a: derive recovery metadata. Only the token HASH is persisted; the
+    // raw one-time token never reaches the database. recovery_evidence_json
+    // carries the classifier inputs (pid, native start time, token hash,
+    // platform); recovery_checked_at marks when this evidence was bound.
+    const recoveryTokenHash = input.recoveryToken === undefined
+      ? null
+      : this.#sha256(input.recoveryToken);
+    // Platform recorded in the process row at reservation time comes from the
+    // host runtime platform; capture it explicitly to avoid ambiguity with the
+    // persisted row read below.
+    const recoveryPlatform = process.platform;
+    const recoveryEvidenceJson = input.recoveryToken === undefined
+      ? null
+      : canonicalizeJson({
+          schemaVersion: 1,
+          nativePid: input.nativePid,
+          nativeStartedAt: input.nativeStartedAt,
+          recoveryTokenHash,
+          platform: recoveryPlatform,
+        });
+    const recoveryCheckedAt = input.recoveryToken === undefined ? null : input.timestamp;
+
     const result = this.db.prepare(`
       UPDATE runtime_processes
       SET status = CASE WHEN status = 'starting' THEN 'running' ELSE status END,
@@ -780,6 +808,9 @@ export class ProcessRepository {
         native_started_at = ?,
         process_group_id = ?,
         platform_handle_id = ?,
+        recovery_token_hash = COALESCE(?, recovery_token_hash),
+        recovery_evidence_json = COALESCE(?, recovery_evidence_json),
+        recovery_checked_at = COALESCE(?, recovery_checked_at),
         started_at = CASE WHEN status = 'starting' AND started_at IS NULL THEN ? ELSE started_at END,
         last_activity_at = ?,
         updated_at = ?,
@@ -795,6 +826,9 @@ export class ProcessRepository {
       input.nativeStartedAt,
       processGroupId,
       platformHandleId,
+      recoveryTokenHash,
+      recoveryEvidenceJson,
+      recoveryCheckedAt,
       input.timestamp,
       input.timestamp,
       input.timestamp,
