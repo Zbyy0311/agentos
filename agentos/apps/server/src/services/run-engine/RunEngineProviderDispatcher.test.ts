@@ -53,13 +53,13 @@ function migratedDb(): Db {
   return db;
 }
 
-function providerSnapshot(): ProviderConfigurationSnapshotV1 {
+function providerSnapshot(cancelGracePeriodMs = 5000): ProviderConfigurationSnapshotV1 {
   return {
     providerConfigId: 'pcfg_m4', name: 'Kimi Gate', providerType: 'kimicode', adapterId: 'builtin.kimicode',
     runtimeMode: 'cli', executable: REAL_EXECUTABLE, argsTemplate: [], model: null, environmentProfileId: null, secretProfileId: null,
     workingDirectoryMode: 'workspace', workspaceRelativeWorkingDirectory: null,
     capabilities: { sessionResume:false, structuredEvents:true, nativeApprovals:false, subagents:false, toolEvents:true, fileEvents:false, usageEvents:true, reasoningStream:false, interactiveInput:false, pause:false, cancellation:true, modelSelection:true, workspaceAwareness:true, nativeSandbox:false, outputContracts:false },
-    timeoutPolicy: { discoveryTimeoutMs:10000, validationTimeoutMs:30000, startupTimeoutMs:60000, idleTimeoutMs:null, totalTimeoutMs:null, cancelGracePeriodMs:5000, approvalTimeoutMs:null },
+    timeoutPolicy: { discoveryTimeoutMs:10000, validationTimeoutMs:30000, startupTimeoutMs:60000, idleTimeoutMs:null, totalTimeoutMs:null, cancelGracePeriodMs, approvalTimeoutMs:null },
     approvalMode: 'disabled', outputMode: 'structured', enabled: true, version: 1,
   };
 }
@@ -68,10 +68,10 @@ function agentSnapshot(): AgentSnapshotV1 {
   return { agentId: 'agent_m4', name: 'Agent', role: 'codex', roleTitle: 'Executor', systemPrompt: 'Execute the requested task.', permissions: ['read','write'], providerConfigId: 'pcfg_m4', enabled: true, version: 1 };
 }
 
-function snapshotPayload(): RunSnapshotPayloadV2 {
+function snapshotPayload(cancelGracePeriodMs = 5000): RunSnapshotPayloadV2 {
   const stages = STAGE_KEYS.map((key, index) => ({
     workflowStageKey: key, name: key, sequence: index + 1,
-    agent: agentSnapshot(), provider: providerSnapshot(),
+    agent: agentSnapshot(), provider: providerSnapshot(cancelGracePeriodMs),
     dependsOn: index === 0 ? [] : [STAGE_KEYS[index - 1]],
   }));
   return {
@@ -95,8 +95,8 @@ function seed(db: Db): void {
   db.prepare(`INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, created_at, updated_at, version) VALUES (?, 'run.start', 'queued', ?, 'run', ?, ?, ?, ?, ?, 1)`).run(OP, WS, RUN, RUN, OP, NOW, NOW);
 }
 
-function seedGraph(db: Db): void {
-  const payload = snapshotPayload();
+function seedGraph(db: Db, cancelGracePeriodMs = 5000): void {
+  const payload = snapshotPayload(cancelGracePeriodMs);
   const snapshot = new RunSnapshotRepository(db).insert({
     workspaceId: WS,
     runId: RUN,
@@ -113,9 +113,9 @@ class FakeHandle implements NativeProcessHandle {
   readonly identity: NativeIdentity = { pid: 4242, startedAtMs: Date.parse(NOW), executablePath: KIMI_EXE };
   readonly streams: NativeProcessStreams;
   private readonly exit: Promise<ExitEvidence>;
-  constructor(stdoutLines: string[], exitCode = 0) {
+  constructor(stdoutLines: string[], exitCode = 0, exit: Promise<ExitEvidence> = Promise.resolve({ exitCode, signal: null, exitedAt: Date.now() })) {
     this.streams = { stdout: asyncIterable(stdoutLines), stderr: asyncIterable([]) };
-    this.exit = Promise.resolve({ exitCode, signal: null, exitedAt: Date.now() });
+    this.exit = exit;
   }
   waitExit(): Promise<ExitEvidence> { return this.exit; }
 }
@@ -126,12 +126,22 @@ function asyncIterable(lines: string[]): AsyncIterable<Uint8Array> {
 
 class FakeDriver implements PlatformProcessDriver {
   spawnCalls = 0;
-  constructor(private readonly handle: FakeHandle | null, private readonly spawnError?: Error) {}
+  gracefulStopCalls = 0;
+  terminateTreeCalls = 0;
+  constructor(private readonly handle: FakeHandle | null, private readonly spawnError?: Error, private readonly onTerminate?: () => void) {}
   async spawn() { this.spawnCalls += 1; if (this.spawnError !== undefined) throw this.spawnError; return this.handle!; }
-  gracefulStop = async () => ({ delivered: true, detail: 'ok' });
-  terminateTree = async (): Promise<TreeTerminationResult> => ({ classification: 'complete', attemptedMembers: [], errors: [] });
-  verifySurvivors = async (): Promise<SurvivorVerification> => ({ classification: 'complete', knownPids: [] });
+  gracefulStop = async () => { this.gracefulStopCalls += 1; return { delivered: true, detail: 'ok' }; };
+  terminateTree = async (): Promise<TreeTerminationResult> => { this.terminateTreeCalls += 1; this.onTerminate?.(); return { classification: 'complete', attemptedMembers: [], errors: [] }; };
+  verifySurvivors = async (): Promise<SurvivorVerification> => ({ classification: 'complete', knownPids: [], proof: { kind: 'owned-tree-enumeration' } });
   inspectIdentity = async (identity: NativeIdentity) => ({ kind: 'match' as const, identity });
+}
+
+async function waitForCondition(predicate: () => boolean, attempts = 500): Promise<void> {
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    if (predicate()) return;
+    await new Promise<void>(resolve => setTimeout(resolve, 5));
+  }
+  throw new Error('Timed out waiting for condition');
 }
 
 function probeFor(authFailure: boolean): ProcessProbePort {
@@ -149,9 +159,11 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly returnActive?: boolean;
   readonly returnStopped?: boolean;
   readonly cancelOutcome?: StageExecutionOutcome;
+  readonly useRealCoordinator?: boolean;
+  readonly cancelGracePeriodMs?: number;
 } = {}) {
   const db = migratedDb();
-  seedGraph(db);
+  seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-e2e-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
   const outbox = new OutboxRepository(db, events);
@@ -174,7 +186,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     registry, durableCoordinator, sessionRepository: sessionAdapter, driver, probe: probeFor(authFailure),
     claimOwner: 'run-engine', claimLeaseMs: 60000, now: () => NOW,
   });
-  const coordinator = {
+  const stubCoordinator = {
     execute: async (input: Parameters<StageExecutionCoordinator['execute']>[0]) => {
       coordinatorCalls.count += 1;
       if (behavior.returnActive === true) return { kind: 'active' as const };
@@ -186,6 +198,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
       return behavior.cancelOutcome;
     },
   } as unknown as StageExecutionCoordinator;
+  const coordinator = behavior.useRealCoordinator === true ? realCoordinator : stubCoordinator;
   const runRepo = new RunRepository(db);
   const runStageRepo = new RunStageRepository(db);
   const runSnapshotRepo = new RunSnapshotRepository(db);
@@ -194,7 +207,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     runSequenceAllocator: new RunSequenceAllocator(db), outboxRepository: outbox,
     runInTransaction: <T>(fn: () => T): T => inTransaction(db, fn),
   }, { now: () => NOW });
-  const operationService = new OperationService(db, { now: () => NOW });
+  const operationService = new OperationService(db, { now: () => NOW, lifecycleTransactionService: lifecycle });
   const engine = new RunEngine({
     runRepository: runRepo, operationService, lifecycleTransactionService: lifecycle,
     snapshotRepository: runSnapshotRepo, runStageRepository: runStageRepo,
@@ -206,7 +219,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => 'C:/ws',
     worktreePathFor: () => 'C:/ws/.agentos/worktrees/run-1',
   });
-  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, coordinatorCalls };
+  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService, coordinatorCalls };
 }
 
 function close(fx: ReturnType<typeof fixture>): void { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
@@ -367,6 +380,76 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.equal(replay.outcome, 'noop');
       assert.equal(fx.driver.spawnCalls, spawns);
     } finally { close(fx); }
+  });
+
+  it('P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once', async () => {
+    let resolveExit!: (evidence: ExitEvidence) => void;
+    const pendingExit = new Promise<ExitEvidence>(resolve => { resolveExit = resolve; });
+    const fx = fixture(
+      new FakeDriver(
+        new FakeHandle([], 0, pendingExit),
+        undefined,
+        () => resolveExit({ exitCode: 0, signal: null, exitedAt: Date.now() }),
+      ),
+      false,
+      { useRealCoordinator: true, cancelGracePeriodMs: 0 },
+    );
+    try {
+      const drivePromise = fx.dispatcher.drive(WS, RUN);
+      await waitForCondition(() => {
+        const process = fx.db.prepare('SELECT status FROM runtime_processes WHERE run_id = ?').get(RUN) as { status?: string } | undefined;
+        return process?.status === 'running';
+      });
+      const beforeCancel = fx.runRepo.findById(WS, RUN)!;
+      const cancellationOperation = fx.operationService.create({ workspaceId: WS, runId: RUN, type: 'run.cancel' });
+      const evidence = await fx.dispatcher.cancelRun({ workspaceId: WS, runId: RUN, correlationId: cancellationOperation.correlationId });
+
+      assert.ok(evidence.processId);
+      assert.deepEqual(evidence.terminatedProcessIds, [evidence.processId]);
+      assert.equal(fx.driver.gracefulStopCalls, 1);
+      assert.equal(fx.driver.terminateTreeCalls, 1);
+
+      const operationBeforeCancel = fx.operationService.findById(WS, cancellationOperation.id);
+      const operation = fx.operationService.cancel({
+        workspaceId: WS,
+        operationId: cancellationOperation.id,
+        expectedVersion: operationBeforeCancel.version,
+        evidence,
+      });
+      const driveResult = await drivePromise;
+      assert.equal(driveResult.outcome, 'claimed-and-progressed');
+      assert.equal(operation.status, 'cancelled');
+
+      const run = fx.runRepo.findById(WS, RUN)!;
+      const stages = fx.runStageRepo.listByRun(WS, RUN);
+      const process = fx.db.prepare('SELECT status, cleanup_result FROM runtime_processes WHERE run_id = ?').get(RUN) as { status: string; cleanup_result: string | null };
+      const session = fx.db.prepare('SELECT status FROM provider_sessions WHERE run_id = ?').get(RUN) as { status: string };
+      assert.equal(run.status, 'cancelled');
+      assert.equal(run.version, beforeCancel.version + 1);
+      assert.ok(stages.every(stage => stage.status === 'cancelled'));
+      assert.equal(process.status, 'exited');
+      assert.equal(process.cleanup_result, 'TERMINATED');
+      assert.equal(session.status, 'cancelled');
+      assert.equal(fx.operationService.findById(WS, cancellationOperation.id).version, operationBeforeCancel.version + 1);
+
+      const cancellationEvents = fx.db.prepare(`
+        SELECT type FROM runtime_events
+        WHERE run_id = ? AND type IN ('stage.cancelled', 'run.cancelled')
+        ORDER BY sequence
+      `).all(RUN) as Array<{ type: string }>;
+      assert.equal(cancellationEvents.filter(event => event.type === 'stage.cancelled').length, STAGE_KEYS.length);
+      assert.equal(cancellationEvents.filter(event => event.type === 'run.cancelled').length, 1);
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.equal(outboxCount, eventCount);
+      await assert.rejects(
+        fx.dispatcher.cancelRun({ workspaceId: WS, runId: RUN, correlationId: OP }),
+        /already terminal/,
+      );
+    } finally {
+      resolveExit({ exitCode: 0, signal: null, exitedAt: Date.now() });
+      close(fx);
+    }
   });
 
   it('auth failure fails the Run canonically with zero spawns', async () => {
