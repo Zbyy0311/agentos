@@ -1265,7 +1265,7 @@ test('C27 GET Events remains available with the cancel event stream', async () =
 
 test('R19 index mounts the Operation router once before the global JSON parser', () => {
   const source = readFileSync(new URL('../index.ts', import.meta.url), 'utf8');
-  const lifecycleMount = "app.use('/api', createRunLifecycleRoutes(store));";
+  const lifecycleMount = "app.use('/api', createRunLifecycleRoutes(store, {";
   const operationImport = "import { createOperationRoutes } from './routes/operations.js';";
   const providerImport = "import { createProviderExecutionChain } from './services/run-engine/providerExecutionChain.js';";
   const operationMount = "app.use('/api', createOperationRoutes(store, {";

@@ -5,6 +5,29 @@ import { createOptionalIdempotencyService, parseIdempotencyKey } from './v2Idemp
 import { V2ValidationError } from './v2Tasks.js';
 
 /**
+ * P6-M1 Production Runtime Dispatch Activation seam. The start route is
+ * accept-only by design; when the AGENTOS_RUNTIME_DISPATCH_ENABLED gate is on,
+ * an accepted (non-replayed) start triggers exactly one background dispatch.
+ * The callback is injected so the route owns no process/spawn authority
+ * (Process Runtime owns native processes), and the dispatcher's CAS claim +
+ * replay-no-respawn guarantees are preserved.
+ */
+export interface RunLifecycleDispatchOptions {
+  /** Gate: when false (default OFF) no dispatch occurs and the 202 contract is unchanged. */
+  readonly enabled: boolean;
+  /**
+   * Fire-and-forget dispatch. Implementations must contain their own failures
+   * (route pre/post-claim failures to a canonical failure sink) so a rejection
+   * never crashes the route or strands a running execution.
+   */
+  readonly drive: (workspaceId: string, runId: string) => Promise<unknown>;
+}
+
+export interface RunLifecycleRouteOptions {
+  readonly runtimeDispatch?: RunLifecycleDispatchOptions;
+}
+
+/**
  * M3 P3C-1 narrow, sanitized error mapping for the canonical Start
  * acceptance route. This module owns its mapping and never widens respondV2.
  */
@@ -213,12 +236,13 @@ const retryBodyParser = json({
  *   resolveRunWorkspace → rejectStartQuery → startBodyParser →
  *   startBodyParserErrorHandler → startHandler.
  */
-export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
+export function createRunLifecycleRoutes(store: TaskRunServiceDeps, options: RunLifecycleRouteOptions = {}): Router {
   const router = Router();
   const idempotencyService = createOptionalIdempotencyService(store);
   const service = new TaskRunService(store, {
     ...(idempotencyService ? { idempotencyService } : {}),
   });
+  const runtimeDispatch = options.runtimeDispatch;
 
   /**
    * Middleware 1 — opaque path runId → single locator call. A miss responds
@@ -314,6 +338,15 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps): Router {
     const normalizedKey = parseIdempotencyKey(req);
     const result = service.startRunOperationForV2(workspaceId, runId, normalizedKey, expectedVersion);
     if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
+    // P6-M1: only a freshly accepted (non-replayed) start may dispatch. The
+    // replay path converges on durable evidence and must never re-spawn.
+    if (runtimeDispatch?.enabled === true && !result.replayed) {
+      void runtimeDispatch.drive(workspaceId, runId).catch(() => {
+        // Containment backstop: drive implementations route failures to a
+        // canonical failure sink; this catch only guarantees no unhandled
+        // rejection escapes into the route/process.
+      });
+    }
     return { status: result.httpStatus, body: result.body };
   });
 

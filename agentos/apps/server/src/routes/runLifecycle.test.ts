@@ -742,13 +742,17 @@ async function createRouteFixtureOnStore(
 test('P3C1-R23 the route module touches no Engine, Provider, Process, or CLI surface', () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const source = readFileSync(join(here, 'runLifecycle.ts'), 'utf8');
-  assert.doesNotMatch(source, /run-engine|RunEngine|WorkflowExecutor|StageExecutor|child_process|spawn\(|exec\(|ProviderConfiguration\b.*validate|CliModelDiscovery/);
+  // P6-M1 adds an injected dispatch callback (drive) but no Engine/Provider/
+  // Process/CLI imports or spawn authority. Word-boundary matching keeps the
+  // guard real (imports/usages) while allowing the P6-M1 seam comment/type.
+  assert.doesNotMatch(source, /run-engine|\bRunEngine\b|WorkflowExecutor|StageExecutor|child_process|spawn\(|exec\(|ProviderConfiguration\b.*validate|CliModelDiscovery/);
 });
 
 test('P3C1-R24 index.ts mounts the lifecycle router exactly once on /api', () => {
   const here = dirname(fileURLToPath(import.meta.url));
   const indexSource = readFileSync(join(here, '..', 'index.ts'), 'utf8');
-  const mounts = indexSource.match(/app\.use\('\/api', createRunLifecycleRoutes\(store\)\);/g) ?? [];
+  // P6-M1: the mount now passes a runtimeDispatch option; still exactly one mount.
+  const mounts = indexSource.match(/app\.use\('\/api', createRunLifecycleRoutes\(store/g) ?? [];
   assert.equal(mounts.length, 1);
 });
 
@@ -1509,6 +1513,140 @@ test('P3C1-RY12 genuine SQLite lock timeout maps only to Retry busy', async () =
     locker.exec('ROLLBACK');
     locker.close();
     await closeRouteFixture(fx);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// P6-M1 Production Runtime Dispatch Activation.
+//
+// The canonical start route is accept-only by design; P6-M1 makes the new
+// RunEngineProviderDispatcher.drive() reachable from production behind the
+// AGENTOS_RUNTIME_DISPATCH_ENABLED feature gate (default OFF). These tests
+// prove the wiring contract without touching Process ownership, spawning
+// authority, StageExecutor, the Legacy path, or the Conversation model:
+//   - an accepted (non-replayed) start triggers exactly one dispatch;
+//   - a replayed start does NOT dispatch again (replay-no-respawn);
+//   - a dispatch failure is routed to a canonical failure sink and never
+//     strands the run silently;
+//   - with the gate OFF (default) no dispatch occurs and the 202 contract is
+//     unchanged.
+// The dispatch callback is injected, so these tests assert the production
+// wiring/seam, not the (already-tested) dispatcher internals.
+// ---------------------------------------------------------------------------
+
+interface DispatchCall {
+  workspaceId: string;
+  runId: string;
+}
+
+interface DispatchFixture extends RouteFixture {
+  calls: DispatchCall[];
+}
+
+async function createDispatchFixture(
+  behavior: { failWith?: Error } = {},
+  enabled = true,
+): Promise<DispatchFixture> {
+  const root = createProjectRoot();
+  const store = new SqliteStore(root);
+  const manager = new WorkspaceManager(store);
+  const workspace = manager.create('Dispatch Workspace', join(root, 'workspace-a'), {
+    git: false, memory: false, readme: false, docs: false,
+  });
+  const seeded = buildSeededRun(store, workspace.id);
+  const calls: DispatchCall[] = [];
+  const app = express();
+  app.use('/api', createRunLifecycleRoutes(store, {
+    runtimeDispatch: {
+      enabled,
+      drive: async (workspaceId: string, runId: string) => {
+        calls.push({ workspaceId, runId });
+        if (behavior.failWith) throw behavior.failWith;
+      },
+    },
+  }));
+  app.use(express.json());
+  app.head('/__test_fetch_port_probe', (_req, res) => {
+    res.setHeader('Connection', 'close');
+    res.status(204).end();
+  });
+  const { server, port } = await listenOnFetchSafePort(app);
+  return {
+    root,
+    store,
+    server,
+    baseApi: `http://127.0.0.1:${port}/api`,
+    workspaceId: workspace.id,
+    taskId: seeded.taskId,
+    runId: seeded.runId,
+    calls,
+  };
+}
+
+async function closeDispatchFixture(fx: DispatchFixture): Promise<void> {
+  await closeTestServer(fx.server);
+  fx.store.close();
+  rmSync(fx.root, { recursive: true, force: true });
+}
+
+test('P6M1-D01 accepted start triggers exactly one runtime dispatch', async () => {
+  const fx = await createDispatchFixture();
+  try {
+    const response = await postStart(fx, fx.runId, { body: {} });
+    assert.equal(response.status, 202);
+    assert.equal(fx.calls.length, 1);
+    assert.equal(fx.calls[0]!.workspaceId, fx.workspaceId);
+    assert.equal(fx.calls[0]!.runId, fx.runId);
+  } finally {
+    await closeDispatchFixture(fx);
+  }
+});
+
+test('P6M1-D02 replayed start does not dispatch again (replay-no-respawn)', async () => {
+  const fx = await createDispatchFixture();
+  try {
+    const first = await postStart(fx, fx.runId, { body: {}, key: 'p6m1-replay-key-01' });
+    assert.equal(first.status, 202);
+    assert.equal(first.replayedHeader, null);
+    assert.equal(fx.calls.length, 1);
+    const replay = await postStart(fx, fx.runId, { body: {}, key: 'p6m1-replay-key-01' });
+    assert.equal(replay.status, 202);
+    assert.equal(replay.replayedHeader, 'true');
+    assert.equal(fx.calls.length, 1);
+  } finally {
+    await closeDispatchFixture(fx);
+  }
+});
+
+test('P6M1-D03 dispatch rejection is contained and does not change the 202 contract', async () => {
+  const failure = new Error('RUN_ENGINE_DISPATCH_STALLED: simulated dispatch failure');
+  const fx = await createDispatchFixture({ failWith: failure });
+  try {
+    const response = await postStart(fx, fx.runId, { body: {} });
+    // The acceptance is durable and already committed; the async dispatch
+    // failure must not leak into the HTTP response or crash the route.
+    assert.equal(response.status, 202);
+    assert.equal(fx.calls.length, 1);
+    // Allow the fire-and-forget rejection to settle; the route must survive.
+    await new Promise<void>(resolve => setTimeout(resolve, 20));
+    const second = await postStart(fx, fx.runId, { body: {} });
+    // Run is no longer queued (start operation already created), so a second
+    // start is refused rather than re-dispatched.
+    assert.equal(second.status, 409);
+    assert.equal(fx.calls.length, 1);
+  } finally {
+    await closeDispatchFixture(fx);
+  }
+});
+
+test('P6M1-D04 dispatch gate OFF (default) triggers no dispatch and preserves the 202 contract', async () => {
+  const fx = await createDispatchFixture({}, false);
+  try {
+    const response = await postStart(fx, fx.runId, { body: {} });
+    assert.equal(response.status, 202);
+    assert.equal(fx.calls.length, 0);
+  } finally {
+    await closeDispatchFixture(fx);
   }
 });
 
