@@ -14,7 +14,8 @@ import {
   preflightProcessRecoveryClassifications,
   createPreflightProcessRecoveryPort,
 } from './processRecoveryPreflight.js';
-import type { RecoveredProcessVerifier } from '@agentos/process-runtime';
+import { spawn } from 'node:child_process';
+import { createPlatformRecoveredProcessVerifier, type RecoveredProcessVerifier } from '@agentos/process-runtime';
 
 class MemoryStore implements Store {
   constructor(
@@ -739,6 +740,51 @@ test('P6M2b-composition E: no classifier/verifier call occurs inside the recover
     // Phase 2 (sync, transactional): the port does NO async/verifier work.
     recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
     assert.equal(verifyCalls, callsAfterPreflight, 'no verifier call may occur inside the recovery transaction');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+/**
+ * P6-M2 real production composition gate (Windows-only). This drives the REAL
+ * production verifier through the full restart recovery composition — no stub
+ * verifier. A test-owned child process is spawned, confirmed live, then exited;
+ * the seeded Run binds that now-absent PID. The real
+ * createPlatformRecoveredProcessVerifier() must prove it absent (not-found),
+ * so classification is missing and recovery reconciles Stage/Run to canonical
+ * failure. The verifier never manages the child; the test owns its fixture.
+ */
+test('P6M2-composition real-platform: proven-absent provider PID drives missing -> Stage failed + Run failed', { skip: process.platform !== 'win32' }, async () => {
+  const child = spawn('cmd.exe', ['/c', 'exit 0'], { windowsHide: true, stdio: 'ignore' });
+  const childPid = child.pid;
+  assert.ok(typeof childPid === 'number', 'child must have a pid');
+  await new Promise(resolve => child.once('exit', resolve));
+  const verifier = createPlatformRecoveredProcessVerifier();
+  // The real verifier must now prove the exited child PID absent (locale-
+  // independent absence proof). Poll briefly to let the OS release the PID.
+  let probe = await verifier.verify(childPid);
+  for (let attempt = 0; attempt < 20 && probe.kind !== 'not-found'; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    probe = await verifier.verify(childPid);
+  }
+  assert.equal(probe.kind, 'not-found', 'real verifier must prove the exited PID absent');
+
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', childPid);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    // Real composition: production verifier -> preflight -> sync port -> recovery.
+    const classifications = await preflightProcessRecoveryClassifications(store2, verifier);
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
+    assert.ok(result.taskDomainRecovery.processMissingFailed.includes(runId), 'processMissingFailed must include the run');
+    const run = store2.runRepository().findById('ws-a', runId)!;
+    assert.equal(run.status, 'failed', 'Run must reach canonical terminal failure');
+    const stage = store2.runStageRepository().listByRun('ws-a', runId).find(candidate => candidate.status === 'failed');
+    assert.ok(stage, 'active Stage must reach canonical failed');
   } finally {
     store2?.close();
     await rmRootWithRetry(env.root);
