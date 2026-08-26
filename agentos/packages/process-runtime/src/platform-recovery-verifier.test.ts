@@ -2,55 +2,97 @@ import { spawn } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
   createPlatformRecoveredProcessVerifier,
-  parseWindowsTasklistAbsence,
+  verifyWindowsProcessAbsence,
+  type WindowsProcessExistenceProbe,
 } from './platform-recovery-verifier.js';
 
 /**
- * P6-M2 remediation regression tests for the production Windows absence proof.
+ * P6-M2 remediation #2 regression tests for the fail-closed Windows absence
+ * proof.
  *
- * The M2b defect: tasklist emits "INFO: No tasks are running which match the
- * specified criteria." for an absent PID, which is NON-empty, so the old
- * trim().length === 0 check never returned 'not-found' on Windows. These tests
- * pin the real parser and the real production verifier against that fix.
+ * Remediation #1 parsed localized tasklist human text and accepted any
+ * multi-word, non-CSV line (no quote, no comma, contains a space) as a
+ * "no-match" informational line -> 'not-found'. That let arbitrary ambiguous
+ * output such as "WARNING access was denied" be misclassified as proven
+ * process absence, violating the frozen fail-safe contract:
+ *
+ *   AMBIGUOUS / UNKNOWN / PROBE FAILURE  ->  unavailable  ->  classifier unknown
+ *
+ * never  ->  not-found  ->  missing  ->  canonical Run failure.
+ *
+ * The production fix replaces localized text parsing with Node's native
+ * existence probe process.kill(pid, 0): it returns normally when the PID
+ * exists and throws code ESRCH only when the PID is provably absent. These
+ * tests pin the decision logic against an injectable probe seam and the real
+ * production verifier.
  */
 
-const ABSENT_STDOUT =
-  'INFO: No tasks are running which match the specified criteria.\r\n';
-
-describe('parseWindowsTasklistAbsence (deterministic)', () => {
-  // W1 — proven absent: no data-bearing CSV row -> not-found.
-  it('W1 returns not-found when tasklist reports no matching tasks', () => {
-    expect(parseWindowsTasklistAbsence(ABSENT_STDOUT)).toEqual({ kind: 'not-found' });
+describe('verifyWindowsProcessAbsence (deterministic seam)', () => {
+  // W1 — proven absent: the OS reports ESRCH (no such process) -> not-found.
+  it('W1 returns not-found only when the probe reports ESRCH', () => {
+    const esrch: WindowsProcessExistenceProbe = () => {
+      const err = new Error('kill ESRCH') as NodeJS.ErrnoException;
+      err.code = 'ESRCH';
+      throw err;
+    };
+    expect(verifyWindowsProcessAbsence(1234, esrch)).toEqual({ kind: 'not-found' });
   });
 
-  it('W1 returns not-found for empty stdout', () => {
-    expect(parseWindowsTasklistAbsence('')).toEqual({ kind: 'not-found' });
-    expect(parseWindowsTasklistAbsence('   \r\n  ')).toEqual({ kind: 'not-found' });
-  });
-
-  // W2 — existing PID: a real CSV data row -> unavailable, never alive.
-  it('W2 returns unavailable when a CSV process row is present', () => {
-    const live = '"pwsh.exe","25752","Console","1","77,260 K"\r\n';
-    const result = parseWindowsTasklistAbsence(live);
-    expect(result.kind).toBe('unavailable');
+  // W2 — process exists: probe returns normally -> unavailable, never alive.
+  it('W2 returns unavailable (identity-unprovable) when the PID exists', () => {
+    const exists: WindowsProcessExistenceProbe = () => true;
+    const result = verifyWindowsProcessAbsence(1234, exists);
+    expect(result).toEqual({ kind: 'unavailable', reason: 'pid-alive-identity-unprovable' });
     expect(result).not.toEqual(expect.objectContaining({ kind: 'alive' }));
-    if (result.kind === 'unavailable') {
-      expect(result.reason).toContain('identity-unprovable');
-    }
   });
 
-  // W4 — ambiguous/unexpected output: not safe absence proof -> unavailable.
-  it('W4 returns unavailable for malformed / unexpected output', () => {
-    // An unquoted partial row carries CSV-looking fields without the quoted
-    // data-row structure: not a trustworthy absence signal.
-    expect(parseWindowsTasklistAbsence('pwsh.exe,25752,Console').kind).toBe('unavailable');
-    // A quoted fragment with too few fields is not a real data row.
-    expect(parseWindowsTasklistAbsence('"onlyonefield"').kind).toBe('unavailable');
-    // An informational line mixed with an unexpected extra line is ambiguous.
-    const mixed = ['INFO: no match here', 'weird,trailing', ''].join('\r\n');
-    expect(parseWindowsTasklistAbsence(mixed).kind).toBe('unavailable');
+  // W3 — probe failure: the tool throws a non-ESRCH error -> unavailable.
+  // Remediation #1 shipped no deterministic W3; this pins it directly.
+  it('W3 returns unavailable when the probe itself fails (non-ESRCH)', () => {
+    const generic: WindowsProcessExistenceProbe = () => {
+      throw new Error('spawn tasklist ENOENT');
+    };
+    expect(verifyWindowsProcessAbsence(1234, generic).kind).toBe('unavailable');
+    expect(verifyWindowsProcessAbsence(1234, generic)).not.toEqual({ kind: 'not-found' });
   });
 
+  it('W3 returns unavailable on access denied (EPERM) — existence not disproven', () => {
+    const eperm: WindowsProcessExistenceProbe = () => {
+      const err = new Error('kill EPERM') as NodeJS.ErrnoException;
+      err.code = 'EPERM';
+      throw err;
+    };
+    const result = verifyWindowsProcessAbsence(1234, eperm);
+    expect(result.kind).toBe('unavailable');
+    expect(result).not.toEqual({ kind: 'not-found' });
+  });
+
+  it('W3 returns unavailable for an unknown error code', () => {
+    const unknown: WindowsProcessExistenceProbe = () => {
+      const err = new Error('kill ESRCH? no') as NodeJS.ErrnoException;
+      err.code = 'ESOMETHINGELSE';
+      throw err;
+    };
+    expect(verifyWindowsProcessAbsence(1234, unknown).kind).toBe('unavailable');
+  });
+
+  it('W3 returns unavailable when the probe throws a non-Error value', () => {
+    const weird: WindowsProcessExistenceProbe = () => {
+      // eslint-disable-next-line @typescript-eslint/only-throw-error
+      throw 'string-failure';
+    };
+    expect(verifyWindowsProcessAbsence(1234, weird).kind).toBe('unavailable');
+  });
+
+  // W4 — invalid-argument / argument-shape errors are NOT absence proof.
+  it('W4 never maps ERR_INVALID_ARG_TYPE to not-found', () => {
+    const badArg: WindowsProcessExistenceProbe = () => {
+      const err = new TypeError('The "pid" argument must be of type number') as NodeJS.ErrnoException;
+      err.code = 'ERR_INVALID_ARG_TYPE';
+      throw err;
+    };
+    expect(verifyWindowsProcessAbsence(1234, badArg).kind).toBe('unavailable');
+  });
 });
 
 describe('PlatformRecoveredProcessVerifier (real Windows gate)', () => {
@@ -63,6 +105,11 @@ describe('PlatformRecoveredProcessVerifier (real Windows gate)', () => {
       expect(result.kind).toBe('unavailable');
       expect(result).not.toEqual(expect.objectContaining({ kind: 'alive' }));
     }
+  });
+
+  it('W5 invalid-pid reason is preserved', async () => {
+    const result = await verifier.verify(0);
+    expect(result).toEqual({ kind: 'unavailable', reason: 'invalid-pid' });
   });
 
   it.skipIf(process.platform !== 'win32')(

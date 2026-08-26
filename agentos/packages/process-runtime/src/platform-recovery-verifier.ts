@@ -1,67 +1,70 @@
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import type {
   RecoveredProcessVerifier,
   RecoveredProcessVerifyResult,
 } from './recovery-classifier.js';
 
-const execFileAsync = promisify(execFile);
+/**
+ * Narrow seam for the native Windows process-existence probe.
+ *
+ * process.kill(pid, 0) is signal 0: it performs existence/error checking only
+ * and sends no signal, so it never kills anything. On the supported Windows
+ * platform it returns normally (true) when the PID exists and throws with
+ * code 'ESRCH' when the PID is provably absent. It is read-only, locale
+ * independent, and machine verifiable — unlike parsing localized tasklist
+ * human-readable text.
+ */
+export type WindowsProcessExistenceProbe = (pid: number) => unknown;
+
+const defaultWindowsProbe: WindowsProcessExistenceProbe = pid => {
+  // Signal 0 = existence check only; no signal is delivered.
+  process.kill(pid, 0);
+};
 
 /**
- * Decide, from raw `tasklist /FO CSV /NH` stdout, whether a native PID is
- * provably absent.
+ * Decide, from the native existence probe, whether a Windows PID is provably
+ * absent.
  *
- * Safety invariants (P6-M2 remediation):
- *   A. Only clear, reliable absence evidence yields { kind: 'not-found' }.
- *      Absence is proven only when stdout contains NO data-bearing CSV process
- *      row. The locale-dependent "INFO: No tasks ..." line and empty output
- *      both carry no CSV data row, so both prove absence.
- *   B. Everything else — a live process row, malformed output, unexpected or
- *      ambiguous text — yields { kind: 'unavailable' }. We never return
- *      'alive': identity is unprovable post-restart.
- *
- * Locale independence: we do NOT match the English "INFO:" text by content as
- * the sole proof. A genuine tasklist CSV data row is a quoted record beginning
- * with a double-quote and containing several comma-separated quoted fields
- * (image name, PID, session name, session number, memory). The absence signal
- * is the ABSENCE of any such data row; the informational line is skipped only
- * as a recognized non-data prefix, and any other non-blank, non-CSV content is
- * treated as ambiguous and fails closed to 'unavailable'.
+ * Safety invariants (P6-M2 remediation #2 — fail closed):
+ *   A. { kind: 'not-found' } is returned ONLY when the probe throws an error
+ *      whose code is exactly 'ESRCH' (no such process). That is a positive,
+ *      machine-readable absence proof from the OS.
+ *   B. Everything else is { kind: 'unavailable' }:
+ *        - probe returns normally -> process exists, identity unprovable
+ *          post-restart -> 'pid-alive-identity-unprovable' (never 'alive');
+ *        - probe throws EPERM (access denied) -> existence is NOT disproven;
+ *        - probe throws any other/unknown error, or a non-Error value, or an
+ *          argument-shape error such as ERR_INVALID_ARG_TYPE -> ambiguous /
+ *          probe failure.
+ *   C. There is NO human-text heuristic. Arbitrary or ambiguous output can
+ *      never be read as absence. The function fails closed to 'unavailable'.
  */
-export function parseWindowsTasklistAbsence(stdout: string): RecoveredProcessVerifyResult {
-  const lines = String(stdout).split(/\r?\n/);
-  let sawDataRow = false;
-  let sawInfoLine = false;
-  for (const raw of lines) {
-    const line = raw.trim();
-    if (line.length === 0) continue; // blank line carries no evidence
-    if (line.startsWith('"') && (line.match(/","/g)?.length ?? 0) >= 3) {
-      // A quoted CSV record with several quoted fields: a real process row.
-      sawDataRow = true;
-      continue;
-    }
-    // A genuine no-match informational line is a multi-word sentence with no
-    // CSV structure (no quotes, no commas). Requiring several space-separated
-    // words keeps a lone garbled token from being mistaken for the absence
-    // signal while staying locale-independent (any human-language sentence
-    // qualifies regardless of its words).
-    if (!line.includes('"') && !line.includes(',') && line.includes(' ')) {
-      sawInfoLine = true;
-      continue;
-    }
-    // Anything else (partial CSV, embedded quotes/commas, garbled row) is
-    // unexpected: we cannot prove absence from output we do not understand.
-    return { kind: 'unavailable', reason: 'windows-output-unexpected' };
-  }
-  if (sawDataRow) {
-    // A data row alongside anything else is still a live process.
+export function verifyWindowsProcessAbsence(
+  pid: number,
+  probe: WindowsProcessExistenceProbe = defaultWindowsProbe,
+): RecoveredProcessVerifyResult {
+  try {
+    probe(pid);
+    // The PID exists. Identity is unprovable after a restart, so we never
+    // claim 'alive'; existence is reported as unavailable for recovery.
     return { kind: 'unavailable', reason: 'pid-alive-identity-unprovable' };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ESRCH') {
+      // Positive OS absence proof: no such process.
+      return { kind: 'not-found' };
+    }
+    if (code === 'EPERM') {
+      // The process exists but is owned by another security context; we cannot
+      // disprove existence, so absence is unproven. Fail closed.
+      return { kind: 'unavailable', reason: 'windows-probe-access-denied' };
+    }
+    // Unknown error, argument-shape error, non-Error throw, or probe failure:
+    // we cannot positively establish non-existence. Fail closed.
+    return {
+      kind: 'unavailable',
+      reason: 'windows-probe-ambiguous:' + (code ?? 'unknown'),
+    };
   }
-  if (sawInfoLine) {
-    return { kind: 'not-found' };
-  }
-  // Completely blank output: no process data was reported, so absent.
-  return { kind: 'not-found' };
 }
 
 /**
@@ -90,7 +93,15 @@ export function parseWindowsTasklistAbsence(stdout: string): RecoveredProcessVer
  * remains the sole process cleanup authority.
  */
 export class PlatformRecoveredProcessVerifier implements RecoveredProcessVerifier {
+  readonly #windowsProbe: WindowsProcessExistenceProbe;
+
+  constructor(windowsProbe: WindowsProcessExistenceProbe = defaultWindowsProbe) {
+    this.#windowsProbe = windowsProbe;
+  }
+
   async verify(pid: number): Promise<RecoveredProcessVerifyResult> {
+    // process.kill treats 0 / negative as process-group targets, so reject
+    // non-positive and non-integer PIDs BEFORE probing.
     if (!Number.isInteger(pid) || pid <= 0) {
       return { kind: 'unavailable', reason: 'invalid-pid' };
     }
@@ -118,25 +129,10 @@ export class PlatformRecoveredProcessVerifier implements RecoveredProcessVerifie
   }
 
   async #verifyWindows(pid: number): Promise<RecoveredProcessVerifyResult> {
-    // tasklist exit code is 0 whether or not it matches, so we must parse
-    // stdout. A present PID yields a quoted CSV data row (identity unprovable
-    // -> unavailable). An absent PID yields only the localized informational
-    // "no tasks match" line, i.e. no CSV data row -> provably absent ->
-    // not-found. Probe failures and any unexpected output fail closed to
-    // unavailable; never 'alive'.
-    try {
-      const { stdout } = await execFileAsync(
-        'tasklist',
-        ['/FI', 'PID eq ' + pid, '/FO', 'CSV', '/NH'],
-        { windowsHide: true, maxBuffer: 1024 * 1024 },
-      );
-      return parseWindowsTasklistAbsence(String(stdout));
-    } catch (error) {
-      return {
-        kind: 'unavailable',
-        reason: 'windows-probe-failed:' + (error instanceof Error ? error.message : String(error)),
-      };
-    }
+    // Use the native existence probe (process.kill(pid, 0)) rather than
+    // parsing localized tasklist human text. ESRCH is the only absence proof;
+    // every other outcome fails closed to 'unavailable'. Never 'alive'.
+    return verifyWindowsProcessAbsence(pid, this.#windowsProbe);
   }
 }
 
