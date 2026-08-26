@@ -92,7 +92,7 @@ Legend: **Spawn** = available at spawn; **Persist** = can persist safely; **Re-o
 |---|---|---|---|---|---|---|---|
 | Native PID | yes | yes | yes | yes | yes | **high** (reuse) | necessary, never sufficient |
 | Wall-clock `nativeStartedAt` (`Date.now()`) | yes | yes | **no** | n/a | n/a | n/a | **not identity evidence** (see §5) |
-| OS-native process creation time | yes* | yes | yes | yes (e.g. `GetProcessTimes` / WMI `CreationDate`) | yes (`/proc/<pid>/stat` field 22 starttime, or `ps -o lstart`) | low (with PID) | **required addition** |
+| OS-native process creation time | yes* | yes | yes | yes (e.g. `GetProcessTimes` / WMI `CreationDate`) | yes (`/proc/<pid>/stat` field 22 starttime, or `ps -o lstart`) | low (with PID) | **required addition** — must be captured **losslessly** as a `NativeProcessBirthIdentity` (platform-tagged, boot-discriminated where needed; see section 14a.4) |
 | Executable resolved path / fingerprint | yes | yes | partial | yes | yes | medium | supporting signal |
 | Recovery token hash | yes | yes (hash only) | **no** (OS process never carries it) | n/a | n/a | n/a | persistence-integrity only (§5) |
 | Process group / Job identity | yes | yes | partial | Job handle not re-openable (unnamed, kill-on-close) | groupId via `ps` | medium | supporting signal |
@@ -280,42 +280,135 @@ This matrix states what the CURRENT runtime does on a Server restart/crash, and 
   - `packages/process-runtime/src/platform-recovery-verifier.ts` — add a live creation-time read so `alive` can carry a comparable identity.
   - `apps/server/src/store/ProcessRepository.ts` + `process-runtime-adapters.ts` — persist/read the new evidence field.
   - `packages/process-runtime/src/recovery-classifier.ts` — no semantic change expected (the `same`/`mismatch` logic already exists); only newly reachable.
-- **Migrations needed:** **Yes** — a new additive column on the runtime Process table for the OS-native creation timestamp (e.g. `native_created_at`), plus inclusion in `recovery_evidence_json` (schemaVersion bump to 2). Additive only; no rewrite of existing rows.
+- **Migrations needed:** **Yes** — a new additive column on the runtime Process table for the lossless native birth identity (conceptually `native_birth_identity`; **dedicated column is canonical**, mirrored in `recovery_evidence_json` with a schemaVersion bump to 2). Additive only; **no rewrite of existing rows** (legacy rows stay v1, new column NULL — see section 14a.3/14a.8).
 - **API changes needed:** **No** public API change (internal durable evidence only).
 - **Windows/POSIX scope:** both, but each behind a fail-closed probe. If a platform cannot supply a re-observable creation time, that platform stays `unknown` (fail-safe) rather than guessing. On Windows the evidence is used for **primitive-test classification and for future survivability design only**; it does not change the production restart outcome (still `missing`).
-- **Tests required:** deterministic seam tests (creation-time match → `same`; mismatch → `mismatch`; unreadable → `unknown`; PID-reuse simulated by differing creation time → `mismatch`, never `same`), plus the platform gates in §15: a Windows **W2 primitive** gate (test-owned process outside the production Job: same PID + same creation identity → `same`; different creation identity → `mismatch`), a Windows **W1 reaper** gate (owned production restart → provider reaped → `missing`), and a **POSIX real restart** gate (detached survivor → `same`; mismatch → `mismatch`).
+- **Tests required:** deterministic seam tests (creation-time match → `same`; mismatch → `mismatch`; unreadable → `unknown`; PID-reuse simulated by differing creation time → `mismatch`, never `same`), plus the gates in section 15: Windows **W1 reaper** (owned production restart -> provider reaped -> `missing`), Windows **W2 primitive** (test-owned process outside the production Job: same identity -> `same`; different -> `mismatch`), Windows **W3 fail-closed** (probe failure -> `unknown`), the **POSIX real restart** gate (detached survivor -> `same`; mismatch -> `mismatch`), and the **evidence-version compatibility gates** (V1-A/V1-B/V1-C preserve P6-M2 for legacy rows; V2-A/V2-B/V2-C exercise the new birth identity; cross-boot collision -> never `same`).
 - **Rollback behavior:** additive column + fail-closed probe means rollback = stop reading the new field; existing `missing`/`unknown` behavior is preserved.
 - **Forbidden behavior (unchanged):** no reattach, adopt, resume, respawn, ownership transfer, kill/taskkill/Stop-Process, orphan-cleanup changes, or lifecycle behavior changes. Classification only.
 - **Acceptance gate:** the full, corrected gate set is enumerated in §15 (W1 reaper, W2 primitive, W3 fail-closed, POSIX real-restart). Summary: `same`/`mismatch` become reachable via OS-native creation-time evidence **only where a process can actually survive** (POSIX detached, and Windows primitive tests outside the production Job); **normal Windows production restart stays `missing`**; `unknown` remains the fail-safe default for any unverifiable case; full process-runtime + server suites green on the exact head; no schema/API/behavior regressions.
 
 ---
 
+## 14a. Evidence version compatibility + lossless native birth identity (frozen)
+
+This section freezes how the additive schemaVersion 1 -> 2 rollout must behave so that P6-M3b cannot regress the already-accepted P6-M2 behavior, and it freezes the *kind* of identity value the new evidence must carry. These are contract requirements for the future M3b implementation; nothing here is implemented by this document.
+
+### 14a.1 The rollout hazard being frozen
+
+The current production classifier parses `recovery_evidence_json` **before** calling the OS verifier (`recovery-classifier.ts` `parseEvidence` + `classifyRecoveredProcess`). The current parser accepts **only** `schemaVersion === 1`; any other version, a malformed payload, or a field-type mismatch makes `parseEvidence` return `null`, which short-circuits classification to `unknown` (`recovery-evidence-missing-or-inconsistent`) **before** the OS absence probe runs. A naive v2-only parser would therefore turn pre-migration v1 active Process rows into `unknown` even when the PID is provably absent, regressing the P6-M2 `missing` outcome. The dual-version contract below prevents that.
+
+### 14a.2 Versioned evidence semantics
+
+**V1 evidence (legacy).** Contains `nativePid`, wall-clock `nativeStartedAt`, `recoveryTokenHash`, and `platform`. V1 **must remain readable** after the M3b rollout. For v1 rows:
+
+- positive OS absence proof -> **MISSING**;
+- PID exists / identity cannot be proven -> **UNKNOWN**;
+- malformed / internally inconsistent evidence -> **UNKNOWN**.
+
+V1 must **never** produce SAME or MISMATCH, because it carries no re-observable native birth identity.
+
+**V2 evidence (new).** Contains all integrity fields required by the existing recovery path **plus** the new lossless native birth identity (see 14a.4). For v2 rows:
+
+- positive absence -> **MISSING**;
+- exact birth-identity match -> **SAME**;
+- positive birth-identity difference -> **MISMATCH**;
+- insufficient / error / permission / unsupported -> **UNKNOWN**.
+
+The reader must dispatch on the persisted `schemaVersion` and apply the matching semantics per row; it must not force a single-version interpretation across mixed rows.
+
+### 14a.3 No backfill from the legacy wall clock
+
+`nativeStartedAt` is generated from `NodeDriver.now()` / `Date.now()` (wall clock). It **MUST NOT** be converted, copied, inferred, or backfilled into the new OS-native birth-identity field. Existing v1 rows remain v1/legacy-capability rows. The additive migration sets the new identity column to **NULL** for old rows **unless** a genuine OS-native identity was actually recorded at spawn. M3b must **not** fabricate v2 evidence for historical rows.
+
+### 14a.4 Lossless `NativeProcessBirthIdentity` (conceptual field)
+
+The contract must not freeze an implementation that converts everything to `Date.now`-style epoch milliseconds: the current `LiveProcessIdentity.startedAtMs` (epoch ms, `number | null`) is **not** sufficient as the new proof field if conversion loses native precision. Freeze a new conceptual field — **`NativeProcessBirthIdentity`** (exact name optional; semantics mandatory). Required properties:
+
+- **platform-tagged**;
+- **machine-readable**;
+- **lossless** for the selected native primitive;
+- **exact-equality comparable**;
+- **independently re-observable** after a Server restart;
+- **never derived from `Date.now()`** (or any wall-clock at spawn);
+- **never derived from human-readable / localized output**.
+
+### 14a.5 Windows birth identity representation
+
+For Windows, prefer the native process-creation **FILETIME** or an equivalent machine-verifiable primitive. If FILETIME is selected, **preserve its full native precision**; do **not** normalize the proof value down to milliseconds before comparison. Conceptual example (field names not mandated): `{ platform: "win32", source: "filetime", value: "<lossless 64-bit value>" }`. Storage may be TEXT / INTEGER / JSON as appropriate, but **equality must be lossless**. Windows production restart semantics remain kill-on-close -> **MISSING**; Windows SAME/MISMATCH remains primitive-test only for M3b (section 15, W2).
+
+### 14a.6 Linux / POSIX birth identity representation
+
+On Linux, `/proc/<pid>/stat` `starttime` is ticks since boot, so `startTicks` alone is **not** a globally durable identity across a machine reboot. Where the selected primitive needs one, the contract **requires a boot discriminator**. Preferred conceptual identity (field names not mandated): `{ platform: "linux", bootId: <machine-readable boot identity>, startTicks: <lossless native tick value> }`. **Required property:** a process from a *different* OS boot MUST NOT be able to compare SAME merely because PID and start-tick numerically collide.
+
+For **macOS / freebsd**: if an equivalently reliable machine-readable primitive is not frozen into M3b scope, that platform stays **unsupported identity proof -> UNKNOWN**. Do **not** parse locale-dependent human-readable text as proof.
+
+### 14a.7 Executable identity role (resolved)
+
+The ambiguity around "confirm resolved executable identity" is resolved as **Option A — supporting diagnostic evidence only**. The proof of SAME/MISMATCH is **birth identity + PID**; executable identity (resolved path / fingerprint) is **supporting evidence only** and is **not** a mandatory SAME/MISMATCH proof component. Because it is not a proof component, the classifier/verifier interfaces do **not** need to change to accommodate it. (Option B — making executable identity a mandatory proof component — is rejected for this slice; it would require defining a durable + re-observable executable identity and changing the classifier/verifier interfaces accordingly.)
+
+### 14a.8 Migration + canonical authority contract
+
+Additive migration behavior is frozen:
+
+- **no rewrite** of legacy Process identity;
+- old rows remain valid **v1**;
+- new rows created after M3b may write **v2**;
+- the **reader supports v1 and v2**;
+- the **writer writes only the current version** (v2);
+- **malformed / future / unknown version -> UNKNOWN** (fail-safe);
+- **downgrade/rollback** must not misinterpret v2 identity.
+
+**Canonical authority:** the durable birth identity lives in a **dedicated column + evidence JSON** (Option B), and the **dedicated column is canonical**. The evidence JSON is a denormalized, integrity-checked mirror. **Disagreement between the column and the JSON mirror fails closed -> UNKNOWN.** The two copies never carry ambiguous authority; on any conflict the reader must not guess.
+
+### 14a.9 P6-M2 non-regression gate (mandatory for M3b rollout)
+
+M3b must add a rollout acceptance gate that preloads a Process row containing **authentic legacy schemaVersion=1 evidence** and proves:
+
+- **Case A:** native PID positively absent -> classification **MUST remain MISSING**;
+- **Case B:** native PID exists, identity unavailable -> **UNKNOWN**;
+- **Case C:** legacy evidence malformed/inconsistent -> **UNKNOWN**.
+
+This proves M3b cannot regress P6-M2 behavior for rows created before the migration.
+
+---
+
 ## 15. P6-M3b acceptance criteria
 
-No acceptance gate below may require "real Windows production restart → `same`", because the current Windows owned-spawn path reaps the provider tree on Server loss (§13a). The gates are split by platform and process kind.
+No acceptance gate below may require "real Windows production restart -> `same`", because the current Windows owned-spawn path reaps the provider tree on Server loss (section 13a). The gates are split by platform and process kind.
 
 **Durable evidence (cross-cutting):**
 
-1. A durable, OS-native process-creation timestamp is captured at spawn and persisted (Migration additive, evidence schemaVersion 2).
-2. The production verifier returns a comparable live creation time for an existing PID, enabling the classifier to reach `same` when creation times match and `mismatch` when they differ.
+1. A durable, lossless `NativeProcessBirthIdentity` (section 14a.4) is captured at spawn and persisted (additive migration, evidence schemaVersion 2; dedicated column canonical per section 14a.8).
+2. The production verifier returns a comparable live birth identity for an existing PID, enabling the classifier to reach `same` on exact match and `mismatch` on a positive difference.
 3. PID reuse is positively detected as `mismatch` (never `same`).
-4. Any platform/probe that cannot supply re-observable creation time fails closed to `unknown`.
+4. Any platform/probe that cannot supply a re-observable birth identity fails closed to `unknown`.
 
 **Windows gates (production semantics preserved):**
 
 - **W1 — Production owned-spawn restart / reaper gate.** Using the REAL Windows owned-spawn path, the provider is atomically placed in the AgentOS kill-on-close Job. At the supported Server/helper ownership-loss boundary, prove the owned provider is reaped. Post-restart recovery expectation: **MISSING**. This preserves the current architecture.
-- **W2 — Windows native identity primitive gate.** A **test-owned process explicitly OUTSIDE the production kill-on-close Job** may be used to validate the native creation-time probe itself: same PID + same native creation identity → verifier/classifier `same`; different creation identity → `mismatch`. This is a **PLATFORM PRIMITIVE TEST ONLY**: it MUST NOT be presented as proof that a normal Windows AgentOS-owned provider survives a Server restart.
-- **W3 — Failure/permission/ambiguous probe → fail closed.** Any failure, permission denial, or ambiguous native identity probe yields `unknown` and fails closed.
+- **W2 — Windows native identity primitive gate.** A **test-owned process explicitly OUTSIDE the production kill-on-close Job** may be used to validate the native birth-identity probe itself: same PID + same native creation identity -> verifier/classifier `same`; different creation identity -> `mismatch`. This is a **PLATFORM PRIMITIVE TEST ONLY**: it MUST NOT be presented as proof that a normal Windows AgentOS-owned provider survives a Server restart.
+- **W3 — Failure/permission/ambiguous probe -> fail closed.** Any failure, permission denial, or ambiguous native identity probe yields `unknown` and fails closed.
 
 **POSIX gate (where detached processes survive):**
 
-- **POSIX real restart gate.** Spawn an AgentOS-owned detached process → record its native creation identity → lose the Server handle/registry → the process survives → the restart verifier reads the same native identity → `same`. A PID/creation-identity mismatch → `mismatch`. If the CI environment cannot execute a real POSIX gate, it is marked **environment-gated** explicitly; Windows primitive evidence MUST NOT be substituted for POSIX evidence.
+- **POSIX real restart gate.** Spawn an AgentOS-owned detached process -> record its native birth identity (including a boot discriminator where required, section 14a.6) -> lose the Server handle/registry -> the process survives -> the restart verifier reads the same native identity -> `same`. A PID/birth-identity mismatch -> `mismatch`. If the CI environment cannot execute a real POSIX gate, it is marked **environment-gated** explicitly; Windows primitive evidence MUST NOT be substituted for POSIX evidence.
+
+**Evidence-version compatibility gates (mandatory; see section 14a):**
+
+- **V1-A** legacy v1 evidence + positively absent PID -> **MISSING** (P6-M2 preserved).
+- **V1-B** legacy v1 evidence + live PID, identity unavailable -> **UNKNOWN**.
+- **V1-C** malformed / inconsistent legacy evidence -> **UNKNOWN**.
+- **V2-A** exact birth-identity match -> **SAME**.
+- **V2-B** different birth identity -> **MISMATCH**.
+- **V2-C** unsupported / unreadable birth identity -> **UNKNOWN**.
+- **Cross-boot collision gate (where relevant):** a process from a different OS boot identity -> **NEVER SAME**.
 
 **Safety / regression gates:**
 
 5. No production control, reattach, resume, or ownership behavior is activated.
 6. ProcessCancelCoordinator authority, the Run state machine, the public API, and P6-M2 `missing`/`unknown` behavior are unchanged.
-7. Real-platform gates pass on the exact head for the supported platform(s), each labelled with its process kind per §13a.
+7. Real-platform gates pass on the exact head for the supported platform(s), each labelled with its process kind per section 13a.
 
 ---
 
@@ -355,9 +448,10 @@ This slice does **not** design or implement any of that. In particular, **merely
 
 1. **Provider resume reality (Kimi/Codex/OpenCode/Claude):** whether each provider CLI actually supports durable session resume + offline output replay, and whether exit state is observable without original pipes. Requires live provider CLI investigation (§9).
 2. **Windows creation-time probe reliability under `PROCESS_QUERY_LIMITED_INFORMATION`** for processes owned by other sessions/elevated contexts (may yield access-denied → fail-closed `unknown`).
-3. **POSIX clock-tick normalization** across Linux/macOS for `/proc`/`ps` start time (tick rate, boot-time reference, format locales).
+3. **POSIX clock-tick normalization + boot discriminator** across Linux/macOS for `/proc`/`ps` start time (tick rate, boot-time reference, format locales), including which machine-readable **boot identity** primitive (section 14a.6) is frozen for Linux so a different boot can never compare `same` on a PID+tick collision.
 4. **PID + creation-time collision window:** the theoretical residual risk that a PID is reused *and* creation times are indistinguishable at the stored precision; the evidence field must record sufficient precision (e.g. 100ns FILETIME on Windows, ticks on Linux) to keep this negligible.
-5. Whether a future cross-restart tree-ownership model (named Job, broker/helper lifetime, kill-on-close policy, ownership fencing — §16a) is ever warranted. Naming the Job alone is explicitly **not** a sufficient answer.
+5. Whether a future cross-restart tree-ownership model (named Job, broker/helper lifetime, kill-on-close policy, ownership fencing — section 16a) is ever warranted. Naming the Job alone is explicitly **not** a sufficient answer.
+6. **macOS / freebsd identity primitive:** whether an equivalently reliable machine-readable birth-identity primitive is frozen into M3b scope; until it is, these platforms stay **unsupported -> UNKNOWN** and must not parse locale-dependent text as proof (section 14a.6).
 
 ---
 
@@ -367,6 +461,9 @@ This slice does **not** design or implement any of that. In particular, **merely
 |---|---|---|
 | Verifier never returns `alive`; ESRCH-only `not-found` | `packages/process-runtime/src/platform-recovery-verifier.ts` | `verifyWindowsProcessAbsence`, `#verifyPosix`, class doc |
 | Classifier `same`/`mismatch`/`missing`/`unknown` logic | `packages/process-runtime/src/recovery-classifier.ts` | `classifyRecoveredProcess` |
+| Evidence parser is v1-only, runs before the OS verifier, fail-closed to `unknown` | `packages/process-runtime/src/recovery-classifier.ts` | `parseEvidence` (requires `schemaVersion === 1`, returns `null` otherwise); `classifyRecoveredProcess` short-circuits on `evidence === null` before `verifier.verify` |
+| Lossy live identity + persisted wall-clock comparator | `packages/process-runtime/src/recovery-classifier.ts` | `LiveProcessIdentity.startedAtMs` (epoch ms, `number|null`); `Date.parse(evidence.nativeStartedAt)` |
+| Spawn identity type (no birth-identity field today) | `packages/process-runtime/src/repository-port.ts` | `NativeSpawnIdentity` (283): `nativeStartedAt: string` (ISO wall clock), no native birth-identity field |
 | Async-before-transaction classification | `apps/server/src/processRecoveryPreflight.ts` | `preflightProcessRecoveryClassifications`, `createPreflightProcessRecoveryPort` |
 | Only `missing` → terminal failure | `apps/server/src/services/TaskRunRecoveryService.ts` | `processMissingFailed`, classification handling (~269-294) |
 | Wall-clock spawn time | `packages/process-runtime/src/node-driver.ts` | `now = () => Date.now()` (92), `startedAtMs = this.now()` (126) |
