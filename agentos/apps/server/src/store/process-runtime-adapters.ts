@@ -190,6 +190,11 @@ export class DurableProcessRepositoryAdapter implements DurableProcessRepository
       nativeStartedAt: input.identity.nativeStartedAt,
       processGroupId: input.identity.processGroupId ?? null,
       platformHandleId: input.identity.platformHandleId ?? null,
+      // P6-M2a: forward the one-time recovery token (in-transit plaintext);
+      // the repository persists only its SHA-256 hash + classifier evidence.
+      ...(input.identity.recoveryToken === undefined
+        ? {}
+        : { recoveryToken: input.identity.recoveryToken }),
       eventContext: input.eventContext,
     }));
   }

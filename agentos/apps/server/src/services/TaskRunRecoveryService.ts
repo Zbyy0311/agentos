@@ -7,6 +7,7 @@ import type {
 } from '@agentos/shared';
 import type { LifecycleTransactionService } from './LifecycleTransactionService.js';
 import type { OperationService } from './OperationService.js';
+import type { RecoveryClassification } from '@agentos/process-runtime';
 import type { RunRepository } from '../store/RunRepository.js';
 import type { RunStageRepository } from '../store/RunStageRepository.js';
 import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
@@ -32,10 +33,39 @@ export interface TaskRunRecoveryDependencies {
   >;
   readonly lifecycleTransactionService: Pick<
     LifecycleTransactionService,
-    'failRunStartupWithinTransaction' | 'recordRecoveryOutcomeWithinTransaction'
+    | 'failRunStartupWithinTransaction'
+    | 'recordRecoveryOutcomeWithinTransaction'
+    | 'transitionStageWithinTransaction'
+    | 'transitionRunWithinTransaction'
   >;
   readonly runtimeEventRepository: Pick<RuntimeEventRepository, 'queryByRun'>;
   readonly runInTransaction: <T>(fn: () => T) => T;
+  /**
+   * P6-M2b: optional process-recovery port. When present, a running Run's
+   * active Stage attempt is classified against the durable Process row so a
+   * proven-dead native process reconciles to a canonical terminal failure
+   * instead of mere uncertainty. When absent (or when classification is
+   * anything but 'missing'), the historical uncertainty behavior is kept.
+   * Classification only: never resumes, re-adopts, re-attaches, or cleans up.
+   */
+  readonly processRecovery?: TaskRunProcessRecoveryPort;
+}
+
+/**
+ * P6-M2b process-recovery read/classify seam. Implementations resolve the
+ * running Run's active Stage attempt to its durable root Process and classify
+ * the native process identity. The seam is synchronous so the surrounding
+ * recovery transaction stays atomic; any async platform verification happens
+ * in the caller before recovery begins. Fail-safe by contract: any inability
+ * to prove the process is gone must yield something other than 'missing'.
+ */
+export interface TaskRunProcessRecoveryPort {
+  classifyRunningProcess(input: {
+    readonly workspaceId: string;
+    readonly runId: string;
+    readonly stageId: string;
+    readonly stageAttempt: number;
+  }): RecoveryClassification;
 }
 
 export interface TaskDomainRecoverySummary {
@@ -43,6 +73,7 @@ export interface TaskDomainRecoverySummary {
   readonly approvalRestored: string[];
   readonly uncertaintyMarked: string[];
   readonly startupFailed: string[];
+  readonly processMissingFailed: string[];
   readonly alreadyRecoveryRequired: string[];
 }
 
@@ -53,6 +84,7 @@ export type TaskRunRecoveryDisposition =
   | 'approval-restored'
   | 'uncertainty-marked'
   | 'startup-failed'
+  | 'process-missing-failed'
   | 'already-recovery-required';
 
 interface PersistedEvidence {
@@ -92,6 +124,7 @@ function emptySummary(): TaskDomainRecoverySummary {
     approvalRestored: [],
     uncertaintyMarked: [],
     startupFailed: [],
+    processMissingFailed: [],
     alreadyRecoveryRequired: [],
   };
 }
@@ -109,6 +142,7 @@ export class TaskRunRecoveryService {
       if (disposition === 'approval-restored') summary.approvalRestored.push(run.id);
       if (disposition === 'uncertainty-marked') summary.uncertaintyMarked.push(run.id);
       if (disposition === 'startup-failed') summary.startupFailed.push(run.id);
+      if (disposition === 'process-missing-failed') summary.processMissingFailed.push(run.id);
       if (disposition === 'already-recovery-required') summary.alreadyRecoveryRequired.push(run.id);
     }
     return summary;
@@ -218,10 +252,106 @@ export class TaskRunRecoveryService {
     start: ApiOperation | undefined,
   ): TaskRunRecoveryDisposition {
     const operation = this.requireStartStatus(run, start, 'completed');
-    this.readStages(run);
+    const stages = this.readStages(run);
     const evidence = this.readPersistedEvidence(run);
+
+    // P6-M2b: when a process-recovery port is available, classify the active
+    // Stage attempt's native process before deciding. Only a proven-'missing'
+    // process reconciles to a canonical terminal failure; every other outcome
+    // (same / mismatch / unknown / no process / classifier error) keeps the
+    // historical fail-safe uncertainty and never resumes, re-adopts,
+    // re-attaches, or takes over ownership.
+    const port = this.dependencies.processRecovery;
+    if (port !== undefined) {
+      const activeStage = stages.find(
+        stage => stage.status === 'running' || stage.status === 'starting',
+      );
+      let classification: RecoveryClassification | undefined;
+      if (activeStage !== undefined) {
+        try {
+          classification = port.classifyRunningProcess({
+            workspaceId: run.workspaceId,
+            runId: run.id,
+            stageId: activeStage.id,
+            stageAttempt: activeStage.attempt,
+          });
+        } catch {
+          // A classifier error is indistinguishable from 'unknown': fail-safe.
+          classification = 'unknown';
+        }
+      }
+      if (classification === 'missing' && activeStage !== undefined) {
+        return this.failRunForMissingProcess(run, operation, activeStage, evidence);
+      }
+    }
+
     this.recordUncertainty(run, operation, evidence, RECOVERY_FAILURE_MESSAGES.running);
     return 'uncertainty-marked';
+  }
+
+  /**
+   * P6-M2b: a running Run whose native provider process is proven gone
+   * ('missing') reconciles to a canonical terminal failure through the
+   * existing lifecycle transitions (Stage running/starting -> failed, then
+   * Run running -> failed). This uses only existing lifecycle state
+   * transitions; it does not resume, re-adopt, or clean up the process, and
+   * ProcessCancelCoordinator remains the sole cleanup authority.
+   */
+  private failRunForMissingProcess(
+    run: Run,
+    operation: ApiOperation,
+    activeStage: RunStage,
+    evidence: PersistedEvidence,
+  ): TaskRunRecoveryDisposition {
+    const lifecycle = this.dependencies.lifecycleTransactionService;
+    const problem: ApiProblem = {
+      type: 'https://agentos.dev/problems/run-process-missing',
+      title: 'Run process missing after restart',
+      status: 503,
+      code: 'RUN_PROCESS_MISSING',
+      detail: 'The native provider process for the running Stage no longer exists',
+      instance: `/runs/${run.id}`,
+      requestId: `process-recovery-${run.id}`,
+      retryable: false,
+      context: {
+        workspaceId: run.workspaceId,
+        runId: run.id,
+        operationId: operation.id,
+        stageId: activeStage.id,
+      },
+    };
+    // Fail the active Stage first (canonical running/starting -> failed). Use
+    // the *WithinTransaction variant: recovery already runs inside a
+    // transaction, and the public transitionStage would open a nested one.
+    lifecycle.transitionStageWithinTransaction({
+      workspaceId: run.workspaceId,
+      runId: run.id,
+      stageId: activeStage.id,
+      expectedVersion: activeStage.version,
+      expectedFrom: activeStage.status === 'starting' ? 'starting' : 'running',
+      to: 'failed',
+      errorCode: problem.code,
+      message: problem.detail,
+      retryable: false,
+      retryScheduled: false,
+      correlationId: operation.correlationId,
+    });
+    // Failing the Stage does not propagate to the Run; fail the Run itself.
+    const freshRun = this.dependencies.runRepository.findById(run.workspaceId, run.id)
+      ?? run;
+    lifecycle.transitionRunWithinTransaction({
+      workspaceId: run.workspaceId,
+      runId: run.id,
+      expectedVersion: freshRun.version,
+      expectedFrom: 'running',
+      to: 'failed',
+      errorCode: problem.code,
+      message: problem.detail,
+      phase: 'process-recovery',
+      retryable: false,
+      correlationId: operation.correlationId,
+    });
+    return 'process-missing-failed';
   }
 
   private recoverWaitingApproval(

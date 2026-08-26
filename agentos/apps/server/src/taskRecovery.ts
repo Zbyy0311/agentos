@@ -8,6 +8,7 @@ import type {
 import {
   TaskRunRecoveryService,
   type TaskDomainRecoverySummary,
+  type TaskRunProcessRecoveryPort,
 } from './services/TaskRunRecoveryService.js';
 
 export interface RecoveredTask {
@@ -64,6 +65,11 @@ export function recoverInterruptedRunningTasks(
 export function recoverInterruptedTaskRuntime(
   store: TaskRecoveryStore,
   taskRunService: TaskRunService,
+  // P6-M2b: the production restart path supplies a synchronous port backed by
+  // classifications that processRecoveryPreflight computed ASYNC, before this
+  // transactional recovery began. When omitted the recovery stays fail-safe
+  // (no 'missing' reconciliation), preserving the pre-M2b behavior exactly.
+  processRecovery?: TaskRunProcessRecoveryPort,
 ): RecoveredTaskRuntime {
   const recoveryTimestamp = new Date().toISOString();
   const recoveredLegacyTasks = recoverInterruptedRunningTasks(store, recoveryTimestamp);
@@ -101,12 +107,14 @@ export function recoverInterruptedTaskRuntime(
     lifecycleTransactionService: store.lifecycleTransactionService(),
     runtimeEventRepository: store.runtimeEventRepository(),
     runInTransaction: fn => store.runInTransaction(fn),
+    ...(processRecovery === undefined ? {} : { processRecovery }),
   });
   const taskDomainRecovery: TaskDomainRecoverySummary = {
     queueRestored: [],
     approvalRestored: [],
     uncertaintyMarked: [],
     startupFailed: [],
+    processMissingFailed: [],
     alreadyRecoveryRequired: [],
   };
   for (const workspace of workspaces) {
@@ -115,6 +123,7 @@ export function recoverInterruptedTaskRuntime(
     taskDomainRecovery.approvalRestored.push(...workspaceRecovery.approvalRestored);
     taskDomainRecovery.uncertaintyMarked.push(...workspaceRecovery.uncertaintyMarked);
     taskDomainRecovery.startupFailed.push(...workspaceRecovery.startupFailed);
+    taskDomainRecovery.processMissingFailed.push(...workspaceRecovery.processMissingFailed);
     taskDomainRecovery.alreadyRecoveryRequired.push(...workspaceRecovery.alreadyRecoveryRequired);
   }
   return {

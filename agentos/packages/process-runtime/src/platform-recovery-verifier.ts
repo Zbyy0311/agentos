@@ -1,0 +1,141 @@
+import type {
+  RecoveredProcessVerifier,
+  RecoveredProcessVerifyResult,
+} from './recovery-classifier.js';
+
+/**
+ * Narrow seam for the native Windows process-existence probe.
+ *
+ * process.kill(pid, 0) is signal 0: it performs existence/error checking only
+ * and sends no signal, so it never kills anything. On the supported Windows
+ * platform it returns normally (true) when the PID exists and throws with
+ * code 'ESRCH' when the PID is provably absent. It is read-only, locale
+ * independent, and machine verifiable — unlike parsing localized tasklist
+ * human-readable text.
+ */
+export type WindowsProcessExistenceProbe = (pid: number) => unknown;
+
+const defaultWindowsProbe: WindowsProcessExistenceProbe = pid => {
+  // Signal 0 = existence check only; no signal is delivered.
+  process.kill(pid, 0);
+};
+
+/**
+ * Decide, from the native existence probe, whether a Windows PID is provably
+ * absent.
+ *
+ * Safety invariants (P6-M2 remediation #2 — fail closed):
+ *   A. { kind: 'not-found' } is returned ONLY when the probe throws an error
+ *      whose code is exactly 'ESRCH' (no such process). That is a positive,
+ *      machine-readable absence proof from the OS.
+ *   B. Everything else is { kind: 'unavailable' }:
+ *        - probe returns normally -> process exists, identity unprovable
+ *          post-restart -> 'pid-alive-identity-unprovable' (never 'alive');
+ *        - probe throws EPERM (access denied) -> existence is NOT disproven;
+ *        - probe throws any other/unknown error, or a non-Error value, or an
+ *          argument-shape error such as ERR_INVALID_ARG_TYPE -> ambiguous /
+ *          probe failure.
+ *   C. There is NO human-text heuristic. Arbitrary or ambiguous output can
+ *      never be read as absence. The function fails closed to 'unavailable'.
+ */
+export function verifyWindowsProcessAbsence(
+  pid: number,
+  probe: WindowsProcessExistenceProbe = defaultWindowsProbe,
+): RecoveredProcessVerifyResult {
+  try {
+    probe(pid);
+    // The PID exists. Identity is unprovable after a restart, so we never
+    // claim 'alive'; existence is reported as unavailable for recovery.
+    return { kind: 'unavailable', reason: 'pid-alive-identity-unprovable' };
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException | undefined)?.code;
+    if (code === 'ESRCH') {
+      // Positive OS absence proof: no such process.
+      return { kind: 'not-found' };
+    }
+    if (code === 'EPERM') {
+      // The process exists but is owned by another security context; we cannot
+      // disprove existence, so absence is unproven. Fail closed.
+      return { kind: 'unavailable', reason: 'windows-probe-access-denied' };
+    }
+    // Unknown error, argument-shape error, non-Error throw, or probe failure:
+    // we cannot positively establish non-existence. Fail closed.
+    return {
+      kind: 'unavailable',
+      reason: 'windows-probe-ambiguous:' + (code ?? 'unknown'),
+    };
+  }
+}
+
+/**
+ * P6-M2b production platform verifier for restart recovery.
+ *
+ * This prover answers exactly ONE OS-verifiable question: "is this native PID
+ * provably absent?" It exists so the M2a RecoveryClassifier can drive the
+ * recovery decision that ONLY absence can safely drive:
+ *
+ *   - provably absent  -> { kind: 'not-found' } -> classifier 'missing'
+ *     -> recovery reconciles the orphaned running Run to canonical failure.
+ *   - anything else     -> { kind: 'unavailable' } -> classifier 'unknown'
+ *     -> recovery stays fail-safe uncertain (no resume, no takeover).
+ *
+ * It deliberately NEVER returns { kind: 'alive' }. Proving a live PID is the
+ * SAME original process requires a start time comparable to the spawn-time
+ * nativeStartedAt, which is captured as the process's own wall-clock
+ * (NodeDriver.now()), not an OS process-creation timestamp. No OS probe can
+ * reproduce that value, so identity ('same') can never be proven after a
+ * restart. Claiming 'alive' here would let the classifier reach 'same' or
+ * 'mismatch' on an unidentified process, which the fail-safe contract
+ * forbids. Absence is the only honest, restart-safe proof.
+ *
+ * This module only READS OS state. It never kills, signals, reattaches,
+ * adopts, resumes, respawns, or transfers ownership. ProcessCancelCoordinator
+ * remains the sole process cleanup authority.
+ */
+export class PlatformRecoveredProcessVerifier implements RecoveredProcessVerifier {
+  readonly #windowsProbe: WindowsProcessExistenceProbe;
+
+  constructor(windowsProbe: WindowsProcessExistenceProbe = defaultWindowsProbe) {
+    this.#windowsProbe = windowsProbe;
+  }
+
+  async verify(pid: number): Promise<RecoveredProcessVerifyResult> {
+    // process.kill treats 0 / negative as process-group targets, so reject
+    // non-positive and non-integer PIDs BEFORE probing.
+    if (!Number.isInteger(pid) || pid <= 0) {
+      return { kind: 'unavailable', reason: 'invalid-pid' };
+    }
+    if (process.platform === 'win32') return this.#verifyWindows(pid);
+    if (process.platform === 'linux' || process.platform === 'darwin' || process.platform === 'freebsd') {
+      return this.#verifyPosix(pid);
+    }
+    return { kind: 'unavailable', reason: 'unsupported-platform:' + process.platform };
+  }
+
+  async #verifyPosix(pid: number): Promise<RecoveredProcessVerifyResult> {
+    try {
+      // Signal 0 performs error checking only; it sends no signal and never
+      // kills. ESRCH proves the PID does not exist. EPERM means the process
+      // exists but is owned by another user, so existence is NOT provable
+      // absence; stay fail-safe.
+      process.kill(pid, 0);
+      return { kind: 'unavailable', reason: 'pid-alive-identity-unprovable' };
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'ESRCH') return { kind: 'not-found' };
+      // EPERM or anything unexpected: cannot prove absence.
+      return { kind: 'unavailable', reason: 'posix-probe-ambiguous:' + (code ?? 'unknown') };
+    }
+  }
+
+  async #verifyWindows(pid: number): Promise<RecoveredProcessVerifyResult> {
+    // Use the native existence probe (process.kill(pid, 0)) rather than
+    // parsing localized tasklist human text. ESRCH is the only absence proof;
+    // every other outcome fails closed to 'unavailable'. Never 'alive'.
+    return verifyWindowsProcessAbsence(pid, this.#windowsProbe);
+  }
+}
+
+export function createPlatformRecoveredProcessVerifier(): RecoveredProcessVerifier {
+  return new PlatformRecoveredProcessVerifier();
+}

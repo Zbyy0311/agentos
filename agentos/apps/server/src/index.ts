@@ -21,6 +21,11 @@ import { createGitRoutes } from './routes/git.js';
 import { createConversationRoutes } from './routes/conversations.js';
 import { recoverInterruptedTaskRuntime, type RecoveredTaskRuntime } from './taskRecovery.js';
 import { recoverInterruptedRuns } from './runRecovery.js';
+import {
+  preflightProcessRecoveryClassifications,
+  createPreflightProcessRecoveryPort,
+} from './processRecoveryPreflight.js';
+import { createPlatformRecoveredProcessVerifier } from '@agentos/process-runtime';
 import { EventBus } from './events/EventBus.js';
 import { createRunRoutes } from './routes/runs.js';
 import { createArtifactRoutes } from './routes/artifacts.js';
@@ -151,7 +156,20 @@ async function bootstrap(): Promise<void> {
     let recoveredTaskRuntime: RecoveredTaskRuntime;
     let recoveredRuns: number;
     try {
-      recoveredTaskRuntime = recoverInterruptedTaskRuntime(store, taskRunService);
+      // P6-M2b: classify every active running Run's native Process with the
+      // existing M2a classifier + platform verifier ASYNC, BEFORE the SQLite
+      // recovery transaction opens. The precomputed classifications then back
+      // the synchronous port consumed inside the transaction, so no OS/native
+      // verification is ever awaited while the transaction is open.
+      const processRecoveryClassifications = await preflightProcessRecoveryClassifications(
+        store,
+        createPlatformRecoveredProcessVerifier(),
+      );
+      recoveredTaskRuntime = recoverInterruptedTaskRuntime(
+        store,
+        taskRunService,
+        createPreflightProcessRecoveryPort(processRecoveryClassifications),
+      );
       recoveredRuns = recoverInterruptedRuns(store);
     } catch {
       // The recovery transaction already rolled back; only the stable code escapes.

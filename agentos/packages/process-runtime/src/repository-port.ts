@@ -286,6 +286,13 @@ export interface NativeSpawnIdentity {
   readonly nativeStartedAt: string;
   readonly processGroupId?: string | null;
   readonly platformHandleId?: string | null;
+  /**
+   * P6-M2a: one-time random recovery token captured at spawn. This plaintext
+   * value is in-transit only; the persistence layer must store ONLY its
+   * SHA-256 hash and never the raw token. The classifier uses the persisted
+   * hash plus evidence to prove native-process identity after a restart.
+   */
+  readonly recoveryToken?: string;
 }
 
 export interface BindNativeIdentityInput extends DurableClaimFence {

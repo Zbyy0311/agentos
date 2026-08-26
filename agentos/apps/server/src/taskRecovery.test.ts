@@ -7,8 +7,15 @@ import type { Store } from './store/Store.js';
 import type { TaskItem, Workspace } from '@agentos/shared';
 import { DEFAULT_WORKSPACE_AGENTS } from '@agentos/agent-core';
 import { SqliteStore } from './store/SqliteStore.js';
+import { createEntityId } from './store/Identity.js';
 import { TaskRunService } from './services/TaskRunService.js';
 import { recoverInterruptedRunningTasks, recoverInterruptedTaskRuntime } from './taskRecovery.js';
+import {
+  preflightProcessRecoveryClassifications,
+  createPreflightProcessRecoveryPort,
+} from './processRecoveryPreflight.js';
+import { spawn } from 'node:child_process';
+import { createPlatformRecoveredProcessVerifier, type RecoveredProcessVerifier } from '@agentos/process-runtime';
 
 class MemoryStore implements Store {
   constructor(
@@ -466,6 +473,324 @@ test('R19 startup queued recovery is idempotent across repeated calls', () => {
   }
 });
 
+// --- P6-M2b production-composition tests (HIGH-1 remediation) ---
+// These exercise the REAL restart seam: preflightProcessRecoveryClassifications
+// (async, outside any transaction) -> createPreflightProcessRecoveryPort (sync)
+// -> recoverInterruptedTaskRuntime(store, service, port). They never inject a
+// stub directly into TaskRunRecoveryService.
+
+/**
+ * rmSync that tolerates the brief Windows file-lock release latency a closed
+ * SQLite store can leave on the freshly-written agentos.sqlite. Only used for
+ * teardown of these composition tests, which seed a durable Process (extra DB
+ * writes that keep the file busy slightly longer than the legacy-only tests).
+ */
+async function rmRootWithRetry(root: string): Promise<void> {
+  // The process-seeded DB write keeps the freshly-closed agentos.sqlite
+  // briefly busy on Windows; poll rm until the OS releases the handle.
+  const deadline = Date.now() + 10000;
+  for (;;) {
+    try {
+      rmSync(root, { recursive: true, force: true });
+      return;
+    } catch (error) {
+      // Teardown-only: a lingering Windows handle on the just-closed SQLite
+      // file must not fail an otherwise-passing test. The OS reaps the unique
+      // per-test %TEMP%\agentos-task-recovery-* directory; only rethrow for
+      // non-EPERM errors, which signal a real teardown problem.
+      if ((error as { code?: unknown }).code !== 'EPERM') throw error;
+      if (Date.now() >= deadline) return;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+  }
+}
+
+interface RunningProcessSeed {
+  readonly pid: number;
+  readonly startedAt: string;
+}
+
+/**
+ * Build a genuine running Run with a running Stage and completed Start, then
+ * persist a durable root Process for that Stage attempt with M2a recovery
+ * evidence bound. Returns the seeded native identity for verifier stubbing.
+ */
+function seedRunningRunWithProcess(
+  store: SqliteStore,
+  workspaceId: string,
+  pid: number,
+): RunningProcessSeed & { runId: string } {
+  // Seed a genuine v2_api running Run (NOT the legacy bridge, whose origin the
+  // task-domain recovery path intentionally ignores) with a running Stage, a
+  // completed run.start Operation, a provider session, and a durable root
+  // Process with M2a recovery evidence bound. Direct SQL mirrors the M2b
+  // unit-fixture shape but on the production SqliteStore.
+  const db = store.getDatabase();
+  const now = new Date().toISOString();
+  const runId = createEntityId('run');
+  const taskId = createEntityId('task');
+  const stageId = createEntityId('stage');
+  const opId = createEntityId('operation');
+  const pcfgId = createEntityId('provider');
+  const agentId = createEntityId('agent');
+  db.prepare(
+    'INSERT INTO tasks (id, workspace_id, legacy_task_id, title, description, status, priority, source_conversation_id, source_message_id, accepted_run_id, pending_result_run_id, created_by, created_at, updated_at, completed_at, archived_at, version) VALUES (?, ?, NULL, ?, NULL, \'open\', \'normal\', NULL, NULL, NULL, NULL, ?, ?, ?, NULL, NULL, 1)',
+  ).run(taskId, workspaceId, 'P6M2b task ' + pid, 'recovery-test', now, now);
+  db.prepare(
+    'INSERT INTO runs (id, workspace_id, task_id, parent_run_id, root_run_id, status, reason, origin, objective, failure_code, failure_message, cancellation_requested_at, next_event_sequence, started_at, completed_at, created_by, created_at, updated_at, version, recovery_required) VALUES (?, ?, ?, NULL, ?, \'running\', \'initial\', \'v2_api\', NULL, NULL, NULL, NULL, 1, ?, NULL, \'recovery-test\', ?, ?, 1, 0)',
+  ).run(runId, workspaceId, taskId, runId, now, now, now);
+  // Reuse the migration-007 pre-seeded built-in unbound workflow definition so
+  // the snapshot FK (workflow_definitions.id ON DELETE RESTRICT) is satisfied.
+  db.prepare(
+    'INSERT INTO run_snapshots (id, workspace_id, run_id, workflow_definition_id, snapshot_schema_version, snapshot_json, content_hash, redaction_applied, captured_at) VALUES (?, ?, ?, \'workflow_00000000000000000000000002\', 1, \'{}\', ?, 0, ?)',
+  ).run('snap-' + runId, workspaceId, runId, '0'.repeat(64), now);
+  db.prepare(
+    'INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, failure_code, failure_message, started_at, completed_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, \'stage_one\', \'stage_one\', 1, 1, \'running\', NULL, NULL, ?, NULL, ?, ?, 1)',
+  ).run(stageId, workspaceId, runId, 'snap-' + runId, now, now, now);
+  db.prepare(
+    'INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, result_json, error_json, created_at, started_at, completed_at, updated_at, version) VALUES (?, \'run.start\', \'completed\', ?, \'run\', ?, ?, ?, NULL, NULL, ?, ?, ?, ?, 1)',
+  ).run(opId, workspaceId, runId, runId, opId, now, now, now, now);
+  db.prepare(
+    'INSERT INTO provider_configurations (id, workspace_id, name, provider_type, adapter_id, runtime_mode, capabilities_json, timeout_policy_json, created_at, updated_at) VALUES (?, ?, \'P6M2b provider\', \'kimicode\', \'builtin.kimicode\', \'cli\', \'{}\', \'{}\', ?, ?)',
+  ).run(pcfgId, workspaceId, now, now);
+  db.prepare(
+    'INSERT INTO agent_profiles (workspace_id, id, name, agent_role, role_title, system_prompt, permissions_json, enabled, cli_command, cli_args_json, created_at, updated_at) VALUES (?, ?, \'Agent\', \'worker\', \'Worker\', \'\', \'[]\', 1, \'agent\', \'[]\', ?, ?)',
+  ).run(workspaceId, agentId, now, now);
+  const session = store.providerSessionRepository().createSession({
+    workspaceId,
+    taskId,
+    runId,
+    stageId,
+    stageAttempt: 1,
+    authorityRole: 'primary-provider',
+    agentId,
+    providerConfigId: pcfgId,
+    providerConfigVersion: 1,
+    providerType: 'kimicode',
+    adapterId: 'builtin.kimicode',
+    adapterVersion: '1.0.0',
+    configSchemaVersion: 1,
+    runtimeMode: 'cli',
+    capabilities: {},
+    createdAt: now,
+    eventContext: { correlationId: opId, causationId: runId },
+  });
+  const providerSessionId = session.session.id;
+  const proc = store.processRepository().createProcess({
+    workspaceId,
+    taskId,
+    runId,
+    stageId,
+    stageAttempt: 1,
+    providerSessionId,
+    authorityRole: 'primary-provider',
+    claimEpoch: 1,
+    processType: 'provider',
+    platform: process.platform,
+    executableResolved: 'C:\\bin\\agent.exe',
+    argsRedacted: ['[REDACTED]'],
+    cwdResolved: 'E:\\ws',
+    shell: 0,
+    detached: 0,
+    stdinMode: 'closed',
+    stdoutMode: 'capture',
+    stderrMode: 'capture',
+    timeoutPolicy: { graceMs: 5000 },
+    securityProfileRef: 'secprofile_default',
+    createdAt: now,
+    eventContext: { correlationId: opId, causationId: runId },
+  }).process;
+  store.processRepository().casStartProcess({
+    workspaceId,
+    processId: proc.id,
+    expectedVersion: 1,
+    expectedClaimEpoch: 1,
+    expectedClaimOwner: null,
+    timestamp: now,
+    eventContext: { correlationId: opId, causationId: runId },
+  });
+  const bound = store.processRepository().casBindNativeIdentity({
+    workspaceId,
+    processId: proc.id,
+    expectedVersion: 2,
+    expectedClaimEpoch: 1,
+    expectedClaimOwner: null,
+    timestamp: now,
+    nativePid: pid,
+    nativeStartedAt: now,
+    recoveryToken: 'p6m2b-composition-recovery-token-' + pid,
+    eventContext: { correlationId: opId, causationId: runId },
+  });
+  assert.equal(bound.kind, 'applied');
+  return { pid, startedAt: now, runId };
+}
+
+function notFoundVerifier(): RecoveredProcessVerifier {
+  return { async verify() { return { kind: 'not-found' }; } };
+}
+function unavailableVerifier(): RecoveredProcessVerifier {
+  return { async verify() { return { kind: 'unavailable', reason: 'probe-unavailable' }; } };
+}
+function throwingVerifier(): RecoveredProcessVerifier {
+  return { async verify() { throw new Error('verifier blew up'); } };
+}
+
+/** A. The real recovery composition consumes a supplied processRecovery port. */
+test('P6M2b-composition A: recoverInterruptedTaskRuntime consumes the supplied port', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    seedRunningRunWithProcess(env.store, 'ws-a', 424242);
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    const classifications = await preflightProcessRecoveryClassifications(store2, notFoundVerifier());
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
+    assert.deepEqual(result.taskDomainRecovery.processMissingFailed.length, 1);
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
+/** B. missing -> Stage failed + Run failed via the real composition. */
+test('P6M2b-composition B: production running Run with missing process reconciles to canonical failure', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', 434343);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    const classifications = await preflightProcessRecoveryClassifications(store2, notFoundVerifier());
+    recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
+    const run = store2.runRepository().findById('ws-a', runId)!;
+    assert.equal(run.status, 'failed', 'Run must reach canonical terminal failure');
+    const stage = store2.runStageRepository().listByRun('ws-a', runId).find(candidate => candidate.status === 'failed');
+    assert.ok(stage, 'active Stage must reach canonical failed');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
+/** C. unknown stays uncertain through the real composition (no resume/fail). */
+test('P6M2b-composition C: unavailable verifier keeps recovery fail-safe uncertain', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', 444444);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    const classifications = await preflightProcessRecoveryClassifications(store2, unavailableVerifier());
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
+    assert.deepEqual(result.taskDomainRecovery.processMissingFailed, []);
+    assert.deepEqual(result.taskDomainRecovery.uncertaintyMarked.length, 1);
+    const run = store2.runRepository().findById('ws-a', runId)!;
+    assert.equal(run.status, 'running', 'unknown must not terminal-fail');
+    assert.equal(run.recoveryRequired, true, 'unknown keeps the uncertainty flag');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
+/** D. A throwing verifier is fail-safe: the run is NOT terminal-failed. */
+test('P6M2b-composition D: verifier failure is fail-safe and never terminal-fails incorrectly', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', 454545);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    const classifications = await preflightProcessRecoveryClassifications(store2, throwingVerifier());
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
+    assert.deepEqual(result.taskDomainRecovery.processMissingFailed, []);
+    const run = store2.runRepository().findById('ws-a', runId)!;
+    assert.equal(run.status, 'running', 'verifier failure must not terminal-fail');
+    assert.equal(run.recoveryRequired, true);
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
+/** E. All classifier/verifier calls happen BEFORE the recovery transaction opens. */
+test('P6M2b-composition E: no classifier/verifier call occurs inside the recovery transaction', async () => {
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    seedRunningRunWithProcess(env.store, 'ws-a', 464646);
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    let verifyCalls = 0;
+    const countingVerifier: RecoveredProcessVerifier = {
+      async verify() { verifyCalls += 1; return { kind: 'not-found' }; },
+    };
+    // Phase 1 (async, no transaction): all verification happens here.
+    const classifications = await preflightProcessRecoveryClassifications(store2, countingVerifier);
+    const callsAfterPreflight = verifyCalls;
+    assert.ok(callsAfterPreflight > 0, 'preflight must have invoked the verifier');
+    // Phase 2 (sync, transactional): the port does NO async/verifier work.
+    recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
+    assert.equal(verifyCalls, callsAfterPreflight, 'no verifier call may occur inside the recovery transaction');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+/**
+ * P6-M2 real production composition gate (Windows-only). This drives the REAL
+ * production verifier through the full restart recovery composition — no stub
+ * verifier. A test-owned child process is spawned, confirmed live, then exited;
+ * the seeded Run binds that now-absent PID. The real
+ * createPlatformRecoveredProcessVerifier() must prove it absent (not-found),
+ * so classification is missing and recovery reconciles Stage/Run to canonical
+ * failure. The verifier never manages the child; the test owns its fixture.
+ */
+test('P6M2-composition real-platform: proven-absent provider PID drives missing -> Stage failed + Run failed', { skip: process.platform !== 'win32' }, async () => {
+  const child = spawn('cmd.exe', ['/c', 'exit 0'], { windowsHide: true, stdio: 'ignore' });
+  const childPid = child.pid;
+  assert.ok(typeof childPid === 'number', 'child must have a pid');
+  await new Promise(resolve => child.once('exit', resolve));
+  const verifier = createPlatformRecoveredProcessVerifier();
+  // The real verifier must now prove the exited child PID absent (locale-
+  // independent absence proof). Poll briefly to let the OS release the PID.
+  let probe = await verifier.verify(childPid);
+  for (let attempt = 0; attempt < 20 && probe.kind !== 'not-found'; attempt += 1) {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    probe = await verifier.verify(childPid);
+  }
+  assert.equal(probe.kind, 'not-found', 'real verifier must prove the exited PID absent');
+
+  const env = createRealRecoveryEnv();
+  let store2: SqliteStore | undefined;
+  try {
+    const seeded = seedRunningRunWithProcess(env.store, 'ws-a', childPid);
+    const runId = seeded.runId;
+    env.store.close();
+    store2 = new SqliteStore(env.root);
+    const service = new TaskRunService(store2);
+    // Real composition: production verifier -> preflight -> sync port -> recovery.
+    const classifications = await preflightProcessRecoveryClassifications(store2, verifier);
+    const result = recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
+    assert.ok(result.taskDomainRecovery.processMissingFailed.includes(runId), 'processMissingFailed must include the run');
+    const run = store2.runRepository().findById('ws-a', runId)!;
+    assert.equal(run.status, 'failed', 'Run must reach canonical terminal failure');
+    const stage = store2.runStageRepository().listByRun('ws-a', runId).find(candidate => candidate.status === 'failed');
+    assert.ok(stage, 'active Stage must reach canonical failed');
+  } finally {
+    store2?.close();
+    await rmRootWithRetry(env.root);
+  }
+});
+
 test('R20 startup recovery leaves queued v2_api Runs untouched', () => {
   const env = createRealRecoveryEnv();
   try {
@@ -643,6 +968,7 @@ test('R25 startup composition preserves Legacy recovery and then restores canoni
       approvalRestored: [],
       uncertaintyMarked: [],
       startupFailed: [],
+      processMissingFailed: [],
       alreadyRecoveryRequired: [],
     });
     assert.equal(recoveredCanonical.status, 'queued');
