@@ -28,7 +28,7 @@ type Db = InstanceType<typeof DatabaseSync>;
 
 const NOW = '2026-08-13T00:00:00.000Z';
 const NOW2 = '2026-08-13T01:00:00.000Z';
-const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014'];
+const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
 const M4_TABLES = ['process_output_references', 'provider_sessions', 'runtime_processes'];
 
 const WS = 'ws_m4';
@@ -54,7 +54,9 @@ function freshDb(): Db {
 }
 
 function registryThrough013(): MigrationRegistry {
-  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '014'));
+  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
+    migration => migration.id !== '014' && migration.id !== '015',
+  ));
 }
 
 function migration014(): Migration {
@@ -424,6 +426,7 @@ test('Migration 014 exposes exact frozen columns, indexes, triggers, keys and FK
       'termination_reason', 'cleanup_result', 'survivor_pids_redacted_json',
       'error_code', 'error_detail_redacted', 'version', 'created_at', 'updated_at',
       'archived_at',
+      'native_birth_identity',
     ]);
     assert.deepEqual(columns(db, 'process_output_references'), [
       'process_id', 'stream', 'workspace_id', 'run_id', 'artifact_id', 'storage_key',
@@ -444,6 +447,7 @@ test('Migration 014 exposes exact frozen columns, indexes, triggers, keys and FK
       'provider_sessions_status_updated',
     ]);
     assert.deepEqual(namedIndexes('runtime_processes'), [
+      'runtime_processes_native_birth_identity',
       'runtime_processes_native_identity',
       'runtime_processes_parent',
       'runtime_processes_root_claim_unique',
@@ -464,6 +468,7 @@ test('Migration 014 exposes exact frozen columns, indexes, triggers, keys and FK
     ]);
     assert.deepEqual(triggerNames(db, 'runtime_processes'), [
       'runtime_processes_identity_immutable',
+      'runtime_processes_native_birth_identity_immutable',
       'runtime_processes_reject_delete',
       'runtime_processes_terminal_immutable',
     ]);
@@ -578,7 +583,10 @@ test('001–013 file DB upgrades additively: 014 meta row, existing rows and che
 
     const metaAfter = ctx.db.prepare('SELECT migration_id, checksum FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string; checksum: string }>;
     assert.deepEqual(metaAfter.map(row => row.migration_id), MIGRATION_IDS);
-    assert.deepEqual(metaAfter.filter(row => row.migration_id !== '014'), metaBefore);
+    assert.deepEqual(
+      metaAfter.filter(row => row.migration_id !== '014' && row.migration_id !== '015'),
+      metaBefore,
+    );
     assert.equal(metaAfter.find(row => row.migration_id === '014')?.checksum, migration014().checksum);
     assert.deepEqual(ctx.db.prepare('SELECT id, status, version FROM run_stages WHERE id = ?').get(STAGE), stageBefore);
     assert.deepEqual(ctx.db.prepare('SELECT id, name, provider_type, version FROM provider_configurations WHERE id = ?').get(PCFG), configBefore);
@@ -764,6 +772,11 @@ test('registry order is 001–014, duplicate ids are rejected, and checksum mism
   assert.equal(migration.name, 'm4-process-runtime-schema');
   assert.equal(migration.destructive, true);
   assert.match(migration.checksum, /^[0-9a-f]{16}$/);
+  const migration015 = DEFAULT_REGISTRY_MIGRATIONS.find(candidate => candidate.id === '015');
+  assert.ok(migration015, 'Migration 015 must be registered');
+  assert.equal(migration015.name, 'p6-m3b-windows-native-birth-identity');
+  assert.equal(migration015.destructive, false);
+  assert.match(migration015.checksum, /^[0-9a-f]{16}$/);
   assert.throws(
     () => new MigrationRegistry([migration, { ...migration }]),
     (error: unknown) => error instanceof MigrationError && error.code === 'MIGRATION_DUPLICATE_ID',
@@ -785,6 +798,43 @@ test('registry order is 001–014, duplicate ids are rejected, and checksum mism
       'recorded checksum must be preserved after a closed failure',
     );
     assertIntegrity(ctx.db);
+  } finally {
+    ctx.close();
+  }
+});
+
++test('P6-M3b migration 015 adds the canonical native_birth_identity column with no backfill', () => {
+  const db = migratedDb();
+  try {
+    // Column exists and is TEXT (nullable).
+    const info = db.prepare("SELECT name, type, [notnull] FROM pragma_table_info('runtime_processes') WHERE name = 'native_birth_identity'").get() as { name: string; type: string; notnull: number } | undefined;
+    assert.ok(info, 'native_birth_identity column must exist');
+    assert.equal(info!.type.toUpperCase(), 'TEXT');
+    assert.equal(info!.notnull, 0, 'column must be nullable (no forced value)');
+    // Index and immutability trigger exist.
+    const idx = db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND name = 'runtime_processes_native_birth_identity'").get();
+    assert.ok(idx, 'native_birth_identity index must exist');
+    const trig = db.prepare("SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'runtime_processes_native_birth_identity_immutable'").get();
+    assert.ok(trig, 'native_birth_identity immutability trigger must exist');
+  } finally {
+    db.close();
+  }
+});
+
+test('P6-M3b migration 015 does not backfill existing rows and preserves the v1 legacy shape', () => {
+  const ctx = createLegacyFileDbThrough013();
+  try {
+    // Upgrade through the full registry (014 + 015).
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+      backupProvider: createFileBackupProvider(join(ctx.root, 'migration-backups')),
+    }).run();
+    // A pre-existing runtime_processes row (if any) keeps native_birth_identity NULL:
+    // no backfill. On an empty table there is simply nothing to backfill; the
+    // column default must be NULL.
+    const rows = ctx.db.prepare('SELECT native_birth_identity FROM runtime_processes').all() as Array<{ native_birth_identity: string | null }>;
+    for (const row of rows) assert.equal(row.native_birth_identity, null, 'no backfill: existing rows stay NULL');
+    const recorded = ctx.db.prepare("SELECT COUNT(*) AS c FROM _schema_migrations WHERE migration_id = '015'").get() as { c: number };
+    assert.equal(recorded.c, 1, 'migration 015 must be recorded after the upgrade');
   } finally {
     ctx.close();
   }

@@ -123,6 +123,7 @@ interface RuntimeProcessRow {
   native_pid: number | null;
   native_parent_pid: number | null;
   native_started_at: string | null;
+  native_birth_identity: string | null;
   process_group_id: string | null;
   tree_ownership_mode: string | null;
   platform_handle_id: string | null;
@@ -181,6 +182,7 @@ export interface RuntimeProcess {
   readonly nativePid: number | null;
   readonly nativeParentPid: number | null;
   readonly nativeStartedAt: string | null;
+  readonly nativeBirthIdentity: string | null;
   readonly processGroupId: string | null;
   readonly treeOwnershipMode: string | null;
   readonly platformHandleId: string | null;
@@ -274,6 +276,8 @@ export interface BindNativeIdentityInput extends ProcessClaimFence {
   readonly nativePid: number;
   readonly nativeParentPid?: number | null;
   readonly nativeStartedAt: string;
+  /** P6-M3b: lossless native birth identity (canonical column); null when unavailable. */
+  readonly nativeBirthIdentity?: string | null;
   readonly processGroupId?: string | null;
   readonly platformHandleId?: string | null;
   /**
@@ -421,6 +425,7 @@ function validateProcessRow(row: unknown): asserts row is RuntimeProcessRow {
   assertOptionalInteger(value.native_pid, 'native_pid');
   assertOptionalInteger(value.native_parent_pid, 'native_parent_pid');
   assertOptionalTimestamp(value.native_started_at, 'native_started_at');
+  assertOptionalString(value.native_birth_identity, 'native_birth_identity');
   assertOptionalString(value.process_group_id, 'process_group_id');
   assertOptionalString(value.tree_ownership_mode, 'tree_ownership_mode');
   assertOptionalString(value.platform_handle_id, 'platform_handle_id');
@@ -500,6 +505,7 @@ function mapProcess(row: RuntimeProcessRow): RuntimeProcess {
     nativePid: row.native_pid,
     nativeParentPid: row.native_parent_pid,
     nativeStartedAt: row.native_started_at,
+    nativeBirthIdentity: row.native_birth_identity,
     processGroupId: row.process_group_id,
     treeOwnershipMode: row.tree_ownership_mode,
     platformHandleId: row.platform_handle_id,
@@ -778,6 +784,9 @@ export class ProcessRepository {
     const processGroupId = input.processGroupId === undefined ? null : input.processGroupId;
     const platformHandleId = input.platformHandleId === undefined ? null : input.platformHandleId;
 
+    // P6-M3b: lossless native birth identity (canonical column value). Never
+    // fabricated from the wall clock; null when capture was unavailable.
+    const nativeBirthIdentity = input.nativeBirthIdentity === undefined ? null : input.nativeBirthIdentity;
     // P6-M2a: derive recovery metadata. Only the token HASH is persisted; the
     // raw one-time token never reaches the database. recovery_evidence_json
     // carries the classifier inputs (pid, native start time, token hash,
@@ -792,9 +801,10 @@ export class ProcessRepository {
     const recoveryEvidenceJson = input.recoveryToken === undefined
       ? null
       : canonicalizeJson({
-          schemaVersion: 1,
+          schemaVersion: 2,
           nativePid: input.nativePid,
           nativeStartedAt: input.nativeStartedAt,
+          nativeBirthIdentity,
           recoveryTokenHash,
           platform: recoveryPlatform,
         });
@@ -806,6 +816,7 @@ export class ProcessRepository {
         native_pid = ?,
         native_parent_pid = ?,
         native_started_at = ?,
+        native_birth_identity = COALESCE(?, native_birth_identity),
         process_group_id = ?,
         platform_handle_id = ?,
         recovery_token_hash = COALESCE(?, recovery_token_hash),
@@ -824,6 +835,7 @@ export class ProcessRepository {
       input.nativePid,
       nativeParentPid,
       input.nativeStartedAt,
+      nativeBirthIdentity,
       processGroupId,
       platformHandleId,
       recoveryTokenHash,

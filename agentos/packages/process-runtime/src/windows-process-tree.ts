@@ -65,10 +65,7 @@ export interface WindowsTransportTraceEvent {
  * after process termination plus a bounded pump-drain wait; pumps keep
  * running after that wait, so late provider bytes are still delivered.
  */
-const WINDOWS_JOB_HELPER_SCRIPT = String.raw`
-$ErrorActionPreference = 'Stop'
-try {
-  $null = Add-Type -TypeDefinition @'
+const WINDOWS_JOB_HELPER_BODY = String.raw`
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
@@ -130,6 +127,83 @@ public sealed class AgentOsFrameWriter
             stream.Flush();
         }
     }
+}
+
+/// <summary>
+/// Read-only Windows process-creation identity (birth) primitive.
+///
+/// GetProcessTimes returns the creation time as a 64-bit FILETIME expressed as
+/// two 32-bit halves. The canonical durable value is the invariant unsigned
+/// decimal text of the full 64-bit FILETIME (dwHigh * 2^32 + dwLow). It is
+/// computed with 64-bit integers only and is NEVER routed through a 32-bit or
+/// floating-point/Number representation, so the full precision survives.
+///
+/// This type only READS process times. It never creates, attaches, signals,
+/// terminates, or otherwise modifies the target process or any Job.
+/// </summary>
+public static class AgentOsProcessIdentity
+{
+    private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+
+    /// <summary>
+    /// Reads the creation FILETIME for an already-open process handle and
+    /// returns it as invariant unsigned decimal text. Throws a Win32Exception
+    /// when the OS call fails; the caller must treat any failure as
+    /// identity-unavailable (fail-closed), never as process absence.
+    /// </summary>
+    public static string ReadCreationFileTime(IntPtr processHandle)
+    {
+        uint creationLow;
+        uint creationHigh;
+        uint exitLow;
+        uint exitHigh;
+        uint kernelLow;
+        uint kernelHigh;
+        uint userLow;
+        uint userHigh;
+        if (!GetProcessTimes(processHandle, out creationLow, out creationHigh, out exitLow, out exitHigh, out kernelLow, out kernelHigh, out userLow, out userHigh))
+        {
+            AgentOsJob.ThrowLastError();
+        }
+        ulong value = ((ulong)creationHigh << 32) | creationLow;
+        return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
+    }
+
+    /// <summary>
+    /// Read-only probe: opens the target PID with the minimum query right,
+    /// reads its creation FILETIME, and returns the invariant unsigned decimal
+    /// text. The process is opened only to read its times; it is never placed
+    /// in a Job, never terminated, and never signaled. Any failure throws so
+    /// the caller fails closed (identity unavailable), never guessing absence.
+    /// </summary>
+    public static string ProbeCreationFileTime(uint pid)
+    {
+        var handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+        if (handle == IntPtr.Zero) AgentOsJob.ThrowLastError();
+        try
+        {
+            return ReadCreationFileTime(handle);
+        }
+        finally
+        {
+            AgentOsJob.CloseHandle(handle);
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GetProcessTimes(
+        IntPtr hProcess,
+        out uint lpCreationTimeLow,
+        out uint lpCreationTimeHigh,
+        out uint lpExitTimeLow,
+        out uint lpExitTimeHigh,
+        out uint lpKernelTimeLow,
+        out uint lpKernelTimeHigh,
+        out uint lpUserTimeLow,
+        out uint lpUserTimeHigh);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);
 }
 
 public sealed class AgentOsJob : IDisposable
@@ -734,10 +808,19 @@ public static class AgentOsJobServer
                             newJob.Assign(created.Handle);
                             job = newJob;
                             owned = created;
+                            // Capture the lossless native creation identity from the
+                            // already-open provider handle AFTER atomic Job assignment
+                            // and BEFORE ResumeThread, so no provider-controlled code
+                            // can run first and there is no PID-lookup race. Any
+                            // capture failure fails closed: identity stays null and
+                            // the normal lifecycle/ownership order is unchanged.
+                            string birthIdentity = null;
+                            try { birthIdentity = AgentOsProcessIdentity.ReadCreationFileTime(created.Handle); }
+                            catch { birthIdentity = null; }
                             writer.WriteLine("assigned|" + owned.Pid);
                             owned.Resume();
                             resumed = true;
-                            writer.WriteLine("launched|" + owned.Pid);
+                            writer.WriteLine("launched|" + owned.Pid + "|" + (birthIdentity == null ? "-" : birthIdentity));
                         }
                         catch (Exception error)
                         {
@@ -762,6 +845,32 @@ public static class AgentOsJobServer
                         if (!uint.TryParse(line.Substring("attach|".Length), out attachPid)) throw new InvalidOperationException("invalid-attach-pid");
                         job = AgentOsJob.Attach(attachPid);
                         writer.WriteLine("ok|attach");
+                    }
+                    else if (line.StartsWith("probe-identity|"))
+                    {
+                        // Read-only native birth-identity probe. Opens the target
+                        // PID with PROCESS_QUERY_LIMITED_INFORMATION only, reads its
+                        // creation FILETIME, and replies with invariant unsigned
+                        // decimal text. It never creates/attaches the target to a
+                        // Job, never signals/terminates it, and never changes
+                        // ownership. Any failure fails closed (identity-unavailable).
+                        uint probePid;
+                        if (!uint.TryParse(line.Substring("probe-identity|".Length), out probePid) || probePid == 0)
+                        {
+                            writer.WriteLine("identity|error|invalid-pid");
+                        }
+                        else
+                        {
+                            try
+                            {
+                                var value = AgentOsProcessIdentity.ProbeCreationFileTime(probePid);
+                                writer.WriteLine("identity|" + probePid + "|" + value);
+                            }
+                            catch (Exception error)
+                            {
+                                writer.WriteLine("identity|error|" + Sanitize(error.Message));
+                            }
+                        }
                     }
                     else if (line == "members")
                     {
@@ -806,15 +915,31 @@ public static class AgentOsJobServer
         if (owned != null) { owned.WaitExitFrame(1500); owned.Dispose(); }
     }
 }
-'@ -ReferencedAssemblies 'System', 'System.Core', 'System.Runtime.Serialization', 'System.Xml'
-  [AgentOsJobServer]::Run()
-} catch {
-  $detail = $_.Exception.Message -replace '[\r\n|]', ' '
-  if ($detail.Length -gt 400) { $detail = $detail.Substring(0, 400) }
-  [Console]::Error.WriteLine('helper-fatal|' + $detail)
-  exit 1
-}
 `;
+
+/**
+ * Tiny fixed PowerShell loader. It reads ONE bounded base64 frame carrying the
+ * C# body from STDIN, compiles it with Add-Type, and runs the helper. This keeps
+ * the launch command line short (under the Windows ~32K limit) while preserving
+ * the fixed-script model: no provider-controlled text is ever interpolated into
+ * PowerShell or C# source; the launch spec still arrives separately as bounded
+ * base64 on the command channel.
+ */
+const WINDOWS_JOB_HELPER_LOADER = [
+  "$ErrorActionPreference = 'Stop'",
+  'try {',
+  '  $b64 = [Console]::In.ReadLine()',
+  "  if ($b64 -eq $null -or $b64.Length -eq 0 -or $b64.Length -gt 2097152) { throw 'helper-body-invalid' }",
+  '  $src = [System.Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($b64))',
+  "  $null = Add-Type -TypeDefinition $src -ReferencedAssemblies 'System', 'System.Core', 'System.Runtime.Serialization', 'System.Xml'",
+  '  [AgentOsJobServer]::Run()',
+  '} catch {',
+  "  $detail = $_.Exception.Message -replace '[\r\n|]', ' '",
+  '  if ($detail.Length -gt 400) { $detail = $detail.Substring(0, 400) }',
+  "  [Console]::Error.WriteLine('helper-fatal|' + $detail)",
+  '  exit 1',
+  '}',
+].join('\n');
 
 let pipeSequence = 0;
 
@@ -978,15 +1103,19 @@ class WindowsJobSession {
           dataServer.listen(dataPipePath, () => resolve());
         }),
       ]);
-      const spawned = spawn(shell, [
-        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WINDOWS_JOB_HELPER_SCRIPT,
+     const spawned = spawn(shell, [
+        '-NoLogo', '-NoProfile', '-NonInteractive', '-ExecutionPolicy', 'Bypass', '-Command', WINDOWS_JOB_HELPER_LOADER,
       ], {
-        shell: false,
-        windowsHide: true,
-        stdio: ['pipe', 'pipe', 'pipe'],
-        env: { ...process.env, AGENTOS_JOB_CONTROL_PIPE: controlPipeName, AGENTOS_JOB_DATA_PIPE: dataPipeName },
-      });
-      helper = spawned;
+       shell: false,
+       windowsHide: true,
+       stdio: ['pipe', 'pipe', 'pipe'],
+       env: { ...process.env, AGENTOS_JOB_CONTROL_PIPE: controlPipeName, AGENTOS_JOB_DATA_PIPE: dataPipeName },
+     });
+     helper = spawned;
+      // Deliver the fixed C# helper body over STDIN as a single bounded base64
+      // frame. The loader reads it before entering the command loop, so the
+      // script body is not subject to the command-line length limit.
+      spawned.stdin?.write(Buffer.from(WINDOWS_JOB_HELPER_BODY, 'utf8').toString('base64') + '\n');
       const capture = (chunk: unknown): void => {
         if (diagnostics.length < MAX_DIAGNOSTIC) diagnostics += String(chunk).slice(0, MAX_DIAGNOSTIC - diagnostics.length);
       };
@@ -1160,11 +1289,28 @@ function parseMembers(response: string): readonly number[] {
   return [...new Set(values)].sort((a, b) => a - b);
 }
 
-function parseLaunchedPid(response: string): number {
+export interface WindowsLaunchedIdentity {
+  readonly pid: number;
+  /**
+   * Lossless native process-creation identity (win32:filetime unsigned decimal
+   * text), or null when capture was unavailable. Transported as a string so the
+   * full 64-bit FILETIME precision is never routed through a JS Number.
+   */
+  readonly nativeBirthIdentity: string | null;
+}
+
+function parseLaunchedIdentity(response: string): WindowsLaunchedIdentity {
   if (!response.startsWith('launched|')) throw new Error('windows-tree-helper-launch-failed');
-  const pid = Number(response.slice('launched|'.length));
+  const parts = response.split('|');
+  const pid = Number(parts[1]);
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('windows-tree-helper-invalid-pid');
-  return pid;
+  // parts[2] is the invariant unsigned-decimal FILETIME, or '-' when capture was
+  // unavailable. It is validated as decimal text and never coerced to Number.
+  const rawIdentity = parts.length >= 3 ? parts[2] : '-';
+  const nativeBirthIdentity = rawIdentity === '-'
+    ? null
+    : (/^[0-9]+$/.test(rawIdentity) ? rawIdentity : null);
+  return { pid, nativeBirthIdentity };
 }
 
 export class WindowsProcessTreeController implements ProcessTreeController {
@@ -1197,20 +1343,22 @@ export class WindowsProcessTreeController implements ProcessTreeController {
     const encoded = Buffer.from(JSON.stringify(spec), 'utf8').toString('base64');
     if (encoded.length > MAX_LAUNCH_SPEC_BASE64) throw new Error('windows-launch-spec-too-large');
     const session = await WindowsJobSession.start(this.shell, this.trace, this.transportTrace);
-    let pid: number;
+    let launched: WindowsLaunchedIdentity;
     try {
       const command = (this.faultInjection?.failJobAssign === true ? 'launch-test-fail-assign|' : 'launch|') + encoded;
       const response = await session.request(command);
-      pid = parseLaunchedPid(response);
+      launched = parseLaunchedIdentity(response);
     } catch (error) {
       await session.close();
       throw error;
     }
+    const pid = launched.pid;
     this.trace?.({ kind: 'launched', pid, at: Date.now() });
     const state: WindowsTreeState = { session, cleanupRequested: false };
     const tree: ProcessTreeHandle = { platform: 'windows', rootPid: pid, state };
     return {
       pid,
+      nativeBirthIdentity: launched.nativeBirthIdentity,
       executablePath: launch.executable,
       stdout: session.stdout,
       stderr: session.stderr,
@@ -1230,6 +1378,37 @@ export class WindowsProcessTreeController implements ProcessTreeController {
       },
       tree,
     };
+  }
+
+  /**
+   * Read-only native birth-identity probe for a live PID.
+   *
+   * Uses a SEPARATE short-lived helper session so the probe never shares or
+   * mutates the production owned-spawn session. The helper opens the PID with
+   * PROCESS_QUERY_LIMITED_INFORMATION only, reads its creation FILETIME, and
+   * tears down WITHOUT attaching the target to a Job, terminating, or signaling
+   * it. Returns the invariant unsigned-decimal FILETIME text, or null when
+   * identity cannot be positively read (fail-closed: caller treats null as
+   * unavailable, never as absence).
+   */
+  async probeNativeBirthIdentity(pid: number): Promise<string | null> {
+    if (!Number.isSafeInteger(pid) || pid <= 0) return null;
+    let session: WindowsJobSession | undefined;
+    try {
+      session = await WindowsJobSession.start(this.shell, this.trace);
+      const response = await session.request('probe-identity|' + pid);
+      if (!response.startsWith('identity|')) return null;
+      const parts = response.split('|');
+      if (parts[1] === 'error') return null;
+      const observedPid = Number(parts[1]);
+      if (!Number.isSafeInteger(observedPid) || observedPid !== pid) return null;
+      const value = parts[2];
+      return typeof value === 'string' && /^[0-9]+$/.test(value) ? value : null;
+    } catch {
+      return null;
+    } finally {
+      await session?.close();
+    }
   }
 
   async attach(identity: NativeIdentity): Promise<ProcessTreeHandle> {

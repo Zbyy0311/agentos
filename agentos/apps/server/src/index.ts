@@ -25,7 +25,7 @@ import {
   preflightProcessRecoveryClassifications,
   createPreflightProcessRecoveryPort,
 } from './processRecoveryPreflight.js';
-import { createPlatformRecoveredProcessVerifier } from '@agentos/process-runtime';
+import { createProductionRecoveredProcessVerifier } from '@agentos/process-runtime';
 import { EventBus } from './events/EventBus.js';
 import { createRunRoutes } from './routes/runs.js';
 import { createArtifactRoutes } from './routes/artifacts.js';
@@ -163,7 +163,7 @@ async function bootstrap(): Promise<void> {
       // verification is ever awaited while the transaction is open.
       const processRecoveryClassifications = await preflightProcessRecoveryClassifications(
         store,
-        createPlatformRecoveredProcessVerifier(),
+        createProductionRecoveredProcessVerifier(),
       );
       recoveredTaskRuntime = recoverInterruptedTaskRuntime(
         store,

@@ -392,9 +392,11 @@ describe('ProcessRepository', () => {
       // The plaintext token never reaches the database.
       assert.notEqual(persisted.recoveryTokenHash, rawToken);
       const evidence = JSON.parse(persisted.recoveryEvidenceJson!) as Record<string, unknown>;
-      assert.equal(evidence.schemaVersion, 1);
+      // P6-M3b: the writer emits the current version (v2) with the birth identity.
+      assert.equal(evidence.schemaVersion, 2);
       assert.equal(evidence.nativePid, 4242);
       assert.equal(evidence.nativeStartedAt, LATER);
+      assert.equal(evidence.nativeBirthIdentity, null, 'no birth identity was supplied in this bind');
       assert.equal(evidence.recoveryTokenHash, expectedHash);
       assert.equal(evidence.platform, 'win32');
       const serializedEvidence = persisted.recoveryEvidenceJson!;
@@ -407,6 +409,49 @@ describe('ProcessRepository', () => {
           assert.ok(!value.includes(rawToken), `column ${key} must not contain the raw token`);
         }
       }
+    } finally {
+      db.close();
+    }
+  });
+
++  it('P6-M3b bind persists the lossless birth identity in the canonical column and v2 mirror', () => {
+    const db = migratedDb();
+    try {
+      const repository = new ProcessRepository(db);
+      const process = repository.createProcess(rootInput()).process;
+      repository.casStartProcess({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 1,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      const rawToken = 'p6m3b-birth-token';
+      const birth = '134176000000000000'; // > 2^53, exercises the lossless text path
+      const bound = repository.casBindNativeIdentity({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 2,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+        nativePid: 5150,
+        nativeStartedAt: LATER,
+        nativeBirthIdentity: birth,
+        recoveryToken: rawToken,
+      });
+      assert.equal(bound.kind, 'applied');
+      const persisted = repository.findById(WS, process.id)!;
+      // Dedicated column is canonical and preserved exactly (no Number coercion).
+      assert.equal(persisted.nativeBirthIdentity, birth);
+      // The v2 evidence mirror carries the exact same canonical value.
+      const evidence = JSON.parse(persisted.recoveryEvidenceJson!) as Record<string, unknown>;
+      assert.equal(evidence.schemaVersion, 2);
+      assert.equal(evidence.nativeBirthIdentity, birth);
+      // Raw SQL read-back proves the column holds the exact decimal digits.
+      const row = db.prepare('SELECT native_birth_identity FROM runtime_processes WHERE id = ?').get(process.id) as { native_birth_identity: string };
+      assert.equal(row.native_birth_identity, birth);
     } finally {
       db.close();
     }

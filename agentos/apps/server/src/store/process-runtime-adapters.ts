@@ -188,6 +188,7 @@ export class DurableProcessRepositoryAdapter implements DurableProcessRepository
       nativePid: input.identity.nativePid,
       nativeParentPid: input.identity.nativeParentPid ?? null,
       nativeStartedAt: input.identity.nativeStartedAt,
+      nativeBirthIdentity: input.identity.nativeBirthIdentity ?? null,
       processGroupId: input.identity.processGroupId ?? null,
       platformHandleId: input.identity.platformHandleId ?? null,
       // P6-M2a: forward the one-time recovery token (in-transit plaintext);
@@ -380,6 +381,7 @@ export function toDurableProcessView(process: RuntimeProcess): DurableProcessVie
     nativePid: process.nativePid,
     nativeParentPid: process.nativeParentPid,
     nativeStartedAt: process.nativeStartedAt,
+    nativeBirthIdentity: process.nativeBirthIdentity,
     processGroupId: process.processGroupId,
     treeOwnershipMode: process.treeOwnershipMode,
     platformHandleId: process.platformHandleId,

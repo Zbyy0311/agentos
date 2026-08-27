@@ -686,9 +686,14 @@ function identityFromHandle(handle: NativeProcessHandle): NativeSpawnIdentity {
     nativeParentPid: handle.identity.parentPid ?? null,
     nativeStartedAt: isoFromEpochMs(handle.identity.startedAtMs),
     processGroupId: handle.identity.groupId ?? null,
+    // P6-M3b: carry the lossless native birth identity (when the platform
+    // captured it) so the repository can persist the canonical column and the
+    // schemaVersion-2 evidence mirror. Never derived from the wall clock.
+    nativeBirthIdentity: handle.identity.nativeBirthIdentity ?? null,
     // P6-M2a: one-time random recovery token. The plaintext is never
-    // persisted; the repository stores only its SHA-256 hash so a restart
-    // classifier can prove native-process identity (PID-reuse safe).
+    // persisted; the repository stores only its SHA-256 hash. The token/hash is
+    // persistence-integrity evidence only; it is NOT live OS-process identity
+    // proof (PID-reuse safety comes from the birth identity, not this token).
     recoveryToken: randomBytes(32).toString('hex'),
   };
 }

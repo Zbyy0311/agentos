@@ -214,6 +214,12 @@ export interface DurableProcessView {
   readonly nativePid: number | null;
   readonly nativeParentPid: number | null;
   readonly nativeStartedAt: string | null;
+  /**
+   * P6-M3b: canonical lossless native birth identity (dedicated column). Null for
+   * pre-M3b rows (no backfill) and when capture was unavailable. This is the
+   * canonical authority; recovery_evidence_json is its integrity mirror.
+   */
+  readonly nativeBirthIdentity: string | null;
   readonly processGroupId: string | null;
   readonly treeOwnershipMode: string | null;
   readonly platformHandleId: string | null;
@@ -293,6 +299,15 @@ export interface NativeSpawnIdentity {
    * hash plus evidence to prove native-process identity after a restart.
    */
   readonly recoveryToken?: string;
+  /**
+   * P6-M3b: lossless native process-creation (birth) identity captured at spawn
+   * (e.g. win32:filetime unsigned decimal text). This is the canonical value
+   * persisted in the dedicated native_birth_identity column and mirrored into
+   * schemaVersion-2 recovery evidence. It is additional, re-observable evidence
+   * and NEVER replaces nativeStartedAt. Null/absent when capture was unavailable
+   * (fail-closed; never fabricated from the wall clock or a JS Number).
+   */
+  readonly nativeBirthIdentity?: string | null;
 }
 
 export interface BindNativeIdentityInput extends DurableClaimFence {

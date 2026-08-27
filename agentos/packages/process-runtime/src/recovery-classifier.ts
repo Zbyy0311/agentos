@@ -26,6 +26,13 @@ export interface LiveProcessIdentity {
   readonly pid: number;
   /** Native start time in epoch milliseconds, if the platform exposes it. */
   readonly startedAtMs: number | null;
+  /**
+   * P6-M3b: lossless native process-creation (birth) identity re-observed from
+   * the OS at classification time (e.g. win32:filetime unsigned decimal text).
+   * This is the v2 SAME/MISMATCH proof value. It is opaque canonical text and is
+   * NEVER routed through a JS Number, Date.parse, or the wall clock.
+   */
+  readonly nativeBirthIdentity?: string | null;
 }
 
 /**
@@ -54,7 +61,8 @@ export function recoveryTokenHash(rawToken: string): string {
  * time, the token hash (so a live proof can be matched), and the platform.
  * It never contains the raw token.
  */
-export interface SpawnRecoveryEvidence {
+/** P6-M2 legacy spawn recovery evidence (schemaVersion 1). */
+export interface SpawnRecoveryEvidenceV1 {
   readonly schemaVersion: 1;
   readonly nativePid: number;
   readonly nativeStartedAt: string | null;
@@ -62,35 +70,83 @@ export interface SpawnRecoveryEvidence {
   readonly platform: string;
 }
 
+/**
+ * P6-M3b spawn recovery evidence (schemaVersion 2). Adds the lossless native
+ * birth identity. nativeBirthIdentity may be null when capture was genuinely
+ * unavailable; it is NEVER fabricated from the wall clock.
+ */
+export interface SpawnRecoveryEvidenceV2 {
+  readonly schemaVersion: 2;
+  readonly nativePid: number;
+  readonly nativeStartedAt: string | null;
+  readonly nativeBirthIdentity: string | null;
+  readonly recoveryTokenHash: string;
+  readonly platform: string;
+}
+
+export type SpawnRecoveryEvidence = SpawnRecoveryEvidenceV1 | SpawnRecoveryEvidenceV2;
+
+/**
+ * The writer always emits the CURRENT version (v2). v1 is read-only legacy.
+ */
 export function buildSpawnRecoveryEvidence(input: {
   readonly nativePid: number;
   readonly nativeStartedAt: string | null;
+  readonly nativeBirthIdentity?: string | null;
   readonly rawRecoveryToken: string;
   readonly platform: string;
-}): SpawnRecoveryEvidence {
+}): SpawnRecoveryEvidenceV2 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     nativePid: input.nativePid,
     nativeStartedAt: input.nativeStartedAt,
+    nativeBirthIdentity: input.nativeBirthIdentity ?? null,
     recoveryTokenHash: recoveryTokenHash(input.rawRecoveryToken),
     platform: input.platform,
   };
 }
 
-function parseEvidence(json: string | null): SpawnRecoveryEvidence | null {
+type ParsedEvidence =
+  | { readonly version: 1; readonly value: SpawnRecoveryEvidenceV1 }
+  | { readonly version: 2; readonly value: SpawnRecoveryEvidenceV2 }
+  | null;
+
+/**
+ * Dual-version reader. Dispatches on the persisted schemaVersion and applies the
+ * matching semantics per row. Unknown/future versions, malformed payloads, and
+ * field-type mismatches all return null so classification fails closed to
+ * 'unknown'. v1 rows are NEVER rejected for lacking birth identity.
+ */
+function parseEvidence(json: string | null): ParsedEvidence {
   if (json === null) return null;
   try {
-    const parsed = JSON.parse(json) as Partial<SpawnRecoveryEvidence>;
+    const parsed = JSON.parse(json) as {
+      schemaVersion?: unknown;
+      nativePid?: unknown;
+      nativeStartedAt?: unknown;
+      nativeBirthIdentity?: unknown;
+      recoveryTokenHash?: unknown;
+      platform?: unknown;
+    };
     if (
-      parsed !== null
-      && typeof parsed === 'object'
-      && parsed.schemaVersion === 1
-      && typeof parsed.nativePid === 'number'
-      && typeof parsed.recoveryTokenHash === 'string'
-      && typeof parsed.platform === 'string'
+      parsed === null
+      || typeof parsed !== 'object'
+      || typeof parsed.nativePid !== 'number'
+      || typeof parsed.recoveryTokenHash !== 'string'
+      || typeof parsed.platform !== 'string'
     ) {
-      return parsed as SpawnRecoveryEvidence;
+      return null;
     }
+    if (parsed.schemaVersion === 1) {
+      return { version: 1, value: parsed as unknown as SpawnRecoveryEvidenceV1 };
+    }
+    if (parsed.schemaVersion === 2) {
+      const nbi = parsed.nativeBirthIdentity;
+      if (nbi !== null && nbi !== undefined && typeof nbi !== 'string') return null;
+      const v2 = parsed as unknown as SpawnRecoveryEvidenceV2;
+      return { version: 2, value: { ...v2, nativeBirthIdentity: nbi ?? null } };
+    }
+    // Unknown or future version: fail closed.
     return null;
   } catch {
     return null;
@@ -115,6 +171,7 @@ export async function classifyRecoveredProcess(
     | 'platform'
     | 'recoveryTokenHash'
     | 'recoveryEvidenceJson'
+    | 'nativeBirthIdentity'
   >,
   verifier: RecoveredProcessVerifier,
 ): Promise<RecoveryClassificationResult> {
@@ -123,17 +180,18 @@ export async function classifyRecoveredProcess(
     evidence: { reason },
   });
 
-  const evidence = parseEvidence(process.recoveryEvidenceJson);
+  const parsed = parseEvidence(process.recoveryEvidenceJson);
   if (
     process.nativePid === null
-    || evidence === null
+    || parsed === null
     || typeof process.recoveryTokenHash !== 'string'
     || process.recoveryTokenHash.length === 0
-    || evidence.recoveryTokenHash !== process.recoveryTokenHash
+    || parsed.value.recoveryTokenHash !== process.recoveryTokenHash
   ) {
     // Evidence missing or internally inconsistent: cannot prove anything.
     return failSafe('recovery-evidence-missing-or-inconsistent');
   }
+  const evidence = parsed.value;
 
   let observed: RecoveredProcessVerifyResult;
   try {
@@ -153,23 +211,35 @@ export async function classifyRecoveredProcess(
     return failSafe('platform-verification-unavailable: ' + observed.reason);
   }
 
-  // alive: prove identity. Start-time agreement distinguishes the original
-  // process from a PID-reuse successor.
-  const persistedStartMs = evidence.nativeStartedAt === null
-    ? null
-    : Date.parse(evidence.nativeStartedAt);
-  const liveStartMs = observed.identity.startedAtMs;
-  if (persistedStartMs === null || liveStartMs === null) {
-    // Identity cannot be proven without a comparable start time.
-    return failSafe('identity-start-time-unavailable');
+  // alive: identity proof depends on the evidence version.
+  if (parsed.version === 1) {
+    // V1 carries no re-observable native birth identity. A live PID can never
+    // reach SAME or MISMATCH; it stays fail-safe UNKNOWN. (Absence was already
+    // handled above and still yields MISSING.)
+    return failSafe('v1-evidence-live-pid-unprovable');
   }
-  if (persistedStartMs !== liveStartMs) {
+
+  // V2: proof is PID + lossless native birth identity (never the wall clock).
+  // Canonical authority: the dedicated column is canonical; the JSON evidence is
+  // an integrity mirror. Any disagreement fails closed to UNKNOWN (no guessing).
+  const canonicalBirth = process.nativeBirthIdentity ?? null;
+  const mirrorBirth = evidence.schemaVersion === 2 ? evidence.nativeBirthIdentity : null;
+  if (canonicalBirth !== mirrorBirth) {
+    return failSafe('birth-identity-column-mirror-disagreement');
+  }
+  const liveBirth = observed.identity.nativeBirthIdentity ?? null;
+  if (canonicalBirth === null || liveBirth === null) {
+    // Live PID but birth identity missing/unreadable/unavailable: fail closed.
+    return failSafe('birth-identity-unavailable');
+  }
+  if (canonicalBirth !== liveBirth) {
+    // PID exists but the creation identity positively differs: PID reuse.
     return {
       classification: 'mismatch',
       evidence: {
         pid: process.nativePid,
-        persistedStartedAt: evidence.nativeStartedAt,
-        observedStartedAtMs: liveStartMs,
+        persistedBirthIdentity: canonicalBirth,
+        observedBirthIdentity: liveBirth,
       },
     };
   }
@@ -177,7 +247,7 @@ export async function classifyRecoveredProcess(
     classification: 'same',
     evidence: {
       pid: process.nativePid,
-      nativeStartedAt: evidence.nativeStartedAt,
+      nativeBirthIdentity: canonicalBirth,
     },
   };
 }

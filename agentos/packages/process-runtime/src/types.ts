@@ -110,6 +110,12 @@ export interface NativeIdentity {
   readonly executablePath: string;
   readonly parentPid?: number;
   readonly groupId?: string;
+  /**
+   * P6-M3b: lossless native process-creation (birth) identity, when the platform
+   * captured it at spawn. Opaque canonical text; never derived from the wall
+   * clock and never routed through a JS Number. Additional evidence only.
+   */
+  readonly nativeBirthIdentity?: string | null;
 }
 
 export interface ExitEvidence {
