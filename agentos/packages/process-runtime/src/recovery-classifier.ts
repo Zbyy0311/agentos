@@ -121,34 +121,52 @@ type ParsedEvidence =
 function parseEvidence(json: string | null): ParsedEvidence {
   if (json === null) return null;
   try {
-    const parsed = JSON.parse(json) as {
-      schemaVersion?: unknown;
-      nativePid?: unknown;
-      nativeStartedAt?: unknown;
-      nativeBirthIdentity?: unknown;
-      recoveryTokenHash?: unknown;
-      platform?: unknown;
-    };
+    const parsed = JSON.parse(json) as unknown;
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null;
+    }
+    const record = parsed as Record<string, unknown>;
     if (
-      parsed === null
-      || typeof parsed !== 'object'
-      || typeof parsed.nativePid !== 'number'
-      || typeof parsed.recoveryTokenHash !== 'string'
-      || typeof parsed.platform !== 'string'
+      !Number.isSafeInteger(record.nativePid)
+      || (record.nativePid as number) <= 0
+      || typeof record.recoveryTokenHash !== 'string'
+      || (record.recoveryTokenHash as string).length === 0
+      || typeof record.platform !== 'string'
+      || !Object.prototype.hasOwnProperty.call(record, 'nativeStartedAt')
+      || (record.nativeStartedAt !== null && typeof record.nativeStartedAt !== 'string')
     ) {
       return null;
     }
-    if (parsed.schemaVersion === 1) {
-      return { version: 1, value: parsed as unknown as SpawnRecoveryEvidenceV1 };
+    if (record.schemaVersion === 1) {
+      return {
+        version: 1,
+        value: {
+          schemaVersion: 1,
+          nativePid: record.nativePid as number,
+          nativeStartedAt: record.nativeStartedAt as string | null,
+          recoveryTokenHash: record.recoveryTokenHash as string,
+          platform: record.platform as string,
+        },
+      };
     }
-    if (parsed.schemaVersion === 2) {
+    if (record.schemaVersion === 2) {
       // v2 MUST carry the mirror field explicitly: present-and-null is valid
       // (capture was unavailable), but an ABSENT key is malformed v2 evidence
       // and fails closed. An absent key is never silently transformed to null.
-      if (!Object.prototype.hasOwnProperty.call(parsed, 'nativeBirthIdentity')) return null;
-      const nbi = parsed.nativeBirthIdentity;
+      if (!Object.prototype.hasOwnProperty.call(record, 'nativeBirthIdentity')) return null;
+      const nbi = record.nativeBirthIdentity;
       if (nbi !== null && typeof nbi !== 'string') return null;
-      return { version: 2, value: parsed as unknown as SpawnRecoveryEvidenceV2 };
+      return {
+        version: 2,
+        value: {
+          schemaVersion: 2,
+          nativePid: record.nativePid as number,
+          nativeStartedAt: record.nativeStartedAt as string | null,
+          nativeBirthIdentity: nbi as string | null,
+          recoveryTokenHash: record.recoveryTokenHash as string,
+          platform: record.platform as string,
+        },
+      };
     }
     // Unknown or future version: fail closed.
     return null;
@@ -190,12 +208,21 @@ export async function classifyRecoveredProcess(
     || parsed === null
     || typeof process.recoveryTokenHash !== 'string'
     || process.recoveryTokenHash.length === 0
-    || parsed.value.recoveryTokenHash !== process.recoveryTokenHash
   ) {
     // Evidence missing or internally inconsistent: cannot prove anything.
     return failSafe('recovery-evidence-missing-or-inconsistent');
   }
   const evidence = parsed.value;
+
+  // P6-M3b compatibility remediation: every field mirrored by the durable
+  // evidence version is checked against the durable row BEFORE invoking the OS
+  // verifier. This preserves V1-A only for authentic V1 evidence: any V1
+  // disagreement is V1-C UNKNOWN even when the PID is actually absent.
+  const inconsistencies: string[] = [];
+  if (evidence.nativePid !== process.nativePid) inconsistencies.push('nativePid');
+  if (evidence.platform !== process.platform) inconsistencies.push('platform');
+  if (evidence.nativeStartedAt !== (process.nativeStartedAt ?? null)) inconsistencies.push('nativeStartedAt');
+  if (evidence.recoveryTokenHash !== process.recoveryTokenHash) inconsistencies.push('recoveryTokenHash');
 
   if (parsed.version === 2) {
     // P6-M3b remediation: ALL internal durable evidence consistency is proven
@@ -207,18 +234,13 @@ export async function classifyRecoveredProcess(
     const v2Evidence = parsed.value;
     const canonicalBirth = process.nativeBirthIdentity ?? null;
     const mirrorBirth = v2Evidence.nativeBirthIdentity;
-    const inconsistencies: string[] = [];
-    if (v2Evidence.nativePid !== process.nativePid) inconsistencies.push('nativePid');
-    if (v2Evidence.platform !== process.platform) inconsistencies.push('platform');
-    if (v2Evidence.nativeStartedAt !== (process.nativeStartedAt ?? null)) inconsistencies.push('nativeStartedAt');
-    if (v2Evidence.recoveryTokenHash !== process.recoveryTokenHash) inconsistencies.push('recoveryTokenHash');
     if (canonicalBirth !== mirrorBirth) inconsistencies.push('nativeBirthIdentity');
     if (canonicalBirth !== null && !isValidNativeBirthIdentity(canonicalBirth)) {
       inconsistencies.push('nativeBirthIdentity-format');
     }
-    if (inconsistencies.length > 0) {
-      return failSafe('durable-evidence-inconsistent:' + inconsistencies.join(','));
-    }
+  }
+  if (inconsistencies.length > 0) {
+    return failSafe('durable-evidence-inconsistent:' + inconsistencies.join(','));
   }
 
   let observed: RecoveredProcessVerifyResult;
@@ -256,6 +278,12 @@ export async function classifyRecoveredProcess(
   if (canonicalBirth === null || liveBirth === null) {
     // Live PID but birth identity missing/unreadable/unavailable: fail closed.
     return failSafe('birth-identity-unavailable');
+  }
+  if (!isValidNativeBirthIdentity(liveBirth)) {
+    // A future or injected verifier is not trusted merely because it returned
+    // a non-null string. The classifier independently enforces the same
+    // canonical identity contract as the production Windows verifier.
+    return failSafe('birth-identity-invalid-canonical');
   }
   if (canonicalBirth !== liveBirth) {
     // PID exists but the creation identity positively differs: PID reuse.

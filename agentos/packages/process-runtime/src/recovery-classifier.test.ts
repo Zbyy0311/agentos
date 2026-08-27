@@ -92,6 +92,12 @@ describe('P6-M3b classifier — V2 birth identity semantics', () => {
     expect(result.classification).toBe('unknown');
   });
 
+  it('invalid live v2 birth identity -> unknown, never mismatch', async () => {
+    const result = await classifyRecoveredProcess(makeV2Process(BIRTH_A), aliveWithBirth('garbage'));
+    expect(result.classification).toBe('unknown');
+    expect(result.classification).not.toBe('mismatch');
+  });
+
   it('V2-D: NULL birth in column and mirror + PID absent -> missing', async () => {
     const result = await classifyRecoveredProcess(makeV2Process(null), NOT_FOUND);
     expect(result.classification).toBe('missing');
@@ -260,9 +266,77 @@ describe('P6-M3b classifier — durable evidence integrity BEFORE OS verificatio
   });
 });
 describe('P6-M3b classifier — V1 legacy non-regression', () => {
+  function countedNotFoundVerifier() {
+    let calls = 0;
+    const verifier: RecoveredProcessVerifier = {
+      async verify() {
+        calls += 1;
+        return { kind: 'not-found' };
+      },
+    };
+    return { verifier, calls: () => calls };
+  }
+
   it('V1-A: legacy v1 + PID positively absent -> missing', async () => {
     const result = await classifyRecoveredProcess(makeV1Process(), NOT_FOUND);
     expect(result.classification).toBe('missing');
+  });
+
+  it('V1-C: nativePid disagreement -> unknown before verifier, even when verifier says not-found', async () => {
+    const { verifier, calls } = countedNotFoundVerifier();
+    const evidence = { ...makeV1Evidence(), nativePid: PID + 1 };
+    const result = await classifyRecoveredProcess(
+      makeV1Process({ recoveryEvidenceJson: JSON.stringify(evidence) }),
+      verifier,
+    );
+    expect(result.classification).toBe('unknown');
+    expect(calls()).toBe(0);
+  });
+
+  it('V1-C: platform disagreement -> unknown before verifier, even when verifier says not-found', async () => {
+    const { verifier, calls } = countedNotFoundVerifier();
+    const evidence = { ...makeV1Evidence(), platform: 'linux' };
+    const result = await classifyRecoveredProcess(
+      makeV1Process({ recoveryEvidenceJson: JSON.stringify(evidence) }),
+      verifier,
+    );
+    expect(result.classification).toBe('unknown');
+    expect(calls()).toBe(0);
+  });
+
+  it('V1-C: nativeStartedAt disagreement -> unknown before verifier, even when verifier says not-found', async () => {
+    const { verifier, calls } = countedNotFoundVerifier();
+    const evidence = { ...makeV1Evidence(), nativeStartedAt: '2020-01-01T00:00:00.000Z' };
+    const result = await classifyRecoveredProcess(
+      makeV1Process({ recoveryEvidenceJson: JSON.stringify(evidence) }),
+      verifier,
+    );
+    expect(result.classification).toBe('unknown');
+    expect(calls()).toBe(0);
+  });
+
+  it('V1-C: missing or invalid nativeStartedAt is malformed before verifier', async () => {
+    for (const mutate of [
+      (evidence: Record<string, unknown>) => { delete evidence.nativeStartedAt; },
+      (evidence: Record<string, unknown>) => { evidence.nativeStartedAt = 123; },
+    ]) {
+      const { verifier, calls } = countedNotFoundVerifier();
+      const evidence = makeV1Evidence() as Record<string, unknown>;
+      mutate(evidence);
+      const result = await classifyRecoveredProcess(
+        makeV1Process({ recoveryEvidenceJson: JSON.stringify(evidence) }),
+        verifier,
+      );
+      expect(result.classification).toBe('unknown');
+      expect(calls()).toBe(0);
+    }
+  });
+
+  it('V1-A: valid authentic v1 + not-found calls verifier once and returns missing', async () => {
+    const { verifier, calls } = countedNotFoundVerifier();
+    const result = await classifyRecoveredProcess(makeV1Process(), verifier);
+    expect(result.classification).toBe('missing');
+    expect(calls()).toBe(1);
   });
 
   it('V1-B: legacy v1 + live PID -> unknown (never same/mismatch)', async () => {

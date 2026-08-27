@@ -146,7 +146,9 @@ export class PlatformRecoveredProcessVerifier implements RecoveredProcessVerifie
   async #verifyWindows(pid: number): Promise<RecoveredProcessVerifyResult> {
     // Use the native existence probe (process.kill(pid, 0)) rather than
     // parsing localized tasklist human text. ESRCH is the only absence proof;
-    // every other outcome fails closed to 'unavailable'. Never 'alive'.
+    // every other existence-probe outcome fails closed to 'unavailable'. The
+    // existence probe alone never returns alive, but a subsequent configured
+    // canonical birth-identity probe may return alive(identity).
     const absence = verifyWindowsProcessAbsence(pid, this.#windowsProbe);
     if (absence.kind !== 'unavailable' || absence.reason !== 'pid-alive-identity-unprovable') {
       // not-found, access-denied, or ambiguous/probe failure: return as-is.
