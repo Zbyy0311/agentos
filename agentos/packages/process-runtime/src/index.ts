@@ -29,4 +29,5 @@ export * from './node-driver.js';
 export * from './probe.js';
 export * from './recovery-classifier.js';
 export * from './platform-recovery-verifier.js';
+export * from './native-birth-identity.js';
 export * from './testing/mock-driver.js';

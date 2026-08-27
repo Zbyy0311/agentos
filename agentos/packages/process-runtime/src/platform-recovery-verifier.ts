@@ -2,6 +2,7 @@ import type {
   RecoveredProcessVerifier,
   RecoveredProcessVerifyResult,
 } from './recovery-classifier.js';
+import { isValidNativeBirthIdentity } from './native-birth-identity.js';
 import { WindowsProcessTreeController } from './windows-process-tree.js';
 
 /**
@@ -23,8 +24,8 @@ const defaultWindowsProbe: WindowsProcessExistenceProbe = pid => {
 
 /**
  * Read-only Windows native birth-identity probe. Given a live PID it returns the
- * lossless creation-identity text (win32:filetime unsigned decimal) or null when
- * the identity cannot be positively read. It is backed by the Windows helper's
+ * CANONICAL lossless creation identity ('win32:filetime:<unsigned-decimal>') or
+ * null when the identity cannot be positively read. It is backed by the Windows helper's
  * read-only OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION) + GetProcessTimes
  * probe. It never attaches the target to a Job, never signals/terminates it, and
  * never modifies ownership.
@@ -79,25 +80,23 @@ export function verifyWindowsProcessAbsence(
 }
 
 /**
- * P6-M2b production platform verifier for restart recovery.
+ * Production platform verifier for restart recovery (P6-M2b, extended by
+ * P6-M3b with a read-only Windows native birth-identity probe).
  *
- * This prover answers exactly ONE OS-verifiable question: "is this native PID
- * provably absent?" It exists so the M2a RecoveryClassifier can drive the
- * recovery decision that ONLY absence can safely drive:
+ * Current truth:
  *
- *   - provably absent  -> { kind: 'not-found' } -> classifier 'missing'
- *     -> recovery reconciles the orphaned running Run to canonical failure.
- *   - anything else     -> { kind: 'unavailable' } -> classifier 'unknown'
- *     -> recovery stays fail-safe uncertain (no resume, no takeover).
- *
- * It deliberately NEVER returns { kind: 'alive' }. Proving a live PID is the
- * SAME original process requires a start time comparable to the spawn-time
- * nativeStartedAt, which is captured as the process's own wall-clock
- * (NodeDriver.now()), not an OS process-creation timestamp. No OS probe can
- * reproduce that value, so identity ('same') can never be proven after a
- * restart. Claiming 'alive' here would let the classifier reach 'same' or
- * 'mismatch' on an unidentified process, which the fail-safe contract
- * forbids. Absence is the only honest, restart-safe proof.
+ *   - absence remains POSITIVE-ONLY: { kind: 'not-found' } is returned only
+ *     for a machine-proven ESRCH absence; an identity-read failure can never
+ *     become absence;
+ *   - on Windows the verifier CAN return { kind: 'alive' } with the observed
+ *     CANONICAL native birth identity, but only when the read-only probe
+ *     positively observed a fully canonical 'win32:filetime:<decimal>' value;
+ *     any arbitrary, malformed, untagged, or non-canonical probe string fails
+ *     closed to 'unavailable' (never guessed into an identity);
+ *   - the v1 classifier still never turns a live PID into SAME/MISMATCH
+ *     (v1 evidence lacks a re-observable identity); v2 evidence can reach
+ *     SAME/MISMATCH through exact lossless identity comparison;
+ *   - this module performs NO ownership or control mutation.
  *
  * This module only READS OS state. It never kills, signals, reattaches,
  * adopts, resumes, respawns, or transfers ownership. ProcessCancelCoordinator
@@ -158,7 +157,10 @@ export class PlatformRecoveredProcessVerifier implements RecoveredProcessVerifie
     if (this.#windowsBirthProbe === null) return absence;
     // Read the lossless native creation identity. A null (capture/read failure,
     // permission, ambiguity, race) fails closed to 'unavailable' and is NEVER
-    // read as absence. A live value yields 'alive' with the comparable identity.
+    // read as absence. A live value is additionally validated against the
+    // canonical form: the verifier must never hand the classifier an arbitrary
+    // helper/injected string as an identity, so any non-canonical value also
+    // fails closed to 'unavailable'.
     let birth: string | null;
     try {
       birth = await this.#windowsBirthProbe(pid);
@@ -167,6 +169,9 @@ export class PlatformRecoveredProcessVerifier implements RecoveredProcessVerifie
     }
     if (birth === null) {
       return { kind: 'unavailable', reason: 'windows-birth-identity-unreadable' };
+    }
+    if (!isValidNativeBirthIdentity(birth)) {
+      return { kind: 'unavailable', reason: 'windows-birth-identity-invalid-canonical' };
     }
     return {
       kind: 'alive',

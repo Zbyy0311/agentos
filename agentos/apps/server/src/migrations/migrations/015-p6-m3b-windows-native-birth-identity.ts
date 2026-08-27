@@ -17,9 +17,12 @@ import type { Migration, MigrationContext, MinimalDatabaseSync } from '../types.
  *   denormalized integrity mirror (schemaVersion 2). Any disagreement fails
  *   closed to UNKNOWN in the classifier;
  * - idempotent and self-guarding: every statement is a no-op when already
- *   applied, and the whole migration is a no-op on databases that predate the
- *   runtime_processes table (migration 014), so partial-registry historical
- *   upgrade tests that intentionally skip 014 still run cleanly.
+ *   applied;
+ * - PREREQUISITE FAIL-CLOSED: migration 015 requires migration 014 /
+ *   runtime_processes. If runtime_processes is absent when 015 is actually
+ *   invoked, apply throws a stable prerequisite error (the runner rolls back
+ *   and never records 015 as applied). Tests that intentionally construct
+ *   registries stopping before 014 must use the intended subset and exclude 015.
  *
  * The birth identity must not become arbitrarily mutable once bound, and the
  * existing runtime_processes immutability triggers are not weakened. A new
@@ -51,7 +54,11 @@ export const P6_M3B_015_DDL_STATEMENTS = Object.freeze([
     WHERE native_birth_identity IS NOT NULL`,
 ]);
 
-const CANONICAL_SOURCE = P6_M3B_015_DDL_STATEMENTS.join('\n');
+/** Canonical column DDL: part of the checksum source (must stay covered). */
+export const P6_M3B_015_COLUMN_DDL =
+  'ALTER TABLE runtime_processes ADD COLUMN native_birth_identity TEXT';
+
+const CANONICAL_SOURCE = [P6_M3B_015_COLUMN_DDL, ...P6_M3B_015_DDL_STATEMENTS].join('\n');
 
 export const migration015Checksum = createHash('sha256')
   .update(CANONICAL_SOURCE)
@@ -65,14 +72,17 @@ export const migration015: Migration = {
   destructive: false,
   apply(ctx: MigrationContext): void {
     if (!runtimeProcessesExists(ctx.db)) {
-      // Pre-M4 database (runtime_processes not yet created): nothing to add.
-      return;
+      // Fail closed: applying 015 without 014 would record false migration
+      // state on a database that does not have runtime_processes.
+      throw new Error(
+        'MIGRATION_PREREQUISITE_MISSING: migration 015 (p6-m3b-windows-native-birth-identity) requires runtime_processes from migration 014',
+      );
     }
     const column = ctx.db
       .prepare("SELECT name FROM pragma_table_info('runtime_processes') WHERE name = 'native_birth_identity'")
       .get();
     if (column === undefined || column === null) {
-      ctx.db.exec('ALTER TABLE runtime_processes ADD COLUMN native_birth_identity TEXT');
+      ctx.db.exec(P6_M3B_015_COLUMN_DDL);
     }
     for (const statement of P6_M3B_015_DDL_STATEMENTS) {
       ctx.db.exec(statement);

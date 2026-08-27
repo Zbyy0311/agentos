@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { PassThrough } from 'node:stream';
 import type { SurvivorVerification, TreeTerminationResult } from './driver.js';
 import type { NativeIdentity, ValidatedLaunch } from './types.js';
+import { canonicalizeNativeBirthIdentityDecimal } from './native-birth-identity.js';
 import {
   boundedErrorDetail,
   type OwnedSpawnResult,
@@ -153,19 +154,15 @@ public static class AgentOsProcessIdentity
     /// </summary>
     public static string ReadCreationFileTime(IntPtr processHandle)
     {
-        uint creationLow;
-        uint creationHigh;
-        uint exitLow;
-        uint exitHigh;
-        uint kernelLow;
-        uint kernelHigh;
-        uint userLow;
-        uint userHigh;
-        if (!GetProcessTimes(processHandle, out creationLow, out creationHigh, out exitLow, out exitHigh, out kernelLow, out kernelHigh, out userLow, out userHigh))
+        FILETIME_NATIVE creation;
+        FILETIME_NATIVE exit;
+        FILETIME_NATIVE kernel;
+        FILETIME_NATIVE user;
+        if (!GetProcessTimes(processHandle, out creation, out exit, out kernel, out user))
         {
             AgentOsJob.ThrowLastError();
         }
-        ulong value = ((ulong)creationHigh << 32) | creationLow;
+        ulong value = ((ulong)creation.dwHighDateTime << 32) | creation.dwLowDateTime;
         return value.ToString(System.Globalization.CultureInfo.InvariantCulture);
     }
 
@@ -193,14 +190,23 @@ public static class AgentOsProcessIdentity
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern bool GetProcessTimes(
         IntPtr hProcess,
-        out uint lpCreationTimeLow,
-        out uint lpCreationTimeHigh,
-        out uint lpExitTimeLow,
-        out uint lpExitTimeHigh,
-        out uint lpKernelTimeLow,
-        out uint lpKernelTimeHigh,
-        out uint lpUserTimeLow,
-        out uint lpUserTimeHigh);
+        out FILETIME_NATIVE lpCreationTime,
+        out FILETIME_NATIVE lpExitTime,
+        out FILETIME_NATIVE lpKernelTime,
+        out FILETIME_NATIVE lpUserTime);
+
+    /// <summary>
+    /// Native Win32 FILETIME layout: two consecutive 32-bit halves of one
+    /// 64-bit value. Declared explicitly so the GetProcessTimes P/Invoke
+    /// matches the real ABI (four LPFILETIME out pointers) instead of relying
+    /// on an accidental byte-size coincidence.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    private struct FILETIME_NATIVE
+    {
+        public uint dwLowDateTime;
+        public uint dwHighDateTime;
+    }
 
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr OpenProcess(uint access, bool inheritHandle, uint processId);
@@ -1292,8 +1298,9 @@ function parseMembers(response: string): readonly number[] {
 export interface WindowsLaunchedIdentity {
   readonly pid: number;
   /**
-   * Lossless native process-creation identity (win32:filetime unsigned decimal
-   * text), or null when capture was unavailable. Transported as a string so the
+   * Canonical lossless native process-creation identity
+   * ('win32:filetime:<unsigned-decimal>'), or null when capture was unavailable
+   * or the helper emitted a non-canonical value. Transported as a string so the
    * full 64-bit FILETIME precision is never routed through a JS Number.
    */
   readonly nativeBirthIdentity: string | null;
@@ -1305,11 +1312,13 @@ function parseLaunchedIdentity(response: string): WindowsLaunchedIdentity {
   const pid = Number(parts[1]);
   if (!Number.isSafeInteger(pid) || pid <= 0) throw new Error('windows-tree-helper-invalid-pid');
   // parts[2] is the invariant unsigned-decimal FILETIME, or '-' when capture was
-  // unavailable. It is validated as decimal text and never coerced to Number.
+  // unavailable. The raw decimal is validated and canonicalized into the
+  // durable tagged form BEFORE it becomes OwnedSpawnResult state; a
+  // non-canonical decimal fails closed to null and is never coerced to Number.
   const rawIdentity = parts.length >= 3 ? parts[2] : '-';
   const nativeBirthIdentity = rawIdentity === '-'
     ? null
-    : (/^[0-9]+$/.test(rawIdentity) ? rawIdentity : null);
+    : canonicalizeNativeBirthIdentityDecimal(rawIdentity);
   return { pid, nativeBirthIdentity };
 }
 
@@ -1387,9 +1396,10 @@ export class WindowsProcessTreeController implements ProcessTreeController {
    * mutates the production owned-spawn session. The helper opens the PID with
    * PROCESS_QUERY_LIMITED_INFORMATION only, reads its creation FILETIME, and
    * tears down WITHOUT attaching the target to a Job, terminating, or signaling
-   * it. Returns the invariant unsigned-decimal FILETIME text, or null when
-   * identity cannot be positively read (fail-closed: caller treats null as
-   * unavailable, never as absence).
+   * it. Returns the CANONICAL 'win32:filetime:<unsigned-decimal>' identity, or
+   * null when identity cannot be positively read or the helper emitted a
+   * non-canonical value (fail-closed: caller treats null as unavailable, never
+   * as absence).
    */
   async probeNativeBirthIdentity(pid: number): Promise<string | null> {
     if (!Number.isSafeInteger(pid) || pid <= 0) return null;
@@ -1402,8 +1412,8 @@ export class WindowsProcessTreeController implements ProcessTreeController {
       if (parts[1] === 'error') return null;
       const observedPid = Number(parts[1]);
       if (!Number.isSafeInteger(observedPid) || observedPid !== pid) return null;
-      const value = parts[2];
-      return typeof value === 'string' && /^[0-9]+$/.test(value) ? value : null;
+      const raw = parts[2];
+      return canonicalizeNativeBirthIdentityDecimal(raw);
     } catch {
       return null;
     } finally {

@@ -10,11 +10,12 @@ import {
 const PID = 4242;
 const START_ISO = '2026-08-24T00:00:00.000Z';
 const RAW_TOKEN = 'one-time-random-token-hex';
-// A FILETIME safely above 2^53 to prove the lossless decimal path never
-// collapses to a JS Number (9007199254740991 = 2^53 - 1).
-const BIRTH_A = '134167123456789012';
-const BIRTH_B = '134167123456789013';
-const BIRTH_BIG = '134176000000000000'; // > 2^53
+// CANONICAL durable identities ('win32:filetime:<decimal>'). The decimals are
+// safely above 2^53 (9007199254740991 = 2^53 - 1) to prove the lossless path
+// never collapses to a JS Number.
+const BIRTH_A = 'win32:filetime:134167123456789012';
+const BIRTH_B = 'win32:filetime:134167123456789013';
+const BIRTH_BIG = 'win32:filetime:134176000000000000';
 
 function makeV2Evidence(birth: string | null) {
   return buildSpawnRecoveryEvidence({
@@ -64,10 +65,10 @@ function makeV1Process(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function aliveWithBirth(birth: string | null): RecoveredProcessVerifier {
+function aliveWithBirth(birth: string | null, startedAtMs: number | null = null): RecoveredProcessVerifier {
   return {
     async verify(): Promise<{ kind: 'alive'; identity: LiveProcessIdentity }> {
-      return { kind: 'alive', identity: { pid: PID, startedAtMs: null, nativeBirthIdentity: birth } };
+      return { kind: 'alive', identity: { pid: PID, startedAtMs, nativeBirthIdentity: birth } };
     },
   };
 }
@@ -110,16 +111,19 @@ describe('P6-M3b classifier — V2 birth identity semantics', () => {
     const result = await classifyRecoveredProcess(makeV2Process(BIRTH_BIG), aliveWithBirth(BIRTH_BIG));
     expect(result.classification).toBe('same');
     // A single-digit difference at full precision must be detected as mismatch.
-    const off = await classifyRecoveredProcess(makeV2Process(BIRTH_BIG), aliveWithBirth('134176000000000001'));
+    const off = await classifyRecoveredProcess(makeV2Process(BIRTH_BIG), aliveWithBirth('win32:filetime:134176000000000001'));
     expect(off.classification).toBe('mismatch');
   });
 
   it('does not compare the wall clock for v2 identity proof', async () => {
-    // Same birth identity but a different persisted nativeStartedAt must still
-    // classify same: the proof is the birth identity, not Date.parse(nativeStartedAt).
+    // Consistent durable evidence with ANY persisted nativeStartedAt, plus a
+    // live observation carrying a DIFFERENT startedAtMs, still classifies
+    // same: the v2 proof is the birth identity, never Date.parse/wall clock.
+    const startedAt = '2020-01-01T00:00:00.000Z';
+    const evidence = { ...makeV2Evidence(BIRTH_A), nativeStartedAt: startedAt };
     const result = await classifyRecoveredProcess(
-      makeV2Process(BIRTH_A, { nativeStartedAt: '2020-01-01T00:00:00.000Z' }),
-      aliveWithBirth(BIRTH_A),
+      makeV2Process(BIRTH_A, { nativeStartedAt: startedAt, recoveryEvidenceJson: JSON.stringify(evidence) }),
+      aliveWithBirth(BIRTH_A, 1234567890123),
     );
     expect(result.classification).toBe('same');
   });
@@ -159,6 +163,102 @@ describe('P6-M3b classifier — canonical column authority', () => {
   });
 });
 
+describe('P6-M3b classifier — durable evidence integrity BEFORE OS verification', () => {
+  function countingVerifier(result: () => Promise<{ kind: 'not-found' }>) {
+    let calls = 0;
+    const verifier: RecoveredProcessVerifier = { async verify() { calls += 1; return result(); } };
+    return { verifier, calls: () => calls };
+  }
+
+  it('E: column A / mirror B + verifier not-found -> UNKNOWN (never MISSING), verifier not invoked', async () => {
+    const { verifier, calls } = countingVerifier(async () => ({ kind: 'not-found' }));
+    const evidence = makeV2Evidence(BIRTH_B);
+    const result = await classifyRecoveredProcess(
+      makeV2Process(BIRTH_A, { recoveryEvidenceJson: JSON.stringify(evidence) }),
+      verifier,
+    );
+    expect(result.classification).toBe('unknown');
+    expect(calls()).toBe(0);
+  });
+
+  it('F: v2 evidence with a MISSING nativeBirthIdentity key is malformed -> UNKNOWN, verifier not invoked', async () => {
+    const { verifier, calls } = countingVerifier(async () => ({ kind: 'not-found' }));
+    const malformed = {
+      schemaVersion: 2,
+      nativePid: PID,
+      nativeStartedAt: START_ISO,
+      recoveryTokenHash: recoveryTokenHash(RAW_TOKEN),
+      platform: 'win32',
+    };
+    const result = await classifyRecoveredProcess(
+      makeV2Process(null, { recoveryEvidenceJson: JSON.stringify(malformed) }),
+      verifier,
+    );
+    expect(result.classification).toBe('unknown');
+    expect(calls()).toBe(0);
+  });
+
+  it('evidence.nativePid != process.nativePid -> UNKNOWN, verifier not invoked', async () => {
+    const { verifier, calls } = countingVerifier(async () => ({ kind: 'not-found' }));
+    const evidence = { ...makeV2Evidence(BIRTH_A), nativePid: PID + 1 };
+    const result = await classifyRecoveredProcess(
+      makeV2Process(BIRTH_A, { recoveryEvidenceJson: JSON.stringify(evidence) }),
+      verifier,
+    );
+    expect(result.classification).toBe('unknown');
+    expect(calls()).toBe(0);
+  });
+
+  it('evidence.platform != process.platform -> UNKNOWN, verifier not invoked', async () => {
+    const { verifier, calls } = countingVerifier(async () => ({ kind: 'not-found' }));
+    const evidence = { ...makeV2Evidence(BIRTH_A), platform: 'linux' };
+    const result = await classifyRecoveredProcess(
+      makeV2Process(BIRTH_A, { recoveryEvidenceJson: JSON.stringify(evidence) }),
+      verifier,
+    );
+    expect(result.classification).toBe('unknown');
+    expect(calls()).toBe(0);
+  });
+
+  it('evidence.nativeStartedAt != process.nativeStartedAt -> UNKNOWN, verifier not invoked', async () => {
+    const { verifier, calls } = countingVerifier(async () => ({ kind: 'not-found' }));
+    const evidence = { ...makeV2Evidence(BIRTH_A), nativeStartedAt: '2020-01-01T00:00:00.000Z' };
+    const result = await classifyRecoveredProcess(
+      makeV2Process(BIRTH_A, { recoveryEvidenceJson: JSON.stringify(evidence) }),
+      verifier,
+    );
+    expect(result.classification).toBe('unknown');
+    expect(calls()).toBe(0);
+  });
+
+  it('H: non-canonical nativeBirthIdentity (equal in column and mirror) -> UNKNOWN, verifier not invoked', async () => {
+    const { verifier, calls } = countingVerifier(async () => ({ kind: 'not-found' }));
+    for (const bad of [
+      '134167123456789012',
+      'win32:filetime:0134167123456789012',
+      'win32:filetime:not-a-number',
+      'win32:filetime: 134167123456789012',
+      'win32:filetime:18446744073709551616',
+      'win32:filetime:0',
+    ]) {
+      const evidence = { ...makeV2Evidence(bad), nativeBirthIdentity: bad };
+      const result = await classifyRecoveredProcess(
+        makeV2Process(bad, { recoveryEvidenceJson: JSON.stringify(evidence) }),
+        verifier,
+      );
+      expect(result.classification).toBe('unknown');
+    }
+    expect(calls()).toBe(0);
+  });
+
+  it('G: explicit null/null pair + PID absent -> MISSING (absence proof preserved)', async () => {
+    let callCount = 0;
+    const verifier: RecoveredProcessVerifier = { async verify() { callCount += 1; return { kind: 'not-found' }; } };
+    const result = await classifyRecoveredProcess(makeV2Process(null), verifier);
+    expect(result.classification).toBe('missing');
+    expect(callCount).toBe(1);
+  });
+});
 describe('P6-M3b classifier — V1 legacy non-regression', () => {
   it('V1-A: legacy v1 + PID positively absent -> missing', async () => {
     const result = await classifyRecoveredProcess(makeV1Process(), NOT_FOUND);

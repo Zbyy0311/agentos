@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import test from 'node:test';
 import { createRequire } from 'node:module';
 import { mkdtempSync, readdirSync, rmSync } from 'node:fs';
@@ -8,6 +9,10 @@ import { join } from 'node:path';
 import { MigrationRegistry } from '../registry.js';
 import { MigrationRunner } from '../MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../default-registry.js';
+import {
+  P6_M3B_015_COLUMN_DDL,
+  P6_M3B_015_DDL_STATEMENTS,
+} from '../migrations/015-p6-m3b-windows-native-birth-identity.js';
 import { MigrationError } from '../errors.js';
 import { createFileBackupProvider } from '../backup.js';
 import type { Migration, MinimalDatabaseSync } from '../types.js';
@@ -840,6 +845,43 @@ test('P6-M3b migration 015 does not backfill existing rows and preserves the v1 
   }
 });
 
+test('P6-M3b migration 015 checksum covers the column DDL and the trigger/index DDL', () => {
+  const expected = createHash('sha256')
+    .update([P6_M3B_015_COLUMN_DDL, ...P6_M3B_015_DDL_STATEMENTS].join('\n'))
+    .digest('hex')
+    .slice(0, 16);
+  const migration015 = DEFAULT_REGISTRY_MIGRATIONS.find(candidate => candidate.id === '015');
+  assert.ok(migration015, 'Migration 015 must be registered');
+  assert.equal(migration015.checksum, expected);
+  // The column definition itself is part of the covered canonical source, so
+  // any change to the column DDL changes the checksum.
+  assert.ok(P6_M3B_015_COLUMN_DDL.includes('native_birth_identity TEXT'));
+});
+
+test('P6-M3b migration 015 fails closed without runtime_processes and is never recorded', () => {
+  // A historical database upgraded through 013 only (intended subset: no 014).
+  const db = freshDb();
+  try {
+    new MigrationRunner(db, registryThrough013()).run();
+    const migration015 = DEFAULT_REGISTRY_MIGRATIONS.find(candidate => candidate.id === '015');
+    assert.ok(migration015, 'Migration 015 must be registered');
+    // Direct apply fails closed with the stable prerequisite error.
+    assert.throws(() => migration015.apply({ db }), /MIGRATION_PREREQUISITE_MISSING/);
+    // Via the runner: same failure, wrapped as a migration failure, rolled
+    // back, and 015 is NOT recorded as applied.
+    assert.throws(
+      () => new MigrationRunner(db, new MigrationRegistry([migration015])).run(),
+      (error: unknown) => error instanceof MigrationError && error.code === 'MIGRATION_FAILED',
+    );
+    const recorded = db.prepare("SELECT COUNT(*) AS c FROM _schema_migrations WHERE migration_id = '015'").get() as { c: number };
+    assert.equal(recorded.c, 0, 'migration 015 must not be recorded on a failed prerequisite');
+    // Prior migration state is intact.
+    const prior = db.prepare("SELECT COUNT(*) AS c FROM _schema_migrations WHERE migration_id = '001'").get() as { c: number };
+    assert.equal(prior.c, 1);
+  } finally {
+    db.close();
+  }
+});
 test('FK RESTRICT rejects parent deletes while M4 evidence exists and the populated DB stays clean', () => {
   const db = provisionedDb();
   try {

@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 import { describe, expect, it } from 'vitest';
 import {
+  PlatformRecoveredProcessVerifier,
   createPlatformRecoveredProcessVerifier,
   verifyWindowsProcessAbsence,
   type WindowsProcessExistenceProbe,
@@ -95,6 +96,47 @@ describe('verifyWindowsProcessAbsence (deterministic seam)', () => {
   });
 });
 
+describe.skipIf(process.platform !== 'win32')('PlatformRecoveredProcessVerifier canonical birth-identity validation (fail-closed)', () => {
+  const exists: WindowsProcessExistenceProbe = () => { /* process exists */ };
+
+  it('never returns alive for an arbitrary or non-canonical probe value', async () => {
+    const invalid = [
+      '134176000000000000',
+      'win32:filetime:013417600000000000',
+      '',
+      'win32:filetime:not-a-number',
+      'win32:filetime: 134176000000000000',
+      'win32:filetime:18446744073709551616',
+      'win32:filetime:0',
+      'native:other:134176000000000000',
+    ];
+    for (const value of invalid) {
+      const verifier = new PlatformRecoveredProcessVerifier(exists, async () => value);
+      const result = await verifier.verify(4242);
+      expect(result.kind).toBe('unavailable');
+      expect(result).not.toEqual(expect.objectContaining({ kind: 'alive' }));
+      if (result.kind === 'unavailable') {
+        expect(result.reason).toBe('windows-birth-identity-invalid-canonical');
+      }
+    }
+  });
+
+  it('returns alive only for the exact canonical form', async () => {
+    const canonical = 'win32:filetime:134176000000000000';
+    const verifier = new PlatformRecoveredProcessVerifier(exists, async () => canonical);
+    await expect(verifier.verify(4242)).resolves.toEqual({
+      kind: 'alive',
+      identity: { pid: 4242, startedAtMs: null, nativeBirthIdentity: canonical },
+    });
+  });
+
+  it('a throwing birth probe still fails closed to unavailable (never alive, never not-found)', async () => {
+    const verifier = new PlatformRecoveredProcessVerifier(exists, async () => { throw new Error('helper exploded'); });
+    const result = await verifier.verify(4242);
+    expect(result.kind).toBe('unavailable');
+    expect(result).not.toEqual(expect.objectContaining({ kind: 'not-found' }));
+  });
+});
 describe('PlatformRecoveredProcessVerifier (real Windows gate)', () => {
   const verifier = createPlatformRecoveredProcessVerifier();
 

@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { isValidNativeBirthIdentity } from './native-birth-identity.js';
 import type { DurableProcessView } from './repository-port.js';
 
 /**
@@ -141,10 +142,13 @@ function parseEvidence(json: string | null): ParsedEvidence {
       return { version: 1, value: parsed as unknown as SpawnRecoveryEvidenceV1 };
     }
     if (parsed.schemaVersion === 2) {
+      // v2 MUST carry the mirror field explicitly: present-and-null is valid
+      // (capture was unavailable), but an ABSENT key is malformed v2 evidence
+      // and fails closed. An absent key is never silently transformed to null.
+      if (!Object.prototype.hasOwnProperty.call(parsed, 'nativeBirthIdentity')) return null;
       const nbi = parsed.nativeBirthIdentity;
-      if (nbi !== null && nbi !== undefined && typeof nbi !== 'string') return null;
-      const v2 = parsed as unknown as SpawnRecoveryEvidenceV2;
-      return { version: 2, value: { ...v2, nativeBirthIdentity: nbi ?? null } };
+      if (nbi !== null && typeof nbi !== 'string') return null;
+      return { version: 2, value: parsed as unknown as SpawnRecoveryEvidenceV2 };
     }
     // Unknown or future version: fail closed.
     return null;
@@ -193,6 +197,30 @@ export async function classifyRecoveredProcess(
   }
   const evidence = parsed.value;
 
+  if (parsed.version === 2) {
+    // P6-M3b remediation: ALL internal durable evidence consistency is proven
+    // BEFORE the OS verifier is invoked. A row whose dedicated columns and v2
+    // evidence mirror disagree can prove nothing — not even PID absence — so it
+    // must stay UNKNOWN without touching the OS verifier. This includes a
+    // not-found observation: column FILETIME A + mirror FILETIME B is UNKNOWN,
+    // never MISSING.
+    const v2Evidence = parsed.value;
+    const canonicalBirth = process.nativeBirthIdentity ?? null;
+    const mirrorBirth = v2Evidence.nativeBirthIdentity;
+    const inconsistencies: string[] = [];
+    if (v2Evidence.nativePid !== process.nativePid) inconsistencies.push('nativePid');
+    if (v2Evidence.platform !== process.platform) inconsistencies.push('platform');
+    if (v2Evidence.nativeStartedAt !== (process.nativeStartedAt ?? null)) inconsistencies.push('nativeStartedAt');
+    if (v2Evidence.recoveryTokenHash !== process.recoveryTokenHash) inconsistencies.push('recoveryTokenHash');
+    if (canonicalBirth !== mirrorBirth) inconsistencies.push('nativeBirthIdentity');
+    if (canonicalBirth !== null && !isValidNativeBirthIdentity(canonicalBirth)) {
+      inconsistencies.push('nativeBirthIdentity-format');
+    }
+    if (inconsistencies.length > 0) {
+      return failSafe('durable-evidence-inconsistent:' + inconsistencies.join(','));
+    }
+  }
+
   let observed: RecoveredProcessVerifyResult;
   try {
     observed = await verifier.verify(process.nativePid);
@@ -220,13 +248,10 @@ export async function classifyRecoveredProcess(
   }
 
   // V2: proof is PID + lossless native birth identity (never the wall clock).
-  // Canonical authority: the dedicated column is canonical; the JSON evidence is
-  // an integrity mirror. Any disagreement fails closed to UNKNOWN (no guessing).
+  // Column-vs-mirror agreement and canonical format were already proven BEFORE
+  // the verifier ran, so here the dedicated column is trusted as the canonical
+  // authority and compared against the live observation.
   const canonicalBirth = process.nativeBirthIdentity ?? null;
-  const mirrorBirth = evidence.schemaVersion === 2 ? evidence.nativeBirthIdentity : null;
-  if (canonicalBirth !== mirrorBirth) {
-    return failSafe('birth-identity-column-mirror-disagreement');
-  }
   const liveBirth = observed.identity.nativeBirthIdentity ?? null;
   if (canonicalBirth === null || liveBirth === null) {
     // Live PID but birth identity missing/unreadable/unavailable: fail closed.
