@@ -19,7 +19,12 @@ On current `main`, AgentOS can only **prove a process is gone** (`missing`) and 
 - **Windows owned production spawn path (survivability-by-design):** the managed provider process is placed in an AgentOS **kill-on-close Job Object** owned by the PowerShell helper (§2.3). When the Server/helper ownership chain is lost, kill-on-close **intentionally reaps** the owned provider tree. So the normal Windows production restart outcome is `missing` — a surviving managed provider process is **not normally present** to be classified `same`/`mismatch`.
 - **Windows native identity evidence (the real blocker when a PID does exist):** if a Windows PID still exists after restart, AgentOS must use a **lossless Windows-native process creation identity** (preferably the full `GetProcessTimes` FILETIME) to distinguish: exact identity match -> `same` (where applicable); creation identity differs -> `mismatch`; inaccessible/ambiguous -> `unknown`. The only persisted "start time" today (`nativeStartedAt`) is the **server wall-clock at spawn moment** (`Date.now()` via `NodeDriver.now()`), not an OS-native creation timestamp, so it cannot be re-observed after a Server restart and must never be normalized into the proof comparison.
 
-Until a durable, lossless, independently re-observable Windows identity signal exists, `same` and `mismatch` must remain production-unreachable, and every non-`missing` outcome must stay `unknown` (fail-safe). On Windows this is reinforced by the kill-on-close ownership model: even with perfect identity evidence, the normal production restart still yields `missing`. **P6-M2 compatibility remains mandatory:** legacy `schemaVersion=1` rows must retain absent PID -> `missing` and live PID without native identity proof -> `unknown`.
+Until a durable, lossless, independently re-observable Windows identity signal exists, `same` and `mismatch` must remain production-unreachable, and every non-`missing` outcome must stay `unknown` (fail-safe). **P6-M2 compatibility remains mandatory:** legacy `schemaVersion=1` rows must retain absent PID -> `missing` and live PID without native identity proof -> `unknown`. Kill-on-close guarantees the *original* AgentOS-owned provider is reaped; it does **not** prevent its numeric PID from being reused by an unrelated process before the restart-recovery verifier runs. So after M3b, Windows production reachability is:
+
+- `same`: **primitive-test only** — the exact original AgentOS-owned process surviving Server/helper loss is not expected under the current kill-on-close architecture, so `same` is **not** normally production-reachable.
+- `mismatch`: **production-reachable after M3b** — a reused numeric PID whose Windows creation FILETIME differs from the persisted original FILETIME positively classifies as PID-reused. PID reuse can occur after the original owned process is reaped.
+- `missing`: remains the expected/common clean result (original PID positively absent).
+- `unknown`: fail-safe when the PID exists but its FILETIME cannot be positively observed.
 
 **Recommended P6-M3b slice (§14):** *Durable Windows-native process identity evidence* — capture and persist a lossless Windows-native process creation identity (full FILETIME precision) at spawn, and extend the production verifier to read it back, so `same`/`mismatch` become **technically classifiable where a Windows process can actually survive** (non-AgentOS-owned test primitives), **for classification only**. This preserves the current Windows owned-process restart semantics (kill-on-close → `missing`); it does **not** make Windows production restart reach `same`. Reattachment, resume, and ownership transfer remain explicitly out of scope and unauthorized.
 
@@ -216,9 +221,9 @@ This maps onto the existing spec model (05 §66): `reattachable | alive-uncontro
 **Notes:**
 
 - The matrix above describes **target semantics**. P6-M3 scope is **Windows-only**, so reachability is stated for the CURRENT **Windows** runtime (see §13a Windows restart matrix):
-  - **Windows owned production runtime:** only the MISSING and UNKNOWN rows are reachable. SAME / REATTACHABLE / ALIVE_UNCONTROLLABLE / MISMATCH are **not** normally reachable, because kill-on-close reaps the owned provider tree on Server loss, so no surviving AgentOS-owned provider is present to classify.
+  - **Windows owned production runtime (today):** only the MISSING and UNKNOWN rows are reachable — kill-on-close reaps the owned provider tree on Server loss, so no surviving AgentOS-owned provider is present to classify.
+  - **Windows owned production runtime (after M3b):** **MISMATCH becomes production-reachable** — the reaped provider's numeric PID can be reused before the verifier runs, and a differing creation FILETIME positively classifies the reuse. SAME stays **primitive-test only**; REATTACHABLE / ALIVE_UNCONTROLLABLE remain frozen targets.
   - **Windows unmanaged / test-owned process (outside the production Job):** after native identity evidence (P6-M3b), such a process may become SAME or MISMATCH in a clearly-labelled **platform primitive test** (§15 W2) — never as normal production behavior.
-  - The REATTACHABLE / ALIVE_UNCONTROLLABLE / MISMATCH rows are the frozen **target** semantics unlocked by later slices; they are not enabled behavior.
 - "Cleanup allowed" for MISSING means reconciling durable records only; it never means killing a foreign process. For MISMATCH, the foreign process belongs to someone else — **no cleanup** of it is permitted.
 - "Auto-continuation" for REATTACHABLE is a **future, separately-authorized** behavior; it is not enabled by this slice.
 
@@ -247,10 +252,10 @@ P6-M3 recovery scope is **Windows-only**. This matrix states what the CURRENT Wi
 
 | Platform / process kind | Survivor after Server restart? | Expected recovery classification today | SAME reachable in normal production? | MISMATCH reachable in normal production? |
 |---|---|---|---|---|
-| **Windows — current owned production process** (provider inside the helper-owned kill-on-close Job) | **No** — helper loses stdin/named-pipe transport on Server loss, exits, closes the Job handle, kill-on-close reaps the tree | **MISSING** (the owned tree is reaped) | **No** | **No** |
+| **Windows — current owned production process** (provider inside the helper-owned kill-on-close Job) | **No** — helper loses stdin/named-pipe transport on Server loss, exits, closes the Job handle, kill-on-close reaps the tree | The **original** provider is reaped; after restart the recovery observation of its numeric PID yields: **PID absent -> MISSING** (expected/common clean result); **PID reused (creation FILETIME differs) -> MISMATCH** (reachable after M3b); **PID present but identity unreadable -> UNKNOWN** | **No** (SAME is primitive-test only) | **Yes (after M3b)** — via PID reuse after the original is reaped |
 | **Unmanaged / test-owned / escaped Windows process** (explicitly outside the production kill-on-close Job) | May survive independently | n/a — used only as a **platform primitive test** (§15 W2) | Reachable **only** in a primitive test, never as normal production | Reachable **only** in a primitive test, never as normal production |
 
-**Hard rule:** an unmanaged, test-owned, or otherwise escaped Windows process that survives MUST NOT be used as evidence that a normal AgentOS-owned Windows production process survives a Server restart. The two are different process kinds with different ownership.
+**Hard rule:** an unmanaged, test-owned, or otherwise escaped Windows process that survives MUST NOT be used as evidence that a normal AgentOS-owned Windows production process survives a Server restart. The two are different process kinds with different ownership. Separately: kill-on-close reaping the original provider does **not** prevent PID reuse — a post-restart live observation of the original numeric PID is a **reuse** case, classified MISMATCH (creation FILETIME differs) or UNKNOWN (identity unreadable), never assumed to be the original.
 
 ### 13a.1 Internal cross-platform code (not a P6-M3 requirement)
 
@@ -260,16 +265,18 @@ The repository still contains POSIX/Linux process-tree code (`packages/process-r
 
 ## 14. P6-M3b recommended scope
 
-**Chosen slice: (A) Durable OS-native process identity evidence** — the smallest slice that unlocks the next dependency safely.
+**Chosen slice: P6-M3b — Windows Native Process Identity Evidence** — the smallest slice that unlocks the next dependency safely.
 
-**Purpose:**
-- introduce an independently re-observable OS-native creation identity;
-- make SAME/MISMATCH **technically classifiable where a process can actually survive**;
-- **preserve the CURRENT Windows owned-process restart semantics** (kill-on-close → `missing`).
+**Production value (classification only):**
+1. **preserve MISSING absence proof** (positive native absence);
+2. **detect PID reuse as MISMATCH** (live PID whose creation FILETIME differs from the persisted original);
+3. **fail closed to UNKNOWN** when Windows identity cannot be established.
 
-**What it does:** capture a real OS process-creation timestamp (and confirm the resolved executable identity) at spawn, persist it durably, and extend the production verifier to read back the live creation time so the classifier's existing `same`/`mismatch` branch becomes production-reachable **for classification only**.
+It is **not** intended to make normal AgentOS-owned Windows processes survive restart, and it does **not** make `same` normally production-reachable.
 
-**Platform applicability (exact):** P6-M3 scope is **Windows-only**; the new evidence is a **Windows-native** birth identity (full FILETIME precision). On Windows, **normal production restart MUST NOT claim SAME** — the owned provider tree is reaped by kill-on-close, so the normal Windows production outcome stays `missing`. Windows SAME/MISMATCH is reachable only in a clearly-labelled **platform primitive test** using a process outside the production Job (§15 W2), never as normal production behavior. No cross-platform recovery identity abstraction is designed except where strictly necessary internally for existing code compatibility (§13a.1).
+**What it does:** capture a lossless Windows-native process creation identity (full FILETIME precision) at spawn, persist it durably, and extend the production verifier to read back the live creation identity so the classifier's existing `same`/`mismatch` branch becomes reachable **for classification only**.
+
+**Platform applicability (exact):** P6-M3 scope is **Windows-only**; the new evidence is a **Windows-native** birth identity (full FILETIME precision). On Windows, **normal production restart MUST NOT claim SAME** — the owned provider tree is reaped by kill-on-close, so `same` is reachable only in a clearly-labelled **platform primitive test** using a process outside the production Job (§15 W2), never as normal production behavior. After M3b, a post-restart live observation of the original numeric PID classifies as **MISMATCH** (creation FILETIME differs — PID reused) or **UNKNOWN** (identity unreadable); **MISSING** remains the expected/common clean result. No cross-platform recovery identity abstraction is designed except where strictly necessary internally for existing code compatibility (§13a.1).
 
 **Why first:** every later capability (alive-uncontrollable handling, reattachment, provider continuation) depends on being able to *prove* `same` vs `mismatch`. Without re-observable identity, those are all blocked. This slice is read-only at recovery time and does not activate any control or continuation behavior.
 
@@ -382,13 +389,14 @@ No acceptance gate below may require "real Windows production restart -> `same`"
 1. A durable, lossless `NativeProcessBirthIdentity` (section 14a.4) is captured at spawn and persisted (additive migration, evidence schemaVersion 2; dedicated column canonical per section 14a.8).
 2. The production verifier returns a comparable live birth identity for an existing PID, enabling the classifier to reach `same` on exact match and `mismatch` on a positive difference.
 3. PID reuse is positively detected as `mismatch` (never `same`).
-4. Any platform/probe that cannot supply a re-observable birth identity fails closed to `unknown`.
+4. Any platform/probe that cannot supply a re-observable birth identity fails closed to `unknown` (including a live PID whose FILETIME cannot be positively observed).
 
 **Windows gates (production semantics preserved):**
 
 - **W1 — Production owned-spawn restart / reaper gate.** Using the REAL Windows owned-spawn path, the provider is atomically placed in the AgentOS kill-on-close Job. At the supported Server/helper ownership-loss boundary, prove the owned provider is reaped. Post-restart recovery expectation: **MISSING**. This preserves the current architecture.
 - **W2 — Windows native identity primitive gate.** A **test-owned process explicitly OUTSIDE the production kill-on-close Job** may be used to validate the native birth-identity probe itself: same PID + same native creation identity -> verifier/classifier `same`; different creation identity -> `mismatch`. This is a **PLATFORM PRIMITIVE TEST ONLY**: it MUST NOT be presented as proof that a normal Windows AgentOS-owned provider survives a Server restart.
 - **W3 — Failure/permission/ambiguous probe -> fail closed.** Any failure, permission denial, or ambiguous native identity probe yields `unknown` and fails closed.
+- **W4 — Production PID-reuse classification gate (deterministic, seam-based).** Persist authentic v2 evidence for the original process with PID = P and creation FILETIME = A. The verifier then observes PID = P with FILETIME = B, where B != A. Required classification: **MISMATCH**. This gate must also verify M3b itself does **not** kill, clean up, adopt, resume, transfer ownership of, or change the Run/Stage terminal state solely because `mismatch` became reachable — it is **classification-only**. A real forced PID-reuse event is **not** required (forcing Windows to reuse a specific PID is unreliable); use deterministic verifier/probe seams for this classification gate. (W2 remains the real Windows primitive proof that the full FILETIME can be read and compared.)
 
 **Evidence-version compatibility gates (mandatory; see section 14a):**
 
@@ -398,7 +406,6 @@ No acceptance gate below may require "real Windows production restart -> `same`"
 - **V2-A** exact birth-identity match -> **SAME**.
 - **V2-B** different birth identity -> **MISMATCH**.
 - **V2-C** unsupported / unreadable birth identity -> **UNKNOWN**.
-- **Cross-boot collision gate (where relevant):** a process from a different OS boot identity -> **NEVER SAME**.
 
 **Safety / regression gates:**
 
