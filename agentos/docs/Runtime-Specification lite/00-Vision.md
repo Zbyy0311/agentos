@@ -144,7 +144,7 @@ All Lite documents and implementations must preserve these distinctions:
 | Provider internals != canonical state | Native Git, worktrees, subagents, tools, and planning remain noncanonical details. |
 | Git observation != Git ownership | AgentOS records traceability facts but does not own the Git workflow. |
 | Browser disconnect != Run cancellation | Transport lifetime never owns execution lifetime. |
-| Modifying Run concurrency = one per Workspace | Read-only Runs may overlap; AgentOS serializes modifying Runs. |
+| Modifying Run concurrency = one per Workspace | Runs overlap as read-only only with tested technical Workspace write denial; every other Run is admitted as modifying. |
 
 ## 7. Windows-Only Platform Scope
 
@@ -220,15 +220,21 @@ Without a full AgentOS Worktree Runtime, Lite uses a deliberately simple concurr
 Within one Workspace:
 
 ```text
-read-only Runs
+requested read-only
+  + no declared modifying or external action
+  + enforcedWorkspaceReadOnly = true from tested Adapter/platform evidence
+  -> effective read-only
   -> may execute concurrently within configured limits
 
-modifying Runs
+otherwise, including unknown capability
+  -> effective modifying
   -> at most one AgentOS modifying Run at a time
 
 additional modifying Runs
   -> queued or rejected by the runtime contract
 ```
+
+`enforcedWorkspaceReadOnly` means filesystem writes to the admitted Workspace are technically denied for the execution boundary. Intent, prompt text, or a Provider-native worktree is not enforcement. Users may not force an unsupported capability to `true`.
 
 Provider-internal worktrees are allowed.
 
@@ -242,7 +248,7 @@ Group Conversation is **ACTIVE LITE** but bounded by:
 
 - explicit members and mentions;
 - sequential reply mode;
-- bounded parallel read-only reply mode;
+- bounded parallel effectively-read-only reply mode with enforced Workspace write denial;
 - reply budgets;
 - stop controls;
 - loop and hop guards;
@@ -379,7 +385,7 @@ Scope reduction removes duplicated infrastructure without reducing these strengt
 - Secret values do not enter ordinary Events, logs, Memory, snapshots, or search indexes.
 - Browser or UI failure does not cancel a Run.
 - A modifying Run must pass Workspace admission before execution authority is granted.
-- High-impact actions are enforced in code through `ALLOW`, `DENY`, or `ASK_USER`.
+- High-impact actions at AgentOS-controlled or verified Provider pre-action boundaries are enforced in code through `ALLOW`, `DENY`, or `ASK_USER`; un-interceptable Provider-native actions are reported as unavailable enforcement rather than falsely claimed blocked.
 - Retry creates a new Run and preserves the prior attempt.
 
 ## 16. Compatibility with the Existing Runtime
@@ -402,6 +408,7 @@ The Lite product direction is acceptable when independent evidence shows:
 - Windows cancellation handles the owned process tree;
 - recovery classifies uncertainty without guessing completion;
 - one Workspace never has two AgentOS modifying Runs executing concurrently;
+- concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;
 - Memory selection is reproducible and explainable;
 - Git changes are observable without AgentOS owning Git workflow execution;
 - the UI presents the four-column engineering workbench with a focused Inspector;

@@ -87,7 +87,7 @@ Workspace invariants:
 - every Task, Run, and Conversation belongs to exactly one Workspace;
 - the root path is normalized and boundary checked;
 - Runtime data is not owned by ad hoc Markdown files in the project directory;
-- read-only Runs may overlap within configured limits;
+- Runs may overlap as read-only only when the Adapter/platform technically denies Workspace writes for that execution;
 - at most one AgentOS modifying Run executes in the Workspace at a time;
 - provider-internal isolation does not replace AgentOS mutation admission.
 
@@ -313,16 +313,22 @@ Provider-native subagents never automatically become Agent Profiles.
 Every Run Request is classified before admission as:
 
 ```text
-read-only
-  -> cannot intentionally mutate Workspace content or external state
+requested read-only
+  + no declared modifying or external action
+  + tested enforcedWorkspaceReadOnly capability is effective for this execution
+  -> read-only
+  -> Workspace writes are technically denied
 
-modifying
+otherwise
   -> may change Workspace content or perform a declared modifying action
+  -> modifying
 ```
 
-Unknown or ambiguous classification is treated as modifying for admission safety.
+Requested intent and effective admission class are distinct. Prompt wording such as "do not modify files" is intent only and cannot establish read-only eligibility.
 
-Read-only Runs may execute concurrently subject to global, Provider, Agent, and resource limits.
+Unknown or ambiguous classification, unavailable write-denial enforcement, or an unsupported `enforcedWorkspaceReadOnly` capability is treated as modifying for admission safety. A Provider-native worktree does not imply the capability.
+
+Effectively read-only Runs may execute concurrently subject to global, Provider, Agent, and resource limits.
 
 Only one AgentOS modifying Run may hold execution authority for a Workspace.
 
@@ -346,9 +352,9 @@ Single Agent
 Plan -> Implement -> Review
 
 Parallel Analysis
-  ├── Agent A (read-only)
-  ├── Agent B (read-only)
-  └── Agent C (read-only)
+  ├── Agent A (effectively read-only; writes denied)
+  ├── Agent B (effectively read-only; writes denied)
+  └── Agent C (effectively read-only; writes denied)
        -> Final Synthesis
 
 Security Review (optional)
@@ -467,7 +473,8 @@ Independent checks must prove:
 - Run and Process can be queried independently;
 - Process ID and native PID cannot be confused by API or UI labels;
 - one Workspace cannot admit two modifying Runs;
-- read-only concurrency does not bypass Provider or resource limits;
+- read-only concurrency requires tested technical Workspace write denial and does not bypass Provider or resource limits;
+- prompt-only or user-forced capability claims never create read-only eligibility;
 - Stage remains optional and bounded;
 - Memory Context Snapshot records why entries were selected;
 - Agent History links canonical records rather than provider-native history;

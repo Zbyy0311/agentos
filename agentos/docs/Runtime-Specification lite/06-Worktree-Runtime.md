@@ -61,7 +61,7 @@ The historical filename is preserved for reference compatibility; the Lite title
 | Workspace != Worktree | A Workspace is a project boundary; a Worktree is a provider detail. |
 | Modifying Run admission != Worktree creation | A modifying Run needs admission, not an AgentOS Worktree. |
 | One modifying Run per Workspace | At most one AgentOS modifying Run executes at a time. |
-| Read-only Runs may overlap | Concurrency applies only when writes are denied. |
+| Read-only Runs may overlap | Concurrency applies only with tested `enforcedWorkspaceReadOnly` evidence that technically denies Workspace writes. |
 | Unknown classification is modifying | Admission defaults to the safer classification. |
 | No silent destructive Git | AgentOS never stashes, resets, deletes, or force-merges automatically. |
 | Observation never invents facts | Unavailable Git facts are recorded as unavailable. |
@@ -109,21 +109,25 @@ Missing Git observability is reported as unavailable, never fabricated.
 Every Run Request is classified before admission:
 
 ```text
-read-only
-  -> cannot intentionally mutate Workspace content or external state
+requested read-only
+  + no declared modifying or external action
+  + enforcedWorkspaceReadOnly = true from tested Adapter/platform evidence
+  -> effective read-only
+  -> Workspace writes are technically denied
 
-modifying
+otherwise
   -> may change Workspace content or perform a declared modifying action
+  -> effective modifying
 ```
 
-Unknown or ambiguous classification is treated as modifying for admission safety.
+Unknown or ambiguous classification, missing enforcement evidence, or a Provider that declares read-only while enforcement is unavailable is treated as modifying for admission safety. Prompt text and Provider-native worktree existence cannot establish the capability, and users cannot force unsupported evidence to `true`.
 
 ### 5.2 Single-Writer Rule
 
 Within one Workspace:
 
 ```text
-read-only Runs
+effectively read-only Runs
   -> may execute concurrently within configured limits
 
 modifying Runs
@@ -247,7 +251,7 @@ Lite never executes destructive Git behavior on a Workspace.
 - Observation failure records unavailable rather than guessing.
 - A missing Git observation never authorizes completion or claims no changes occurred.
 - AgentOS never auto-creates a Worktree or runs Git mutation commands to satisfy a Run.
-- Read-only concurrency must actually deny writes; classification is enforced in code, not prompts.
+- Read-only concurrency requires tested `enforcedWorkspaceReadOnly` evidence and must technically deny Workspace writes; classification is enforced at the Adapter/platform boundary, not by prompts.
 - Provider-internal worktrees cannot bypass the Workspace single-writer rule.
 - No automatic cleanup, stash, reset, merge, or push is performed.
 
@@ -256,8 +260,9 @@ Lite never executes destructive Git behavior on a Workspace.
 Independent verification must cover:
 
 - one Workspace never admits two AgentOS modifying Runs concurrently;
-- read-only Runs execute concurrently only when writes are denied;
+- read-only Runs execute concurrently only when attempted Workspace writes are technically denied by the effective execution boundary;
 - unknown classification is admitted as modifying;
+- unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;
 - Git root, cwd, base/final commit, status, changed files, and diff Artifact are recorded without ownership claims;
 - non-Git Workspaces report `not-git` without silent fallback;
 - diff Artifacts are immutable and checksummed;

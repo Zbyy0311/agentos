@@ -21,7 +21,7 @@ DENY
 ASK_USER
 ~~~
 
-Policy is not prompt guidance. It gates execution before a high-impact action starts.
+Policy is not prompt guidance. It gates execution before a high-impact action starts when that action crosses an AgentOS-controlled or verified Provider pre-action boundary; otherwise it reports enforcement as unavailable rather than claiming control.
 
 ## 2. Lite Scope
 
@@ -36,7 +36,7 @@ Policy is not prompt guidance. It gates execution before a high-impact action st
 - fail-closed defaults;
 - policy and approval Events;
 - Run waiting_approval integration;
-- Provider-native approval bridging without bypass;
+- verified Provider-native pre-action approval bridging without bypass;
 - Workspace single-writer admission.
 
 ### 2.2 COMPATIBILITY
@@ -44,7 +44,7 @@ Policy is not prompt guidance. It gates execution before a high-impact action st
 - existing policy-related fields, Events, and projections remain readable where present;
 - merged contracts and ADRs retain frozen correctness authority;
 - existing prompt safety text may remain guidance but is not enforcement;
-- existing Provider approval surfaces may be normalized into ASK_USER.
+- existing Provider approval surfaces may be normalized into ASK_USER only when they expose a trustworthy pre-action pause/control point; otherwise they remain non-enforcing compatibility UI.
 
 ### 2.3 DEFERRED FULL-SCOPE
 
@@ -63,10 +63,11 @@ Policy is not prompt guidance. It gates execution before a high-impact action st
 | Invariant | Contract |
 |---|---|
 | Policy != Prompt | A prompt cannot authorize execution. |
-| Decide before execute | No controlled high-impact action starts without a decision. |
-| Enforce in code | The boundary that performs the action enforces the result. |
+| Decide before execute | No high-impact action crossing an AgentOS-controlled or verified Provider pre-action boundary starts without a decision. |
+| Enforce in code | Policy guarantees only what an AgentOS-controlled boundary or verified enforceable Provider pre-action bridge can intercept. |
+| No interception != enforcement | AgentOS reports unavailable enforcement rather than claiming an un-interceptable Provider-native action was blocked. |
 | Fail closed | Engine, normalization, or context uncertainty never auto-allows risk. |
-| DENY wins | Hard-deny classes cannot be re-enabled by a prompt or Provider. |
+| DENY wins | At an enforceable boundary, hard-deny classes cannot be re-enabled by a prompt or Provider. |
 | ASK_USER is bounded | Approval is scoped, expiring, and re-evaluated. |
 | Snapshot before decision | The evaluated request is frozen and redacted. |
 | Stale approval is void | Action, resource, Run, policy, or expiry drift requires re-evaluation. |
@@ -92,7 +93,7 @@ ASK_USER
 
 Defaults:
 
-- known low-risk read-only actions may ALLOW inside validated boundaries;
+- known low-risk read-only actions may ALLOW only when `enforcedWorkspaceReadOnly` technically denies Workspace writes inside the validated execution boundary;
 - destructive, external, secret-sensitive, or unknown high-risk actions DENY or ASK_USER;
 - an unknown mutation classification is treated as modifying;
 - hard-deny actions cannot become ALLOW through configuration.
@@ -101,15 +102,32 @@ Lite uses small code-defined rule sets. Configuration may conservatively choose 
 
 ## 5. Enforcement Boundaries
 
+Policy has two enforceable paths:
+
+```text
+AgentOS-owned action
+  -> AgentOS Policy returns ALLOW / DENY / ASK_USER
+  -> the AgentOS action boundary enforces the result
+
+Provider-native action
+  + verified nativeApprovals pre-action capability
+  -> Adapter bridges the action into AgentOS Policy before execution
+  -> the same Provider-native boundary enforces the returned result
+```
+
+A Provider-native action without trustworthy pre-action interception is outside the guaranteed Policy enforcement boundary. AgentOS must not claim that it blocked such an action.
+
 ### 5.1 Workspace Admission
 
 ~~~text
-read-only -> concurrent within limits
-modifying -> sole Workspace modifying authority required
-unknown   -> treat as modifying
+requested read-only + tested enforcedWorkspaceReadOnly
+  -> effective read-only -> concurrent within limits
+
+otherwise, including unknown or unavailable enforcement
+  -> modifying -> sole Workspace modifying authority required
 ~~~
 
-Admission is atomic with the Run/operation contract. A modifying Run does not require an AgentOS-managed Worktree.
+Prompt wording and Provider declarations without tested technical write denial are not read-only evidence. Admission is atomic with the Run/operation contract. A modifying Run does not require an AgentOS-managed Worktree.
 
 ### 5.2 Process Spawn
 
@@ -126,21 +144,23 @@ Provider Adapters do not bypass the Process Manager.
 
 ### 5.3 Destructive Filesystem Actions
 
-Delete, recursive delete, force flags, paths outside the Workspace, and AgentOS-managed data require an explicit decision. Unbounded recursive deletion and AgentOS canonical-data destruction are hard DENY.
+At an AgentOS-controlled or verified Provider pre-action boundary, delete, recursive delete, force flags, paths outside the Workspace, and AgentOS-managed data require an explicit decision. Unbounded recursive deletion and AgentOS canonical-data destruction are hard DENY.
 
 ### 5.4 Merge, Push, and External Effects
 
-Merge and push are distinct actions. Unknown or protected-state merge defaults to ASK_USER. Force push and direct push to a protected branch default to DENY.
+Merge and push are distinct actions. For AgentOS-initiated merge/push actions, or Provider-native merge/push exposed through a verified enforceable pre-action bridge, unknown or protected-state merge defaults to ASK_USER and force push or direct push to a protected branch defaults to DENY.
 
-Upload, publish, credential export, and network egress of source or Artifact content default to DENY or ASK_USER. Redirects are evaluated at their final destination.
+Provider-native Git remains a Provider implementation detail. Without an enforceable pre-action bridge, AgentOS does not claim to have blocked Provider-native merge or push. The Run is conservatively modifying, Workspace single-writer admission applies, unsafe capability or mode is disabled where the Adapter can do so, and enforcement availability is reported honestly.
 
-Lite observes Git and does not become a branch or merge manager.
+At an enforceable boundary, upload, publish, credential export, and network egress of source or Artifact content default to DENY or ASK_USER. Redirects are evaluated at their final destination.
+
+Lite observes Git and does not become a branch or merge manager. It does not reimplement a generic Git command interceptor.
 
 ### 5.5 Secrets and Provider Unsafe Flags
 
-Secret injection requires an explicit reference and a declared destination. Secret export is DENY by default.
+At an enforceable boundary, secret injection requires an explicit reference and a declared destination, and secret export is DENY by default.
 
-Provider unsafe flags, elevation, and privilege escalation are DENY by default. Provider-native approval never overrides AgentOS Policy.
+Provider unsafe flags, elevation, and privilege escalation are DENY by default at enforceable boundaries. If a Provider-native unsafe mode cannot be intercepted, the Adapter disables it where possible, classifies the Run conservatively, and reports unavailable enforcement. Provider-native approval never becomes AgentOS authority.
 
 ## 6. Request Snapshot
 
@@ -230,9 +250,11 @@ Any mismatch voids the approval and requires a new decision.
 
 ## 9. Provider Approval Bridge
 
-Provider-native approval is normalized by the Adapter into an AgentOS action. AgentOS evaluates the action through the same pipeline and returns the result to the Provider.
+When `nativeApprovals` is verified as an enforceable pre-action capability, a Provider-native action is normalized by the Adapter into an AgentOS action before execution. AgentOS evaluates it through the same pipeline and returns ALLOW, DENY, or ASK_USER to the Provider boundary that is still able to stop execution.
 
-Provider-native prompts, sessions, sandboxes, or approvals do not become AgentOS authority.
+Without that verified pre-action bridge, AgentOS records Policy enforcement as unavailable for the Provider-native action. It applies conservative mutation admission and disables unsafe capability or mode where possible, but it does not fabricate a DENY enforcement result.
+
+Provider-native prompts, sessions, sandboxes, approvals, or after-the-fact notifications do not become AgentOS authority.
 
 ## 10. Events and Audit
 
@@ -256,7 +278,8 @@ Audit links the caller, snapshot, decision, reason, enforcement result, Run, and
 - Normalization uncertainty fails closed.
 - Secret or redaction failure blocks persistence and execution.
 - Stale or expired approval never executes.
-- Enforcement-point bypass is a contract violation.
+- Bypass of an available AgentOS-controlled or verified pre-action enforcement point is a contract violation.
+- Missing Provider pre-action interception is reported as unavailable enforcement, never as a successful block.
 - Provider success does not prove policy compliance.
 - Hard DENY cannot be overridden by ordinary configuration.
 - An approval never outlives its request.
@@ -273,7 +296,7 @@ Merged low-level contracts remain authoritative. Lite stops treating the histori
 - built-in safety rules;
 - Workspace admission;
 - spawn and filesystem boundaries;
-- merge, push, external effect, and secret boundaries;
+- enforceable AgentOS-owned and verified Provider pre-action boundaries for merge, push, external effects, and secrets;
 - Request Snapshots;
 - persistent expiring approvals;
 - stale-decision re-evaluation;
@@ -296,14 +319,16 @@ Merged low-level contracts remain authoritative. Lite stops treating the histori
 
 Independent verification must prove:
 
-- every named high-impact action is decided before execution;
-- DENY blocks spawn, destructive filesystem action, merge, push, and secret export;
+- every high-impact action at an AgentOS-controlled or verified Provider pre-action boundary is decided before execution;
+- DENY blocks AgentOS-owned spawn, destructive filesystem action, merge, push, and secret export;
+- DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;
+- un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;
 - ASK_USER persists and pauses the Run;
 - concurrent approve/reject is idempotent;
 - stale and expired approvals cannot execute;
 - snapshot hashes detect changed actions;
 - snapshots and Events contain no secret values;
-- Provider-native approval cannot bypass AgentOS;
+- Provider-native approval cannot become AgentOS authority, and only a verified pre-action bridge creates an enforcement guarantee;
 - engine failure fails closed;
 - browser disconnect does not decide;
 - no policy path bypasses single-writer admission;

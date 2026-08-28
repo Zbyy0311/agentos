@@ -60,7 +60,7 @@ Endpoints described as forward contracts are not claimed implemented. Existing c
 | Disconnect != cancellation | Only explicit cancel controls execution. |
 | REST is query authority | SSE is incremental delivery. |
 | Persist then publish | State, Event, and Outbox commit before delivery. |
-| Admission before spawn | Modifying execution obtains sole Workspace authority. |
+| Admission before spawn | Concurrent read-only requires tested technical Workspace write denial; every other execution obtains sole modifying authority. |
 | Secrets are references | Values never enter ordinary DTOs. |
 | Paths are not resource contracts | Artifact content uses controlled endpoints. |
 
@@ -193,7 +193,7 @@ Send Message persists communication and may route a chat Turn; it creates no Tas
 
 Create-task idempotently creates Task intent and starts nothing.
 
-Start-run explicitly creates a Run Request and applies admission.
+Start-run explicitly creates a Run Request and applies admission. A client may request read-only intent, but it cannot set effective capability evidence. The response and Run projection distinguish requested intent from effective admission class and expose whether tested `enforcedWorkspaceReadOnly` evidence was available.
 
 Send retry uses Idempotency-Key plus clientMessageId to converge on one Message.
 
@@ -319,7 +319,9 @@ GET /api/processes/:processId/output
 
 Only GET /api/health is a verified merged top-level route at the cited baseline. The remaining readiness, metadata, capability, Inspector, Snapshot, and Process routes in this block are forward **ACTIVE LITE** contracts unless independently verified.
 
-Diagnostics expose bounded, redacted Run, Stage, Provider, Process, Event, Memory, Artifact, Git observation, error, retry, cancellation, and recovery facts.
+Capability metadata identifies `enforcedWorkspaceReadOnly` support and its Adapter/platform evidence source; each Run projection identifies whether it was effective for that execution. User input cannot force unsupported capability values. A Provider-native worktree or `nativeSandbox` value does not imply write denial.
+
+Diagnostics expose bounded, redacted Run, Stage, Provider, Process, Event, Memory, Artifact, Git observation, error, retry, cancellation, recovery, and Policy enforcement-availability facts.
 
 Git endpoints observe status/diff/log only. They do not establish AgentOS Git ownership.
 
@@ -327,7 +329,8 @@ Git endpoints observe status/diff/log only. They do not establish AgentOS Git ow
 
 - request/SSE loss never cancels Run;
 - Cancel is the canonical cancellation path;
-- modifying Run cannot start without sole Workspace authority;
+- a Run is concurrent read-only only with effective tested `enforcedWorkspaceReadOnly` evidence;
+- unknown or unavailable write-denial capability is admitted as modifying and cannot start without sole Workspace authority;
 - retry never resets a terminal Run;
 - UNKNOWN recovery is never success;
 - secret values never enter DTOs, Events, logs, Memory, snapshots, or Search;
@@ -353,6 +356,7 @@ Independent verification must prove:
 - Event query/replay/SSE has no gaps or duplicates;
 - bad cursor returns stable validation error;
 - one Workspace never admits two modifying Runs;
+- API clients cannot obtain concurrent read-only admission through prompt wording or a forced capability value;
 - optimistic races have one winner;
 - History is Agent-unified and Search is secret-free;
 - Artifact DTOs leak no storage path;

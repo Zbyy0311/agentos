@@ -151,7 +151,7 @@ Run stores one execution attempt:
 
 Retry creates a new child Run. A terminal Run is never reset.
 
-Run Snapshot is one write-once, content-hashed, redacted record per Run. Retry creates a child-specific Snapshot without copying runtime output, failure, Stage IDs, or timestamps.
+Run Snapshot is one write-once, content-hashed, redacted record per Run. It freezes requested mutation intent, effective read-only or modifying admission class, `enforcedWorkspaceReadOnly` value, and the tested Adapter/platform evidence source used for that execution. User input cannot write effective capability evidence. Retry creates a child-specific Snapshot without copying runtime output, failure, Stage IDs, or timestamps.
 
 Run Stage records optional bounded workflow steps:
 
@@ -315,6 +315,7 @@ Independent verification must prove:
 - idempotency convergence;
 - optimistic race winner;
 - Process reserve-before-spawn;
+- immutable requested/effective mutation classification and `enforcedWorkspaceReadOnly` evidence per Run;
 - fail-closed recovery evidence;
 - bounded finalized output references;
 - Workspace tombstones and non-cascading history;

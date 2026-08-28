@@ -151,7 +151,7 @@ Launch requests are validated before spawn:
 
 ### 5.3 Working Directory
 
-- Read-only Runs use the admitted Workspace.
+- Effectively read-only Runs use the admitted Workspace with tested technical Workspace write denial.
 - Modifying Runs use the admitted Workspace or an explicitly validated provider-selected directory.
 - AgentOS does not require an AgentOS-owned Worktree; see [06 — Worktree Runtime](./06-Worktree-Runtime.md).
 - The recorded cwd is the initial cwd; provider-internal `cd` is not canonical state.
@@ -191,12 +191,27 @@ If survivors remain, the Process is marked orphaned, cleanup-required is emitted
 
 ### 6.4 Job Assignment Failure
 
-If a process cannot be assigned to the Job:
+The production Windows owned-spawn path is atomic before provider execution:
 
-- a warning is emitted;
-- the process-tree fallback is enabled;
-- cancellation reliability is marked reduced;
-- the failure is not silently ignored.
+```text
+CreateProcessW(CREATE_SUSPENDED)
+  -> create and configure kill-on-close Job
+  -> AssignProcessToJobObject
+
+assignment succeeds
+  -> capture required native evidence
+  -> ResumeThread
+  -> provider may execute
+
+assignment fails
+  -> abort or terminate the still-suspended provider
+  -> close process, thread, Job, and transport handles
+  -> fail spawn closed
+```
+
+No provider-controlled instruction may execute before successful Job assignment. Assignment failure never enables a process-tree fallback, never resumes the provider with reduced cancellation reliability, and never permits the provider to execute outside the required Job.
+
+Existing compatibility code that is not the production owned-spawn contract may remain under **COMPATIBILITY**. It is not an **ACTIVE LITE** fallback and cannot satisfy owned-spawn acceptance.
 
 Named Jobs, broker lifetime changes, and cross-restart ownership redesign are **DEFERRED FULL-SCOPE** and require separate authorization.
 
@@ -318,11 +333,11 @@ PID alone never proves `SAME`.
 - Only `MISSING` reconciles a running Run to canonical terminal failure in the merged recovery path.
 - Malformed or internally inconsistent evidence fails closed to `UNKNOWN` before the OS probe runs.
 
-## 11. Merged vs Unmerged Remediation Status
+## 11. Implementation Status Snapshot
 
-Implementation status is labeled from evidence, not aspiration.
+This section is a non-authoritative status snapshot dated 2026-08-28. Architecture semantics in this document are independent of branch heads and implementation commit SHAs; current merged status must be established from repository history and the merged contracts.
 
-### 11.1 Merged (origin-https/main @ 5e4a574b)
+### 11.1 Durable Merged Baseline
 
 - M4-P1 through M4-P5 series: durable Process schema, Process Manager, provider integration, tree proof, timeouts, and integrated cancellation are merged.
 - P6-M2a: process recovery evidence classifier is merged.
@@ -336,9 +351,9 @@ Implementation status is labeled from evidence, not aspiration.
   - dedicated column canonical with evidence-JSON mirror failing closed;
   - classification only, with no control, reattach, or ownership changes.
 
-### 11.2 Unmerged Remediation (branch head `ece3fcd5`; proof-correction commit `bfe42673`)
+### 11.2 P6-M3b Closeout Status
 
-P6-M3b is an unmerged remediation branch, not merged functionality:
+At the date of this snapshot, P6-M3b is in closeout and is not yet contained by merged `main`. Its implementation evidence includes:
 
 - canonical `win32:filetime:<unsigned-decimal>` validator;
 - Windows helper capture of the full 64-bit creation FILETIME at spawn;
@@ -348,9 +363,7 @@ P6-M3b is an unmerged remediation branch, not merged functionality:
 - additive migration 015 (`native_birth_identity` column, immutability trigger, partial index);
 - server repository validation and binding of the birth identity.
 
-The branch head is `ece3fcd5`; it is three commits ahead of merged main and has not been merged.
-
-Lite treats P6-M3b as the current Windows recovery remediation direction, not as shipped behavior.
+Until merged `main` contains that work, Lite treats P6-M3b as closeout implementation evidence rather than shipped behavior. When it becomes merged, only this status label changes; the Windows identity, fail-closed classification, compatibility, and no-reattach architecture contracts do not.
 
 ## 12. No Reattach, Adoption, or Ownership Transfer
 
@@ -382,6 +395,7 @@ Recovery never constructs a second execution authority for the interrupted Run.
 ## 14. Failure and Safety Rules
 
 - A native PID alone never proves identity, ownership, success, or safe cancellation.
+- Production owned-spawn Job assignment failure terminates the still-suspended provider and never reaches `ResumeThread`.
 - Probe failure never becomes absence proof.
 - `UNKNOWN` is never treated as recoverable and never drives terminal success by itself.
 - Identity proof does not grant control; `ProcessCancelCoordinator` remains the sole cleanup authority.
@@ -395,6 +409,7 @@ Recovery never constructs a second execution authority for the interrupted Run.
 Independent verification must cover:
 
 - reserve-before-spawn ordering and idempotency;
+- Windows Job assignment failure gate: provider instruction never executes, suspended provider is terminated, handles close, and spawn fails;
 - Windows owned-spawn restart reaper gate: owned provider reaped, post-restart classification `MISSING`;
 - Windows primitive identity gate: same creation identity -> `SAME`, different -> `MISMATCH`, unreadable -> `UNKNOWN`;
 - production PID-reuse gate: persisted FILETIME A vs observed B, B != A -> `MISMATCH`, never `SAME`;

@@ -125,11 +125,13 @@ Overview shows:
 - status, reason, attempt, parent/root lineage;
 - Workflow Template and version;
 - Agent and Provider Configuration snapshots;
-- read-only or modifying classification;
+- requested mutation intent, effective read-only or modifying classification, and admission reason;
+- `enforcedWorkspaceReadOnly` value and tested Adapter/platform evidence source;
 - started, finished, and duration;
 - active Stage;
 - last Event sequence;
 - pending approval;
+- Policy enforcement boundary and unavailable-enforcement reason for Provider-native actions;
 - error and recovery warning;
 - safe next action.
 
@@ -284,7 +286,7 @@ Search/export excludes the same classes.
 
 Active views target Windows Job Object ownership, Process tree, native identity, bounded output, cancellation, and fail-closed recovery.
 
-Modifying admission is shown as acquired, queued, or rejected. Read-only Runs may execute concurrently within limits.
+Modifying admission is shown as acquired, queued, or rejected. Read-only Runs are shown as concurrent only when tested `enforcedWorkspaceReadOnly` evidence proves Workspace writes are technically denied. Unknown or unavailable enforcement is shown as modifying, never as prompt-based read-only.
 
 Provider-internal Git/worktrees never appear as AgentOS isolation state.
 
@@ -320,6 +322,7 @@ Independent verification must prove:
 - no reattach/takeover/direct-kill control;
 - Cancel/Retry route through API, Policy, Runtime, and committed Event;
 - no two modifying Runs in one Workspace;
+- concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;
 - no secrets in DTOs;
 - browser disconnect leaves execution active;
 - replay has zero external side effects.

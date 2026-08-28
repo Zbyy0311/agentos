@@ -91,13 +91,14 @@ A Run Request identifies:
 - Agent selection or override;
 - Provider Configuration selection or override;
 - workflow template and optional Stage graph;
-- read-only or modifying classification;
+- requested read-only or modifying intent;
+- effective admission classification and `enforcedWorkspaceReadOnly` evidence;
 - timeout and control inputs;
 - Memory budget;
 - parent/root lineage where applicable;
 - idempotency key and caller.
 
-Unknown mutation classification is handled as modifying.
+Unknown mutation classification or unavailable Workspace write-denial enforcement is handled as modifying.
 
 ## 5. Workspace Admission and Serialization
 
@@ -105,9 +106,11 @@ Admission occurs before Provider execution authority or Process spawn.
 
 ### 5.1 Read-Only Run
 
-A read-only Run may be admitted concurrently when global, Provider, Agent, and resource limits permit.
+A Run is eligible for read-only admission only when the request declares no modifying or external action and the effective Provider execution capability proves `enforcedWorkspaceReadOnly = true` from tested Adapter/platform evidence.
 
-It must not intentionally mutate Workspace files or declared external state.
+The capability means filesystem writes to the admitted Workspace are technically denied. Prompt intent, user override, Provider assertion without evidence, and Provider-native worktree existence are insufficient.
+
+Only an eligible read-only Run may be admitted concurrently when global, Provider, Agent, and resource limits permit. If enforcement is unavailable or unknown, admission reclassifies the Run as modifying before Provider execution authority or Process spawn.
 
 ### 5.2 Modifying Run
 
@@ -480,12 +483,12 @@ They must declare:
 - bounded Stage count;
 - dependencies and deterministic ordering;
 - Agent and Provider selection rules;
-- read-only or modifying classification;
+- requested mutation intent and effective admission classification;
 - reply/attempt budget where collaborative;
 - completion and failure rule;
 - output references.
 
-Parallel Stage execution is limited to read-only work unless modification is serialized under the Workspace's sole modifying authority.
+Parallel Stage execution is limited to effectively read-only work with tested Workspace write denial. Every other Stage is modifying and is serialized under the Workspace's sole modifying authority.
 
 The visual workflow editor and arbitrary distributed scheduler are **DEFERRED FULL-SCOPE**.
 
@@ -519,6 +522,7 @@ Independent verification must cover:
 - Message-only turns do not create modifying Runs;
 - Task creation is idempotent and separate from Run creation;
 - modifying admission never permits two active modifying Runs in one Workspace;
+- concurrent read-only admission rejects actual Workspace mutation and is unavailable without tested `enforcedWorkspaceReadOnly` evidence;
 - Run graph creation is atomic and ordered;
 - transition-to-Event mappings remain exact;
 - every durable Event has the required independent Outbox row;

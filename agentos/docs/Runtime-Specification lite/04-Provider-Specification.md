@@ -215,6 +215,7 @@ cancellation
 modelSelection
 workspaceAwareness
 nativeSandbox
+enforcedWorkspaceReadOnly
 outputContracts
 ```
 
@@ -231,7 +232,15 @@ Effective capabilities record a source per capability.
 
 Users may only disable capability; they must not force an unsupported capability to `true`.
 
-### 7.3 Fidelity
+### 7.3 Enforceable Capability Semantics
+
+`enforcedWorkspaceReadOnly` is an execution capability, not a prompt promise. It is effective only when the Adapter/platform technically denies filesystem writes to the admitted Workspace for the complete Provider execution boundary and contract tests prove attempted Workspace mutation fails.
+
+The effective value is captured in the Run Provider Snapshot with its Adapter/platform evidence. Unknown or unavailable evidence means `false` for admission. A Provider-native worktree, sandbox label, read-only declaration, or `nativeSandbox` capability does not imply `enforcedWorkspaceReadOnly`.
+
+`nativeApprovals` is effective for Policy enforcement only when a trustworthy Provider-native hook exposes the action before execution and the Adapter can return AgentOS ALLOW, DENY, or ASK_USER control to that same pre-action boundary. A Provider approval UI without enforceable pre-action interception is not this capability.
+
+### 7.4 Fidelity
 
 Provider output fidelity is declared per Run:
 
@@ -255,7 +264,8 @@ The Adapter returns a Launch Plan:
 - environment with redacted key names;
 - stdin mode and prompt delivery;
 - structured output mode;
-- cleanup files.
+- cleanup files;
+- effective Workspace write-denial configuration and evidence when read-only admission is requested.
 
 ### 8.2 Safe Argument-Array Launch
 
@@ -267,7 +277,7 @@ The Adapter returns a Launch Plan:
 
 ### 8.3 Working Directory
 
-- Read-only Runs use the admitted Workspace.
+- Effectively read-only Runs use the admitted Workspace with `enforcedWorkspaceReadOnly` active for the complete execution boundary.
 - Modifying Runs use the admitted Workspace or an explicitly validated provider-selected directory.
 - AgentOS never depends on an AgentOS-owned Worktree; see [06 — Worktree Runtime](./06-Worktree-Runtime.md).
 - The provider cannot override cwd to bypass Workspace admission.
@@ -428,11 +438,11 @@ Provider execution always occurs inside an AgentOS-owned Run:
 - Kimi Code direct invocation preserved (merged M4-P3 direction).
 - Codex, Kimi Code, and OpenCode adapters as the active Lite provider set.
 
-## 15. Implementation Status
+## 15. Implementation Status Snapshot
 
-Implementation labels are evidence-based, not aspirational.
+This section is a non-authoritative status snapshot dated 2026-08-28. Implementation labels are evidence-based, not aspirational, and architecture semantics do not depend on a temporary branch head or commit SHA.
 
-### 15.1 Merged (origin-https/main @ 5e4a574b)
+### 15.1 Durable Merged Baseline
 
 - M4-P3/M4-P4 provider and Run Engine integration: Kimi Code is the only merged production runtime Provider Adapter (direct `kimi.exe` invocation).
 - Existing `codexAdapter`, `kimiAdapter`, and `plainTextAdapter` remain output parsers in the legacy adapter registry under **COMPATIBILITY**.
@@ -483,6 +493,9 @@ Independent verification must cover:
 - browser disconnect does not cancel Provider execution;
 - errors normalize to stable codes with retryability;
 - capability declarations match tested behavior;
+- concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;
+- unknown capability, prompt-only intent, user-forced values, `nativeSandbox`, and Provider-native worktrees never imply `enforcedWorkspaceReadOnly`;
+- `nativeApprovals` proves an enforceable pre-action bridge rather than a Provider prompt or post-action notification;
 - secrets are absent from Events, Snapshots, and debug bundles;
 - no invented provider telemetry appears in canonical Events.
 

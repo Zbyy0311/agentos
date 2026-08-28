@@ -36,7 +36,7 @@ Conversation is canonical AgentOS state. It is not a Provider transcript, CLI se
 - idempotent Runtime Event projection;
 - bounded Group Conversation;
 - mentions and mention-all;
-- sequential and bounded parallel read-only replies;
+- sequential and bounded parallel effectively-read-only replies;
 - reply budgets, stop, loop guard, and per-Agent context;
 - template-backed collaboration;
 - unified Agent History and Search references;
@@ -297,12 +297,12 @@ Group Conversation is **ACTIVE LITE**.
 | Mode | Behavior |
 |---|---|
 | sequential | selected Agents reply in deterministic order |
-| parallel-read-only | multiple read-only Agent Turns may run concurrently |
+| parallel-read-only | multiple effectively read-only Agent Turns may run concurrently only with tested Workspace write denial |
 | orchestrated | orchestrator or template selects speakers and order |
 | manual | user selects each responder |
 | mention-only | only mentioned Agents reply |
 
-Member reply mode first determines eligibility; the Conversation reply mode then determines the order and concurrency of eligible Agents. An always member is still serialized by a sequential Conversation and cannot bypass read-only restrictions.
+Member reply mode first requests eligibility; Runtime admission computes the effective class. A `parallel-read-only` Turn is concurrent only when its Adapter/platform proves `enforcedWorkspaceReadOnly = true` for that execution and no modifying or external action is declared. Unknown or unavailable enforcement makes the Turn modifying. An always member is still serialized by a sequential Conversation and cannot bypass admission.
 
 ### 11.3 Budgets
 
@@ -319,7 +319,7 @@ Budget exhaustion ends the interaction with a stable reason.
 
 ### 11.4 Stop and Loop Guard
 
-Stop prevents new replies and cancels pending read-only Turns. It does not cancel an active Run without a separate Run cancel request.
+Stop prevents new replies and cancels pending effectively-read-only Turns. It does not cancel an active Run without a separate Run cancel request.
 
 The Loop Guard blocks:
 
@@ -338,7 +338,7 @@ Parallel drafts are isolated until committed. No Agent automatically receives th
 
 ### 11.6 Mutation Serialization
 
-Analysis, planning, review, and other read-only work may run in parallel. Any modifying step obtains the sole Workspace modifying authority.
+Analysis, planning, review, and other requested read-only work may run in parallel only when Workspace writes are technically denied by tested `enforcedWorkspaceReadOnly` evidence. Prompt-only intent is insufficient. Every other step, including unknown capability, obtains the sole Workspace modifying authority.
 
 Group fan-out never bypasses admission, even when Providers use internal worktrees.
 
@@ -352,9 +352,9 @@ Single Agent
 Plan -> Implement -> Review
 
 Parallel Analysis
-  -> Agent A read-only
-  -> Agent B read-only
-  -> Agent C read-only
+  -> Agent A effectively read-only with enforced write denial
+  -> Agent B effectively read-only with enforced write denial
+  -> Agent C effectively read-only with enforced write denial
   -> Final Synthesis
 
 Optional Security Review
@@ -438,7 +438,8 @@ Independent verification must prove:
 - browser disconnect leaves Run and Process active;
 - Event projection never duplicates cards;
 - Agent identity survives Provider changes;
-- mention, @all, sequential, and parallel-read-only behavior follows policy;
+- mention, @all, sequential, and parallel-read-only behavior follows admission and Policy;
+- parallel-read-only mutation attempts are technically denied, while unavailable enforcement is admitted as modifying;
 - budgets, stop, and loop guard terminate every group interaction;
 - per-Agent contexts remain isolated;
 - no Workspace has two AgentOS modifying Runs;

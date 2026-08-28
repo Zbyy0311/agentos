@@ -72,6 +72,7 @@ Existing screens do not prove this workbench is implemented.
 | Agent != Provider | Provider appears as execution metadata. |
 | Message != Task/Run | Composer exposes explicit modes. |
 | One modifying Run per Workspace | UI shows admission, queue, and rejection honestly. |
+| Read-only label = enforced | UI shows concurrent read-only only when the Run has tested `enforcedWorkspaceReadOnly` evidence. |
 | Git internals are noncanonical | No AgentOS-owned branch/worktree fiction. |
 | Status is not color-only | Icon, text, and accessible name accompany color. |
 | Secret values stay off client | Credentials never enter normal state, toast, search, or screenshot. |
@@ -306,6 +307,7 @@ Group Conversation is **ACTIVE LITE** and visibly bounded:
 - explicit Agents, roles, and reply modes;
 - @Agent and @all bound to durable IDs;
 - sequential, parallel-read-only, orchestrated, manual, mention-only modes;
+- parallel-read-only is unavailable or shown as modifying/queued when technical Workspace write denial is unavailable or unknown;
 - visible Agent/reply/hop/time budgets;
 - Stop and Loop Guard feedback;
 - isolated per-Agent context;
@@ -336,7 +338,7 @@ Inspector is a query projection, never source of truth.
 It shows:
 
 - Run/Stage status and retry lineage;
-- Provider and capability fidelity;
+- Provider and capability fidelity, including requested versus effective mutation class and `enforcedWorkspaceReadOnly` evidence;
 - AgentOS Process ID distinct from PID;
 - ordered redacted Events;
 - bounded stdout/stderr or restricted Artifact;
@@ -424,6 +426,7 @@ Independent verification must prove:
 - complete async states;
 - explicit Chat/Task/Run actions;
 - bounded Group controls;
+- truthful parallel-read-only availability and modifying admission when write denial cannot be enforced;
 - Memory selection explanation;
 - Inspector parity with canonical data;
 - Agent-unified History and secret-free Search;
