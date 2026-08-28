@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { RuntimeEventContext } from '@agentos/shared';
+import { isValidNativeBirthIdentity } from '@agentos/process-runtime';
 import { canonicalizeJson } from '../snapshots/canonicalJson.js';
 import { isCanonicalUtcTimestamp } from './CanonicalTimestamp.js';
 import { createEntityId, isValidEntityId } from './Identity.js';
@@ -20,7 +21,8 @@ import type { DurableRuntimeFactWriter } from './RuntimeEventRepository.js';
  *
  * The state machine below is the frozen P0 §7 table adopted by the P1
  * process-runtime package (ALLOWED_TRANSITIONS) and is mirrored here
- * faithfully because this package does not depend on process-runtime.
+ * faithfully; the only process-runtime symbol this store consumes is the
+ * shared canonical native-birth-identity validator (a pure function).
  */
 
 export const PROCESS_STATES = [
@@ -123,6 +125,7 @@ interface RuntimeProcessRow {
   native_pid: number | null;
   native_parent_pid: number | null;
   native_started_at: string | null;
+  native_birth_identity: string | null;
   process_group_id: string | null;
   tree_ownership_mode: string | null;
   platform_handle_id: string | null;
@@ -181,6 +184,7 @@ export interface RuntimeProcess {
   readonly nativePid: number | null;
   readonly nativeParentPid: number | null;
   readonly nativeStartedAt: string | null;
+  readonly nativeBirthIdentity: string | null;
   readonly processGroupId: string | null;
   readonly treeOwnershipMode: string | null;
   readonly platformHandleId: string | null;
@@ -274,6 +278,8 @@ export interface BindNativeIdentityInput extends ProcessClaimFence {
   readonly nativePid: number;
   readonly nativeParentPid?: number | null;
   readonly nativeStartedAt: string;
+  /** P6-M3b: lossless native birth identity (canonical column); null when unavailable. */
+  readonly nativeBirthIdentity?: string | null;
   readonly processGroupId?: string | null;
   readonly platformHandleId?: string | null;
   /**
@@ -421,6 +427,7 @@ function validateProcessRow(row: unknown): asserts row is RuntimeProcessRow {
   assertOptionalInteger(value.native_pid, 'native_pid');
   assertOptionalInteger(value.native_parent_pid, 'native_parent_pid');
   assertOptionalTimestamp(value.native_started_at, 'native_started_at');
+  assertOptionalString(value.native_birth_identity, 'native_birth_identity');
   assertOptionalString(value.process_group_id, 'process_group_id');
   assertOptionalString(value.tree_ownership_mode, 'tree_ownership_mode');
   assertOptionalString(value.platform_handle_id, 'platform_handle_id');
@@ -500,6 +507,7 @@ function mapProcess(row: RuntimeProcessRow): RuntimeProcess {
     nativePid: row.native_pid,
     nativeParentPid: row.native_parent_pid,
     nativeStartedAt: row.native_started_at,
+    nativeBirthIdentity: row.native_birth_identity,
     processGroupId: row.process_group_id,
     treeOwnershipMode: row.tree_ownership_mode,
     platformHandleId: row.platform_handle_id,
@@ -778,6 +786,33 @@ export class ProcessRepository {
     const processGroupId = input.processGroupId === undefined ? null : input.processGroupId;
     const platformHandleId = input.platformHandleId === undefined ? null : input.platformHandleId;
 
+    // P6-M3b: lossless native birth identity (canonical column value). Never
+    // fabricated from the wall clock; null when capture was unavailable. A
+    // non-null value MUST already be the exact canonical durable form
+    // ('win32:filetime:<unsigned-decimal>'); arbitrary strings are rejected
+    // before any write.
+    const inputBirthIdentity = input.nativeBirthIdentity === undefined ? null : input.nativeBirthIdentity;
+    if (inputBirthIdentity !== null && !isValidNativeBirthIdentity(inputBirthIdentity)) {
+      throw new RuntimeProcessValidationError(
+        'RUNTIME_PROCESS_VALIDATION_FAILED: nativeBirthIdentity must be canonical win32:filetime:<unsigned-decimal> or null',
+      );
+    }
+    // Resolve the effective value together with the already-bound column so the
+    // canonical column and the v2 JSON mirror are written atomically with
+    // exactly the same value and can never diverge: null input keeps an
+    // already-bound value; the same value is an idempotent duplicate; a
+    // DIFFERENT non-null value fails closed because identity binds once. (A
+    // missing row is left to the CAS below to classify.)
+    const existingRow = this.db.prepare(
+      'SELECT native_birth_identity AS birth FROM runtime_processes WHERE workspace_id = ? AND id = ?',
+    ).get(input.workspaceId, input.processId) as { birth: string | null } | undefined;
+    const existingBirth = existingRow === undefined || existingRow === null ? null : existingRow.birth ?? null;
+    if (inputBirthIdentity !== null && existingBirth !== null && inputBirthIdentity !== existingBirth) {
+      throw new RuntimeProcessValidationError(
+        'RUNTIME_PROCESS_VALIDATION_FAILED: nativeBirthIdentity is already bound to a different value',
+      );
+    }
+    const nativeBirthIdentity = inputBirthIdentity ?? existingBirth;
     // P6-M2a: derive recovery metadata. Only the token HASH is persisted; the
     // raw one-time token never reaches the database. recovery_evidence_json
     // carries the classifier inputs (pid, native start time, token hash,
@@ -792,9 +827,10 @@ export class ProcessRepository {
     const recoveryEvidenceJson = input.recoveryToken === undefined
       ? null
       : canonicalizeJson({
-          schemaVersion: 1,
+          schemaVersion: 2,
           nativePid: input.nativePid,
           nativeStartedAt: input.nativeStartedAt,
+          nativeBirthIdentity,
           recoveryTokenHash,
           platform: recoveryPlatform,
         });
@@ -806,6 +842,7 @@ export class ProcessRepository {
         native_pid = ?,
         native_parent_pid = ?,
         native_started_at = ?,
+        native_birth_identity = ?,
         process_group_id = ?,
         platform_handle_id = ?,
         recovery_token_hash = COALESCE(?, recovery_token_hash),
@@ -824,6 +861,7 @@ export class ProcessRepository {
       input.nativePid,
       nativeParentPid,
       input.nativeStartedAt,
+      nativeBirthIdentity,
       processGroupId,
       platformHandleId,
       recoveryTokenHash,

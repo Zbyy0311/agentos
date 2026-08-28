@@ -47,7 +47,7 @@ import {
 
 type Db = InstanceType<typeof DatabaseSync>;
 
-const EXPECTED_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014'];
+const EXPECTED_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
 const NOW = '2026-08-03T00:00:00.000Z';
 
 function migratedDb(registry = DEFAULT_REGISTRY_MIGRATIONS): Db {
@@ -138,7 +138,9 @@ test('fresh DB keeps Workflow V1 and adds both Workflow V2 definitions through M
 });
 
 test('001–012 DB upgrade adds only the two V2 rows and leaves both V1 rows byte-for-byte unchanged', () => {
-  const through012 = DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '013' && migration.id !== '014');
+  const through012 = DEFAULT_REGISTRY_MIGRATIONS.filter(
+    migration => migration.id !== '013' && migration.id !== '014' && migration.id !== '015',
+  );
   const db = migratedDb(through012);
   try {
     const before = db.prepare(`
@@ -147,8 +149,10 @@ test('001–012 DB upgrade adds only the two V2 rows and leaves both V1 rows byt
     `).all();
     // This test proves Migration 013 upgrade semantics only; Migration 014 is
     // destructive and requires the backup gate, which an in-memory upgrade DB
-    // cannot satisfy. Its behavior is covered by m4-p2-migration-014.test.ts.
-    new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '014'))).run();
+    // cannot satisfy (covered by m4-p2-migration-014.test.ts), and migration
+    // 015 requires 014's runtime_processes, so the intended subset stops at
+    // 013 and excludes 015 as well (015 never silently no-ops without 014).
+    new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(migration => migration.id !== '014' && migration.id !== '015'))).run();
     const after = db.prepare(`
       SELECT id, definition_key, version, name, definition_json, definition_hash, created_at, updated_at
       FROM workflow_definitions WHERE version = 1 ORDER BY id

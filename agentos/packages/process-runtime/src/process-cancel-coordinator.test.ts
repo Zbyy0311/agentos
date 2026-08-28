@@ -50,6 +50,7 @@ function processView(overrides: Partial<DurableProcessView> = {}): DurableProces
     nativePid: 4100,
     nativeParentPid: null,
     nativeStartedAt: NOW,
+    nativeBirthIdentity: null,
     processGroupId: null,
     treeOwnershipMode: null,
     platformHandleId: null,

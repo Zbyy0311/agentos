@@ -392,9 +392,11 @@ describe('ProcessRepository', () => {
       // The plaintext token never reaches the database.
       assert.notEqual(persisted.recoveryTokenHash, rawToken);
       const evidence = JSON.parse(persisted.recoveryEvidenceJson!) as Record<string, unknown>;
-      assert.equal(evidence.schemaVersion, 1);
+      // P6-M3b: the writer emits the current version (v2) with the birth identity.
+      assert.equal(evidence.schemaVersion, 2);
       assert.equal(evidence.nativePid, 4242);
       assert.equal(evidence.nativeStartedAt, LATER);
+      assert.equal(evidence.nativeBirthIdentity, null, 'no birth identity was supplied in this bind');
       assert.equal(evidence.recoveryTokenHash, expectedHash);
       assert.equal(evidence.platform, 'win32');
       const serializedEvidence = persisted.recoveryEvidenceJson!;
@@ -412,6 +414,199 @@ describe('ProcessRepository', () => {
     }
   });
 
++  it('P6-M3b bind persists the lossless birth identity in the canonical column and v2 mirror', () => {
+    const db = migratedDb();
+    try {
+      const repository = new ProcessRepository(db);
+      const process = repository.createProcess(rootInput()).process;
+      repository.casStartProcess({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 1,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      const rawToken = 'p6m3b-birth-token';
+      // Canonical durable form; the decimal is > 2^53 to exercise the lossless text path.
+      const birth = 'win32:filetime:134176000000000000';
+      const bound = repository.casBindNativeIdentity({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 2,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+        nativePid: 5150,
+        nativeStartedAt: LATER,
+        nativeBirthIdentity: birth,
+        recoveryToken: rawToken,
+      });
+      assert.equal(bound.kind, 'applied');
+      const persisted = repository.findById(WS, process.id)!;
+      // Dedicated column is canonical and preserved exactly (no Number coercion).
+      assert.equal(persisted.nativeBirthIdentity, birth);
+      // The v2 evidence mirror carries the exact same canonical value.
+      const evidence = JSON.parse(persisted.recoveryEvidenceJson!) as Record<string, unknown>;
+      assert.equal(evidence.schemaVersion, 2);
+      assert.equal(evidence.nativeBirthIdentity, birth);
+      // Raw SQL read-back proves the column holds the exact decimal digits.
+      const row = db.prepare('SELECT native_birth_identity FROM runtime_processes WHERE id = ?').get(process.id) as { native_birth_identity: string };
+      assert.equal(row.native_birth_identity, birth);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('P6-M3b bind rejects a non-canonical native birth identity before any write', () => {
+    const db = migratedDb();
+    try {
+      const repository = new ProcessRepository(db);
+      const process = repository.createProcess(rootInput()).process;
+      repository.casStartProcess({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 1,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      for (const bad of [
+        '134176000000000000',
+        'win32:filetime:not-a-number',
+        'win32:filetime:013417600000000000',
+        'win32:filetime:18446744073709551616',
+      ]) {
+        assert.throws(
+          () => repository.casBindNativeIdentity({
+            workspaceId: WS,
+            processId: process.id,
+            expectedVersion: 2,
+            expectedClaimEpoch: 1,
+            expectedClaimOwner: null,
+            timestamp: LATER,
+            nativePid: 4242,
+            nativeStartedAt: LATER,
+            nativeBirthIdentity: bad,
+            recoveryToken: 'p6m3b-invalid-birth',
+          }),
+          /RUNTIME_PROCESS_VALIDATION_FAILED: nativeBirthIdentity must be canonical/,
+        );
+      }
+      // Nothing was written by the rejected binds.
+      const row = db.prepare('SELECT native_birth_identity, recovery_evidence_json FROM runtime_processes WHERE id = ?').get(process.id) as { native_birth_identity: string | null; recovery_evidence_json: string | null };
+      assert.equal(row.native_birth_identity, null);
+      assert.equal(row.recovery_evidence_json, null);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('P6-M3b rebind keeps the canonical column and v2 mirror in exact agreement (atomic bind)', () => {
+    const db = migratedDb();
+    try {
+      const repository = new ProcessRepository(db);
+      const process = repository.createProcess(rootInput()).process;
+      repository.casStartProcess({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 1,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+      });
+      // Move to stopping so repeated binds remain CAS-legal (late spawn path).
+      repository.transitionStatus({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 2,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        expectedFrom: 'starting',
+        to: 'stopping',
+        timestamp: LATER,
+      });
+      const birthA = 'win32:filetime:134176000000000000';
+      const birthB = 'win32:filetime:134176000000000001';
+
+      // First bind: column A + v2 mirror A.
+      const first = repository.casBindNativeIdentity({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: 3,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+        nativePid: 4242,
+        nativeStartedAt: LATER,
+        nativeBirthIdentity: birthA,
+        recoveryToken: 'p6m3b-atomic-token',
+      });
+      assert.equal(first.kind, 'applied');
+
+      const readState = () => {
+        const row = db.prepare('SELECT native_birth_identity, recovery_evidence_json FROM runtime_processes WHERE id = ?').get(process.id) as { native_birth_identity: string | null; recovery_evidence_json: string | null };
+        return {
+          column: row.native_birth_identity,
+          mirror: row.recovery_evidence_json === null ? null : (JSON.parse(row.recovery_evidence_json) as { nativeBirthIdentity: string | null }).nativeBirthIdentity,
+        };
+      };
+      assert.deepEqual(readState(), { column: birthA, mirror: birthA });
+
+      // A DIFFERENT value fails closed: identity binds once.
+      assert.throws(
+        () => repository.casBindNativeIdentity({
+          workspaceId: WS,
+          processId: process.id,
+          expectedVersion: first.process.version,
+          expectedClaimEpoch: 1,
+          expectedClaimOwner: null,
+          timestamp: LATER,
+          nativePid: 4242,
+          nativeStartedAt: LATER,
+          nativeBirthIdentity: birthB,
+          recoveryToken: 'p6m3b-atomic-token',
+        }),
+        /RUNTIME_PROCESS_VALIDATION_FAILED: nativeBirthIdentity is already bound to a different value/,
+      );
+      assert.deepEqual(readState(), { column: birthA, mirror: birthA });
+
+      // A null rebind must NOT rewrite the mirror into disagreement: the
+      // column keeps A and the v2 mirror still carries A.
+      const nullRebind = repository.casBindNativeIdentity({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: first.process.version,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+        nativePid: 4242,
+        nativeStartedAt: LATER,
+        nativeBirthIdentity: null,
+        recoveryToken: 'p6m3b-atomic-token',
+      });
+      assert.equal(nullRebind.kind, 'applied');
+      assert.deepEqual(readState(), { column: birthA, mirror: birthA });
+
+      // An exact duplicate is idempotent/compatible.
+      const duplicate = repository.casBindNativeIdentity({
+        workspaceId: WS,
+        processId: process.id,
+        expectedVersion: nullRebind.process.version,
+        expectedClaimEpoch: 1,
+        expectedClaimOwner: null,
+        timestamp: LATER,
+        nativePid: 4242,
+        nativeStartedAt: LATER,
+        nativeBirthIdentity: birthA,
+        recoveryToken: 'p6m3b-atomic-token',
+      });
+      assert.equal(duplicate.kind, 'applied');
+      assert.deepEqual(readState(), { column: birthA, mirror: birthA });
+    } finally {
+      db.close();
+    }
+  });
   it('P6-M2a bind without a recovery token leaves recovery columns null', () => {
     const db = migratedDb();
     try {

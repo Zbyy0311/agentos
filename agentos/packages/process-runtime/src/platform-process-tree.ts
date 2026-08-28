@@ -25,6 +25,14 @@ export interface ProcessTreeController {
  */
 export interface OwnedSpawnResult {
   readonly pid: number;
+  /**
+   * P6-M3b: lossless native process-creation (birth) identity captured from the
+   * real provider handle at spawn, before ResumeThread. Canonical form is
+   * platform-tagged invariant text (e.g. win32:filetime unsigned decimal). It
+   * is additional evidence only and NEVER replaces nativeStartedAt. Null when
+   * capture was unavailable (fail-closed; never fabricated from the wall clock).
+   */
+  readonly nativeBirthIdentity?: string | null;
   readonly executablePath: string;
   readonly stdout: Readable;
   readonly stderr: Readable;

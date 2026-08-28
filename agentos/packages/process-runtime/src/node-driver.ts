@@ -48,6 +48,8 @@ interface NodeNativeBackend {
   readonly pid: number;
   readonly executablePath: string;
   readonly groupId?: string;
+  /** P6-M3b: lossless native birth identity captured at spawn (owned path). */
+  readonly nativeBirthIdentity?: string | null;
   readonly stdout: Readable | null;
   readonly stderr: Readable | null;
   readonly exit: Promise<NativeExitObservation>;
@@ -73,6 +75,7 @@ function ownedBackend(owned: OwnedSpawnResult): NodeNativeBackend {
     pid: owned.pid,
     executablePath: owned.executablePath,
     groupId: undefined,
+    nativeBirthIdentity: owned.nativeBirthIdentity ?? null,
     stdout: owned.stdout,
     stderr: owned.stderr,
     exit: owned.waitExit().then(evidence => ({ exitCode: evidence.exitCode, signal: evidence.signal })),
@@ -213,6 +216,7 @@ class NodeNativeProcessHandle implements NativeProcessHandle {
       startedAtMs,
       executablePath: backend.executablePath,
       groupId: backend.groupId,
+      nativeBirthIdentity: backend.nativeBirthIdentity ?? null,
     };
     this.tree = { platform: 'unavailable', rootPid: this.pid, state: 'tree-attach-pending' };
     this.streams = {
