@@ -1,4 +1,5 @@
 import { json, Router, type NextFunction, type Request, type Response } from 'express';
+import { normalizeRequestedMutationClass } from '@agentos/shared';
 import { isClientBodyParseError, sendProblem } from '../problemDetails.js';
 import { TaskRunService, type TaskRunServiceDeps } from '../services/TaskRunService.js';
 import { createOptionalIdempotencyService, parseIdempotencyKey } from './v2Idempotency.js';
@@ -330,13 +331,19 @@ export function createRunLifecycleRoutes(store: TaskRunServiceDeps, options: Run
       throw new V2ValidationError(START_BODY_ERROR_MESSAGE);
     }
     for (const key of Object.keys(body)) {
-      if (key !== 'expectedVersion') {
+      if (key !== 'expectedVersion' && key !== 'requestedMutationClass') {
         throw new V2ValidationError('body contains an unknown field');
       }
     }
     const expectedVersion = parseStartExpectedVersion(body.expectedVersion);
+    // P6-L1A: normalize requestedMutationClass BEFORE the service builds the
+    // idempotency fingerprint. An omitted field and an explicit "MODIFYING"
+    // normalize to the same logical request identity; any other value is a
+    // VALIDATION_FAILED. No Admission is created and no scheduling behavior
+    // changes in this slice.
+    const requestedMutationClass = normalizeRequestedMutationClass(body.requestedMutationClass);
     const normalizedKey = parseIdempotencyKey(req);
-    const result = service.startRunOperationForV2(workspaceId, runId, normalizedKey, expectedVersion);
+    const result = service.startRunOperationForV2(workspaceId, runId, normalizedKey, expectedVersion, requestedMutationClass);
     if (result.replayed) res.setHeader('Idempotency-Replayed', 'true');
     // P6-M1: only a freshly accepted (non-replayed) start may dispatch. The
     // replay path converges on durable evidence and must never re-spawn.

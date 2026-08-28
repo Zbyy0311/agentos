@@ -11,6 +11,11 @@ import type {
   Task,
   Workspace,
 } from '@agentos/shared';
+import {
+  normalizeRequestedMutationClass,
+  startRequestDomainInput,
+  type RequestedMutationClass,
+} from '@agentos/shared';
 import type { TaskRepository } from '../store/TaskRepository.js';
 import {
   TaskNotFoundError,
@@ -655,8 +660,14 @@ export class TaskRunService {
     runId: string,
     normalizedKey?: string,
     expectedVersion?: number,
+    requestedMutationClass?: RequestedMutationClass,
   ): StartOperationExecutionResult {
     assertValidExpectedVersion(expectedVersion);
+    // P6-L1A: normalize the optional requested mutation class BEFORE building
+    // the idempotency request fingerprint, so an omitted field and an explicit
+    // "MODIFYING" produce the SAME normalized request identity. No Admission is
+    // created and no scheduling behavior changes in this slice.
+    const normalizedMutationClass = normalizeRequestedMutationClass(requestedMutationClass);
     // The OperationService capability check fails closed before prepare,
     // BEGIN IMMEDIATE, and every mutation.
     const operationService = this.requireOperationService();
@@ -671,7 +682,7 @@ export class TaskRunService {
           operation: 'run.start',
           workspaceId,
           pathParams: { runId },
-          domainInput: {},
+          domainInput: startRequestDomainInput(normalizedMutationClass),
           expectedVersion: expectedVersion ?? null,
         },
       });

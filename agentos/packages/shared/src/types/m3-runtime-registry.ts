@@ -2181,12 +2181,323 @@ export const M4_PROCESS_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// P6-L1A Workspace Admission / Git Observation / Artifact event vocabulary.
+//
+// These definitions are additive and registered by createM3RuntimeEventRegistry.
+// The run.mutation_class.resolved and run.read_only_enforcement.unavailable
+// events stay in the Run domain; the workspace.admission.*, git.observation.*
+// and artifact.diff.* families use the new workspace / git / artifact domains.
+// P6-L1A registers the vocabulary only; no Admission event is written yet.
+// ---------------------------------------------------------------------------
+
+export interface WorkspaceAdmissionRequestedPayload {
+  readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+  readonly requestedMutationClass: 'READ_ONLY' | 'MODIFYING';
+}
+
+export interface WorkspaceAdmissionGrantedPayload {
+  readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+  readonly effectiveMutationClass: 'READ_ONLY' | 'MODIFYING';
+  readonly requestOrder: number;
+}
+
+export interface WorkspaceAdmissionQueuedPayload {
+  readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+  readonly effectiveMutationClass: 'READ_ONLY' | 'MODIFYING';
+  readonly requestOrder: number;
+  readonly queueReason: string;
+}
+
+export interface WorkspaceAdmissionReleasedPayload {
+  readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+  readonly releaseReason: string;
+}
+
+export interface RunMutationClassResolvedPayload {
+  readonly requestedMutationClass: 'READ_ONLY' | 'MODIFYING';
+  readonly effectiveMutationClass: 'READ_ONLY' | 'MODIFYING';
+}
+
+export interface RunReadOnlyEnforcementUnavailablePayload {
+  readonly reason: string;
+}
+
+export interface GitObservationCompletedPayload {
+  readonly observationState: 'GIT' | 'NOT_GIT';
+  readonly dirtyState: 'clean' | 'dirty' | 'unknown';
+}
+
+export interface GitObservationUnavailablePayload {
+  readonly errorCode: string;
+}
+
+export interface ArtifactDiffRegisteredPayload {
+  readonly artifactId: string;
+  readonly contentHash: string;
+  readonly sizeBytes: number;
+}
+
+const ADMISSION_SUBJECT_KINDS: readonly string[] = Object.freeze([
+  'CANONICAL_RUN',
+  'LEGACY_AGENT_RUN',
+]);
+
+const MUTATION_CLASSES: readonly string[] = Object.freeze(['READ_ONLY', 'MODIFYING']);
+
+export function isWorkspaceAdmissionRequestedPayload(
+  value: unknown,
+): value is WorkspaceAdmissionRequestedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['subjectKind', 'requestedMutationClass'])
+    && hasValue(ADMISSION_SUBJECT_KINDS, value.subjectKind)
+    && hasValue(MUTATION_CLASSES, value.requestedMutationClass)
+  );
+}
+
+export function isWorkspaceAdmissionGrantedPayload(
+  value: unknown,
+): value is WorkspaceAdmissionGrantedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['subjectKind', 'effectiveMutationClass', 'requestOrder'])
+    && hasValue(ADMISSION_SUBJECT_KINDS, value.subjectKind)
+    && hasValue(MUTATION_CLASSES, value.effectiveMutationClass)
+    && isPositiveSafeInteger(value.requestOrder)
+  );
+}
+
+export function isWorkspaceAdmissionQueuedPayload(
+  value: unknown,
+): value is WorkspaceAdmissionQueuedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['subjectKind', 'effectiveMutationClass', 'requestOrder', 'queueReason'])
+    && hasValue(ADMISSION_SUBJECT_KINDS, value.subjectKind)
+    && hasValue(MUTATION_CLASSES, value.effectiveMutationClass)
+    && isPositiveSafeInteger(value.requestOrder)
+    && isNonEmptyString(value.queueReason)
+  );
+}
+
+export function isWorkspaceAdmissionReleasedPayload(
+  value: unknown,
+): value is WorkspaceAdmissionReleasedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['subjectKind', 'releaseReason'])
+    && hasValue(ADMISSION_SUBJECT_KINDS, value.subjectKind)
+    && isNonEmptyString(value.releaseReason)
+  );
+}
+
+export function isRunMutationClassResolvedPayload(
+  value: unknown,
+): value is RunMutationClassResolvedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['requestedMutationClass', 'effectiveMutationClass'])
+    && hasValue(MUTATION_CLASSES, value.requestedMutationClass)
+    && hasValue(MUTATION_CLASSES, value.effectiveMutationClass)
+  );
+}
+
+export function isRunReadOnlyEnforcementUnavailablePayload(
+  value: unknown,
+): value is RunReadOnlyEnforcementUnavailablePayload {
+  if (!isRecord(value)) return false;
+  return hasOnly(value, ['reason']) && isNonEmptyString(value.reason);
+}
+
+export function isGitObservationCompletedPayload(
+  value: unknown,
+): value is GitObservationCompletedPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['observationState', 'dirtyState'])
+    && hasValue(['GIT', 'NOT_GIT'], value.observationState)
+    && hasValue(['clean', 'dirty', 'unknown'], value.dirtyState)
+  );
+}
+
+export function isGitObservationUnavailablePayload(
+  value: unknown,
+): value is GitObservationUnavailablePayload {
+  if (!isRecord(value)) return false;
+  return hasOnly(value, ['errorCode']) && isNonEmptyString(value.errorCode);
+}
+
+export function isArtifactDiffRegisteredPayload(
+  value: unknown,
+): value is ArtifactDiffRegisteredPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['artifactId', 'contentHash', 'sizeBytes'])
+    && isNonEmptyString(value.artifactId)
+    && isHexDigest(value.contentHash)
+    && typeof value.sizeBytes === 'number'
+    && Number.isSafeInteger(value.sizeBytes)
+    && value.sizeBytes >= 0
+  );
+}
+
+export const P6_L1_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
+  {
+    type: 'workspace.admission.requested',
+    domain: 'workspace',
+    description: 'A Workspace Admission was requested for a Run subject.',
+    schemaVersion: 1,
+    source: 'workspace-admission',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['subjectKind', 'requestedMutationClass'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isWorkspaceAdmissionRequestedPayload,
+  },
+  {
+    type: 'workspace.admission.granted',
+    domain: 'workspace',
+    description: 'A Workspace Admission was granted, establishing single-writer authority.',
+    schemaVersion: 1,
+    source: 'workspace-admission',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['subjectKind', 'effectiveMutationClass', 'requestOrder'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isWorkspaceAdmissionGrantedPayload,
+  },
+  {
+    type: 'workspace.admission.queued',
+    domain: 'workspace',
+    description: 'A Workspace Admission was durably queued behind another modifying Run.',
+    schemaVersion: 1,
+    source: 'workspace-admission',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['subjectKind', 'effectiveMutationClass', 'requestOrder', 'queueReason'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isWorkspaceAdmissionQueuedPayload,
+  },
+  {
+    type: 'workspace.admission.released',
+    domain: 'workspace',
+    description: 'A Workspace Admission was released after a committed terminal state.',
+    schemaVersion: 1,
+    source: 'workspace-admission',
+    defaultSeverity: 'info',
+    defaultVisibility: 'public',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['subjectKind', 'releaseReason'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isWorkspaceAdmissionReleasedPayload,
+  },
+  {
+    type: 'run.mutation_class.resolved',
+    domain: 'run',
+    description: 'The requested and effective mutation classes were resolved for a Run.',
+    schemaVersion: 1,
+    source: 'run-engine',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['requestedMutationClass', 'effectiveMutationClass'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunMutationClassResolvedPayload,
+  },
+  {
+    type: 'run.read_only_enforcement.unavailable',
+    domain: 'run',
+    description: 'enforcedWorkspaceReadOnly could not be proven, so the Run is modifying.',
+    schemaVersion: 1,
+    source: 'run-engine',
+    defaultSeverity: 'notice',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['reason'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isRunReadOnlyEnforcementUnavailablePayload,
+  },
+  {
+    type: 'git.observation.completed',
+    domain: 'git',
+    description: 'A bounded Git observation completed for a Workspace.',
+    schemaVersion: 1,
+    source: 'git-runtime',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['observationState', 'dirtyState'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isGitObservationCompletedPayload,
+  },
+  {
+    type: 'git.observation.unavailable',
+    domain: 'git',
+    description: 'A Git observation failed or was unavailable; no clean state is inferred.',
+    schemaVersion: 1,
+    source: 'git-runtime',
+    defaultSeverity: 'warning',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['errorCode'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isGitObservationUnavailablePayload,
+  },
+  {
+    type: 'artifact.diff.registered',
+    domain: 'artifact',
+    description: 'A Git diff Artifact was registered with canonical provenance.',
+    schemaVersion: 1,
+    source: 'artifact-manager',
+    defaultSeverity: 'info',
+    defaultVisibility: 'internal',
+    defaultDurability: 'durable',
+    payloadSchema: {
+      required: ['artifactId', 'contentHash', 'sizeBytes'],
+      optional: [],
+    },
+    forbidsStageId: true,
+    validatePayload: isArtifactDiffRegisteredPayload,
+  },
+];
+
 export function createM3RuntimeEventRegistry(): CentralRuntimeEventRegistry {
   const registry = new CentralRuntimeEventRegistry();
   for (const definition of M3_CORE_EVENT_DEFINITIONS) {
     registry.registerCore(definition);
   }
   for (const definition of M4_PROCESS_EVENT_DEFINITIONS) {
+    registry.registerCore(definition);
+  }
+  for (const definition of P6_L1_EVENT_DEFINITIONS) {
     registry.registerCore(definition);
   }
   return registry;
