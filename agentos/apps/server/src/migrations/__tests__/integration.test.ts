@@ -417,7 +417,7 @@ it('[M27-P5-T001] Fresh database applies the complete 001-014 registry exactly o
   try {
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
     const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015']);
+    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016']);
     const compatibilityTables = ctx.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('legacy_data_migrations', 'legacy_task_items') ORDER BY name").all() as Array<{ name: string }>;
     assert.deepEqual(compatibilityTables.map(table => table.name), ['legacy_data_migrations', 'legacy_task_items']);
   } finally {
@@ -443,7 +443,9 @@ it('[M27-P5-T002] An existing 001-002 legacy database upgrades through 014 witho
     ctx.db.prepare(`INSERT INTO _schema_migrations (migration_id, name, checksum, applied_at, execution_ms, app_version)
       VALUES ('002', 'aggregate-versions', ?, ?, 0, NULL)`).run(migration002.checksum, '2026-07-30T00:00:01.000Z');
 
-    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+    // This seeds a 001-002 legacy database; the upgrade is asserted through 015.
+    // 016 requires the full 015 schema, so it is excluded from this subset run.
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(m => m.id !== '016')), {
       backupProvider: createFileBackupProvider(join(ctx.dir, 'migration-backups')),
     }).run();
     const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;

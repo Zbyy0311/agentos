@@ -973,3 +973,4 @@ export * from './m3-runtime-registry.js';
 export * from './m3-lifecycle-transition-contracts.js';
 export * from './p6-l1a-admission.js';
 export * from './p6-l1a-start-request.js';
+export * from './p6-l1b-artifact.js';

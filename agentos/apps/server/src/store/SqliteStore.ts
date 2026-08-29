@@ -35,6 +35,7 @@ import type {
   PreferenceApplication,
   RuntimeArtifact,
   Conversation,
+  CanonicalArtifactProvenance,
   ConversationMember,
   LegacyConversationMember,
   CollaborationRole,
@@ -1682,13 +1683,73 @@ export class SqliteStore implements Store {
     }
     this.database.prepare(`
       INSERT INTO runtime_artifacts (
-        id, workspace_id, run_id, source_execution_id, agent_id, artifact_type, title, summary,
+        id, workspace_id, provenance_kind, run_id, source_execution_id, agent_id, artifact_type, title, summary,
         original_path, storage_key, mime_type, size_bytes, sha256, content_available, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, 'LEGACY', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       artifact.id, artifact.workspaceId, artifact.runId, artifact.sourceExecutionId, artifact.agentId, artifact.type,
       artifact.title, artifact.summary ?? null, artifact.originalPath ?? null, storageKey, artifact.mimeType ?? null,
       artifact.sizeBytes, artifact.sha256 ?? null, artifact.contentAvailable ? 1 : 0, artifact.createdAt,
+    );
+  }
+
+  /**
+   * P6-L1B: additive canonical Artifact creation. A canonical Artifact has
+   * provenance_kind = CANONICAL, run_id/source_execution_id = NULL, and MAY
+   * omit agent_id entirely (no fake agent_run / Execution / agent identity is
+   * fabricated). The canonical Run must belong to the same Workspace, and any
+   * optional canonical Process/Operation/Stage reference must resolve to the
+   * owning Workspace/Run. Legacy createRuntimeArtifact is unchanged.
+   */
+  createCanonicalRuntimeArtifact(
+    input: Omit<RuntimeArtifact, 'runId' | 'sourceExecutionId' | 'agentId'> & { agentId?: string },
+    provenance: CanonicalArtifactProvenance,
+    storageKey: string | null,
+  ): void {
+    const canonicalRun = this.database.prepare(
+      'SELECT id FROM runs WHERE id = ? AND workspace_id = ?',
+    ).get(provenance.canonicalRunId, input.workspaceId);
+    if (!canonicalRun) {
+      throw new Error('Canonical artifact provenance is invalid: canonical Run does not belong to the Workspace');
+    }
+    // Optional canonical provenance must not point across the owning Run/Workspace.
+    if (provenance.sourceProcessId !== undefined) {
+      const proc = this.database.prepare(
+        'SELECT id FROM runtime_processes WHERE id = ? AND workspace_id = ? AND run_id = ?',
+      ).get(provenance.sourceProcessId, input.workspaceId, provenance.canonicalRunId);
+      if (!proc) {
+        throw new Error('Canonical artifact provenance is invalid: source Process is outside the owning Run/Workspace');
+      }
+    }
+    if (provenance.sourceOperationId !== undefined) {
+      const op = this.database.prepare(
+        'SELECT id FROM operations WHERE id = ? AND workspace_id = ? AND run_id = ?',
+      ).get(provenance.sourceOperationId, input.workspaceId, provenance.canonicalRunId);
+      if (!op) {
+        throw new Error('Canonical artifact provenance is invalid: source Operation is outside the owning Run/Workspace');
+      }
+    }
+    if (provenance.sourceStageId !== undefined) {
+      const stage = this.database.prepare(
+        'SELECT id FROM run_stages WHERE id = ? AND run_id = ?',
+      ).get(provenance.sourceStageId, provenance.canonicalRunId);
+      if (!stage) {
+        throw new Error('Canonical artifact provenance is invalid: source Stage is outside the owning Run');
+      }
+    }
+    this.database.prepare(
+      'INSERT INTO runtime_artifacts ('
+        + 'id, workspace_id, provenance_kind, run_id, canonical_run_id, source_execution_id,'
+        + ' agent_id, source_process_id, source_operation_id, source_stage_id,'
+        + ' artifact_type, title, summary, original_path, storage_key, mime_type,'
+        + ' size_bytes, sha256, content_available, created_at'
+        + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(
+      input.id, input.workspaceId, 'CANONICAL', null, provenance.canonicalRunId, null,
+      input.agentId ?? null,
+      provenance.sourceProcessId ?? null, provenance.sourceOperationId ?? null, provenance.sourceStageId ?? null,
+      input.type, input.title, input.summary ?? null, input.originalPath ?? null, storageKey, input.mimeType ?? null,
+      input.sizeBytes, input.sha256 ?? null, input.contentAvailable ? 1 : 0, input.createdAt,
     );
   }
 

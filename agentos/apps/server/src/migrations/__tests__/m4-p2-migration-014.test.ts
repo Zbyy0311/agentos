@@ -34,6 +34,10 @@ type Db = InstanceType<typeof DatabaseSync>;
 const NOW = '2026-08-13T00:00:00.000Z';
 const NOW2 = '2026-08-13T01:00:00.000Z';
 const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
+// The full default registry now continues past 015 into 016 (P6-L1B). These
+// M4/P6-M3b suites intentionally stop at 015; FULL_MIGRATION_IDS documents the
+// registry-order assertion's complete expected sequence.
+const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016'];
 const M4_TABLES = ['process_output_references', 'provider_sessions', 'runtime_processes'];
 
 const WS = 'ws_m4';
@@ -60,7 +64,19 @@ function freshDb(): Db {
 
 function registryThrough013(): MigrationRegistry {
   return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
-    migration => migration.id !== '014' && migration.id !== '015',
+    migration => migration.id !== '014' && migration.id !== '015' && migration.id !== '016',
+  ));
+}
+
+/**
+ * 001–015 (excludes 016). These M4/P6-M3b tests build only the 013/014/015
+ * schema and assert behavior through migration 015. Migration 016 has a
+ * fail-closed prerequisite gate that (correctly) refuses to apply onto such a
+ * partial schema, so these pre-L1B suites stop at 015.
+ */
+function registryThrough015(): MigrationRegistry {
+  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
+    migration => migration.id !== '016',
   ));
 }
 
@@ -389,7 +405,8 @@ test('fresh DB applies 001–014 without a backup provider and creates exactly t
     // backup provider is configured and 014 must still apply.
     const db = freshDb();
     try {
-      assert.doesNotThrow(() => new MigrationRunner(db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run());
+      // Stop at 015: 016 adds admission/git tables beyond this test's M4 scope.
+      assert.doesNotThrow(() => new MigrationRunner(db, registryThrough015()).run());
       const records = (db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>).map(row => row.migration_id);
       assert.deepEqual(records, MIGRATION_IDS);
 
@@ -582,7 +599,9 @@ test('001–013 file DB upgrades additively: 014 meta row, existing rows and che
     const stageBefore = ctx.db.prepare('SELECT id, status, version FROM run_stages WHERE id = ?').get(STAGE);
     const configBefore = ctx.db.prepare('SELECT id, name, provider_type, version FROM provider_configurations WHERE id = ?').get(PCFG);
 
-    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+    // Stop at 015: this test seeds only the 013 schema and asserts additive
+    // 014/015 behavior; 016 requires the full 015 schema and stays out of scope.
+    new MigrationRunner(ctx.db, registryThrough015(), {
       backupProvider: createFileBackupProvider(join(ctx.root, 'migration-backups')),
     }).run();
 
@@ -607,7 +626,7 @@ test('non-empty upgrade without a backup provider fails closed before any 014 DD
   try {
     const stageBefore = ctx.db.prepare('SELECT id, status, version FROM run_stages WHERE id = ?').get(STAGE);
     assert.throws(
-      () => new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run(),
+      () => new MigrationRunner(ctx.db, registryThrough015()).run(),
       (error: unknown) => error instanceof MigrationError
         && error.code === 'MIGRATION_FAILED'
         && error.migrationId === '014'
@@ -644,7 +663,7 @@ test('non-empty upgrade takes the verified backup under the lock before 014 DDL'
     },
   };
   try {
-    new MigrationRunner(observedDb, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), { backupProvider }).run();
+    new MigrationRunner(observedDb, registryThrough015(), { backupProvider }).run();
     assert.deepEqual(events.slice(0, 2), ['lock', 'backup']);
     assert.equal(precheckSql.length, 3, 'all three parent-key prechecks must run before DDL');
     assert.ok(precheckSql.some(sql => sql.includes('FROM provider_configurations')));
@@ -685,7 +704,7 @@ test('parent-key precheck SQL detects duplicate keys and passes clean data', () 
     },
   };
   try {
-    new MigrationRunner(observedDb, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+    new MigrationRunner(observedDb, registryThrough015(), {
       backupProvider: createFileBackupProvider(join(ctx.root, 'migration-backups')),
     }).run();
   } finally {
@@ -733,7 +752,7 @@ test('duplicate parent-key precheck failure fails closed with full rollback and 
       },
     };
     assert.throws(
-      () => new MigrationRunner(duplicateInjectingDb, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+      () => new MigrationRunner(duplicateInjectingDb, registryThrough015(), {
         backupProvider: createFileBackupProvider(join(ctx.root, 'migration-backups')),
       }).run(),
       (error: unknown) => error instanceof MigrationError
@@ -759,7 +778,7 @@ test('injected 014 DDL failure rolls back the entire transition including suppor
       },
       prepare(sql: string) { return ctx.db.prepare(sql); },
     };
-    assert.throws(() => new MigrationRunner(failingDb, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+    assert.throws(() => new MigrationRunner(failingDb, registryThrough015(), {
       backupProvider: createFileBackupProvider(join(ctx.root, 'rollback-backups')),
     }).run());
     assertNoM4Objects(ctx.db);
@@ -771,7 +790,7 @@ test('injected 014 DDL failure rolls back the entire transition including suppor
 });
 
 test('registry order is 001–014, duplicate ids are rejected, and checksum mismatch fails closed', () => {
-  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), MIGRATION_IDS);
+  assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), FULL_MIGRATION_IDS);
   const migration = migration014();
   assert.equal(migration.id, '014');
   assert.equal(migration.name, 'm4-process-runtime-schema');
@@ -789,10 +808,12 @@ test('registry order is 001–014, duplicate ids are rejected, and checksum mism
 
   const ctx = fileDb();
   try {
-    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
+    // Apply through 015, corrupt a 014 checksum, then re-run through 015: the
+    // checksum gate must fail closed. 016 is excluded (partial-schema scope).
+    new MigrationRunner(ctx.db, registryThrough015()).run();
     ctx.db.prepare("UPDATE _schema_migrations SET checksum = ? WHERE migration_id = '014'").run('0'.repeat(16));
     assert.throws(
-      () => new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run(),
+      () => new MigrationRunner(ctx.db, registryThrough015()).run(),
       (error: unknown) => error instanceof MigrationError
         && error.code === 'MIGRATION_CHECKSUM_MISMATCH'
         && error.migrationId === '014',
@@ -829,8 +850,8 @@ test('registry order is 001–014, duplicate ids are rejected, and checksum mism
 test('P6-M3b migration 015 does not backfill existing rows and preserves the v1 legacy shape', () => {
   const ctx = createLegacyFileDbThrough013();
   try {
-    // Upgrade through the full registry (014 + 015).
-    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS), {
+    // Upgrade through 015 (014 + 015); 016 is excluded (partial-schema scope).
+    new MigrationRunner(ctx.db, registryThrough015(), {
       backupProvider: createFileBackupProvider(join(ctx.root, 'migration-backups')),
     }).run();
     // A pre-existing runtime_processes row (if any) keeps native_birth_identity NULL:
