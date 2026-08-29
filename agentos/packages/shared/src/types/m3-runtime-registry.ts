@@ -2189,28 +2189,36 @@ export const M4_PROCESS_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = [
 // events stay in the Run domain; the workspace.admission.*, git.observation.*
 // and artifact.diff.* families use the new workspace / git / artifact domains.
 // P6-L1A registers the vocabulary only; no Admission event is written yet.
+//
+// Canonical subject restriction (frozen observability contract): a CANONICAL
+// Run may publish canonical Runtime/Outbox events, while a LEGACY_AGENT_RUN
+// MUST NOT publish canonical Runtime Events under an agent_runs.id and MUST
+// NOT require a fake canonical Run (legacy compatibility telemetry only; the
+// workspace_admissions row stays the authority). The shared
+// WorkspaceAdmissionSubject union therefore remains dual-subject, but the
+// CANONICAL Runtime Event payloads below require subjectKind CANONICAL_RUN.
 // ---------------------------------------------------------------------------
 
 export interface WorkspaceAdmissionRequestedPayload {
-  readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+  readonly subjectKind: 'CANONICAL_RUN';
   readonly requestedMutationClass: 'READ_ONLY' | 'MODIFYING';
 }
 
 export interface WorkspaceAdmissionGrantedPayload {
-  readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+  readonly subjectKind: 'CANONICAL_RUN';
   readonly effectiveMutationClass: 'READ_ONLY' | 'MODIFYING';
   readonly requestOrder: number;
 }
 
 export interface WorkspaceAdmissionQueuedPayload {
-  readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+  readonly subjectKind: 'CANONICAL_RUN';
   readonly effectiveMutationClass: 'READ_ONLY' | 'MODIFYING';
   readonly requestOrder: number;
   readonly queueReason: string;
 }
 
 export interface WorkspaceAdmissionReleasedPayload {
-  readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+  readonly subjectKind: 'CANONICAL_RUN';
   readonly releaseReason: string;
 }
 
@@ -2238,10 +2246,11 @@ export interface ArtifactDiffRegisteredPayload {
   readonly sizeBytes: number;
 }
 
-const ADMISSION_SUBJECT_KINDS: readonly string[] = Object.freeze([
-  'CANONICAL_RUN',
-  'LEGACY_AGENT_RUN',
-]);
+// The canonical Workspace Admission Runtime Event payloads accept ONLY the
+// CANONICAL_RUN subject kind. LEGACY_AGENT_RUN admission telemetry belongs to
+// the legacy compatibility path (outside this registry) and must be rejected
+// here as INVALID_EVENT_PAYLOAD.
+const CANONICAL_ADMISSION_SUBJECT_KIND = 'CANONICAL_RUN';
 
 const MUTATION_CLASSES: readonly string[] = Object.freeze(['READ_ONLY', 'MODIFYING']);
 
@@ -2251,7 +2260,7 @@ export function isWorkspaceAdmissionRequestedPayload(
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['subjectKind', 'requestedMutationClass'])
-    && hasValue(ADMISSION_SUBJECT_KINDS, value.subjectKind)
+    && value.subjectKind === CANONICAL_ADMISSION_SUBJECT_KIND
     && hasValue(MUTATION_CLASSES, value.requestedMutationClass)
   );
 }
@@ -2262,7 +2271,7 @@ export function isWorkspaceAdmissionGrantedPayload(
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['subjectKind', 'effectiveMutationClass', 'requestOrder'])
-    && hasValue(ADMISSION_SUBJECT_KINDS, value.subjectKind)
+    && value.subjectKind === CANONICAL_ADMISSION_SUBJECT_KIND
     && hasValue(MUTATION_CLASSES, value.effectiveMutationClass)
     && isPositiveSafeInteger(value.requestOrder)
   );
@@ -2274,7 +2283,7 @@ export function isWorkspaceAdmissionQueuedPayload(
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['subjectKind', 'effectiveMutationClass', 'requestOrder', 'queueReason'])
-    && hasValue(ADMISSION_SUBJECT_KINDS, value.subjectKind)
+    && value.subjectKind === CANONICAL_ADMISSION_SUBJECT_KIND
     && hasValue(MUTATION_CLASSES, value.effectiveMutationClass)
     && isPositiveSafeInteger(value.requestOrder)
     && isNonEmptyString(value.queueReason)
@@ -2287,7 +2296,7 @@ export function isWorkspaceAdmissionReleasedPayload(
   if (!isRecord(value)) return false;
   return (
     hasOnly(value, ['subjectKind', 'releaseReason'])
-    && hasValue(ADMISSION_SUBJECT_KINDS, value.subjectKind)
+    && value.subjectKind === CANONICAL_ADMISSION_SUBJECT_KIND
     && isNonEmptyString(value.releaseReason)
   );
 }

@@ -62,4 +62,38 @@ test('L1A-23 READ_ONLY vs MODIFYING differ in request identity', () => {
 test('L1A fingerprint excludes server-derived effective/evidence fields', () => {
   const canonical = startRequestDomainInput('READ_ONLY');
   assert.deepEqual(Object.keys(canonical), ['requestedMutationClass']);
+  // The historical MODIFYING representation carries no server-derived fields.
+  assert.deepEqual(Object.keys(startRequestDomainInput('MODIFYING')), []);
+});
+
+// ---------------------------------------------------------------------------
+// L1A-R01..R06 — backward compatibility with pre-L1A {} fingerprints
+// ---------------------------------------------------------------------------
+
+const HISTORICAL_DOMAIN_INPUT: Readonly<Record<string, unknown>> = {};
+
+// L1A-R01 — historical pre-L1A fingerprint (domainInput = {}) equals the new
+// omitted requestedMutationClass fingerprint.
+test('L1A-R01 historical {} == omitted requestedMutationClass fingerprint', () => {
+  assert.equal(
+    fp(HISTORICAL_DOMAIN_INPUT),
+    fp(startRequestDomainInput(normalizeRequestedMutationClass(undefined))),
+  );
+});
+
+// L1A-R02 — historical pre-L1A fingerprint equals the new explicit MODIFYING
+// fingerprint.
+test('L1A-R02 historical {} == explicit MODIFYING fingerprint', () => {
+  assert.equal(
+    fp(HISTORICAL_DOMAIN_INPUT),
+    fp(startRequestDomainInput(normalizeRequestedMutationClass('MODIFYING'))),
+  );
+});
+
+// L1A-R03 — historical MODIFYING fingerprint differs from READ_ONLY.
+test('L1A-R03 historical MODIFYING != READ_ONLY fingerprint', () => {
+  assert.notEqual(
+    fp(HISTORICAL_DOMAIN_INPUT),
+    fp(startRequestDomainInput(normalizeRequestedMutationClass('READ_ONLY'))),
+  );
 });

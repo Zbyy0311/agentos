@@ -131,18 +131,43 @@ export type WorkspaceWriteDenialStatus =
   | 'sandbox-label';
 
 /**
- * enforcedWorkspaceReadOnly evidence. Only a SUPPORTED + VERIFIED technical,
- * tested execution-boundary write denial is admissible. Prompt instructions,
- * provider promises, UI checkboxes, nativeSandbox labels, and provider-native
+ * The verified variant of enforcedWorkspaceReadOnly evidence. A 'verified'
+ * claim is admissible ONLY when accompanied by non-empty proof fields
+ * identifying the actual technical write-denial boundary and its
+ * qualification.
+ */
+export interface VerifiedWorkspaceReadOnlyEvidence {
+  readonly status: 'verified';
+  /** The mechanism that produced the write denial (e.g. 'job-object-deny-write'). */
+  readonly source: string;
+  /** Stable identifier of the enforced execution boundary. */
+  readonly boundaryId: string;
+  /** Stable identifier of the qualification run/artifact proving denial. */
+  readonly qualificationId: string;
+}
+
+/**
+ * Any non-verified enforcement state. A non-verified variant MUST NOT be
+ * interpreted as technical write denial: prompt instructions, provider
+ * promises, UI checkboxes, nativeSandbox labels, and provider-native
  * Worktrees are explicitly NOT evidence.
  */
-export interface WorkspaceReadOnlyEvidence {
-  readonly status: WorkspaceWriteDenialStatus;
-  /** Present only when status === 'verified'. */
+export interface UnverifiedWorkspaceReadOnlyEvidence {
+  readonly status: Exclude<WorkspaceWriteDenialStatus, 'verified'>;
+  /** Present only when status === 'verified'; ignored otherwise. */
   readonly source?: string;
   readonly boundaryId?: string;
   readonly qualificationId?: string;
 }
+
+/**
+ * enforcedWorkspaceReadOnly evidence. Only a SUPPORTED + VERIFIED technical,
+ * tested execution-boundary write denial with complete non-empty proof fields
+ * is admissible for an effective READ_ONLY classification.
+ */
+export type WorkspaceReadOnlyEvidence =
+  | VerifiedWorkspaceReadOnlyEvidence
+  | UnverifiedWorkspaceReadOnlyEvidence;
 
 export interface MutationClassificationInput {
   readonly requested: RequestedMutationClass;
@@ -153,9 +178,19 @@ export interface MutationClassificationInput {
   readonly evidence: WorkspaceReadOnlyEvidence;
 }
 
+function isNonEmptyProofString(value: unknown): value is string {
+  return typeof value === 'string' && value.trim().length > 0;
+}
+
 /**
  * Pure deterministic classifier. Unknown/ambiguous evidence resolves
  * conservatively to MODIFYING; there is no public UNKNOWN result.
+ *
+ * Fail-closed at runtime: even when an untyped/JavaScript caller supplies a
+ * bare { status: 'verified' } object with missing, empty, or whitespace-only
+ * proof fields, classification MUST return MODIFYING. Only verified evidence
+ * with all required proof fields valid, no modifying action, and no external
+ * side-effect action may return READ_ONLY.
  */
 export function classifyMutationClass(
   input: MutationClassificationInput,
@@ -163,7 +198,11 @@ export function classifyMutationClass(
   if (input.requested === 'MODIFYING') return 'MODIFYING';
   if (input.declaredModifyingAction) return 'MODIFYING';
   if (input.declaredExternalSideEffect) return 'MODIFYING';
-  if (input.evidence.status !== 'verified') return 'MODIFYING';
+  const evidence = input.evidence as WorkspaceReadOnlyEvidence | undefined;
+  if (!evidence || evidence.status !== 'verified') return 'MODIFYING';
+  if (!isNonEmptyProofString(evidence.source)) return 'MODIFYING';
+  if (!isNonEmptyProofString(evidence.boundaryId)) return 'MODIFYING';
+  if (!isNonEmptyProofString(evidence.qualificationId)) return 'MODIFYING';
   return 'READ_ONLY';
 }
 

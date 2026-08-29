@@ -8,6 +8,7 @@ import {
   type GrantedAdmissionSubject,
   type MutationClassificationInput,
   type WorkspaceAdmissionSubject,
+  type WorkspaceReadOnlyEvidence,
 } from './src/index.ts';
 
 const baseClassification: MutationClassificationInput = {
@@ -168,4 +169,114 @@ test('legacy admission observability exception is frozen', () => {
   assert.equal(LEGACY_ADMISSION_OBSERVABILITY_EXCEPTION.legacyAgentRunUsesCanonicalRunId, false);
   assert.equal(LEGACY_ADMISSION_OBSERVABILITY_EXCEPTION.legacyRequiresFakeCanonicalRun, false);
   assert.equal(LEGACY_ADMISSION_OBSERVABILITY_EXCEPTION.legacyTelemetryIsAdmissionAuthority, false);
+});
+
+// ---------------------------------------------------------------------------
+// L1A-R07..L1A-R12 — hardened verified read-only evidence.
+// ---------------------------------------------------------------------------
+
+// L1A-R07 — verified evidence with full non-empty proof -> READ_ONLY.
+test('L1A-R07 verified evidence with full non-empty proof -> READ_ONLY', () => {
+  assert.equal(
+    classifyMutationClass({
+      ...baseClassification,
+      evidence: {
+        status: 'verified',
+        source: 'job-object-deny-write',
+        boundaryId: 'boundary-1',
+        qualificationId: 'qualification-1',
+      },
+    }),
+    'READ_ONLY',
+  );
+});
+
+// L1A-R08 — verified with missing source -> MODIFYING (fail closed at runtime).
+test('L1A-R08 verified with missing source -> MODIFYING', () => {
+  const evidence = {
+    status: 'verified',
+    boundaryId: 'boundary-1',
+    qualificationId: 'qualification-1',
+  } as unknown as WorkspaceReadOnlyEvidence;
+  assert.equal(
+    classifyMutationClass({ ...baseClassification, evidence }),
+    'MODIFYING',
+  );
+});
+
+// L1A-R09 — verified with missing boundaryId -> MODIFYING.
+test('L1A-R09 verified with missing boundaryId -> MODIFYING', () => {
+  const evidence = {
+    status: 'verified',
+    source: 'job-object-deny-write',
+    qualificationId: 'qualification-1',
+  } as unknown as WorkspaceReadOnlyEvidence;
+  assert.equal(
+    classifyMutationClass({ ...baseClassification, evidence }),
+    'MODIFYING',
+  );
+});
+
+// L1A-R10 — verified with missing qualificationId -> MODIFYING.
+test('L1A-R10 verified with missing qualificationId -> MODIFYING', () => {
+  const evidence = {
+    status: 'verified',
+    source: 'job-object-deny-write',
+    boundaryId: 'boundary-1',
+  } as unknown as WorkspaceReadOnlyEvidence;
+  assert.equal(
+    classifyMutationClass({ ...baseClassification, evidence }),
+    'MODIFYING',
+  );
+});
+
+// L1A-R11 — verified with empty/whitespace proof field -> MODIFYING.
+test('L1A-R11 verified with empty/whitespace proof field -> MODIFYING', () => {
+  const bare = { status: 'verified' } as unknown as WorkspaceReadOnlyEvidence;
+  assert.equal(
+    classifyMutationClass({ ...baseClassification, evidence: bare }),
+    'MODIFYING',
+  );
+  for (const [field, badValue] of [
+    ['source', ''],
+    ['boundaryId', '   '],
+    ['qualificationId', ''],
+  ] as const) {
+    const evidence = {
+      status: 'verified',
+      source: 'job-object-deny-write',
+      boundaryId: 'boundary-1',
+      qualificationId: 'qualification-1',
+      [field]: badValue,
+    } as unknown as WorkspaceReadOnlyEvidence;
+    assert.equal(
+      classifyMutationClass({ ...baseClassification, evidence }),
+      'MODIFYING',
+      field,
+    );
+  }
+});
+
+// L1A-R12 — the type-level verified variant requires all proof fields.
+test('L1A-R12 verified evidence type requires all proof fields', () => {
+  const ok: WorkspaceReadOnlyEvidence = {
+    status: 'verified',
+    source: 'job-object-deny-write',
+    boundaryId: 'boundary-1',
+    qualificationId: 'qualification-1',
+  };
+  assert.equal(ok.status, 'verified');
+  // @ts-expect-error verified evidence without proof fields is not type-valid
+  const missingAll: WorkspaceReadOnlyEvidence = { status: 'verified' };
+  void missingAll;
+  // @ts-expect-error verified evidence missing qualificationId is not type-valid
+  const missingQualification: WorkspaceReadOnlyEvidence = {
+    status: 'verified',
+    source: 'job-object-deny-write',
+    boundaryId: 'boundary-1',
+  };
+  void missingQualification;
+  // A non-verified variant stays proofless by design.
+  const unsupported: WorkspaceReadOnlyEvidence = { status: 'unsupported' };
+  assert.equal(unsupported.status, 'unsupported');
 });

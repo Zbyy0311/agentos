@@ -36,11 +36,22 @@ export function normalizeRequestedMutationClass(value: unknown): RequestedMutati
 
 /**
  * The canonical domainInput fragment for the run.start request fingerprint.
- * Omitted and explicit MODIFYING yield the identical object, so their
- * normalized request fingerprints match.
+ *
+ * Backward compatibility: pre-L1A run.start idempotency records were hashed
+ * with domainInput = {}. Those records are immutable and must keep replaying.
+ * Therefore the normalized MODIFYING class (the historical default) keeps the
+ * historical {} representation, while READ_ONLY uses an explicit fragment. As
+ * a result all three of these share one fingerprint identity:
+ *   A. pre-L1A historical request (domainInput = {})
+ *   B. new request with requestedMutationClass omitted
+ *   C. new request with requestedMutationClass explicitly MODIFYING
+ * while READ_ONLY remains a distinct identity.
  */
 export function startRequestDomainInput(
   requestedMutationClass: RequestedMutationClass,
-): { readonly requestedMutationClass: RequestedMutationClass } {
-  return { requestedMutationClass };
+): Readonly<Record<string, unknown>> {
+  if (requestedMutationClass === 'READ_ONLY') {
+    return { requestedMutationClass };
+  }
+  return {};
 }

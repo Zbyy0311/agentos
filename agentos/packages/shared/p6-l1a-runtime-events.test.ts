@@ -121,3 +121,94 @@ test('L1A-16 unknown core event still UNREGISTERED_CORE_EVENT', () => {
       e instanceof RuntimeEventRegistryError && e.code === 'UNREGISTERED_CORE_EVENT',
   );
 });
+
+// ---------------------------------------------------------------------------
+// L1A-R13..L1A-R17 — canonical admission events reject the LEGACY subject.
+//
+// The frozen observability contract: a CANONICAL_RUN may publish canonical
+// Runtime/Outbox events; a LEGACY_AGENT_RUN MUST NOT publish canonical
+// Runtime Events under an agent_runs.id and MUST NOT require a fake
+// canonical Run (compatibility telemetry only; workspace_admissions remains
+// the authority). The shared WorkspaceAdmissionSubject union stays
+// dual-subject; only the canonical Runtime Event vocabulary is restricted.
+// ---------------------------------------------------------------------------
+
+function expectInvalidPayload(type: string, payload: unknown): void {
+  const registry = createM3RuntimeEventRegistry();
+  assert.throws(
+    () => registry.publish(draft(type, payload)),
+    (e: unknown) =>
+      e instanceof RuntimeEventRegistryError && e.code === 'INVALID_EVENT_PAYLOAD',
+  );
+}
+
+// L1A-R13 — workspace.admission.requested + LEGACY_AGENT_RUN -> INVALID_EVENT_PAYLOAD.
+test('L1A-R13 workspace.admission.requested LEGACY_AGENT_RUN -> INVALID_EVENT_PAYLOAD', () => {
+  expectInvalidPayload('workspace.admission.requested', {
+    subjectKind: 'LEGACY_AGENT_RUN',
+    requestedMutationClass: 'MODIFYING',
+  });
+});
+
+// L1A-R14 — workspace.admission.granted + LEGACY_AGENT_RUN -> INVALID_EVENT_PAYLOAD.
+test('L1A-R14 workspace.admission.granted LEGACY_AGENT_RUN -> INVALID_EVENT_PAYLOAD', () => {
+  expectInvalidPayload('workspace.admission.granted', {
+    subjectKind: 'LEGACY_AGENT_RUN',
+    effectiveMutationClass: 'MODIFYING',
+    requestOrder: 1,
+  });
+});
+
+// L1A-R15 — workspace.admission.queued + LEGACY_AGENT_RUN -> INVALID_EVENT_PAYLOAD.
+test('L1A-R15 workspace.admission.queued LEGACY_AGENT_RUN -> INVALID_EVENT_PAYLOAD', () => {
+  expectInvalidPayload('workspace.admission.queued', {
+    subjectKind: 'LEGACY_AGENT_RUN',
+    effectiveMutationClass: 'MODIFYING',
+    requestOrder: 1,
+    queueReason: 'workspace busy',
+  });
+});
+
+// L1A-R16 — workspace.admission.released + LEGACY_AGENT_RUN -> INVALID_EVENT_PAYLOAD.
+test('L1A-R16 workspace.admission.released LEGACY_AGENT_RUN -> INVALID_EVENT_PAYLOAD', () => {
+  expectInvalidPayload('workspace.admission.released', {
+    subjectKind: 'LEGACY_AGENT_RUN',
+    releaseReason: 'completed',
+  });
+});
+
+// L1A-R17 — equivalent CANONICAL_RUN payloads are valid.
+test('L1A-R17 equivalent CANONICAL_RUN payloads valid', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const requested = registry.publish(
+    draft('workspace.admission.requested', {
+      subjectKind: 'CANONICAL_RUN',
+      requestedMutationClass: 'MODIFYING',
+    }),
+  );
+  assert.equal(requested.type, 'workspace.admission.requested');
+  const granted = registry.publish(
+    draft('workspace.admission.granted', {
+      subjectKind: 'CANONICAL_RUN',
+      effectiveMutationClass: 'MODIFYING',
+      requestOrder: 1,
+    }),
+  );
+  assert.equal(granted.type, 'workspace.admission.granted');
+  const queued = registry.publish(
+    draft('workspace.admission.queued', {
+      subjectKind: 'CANONICAL_RUN',
+      effectiveMutationClass: 'READ_ONLY',
+      requestOrder: 2,
+      queueReason: 'workspace busy',
+    }),
+  );
+  assert.equal(queued.type, 'workspace.admission.queued');
+  const released = registry.publish(
+    draft('workspace.admission.released', {
+      subjectKind: 'CANONICAL_RUN',
+      releaseReason: 'completed',
+    }),
+  );
+  assert.equal(released.type, 'workspace.admission.released');
+});
