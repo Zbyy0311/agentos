@@ -115,11 +115,13 @@ test('uses the canonical Stage status set and keeps Migration 009 pending compat
   assert.equal(M3_STAGE_STATUSES.includes('blocked' as never), false);
 });
 
-test('uses the exact EventSource protocol and rejects underscore values', () => {
-  assert.deepEqual(RUNTIME_EVENT_SOURCES, [
-    'run-engine',
-    'scheduler',
-    'workflow-executor',
+  test('uses the exact EventSource protocol and rejects underscore values', () => {
+    // Historical M3/M4 sources are preserved verbatim and in order; P6-L1A adds
+    // the additive 'workspace-admission' source for Workspace Admission events.
+    const historicalSources = [
+      'run-engine',
+      'scheduler',
+      'workflow-executor',
     'stage-executor',
     'provider-adapter',
     'process-manager',
@@ -131,10 +133,19 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
     'artifact-manager',
     'usage-aggregator',
     'recovery-manager',
-    'conversation-service',
-    'extension',
-    'system',
-  ]);
+      'conversation-service',
+      'extension',
+      'system',
+    ];
+    for (const source of historicalSources) {
+      assert.ok((RUNTIME_EVENT_SOURCES as readonly string[]).includes(source));
+    }
+    // The historical block is contiguous and unchanged at the head of the list.
+    assert.deepEqual(
+      (RUNTIME_EVENT_SOURCES as readonly string[]).filter(s => historicalSources.includes(s)),
+      historicalSources,
+    );
+    assert.ok((RUNTIME_EVENT_SOURCES as readonly string[]).includes('workspace-admission'));
 
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
@@ -149,8 +160,17 @@ test('uses the exact EventSource protocol and rejects underscore values', () => 
   );
 });
 
-test('registers the complete M3 Event set with frozen domains and metadata', () => {
-  assert.deepEqual(RUNTIME_EVENT_DOMAINS, ['run', 'stage', 'approval', 'stream', 'process']);
+  test('registers the complete M3 Event set with frozen domains and metadata', () => {
+    // Historical M3 domains are preserved verbatim and in order; P6-L1A adds the
+    // additive workspace / git / artifact domains.
+    const historicalDomains = ['run', 'stage', 'approval', 'stream', 'process'];
+    assert.deepEqual(
+      (RUNTIME_EVENT_DOMAINS as readonly string[]).filter(d => historicalDomains.includes(d)),
+      historicalDomains,
+    );
+    for (const domain of ['workspace', 'git', 'artifact']) {
+      assert.ok((RUNTIME_EVENT_DOMAINS as readonly string[]).includes(domain));
+    }
   const expectedTypes = [
     'run.created',
     'run.queued',

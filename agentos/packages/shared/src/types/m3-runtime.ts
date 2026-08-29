@@ -44,6 +44,7 @@ export const RUNTIME_EVENT_SOURCES = Object.freeze([
   'policy-engine',
   'approval-service',
   'artifact-manager',
+  'workspace-admission',
   'usage-aggregator',
   'recovery-manager',
   'conversation-service',
@@ -59,6 +60,9 @@ export const RUNTIME_EVENT_DOMAINS = Object.freeze([
   'approval',
   'stream',
   'process',
+  'workspace',
+  'git',
+  'artifact',
 ] as const);
 
 export type RuntimeEventDomain = (typeof RUNTIME_EVENT_DOMAINS)[number];
@@ -116,6 +120,28 @@ export const M4_PROCESS_RUNTIME_EVENT_TYPES = Object.freeze([
 ] as const);
 
 export type M4ProcessRuntimeEventType = (typeof M4_PROCESS_RUNTIME_EVENT_TYPES)[number];
+
+/**
+ * P6-L1 Workspace Admission / Git Observation / Artifact vocabulary. These are
+ * additive to the M3/M4 envelope and are registered separately so the frozen
+ * M3/M4 unions never change meaning. run.mutation_class.resolved and
+ * run.read_only_enforcement.unavailable stay in the Run domain; the
+ * workspace.admission.* / git.observation.* / artifact.diff.* families use the
+ * new workspace / git / artifact domains.
+ */
+export const P6_L1_RUNTIME_EVENT_TYPES = Object.freeze([
+  'workspace.admission.requested',
+  'workspace.admission.granted',
+  'workspace.admission.queued',
+  'workspace.admission.released',
+  'run.mutation_class.resolved',
+  'run.read_only_enforcement.unavailable',
+  'git.observation.completed',
+  'git.observation.unavailable',
+  'artifact.diff.registered',
+] as const);
+
+export type P6L1RuntimeEventType = (typeof P6_L1_RUNTIME_EVENT_TYPES)[number];
 
 const CANONICAL_RUNTIME_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
 
