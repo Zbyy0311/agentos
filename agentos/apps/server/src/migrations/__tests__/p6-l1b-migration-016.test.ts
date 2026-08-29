@@ -405,11 +405,21 @@ test('L1B-14 MODIFYING grants in different Workspaces coexist', () => {
 test('L1B-15 multiple persisted READ_ONLY rows are schema-valid (capacity deferred to L1D)', () => {
   const db = dbWith016();
   try {
+    // One Admission per subject is now enforced (BLOCKER remediation); READ_ONLY
+    // capacity is proven with two DISTINCT canonical Runs in the same Workspace.
+    insertRow(db, 'tasks', {
+      id: 'task_l1b_c', workspace_id: WS, title: 't', status: 'open', priority: 'normal',
+      created_by: 'test', created_at: NOW, updated_at: NOW,
+    });
+    insertRow(db, 'runs', {
+      id: 'run_l1b_c', workspace_id: WS, task_id: 'task_l1b_c', root_run_id: 'run_l1b_c', status: 'queued',
+      reason: 'initial', origin: 'v2_api', created_by: 'test', created_at: NOW, updated_at: NOW,
+    });
     insertRow(db, 'workspace_admissions', admissionRow({
       requested_mutation_class: 'READ_ONLY', effective_mutation_class: 'READ_ONLY', state: 'GRANTED', granted_at: NOW,
     }));
     insertRow(db, 'workspace_admissions', admissionRow({
-      id: 'adm_2', request_order: 2, requested_mutation_class: 'READ_ONLY', effective_mutation_class: 'READ_ONLY',
+      id: 'adm_2', canonical_run_id: 'run_l1b_c', request_order: 2, requested_mutation_class: 'READ_ONLY', effective_mutation_class: 'READ_ONLY',
       state: 'GRANTED', granted_at: NOW,
     }));
     assert.equal(count(db, "SELECT COUNT(*) AS c FROM workspace_admissions WHERE effective_mutation_class = 'READ_ONLY' AND state = 'GRANTED'"), 2);
@@ -676,5 +686,466 @@ test('016 fails closed on an incomplete 015 schema and is never recorded', () =>
       (e: unknown) => e instanceof MigrationError && e.code === 'MIGRATION_FAILED',
     );
     assert.equal(count(db, "SELECT COUNT(*) AS c FROM _schema_migrations WHERE migration_id = '016'"), 0);
+  } finally { db.close(); }
+});
+
+// ===========================================================================
+// L1B-R01..R04 - CANCELLED/FAILED terminal vocabulary (BLOCKER 1)
+// ===========================================================================
+
+test('L1B-R01 CANCELLED persists when terminal fields valid', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionRow({ state: 'CANCELLED', release_reason: 'REQUEST_CANCELLED', released_at: NOW2 }));
+    const row = db.prepare('SELECT * FROM workspace_admissions WHERE id = ?').get('adm_1') as Record<string, unknown>;
+    assert.equal(row.state, 'CANCELLED');
+    assert.equal(row.release_reason, 'REQUEST_CANCELLED');
+    assert.equal(row.released_at, NOW2);
+  } finally { db.close(); }
+});
+
+test('L1B-R02 FAILED persists when terminal fields valid', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionRow({ state: 'FAILED', release_reason: 'ENFORCEMENT_FAILED', released_at: NOW2 }));
+    const row = db.prepare('SELECT * FROM workspace_admissions WHERE id = ?').get('adm_1') as Record<string, unknown>;
+    assert.equal(row.state, 'FAILED');
+    assert.equal(row.release_reason, 'ENFORCEMENT_FAILED');
+    assert.equal(row.released_at, NOW2);
+  } finally { db.close(); }
+});
+
+test('L1B-R03 CANCELLED without terminal reason/time rejected', () => {
+  const db = dbWith016();
+  try {
+    assert.throws(
+      () => insertRow(db, 'workspace_admissions', admissionRow({ state: 'CANCELLED' })),
+      /CHECK constraint failed/,
+    );
+    assert.throws(
+      () => insertRow(db, 'workspace_admissions', admissionRow({ state: 'CANCELLED', release_reason: 'REQUEST_CANCELLED' })),
+      /CHECK constraint failed/,
+    );
+    assert.throws(
+      () => insertRow(db, 'workspace_admissions', admissionRow({ state: 'CANCELLED', released_at: NOW2 })),
+      /CHECK constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R04 FAILED without terminal reason/time rejected', () => {
+  const db = dbWith016();
+  try {
+    assert.throws(
+      () => insertRow(db, 'workspace_admissions', admissionRow({ state: 'FAILED' })),
+      /CHECK constraint failed/,
+    );
+    assert.throws(
+      () => insertRow(db, 'workspace_admissions', admissionRow({ state: 'FAILED', release_reason: 'ENFORCEMENT_FAILED' })),
+      /CHECK constraint failed/,
+    );
+    assert.throws(
+      () => insertRow(db, 'workspace_admissions', admissionRow({ state: 'FAILED', released_at: NOW2 })),
+      /CHECK constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+// ===========================================================================
+// L1B-R05..R07 - exactly one Admission per subject (BLOCKER 2)
+// ===========================================================================
+
+test('L1B-R05 second Admission for same canonical Run rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionRow());
+    assert.throws(
+      () => insertRow(db, 'workspace_admissions', admissionRow({ id: 'adm_2', request_order: 2 })),
+      /UNIQUE constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R06 second Admission for same legacy agent_run rejected', () => {
+  const db = dbWith016();
+  try {
+    const legacy = (id: string): Record<string, unknown> => admissionRow({
+      id, subject_kind: 'LEGACY_AGENT_RUN', canonical_run_id: null, legacy_run_id: AGENT_RUN,
+    });
+    insertRow(db, 'workspace_admissions', legacy('adm_1'));
+    assert.throws(
+      () => insertRow(db, 'workspace_admissions', legacy('adm_2')),
+      /UNIQUE constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R07 different Runs in same Workspace may each have an Admission', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'tasks', {
+      id: 'task_l1b_d', workspace_id: WS, title: 't2', status: 'open', priority: 'normal',
+      created_by: 'test', created_at: NOW, updated_at: NOW,
+    });
+    insertRow(db, 'runs', {
+      id: 'run_l1b_d', workspace_id: WS, task_id: 'task_l1b_d', root_run_id: 'run_l1b_d', status: 'queued',
+      reason: 'initial', origin: 'v2_api', created_by: 'test', created_at: NOW, updated_at: NOW,
+    });
+    insertRow(db, 'workspace_admissions', admissionRow());
+    insertRow(db, 'workspace_admissions', admissionRow({ id: 'adm_2', canonical_run_id: 'run_l1b_d', request_order: 2 }));
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM workspace_admissions'), 2);
+  } finally { db.close(); }
+});
+
+// ===========================================================================
+// L1B-R08..R15 - Git Observation / Admission two-mode binding (BLOCKER 3)
+// ===========================================================================
+
+function admissionGranted(id: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+  return admissionRow({ id, state: 'GRANTED', granted_at: NOW, ...overrides });
+}
+
+test('L1B-R08 workspace-only Git Observation valid', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_git_observations', gitObsRow({ observation_state: 'NOT_GIT', base_commit_sha: null, dirty_state: null }));
+    const row = db.prepare('SELECT * FROM workspace_git_observations WHERE id = ?').get('obs_1') as Record<string, unknown>;
+    assert.equal(row.admission_id, null);
+    assert.equal(row.subject_kind, null);
+    assert.equal(row.canonical_run_id, null);
+    assert.equal(row.legacy_run_id, null);
+    assert.equal(row.observation_state, 'NOT_GIT');
+  } finally { db.close(); }
+});
+
+test('L1B-R09 canonical Admission-bound Observation valid', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionGranted('adm_1'));
+    insertRow(db, 'workspace_git_observations', gitObsRow({
+      admission_id: 'adm_1', subject_kind: 'CANONICAL_RUN', canonical_run_id: RUN,
+    }));
+    const row = db.prepare('SELECT * FROM workspace_git_observations WHERE id = ?').get('obs_1') as Record<string, unknown>;
+    assert.equal(row.admission_id, 'adm_1');
+    assert.equal(row.subject_kind, 'CANONICAL_RUN');
+    assert.equal(row.canonical_run_id, RUN);
+    assert.equal(row.legacy_run_id, null);
+  } finally { db.close(); }
+});
+
+test('L1B-R10 legacy Admission-bound Observation valid', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionGranted('adm_l', {
+      subject_kind: 'LEGACY_AGENT_RUN', canonical_run_id: null, legacy_run_id: AGENT_RUN,
+    }));
+    insertRow(db, 'workspace_git_observations', gitObsRow({
+      admission_id: 'adm_l', subject_kind: 'LEGACY_AGENT_RUN', legacy_run_id: AGENT_RUN,
+    }));
+    const row = db.prepare('SELECT * FROM workspace_git_observations WHERE id = ?').get('obs_1') as Record<string, unknown>;
+    assert.equal(row.admission_id, 'adm_l');
+    assert.equal(row.subject_kind, 'LEGACY_AGENT_RUN');
+    assert.equal(row.legacy_run_id, AGENT_RUN);
+    assert.equal(row.canonical_run_id, null);
+  } finally { db.close(); }
+});
+
+test('L1B-R11 Observation workspace != Admission workspace rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionGranted('adm_1'));
+    insertRow(db, 'workspaces', {
+      id: WS2, name: 'L1B2', root_path: '/tmp/' + WS2, canonical_root_path: '/tmp/' + WS2,
+      last_opened_at: NOW, created_at: NOW, updated_at: NOW,
+    });
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({
+        workspace_id: WS2, admission_id: 'adm_1', subject_kind: 'CANONICAL_RUN', canonical_run_id: RUN,
+      })),
+      /FOREIGN KEY constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R12 Observation subjectKind != Admission subjectKind rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionGranted('adm_1'));
+    // Admission is CANONICAL_RUN; observation claims LEGACY_AGENT_RUN with a
+    // legacy id. Either the subject-shape CHECK or the composite FK fails.
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({
+        admission_id: 'adm_1', subject_kind: 'LEGACY_AGENT_RUN', legacy_run_id: AGENT_RUN,
+      })),
+      /(CHECK|FOREIGN KEY) constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R13 Observation canonicalRunId != Admission canonicalRunId rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'tasks', {
+      id: 'task_l1b_e', workspace_id: WS, title: 't3', status: 'open', priority: 'normal',
+      created_by: 'test', created_at: NOW, updated_at: NOW,
+    });
+    insertRow(db, 'runs', {
+      id: 'run_l1b_e', workspace_id: WS, task_id: 'task_l1b_e', root_run_id: 'run_l1b_e', status: 'queued',
+      reason: 'initial', origin: 'v2_api', created_by: 'test', created_at: NOW, updated_at: NOW,
+    });
+    insertRow(db, 'workspace_admissions', admissionGranted('adm_1'));
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({
+        admission_id: 'adm_1', subject_kind: 'CANONICAL_RUN', canonical_run_id: 'run_l1b_e',
+      })),
+      /FOREIGN KEY constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R14 Observation legacyRunId != Admission legacyRunId rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'messages', {
+      id: 'msg_l1b_f', conversation_id: CONV, workspace_id: WS, sender_type: 'user', content: 'hi2',
+      created_at: NOW,
+    });
+    insertRow(db, 'agent_runs', {
+      id: 'agentrun_l1b_f', workspace_id: WS, conversation_id: CONV, source_message_id: 'msg_l1b_f',
+      objective: 'obj2', status: 'running', created_at: NOW, updated_at: NOW,
+    });
+    insertRow(db, 'workspace_admissions', admissionGranted('adm_l', {
+      subject_kind: 'LEGACY_AGENT_RUN', canonical_run_id: null, legacy_run_id: AGENT_RUN,
+    }));
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({
+        admission_id: 'adm_l', subject_kind: 'LEGACY_AGENT_RUN', legacy_run_id: 'agentrun_l1b_f',
+      })),
+      /FOREIGN KEY constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R15 subjectKind with wrong/dual/empty subject IDs rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionGranted('adm_1'));
+    // Dual subject IDs on an ADMISSION_BOUND observation.
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({
+        id: 'obs_dual', admission_id: 'adm_1', subject_kind: 'CANONICAL_RUN',
+        canonical_run_id: RUN, legacy_run_id: AGENT_RUN,
+      })),
+      /(CHECK|FOREIGN KEY) constraint failed/,
+    );
+    // No subject IDs on an ADMISSION_BOUND observation.
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({
+        id: 'obs_empty', admission_id: 'adm_1', subject_kind: 'CANONICAL_RUN', canonical_run_id: null,
+      })),
+      /(CHECK|FOREIGN KEY) constraint failed/,
+    );
+    // Wrong subject id for the claimed kind (CANONICAL kind carrying a legacy id).
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({
+        id: 'obs_wrong', admission_id: 'adm_1', subject_kind: 'CANONICAL_RUN',
+        canonical_run_id: null, legacy_run_id: AGENT_RUN,
+      })),
+      /(CHECK|FOREIGN KEY) constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+// ===========================================================================
+// L1B-R16..R19 - Admission identity immutability trigger (HIGH 4)
+// ===========================================================================
+
+test('L1B-R16 subject identity update rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionRow());
+    assert.throws(
+      () => db.exec("UPDATE workspace_admissions SET canonical_run_id = 'run_other' WHERE id = 'adm_1'"),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+    assert.throws(
+      () => db.exec("UPDATE workspace_admissions SET subject_kind = 'LEGACY_AGENT_RUN' WHERE id = 'adm_1'"),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+    assert.throws(
+      () => db.exec("UPDATE workspace_admissions SET legacy_run_id = 'agentrun_other' WHERE id = 'adm_1'"),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+    assert.throws(
+      () => db.exec("UPDATE workspace_admissions SET id = 'adm_renamed' WHERE id = 'adm_1'"),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+    assert.throws(
+      () => db.exec("UPDATE workspace_admissions SET workspace_id = 'ws_other' WHERE id = 'adm_1'"),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R17 request_order update rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionRow());
+    assert.throws(
+      () => db.exec('UPDATE workspace_admissions SET request_order = 2 WHERE id = \'adm_1\''),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R18 requestedMutationClass update rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionRow());
+    assert.throws(
+      () => db.exec("UPDATE workspace_admissions SET requested_mutation_class = 'READ_ONLY' WHERE id = 'adm_1'"),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+    // requested_at / created_at are request-identity fields as well.
+    assert.throws(
+      () => db.exec('UPDATE workspace_admissions SET requested_at = \'' + NOW2 + '\' WHERE id = \'adm_1\''),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+    assert.throws(
+      () => db.exec('UPDATE workspace_admissions SET created_at = \'' + NOW2 + '\' WHERE id = \'adm_1\''),
+      /WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R19 allowed mutable CAS fields still update', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspace_admissions', admissionRow());
+    db.exec(
+      "UPDATE workspace_admissions SET state = 'GRANTED', granted_at = '" + NOW + "',"
+      + " effective_mutation_class = 'READ_ONLY',"
+      + " updated_at = '" + NOW2 + "', version = 2 WHERE id = 'adm_1'",
+    );
+    db.exec(Buffer.from('VVBEQVRFIHdvcmtzcGFjZV9hZG1pc3Npb25zIFNFVCBlbmZvcmNlbWVudF9ldmlkZW5jZV9qc29uID0ganNvbigneyJwcm9vZiI6InN0YWxlIn0nKSBXSEVSRSBpZCA9ICdhZG1fMSc=', 'base64').toString('utf8'));
+    const row = db.prepare('SELECT * FROM workspace_admissions WHERE id = ?').get('adm_1') as Record<string, unknown>;
+    assert.equal(row.state, 'GRANTED');
+    assert.equal(row.granted_at, NOW);
+    assert.equal(row.effective_mutation_class, 'READ_ONLY');
+    assert.equal(row.enforcement_evidence_json, '{"proof":"stale"}');
+    assert.equal(row.version, 2);
+    assert.equal(row.updated_at, NOW2);
+    // And a later release remains mutable too.
+    db.exec(
+      "UPDATE workspace_admissions SET state = 'RELEASED', release_reason = 'RUN_COMPLETED',"
+      + " released_at = '" + NOW2 + "', version = 3 WHERE id = 'adm_1'",
+    );
+    const released = db.prepare('SELECT * FROM workspace_admissions WHERE id = ?').get('adm_1') as Record<string, unknown>;
+    assert.equal(released.state, 'RELEASED');
+    assert.equal(released.version, 3);
+  } finally { db.close(); }
+});
+
+// ===========================================================================
+// L1B-R25..R26 - 015 prerequisite gate (MEDIUM 7)
+// ===========================================================================
+
+test('L1B-R25 014-state DB + direct 016 fails closed with no partial DDL', () => {
+  const ctx = fileDb();
+  try {
+    // Apply only 001..014 (registry filter excludes 015 and 016).
+    new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(m => !['015', '016'].includes(m.id))), {
+      backupProvider: createFileBackupProvider(join(ctx.root, 'backups')),
+    }).run();
+    assert.throws(
+      () => migration016.apply({ db: ctx.db as unknown as MinimalDatabaseSync }),
+      /MIGRATION_PREREQUISITE_MISSING/,
+    );
+    assert.throws(
+      () => new MigrationRunner(ctx.db, new MigrationRegistry([migration016 as Migration]), {
+        backupProvider: createFileBackupProvider(join(ctx.root, 'backups')),
+      }).run(),
+      (e: unknown) => e instanceof MigrationError && e.code === 'MIGRATION_FAILED',
+    );
+    // 016 must not be recorded and must not leave any partial DDL behind.
+    assert.equal(count(ctx.db, "SELECT COUNT(*) AS c FROM _schema_migrations WHERE migration_id = '016'"), 0);
+    assert.equal(
+      count(ctx.db, "SELECT COUNT(*) AS c FROM sqlite_master WHERE type = 'table' AND name = 'workspace_admissions'"),
+      0,
+    );
+    assert.equal(
+      count(ctx.db, "SELECT COUNT(*) AS c FROM sqlite_master WHERE type = 'table' AND name = 'workspace_git_observations'"),
+      0,
+    );
+    assertIntegrity(ctx.db);
+  } finally {
+    ctx.close();
+  }
+});
+
+test('L1B-R26 valid 015-state DB allows 016', () => {
+  const db = build015Fixture(false);
+  try {
+    apply016(db);
+    assert.equal(count(db, "SELECT COUNT(*) AS c FROM _schema_migrations WHERE migration_id = '016'"), 1);
+    assert.equal(count(db, 'SELECT COUNT(*) AS c FROM workspace_admissions'), 0);
+    assertIntegrity(db);
+  } finally { db.close(); }
+});
+
+// ===========================================================================
+// L1B-R27..R29 - diff_artifact_id source integrity (MEDIUM 8)
+// ===========================================================================
+
+function insertCanonicalDiffArtifact(db: Db, id: string, workspaceId = WS, canonicalRunId = RUN): void {
+  insertRow(db, 'runtime_artifacts', {
+    id, workspace_id: workspaceId, provenance_kind: 'CANONICAL', run_id: null, source_execution_id: null,
+    canonical_run_id: canonicalRunId, source_process_id: null, source_operation_id: null, source_stage_id: null,
+    agent_id: null, artifact_type: 'diff', title: 'diff', summary: 'd', original_path: '/d.patch',
+    storage_key: 'sink/diff', mime_type: 'text/plain', size_bytes: 1, sha256: 'd'.repeat(64),
+    content_available: 1, created_at: NOW,
+  });
+}
+
+test('L1B-R27 same-Workspace diff Artifact reference valid', () => {
+  const db = dbWith016();
+  try {
+    insertCanonicalDiffArtifact(db, 'artifact_diff_1');
+    insertRow(db, 'workspace_git_observations', gitObsRow({ diff_artifact_id: 'artifact_diff_1' }));
+    const row = db.prepare('SELECT * FROM workspace_git_observations WHERE id = ?').get('obs_1') as Record<string, unknown>;
+    assert.equal(row.diff_artifact_id, 'artifact_diff_1');
+  } finally { db.close(); }
+});
+
+test('L1B-R28 nonexistent diff Artifact rejected', () => {
+  const db = dbWith016();
+  try {
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({ diff_artifact_id: 'artifact_missing' })),
+      /FOREIGN KEY constraint failed/,
+    );
+  } finally { db.close(); }
+});
+
+test('L1B-R29 cross-Workspace diff Artifact rejected', () => {
+  const db = dbWith016();
+  try {
+    insertRow(db, 'workspaces', {
+      id: WS2, name: 'L1B2', root_path: '/tmp/' + WS2, canonical_root_path: '/tmp/' + WS2,
+      last_opened_at: NOW, created_at: NOW, updated_at: NOW,
+    });
+    insertRow(db, 'tasks', {
+      id: 'task_l1b_g', workspace_id: WS2, title: 'tg', status: 'open', priority: 'normal',
+      created_by: 'test', created_at: NOW, updated_at: NOW,
+    });
+    insertRow(db, 'runs', {
+      id: 'run_l1b_g', workspace_id: WS2, task_id: 'task_l1b_g', root_run_id: 'run_l1b_g', status: 'queued',
+      reason: 'initial', origin: 'v2_api', created_by: 'test', created_at: NOW, updated_at: NOW,
+    });
+    insertCanonicalDiffArtifact(db, 'artifact_diff_ws2', WS2, 'run_l1b_g');
+    assert.throws(
+      () => insertRow(db, 'workspace_git_observations', gitObsRow({ diff_artifact_id: 'artifact_diff_ws2' })),
+      /FOREIGN KEY constraint failed/,
+    );
   } finally { db.close(); }
 });

@@ -69,6 +69,17 @@ function assertPrerequisites(db: MinimalDatabaseSync): void {
       'MIGRATION_PREREQUISITE_MISSING: migration 016 requires idx_runs_id_workspace from migration 008',
     );
   }
+  // Migration 015 must actually have been applied: it adds the canonical
+  // runtime_processes.native_birth_identity column. A 001-014 schema (tables +
+  // 008 index present, but no 015) must fail closed here, not silently proceed.
+  const nbCol = db
+    .prepare("SELECT 1 AS present FROM pragma_table_info('runtime_processes') WHERE name = 'native_birth_identity'")
+    .get();
+  if (nbCol === undefined) {
+    throw new Error(
+      'MIGRATION_PREREQUISITE_MISSING: migration 016 requires runtime_processes.native_birth_identity from migration 015',
+    );
+  }
 }
 
 /**
@@ -118,8 +129,11 @@ const WORKSPACE_ADMISSIONS_DDL = [
   '    enforcement_evidence_json TEXT CHECK (enforcement_evidence_json IS NULL OR json_valid(enforcement_evidence_json)),',
   '    request_order INTEGER NOT NULL',
   '      CHECK (request_order >= 1),',
-  '    state TEXT NOT NULL',
-  "      CHECK (state IN ('REQUESTED','QUEUED','GRANTED','RELEASED')),",
+    '    state TEXT NOT NULL',
+    // Frozen P6-L1 lifecycle vocabulary. CANCELLED and FAILED are terminal
+    // persistence states; no ADOPTED/RESUMED/REATTACHED/TRANSFERRED (P6-M3c)
+    // and no future REJECTED/no-wait behavior.
+    "      CHECK (state IN ('REQUESTED','QUEUED','GRANTED','RELEASED','CANCELLED','FAILED')),",
   '    queue_reason TEXT,',
   '    release_reason TEXT,',
   '    requested_at TEXT NOT NULL,',
@@ -128,9 +142,13 @@ const WORKSPACE_ADMISSIONS_DDL = [
   '    created_at TEXT NOT NULL,',
   '    updated_at TEXT NOT NULL,',
   '    version INTEGER NOT NULL DEFAULT 1 CHECK (version >= 1),',
-  "    CHECK (state <> 'QUEUED' OR queue_reason IS NOT NULL),",
-  "    CHECK (state <> 'GRANTED' OR granted_at IS NOT NULL),",
-  "    CHECK (state <> 'RELEASED' OR (release_reason IS NOT NULL AND released_at IS NOT NULL)),",
+    "    CHECK (state <> 'QUEUED' OR queue_reason IS NOT NULL),",
+    "    CHECK (state <> 'GRANTED' OR granted_at IS NOT NULL),",
+    "    CHECK (state <> 'RELEASED' OR (release_reason IS NOT NULL AND released_at IS NOT NULL)),",
+    // Terminal persistence semantics: CANCELLED and FAILED carry the same
+    // mandatory terminal reason/time as RELEASED.
+    "    CHECK (state <> 'CANCELLED' OR (release_reason IS NOT NULL AND released_at IS NOT NULL)),",
+    "    CHECK (state <> 'FAILED' OR (release_reason IS NOT NULL AND released_at IS NOT NULL)),",
   '    CHECK (',
   "      (subject_kind = 'CANONICAL_RUN' AND canonical_run_id IS NOT NULL AND legacy_run_id IS NULL)",
   '      OR',
@@ -176,12 +194,40 @@ const WORKSPACE_GIT_OBSERVATIONS_DDL = [
   '    created_at TEXT NOT NULL,',
   "    CHECK (observation_state <> 'UNAVAILABLE' OR error_code IS NOT NULL),",
   "    CHECK (diff_artifact_id IS NULL OR observation_state = 'GIT'),",
+  // Two valid authority modes, frozen by the plan (BLOCKER remediation):
+  //   MODE A WORKSPACE_ONLY  - admission_id and all subject fields NULL.
+  //   MODE B ADMISSION_BOUND - admission_id set, exactly one frozen subject.
+  '    CHECK (',
+  '      (admission_id IS NULL AND subject_kind IS NULL AND canonical_run_id IS NULL AND legacy_run_id IS NULL)',
+  '      OR',
+  '      (admission_id IS NOT NULL',
+  "        AND ((subject_kind = 'CANONICAL_RUN' AND canonical_run_id IS NOT NULL AND legacy_run_id IS NULL)",
+  "          OR (subject_kind = 'LEGACY_AGENT_RUN' AND legacy_run_id IS NOT NULL AND canonical_run_id IS NULL)))",
+  '    ),',
   '    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT,',
-  '    FOREIGN KEY (admission_id) REFERENCES workspace_admissions(id) ON DELETE RESTRICT,',
-  '    FOREIGN KEY (canonical_run_id, workspace_id)',
-  '      REFERENCES runs(id, workspace_id) ON DELETE RESTRICT,',
-  '    FOREIGN KEY (legacy_run_id, workspace_id)',
-  '      REFERENCES agent_runs(id, workspace_id) ON DELETE RESTRICT',
+  // Admission-bound integrity is enforced by composite FKs into the exact
+  // (id, workspace, subject_kind, subject_id) parent tuple, so an Observation
+  // can never reference an Admission in another Workspace, with a different
+  // subject kind, or with a mismatched subject ID. The composite FK columns
+  // are nullable, so only the active subject FK is enforced (the inactive one
+  // has NULL child columns and is skipped by SQLite).
+  '    FOREIGN KEY (admission_id, workspace_id, subject_kind, canonical_run_id)',
+  '      REFERENCES workspace_admissions(id, workspace_id, subject_kind, canonical_run_id) ON DELETE RESTRICT,',
+  '    FOREIGN KEY (admission_id, workspace_id, subject_kind, legacy_run_id)',
+  '      REFERENCES workspace_admissions(id, workspace_id, subject_kind, legacy_run_id) ON DELETE RESTRICT,',
+  // A claimed subject_id must be real in the SAME Workspace: either the exact
+  // subject of the bound Admission (see indexes on workspace_admissions) or an
+  // existing canonical Run (idx_runs_id_workspace from 008) / legacy
+  // agent_run (idx_agent_runs_id_workspace from 016 below). Runs/admissions
+  // without the claimed id cannot satisfy these parent keys, so a wrong or
+  // mis-typed subject id fails closed at the database boundary.
+  '    FOREIGN KEY (workspace_id, canonical_run_id)',
+  '      REFERENCES workspace_admissions(workspace_id, canonical_run_id) ON DELETE RESTRICT,',
+  '    FOREIGN KEY (workspace_id, legacy_run_id)',
+  '      REFERENCES workspace_admissions(workspace_id, legacy_run_id) ON DELETE RESTRICT,',
+  // diff_artifact_id must reference an existing Artifact in the SAME Workspace.
+  '    FOREIGN KEY (diff_artifact_id, workspace_id)',
+  '      REFERENCES runtime_artifacts(id, workspace_id) ON DELETE RESTRICT',
   '  )',
 ].join('\n');
 
@@ -300,6 +346,33 @@ export const P6_L1B_016_DDL_STATEMENTS = Object.freeze([
   AGENT_RUNS_WORKSPACE_INDEX,
   OPERATIONS_ID_WORKSPACE_RUN_INDEX,
   WORKSPACE_ADMISSIONS_DDL,
+  // BLOCKER remediation: exactly one Admission per subject. Non-partial UNIQUE
+  // indexes (NULLs are distinct in SQLite, so the inactive subject column never
+  // collides). These also serve as the composite-FK parent keys for
+  // workspace_git_observations Admission-bound integrity.
+  [
+    'CREATE UNIQUE INDEX workspace_admissions_canonical_subject_unique',
+    '    ON workspace_admissions(id, workspace_id, subject_kind, canonical_run_id)',
+  ].join('\n'),
+  [
+    'CREATE UNIQUE INDEX workspace_admissions_legacy_subject_unique',
+    '    ON workspace_admissions(id, workspace_id, subject_kind, legacy_run_id)',
+  ].join('\n'),
+  // Git Observation subject_id is ALWAYS covered by an FK, whichever subject
+  // kind is claimed: it must either be the exact subject of the bound
+  // Admission or an existing canonical Run / legacy agent_run in the SAME
+  // Workspace. This closes the "subjectKind with wrong subject IDs" hole that
+  // a NULL-column-skipped composite FK cannot catch. UNIQUE because an FK
+  // parent key must be unique; uniqueness also gives one-Admission-per-subject
+  // (a second Admission for the same subject is rejected).
+  [
+    'CREATE UNIQUE INDEX workspace_admissions_one_per_canonical_subject',
+    '    ON workspace_admissions(workspace_id, canonical_run_id)',
+  ].join('\n'),
+  [
+    'CREATE UNIQUE INDEX workspace_admissions_one_per_legacy_subject',
+    '    ON workspace_admissions(workspace_id, legacy_run_id)',
+  ].join('\n'),
   [
     'CREATE UNIQUE INDEX workspace_admissions_workspace_request_order',
     '    ON workspace_admissions(workspace_id, request_order)',
@@ -325,6 +398,43 @@ export const P6_L1B_016_DDL_STATEMENTS = Object.freeze([
     '    ON workspace_admissions(workspace_id, legacy_run_id)',
     '    WHERE legacy_run_id IS NOT NULL',
   ].join('\n'),
+  // HIGH remediation: Admission identity/request fields are immutable once
+  // persisted. Only the L1D-mutable CAS fields (state, effective_mutation_class,
+  // enforcement_evidence_json, queue_reason, release_reason, granted_at,
+  // released_at, updated_at, version) may change; effective_mutation_class stays
+  // mutable so a stale read-only proof can reclassify in place.
+  [
+    'CREATE TRIGGER workspace_admissions_identity_immutable',
+    'BEFORE UPDATE ON workspace_admissions',
+    'WHEN NEW.id IS NOT OLD.id',
+    '  OR NEW.workspace_id IS NOT OLD.workspace_id',
+    '  OR NEW.subject_kind IS NOT OLD.subject_kind',
+    '  OR NEW.canonical_run_id IS NOT OLD.canonical_run_id',
+    '  OR NEW.legacy_run_id IS NOT OLD.legacy_run_id',
+    '  OR NEW.requested_mutation_class IS NOT OLD.requested_mutation_class',
+    '  OR NEW.request_order IS NOT OLD.request_order',
+    '  OR NEW.requested_at IS NOT OLD.requested_at',
+    '  OR NEW.created_at IS NOT OLD.created_at',
+    'BEGIN',
+    "  SELECT RAISE(ABORT, 'WORKSPACE_ADMISSION_IDENTITY_IMMUTABLE');",
+    'END',
+  ].join('\n'),
+  // runtime_artifacts is rebuilt FIRST: workspace_git_observations has a
+  // composite FK into the rebuilt runtime_artifacts (diff_artifact_id), so it
+  // must be created only after the new artifacts table exists.
+  RUNTIME_ARTIFACTS_RENAME,
+  RUNTIME_ARTIFACTS_NEW_DDL,
+  // Parent key for workspace_git_observations.diff_artifact_id composite FK.
+  // id is the table PRIMARY KEY; adding workspace_id yields the composite tuple
+  // the same-Workspace diff reference requires.
+  [
+    'CREATE UNIQUE INDEX runtime_artifacts_id_workspace',
+    '    ON runtime_artifacts(id, workspace_id)',
+  ].join('\n'),
+  RUNTIME_ARTIFACTS_LEGACY_INDEX,
+  RUNTIME_ARTIFACTS_CANONICAL_INDEX,
+  RUNTIME_ARTIFACTS_COPY,
+  RUNTIME_ARTIFACTS_DROP_LEGACY,
   WORKSPACE_GIT_OBSERVATIONS_DDL,
   [
     'CREATE INDEX workspace_git_observations_admission',
@@ -340,12 +450,6 @@ export const P6_L1B_016_DDL_STATEMENTS = Object.freeze([
     '    ON workspace_git_observations(workspace_id, legacy_run_id, created_at, id)',
     '    WHERE legacy_run_id IS NOT NULL',
   ].join('\n'),
-  RUNTIME_ARTIFACTS_RENAME,
-  RUNTIME_ARTIFACTS_NEW_DDL,
-  RUNTIME_ARTIFACTS_LEGACY_INDEX,
-  RUNTIME_ARTIFACTS_CANONICAL_INDEX,
-  RUNTIME_ARTIFACTS_COPY,
-  RUNTIME_ARTIFACTS_DROP_LEGACY,
 ]);
 
 const CANONICAL_SOURCE = P6_L1B_016_DDL_STATEMENTS.join('\n');

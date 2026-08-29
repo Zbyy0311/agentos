@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -7,6 +8,14 @@ import { join } from 'node:path';
 import { SqliteStore } from './SqliteStore.js';
 import { WorkspaceAdmissionRepository } from './WorkspaceAdmissionRepository.js';
 import { WorkspaceGitObservationRepository } from './WorkspaceGitObservationRepository.js';
+
+const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
+  DatabaseSync: new (path: string) => {
+    exec(sql: string): void;
+    prepare(sql: string): { get(...p: unknown[]): unknown; run(...p: unknown[]): unknown; all(...p: unknown[]): unknown[] };
+    close(): void;
+  };
+};
 
 /**
  * P6-L1B persistence-slice tests. They cover:
@@ -204,5 +213,142 @@ test('git observation repository insert/findById/listByAdmission', () => {
     const byAdmission = fx.gitRepo.listByAdmission('ws-a', 'adm-1');
     assert.equal(byAdmission.length, 1);
     assert.equal(byAdmission[0].id, 'obs-1');
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// L1B-R20: real cross-connection CAS (HIGH 5). Two independent DatabaseSync
+// connections to the same file-backed 016 DB, each with PRAGMA foreign_keys
+// ON, both observing version = 1: exactly one CAS update wins.
+// ---------------------------------------------------------------------------
+test('L1B-R20 two-connection stale CAS has exactly one winner', () => {
+  const fx = createFixture();
+  const dbPath = join(fx.root, '.agentos', 'agentos.sqlite');
+  let connB: InstanceType<typeof DatabaseSync> | undefined;
+  try {
+    seedCanonicalRun(fx);
+    fx.admissionRepo.insertAdmission(admissionRow({ state: 'REQUESTED' }));
+    // Connection A is the SqliteStore's own handle (foreign_keys already ON).
+    const pragmaA = fx.store.getDatabase().prepare('PRAGMA foreign_keys').get() as { foreign_keys: number };
+    assert.equal(pragmaA.foreign_keys, 1);
+    connB = new DatabaseSync(dbPath);
+    connB.exec('PRAGMA foreign_keys = ON');
+    connB.exec('PRAGMA busy_timeout = 5000');
+    const pragmaB = connB.prepare('PRAGMA foreign_keys').get() as { foreign_keys: number };
+    assert.equal(pragmaB.foreign_keys, 1);
+    const repoA = new WorkspaceAdmissionRepository(fx.store.getDatabase());
+    const repoB = new WorkspaceAdmissionRepository(connB);
+    // Both connections observe version = 1 before either writes.
+    assert.equal(repoA.findById('ws-a', 'adm-1')?.version, 1);
+    assert.equal(repoB.findById('ws-a', 'adm-1')?.version, 1);
+    const winA = repoA.updateState({
+      workspaceId: 'ws-a', admissionId: 'adm-1', expectedVersion: 1, state: 'GRANTED',
+      queueReason: null, releaseReason: null, grantedAt: NOW2, releasedAt: null,
+      effectiveMutationClass: 'MODIFYING', enforcementEvidenceJson: null, updatedAt: NOW2,
+    });
+    assert.equal(winA, true);
+    const winB = repoB.updateState({
+      workspaceId: 'ws-a', admissionId: 'adm-1', expectedVersion: 1, state: 'RELEASED',
+      queueReason: null, releaseReason: 'stale-loser', grantedAt: NOW2, releasedAt: NOW2,
+      effectiveMutationClass: 'MODIFYING', enforcementEvidenceJson: null, updatedAt: NOW2,
+    });
+    assert.equal(winB, false);
+    // Final row: version = 2 and only A's mutation persisted (from BOTH views).
+    const finalA = repoA.findById('ws-a', 'adm-1');
+    const finalB = repoB.findById('ws-a', 'adm-1');
+    assert.equal(finalA?.version, 2);
+    assert.equal(finalA?.state, 'GRANTED');
+    assert.equal(finalB?.version, 2);
+    assert.equal(finalB?.state, 'GRANTED');
+    assert.equal(finalB?.releaseReason, null);
+  } finally {
+    connB?.close();
+    fx.close();
+  }
+});
+
+// ---------------------------------------------------------------------------
+// L1B-R21..R24: canonical artifact read contract (HIGH 6). The legacy getter
+// only sees LEGACY rows and never misdecodes a canonical row; the canonical
+// getter returns the additive provenance with honestly-nullable identity.
+// ---------------------------------------------------------------------------
+test('L1B-R21 legacy get returns legacy row unchanged', () => {
+  const fx = createFixture();
+  try {
+    fx.store.createRuntimeArtifact({
+      id: 'artifact-r21', workspaceId: 'ws-a', runId: 'agentrun-a', sourceExecutionId: 'exec-a', agentId: 'agent-a',
+      type: 'log', title: 'legacy log', summary: 's', originalPath: '/r21.log', mimeType: 'text/plain',
+      sizeBytes: 3, sha256: 'e'.repeat(64), contentAvailable: true, createdAt: NOW,
+    }, 'sink/r21');
+    const rec = fx.store.getRuntimeArtifactRecord('ws-a', 'artifact-r21');
+    assert.ok(rec);
+    assert.equal(rec.artifact.runId, 'agentrun-a');
+    assert.equal(rec.artifact.sourceExecutionId, 'exec-a');
+    assert.equal(rec.artifact.agentId, 'agent-a');
+    assert.equal(rec.storageKey, 'sink/r21');
+  } finally { fx.close(); }
+});
+
+test('L1B-R22 legacy get does not misdecode canonical row', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    fx.store.createCanonicalRuntimeArtifact({
+      id: 'artifact-r22', workspaceId: 'ws-a', type: 'diff', title: 'canonical diff',
+      sizeBytes: 5, sha256: 'f'.repeat(64), contentAvailable: true, createdAt: NOW,
+    }, { kind: 'CANONICAL', canonicalRunId: 'run-a' }, 'sink/r22');
+    // The legacy getter must NOT return a canonical row behind a legacy type
+    // whose runId/sourceExecutionId/agentId would be NULL.
+    assert.equal(fx.store.getRuntimeArtifactRecord('ws-a', 'artifact-r22'), undefined);
+    // And the canonical row is never listed as a legacy run artifact.
+    assert.equal(fx.store.listRuntimeArtifacts('ws-a', 'run-a').length, 0);
+  } finally { fx.close(); }
+});
+
+test('L1B-R23 canonical get returns canonical provenance correctly', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    fx.store.createCanonicalRuntimeArtifact({
+      id: 'artifact-r23', workspaceId: 'ws-a', type: 'diff', title: 'canonical diff', summary: 'sum',
+      originalPath: '/d.patch', mimeType: 'text/plain', sizeBytes: 9, sha256: 'a'.repeat(64),
+      contentAvailable: true, createdAt: NOW,
+    }, { kind: 'CANONICAL', canonicalRunId: 'run-a', sourceStageId: 'stage-a' }, 'sink/r23');
+    const rec = fx.store.getCanonicalRuntimeArtifactRecord('ws-a', 'artifact-r23');
+    assert.ok(rec);
+    assert.equal(rec.provenanceKind, 'CANONICAL');
+    assert.equal(rec.canonicalRunId, 'run-a');
+    assert.equal(rec.sourceStageId, 'stage-a');
+    assert.equal(rec.sourceProcessId, null);
+    assert.equal(rec.sourceOperationId, null);
+    assert.equal(rec.storageKey, 'sink/r23');
+    assert.equal(rec.type, 'diff');
+    assert.equal(rec.sizeBytes, 9);
+    assert.equal(rec.contentAvailable, true);
+  } finally { fx.close(); }
+});
+
+test('L1B-R24 canonical getter preserves nullable agent identity', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    // agentId omitted entirely: no fabricated identity.
+    fx.store.createCanonicalRuntimeArtifact({
+      id: 'artifact-r24', workspaceId: 'ws-a', type: 'report', title: 'canonical report',
+      sizeBytes: 2, contentAvailable: false, createdAt: NOW,
+    }, { kind: 'CANONICAL', canonicalRunId: 'run-a' }, null);
+    const rec = fx.store.getCanonicalRuntimeArtifactRecord('ws-a', 'artifact-r24');
+    assert.ok(rec);
+    assert.equal(rec.agentId, null);
+    assert.equal(rec.storageKey, null);
+    // And an explicit (nullable) agent identity round-trips as itself.
+    fx.store.createCanonicalRuntimeArtifact({
+      id: 'artifact-r24b', workspaceId: 'ws-a', type: 'report', title: 'canonical report 2',
+      agentId: 'agent-a',
+      sizeBytes: 4, contentAvailable: true, createdAt: NOW,
+    }, { kind: 'CANONICAL', canonicalRunId: 'run-a' }, null);
+    const withAgent = fx.store.getCanonicalRuntimeArtifactRecord('ws-a', 'artifact-r24b');
+    assert.ok(withAgent);
+    assert.equal(withAgent.agentId, 'agent-a');
   } finally { fx.close(); }
 });

@@ -1,3 +1,8 @@
+import type {
+  AdmissionSubjectKind,
+  RequestedMutationClass,
+  EffectiveMutationClass,
+} from '@agentos/shared';
 import type { TransactionDatabase } from './Transaction.js';
 
 /**
@@ -10,9 +15,12 @@ import type { TransactionDatabase } from './Transaction.js';
  * rows/fields the later slices compute.
  */
 
-export type AdmissionSubjectKind = 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
-export type AdmissionMutationClass = 'READ_ONLY' | 'MODIFYING';
-export type AdmissionState = 'REQUESTED' | 'QUEUED' | 'GRANTED' | 'RELEASED';
+// P6-L1B reuses the authoritative frozen P6-L1A shared contracts for the
+// subject kind and mutation classes; only the persistence row shape and the
+// L1B state vocabulary (CANCELLED/FAILED added by the remediation) are local.
+export type { AdmissionSubjectKind } from '@agentos/shared';
+export type AdmissionMutationClass = RequestedMutationClass | EffectiveMutationClass;
+export type AdmissionState = 'REQUESTED' | 'QUEUED' | 'GRANTED' | 'RELEASED' | 'CANCELLED' | 'FAILED';
 
 export interface WorkspaceAdmissionRow {
   id: string;

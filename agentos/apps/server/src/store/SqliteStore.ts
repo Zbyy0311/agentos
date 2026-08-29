@@ -36,6 +36,7 @@ import type {
   RuntimeArtifact,
   Conversation,
   CanonicalArtifactProvenance,
+  CanonicalRuntimeArtifactRecord,
   ConversationMember,
   LegacyConversationMember,
   CollaborationRole,
@@ -317,6 +318,26 @@ interface RuntimeArtifactRow {
   run_id: string;
   source_execution_id: string;
   agent_id: string;
+  artifact_type: RuntimeArtifact['type'];
+  title: string;
+  summary: string | null;
+  original_path: string | null;
+  storage_key: string | null;
+  mime_type: string | null;
+  size_bytes: number;
+  sha256: string | null;
+  content_available: number;
+  created_at: string;
+}
+
+interface CanonicalRuntimeArtifactRow {
+  id: string;
+  workspace_id: string;
+  canonical_run_id: string;
+  agent_id: string | null;
+  source_process_id: string | null;
+  source_operation_id: string | null;
+  source_stage_id: string | null;
   artifact_type: RuntimeArtifact['type'];
   title: string;
   summary: string | null;
@@ -1771,9 +1792,50 @@ export class SqliteStore implements Store {
       SELECT id, workspace_id, run_id, source_execution_id, agent_id, artifact_type, title, summary,
         original_path, storage_key, mime_type, size_bytes, sha256, content_available, created_at
       FROM runtime_artifacts
-      WHERE workspace_id = ? AND id = ?
+      WHERE workspace_id = ? AND id = ? AND provenance_kind = 'LEGACY'
     `).get(workspaceId, artifactId) as RuntimeArtifactRow | undefined;
     return row ? { artifact: this.toRuntimeArtifact(row), storageKey: row.storage_key } : undefined;
+  }
+
+  /**
+   * P6-L1B: explicit canonical Artifact read contract. Legacy reads above
+   * only ever see provenance_kind = 'LEGACY' rows, so a canonical row (whose
+   * run_id/source_execution_id/agent_id may be NULL) is never misdecoded into
+   * the non-null legacy RuntimeArtifact contract. Canonical rows are read
+   * through this getter, where optional provenance and agent identity fields
+   * are honestly nullable.
+   */
+  getCanonicalRuntimeArtifactRecord(workspaceId: string, artifactId: string): CanonicalRuntimeArtifactRecord | undefined {
+    const row = this.database.prepare(`
+      SELECT id, workspace_id, canonical_run_id, agent_id, source_process_id, source_operation_id,
+        source_stage_id, artifact_type, title, summary, original_path, storage_key, mime_type,
+        size_bytes, sha256, content_available, created_at
+      FROM runtime_artifacts
+      WHERE workspace_id = ? AND id = ? AND provenance_kind = 'CANONICAL'
+    `).get(workspaceId, artifactId) as CanonicalRuntimeArtifactRow | undefined;
+    if (!row) {
+      return undefined;
+    }
+    return {
+      provenanceKind: 'CANONICAL',
+      id: row.id,
+      workspaceId: row.workspace_id,
+      canonicalRunId: row.canonical_run_id,
+      agentId: row.agent_id,
+      sourceProcessId: row.source_process_id,
+      sourceOperationId: row.source_operation_id,
+      sourceStageId: row.source_stage_id,
+      type: row.artifact_type,
+      title: row.title,
+      summary: row.summary,
+      originalPath: row.original_path,
+      storageKey: row.storage_key,
+      mimeType: row.mime_type,
+      sizeBytes: row.size_bytes,
+      sha256: row.sha256,
+      contentAvailable: row.content_available === 1,
+      createdAt: row.created_at,
+    };
   }
 
   deleteRuntimeArtifact(workspaceId: string, artifactId: string): void {
