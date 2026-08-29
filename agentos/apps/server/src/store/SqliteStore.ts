@@ -689,6 +689,13 @@ export class SqliteStore implements Store {
 
   deleteWorkspace(workspaceId: string): void {
     inTransaction(this.database, () => {
+      // P6-L1B RESTRICT graph: Observations bind Admissions and may reference
+      // diff Artifacts; Admissions and canonical Artifacts bind their subject
+      // Run plus the Workspace. Remove children first inside this existing
+      // transaction so the frozen safety FKs remain restrictive.
+      this.database.prepare('DELETE FROM workspace_git_observations WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare('DELETE FROM workspace_admissions WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare('DELETE FROM runtime_artifacts WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM memory_fts WHERE memory_id IN (SELECT id FROM memories WHERE workspace_id = ?)').run(workspaceId);
       this.database.prepare('DELETE FROM memories WHERE workspace_id = ?').run(workspaceId);
@@ -919,6 +926,30 @@ export class SqliteStore implements Store {
     this.assertConversationWorkspace(conversationId, workspaceId);
     this.database.exec('BEGIN');
     try {
+      // Only Admissions for legacy Runs owned by this Conversation are in
+      // scope. Their bound Observations must be removed first because both
+      // sides are protected by migration 016 RESTRICT FKs.
+      this.database.prepare(`
+        DELETE FROM workspace_git_observations
+        WHERE workspace_id = ?
+          AND admission_id IN (
+            SELECT id
+            FROM workspace_admissions
+            WHERE workspace_id = ?
+              AND subject_kind = 'LEGACY_AGENT_RUN'
+              AND legacy_run_id IN (
+                SELECT id FROM agent_runs WHERE workspace_id = ? AND conversation_id = ?
+              )
+          )
+      `).run(workspaceId, workspaceId, workspaceId, conversationId);
+      this.database.prepare(`
+        DELETE FROM workspace_admissions
+        WHERE workspace_id = ?
+          AND subject_kind = 'LEGACY_AGENT_RUN'
+          AND legacy_run_id IN (
+            SELECT id FROM agent_runs WHERE workspace_id = ? AND conversation_id = ?
+          )
+      `).run(workspaceId, workspaceId, conversationId);
       this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ? AND conversation_id = ?').run(workspaceId, conversationId);
       this.database.prepare(`
         DELETE FROM execution_events
@@ -1252,6 +1283,26 @@ export class SqliteStore implements Store {
     if (!run) return;
     this.database.exec('BEGIN');
     try {
+      // A legacy Run cannot be removed while its Admission or bound Git
+      // Observation exists. Scope both deletes to the exact Workspace + Run
+      // so another Run's persisted Admission authority is untouched.
+      this.database.prepare(`
+        DELETE FROM workspace_git_observations
+        WHERE workspace_id = ?
+          AND admission_id IN (
+            SELECT id
+            FROM workspace_admissions
+            WHERE workspace_id = ?
+              AND subject_kind = 'LEGACY_AGENT_RUN'
+              AND legacy_run_id = ?
+          )
+      `).run(workspaceId, workspaceId, runId);
+      this.database.prepare(`
+        DELETE FROM workspace_admissions
+        WHERE workspace_id = ?
+          AND subject_kind = 'LEGACY_AGENT_RUN'
+          AND legacy_run_id = ?
+      `).run(workspaceId, runId);
       this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ? AND run_id = ?').run(workspaceId, runId);
       this.database.prepare('DELETE FROM run_event_sequences WHERE run_id = ?').run(runId);
       this.database.prepare('UPDATE messages SET run_id = NULL WHERE workspace_id = ? AND run_id = ?').run(workspaceId, runId);
