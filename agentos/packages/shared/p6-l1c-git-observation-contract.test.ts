@@ -6,6 +6,7 @@ import {
   CANONICAL_DIFF_ARTIFACT_CRASH_POLICY_V1,
   GIT_CHANGED_FILES_LIMITS_V1,
   GIT_CHANGED_FILES_SCHEMA_VERSION,
+  GIT_COMMAND_ARGUMENTS_V1,
   GIT_COMMAND_DIAGNOSTIC_LIMIT_BYTES_V1,
   GIT_COMMAND_EXECUTION_CONTRACT_V1,
   GIT_COMMAND_STDOUT_LIMITS_V1,
@@ -280,21 +281,30 @@ test('L1C-M1-R03 repository root output is one valid UTF-8 absolute record', () 
 });
 
 test('L1C-M1-R04 HEAD classifier distinguishes valid, exact unborn and unavailable results', () => {
-  const unbornDiagnostic =
+  assert.deepEqual(GIT_COMMAND_ARGUMENTS_V1.head_commit, [
+    'rev-parse',
+    '--verify',
+    'HEAD^{commit}',
+  ]);
+
+  const unbornDiagnostic = 'fatal: Needed a single revision';
+  const oldRevParseHeadDiagnostic =
     "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\n"
     + "Use '--' to separate paths from revisions, like this:\n"
     + "'git <command> [<revision>...] -- [<file>...]'";
   assert.equal(GIT_C_LOCALE_UNBORN_HEAD_DIAGNOSTIC_V1, unbornDiagnostic);
 
-  const valid = classifyHeadCommitResultV1(exited(0, `${'a'.repeat(40)}\n`));
-  assert.deepEqual(valid, { state: 'available', commitSha: commitId('a'.repeat(40)) });
+  const valid40 = classifyHeadCommitResultV1(exited(0, `${'a'.repeat(40)}\n`));
+  assert.deepEqual(valid40, { state: 'available', commitSha: commitId('a'.repeat(40)) });
+  const valid64 = classifyHeadCommitResultV1(exited(0, `${'b'.repeat(64)}\r\n`));
+  assert.deepEqual(valid64, { state: 'available', commitSha: commitId('b'.repeat(64)) });
 
   const classifiedSnapshot = classifyGitObservationV1({
     trigger: 'on_demand',
     cwd: 'C:/workspace',
     repository: { observationState: 'GIT', repositoryRoot: 'C:/workspace', error: null },
     status: completeStatus([]),
-    head: valid,
+    head: valid40,
     diff: { diffState: 'not_requested', subfailure: null },
   });
   assert.equal(classifiedSnapshot.observationState, 'GIT');
@@ -303,6 +313,27 @@ test('L1C-M1-R04 HEAD classifier distinguishes valid, exact unborn and unavailab
 
   const unborn = classifyHeadCommitResultV1(exited(128, '', `${unbornDiagnostic}\n`));
   assert.deepEqual(unborn, { state: 'unborn' });
+
+  const oldDiagnostic = classifyHeadCommitResultV1(exited(128, 'HEAD\n', `${oldRevParseHeadDiagnostic}\n`));
+  assert.equal(oldDiagnostic.state, 'unavailable');
+  if (oldDiagnostic.state === 'unavailable') assert.equal(oldDiagnostic.error.code, 'GIT_HEAD_UNAVAILABLE');
+
+  const truncated = classifyHeadCommitResultV1({
+    ...exited(128, '', `${unbornDiagnostic}\n`),
+    stderrDiagnosticTruncated: true,
+  });
+  assert.equal(truncated.state, 'unavailable');
+  if (truncated.state === 'unavailable') assert.equal(truncated.error.code, 'GIT_HEAD_UNAVAILABLE');
+
+  for (const stderr of [
+    `fatal: Needed a single revision extra\n`,
+    `prefix\nfatal: Needed a single revision\n`,
+    `fatal: Needed a single revision\nextra\n`,
+  ]) {
+    const result = classifyHeadCommitResultV1(exited(128, '', stderr));
+    assert.equal(result.state, 'unavailable', stderr);
+    if (result.state === 'unavailable') assert.equal(result.error.code, 'GIT_HEAD_UNAVAILABLE', stderr);
+  }
 
   const unknown128 = classifyHeadCommitResultV1(exited(128, '', 'fatal: malformed object database\n'));
   assert.equal(unknown128.state, 'unavailable');

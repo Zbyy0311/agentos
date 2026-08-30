@@ -319,6 +319,18 @@ export const GIT_COMMAND_EXECUTION_CONTRACT_V1 = Object.freeze({
  */
 export const GIT_COMMAND_STDOUT_LIMITS_V1 = GIT_COMMAND_EXECUTION_CONTRACT_V1.stdoutMaximumBytes;
 
+/**
+ * Frozen future adapter argv templates. The canonical HEAD probe verifies a
+ * commit object, not arbitrary symbolic revision text.
+ */
+export const GIT_COMMAND_ARGUMENTS_V1 = Object.freeze({
+  head_commit: Object.freeze([
+    'rev-parse',
+    '--verify',
+    'HEAD^{commit}',
+  ] as const),
+} as const);
+
 /** Maximum adapter-owned stderr diagnostic bytes retained per command result. */
 export const GIT_COMMAND_DIAGNOSTIC_LIMIT_BYTES_V1 = 16 * 1024;
 
@@ -893,11 +905,9 @@ export type GitHeadCommandSemanticResultV1 =
       readonly error: GitObservationFailureV1;
     };
 
-/** Exact C-locale evidence reviewed for an unborn `git rev-parse HEAD`. */
+/** Exact C-locale evidence reviewed for the frozen unborn HEAD probe. */
 export const GIT_C_LOCALE_UNBORN_HEAD_DIAGNOSTIC_V1 =
-  "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\n"
-  + "Use '--' to separate paths from revisions, like this:\n"
-  + "'git <command> [<revision>...] -- [<file>...]'";
+  'fatal: Needed a single revision';
 
 function unavailableHead(code: GitObservationErrorCodeV1): GitHeadCommandSemanticResultV1 {
   return { state: 'unavailable', error: failure('head', code) };
