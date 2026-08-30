@@ -35,6 +35,8 @@ import type {
   PreferenceApplication,
   RuntimeArtifact,
   Conversation,
+  CanonicalArtifactProvenance,
+  CanonicalRuntimeArtifactRecord,
   ConversationMember,
   LegacyConversationMember,
   CollaborationRole,
@@ -316,6 +318,26 @@ interface RuntimeArtifactRow {
   run_id: string;
   source_execution_id: string;
   agent_id: string;
+  artifact_type: RuntimeArtifact['type'];
+  title: string;
+  summary: string | null;
+  original_path: string | null;
+  storage_key: string | null;
+  mime_type: string | null;
+  size_bytes: number;
+  sha256: string | null;
+  content_available: number;
+  created_at: string;
+}
+
+interface CanonicalRuntimeArtifactRow {
+  id: string;
+  workspace_id: string;
+  canonical_run_id: string;
+  agent_id: string | null;
+  source_process_id: string | null;
+  source_operation_id: string | null;
+  source_stage_id: string | null;
   artifact_type: RuntimeArtifact['type'];
   title: string;
   summary: string | null;
@@ -667,6 +689,13 @@ export class SqliteStore implements Store {
 
   deleteWorkspace(workspaceId: string): void {
     inTransaction(this.database, () => {
+      // P6-L1B RESTRICT graph: Observations bind Admissions and may reference
+      // diff Artifacts; Admissions and canonical Artifacts bind their subject
+      // Run plus the Workspace. Remove children first inside this existing
+      // transaction so the frozen safety FKs remain restrictive.
+      this.database.prepare('DELETE FROM workspace_git_observations WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare('DELETE FROM workspace_admissions WHERE workspace_id = ?').run(workspaceId);
+      this.database.prepare('DELETE FROM runtime_artifacts WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM memory_fts WHERE memory_id IN (SELECT id FROM memories WHERE workspace_id = ?)').run(workspaceId);
       this.database.prepare('DELETE FROM memories WHERE workspace_id = ?').run(workspaceId);
@@ -897,6 +926,30 @@ export class SqliteStore implements Store {
     this.assertConversationWorkspace(conversationId, workspaceId);
     this.database.exec('BEGIN');
     try {
+      // Only Admissions for legacy Runs owned by this Conversation are in
+      // scope. Their bound Observations must be removed first because both
+      // sides are protected by migration 016 RESTRICT FKs.
+      this.database.prepare(`
+        DELETE FROM workspace_git_observations
+        WHERE workspace_id = ?
+          AND admission_id IN (
+            SELECT id
+            FROM workspace_admissions
+            WHERE workspace_id = ?
+              AND subject_kind = 'LEGACY_AGENT_RUN'
+              AND legacy_run_id IN (
+                SELECT id FROM agent_runs WHERE workspace_id = ? AND conversation_id = ?
+              )
+          )
+      `).run(workspaceId, workspaceId, workspaceId, conversationId);
+      this.database.prepare(`
+        DELETE FROM workspace_admissions
+        WHERE workspace_id = ?
+          AND subject_kind = 'LEGACY_AGENT_RUN'
+          AND legacy_run_id IN (
+            SELECT id FROM agent_runs WHERE workspace_id = ? AND conversation_id = ?
+          )
+      `).run(workspaceId, workspaceId, conversationId);
       this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ? AND conversation_id = ?').run(workspaceId, conversationId);
       this.database.prepare(`
         DELETE FROM execution_events
@@ -1230,6 +1283,26 @@ export class SqliteStore implements Store {
     if (!run) return;
     this.database.exec('BEGIN');
     try {
+      // A legacy Run cannot be removed while its Admission or bound Git
+      // Observation exists. Scope both deletes to the exact Workspace + Run
+      // so another Run's persisted Admission authority is untouched.
+      this.database.prepare(`
+        DELETE FROM workspace_git_observations
+        WHERE workspace_id = ?
+          AND admission_id IN (
+            SELECT id
+            FROM workspace_admissions
+            WHERE workspace_id = ?
+              AND subject_kind = 'LEGACY_AGENT_RUN'
+              AND legacy_run_id = ?
+          )
+      `).run(workspaceId, workspaceId, runId);
+      this.database.prepare(`
+        DELETE FROM workspace_admissions
+        WHERE workspace_id = ?
+          AND subject_kind = 'LEGACY_AGENT_RUN'
+          AND legacy_run_id = ?
+      `).run(workspaceId, runId);
       this.database.prepare('DELETE FROM agent_events WHERE workspace_id = ? AND run_id = ?').run(workspaceId, runId);
       this.database.prepare('DELETE FROM run_event_sequences WHERE run_id = ?').run(runId);
       this.database.prepare('UPDATE messages SET run_id = NULL WHERE workspace_id = ? AND run_id = ?').run(workspaceId, runId);
@@ -1682,13 +1755,73 @@ export class SqliteStore implements Store {
     }
     this.database.prepare(`
       INSERT INTO runtime_artifacts (
-        id, workspace_id, run_id, source_execution_id, agent_id, artifact_type, title, summary,
+        id, workspace_id, provenance_kind, run_id, source_execution_id, agent_id, artifact_type, title, summary,
         original_path, storage_key, mime_type, size_bytes, sha256, content_available, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, 'LEGACY', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       artifact.id, artifact.workspaceId, artifact.runId, artifact.sourceExecutionId, artifact.agentId, artifact.type,
       artifact.title, artifact.summary ?? null, artifact.originalPath ?? null, storageKey, artifact.mimeType ?? null,
       artifact.sizeBytes, artifact.sha256 ?? null, artifact.contentAvailable ? 1 : 0, artifact.createdAt,
+    );
+  }
+
+  /**
+   * P6-L1B: additive canonical Artifact creation. A canonical Artifact has
+   * provenance_kind = CANONICAL, run_id/source_execution_id = NULL, and MAY
+   * omit agent_id entirely (no fake agent_run / Execution / agent identity is
+   * fabricated). The canonical Run must belong to the same Workspace, and any
+   * optional canonical Process/Operation/Stage reference must resolve to the
+   * owning Workspace/Run. Legacy createRuntimeArtifact is unchanged.
+   */
+  createCanonicalRuntimeArtifact(
+    input: Omit<RuntimeArtifact, 'runId' | 'sourceExecutionId' | 'agentId'> & { agentId?: string },
+    provenance: CanonicalArtifactProvenance,
+    storageKey: string | null,
+  ): void {
+    const canonicalRun = this.database.prepare(
+      'SELECT id FROM runs WHERE id = ? AND workspace_id = ?',
+    ).get(provenance.canonicalRunId, input.workspaceId);
+    if (!canonicalRun) {
+      throw new Error('Canonical artifact provenance is invalid: canonical Run does not belong to the Workspace');
+    }
+    // Optional canonical provenance must not point across the owning Run/Workspace.
+    if (provenance.sourceProcessId !== undefined) {
+      const proc = this.database.prepare(
+        'SELECT id FROM runtime_processes WHERE id = ? AND workspace_id = ? AND run_id = ?',
+      ).get(provenance.sourceProcessId, input.workspaceId, provenance.canonicalRunId);
+      if (!proc) {
+        throw new Error('Canonical artifact provenance is invalid: source Process is outside the owning Run/Workspace');
+      }
+    }
+    if (provenance.sourceOperationId !== undefined) {
+      const op = this.database.prepare(
+        'SELECT id FROM operations WHERE id = ? AND workspace_id = ? AND run_id = ?',
+      ).get(provenance.sourceOperationId, input.workspaceId, provenance.canonicalRunId);
+      if (!op) {
+        throw new Error('Canonical artifact provenance is invalid: source Operation is outside the owning Run/Workspace');
+      }
+    }
+    if (provenance.sourceStageId !== undefined) {
+      const stage = this.database.prepare(
+        'SELECT id FROM run_stages WHERE id = ? AND run_id = ?',
+      ).get(provenance.sourceStageId, provenance.canonicalRunId);
+      if (!stage) {
+        throw new Error('Canonical artifact provenance is invalid: source Stage is outside the owning Run');
+      }
+    }
+    this.database.prepare(
+      'INSERT INTO runtime_artifacts ('
+        + 'id, workspace_id, provenance_kind, run_id, canonical_run_id, source_execution_id,'
+        + ' agent_id, source_process_id, source_operation_id, source_stage_id,'
+        + ' artifact_type, title, summary, original_path, storage_key, mime_type,'
+        + ' size_bytes, sha256, content_available, created_at'
+        + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(
+      input.id, input.workspaceId, 'CANONICAL', null, provenance.canonicalRunId, null,
+      input.agentId ?? null,
+      provenance.sourceProcessId ?? null, provenance.sourceOperationId ?? null, provenance.sourceStageId ?? null,
+      input.type, input.title, input.summary ?? null, input.originalPath ?? null, storageKey, input.mimeType ?? null,
+      input.sizeBytes, input.sha256 ?? null, input.contentAvailable ? 1 : 0, input.createdAt,
     );
   }
 
@@ -1710,9 +1843,50 @@ export class SqliteStore implements Store {
       SELECT id, workspace_id, run_id, source_execution_id, agent_id, artifact_type, title, summary,
         original_path, storage_key, mime_type, size_bytes, sha256, content_available, created_at
       FROM runtime_artifacts
-      WHERE workspace_id = ? AND id = ?
+      WHERE workspace_id = ? AND id = ? AND provenance_kind = 'LEGACY'
     `).get(workspaceId, artifactId) as RuntimeArtifactRow | undefined;
     return row ? { artifact: this.toRuntimeArtifact(row), storageKey: row.storage_key } : undefined;
+  }
+
+  /**
+   * P6-L1B: explicit canonical Artifact read contract. Legacy reads above
+   * only ever see provenance_kind = 'LEGACY' rows, so a canonical row (whose
+   * run_id/source_execution_id/agent_id may be NULL) is never misdecoded into
+   * the non-null legacy RuntimeArtifact contract. Canonical rows are read
+   * through this getter, where optional provenance and agent identity fields
+   * are honestly nullable.
+   */
+  getCanonicalRuntimeArtifactRecord(workspaceId: string, artifactId: string): CanonicalRuntimeArtifactRecord | undefined {
+    const row = this.database.prepare(`
+      SELECT id, workspace_id, canonical_run_id, agent_id, source_process_id, source_operation_id,
+        source_stage_id, artifact_type, title, summary, original_path, storage_key, mime_type,
+        size_bytes, sha256, content_available, created_at
+      FROM runtime_artifacts
+      WHERE workspace_id = ? AND id = ? AND provenance_kind = 'CANONICAL'
+    `).get(workspaceId, artifactId) as CanonicalRuntimeArtifactRow | undefined;
+    if (!row) {
+      return undefined;
+    }
+    return {
+      provenanceKind: 'CANONICAL',
+      id: row.id,
+      workspaceId: row.workspace_id,
+      canonicalRunId: row.canonical_run_id,
+      agentId: row.agent_id,
+      sourceProcessId: row.source_process_id,
+      sourceOperationId: row.source_operation_id,
+      sourceStageId: row.source_stage_id,
+      type: row.artifact_type,
+      title: row.title,
+      summary: row.summary,
+      originalPath: row.original_path,
+      storageKey: row.storage_key,
+      mimeType: row.mime_type,
+      sizeBytes: row.size_bytes,
+      sha256: row.sha256,
+      contentAvailable: row.content_available === 1,
+      createdAt: row.created_at,
+    };
   }
 
   deleteRuntimeArtifact(workspaceId: string, artifactId: string): void {

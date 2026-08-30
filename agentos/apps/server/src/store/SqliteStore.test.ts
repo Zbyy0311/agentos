@@ -415,7 +415,7 @@ test('records the tombstone schema through MigrationRunner and keeps it after re
     const migrations = store.getDatabase().prepare(
       'SELECT migration_id FROM _schema_migrations ORDER BY migration_id',
     ).all() as Array<{ migration_id: string }>;
-    assert.deepEqual(migrations.map(row => row.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015']);
+    assert.deepEqual(migrations.map(row => row.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016']);
     store.deleteWorkspace('workspace-a');
     store.close();
     store = new SqliteStore(root);
@@ -784,6 +784,14 @@ test('migrates legacy executions without reducing historical row counts', () => 
     database.exec('PRAGMA foreign_keys = OFF');
     database.exec('DELETE FROM run_steps');
     database.exec('DELETE FROM agent_runs');
+    // Drop the 016 tables that hold FK references INTO agent_runs before dropping
+    // it; the test then rebuilds a legacy agent_runs WITHOUT the composite
+    // (id, workspace_id) index those FKs require. Leaving them behind would
+    // surface a foreign key mismatch at the next startup integrity check.
+    database.exec('DELETE FROM workspace_git_observations');
+    database.exec('DELETE FROM workspace_admissions');
+    database.exec('DROP TABLE IF EXISTS workspace_git_observations');
+    database.exec('DROP TABLE IF EXISTS workspace_admissions');
     database.exec('DROP TABLE run_steps');
     database.exec('DROP TABLE agent_runs');
     database.exec(`CREATE TABLE agent_runs (

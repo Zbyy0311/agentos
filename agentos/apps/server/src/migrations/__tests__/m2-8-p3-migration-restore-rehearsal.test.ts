@@ -42,7 +42,7 @@ const { DatabaseSync } = createRequire(import.meta.url)('node:sqlite') as {
   DatabaseSync: new (path: string, options?: { readOnly?: boolean }) => SqliteDb;
 };
 
-const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
+const EXPECTED_MIGRATIONS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016'];
 const NOW = '2026-07-31T00:00:00.000Z';
 const KEY_TABLES = [
   'agent_profiles',
