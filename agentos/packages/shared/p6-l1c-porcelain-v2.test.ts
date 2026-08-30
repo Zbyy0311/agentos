@@ -180,6 +180,38 @@ test('L1C-M1-28b public changed-files builder rejects unsafe paths too', () => {
   );
 });
 
+test('L1C-M1-R05 rejects Windows separators in every Git semantic path', () => {
+  for (const path of ['..\\secret.txt', 'src\\..\\secret.txt', 'packages\\app\\file.ts']) {
+    const result = parse(untracked(path));
+    assert.equal(result.ok, false, path);
+    if (!result.ok) assert.equal(result.error.code, 'GIT_STATUS_PATH_INVALID', path);
+  }
+
+  const nestedTraversal = parse(untracked('packages/app/..\\sibling/secret.txt'), 'packages/app');
+  assert.equal(nestedTraversal.ok, false);
+  if (!nestedTraversal.ok) assert.equal(nestedTraversal.error.code, 'GIT_STATUS_PATH_INVALID');
+
+  const renamePreviousTraversal = parse(renamed('R.', 'R100', 'new.ts', '..\\secret.txt'));
+  assert.equal(renamePreviousTraversal.ok, false);
+  if (!renamePreviousTraversal.ok) assert.equal(renamePreviousTraversal.error.code, 'GIT_STATUS_PATH_INVALID');
+
+  for (const [path, previousPath] of [
+    ['packages\\app\\file.ts', null],
+    ['safe.ts', 'src\\..\\old.ts'],
+  ] as const) {
+    assert.throws(
+      () => createChangedFilesV1([{
+        path,
+        kind: previousPath === null ? 'modified' : 'renamed',
+        staged: true,
+        unstaged: false,
+        previousPath,
+      }]),
+      /GIT_STATUS_PATH_INVALID/,
+    );
+  }
+});
+
 test('L1C-M1-29 converts repository-relative paths to nested Workspace-relative paths', () => {
   const result = parse(
     Buffer.concat([ordinary('M.', 'packages/app/src/a.ts'), untracked('packages/app/new.ts')]),

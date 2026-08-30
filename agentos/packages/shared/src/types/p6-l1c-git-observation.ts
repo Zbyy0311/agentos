@@ -9,6 +9,13 @@
 
 import type { RuntimeEventContext } from './m3-runtime.js';
 
+declare const GIT_COMMIT_OBJECT_ID_V1: unique symbol;
+
+/** A Git object ID accepted by the application contract (SHA-1 or SHA-256). */
+export type GitCommitObjectIdV1 = string & {
+  readonly [GIT_COMMIT_OBJECT_ID_V1]: 'GitCommitObjectIdV1';
+};
+
 export const GIT_OBSERVATION_SCHEMA_VERSION = 1 as const;
 export const GIT_CHANGED_FILES_SCHEMA_VERSION = 1 as const;
 
@@ -60,6 +67,7 @@ export type GitObservationErrorCodeV1 =
   | 'GIT_REPOSITORY_DISCOVERY_FAILED'
   | 'GIT_REPOSITORY_ROOT_INVALID'
   | 'GIT_HEAD_UNAVAILABLE'
+  | 'GIT_HEAD_OUTPUT_INVALID'
   | 'GIT_STATUS_PARSE_FAILED'
   | 'GIT_STATUS_PATH_INVALID'
   | 'GIT_STATUS_PATH_OUTSIDE_WORKSPACE'
@@ -111,8 +119,8 @@ export type GitObservationSnapshotV1 =
   | (GitObservationSnapshotBaseV1 & {
       readonly observationState: 'GIT';
       readonly repositoryRoot: string;
-      readonly baseCommitSha: string | null;
-      readonly finalCommitSha: string | null;
+      readonly baseCommitSha: GitCommitObjectIdV1 | null;
+      readonly finalCommitSha: GitCommitObjectIdV1 | null;
       readonly dirtyState: 'clean' | 'dirty';
       readonly statusCompleteness: 'complete';
       readonly changedFiles: ChangedFilesV1;
@@ -146,6 +154,15 @@ export type GitObservationSnapshotV1 =
 export interface GitChangedFilesLimitsV1 {
   readonly maximumEntries: number;
   readonly maximumSerializedBytes: number;
+}
+
+/**
+ * The only normal construction path for commit/object IDs. The brand keeps
+ * arbitrary revisions and option-like strings out of future command requests.
+ */
+export function parseGitCommitObjectIdV1(value: string): GitCommitObjectIdV1 | null {
+  if (!/^(?:[0-9a-f]{40}|[0-9a-f]{64})$/u.test(value)) return null;
+  return value as GitCommitObjectIdV1;
 }
 
 const KIND_PRECEDENCE: Readonly<Record<GitChangedFileKindV1, number>> = Object.freeze({
@@ -287,7 +304,20 @@ export const GIT_COMMAND_EXECUTION_CONTRACT_V1 = Object.freeze({
   }),
   pagerDisabled: true,
   externalDiffDisabled: true,
+  /** Raw stdout caps are enforced before a future adapter accumulates bytes. */
+  stdoutMaximumBytes: Object.freeze({
+    repository_root: 4096,
+    head_commit: 4096,
+    porcelain_v2_status: 1024 * 1024,
+    bounded_diff: 4 * 1024 * 1024,
+  } as const),
 } as const);
+
+/**
+ * Raw process-output limits are distinct from the parsed changed-files JSON
+ * limit. Every sealed read family has a finite, positive safe-integer cap.
+ */
+export const GIT_COMMAND_STDOUT_LIMITS_V1 = GIT_COMMAND_EXECUTION_CONTRACT_V1.stdoutMaximumBytes;
 
 /** Maximum adapter-owned stderr diagnostic bytes retained per command result. */
 export const GIT_COMMAND_DIAGNOSTIC_LIMIT_BYTES_V1 = 16 * 1024;
@@ -309,9 +339,8 @@ export type GitCommandRequestV1 =
   | {
       readonly family: 'bounded_diff';
       readonly cwd: string;
-      readonly baseCommitSha: string;
+      readonly baseCommitSha: GitCommitObjectIdV1;
       readonly workspacePathFromRepositoryRoot: string;
-      readonly maximumOutputBytes: number;
     };
 
 interface GitCommandResultBaseV1 {
@@ -387,6 +416,14 @@ function stripOneLineEnding(value: string): string {
   return value;
 }
 
+function hasProhibitedWindowsControl(value: string): boolean {
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 0x1f || code === 0x7f) return true;
+  }
+  return false;
+}
+
 function normalizeDiagnostic(value: Uint8Array): string {
   return (decodeUtf8(value, false) ?? '').replace(/\r\n/g, '\n').replace(/\n+$/u, '');
 }
@@ -422,12 +459,20 @@ export function classifyRepositoryDiscoveryResultV1(
   if (result.exitCode === 0) {
     const decoded = decodeUtf8(result.stdout, true);
     const root = decoded === null ? '' : stripOneLineEnding(decoded);
-    if (root.length === 0 || root.includes('\0') || !isAbsolutePathSyntax(root)) {
+    if (
+      root.length === 0
+      || root.includes('\0')
+      || hasProhibitedWindowsControl(root)
+      || !isAbsolutePathSyntax(root)
+    ) {
       return unavailableDiscovery('GIT_REPOSITORY_ROOT_INVALID');
     }
     return { observationState: 'GIT', repositoryRoot: root, error: null };
   }
 
+  if (result.stderrDiagnosticTruncated) {
+    return unavailableDiscovery('GIT_REPOSITORY_DISCOVERY_FAILED');
+  }
   const diagnostic = normalizeDiagnostic(result.stderrDiagnostic);
   if (diagnostic === C_LOCALE_NON_REPOSITORY_DIAGNOSTIC) {
     return { observationState: 'NOT_GIT', repositoryRoot: null, error: null };
@@ -483,6 +528,7 @@ function validateRepositoryRelativePath(path: string, allowEmpty: boolean): stri
   }
   if (
     path.includes('\0')
+    || path.includes('\\')
     || path.startsWith('/')
     || path.startsWith('\\')
     || /^[A-Za-z]:/u.test(path)
@@ -736,8 +782,8 @@ export function classifyDirtyStateV1(
 export type GitHeadObservationV1 =
   | {
       readonly state: 'available';
-      readonly baseCommitSha: string;
-      readonly finalCommitSha: string;
+      readonly baseCommitSha: GitCommitObjectIdV1;
+      readonly finalCommitSha: GitCommitObjectIdV1;
     }
   | { readonly state: 'unborn' }
   | {
@@ -806,13 +852,13 @@ export type ClassifyGitObservationInputV1 =
   | (ClassifyGitObservationInputBaseV1 & {
       readonly repository: Extract<GitRepositoryDiscoveryResultV1, { observationState: 'GIT' }>;
       readonly status: GitObservationStatusResultV1;
-      readonly head: Extract<GitHeadObservationV1, { state: 'unborn' }>;
+      readonly head: Extract<GitHeadSemanticResultV1, { state: 'unborn' }>;
       readonly diff: GitUnbornDiffOutcomeV1;
     })
   | (ClassifyGitObservationInputBaseV1 & {
       readonly repository: Extract<GitRepositoryDiscoveryResultV1, { observationState: 'GIT' }>;
       readonly status: GitObservationStatusResultV1;
-      readonly head: Exclude<GitHeadObservationV1, { state: 'unborn' }>;
+      readonly head: Exclude<GitHeadSemanticResultV1, { state: 'unborn' }>;
       readonly diff: GitDiffOutcomeV1;
     });
 
@@ -838,6 +884,61 @@ function unavailableSnapshot(
     subfailures: [],
   };
 }
+
+export type GitHeadCommandSemanticResultV1 =
+  | { readonly state: 'available'; readonly commitSha: GitCommitObjectIdV1 }
+  | { readonly state: 'unborn' }
+  | {
+      readonly state: 'unavailable';
+      readonly error: GitObservationFailureV1;
+    };
+
+/** Exact C-locale evidence reviewed for an unborn `git rev-parse HEAD`. */
+export const GIT_C_LOCALE_UNBORN_HEAD_DIAGNOSTIC_V1 =
+  "fatal: ambiguous argument 'HEAD': unknown revision or path not in the working tree.\n"
+  + "Use '--' to separate paths from revisions, like this:\n"
+  + "'git <command> [<revision>...] -- [<file>...]'";
+
+function unavailableHead(code: GitObservationErrorCodeV1): GitHeadCommandSemanticResultV1 {
+  return { state: 'unavailable', error: failure('head', code) };
+}
+
+/**
+ * Classifies one already-bounded HEAD command result. Only the reviewed
+ * diagnostic can prove unborn; exit code alone never can.
+ */
+export function classifyHeadCommitResultV1(
+  result: GitCommandResultV1,
+): GitHeadCommandSemanticResultV1 {
+  if (result.termination === 'timed_out') return unavailableHead('GIT_COMMAND_TIMEOUT');
+  if (result.termination === 'cancelled') return unavailableHead('GIT_COMMAND_CANCELLED');
+  if (result.termination === 'output_limit') return unavailableHead('GIT_OUTPUT_LIMIT_EXCEEDED');
+  if (result.termination === 'spawn_failed') {
+    if (result.spawnFailure === 'not_found') return unavailableHead('GIT_EXECUTABLE_UNAVAILABLE');
+    if (result.spawnFailure === 'permission') return unavailableHead('GIT_PERMISSION_DENIED');
+    return unavailableHead('GIT_COMMAND_SPAWN_FAILED');
+  }
+
+  if (result.exitCode === 0) {
+    const decoded = decodeUtf8(result.stdout, true);
+    const value = decoded === null ? null : parseGitCommitObjectIdV1(stripOneLineEnding(decoded));
+    return value === null
+      ? unavailableHead('GIT_HEAD_OUTPUT_INVALID')
+      : { state: 'available', commitSha: value };
+  }
+
+  if (!result.stderrDiagnosticTruncated) {
+    const diagnosticBytes = decodeUtf8(result.stderrDiagnostic, true);
+    const diagnostic = diagnosticBytes === null ? null : stripOneLineEnding(diagnosticBytes);
+    if (result.stdout.byteLength === 0 && diagnostic === GIT_C_LOCALE_UNBORN_HEAD_DIAGNOSTIC_V1) {
+      return { state: 'unborn' };
+    }
+  }
+  return unavailableHead('GIT_HEAD_UNAVAILABLE');
+}
+
+/** Either a single classified HEAD sample or a two-boundary observation. */
+export type GitHeadSemanticResultV1 = GitHeadObservationV1 | GitHeadCommandSemanticResultV1;
 
 export function classifyGitObservationV1(
   input: ClassifyGitObservationInputV1,
@@ -872,12 +973,19 @@ export function classifyGitObservationV1(
   }
 
   const subfailures: GitObservationFailureV1[] = [];
-  let baseCommitSha: string | null = null;
-  let finalCommitSha: string | null = null;
+  let baseCommitSha: GitCommitObjectIdV1 | null = null;
+  let finalCommitSha: GitCommitObjectIdV1 | null = null;
   let diff = input.diff ?? { diffState: 'not_requested' as const, subfailure: null };
   if (input.head?.state === 'available') {
-    baseCommitSha = input.head.baseCommitSha;
-    finalCommitSha = input.head.finalCommitSha;
+    if ('commitSha' in input.head) {
+      // A single HEAD command is one observation point; callers that collect
+      // two points use GitHeadObservationV1 to preserve distinct boundaries.
+      baseCommitSha = input.head.commitSha;
+      finalCommitSha = input.head.commitSha;
+    } else {
+      baseCommitSha = input.head.baseCommitSha;
+      finalCommitSha = input.head.finalCommitSha;
+    }
   } else if (input.head?.state === 'unborn') {
     // Frozen M1 rule: no HEAD means no commit basis. Even an untyped caller
     // that supplies an "available" diff is normalized to not_applicable.
