@@ -56,5 +56,8 @@ jobs:
       - name: Shared M3 contract harness
         run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/m3-runtime.test.ts
 
+      - name: Shared P6-L1C-M1 contract harness
+        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/p6-l1c-git-observation-contract.test.ts ../../packages/shared/p6-l1c-porcelain-v2.test.ts
+
       - name: Workspace build
         run: pnpm build

@@ -974,3 +974,4 @@ export * from './m3-lifecycle-transition-contracts.js';
 export * from './p6-l1a-admission.js';
 export * from './p6-l1a-start-request.js';
 export * from './p6-l1b-artifact.js';
+export * from './p6-l1c-git-observation.js';
