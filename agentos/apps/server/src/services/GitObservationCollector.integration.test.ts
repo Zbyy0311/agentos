@@ -221,11 +221,28 @@ async function createDirectoryLinkOrSkip(
   }
 }
 
+function stableSnapshotDiagnostic(snapshot: GitObservationSnapshotV1): string {
+  return JSON.stringify({
+    observationState: snapshot.observationState,
+    error: snapshot.error,
+    subfailures: snapshot.subfailures,
+    diffState: snapshot.diffState,
+    statusCompleteness: snapshot.statusCompleteness,
+  });
+}
+
+function unexpectedObservation(
+  expected: GitObservationSnapshotV1['observationState'],
+  snapshot: GitObservationSnapshotV1,
+): Error {
+  return new Error(`expected ${expected} observation; diagnostic=${stableSnapshotDiagnostic(snapshot)}`);
+}
+
 function gitSnapshot(
   snapshot: GitObservationSnapshotV1,
 ): Extract<GitObservationSnapshotV1, { observationState: 'GIT' }> {
   if (snapshot.observationState !== 'GIT') {
-    throw new Error('expected GIT observation, got ' + snapshot.observationState);
+    throw unexpectedObservation('GIT', snapshot);
   }
   return snapshot;
 }
@@ -234,7 +251,7 @@ function notGitSnapshot(
   snapshot: GitObservationSnapshotV1,
 ): Extract<GitObservationSnapshotV1, { observationState: 'NOT_GIT' }> {
   if (snapshot.observationState !== 'NOT_GIT') {
-    throw new Error('expected NOT_GIT observation, got ' + snapshot.observationState);
+    throw unexpectedObservation('NOT_GIT', snapshot);
   }
   return snapshot;
 }
@@ -243,10 +260,49 @@ function unavailableSnapshot(
   snapshot: GitObservationSnapshotV1,
 ): Extract<GitObservationSnapshotV1, { observationState: 'UNAVAILABLE' }> {
   if (snapshot.observationState !== 'UNAVAILABLE') {
-    throw new Error('expected UNAVAILABLE observation, got ' + snapshot.observationState);
+    throw unexpectedObservation('UNAVAILABLE', snapshot);
   }
   return snapshot;
 }
+
+describe('GitObservationCollector integration failure diagnostics', () => {
+  it('gitSnapshot reports stable state/code facts without cwd or raw diagnostics', () => {
+    const snapshot: GitObservationSnapshotV1 = {
+      schemaVersion: 1,
+      trigger: 'on_demand',
+      cwd: 'SECRET-WORKSPACE-PATH',
+      observationState: 'UNAVAILABLE',
+      repositoryRoot: null,
+      baseCommitSha: null,
+      finalCommitSha: null,
+      dirtyState: 'unknown',
+      statusCompleteness: 'incomplete',
+      changedFiles: null,
+      diffState: 'unavailable',
+      truncation: { changedFiles: false, diff: false },
+      subfailures: [{ phase: 'diff', code: 'GIT_DIFF_UNAVAILABLE' }],
+      error: { phase: 'repository_discovery', code: 'GIT_COMMAND_TIMEOUT' },
+    };
+
+    const error = (() => {
+      try {
+        gitSnapshot(snapshot);
+        return null;
+      } catch (caught) {
+        return caught;
+      }
+    })();
+    assert.ok(error instanceof Error);
+    assert.equal(
+      error.message,
+      'expected GIT observation; diagnostic='
+        + '{"observationState":"UNAVAILABLE","error":{"phase":"repository_discovery","code":"GIT_COMMAND_TIMEOUT"},'
+        + '"subfailures":[{"phase":"diff","code":"GIT_DIFF_UNAVAILABLE"}],'
+        + '"diffState":"unavailable","statusCompleteness":"incomplete"}',
+    );
+    assert.equal(error.message.includes('SECRET-WORKSPACE-PATH'), false);
+  });
+});
 
 /** The exact port the production collector would build for itself. */
 function createProductionPort(): GitCommandPort {
@@ -921,27 +977,101 @@ class ObservingPlatformProcessDriver implements PlatformProcessDriver {
   }
 }
 
+/**
+ * Test-only real-driver barrier. The inner NodeProcessDriver completes the
+ * full platform owned-spawn path first; this wrapper then holds only delivery
+ * of the successful NativeProcessHandle to the adapter. No native operation
+ * is bypassed or replaced.
+ */
+class HeldSpawnResolutionDriver implements PlatformProcessDriver {
+  private readonly heldPromise: Promise<SpawnObservation>;
+  private readonly releasePromise: Promise<void>;
+  private resolveHeld: (observation: SpawnObservation) => void = () => undefined;
+  private resolveRelease: () => void = () => undefined;
+  private released = false;
+
+  constructor(private readonly inner: PlatformProcessDriver) {
+    this.heldPromise = new Promise<SpawnObservation>(resolve => {
+      this.resolveHeld = resolve;
+    });
+    this.releasePromise = new Promise<void>(resolve => {
+      this.resolveRelease = resolve;
+    });
+  }
+
+  async spawn(launch: ValidatedLaunch): Promise<NativeProcessHandle> {
+    const handle = await this.inner.spawn(launch);
+    this.resolveHeld({ launch, handle, pid: handle.pid, identity: handle.identity });
+    await this.releasePromise;
+    return handle;
+  }
+
+  whenHeld(): Promise<SpawnObservation> {
+    return this.heldPromise;
+  }
+
+  release(): void {
+    if (this.released) return;
+    this.released = true;
+    this.resolveRelease();
+  }
+
+  gracefulStop(handle: NativeProcessHandle): Promise<GracefulStopResult> {
+    return this.inner.gracefulStop(handle);
+  }
+
+  terminateTree(handle: NativeProcessHandle): Promise<TreeTerminationResult> {
+    return this.inner.terminateTree(handle);
+  }
+
+  verifySurvivors(handle: NativeProcessHandle): Promise<SurvivorVerification> {
+    return this.inner.verifySurvivors(handle);
+  }
+
+  inspectIdentity(identity: NativeIdentity): Promise<IdentityInspection> {
+    return this.inner.inspectIdentity(identity);
+  }
+
+  terminateExact(handle: NativeProcessHandle): Promise<TreeTerminationResult> {
+    return this.inner.terminateTree(handle);
+  }
+}
+
 interface BarrierTimerRecord {
   readonly delayMs: number;
+  readonly activeTimersBeforeArm: number;
   cancelled: boolean;
   cancelCalls: number;
   fired: boolean;
 }
 
 /**
- * Test-only scheduler: records when the server-owned family deadline is armed
- * and fires it only when the test says so (after a real live handle has been
- * observed). No real timer is ever scheduled; coordination is barrier-based,
- * never a timing sleep.
+ * Test-only scheduler: records server-owned launch/family phase transitions
+ * and fires the next active timer only when the test says so. No real timer is
+ * ever scheduled; coordination is barrier-based, never a timing sleep.
  */
 class BarrierScheduler {
   readonly timers: BarrierTimerRecord[] = [];
   private readonly pending: Array<{ record: BarrierTimerRecord; callback: () => void }> = [];
+  private readonly timerWaiters: Array<{ count: number; resolve: () => void }> = [];
 
   readonly schedule = (callback: () => void, delayMs: number): ScheduledTimer => {
-    const record: BarrierTimerRecord = { delayMs, cancelled: false, cancelCalls: 0, fired: false };
+    const record: BarrierTimerRecord = {
+      delayMs,
+      activeTimersBeforeArm: this.timers.filter(timer => !timer.cancelled && !timer.fired).length,
+      cancelled: false,
+      cancelCalls: 0,
+      fired: false,
+    };
     this.timers.push(record);
     this.pending.push({ record, callback });
+    for (let index = this.timerWaiters.length - 1; index >= 0; index -= 1) {
+      const waiter = this.timerWaiters[index];
+      if (waiter !== undefined && this.timers.length >= waiter.count) {
+        this.timerWaiters.splice(index, 1);
+        waiter.resolve();
+      }
+    }
     return {
       cancel: () => {
         record.cancelCalls += 1;
@@ -950,13 +1080,22 @@ class BarrierScheduler {
     };
   };
 
+  whenTimerCount(count: number): Promise<void> {
+    if (this.timers.length >= count) return Promise.resolve();
+    return new Promise<void>(resolve => {
+      this.timerWaiters.push({ count, resolve });
+    });
+  }
+
   trigger(): void {
-    const entry = this.pending.shift();
-    if (entry === undefined) {
-      throw new Error('BARRIER_SCHEDULER_NO_TIMER_ARMED');
+    while (this.pending.length > 0) {
+      const entry = this.pending.shift();
+      if (entry === undefined || entry.record.cancelled || entry.record.fired) continue;
+      entry.record.fired = true;
+      entry.callback();
+      return;
     }
-    entry.record.fired = true;
-    entry.callback();
+    throw new Error('BARRIER_SCHEDULER_NO_TIMER_ARMED');
   }
 }
 
@@ -1063,6 +1202,75 @@ async function emergencyCleanup(observing: ObservingPlatformProcessDriver): Prom
   }
 }
 
+describe('GitCommandAdapter real Windows launch/runtime deadline separation', () => {
+  it('holds real NodeProcessDriver spawn resolution under launch budget, then arms family runtime', async t => {
+    if (process.platform !== 'win32') {
+      t.skip('Windows-only: proves the real CreateProcessW owned-spawn path');
+      return;
+    }
+
+    await withTempRoot('p6-l1c-m2-launch-phase-', async root => {
+      const repo = await initRepository(root);
+      await nodeFs.writeFile(nodePath.join(repo, 'a.txt'), 'hello', 'utf8');
+      gitCommit(repo, 'init');
+
+      const driver = new HeldSpawnResolutionDriver(new NodeProcessDriver());
+      const scheduler = new BarrierScheduler();
+      const adapter = new GitCommandAdapter({
+        driver,
+        schedule: scheduler.schedule,
+      });
+      const pending = adapter.execute({ family: 'repository_root', cwd: repo });
+      let observation: SpawnObservation | null = null;
+
+      try {
+        observation = await driver.whenHeld();
+        const whileSpawnResolutionHeld = scheduler.timers.map(timer => ({
+          delayMs: timer.delayMs,
+          cancelled: timer.cancelled,
+          activeTimersBeforeArm: timer.activeTimersBeforeArm,
+        }));
+
+        driver.release();
+        const result = await pending;
+        const afterSettlement = scheduler.timers.map(timer => ({
+          delayMs: timer.delayMs,
+          cancelled: timer.cancelled,
+          cancelCalls: timer.cancelCalls,
+          fired: timer.fired,
+          activeTimersBeforeArm: timer.activeTimersBeforeArm,
+        }));
+
+        assert.deepEqual(whileSpawnResolutionHeld, [
+          { delayMs: 45_000, cancelled: false, activeTimersBeforeArm: 0 },
+        ], 'a pending real owned-spawn result consumes only the launch budget');
+        assert.deepEqual(afterSettlement, [
+          { delayMs: 45_000, cancelled: true, cancelCalls: 1, fired: false, activeTimersBeforeArm: 0 },
+          { delayMs: 5_000, cancelled: true, cancelCalls: 1, fired: false, activeTimersBeforeArm: 0 },
+        ], 'family runtime is armed only after launch cancellation and settles exactly once');
+        assert.equal(result.termination, 'exited');
+        assert.equal(result.exitCode, 0);
+        assert.ok(isProcessAbsent(observation.pid), 'real owned Git process is absent after return');
+        assert.deepEqual(await driver.inspectIdentity(observation.identity), { kind: 'missing' });
+        const verification = await driver.verifySurvivors(observation.handle);
+        assert.equal(verification.classification, 'complete');
+        assert.deepEqual(verification.proof, { kind: 'owned-tree-enumeration' });
+        assert.deepEqual(
+          livePidsAmong([observation.pid, ...verification.knownPids]),
+          [],
+          'owned-tree enumeration proves no orphan process remains',
+        );
+      } finally {
+        driver.release();
+        await pending.catch(() => undefined);
+        if (observation !== null && !isProcessAbsent(observation.pid)) {
+          await driver.terminateExact(observation.handle);
+        }
+      }
+    });
+  });
+});
+
 /**
  * Real repository whose tracked 8 MiB file is changed by one byte: the diff
  * hash keeps git alive across the spawn->barrier round trip while diff output
@@ -1157,8 +1365,17 @@ describe('GitObservationCollector real Git bounds and Windows process ownership 
         }
         assert.equal(spawn.launch.executable, 'git');
         assert.equal(spawn.launch.shell, false);
-        assert.equal(scheduler.timers.length, 1, 'family deadline armed before spawn');
-        assert.equal(scheduler.timers[0].fired, false);
+        await scheduler.whenTimerCount(2);
+        assert.deepEqual(scheduler.timers.map(timer => ({
+          delayMs: timer.delayMs,
+          cancelled: timer.cancelled,
+          cancelCalls: timer.cancelCalls,
+          fired: timer.fired,
+          activeTimersBeforeArm: timer.activeTimersBeforeArm,
+        })), [
+          { delayMs: 45_000, cancelled: true, cancelCalls: 1, fired: false, activeTimersBeforeArm: 0 },
+          { delayMs: 30_000, cancelled: false, cancelCalls: 0, fired: false, activeTimersBeforeArm: 0 },
+        ], 'launch is cancelled before bounded_diff runtime becomes active');
 
         scheduler.trigger();
 
@@ -1171,8 +1388,8 @@ describe('GitObservationCollector real Git bounds and Windows process ownership 
         );
 
         await assertTerminatedTreeCleanup(observing, spawn);
-        assert.equal(scheduler.timers[0].cancelled, true);
         assert.equal(scheduler.timers[0].cancelCalls, 1);
+        assert.equal(scheduler.timers[1].cancelCalls, 1);
       } finally {
         await emergencyCleanup(observing);
       }
@@ -1214,7 +1431,11 @@ describe('GitObservationCollector real Git bounds and Windows process ownership 
         }
         assert.equal(spawn.launch.executable, 'git');
         assert.equal(spawn.launch.shell, false);
-        assert.equal(scheduler.timers.length, 1, 'family deadline armed before spawn');
+        await scheduler.whenTimerCount(2);
+        assert.equal(scheduler.timers[0].delayMs, 45_000);
+        assert.equal(scheduler.timers[0].cancelCalls, 1);
+        assert.equal(scheduler.timers[1].delayMs, 30_000);
+        assert.equal(scheduler.timers[1].cancelled, false);
 
         controller.abort();
 
@@ -1222,8 +1443,8 @@ describe('GitObservationCollector real Git bounds and Windows process ownership 
         assert.equal(result.termination, 'cancelled');
         assert.equal(result.exitCode, null);
         await assertTerminatedTreeCleanup(observing, spawn);
-        assert.equal(scheduler.timers[0].cancelled, true);
         assert.equal(scheduler.timers[0].cancelCalls, 1);
+        assert.equal(scheduler.timers[1].cancelCalls, 1);
       } finally {
         await emergencyCleanup(observing);
       }

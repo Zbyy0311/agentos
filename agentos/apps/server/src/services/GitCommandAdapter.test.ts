@@ -30,26 +30,50 @@ const BASE: GitCommitObjectIdV1 = BASE_SHA;
 
 interface TimerRecord {
   readonly callback: () => void;
+  readonly delayMs: number;
+  readonly scheduledAtMs: number;
+  readonly dueAtMs: number;
+  readonly activeTimersBeforeArm: number;
   cancelled: boolean;
   cancelCalls: number;
+  fired: boolean;
 }
 
 interface SchedulerHarness {
   readonly dependencies: Pick<GitCommandAdapterDependencies, 'schedule'>;
   readonly timers: TimerRecord[];
   readonly fires: TimerRecord[];
+  nowMs(): number;
+  advanceBy(delayMs: number): void;
   trigger(index?: number): void;
 }
 
 function createScheduler(): SchedulerHarness {
   const timers: TimerRecord[] = [];
   const fires: TimerRecord[] = [];
+  let nowMs = 0;
+  const fire = (record: TimerRecord): void => {
+    assert.equal(record.cancelled, false, 'timer must not be cancelled before firing');
+    assert.equal(record.fired, false, 'timer must fire at most once');
+    record.fired = true;
+    fires.push(record);
+    record.callback();
+  };
   const harness: SchedulerHarness = {
     timers,
     fires,
     dependencies: {
-      schedule: (callback: () => void, _delayMs: number) => {
-        const record: TimerRecord = { callback, cancelled: false, cancelCalls: 0 };
+      schedule: (callback: () => void, delayMs: number) => {
+        const record: TimerRecord = {
+          callback,
+          delayMs,
+          scheduledAtMs: nowMs,
+          dueAtMs: nowMs + delayMs,
+          activeTimersBeforeArm: timers.filter(timer => !timer.cancelled && !timer.fired).length,
+          cancelled: false,
+          cancelCalls: 0,
+          fired: false,
+        };
         timers.push(record);
         return {
           cancel: () => {
@@ -59,12 +83,18 @@ function createScheduler(): SchedulerHarness {
         };
       },
     },
+    nowMs: () => nowMs,
+    advanceBy(delayMs: number): void {
+      assert.ok(delayMs >= 0, 'virtual time cannot move backwards');
+      nowMs += delayMs;
+      for (const record of timers) {
+        if (!record.cancelled && !record.fired && record.dueAtMs <= nowMs) fire(record);
+      }
+    },
     trigger(index = 0): void {
       const record = timers[index];
       assert.ok(record !== undefined, 'expected a scheduled timer');
-      assert.equal(record.cancelled, false, 'timer must not be cancelled before firing');
-      fires.push(record);
-      record.callback();
+      fire(record);
     },
   };
   return harness;
@@ -534,8 +564,9 @@ describe('GitCommandAdapter successful execution', () => {
     assert.deepEqual([...result.stdout.slice(0, 3)], [0x61, 0x61, 0x61]);
     assert.equal(result.stderrDiagnostic.byteLength, GIT_COMMAND_DIAGNOSTIC_LIMIT_BYTES_V1);
     assert.equal(result.stderrDiagnosticTruncated, false);
-    assert.equal(scheduler.timers.length, 1);
-    assert.equal(scheduler.timers[0].cancelled, true, 'deadline timer is cancelled exactly once');
+    assert.equal(scheduler.timers.length, 2);
+    assert.equal(scheduler.timers[0].cancelCalls, 1, 'launch timer is cancelled exactly once');
+    assert.equal(scheduler.timers[1].cancelCalls, 1, 'family timer is cancelled exactly once');
     assert.equal(driver.terminateTreeCalls, 0);
     assert.equal(driver.verifySurvivorsCalls, 0);
     assertBoundedPublicResult(result);
@@ -566,7 +597,7 @@ describe('GitCommandAdapter deadline', () => {
     const pending = adapter.execute({ family: 'head_commit', cwd: 'C:\\ws' });
     await driver.awaitSpawnEntered();
     const handle = await spawnAndArm(driver, 4300);
-    scheduler.trigger();
+    scheduler.trigger(1);
     handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
     const result = await pending;
     assert.equal(result.termination, 'timed_out');
@@ -574,7 +605,7 @@ describe('GitCommandAdapter deadline', () => {
     assert.equal(result.stdout.byteLength, 0);
     assert.equal(driver.terminateTreeCalls, 1);
     assert.equal(driver.verifySurvivorsCalls, 1);
-    assert.equal(scheduler.timers[0].cancelled, true);
+    assert.equal(scheduler.timers[1].cancelled, true);
     assertBoundedPublicResult(result);
   });
 
@@ -594,7 +625,7 @@ describe('GitCommandAdapter deadline', () => {
     await driver.awaitSpawnEntered();
     (await spawnAndArm(driver, 4301)).emitExit({ exitCode: 0 });
     await pending;
-    assert.deepEqual(delays, [5000]);
+    assert.deepEqual(delays, [45_000, 5_000]);
   });
 
   it('a timeout fired after settlement is ignored', async () => {
@@ -613,7 +644,7 @@ describe('GitCommandAdapter deadline', () => {
     // late timer fire; either way the settled exited result must win.
     await flushMicrotasks();
     const terminationsBefore = driver.terminateTreeCalls;
-    scheduler.timers[0].callback();
+    scheduler.timers[1].callback();
     assert.equal(driver.terminateTreeCalls, terminationsBefore);
   });
 });
@@ -739,7 +770,7 @@ describe('GitCommandAdapter stderr diagnostic bound', () => {
     const pending = adapter.execute({ family: 'head_commit', cwd: 'C:\\ws' });
     await driver.awaitSpawnEntered();
     const handle = await spawnAndArm(driver, 4601);
-    scheduler.trigger();
+    scheduler.trigger(1);
     await driver.awaitTerminateTreeEntered();
     const lateDiagnostic = new Uint8Array(GIT_COMMAND_DIAGNOSTIC_LIMIT_BYTES_V1 + 4096).fill(0x64);
     handle.pushStderr(lateDiagnostic);
@@ -765,7 +796,7 @@ describe('GitCommandAdapter spawn failure mapping', () => {
     const result = await adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
     assert.equal(result.termination, 'spawn_failed');
     assert.equal((result as { spawnFailure: string }).spawnFailure, 'not_found');
-    assert.equal(scheduler.timers.length, 1, 'deadline is armed before spawn');
+    assert.equal(scheduler.timers.length, 1, 'launch deadline is armed before spawn');
     assert.equal(scheduler.timers[0].cancelCalls, 1);
     assertBoundedPublicResult(result);
   });
@@ -799,6 +830,237 @@ describe('GitCommandAdapter spawn failure mapping', () => {
   });
 });
 
+describe('GitCommandAdapter launch/runtime deadline phase separation', () => {
+  it('arms the server-owned launch deadline before driver.spawn()', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    driver.holdNextSpawn();
+    const pending = adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
+    await driver.awaitSpawnEntered();
+    const delaysWhilePending = scheduler.timers.map(timer => timer.delayMs);
+    const error = new Error('controlled spawn rejection') as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    driver.settleSpawnFailure(error);
+    await pending;
+
+    assert.deepEqual(delaysWhilePending, [45_000]);
+    assert.equal(scheduler.timers[0]?.scheduledAtMs, 0);
+  });
+
+  it('does not arm the short family runtime deadline while spawn is pending', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    driver.holdNextSpawn();
+    const pending = adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
+    await driver.awaitSpawnEntered();
+    const delaysWhilePending = scheduler.timers.map(timer => timer.delayMs);
+    driver.settleSpawnFailure(new Error('controlled unknown spawn rejection'));
+    await pending;
+
+    assert.deepEqual(delaysWhilePending, [45_000]);
+    assert.equal(delaysWhilePending.includes(5_000), false);
+  });
+
+  it('cancels launch exactly once before arming the existing family deadline', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    const controller = new AbortController();
+    const observed = observeAbortSignal(controller);
+    driver.holdNextSpawn();
+    const pending = adapter.execute(
+      { family: 'repository_root', cwd: 'C:\\ws' },
+      { signal: observed.signal },
+    );
+    await driver.awaitSpawnEntered();
+    const handle = makeHandle(driver, 4710);
+    await flushMicrotasks();
+    const phaseEvidence = scheduler.timers.map(timer => ({
+      delayMs: timer.delayMs,
+      cancelled: timer.cancelled,
+      cancelCalls: timer.cancelCalls,
+      activeTimersBeforeArm: timer.activeTimersBeforeArm,
+    }));
+    handle.emitExit({ exitCode: 0 });
+    const result = await pending;
+
+    assertSuccess(result);
+    assert.deepEqual(phaseEvidence, [
+      { delayMs: 45_000, cancelled: true, cancelCalls: 1, activeTimersBeforeArm: 0 },
+      { delayMs: 5_000, cancelled: false, cancelCalls: 0, activeTimersBeforeArm: 0 },
+    ]);
+    assert.equal(scheduler.timers[0]?.cancelCalls, 1, 'launch timer cancelled exactly once');
+    assert.equal(scheduler.timers[1]?.cancelCalls, 1, 'family timer cancelled exactly once');
+    assert.equal(observed.removeCalls(), 1, 'abort listener removed exactly once');
+  });
+
+  it('allows logical bootstrap beyond 5 seconds and starts family time at owned-handle delivery', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    driver.holdNextSpawn();
+    const pending = adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
+    await driver.awaitSpawnEntered();
+
+    scheduler.advanceBy(6_000);
+    const probe = settlementProbe(pending);
+    await flushMicrotasks();
+    const settledBeforeHandle = probe.settled();
+
+    const handle = makeHandle(driver, 4711);
+    await flushMicrotasks();
+    const phaseEvidence = scheduler.timers.map(timer => ({
+      delayMs: timer.delayMs,
+      scheduledAtMs: timer.scheduledAtMs,
+      fired: timer.fired,
+    }));
+    handle.emitExit({ exitCode: 0 });
+    const result = await pending;
+
+    assert.equal(settledBeforeHandle, false);
+    assertSuccess(result);
+    assert.deepEqual(phaseEvidence, [
+      { delayMs: 45_000, scheduledAtMs: 0, fired: false },
+      { delayMs: 5_000, scheduledAtMs: 6_000, fired: false },
+    ]);
+    assert.equal(driver.terminateTreeCalls, 0);
+    assert.equal(driver.verifySurvivorsCalls, 0);
+  });
+
+  it('launch timeout while spawn is pending waits for late-handle cleanup proof', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    driver.holdNextSpawn();
+    driver.holdVerifySurvivors();
+    const pending = adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
+    await driver.awaitSpawnEntered();
+    scheduler.advanceBy(45_000);
+    const probe = settlementProbe(pending);
+    await flushMicrotasks();
+    const settledBeforeHandle = probe.settled();
+
+    const handle = makeHandle(driver, 4712);
+    await driver.awaitTerminateTreeEntered();
+    await driver.awaitVerifySurvivorsEntered();
+    handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
+    driver.settleVerifySurvivors('complete');
+    const result = await pending;
+
+    assert.equal(settledBeforeHandle, false);
+    assert.equal(result.termination, 'timed_out');
+    assert.deepEqual(scheduler.timers.map(timer => timer.delayMs), [45_000]);
+    assert.equal(driver.terminateTreeCalls, 1);
+    assert.equal(driver.verifySurvivorsCalls, 1);
+  });
+
+  it('cancellation while spawn is pending wins and suppresses the family timer for the late handle', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    const controller = new AbortController();
+    driver.holdNextSpawn();
+    driver.holdVerifySurvivors();
+    const pending = adapter.execute(
+      { family: 'repository_root', cwd: 'C:\\ws' },
+      { signal: controller.signal },
+    );
+    await driver.awaitSpawnEntered();
+    controller.abort();
+
+    const handle = makeHandle(driver, 4713);
+    await driver.awaitTerminateTreeEntered();
+    await driver.awaitVerifySurvivorsEntered();
+    handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
+    driver.settleVerifySurvivors('complete');
+    const result = await pending;
+
+    assert.equal(result.termination, 'cancelled');
+    assert.deepEqual(scheduler.timers.map(timer => timer.delayMs), [45_000]);
+    assert.equal(driver.terminateTreeCalls, 1);
+    assert.equal(driver.verifySurvivorsCalls, 1);
+  });
+
+  it('preserves spawn-failure mapping when rejection wins before the launch deadline', async () => {
+    const cases = [
+      { code: 'ENOENT', expected: 'not_found' },
+      { code: 'EACCES', expected: 'permission' },
+      { code: 'EPERM', expected: 'permission' },
+      { code: 'EINVAL', expected: 'unknown' },
+    ] as const;
+
+    for (const testCase of cases) {
+      const driver = new MockProcessDriver();
+      const { adapter, scheduler } = createAdapter(driver);
+      const error = new Error('controlled spawn rejection') as NodeJS.ErrnoException;
+      error.code = testCase.code;
+      driver.spawnError = error;
+      const result = await adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
+      assert.equal(result.termination, 'spawn_failed');
+      assert.equal((result as { spawnFailure: string }).spawnFailure, testCase.expected);
+      assert.deepEqual(scheduler.timers.map(timer => timer.delayMs), [45_000]);
+      assert.equal(scheduler.timers[0]?.cancelCalls, 1);
+    }
+  });
+
+  it('preserves launch timeout when spawn rejects after the launch winner', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    driver.holdNextSpawn();
+    const pending = adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
+    await driver.awaitSpawnEntered();
+    scheduler.advanceBy(45_000);
+    const error = new Error('late controlled spawn rejection') as NodeJS.ErrnoException;
+    error.code = 'ENOENT';
+    driver.settleSpawnFailure(error);
+    const result = await pending;
+
+    assert.equal(result.termination, 'timed_out');
+    assert.deepEqual(scheduler.timers.map(timer => timer.delayMs), [45_000]);
+    assert.equal(driver.terminateTreeCalls, 0);
+  });
+
+  it('uses the existing family timeout only after successful owned spawn', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    driver.holdNextSpawn();
+    const pending = adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
+    await driver.awaitSpawnEntered();
+    const handle = makeHandle(driver, 4714);
+    await flushMicrotasks();
+    const delays = scheduler.timers.map(timer => timer.delayMs);
+    scheduler.trigger(scheduler.timers.length > 1 ? 1 : 0);
+    handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
+    const result = await pending;
+
+    assert.deepEqual(delays, [45_000, 5_000]);
+    assert.equal(result.termination, 'timed_out');
+    assert.equal(driver.terminateTreeCalls, 1);
+    assert.equal(driver.verifySurvivorsCalls, 1);
+  });
+
+  it('late-handle cleanup-unproven after launch timeout still fails closed', async () => {
+    const driver = new MockProcessDriver();
+    const { adapter, scheduler } = createAdapter(driver);
+    driver.verifyProofMode = 'bare';
+    driver.holdNextSpawn();
+    const pending = adapter.execute({ family: 'repository_root', cwd: 'C:\\ws' });
+    await driver.awaitSpawnEntered();
+    scheduler.trigger();
+    const handle = makeHandle(driver, 4715);
+    await driver.awaitTerminateTreeEntered();
+    handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
+    const outcome = await pending.then(
+      value => ({ kind: 'resolved' as const, value }),
+      error => ({ kind: 'rejected' as const, error }),
+    );
+
+    assert.deepEqual(scheduler.timers.map(timer => timer.delayMs), [45_000]);
+    assert.equal(outcome.kind, 'rejected');
+    const error = (outcome as { error: unknown }).error;
+    assert.ok(error instanceof Error);
+    assert.equal(error.message, 'GIT_COMMAND_CLEANUP_UNPROVEN');
+    assert.equal(driver.terminateTreeCalls, 1);
+    assert.equal(driver.verifySurvivorsCalls, 1);
+  });
+});
+
 describe('GitCommandAdapter pre-spawn control races', () => {
   it('pending spawn + timeout waits for late handle cleanup proof and returns timed_out', async () => {
     const driver = new MockProcessDriver();
@@ -812,7 +1074,7 @@ describe('GitCommandAdapter pre-spawn control races', () => {
     if (timer === undefined) {
       driver.settleSpawnFailure(new Error('release missing pre-spawn timer'));
       await pending;
-      assert.fail('family deadline was not armed before driver.spawn()');
+      assert.fail('launch deadline was not armed before driver.spawn()');
     }
     scheduler.trigger();
     const probe = settlementProbe(pending);
@@ -852,7 +1114,7 @@ describe('GitCommandAdapter pre-spawn control races', () => {
       await pending;
       assert.fail('AbortSignal listener was not installed before driver.spawn()');
     }
-    assert.equal(scheduler.timers.length, 1, 'deadline is also armed before spawn');
+    assert.equal(scheduler.timers.length, 1, 'launch deadline is also armed before spawn');
     controller.abort();
     const probe = settlementProbe(pending);
     await flushMicrotasks();
@@ -881,7 +1143,7 @@ describe('GitCommandAdapter pre-spawn control races', () => {
     if (timer === undefined) {
       driver.settleSpawnFailure(new Error('release missing pre-spawn timer'));
       await pending;
-      assert.fail('family deadline was not armed before driver.spawn()');
+      assert.fail('launch deadline was not armed before driver.spawn()');
     }
     scheduler.trigger();
     const lateError = new Error('late spawn ENOENT') as NodeJS.ErrnoException;
@@ -953,6 +1215,7 @@ describe('GitCommandAdapter settlement and cleanup discipline', () => {
     assert.equal(additionsBeforeSpawnSettles, 1);
     assert.equal(timersBeforeSpawnSettles, 1);
     assert.equal(scheduler.timers[0].cancelCalls, 1);
+    assert.equal(scheduler.timers[1].cancelCalls, 1);
     assert.equal(observed.removeCalls(), 1);
   });
 
@@ -1042,7 +1305,7 @@ describe('GitCommandAdapter awaited owned-tree cleanup proof', () => {
     const pending = adapter.execute({ family: 'head_commit', cwd: 'C:\\ws' });
     await driver.awaitSpawnEntered();
     const handle = await spawnAndArm(driver, 4800);
-    scheduler.trigger();
+    scheduler.trigger(1);
     handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
     const probe = settlementProbe(pending);
     await driver.awaitTerminateTreeEntered();
@@ -1112,7 +1375,7 @@ describe('GitCommandAdapter unproven cleanup', () => {
     void pending.catch(() => undefined); // observation only
     await driver.awaitSpawnEntered();
     const handle = await spawnAndArm(driver, 4810);
-    scheduler.trigger();
+    scheduler.trigger(1);
     handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
     await driver.awaitTerminateTreeEntered();
     await driver.awaitVerifySurvivorsEntered();
@@ -1172,7 +1435,7 @@ describe('GitCommandAdapter unproven cleanup', () => {
     const pending = adapter.execute({ family: 'head_commit', cwd: 'C:\\ws' });
     await driver.awaitSpawnEntered();
     const handle = await spawnAndArm(driver, 4811);
-    scheduler.trigger();
+    scheduler.trigger(1);
     handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
     await driver.awaitTerminateTreeEntered();
     await driver.awaitVerifySurvivorsEntered();
@@ -1194,8 +1457,8 @@ describe('GitCommandAdapter unproven cleanup', () => {
     await driver.awaitSpawnEntered();
     const handle = await spawnAndArm(driver, 4812);
     controller.abort();
-    scheduler.timers[0].callback();
-    scheduler.trigger();
+    scheduler.timers[1].callback();
+    scheduler.trigger(1);
     controller.abort();
     handle.emitExit({ exitCode: null, signal: 'SIGTERM' });
     await driver.awaitTerminateTreeEntered();
@@ -1206,8 +1469,8 @@ describe('GitCommandAdapter unproven cleanup', () => {
     assert.equal(result.termination, 'cancelled');
     assert.equal(driver.terminateTreeCalls, 1, 'cleanup is exactly once');
     assert.equal(driver.verifySurvivorsCalls, 1, 'cleanup is exactly once');
-    assert.equal(scheduler.timers[0].cancelled, true, 'timer cancelled exactly once');
-    assert.equal(scheduler.timers[0].cancelCalls, 1, 'timer cancel is invoked exactly once');
+    assert.equal(scheduler.timers[0].cancelCalls, 1, 'launch timer cancel is invoked exactly once');
+    assert.equal(scheduler.timers[1].cancelCalls, 1, 'family timer cancel is invoked exactly once');
     assert.equal(observed.removeCalls(), 1, 'abort listener is removed exactly once');
   });
 });
@@ -1321,7 +1584,7 @@ describe('GitCommandAdapter preserves an earlier non-exit winner over late IO fa
     const handle = new ControlledNativeProcessHandle(4840);
     settleControlledSpawn(driver, handle);
     await flushMicrotasks();
-    scheduler.trigger();
+    scheduler.trigger(1);
     await driver.awaitTerminateTreeEntered();
     handle.rejectExit();
     await driver.awaitVerifySurvivorsEntered();
