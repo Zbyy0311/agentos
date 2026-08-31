@@ -1275,3 +1275,121 @@ describe('GitObservationCollector physical path containment', () => {
     ]);
   });
 });
+
+// ---------------------------------------------------------------------------
+// HIGH-1 remediation: GIT_COMMAND_CLEANUP_UNPROVEN must abort the collection.
+//
+// A cleanup-unproven rejection means an owned Git process tree may still be
+// alive. It is NOT an ordinary data-free command failure, so the collector
+// must reject immediately with the fixed data-free message and never run any
+// subsequent Git command. These tests prove the stop at every boundary.
+// ---------------------------------------------------------------------------
+
+const CLEANUP_UNPROVEN_MESSAGE = 'GIT_COMMAND_CLEANUP_UNPROVEN';
+
+/** A port that rejects once with the fixed cleanup-unproven error at a chosen step. */
+class CleanupUnprovenPort implements GitCommandPort {
+  readonly executionContract = GIT_COMMAND_EXECUTION_CONTRACT_V1;
+  readonly requests: GitCommandRequestV1[] = [];
+
+  constructor(
+    private readonly steps: readonly GitCommandResultV1[],
+    private readonly failAt: number, // 1-based request index that rejects
+  ) {}
+
+  families(): readonly string[] {
+    return this.requests.map(request => request.family);
+  }
+
+  async execute(request: GitCommandRequestV1): Promise<GitCommandResultV1> {
+    this.requests.push(request);
+    if (this.requests.length === this.failAt) {
+      throw new Error(CLEANUP_UNPROVEN_MESSAGE);
+    }
+    const step = this.steps[this.requests.length - 1];
+    if (step === undefined) throw new Error('CLEANUP_PORT_EXHAUSTED');
+    return step;
+  }
+}
+
+/** Asserts collect() rejects with the exact data-free cleanup-unproven message. */
+async function expectCleanupUnprovenRejection(
+  collector: GitObservationCollector,
+  workspace: string,
+): Promise<unknown> {
+  let caught: unknown;
+  try {
+    await collector.collect({ cwd: workspace, trigger: 'on_demand' });
+  } catch (error) {
+    caught = error;
+  }
+  assert.ok(caught instanceof Error, 'collect() must reject on cleanup-unproven');
+  assert.equal((caught as Error).message, CLEANUP_UNPROVEN_MESSAGE, 'exact data-free message');
+  return caught;
+}
+
+describe('GitObservationCollector cleanup-unproven aborts the collection (HIGH-1)', () => {
+  const workspace = 'C:/Repos/project';
+
+  it('A. repository discovery cleanup-unproven: only repository_root, then STOP', async () => {
+    const realpath = new FixedRealpath({ [workspace]: workspace });
+    const port = new CleanupUnprovenPort([], 1);
+    const collector = new GitObservationCollector(dependencies(port, realpath.fn));
+
+    await expectCleanupUnprovenRejection(collector, workspace);
+
+    assert.deepEqual(port.families(), ['repository_root'], 'no command after discovery');
+  });
+
+  it('B. first HEAD cleanup-unproven: root+head_commit, then STOP (no status/diff/final HEAD)', async () => {
+    const realpath = new FixedRealpath({ [workspace]: workspace });
+    const port = new CleanupUnprovenPort([exitedOk(workspace + NL)], 2);
+    const collector = new GitObservationCollector(dependencies(port, realpath.fn));
+
+    await expectCleanupUnprovenRejection(collector, workspace);
+
+    assert.deepEqual(port.families(), ['repository_root', 'head_commit'],
+      'no status, no diff, no final HEAD after first HEAD cleanup-unproven');
+  });
+
+  it('C. status cleanup-unproven: root+head+status, then STOP (no diff, no final HEAD)', async () => {
+    const realpath = new FixedRealpath({ [workspace]: workspace });
+    const port = new CleanupUnprovenPort([
+      exitedOk(workspace + NL),
+      exitedOk(SHA_A + NL),
+    ], 3);
+    const collector = new GitObservationCollector(dependencies(port, realpath.fn));
+
+    await expectCleanupUnprovenRejection(collector, workspace);
+
+    assert.deepEqual(port.families(), ['repository_root', 'head_commit', 'porcelain_v2_status'],
+      'no diff and no final HEAD after status cleanup-unproven');
+  });
+
+  it('D. diff cleanup-unproven: root+head+status+diff, then STOP (no final HEAD)', async () => {
+    const realpath = new FixedRealpath({ [workspace]: workspace });
+    const port = new CleanupUnprovenPort([
+      exitedOk(workspace + NL),
+      exitedOk(SHA_A + NL),
+      exitedOk(''),
+    ], 4);
+    const collector = new GitObservationCollector(dependencies(port, realpath.fn));
+
+    await expectCleanupUnprovenRejection(collector, workspace);
+
+    assert.deepEqual(port.families(), [
+      'repository_root', 'head_commit', 'porcelain_v2_status', 'bounded_diff',
+    ], 'no final HEAD after diff cleanup-unproven');
+  });
+
+  it('cleanup-unproven carries no raw driver/stream/stderr detail', async () => {
+    const realpath = new FixedRealpath({ [workspace]: workspace });
+    const port = new CleanupUnprovenPort([exitedOk(workspace + NL)], 2);
+    const collector = new GitObservationCollector(dependencies(port, realpath.fn));
+
+    const caught = await expectCleanupUnprovenRejection(collector, workspace);
+    const wire = JSON.stringify({ message: (caught as Error).message, stack: (caught as Error).stack });
+    assert.ok(!wire.includes('stderr'), 'no raw stderr reference escapes');
+    assert.ok(!wire.includes('handle'), 'no raw handle reference escapes');
+  });
+});

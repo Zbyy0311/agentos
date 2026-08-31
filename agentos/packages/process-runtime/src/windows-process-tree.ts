@@ -26,6 +26,26 @@ const FRAME_STDOUT_EOF = 3;
 const FRAME_STDERR_EOF = 4;
 
 /**
+ * MEDIUM-1: translate a stable Win32 native spawn error code to the
+ * Node-style errno code the rest of the runtime already understands.
+ *
+ * Only the numeric native identity is used; localized message text is never
+ * parsed. Codes outside the stable known set map to null (unknown).
+ *
+ *   ERROR_FILE_NOT_FOUND (2)  -> ENOENT
+ *   ERROR_PATH_NOT_FOUND (3)  -> ENOENT
+ *   ERROR_ACCESS_DENIED (5)   -> EACCES
+ *   everything else           -> null (unknown)
+ */
+export function translateWin32SpawnErrorCode(
+  nativeCode: number,
+): 'ENOENT' | 'EACCES' | null {
+  if (nativeCode === 2 || nativeCode === 3) return 'ENOENT';
+  if (nativeCode === 5) return 'EACCES';
+  return null;
+}
+
+/**
  * Deterministic ownership evidence for tests and audits: 'assigned' is
  * emitted while the provider's primary thread is still suspended, so no
  * provider-controlled instruction can have executed before it fires.
@@ -910,7 +930,19 @@ public static class AgentOsJobServer
                 }
                 catch (Exception error)
                 {
-                    writer.WriteLine("error|" + Sanitize(error.Message));
+                    // MEDIUM-1: preserve stable Win32 native error identity in
+                    // a bounded machine-readable field. Only the numeric
+                    // NativeErrorCode is emitted; localized message text is
+                    // never relied upon for classification.
+                    var win32Error = error as Win32Exception;
+                    if (win32Error != null)
+                    {
+                        writer.WriteLine("error|win32|" + win32Error.NativeErrorCode.ToString(System.Globalization.CultureInfo.InvariantCulture) + "|" + Sanitize(error.Message));
+                    }
+                    else
+                    {
+                        writer.WriteLine("error|" + Sanitize(error.Message));
+                    }
                 }
                 if (closing) break;
             }
@@ -1200,8 +1232,32 @@ class WindowsJobSession {
     if (this.closed && command !== 'close') throw new Error('windows-tree-helper-closed');
     this.helper.stdin?.write(command + '\n');
     const response = await withTimeout(this.lines.next(), COMMAND_TIMEOUT_MS, 'windows-tree-helper-response-timeout');
-    if (response.startsWith('error|')) throw new Error(response.slice('error|'.length));
+    if (response.startsWith('error|')) throw this.classifyErrorResponse(response);
     return response;
+  }
+
+ /**
+   * MEDIUM-1: classify a helper `error|` response. When the helper preserved
+   * a Win32 native code (`error|win32|<code>|<detail>`), translate the stable
+   * numeric code to a Node-style errno and attach it as `error.code`. Raw
+   * helper detail stays in the message only; classification never parses it.
+   */
+  private classifyErrorResponse(response: string): Error {
+    const body = response.slice('error|'.length);
+    if (body.startsWith('win32|')) {
+      const rest = body.slice('win32|'.length);
+      const separator = rest.indexOf('|');
+      const codeText = separator === -1 ? rest : rest.slice(0, separator);
+      const detail = separator === -1 ? '' : rest.slice(separator + 1);
+      const nativeCode = Number(codeText);
+      if (Number.isSafeInteger(nativeCode)) {
+        const code = translateWin32SpawnErrorCode(nativeCode);
+        const error = new Error(detail) as NodeJS.ErrnoException;
+        if (code !== null) error.code = code;
+        return error;
+      }
+    }
+    return new Error(body);
   }
 
   private handleLine(line: string): void {

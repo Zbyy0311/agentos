@@ -1498,8 +1498,207 @@ describe('GitObservationCollector real Git bounds and Windows process ownership 
         assert.equal(observing.terminations.length, 0, 'discovery failed before owning a handle to terminate');
         const spawn = observing.spawns[0];
         assert.ok(spawn !== undefined);
-        assert.ok(isProcessAbsent(spawn.pid), 'exited discovery process is absent after return');
+       assert.ok(isProcessAbsent(spawn.pid), 'exited discovery process is absent after return');
       } finally {
+        await emergencyCleanup(observing);
+      }
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// HIGH-1 remediation proof through the REAL GitCommandAdapter.
+//
+// A controlled PlatformProcessDriver wraps a real NodeProcessDriver so the
+// adapter runs the genuine owned-spawn / timeout / terminateTree path, but
+// verifySurvivors is forced to report surviving members. The adapter must
+// throw the fixed data-free GIT_COMMAND_CLEANUP_UNPROVEN, and the collector
+// must abort immediately without running any subsequent Git command.
+// ---------------------------------------------------------------------------
+
+interface SpawnRecord {
+  readonly family: string;
+  readonly pid: number;
+}
+
+/**
+ * Delegates every native action to a real NodeProcessDriver, but reports an
+ * unproven survivor verification on demand. This exercises the production
+ * adapter cleanup-proof path rather than an arbitrary rejecting port.
+ */
+class UnprovenCleanupDriver implements PlatformProcessDriver {
+  readonly spawns: SpawnRecord[] = [];
+  forceUnproven = false;
+  /** 1-based spawn ordinal whose stdout stream is held open. */
+  suspendSpawnOrdinal = -1;
+
+  constructor(private readonly inner: PlatformProcessDriver) {}
+
+  async spawn(launch: ValidatedLaunch): Promise<NativeProcessHandle> {
+    const handle = await this.inner.spawn(launch);
+    this.spawns.push({ family: launch.args.join(' '), pid: handle.pid });
+    if (this.spawns.length !== this.suspendSpawnOrdinal) return handle;
+    // Replace only the exposed stdout stream with an unbounded generator that
+    // yields real chunks forever. The adapter hits its 4 KiB head_commit stdout
+    // limit (output_limit winner), terminates the real owned tree, and runs the
+    // forced-unproven verification. The generator stops once the winner stops
+    // retention, so nothing hangs. No waitExit/stdout-completion suspension.
+    const realStderr = handle.streams.stderr;
+    const chunk = new Uint8Array(4096).fill(0x41);
+    const streams: NativeProcessStreams = {
+      stdout: {
+        [Symbol.asyncIterator]: async function* () {
+          // Yield past the 4096-byte head_commit limit, then finish.
+          for (let i = 0; i < 4; i += 1) yield chunk;
+        },
+      },
+      stderr: realStderr,
+    };
+    return new Proxy(handle, {
+      get(target, property) {
+        if (property === 'streams') return streams;
+        const value = Reflect.get(target, property, target);
+        if (typeof value === 'function') return value.bind(target);
+        return value;
+      },
+    }) as NativeProcessHandle;
+  }
+
+  gracefulStop(handle: NativeProcessHandle): Promise<GracefulStopResult> {
+    return this.inner.gracefulStop(handle);
+  }
+
+  terminateTree(handle: NativeProcessHandle): Promise<TreeTerminationResult> {
+    return this.inner.terminateTree(handle);
+  }
+
+  async verifySurvivors(handle: NativeProcessHandle): Promise<SurvivorVerification> {
+    const real = await this.inner.verifySurvivors(handle);
+    if (!this.forceUnproven) return real;
+    // Fabricate an unproven verdict: members remain, no enumeration proof.
+    return { classification: 'survivors', knownPids: [handle.pid] };
+  }
+
+  inspectIdentity(identity: NativeIdentity): Promise<IdentityInspection> {
+    return this.inner.inspectIdentity(identity);
+  }
+}
+
+describe('GitObservationCollector cleanup-unproven through the real adapter (HIGH-1)', () => {
+  it('real adapter + controlled unproven verification aborts collection after first HEAD, with no status/diff/final HEAD', async t => {
+    await withTempRoot('p6-l1c-m2-cleanup-unproven-', async root => {
+      const repo = await initRepository(root);
+      await nodeFs.writeFile(nodePath.join(repo, 'a.txt'), 'hello', 'utf8');
+      gitCommit(repo, 'init');
+
+      const driver = new UnprovenCleanupDriver(new NodeProcessDriver());
+      const scheduler = new BarrierScheduler();
+      const adapter = new GitCommandAdapter({ driver, schedule: scheduler.schedule });
+      const collector = new GitObservationCollector({ createCommandPort: () => adapter });
+
+      // Overflow the first HEAD command (spawn ordinal 2): its stdout exceeds
+      // the 4 KiB head_commit bound, so the adapter deterministically wins
+      // output_limit, terminates the real owned tree, and runs the forced
+      // unproven verification. Discovery (spawn 1) runs and exits normally.
+      driver.suspendSpawnOrdinal = 2;
+      driver.forceUnproven = true;
+
+      const pending = collector.collect({ cwd: repo, trigger: 'on_demand' });
+
+      const outcome = await pending.then(
+        value => ({ kind: 'resolved' as const, value }),
+        error => ({ kind: 'rejected' as const, error }),
+      );
+
+      assert.equal(outcome.kind, 'rejected', 'collect() must reject on cleanup-unproven');
+      const error = (outcome as { error: unknown }).error;
+      assert.ok(error instanceof Error);
+      assert.equal((error as Error).message, 'GIT_COMMAND_CLEANUP_UNPROVEN',
+        'exact data-free cleanup-unproven message');
+
+      // Only discovery + first HEAD ran. No status, diff, or final HEAD spawned.
+      assert.equal(driver.spawns.length, 2,
+        'no subsequent Git command may spawn after cleanup-unproven');
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// MEDIUM-1: real Windows NodeProcessDriver missing-Git evidence.
+//
+// This proves the PRODUCTION owned-spawn path (CreateProcessW via the real
+// NodeProcessDriver) maps a missing git executable to not_found, not unknown.
+// It deliberately does NOT use ControlledSpawnFailDriver: the fixed executable
+// stays `git`, and PATH is reduced to an empty directory so the real Win32
+// ERROR_FILE_NOT_FOUND/ERROR_PATH_NOT_FOUND must flow through.
+// ---------------------------------------------------------------------------
+
+describe('GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1)', () => {
+  it('real NodeProcessDriver maps a missing git executable to not_found -> GIT_EXECUTABLE_UNAVAILABLE', async t => {
+    if (process.platform !== 'win32') {
+      t.skip('Windows-only: proves the real CreateProcessW owned-spawn path');
+      return;
+    }
+    await withTempRoot('p6-l1c-m2-missing-git-', async root => {
+      const repo = await initRepository(root);
+      const emptyPath = nodePath.join(root, 'empty-path');
+      await nodeFs.mkdir(emptyPath, { recursive: true });
+
+      // Controlled baseEnvironment: PATH resolves only to the empty directory,
+      // while retaining the minimum Windows execution environment the adapter
+      // allowlists (SYSTEMROOT/WINDIR/COMSPEC/TEMP/TMP/PATHEXT). The fixed
+      // executable remains `git` with no override.
+      const baseEnvironment: Record<string, string> = {
+        PATH: emptyPath,
+        PATHEXT: process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD',
+        SYSTEMROOT: process.env.SYSTEMROOT ?? process.env.SystemRoot ?? '',
+        WINDIR: process.env.WINDIR ?? process.env.SystemRoot ?? '',
+        COMSPEC: process.env.COMSPEC ?? '',
+        TEMP: process.env.TEMP ?? root,
+        TMP: process.env.TMP ?? root,
+      };
+
+      // The Windows owned-spawn helper resolves `git` against ITS OWN process
+      // PATH (it is a separate process the driver spawns with process.env). To
+      // make the real CreateProcessW path observe a missing git, temporarily
+      // point process.env.PATH at the empty directory so the helper itself
+      // starts with a git-free PATH. Restored in finally. test-concurrency=1
+      // makes this global mutation safe within this file.
+      const originalPath = process.env.PATH;
+      process.env.PATH = emptyPath;
+
+      const observing = new ObservingPlatformProcessDriver(new NodeProcessDriver());
+      try {
+        const adapter = new GitCommandAdapter({
+          driver: observing,
+          baseEnvironment,
+        });
+
+        const result = await adapter.execute({
+          family: 'repository_root',
+          cwd: repo,
+        });
+
+        assert.equal(result.termination, 'spawn_failed',
+          'missing git on the real owned-spawn path must be spawn_failed');
+        assert.equal(result.exitCode, null);
+        const spawnFailure = (result as { spawnFailure?: string }).spawnFailure;
+        assert.equal(spawnFailure, 'not_found',
+          'Win32 ERROR_FILE_NOT_FOUND/PATH_NOT_FOUND must map to not_found, not unknown');
+
+        assert.equal(observing.spawns.length, 0,
+          'a spawn failure owns no live process handle');
+
+        const collector = new GitObservationCollector({ createCommandPort: () => adapter });
+        const outcome = await collector.collect({ cwd: repo, trigger: 'on_demand' });
+        const snapshot = unavailableSnapshot(outcome.snapshot);
+        assert.deepEqual(snapshot.error, {
+          phase: 'repository_discovery',
+          code: 'GIT_EXECUTABLE_UNAVAILABLE',
+        });
+        assert.equal(outcome.diffBytes, null);
+      } finally {
+        process.env.PATH = originalPath;
         await emergencyCleanup(observing);
       }
     });

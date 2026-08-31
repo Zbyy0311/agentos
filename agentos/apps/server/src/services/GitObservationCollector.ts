@@ -30,7 +30,10 @@ import {
   type GitObservationTriggerV1,
   type GitObservationStatusResultV1,
 } from '@agentos/shared';
-import { GitCommandPortFactory } from './GitCommandAdapter.js';
+import {
+  GIT_COMMAND_CLEANUP_UNPROVEN_MESSAGE,
+  GitCommandPortFactory,
+} from './GitCommandAdapter.js';
 
 const GIT_OBSERVATION_TRIGGERS_V1: ReadonlySet<GitObservationTriggerV1> = new Set([
   'on_demand',
@@ -364,7 +367,14 @@ export class GitObservationCollector {
     const execute = async (request: GitCommandRequestV1): Promise<GitCommandResultV1> => {
       try {
         return await port.execute(request);
-      } catch {
+      } catch (error) {
+        // HIGH-1: a cleanup-unproven rejection means an owned Git process tree
+        // may still be alive. It is not an ordinary command failure: abort the
+        // collection immediately by rethrowing the fixed data-free error, so no
+        // subsequent Git command (status/diff/final HEAD) may spawn.
+        if (error instanceof Error && error.message === GIT_COMMAND_CLEANUP_UNPROVEN_MESSAGE) {
+          throw error;
+        }
         return containedRejection();
       }
     };
