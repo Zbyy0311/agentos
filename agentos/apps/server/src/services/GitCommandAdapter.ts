@@ -4,7 +4,8 @@
  * This is the only server-side GitCommandPort implementation. It seals the
  * four frozen read-only observation families behind fixed executable/argv,
  * enforces a sanitized deterministic environment, streams bounded stdout and
- * a bounded stderr diagnostic prefix, and owns a finite per-family deadline.
+ * a bounded stderr diagnostic prefix, and owns separate finite launch and
+ * per-family runtime deadlines.
  *
  * The production factory exposes exactly one caller-owned execution control:
  * an AbortSignal. Deadlines, limits, executable, argv and pathspecs are
@@ -128,6 +129,15 @@ export const GIT_COMMAND_DEADLINES_MS_V1 = Object.freeze({
   porcelain_v2_status: 15000,
   bounded_diff: 30000,
 } as const);
+
+/**
+ * Server-owned deadline for platform launch and ownership bootstrap. This is
+ * deliberately separate from Git runtime: the Windows owned-spawn path may
+ * legitimately consume its 30s helper-readiness plus 5s response bounds
+ * before it can return a native handle. The 45s budget leaves a conservative
+ * 10s scheduling margin without weakening any per-family runtime deadline.
+ */
+export const GIT_COMMAND_LAUNCH_DEADLINE_MS_V1 = 45_000;
 
 /**
  * Deterministic observation environment overlay. Applied after host GIT_*
@@ -359,16 +369,29 @@ export class GitCommandAdapter implements GitCommandPort {
     };
 
     const winner = createWinnerLatch();
-    let timer: ScheduledTimer | null = null;
+    let launchTimer: ScheduledTimer | null = null;
+    let familyTimer: ScheduledTimer | null = null;
     let onAbort: (() => void) | null = null;
     let listenerInstalled = false;
     let controlsCleaned = false;
 
+    const cancelLaunchTimer = (): void => {
+      if (launchTimer === null) return;
+      launchTimer.cancel();
+      launchTimer = null;
+    };
+
+    const cancelFamilyTimer = (): void => {
+      if (familyTimer === null) return;
+      familyTimer.cancel();
+      familyTimer = null;
+    };
+
     const cleanupControls = (): void => {
       if (controlsCleaned) return;
       controlsCleaned = true;
-      timer?.cancel();
-      timer = null;
+      cancelLaunchTimer();
+      cancelFamilyTimer();
       if (listenerInstalled && onAbort !== null && signal !== undefined) {
         try {
           signal.removeEventListener('abort', onAbort);
@@ -402,9 +425,9 @@ export class GitCommandAdapter implements GitCommandPort {
         return emptyCancelledResult();
       }
 
-      timer = this.schedule(() => {
+      launchTimer = this.schedule(() => {
         winner.win('timed_out');
-      }, GIT_COMMAND_DEADLINES_MS_V1[request.family]);
+      }, GIT_COMMAND_LAUNCH_DEADLINE_MS_V1);
 
       // A synchronous injected scheduler can win before spawn. No handle can
       // escape because spawn has not begun.
@@ -422,6 +445,7 @@ export class GitCommandAdapter implements GitCommandPort {
       try {
         handle = await this.driver.spawn(launch);
       } catch (error) {
+        cancelLaunchTimer();
         const priorWinner = winner.current();
         if (priorWinner === 'timed_out' || priorWinner === 'cancelled') {
           return boundedResult(
@@ -443,6 +467,15 @@ export class GitCommandAdapter implements GitCommandPort {
           null,
           mapSpawnFailure(error),
         );
+      }
+
+      // Native ownership is now established. Stop the platform-bootstrap
+      // budget before arming Git runtime so the two phases never overlap.
+      cancelLaunchTimer();
+      if (winner.current() === null) {
+        familyTimer = this.schedule(() => {
+          winner.win('timed_out');
+        }, GIT_COMMAND_DEADLINES_MS_V1[request.family]);
       }
 
       return await this.runOwned(handle, request.family, winner);
