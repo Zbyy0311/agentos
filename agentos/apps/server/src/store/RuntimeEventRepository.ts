@@ -49,6 +49,13 @@ export interface DurableRuntimeFactInput {
   readonly processId?: string;
   readonly artifactId?: string;
   readonly timestamp: string;
+  /**
+   * Optional Runtime Event source. Omission preserves the historical
+   * process-manager default. When supplied it must equal the Registry
+   * definition source for the event type; a caller can never invent a
+   * source string the Registry does not own.
+   */
+  readonly source?: RuntimeEventSource;
   /** Accepted Operation/Run execution context; never generated here. */
   readonly eventContext: RuntimeEventContext;
   readonly metadata?: RuntimeEventMetadata;
@@ -146,7 +153,7 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
       ...(input.artifactId === undefined ? {} : { artifactId: input.artifactId }),
       sequence,
       timestamp: input.timestamp,
-      source: 'process-manager',
+      source: input.source ?? 'process-manager',
       correlationId: context.correlationId,
       causationId: context.causationId,
       ...(context.parentEventId === undefined ? {} : { parentEventId: context.parentEventId }),
