@@ -1,12 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync, existsSync, readFileSync } from 'node:fs';
-import { readdirSync } from 'node:fs';
+import { readdirSync, symlinkSync } from 'node:fs';
+import { realpathSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
 
 import {
+  GIT_COMMAND_STDOUT_LIMITS_V1,
   createChangedFilesV1,
   createM3RuntimeEventRegistry,
   parseGitCommitObjectIdV1,
@@ -25,6 +27,7 @@ import { inTransaction } from '../store/Transaction.js';
 import {
   GitObservationPersistenceError,
   GitObservationPersistenceService,
+  SimulatedProcessCrash,
   type CanonicalCommandOwnershipVerifierV1,
   type GitObservationPersistenceCommandV1,
   type GitObservationPersistenceFaultInjection,
@@ -57,7 +60,9 @@ interface Fixture {
 }
 
 function createFixture(): Fixture {
-  const root = mkdtempSync(join(tmpdir(), 'agentos-l1c-m3-'));
+  // Use the PHYSICAL (realpath) temp root so lexical 8.3 short-path aliases
+  // never diverge from the canonical long form during containment proofs.
+  const root = realpathSync(mkdtempSync(join(tmpdir(), 'agentos-l1c-m3-')));
   const artifactRoot = join(root, '.agentos', 'artifacts');
   mkdirSync(join(root, 'workspace'), { recursive: true });
   writeFileSync(join(root, 'workspace', 'workspaces.json'), JSON.stringify({ workspaces: [{
@@ -217,8 +222,6 @@ function makeService(
   const writer = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(fx.db), outbox, fx.db);
   const service = new GitObservationPersistenceService({
     store: fx.store,
-    db: fx.db,
-    observations: fx.observations,
     factWriter: writer,
     eventAuthority: options.authority ?? operationAuthority({ correlationId: 'corr-a', causationId: 'cause-a', operationId: 'op-a' }),
     artifactRoot: fx.artifactRoot,
@@ -255,6 +258,8 @@ function observationCount(fx: Fixture): number {
 function artifactDir(artifactRoot: string, runId: string, artifactId: string): string {
   return join(artifactRoot, 'ws-a', runId, artifactId);
 }
+// Windows directory removal is not always synchronous under the test runner;
+// poll briefly so a just-cleaned directory is not miscounted as present.
 function countArtifactDirs(artifactRoot: string, runId: string): number {
   const runDir = join(artifactRoot, 'ws-a', runId);
   if (!existsSync(runDir)) return 0;
@@ -841,21 +846,28 @@ test('I: simulated crash after final rename before BEGIN leaves an allowed orpha
     insertOperation(fx, 'run-a', 'op-a', 'corr-a');
     const admissionId = insertAdmission(fx);
     let sawBegin = false;
-    const crash = new Error('simulated-crash');
     const { service } = makeService(fx, {
       faultInjection: {
-        crashBeforeBegin: () => { throw crash; },
+        crashBeforeBegin: () => { throw new SimulatedProcessCrash(); },
         beforeArtifactInsert: () => { sawBegin = true; },
       },
     });
-    await assert.rejects(() => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())), /simulated-crash/);
+    await assert.rejects(
+      () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
+      (e: unknown) => e instanceof SimulatedProcessCrash,
+    );
     assert.equal(sawBegin, false);
     assert.equal(observationCount(fx), 0);
     assert.equal(artifactCount(fx), 0);
     assert.equal(eventCount(fx), 0);
     assert.equal(outboxCount(fx), 0);
-    // Orphan file is allowed and was cleaned up by the normal-failure path.
-    assert.equal(countArtifactDirs(fx.artifactRoot, 'run-a'), 0);
+    // Process-crash semantics: the orphan final content REMAINS on disk while
+    // zero DB rows reference it.
+    assert.equal(countArtifactDirs(fx.artifactRoot, 'run-a'), 1);
+    const runDir = join(fx.artifactRoot, 'ws-a', 'run-a');
+    const orphanId = readdirSync(runDir, { withFileTypes: true }).filter(e => e.isDirectory())[0]!.name;
+    const orphanBytes = readFileSync(join(runDir, orphanId, 'content'));
+    assert.equal(createHash('sha256').update(orphanBytes).digest('hex'), DIFF_SHA);
   } finally { fx.close(); }
 });
 
@@ -873,5 +885,504 @@ test('J: no reachable state lets a committed row reference missing final content
     const bytes = readFileSync(finalPath);
     assert.equal(createHash('sha256').update(bytes).digest('hex'), row.sha256);
     assert.equal(bytes.byteLength, row.size_bytes);
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// HIGH-1: one-transaction database identity.
+// ---------------------------------------------------------------------------
+test('HIGH-1 A: production composition derives one DB identity from the store', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service, writer } = makeService(fx);
+    // The writer's bound DB and the store's DB are the same object.
+    assert.equal(writer.transactionDatabase as unknown, fx.db as unknown);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC()));
+    assert.equal(observationCount(fx), 1);
+    assert.equal(artifactCount(fx), 1);
+    assert.equal(eventCount(fx), 2);
+    assert.equal(outboxCount(fx), 2);
+    assert.ok(result.diffArtifactId);
+  } finally { fx.close(); }
+});
+
+test('HIGH-1 C: a fact writer bound to a DIFFERENT connection is rejected at construction', () => {
+  const fx = createFixture();
+  const other = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    const events = new RuntimeEventRepository(other.db, createM3RuntimeEventRegistry());
+    const outbox = new OutboxRepository(other.db, events);
+    const foreignWriter = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(other.db), outbox, other.db);
+    assert.throws(
+      () => new GitObservationPersistenceService({
+        store: fx.store,
+        factWriter: foreignWriter,
+        eventAuthority: operationAuthority({ correlationId: 'c', causationId: 'x', operationId: 'op-a' }),
+        artifactRoot: fx.artifactRoot,
+      }),
+      (e: unknown) => (e as GitObservationPersistenceError).code === 'INPUT_INVALID',
+    );
+  } finally { fx.close(); other.close(); }
+});
+
+test('HIGH-1 D/E: no mismatched arrangement yields artifact-row-without-content; success commits atomically', async () => {
+  // D is structurally impossible: the only DB handle comes from the store and
+  // the writer is proven to share it, so a partial cross-connection commit
+  // cannot be constructed. E proves the single-BEGIN path end to end.
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC()));
+    // All four durable facts commit together and the bytes exist.
+    const row = fx.observations.findById('ws-a', result.observationId)!;
+    assert.equal(row.diffArtifactId, result.diffArtifactId);
+    const bytes = readFileSync(join(artifactDir(fx.artifactRoot, 'run-a', result.diffArtifactId!), 'content'));
+    assert.equal(createHash('sha256').update(bytes).digest('hex'), DIFF_SHA);
+    assert.equal(eventCount(fx), 2);
+    assert.equal(outboxCount(fx), 2);
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// HIGH-2: physical Artifact path containment (symlink/junction fail-closed).
+// ---------------------------------------------------------------------------
+test('HIGH-2: a workspace-id junction to outside fails closed and writes nothing outside', async (t) => {
+  const fx = createFixture();
+  let outside = '';
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    outside = mkdtempSync(join(tmpdir(), 'agentos-l1c-outside-'));
+    mkdirSync(join(fx.artifactRoot), { recursive: true });
+    try {
+      symlinkSync(outside, join(fx.artifactRoot, 'ws-a'), 'junction');
+    } catch (error) {
+      t.skip('Windows junction creation unavailable: ' + (error as Error).message);
+      return;
+    }
+    const { service } = makeService(fx);
+    await assert.rejects(
+      () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
+      (e: unknown) => (e as GitObservationPersistenceError).code === 'ARTIFACT_STAGING_FAILED',
+    );
+    // Outside target received no content file and zero DB rows committed.
+    // mkdir(recursive) may legitimately create empty subdirs through the
+    // junction before the realpath proof fires; the binding guarantees are
+    // that no content FILE is written outside and zero DB rows commit.
+    assert.equal(existsSync(join(outside, 'run-a')), true);
+    assert.equal(readdirSync(join(outside, 'run-a')).filter(f => f === 'content').length, 0);
+    assert.equal(observationCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+  } finally {
+    fx.close();
+    if (outside) rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('HIGH-2: a canonical-run junction to outside fails closed and cleanup never touches outside', async (t) => {
+  const fx = createFixture();
+  let outside = '';
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    outside = mkdtempSync(join(tmpdir(), 'agentos-l1c-outside-'));
+    writeFileSync(join(outside, 'keep.txt'), 'precious', 'utf8');
+    mkdirSync(join(fx.artifactRoot, 'ws-a'), { recursive: true });
+    try {
+      symlinkSync(outside, join(fx.artifactRoot, 'ws-a', 'run-a'), 'junction');
+    } catch (error) {
+      t.skip('Windows junction creation unavailable: ' + (error as Error).message);
+      return;
+    }
+    const { service } = makeService(fx);
+    await assert.rejects(
+      () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
+      (e: unknown) => (e as GitObservationPersistenceError).code === 'ARTIFACT_STAGING_FAILED',
+    );
+    // Outside content is untouched; nothing was written through the link.
+    assert.equal(readFileSync(join(outside, 'keep.txt'), 'utf8'), 'precious');
+    assert.equal(existsSync(join(outside, 'content')), false);
+    assert.equal(observationCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+  } finally {
+    fx.close();
+    if (outside) rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('HIGH-2: a normal Artifact root path succeeds end to end', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC()));
+    assert.ok(result.diffArtifactId);
+    assert.ok(existsSync(join(artifactDir(fx.artifactRoot, 'run-a', result.diffArtifactId!), 'content')));
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// HIGH-3: artifact.diff.registered DB binding at the writer boundary.
+// ---------------------------------------------------------------------------
+interface WriterHarness {
+  fx: Fixture;
+  writer: RuntimeEventOutboxWriter;
+  events: RuntimeEventRepository;
+  outbox: OutboxRepository;
+}
+
+function makeWriter(fx: Fixture): WriterHarness {
+  const events = new RuntimeEventRepository(fx.db, createM3RuntimeEventRegistry());
+  const outbox = new OutboxRepository(fx.db, events);
+  const writer = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(fx.db), outbox, fx.db);
+  return { fx, writer, events, outbox };
+}
+
+function seedCanonicalArtifact(fx: Fixture, artifactId: string, runId = 'run-a', sizeBytes = DIFF_BYTES.byteLength, sha256 = DIFF_SHA): void {
+  fx.store.createCanonicalRuntimeArtifact({
+    id: artifactId, workspaceId: 'ws-a', type: 'diff', title: 'd', sizeBytes, sha256,
+    contentAvailable: true, createdAt: NOW.toISOString(),
+  }, { kind: 'CANONICAL', canonicalRunId: runId }, 'sink/' + artifactId);
+}
+
+function diffRegisteredInput(artifactId: string, payload: Record<string, unknown> = {}) {
+  return {
+    type: 'artifact.diff.registered',
+    workspaceId: 'ws-a',
+    runId: 'run-a',
+    artifactId,
+    timestamp: NOW.toISOString(),
+    source: 'artifact-manager' as const,
+    eventContext: { correlationId: 'corr', causationId: 'cause' },
+    payload: { artifactId, contentHash: DIFF_SHA, sizeBytes: DIFF_BYTES.byteLength, ...payload },
+  };
+}
+
+function attemptDiffRegistration(h: WriterHarness, input: ReturnType<typeof diffRegisteredInput>): void {
+  inTransaction(h.fx.db, () => h.writer.appendWithinTransaction(input));
+}
+
+test('HIGH-3: nonexistent Artifact is rejected and rolls back', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    const h = makeWriter(fx);
+    assert.throws(() => attemptDiffRegistration(h, diffRegisteredInput('artifact-missing')), /nonexistent Artifact/);
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-3: Artifact in another Workspace is rejected', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    // Artifact row exists but its workspace does not match the Event workspace.
+    // Seed a second workspace + artifact under it.
+    fx.db.prepare('INSERT INTO workspaces (id, name, root_path, canonical_root_path, git_enabled, memory_enabled, last_opened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run('ws-b', 'WS B', fx.root, fx.root, 1, 1, NOW.toISOString(), NOW.toISOString(), NOW.toISOString());
+    seedCanonicalRun(fx, 'run-b', 'ws-b');
+    fx.store.createCanonicalRuntimeArtifact({
+      id: 'artifact-b', workspaceId: 'ws-b', type: 'diff', title: 'd', sizeBytes: 1, sha256: DIFF_SHA,
+      contentAvailable: true, createdAt: NOW.toISOString(),
+    }, { kind: 'CANONICAL', canonicalRunId: 'run-b' }, 'sink/b');
+    const h = makeWriter(fx);
+    assert.throws(() => attemptDiffRegistration(h, diffRegisteredInput('artifact-b')), /another Workspace/);
+    assert.equal(eventCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-3: Artifact owned by another canonical Run is rejected', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    seedCanonicalRun(fx, 'run-c');
+    seedCanonicalArtifact(fx, 'artifact-c', 'run-c');
+    const h = makeWriter(fx);
+    assert.throws(() => attemptDiffRegistration(h, diffRegisteredInput('artifact-c')), /another canonical Run/);
+    assert.equal(eventCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-3: a LEGACY Artifact supplied to artifact.diff.registered is rejected', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    seedLegacyAgentRun(fx);
+    fx.store.createExecution({ id: 'exec-a', runId: 'agentrun-a', conversationId: 'conv-agentrun-a', workspaceId: 'ws-a', sourceMessageId: 'msg-agentrun-a', agentId: 'agent-a', status: 'running_cli', mode: 'real', createdAt: NOW.toISOString(), updatedAt: NOW.toISOString() });
+    fx.store.createRuntimeArtifact({
+      id: 'artifact-legacy', workspaceId: 'ws-a', runId: 'agentrun-a', sourceExecutionId: 'exec-a', agentId: 'agent-a',
+      type: 'diff', title: 'legacy', summary: undefined, originalPath: undefined, mimeType: undefined,
+      sizeBytes: DIFF_BYTES.byteLength, sha256: DIFF_SHA, contentAvailable: true, createdAt: NOW.toISOString(),
+    }, 'sink/legacy');
+    const h = makeWriter(fx);
+    assert.throws(() => attemptDiffRegistration(h, diffRegisteredInput('artifact-legacy')), /CANONICAL provenance/);
+    assert.equal(eventCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-3: envelope artifactId must equal payload artifactId', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    seedCanonicalArtifact(fx, 'artifact-a');
+    const h = makeWriter(fx);
+    const input = { ...diffRegisteredInput('artifact-a'), payload: { artifactId: 'artifact-other', contentHash: DIFF_SHA, sizeBytes: DIFF_BYTES.byteLength } };
+    assert.throws(() => attemptDiffRegistration(h, input), /envelope artifactId must equal payload/);
+    assert.equal(eventCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-3: content hash mismatch is rejected', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    seedCanonicalArtifact(fx, 'artifact-a');
+    const h = makeWriter(fx);
+    assert.throws(() => attemptDiffRegistration(h, diffRegisteredInput('artifact-a', { contentHash: 'f'.repeat(64) })), /content hash/);
+    assert.equal(eventCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-3: size mismatch is rejected', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    seedCanonicalArtifact(fx, 'artifact-a');
+    const h = makeWriter(fx);
+    assert.throws(() => attemptDiffRegistration(h, diffRegisteredInput('artifact-a', { sizeBytes: DIFF_BYTES.byteLength + 1 })), /size/);
+    assert.equal(eventCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-3: contentAvailable=false is rejected', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    fx.store.createCanonicalRuntimeArtifact({
+      id: 'artifact-unavail', workspaceId: 'ws-a', type: 'diff', title: 'd', sizeBytes: 0, sha256: undefined,
+      contentAvailable: false, createdAt: NOW.toISOString(),
+    }, { kind: 'CANONICAL', canonicalRunId: 'run-a' }, null);
+    const h = makeWriter(fx);
+    assert.throws(() => attemptDiffRegistration(h, diffRegisteredInput('artifact-unavail', { contentHash: '', sizeBytes: 0 })), /content-available/);
+    assert.equal(eventCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-3: same-transaction canonical Artifact insertion then artifact.diff.registered succeeds', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    const h = makeWriter(fx);
+    const result = inTransaction(fx.db, () => {
+      seedCanonicalArtifact(fx, 'artifact-same-tx');
+      return h.writer.appendWithinTransaction(diffRegisteredInput('artifact-same-tx'));
+    });
+    assert.equal(result.event.type, 'artifact.diff.registered');
+    assert.equal(result.event.source, 'artifact-manager');
+    assert.equal(eventCount(fx), 1);
+    assert.equal(outboxCount(fx), 1);
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// MEDIUM-1: frozen bounded-diff limit revalidation at the persistence boundary.
+// ---------------------------------------------------------------------------
+test('MEDIUM-1: exactly 4 MiB diff is accepted', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const exact = new Uint8Array(GIT_COMMAND_STDOUT_LIMITS_V1.bounded_diff);
+    const { service } = makeService(fx);
+    const result = await service.persist({
+      workspaceId: 'ws-a', snapshot: gitSnapshot(), diffBytes: exact,
+      binding: { subjectKind: 'CANONICAL_RUN', admissionId, canonicalRunId: 'run-a', authoritySource: OP_SRC() },
+    });
+    assert.ok(result.diffArtifactId);
+    const artifact = fx.store.getCanonicalRuntimeArtifactRecord('ws-a', result.diffArtifactId!)!;
+    assert.equal(artifact.sizeBytes, GIT_COMMAND_STDOUT_LIMITS_V1.bounded_diff);
+  } finally { fx.close(); }
+});
+
+test('MEDIUM-1: 4 MiB + 1 is rejected before staging with zero durable work', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const over = new Uint8Array(GIT_COMMAND_STDOUT_LIMITS_V1.bounded_diff + 1);
+    const { service } = makeService(fx);
+    await assert.rejects(
+      () => service.persist({
+        workspaceId: 'ws-a', snapshot: gitSnapshot(), diffBytes: over,
+        binding: { subjectKind: 'CANONICAL_RUN', admissionId, canonicalRunId: 'run-a', authoritySource: OP_SRC() },
+      }),
+      (e: unknown) => (e as GitObservationPersistenceError).code === 'INPUT_INVALID',
+    );
+    assert.equal(observationCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+    assert.equal(countArtifactDirs(fx.artifactRoot, 'run-a'), 0);
+  } finally { fx.close(); }
+});
+
+test('MEDIUM-1: zero-length available diff produces a zero-byte canonical Artifact', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist({
+      workspaceId: 'ws-a', snapshot: gitSnapshot(), diffBytes: new Uint8Array(0),
+      binding: { subjectKind: 'CANONICAL_RUN', admissionId, canonicalRunId: 'run-a', authoritySource: OP_SRC() },
+    });
+    assert.ok(result.diffArtifactId);
+    const artifact = fx.store.getCanonicalRuntimeArtifactRecord('ws-a', result.diffArtifactId!)!;
+    assert.equal(artifact.sizeBytes, 0);
+    assert.equal(artifact.sha256, createHash('sha256').update(new Uint8Array(0)).digest('hex'));
+    const bytes = readFileSync(join(artifactDir(fx.artifactRoot, 'run-a', result.diffArtifactId!), 'content'));
+    assert.equal(bytes.byteLength, 0);
+    const diffEvent = fx.db.prepare("SELECT 1 AS p FROM runtime_events WHERE type = 'artifact.diff.registered' AND artifact_id = ?").get(result.diffArtifactId!) as { p: number } | undefined;
+    assert.ok(diffEvent);
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// MEDIUM-2: real Outbox insertion failure (window G).
+// ---------------------------------------------------------------------------
+test('MEDIUM-2 G (real): Outbox insert failure rolls back Event, Observation, Artifact and removes final bytes', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const events = new RuntimeEventRepository(fx.db, createM3RuntimeEventRegistry());
+    const outbox = new OutboxRepository(fx.db, events);
+    const writer = new RuntimeEventOutboxWriter(events, new RunSequenceAllocator(fx.db), outbox, fx.db);
+    // Break the REAL OutboxRepository.insertWithinTransaction so the FIRST
+    // outbox insert (for git.observation.completed) throws after its Event row
+    // already inserted inside the same transaction.
+    const originalInsert = outbox.insertWithinTransaction.bind(outbox);
+    (outbox as unknown as { insertWithinTransaction: (input: unknown) => unknown }).insertWithinTransaction = (input: unknown) => {
+      // Prove the Event row already exists mid-transaction before failing.
+      const ev = fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events').get() as { c: number };
+      if (ev.c < 1) throw new Error('expected the observation Event to be inserted first');
+      throw new Error('real-outbox-insert-fail');
+    };
+    const service = new GitObservationPersistenceService({
+      store: fx.store,
+      factWriter: writer,
+      eventAuthority: operationAuthority({ correlationId: 'corr-a', causationId: 'cause-a', operationId: 'op-a' }),
+      artifactRoot: fx.artifactRoot,
+      now: () => NOW,
+      createArtifactId: () => 'artifact-' + Math.random().toString(36).slice(2, 10),
+      createObservationId: () => 'obs-' + Math.random().toString(36).slice(2, 10),
+    });
+    await assert.rejects(
+      () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
+      /real-outbox-insert-fail/,
+    );
+    // Whole transaction rolled back; no Event/Observation/Artifact/Outbox.
+    assert.equal(eventCount(fx), 0);
+    assert.equal(observationCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+    // Normal-failure cleanup removed the staged final bytes.
+    assert.equal(countArtifactDirs(fx.artifactRoot, 'run-a'), 0);
+    void originalInsert;
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// Additional acceptance coverage.
+// ---------------------------------------------------------------------------
+test('canonical NOT_GIT emits git.observation.completed with dirtyState unknown and no Artifact', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC(), notGitSnapshot()));
+    assert.equal(result.diffArtifactId, null);
+    assert.equal(artifactCount(fx), 0);
+    const ev = fx.db.prepare("SELECT type, payload_json FROM runtime_events WHERE type = 'git.observation.completed'").get() as { payload_json: string };
+    const payload = JSON.parse(ev.payload_json) as { observationState: string; dirtyState: string };
+    assert.equal(payload.observationState, 'NOT_GIT');
+    assert.equal(payload.dirtyState, 'unknown');
+  } finally { fx.close(); }
+});
+
+test('canonical UNAVAILABLE emits git.observation.unavailable with stable errorCode and no Artifact', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC(), unavailableSnapshot()));
+    assert.equal(result.diffArtifactId, null);
+    assert.equal(artifactCount(fx), 0);
+    const ev = fx.db.prepare("SELECT type, payload_json FROM runtime_events WHERE type = 'git.observation.unavailable'").get() as { payload_json: string };
+    const payload = JSON.parse(ev.payload_json) as { errorCode: string };
+    assert.equal(payload.errorCode, 'GIT_REPOSITORY_DISCOVERY_FAILED');
+  } finally { fx.close(); }
+});
+
+test('canonical GIT with diffState unavailable produces no Artifact', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC(), gitSnapshot({ diffState: 'unavailable' })));
+    assert.equal(result.diffArtifactId, null);
+    assert.equal(artifactCount(fx), 0);
+    const obs = fx.observations.findById('ws-a', result.observationId)!;
+    assert.equal(obs.diffArtifactId, null);
+  } finally { fx.close(); }
+});
+
+test('canonical GIT with diffState truncated produces no Artifact', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC(), gitSnapshot({ diffState: 'truncated', truncation: { changedFiles: false, diff: true } })));
+    assert.equal(result.diffArtifactId, null);
+    assert.equal(artifactCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('canonical GIT with diffState not_applicable produces no Artifact', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC(), gitSnapshot({ diffState: 'not_applicable' })));
+    assert.equal(result.diffArtifactId, null);
+    assert.equal(artifactCount(fx), 0);
   } finally { fx.close(); }
 });

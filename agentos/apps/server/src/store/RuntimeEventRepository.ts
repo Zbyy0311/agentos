@@ -110,6 +110,15 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
   private readonly createEventId: () => string;
   private readonly createOutboxId: (eventId: string) => string;
 
+  /**
+   * Exposes the bound transaction DB so a composing service can prove all of
+   * its collaborators share ONE SQLite connection before opening BEGIN
+   * IMMEDIATE. This is an identity assertion, not a second persistence path.
+   */
+  get transactionDatabase(): TransactionDatabase {
+    return this.db;
+  }
+
   constructor(
     private readonly runtimeEvents: RuntimeEventRepository,
     private readonly runSequenceAllocator: RunSequenceAllocator,
@@ -269,6 +278,72 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
           'Runtime fact artifact reference is not bound to the Process output reference',
         );
       }
+    }
+
+    if (input.type === 'artifact.diff.registered') {
+      this.#assertCanonicalDiffArtifactBinding(input);
+    }
+  }
+
+  /**
+   * artifact.diff.registered must reference a real canonical Artifact inserted
+   * (possibly earlier in the SAME transaction) in this Workspace/Run, with a
+   * content hash/size that exactly matches the Event payload. The Registry can
+   * only validate the payload shape; this closes the DB binding hole so a fake
+   * or mismatched Artifact can never be published.
+   */
+  #assertCanonicalDiffArtifactBinding(input: DurableRuntimeFactInput): void {
+    const fail = (message: string): never => {
+      throw new RuntimeEventRepositoryError('RUNTIME_EVENT_PERSISTENCE_FAILED', message);
+    };
+    const artifactId = input.artifactId;
+    if (artifactId === undefined || artifactId.trim().length === 0) {
+      fail('artifact.diff.registered requires an envelope artifactId');
+    }
+    const payload = input.payload;
+    if (payload.artifactId !== artifactId) {
+      fail('artifact.diff.registered envelope artifactId must equal payload artifactId');
+    }
+    const row = this.db.prepare(`
+      SELECT workspace_id, provenance_kind, canonical_run_id, content_available, sha256, size_bytes
+      FROM runtime_artifacts
+      WHERE id = ?
+    `).get(artifactId) as {
+      workspace_id: string;
+      provenance_kind: string;
+      canonical_run_id: string | null;
+      content_available: number;
+      sha256: string | null;
+      size_bytes: number;
+    } | undefined;
+    if (row === undefined) {
+      fail('artifact.diff.registered references a nonexistent Artifact');
+    }
+    const artifact = row as {
+      workspace_id: string;
+      provenance_kind: string;
+      canonical_run_id: string | null;
+      content_available: number;
+      sha256: string | null;
+      size_bytes: number;
+    };
+    if (artifact.workspace_id !== input.workspaceId) {
+      fail('artifact.diff.registered Artifact belongs to another Workspace');
+    }
+    if (artifact.provenance_kind !== 'CANONICAL') {
+      fail('artifact.diff.registered requires a CANONICAL provenance Artifact');
+    }
+    if (artifact.canonical_run_id !== input.runId) {
+      fail('artifact.diff.registered Artifact belongs to another canonical Run');
+    }
+    if (artifact.content_available !== 1) {
+      fail('artifact.diff.registered requires a content-available Artifact');
+    }
+    if (artifact.sha256 === null || artifact.sha256 !== payload.contentHash) {
+      fail('artifact.diff.registered content hash does not match the Artifact');
+    }
+    if (artifact.size_bytes !== payload.sizeBytes) {
+      fail('artifact.diff.registered size does not match the Artifact');
     }
   }
 

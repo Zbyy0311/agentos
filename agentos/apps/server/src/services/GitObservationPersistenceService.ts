@@ -1,8 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import nodePath from 'node:path';
 import {
   canEmitCanonicalGitObservationEventV1,
+  GIT_COMMAND_STDOUT_LIMITS_V1,
   mapGitObservationEventDirtyStateV1,
   serializeChangedFilesV1,
   serializeGitObservationSnapshotV1,
@@ -15,7 +16,7 @@ import {
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
 import type { DurableRuntimeFactWriter } from '../store/RuntimeEventRepository.js';
-import type { WorkspaceGitObservationRepository } from '../store/WorkspaceGitObservationRepository.js';
+import { WorkspaceGitObservationRepository } from '../store/WorkspaceGitObservationRepository.js';
 
 /**
  * P6-L1C-M3: durable Git Observation persistence.
@@ -45,6 +46,19 @@ export class GitObservationPersistenceError extends Error {
   ) {
     super('GIT_OBSERVATION_' + code + ': ' + message);
     this.name = 'GitObservationPersistenceError';
+  }
+}
+
+/**
+ * Sentinel thrown BY the crashBeforeBegin fault seam to model a real process
+ * crash. Unlike a normal failure it is NOT routed through staging/DB cleanup,
+ * so the orphan final Artifact file remains observable. Production never
+ * throws this.
+ */
+export class SimulatedProcessCrash extends Error {
+  constructor() {
+    super('SIMULATED_PROCESS_CRASH');
+    this.name = 'SimulatedProcessCrash';
   }
 }
 
@@ -100,18 +114,23 @@ export interface GitObservationPersistenceFaultInjection {
   readonly beforeTempWrite?: () => void;
   readonly failTempWrite?: () => void;
   readonly failRename?: () => void;
-  readonly crashBeforeBegin?: () => void;
+  /** Simulates a PROCESS CRASH after final rename, before BEGIN: bypasses
+   * normal-failure cleanup so the orphan final file is observable. */
+  readonly crashBeforeBegin?: () => never;
   readonly beforeArtifactInsert?: () => void;
   readonly beforeObservationInsert?: () => void;
   readonly beforeEventAppend?: () => void;
   readonly beforeOutboxInsert?: () => void;
 }
 
+/** A fact writer that can prove which SQLite connection it writes to. */
+export interface BoundDurableRuntimeFactWriter extends DurableRuntimeFactWriter {
+  readonly transactionDatabase: TransactionDatabase;
+}
+
 export interface GitObservationPersistenceServiceDependencies {
   readonly store: SqliteStore;
-  readonly db: TransactionDatabase;
-  readonly observations: WorkspaceGitObservationRepository;
-  readonly factWriter: DurableRuntimeFactWriter;
+  readonly factWriter: BoundDurableRuntimeFactWriter;
   readonly eventAuthority: GitObservationRuntimeEventContextAuthorityV1;
   /** Artifact storage root (defaults to <cwd>/.agentos/artifacts). */
   readonly artifactRoot?: string;
@@ -128,7 +147,7 @@ export class GitObservationPersistenceService {
   private readonly store: SqliteStore;
   private readonly db: TransactionDatabase;
   private readonly observations: WorkspaceGitObservationRepository;
-  private readonly factWriter: DurableRuntimeFactWriter;
+  private readonly factWriter: BoundDurableRuntimeFactWriter;
   private readonly eventAuthority: GitObservationRuntimeEventContextAuthorityV1;
   private readonly artifactRoot: string;
   private readonly canonicalCommandVerifier?: CanonicalCommandOwnershipVerifierV1;
@@ -139,9 +158,21 @@ export class GitObservationPersistenceService {
 
   constructor(dependencies: GitObservationPersistenceServiceDependencies) {
     this.store = dependencies.store;
-    this.db = dependencies.db;
-    this.observations = dependencies.observations;
+    // HIGH-1: derive the transaction DB from the SqliteStore itself so the
+    // one-connection invariant is structural, not documentation. A separately
+    // injected DB can never silently diverge from the Artifact store.
+    const db = dependencies.store.getDatabase() as unknown as TransactionDatabase;
+    this.db = db;
+    this.observations = new WorkspaceGitObservationRepository(db);
     this.factWriter = dependencies.factWriter;
+    // HIGH-1: fail closed if the Event writer is bound to a different
+    // connection; durable work must never begin on a miswired dependency.
+    if (dependencies.factWriter.transactionDatabase !== db) {
+      throw new GitObservationPersistenceError(
+        'INPUT_INVALID',
+        'Runtime Event writer is not bound to the same SQLite connection as the store',
+      );
+    }
     this.eventAuthority = dependencies.eventAuthority;
     this.artifactRoot = dependencies.artifactRoot
       ?? nodePath.join(nodePath.resolve(process.cwd()), '.agentos', 'artifacts');
@@ -239,6 +270,14 @@ export class GitObservationPersistenceService {
 
     // Canonical diff Artifact eligibility.
     const diffBytes = command.diffBytes ?? null;
+    // MEDIUM-1: the persistence boundary revalidates the frozen M1 bounded
+    // diff limit; it never relies on a comment that bytes came from M2.
+    if (diffBytes !== null && diffBytes.byteLength > GIT_COMMAND_STDOUT_LIMITS_V1.bounded_diff) {
+      throw new GitObservationPersistenceError(
+        'INPUT_INVALID',
+        'bounded diff bytes exceed the frozen ' + GIT_COMMAND_STDOUT_LIMITS_V1.bounded_diff + ' byte limit',
+      );
+    }
     const eligible = snapshot.observationState === 'GIT'
       && snapshot.diffState === 'available'
       && diffBytes !== null;
@@ -334,7 +373,7 @@ export class GitObservationPersistenceService {
       // Normal failure before commit: the DB transaction is already rolled
       // back; remove the staged Artifact directory from this attempt.
       if (staged !== null) {
-        await this.removeStagedArtifact(staged.directory);
+        await this.removeStagedArtifact(staged.directory, await this.canonicalArtifactRoot());
       }
       if (error instanceof GitObservationPersistenceError) throw error;
       throw new GitObservationPersistenceError(
@@ -365,17 +404,29 @@ export class GitObservationPersistenceService {
       .join(workspaceId, canonicalRunId, artifactId, 'content')
       .replaceAll(nodePath.sep, '/');
     const resolvedDirectory = nodePath.resolve(directory);
-    if (!this.isWithinArtifactRoot(resolvedDirectory)) {
-      throw new GitObservationPersistenceError(
-        'ARTIFACT_STAGING_FAILED',
-        'resolved Artifact path escapes the Artifact root',
-      );
-    }
+
+    // HIGH-2: establish and canonicalize the server-owned Artifact root, then
+    // prove no existing ancestor is a symlink/junction escape before writing.
+    const canonicalRoot = await this.canonicalArtifactRoot();
 
     const temporaryPath = nodePath.join(resolvedDirectory, 'content.tmp-' + randomUUID());
     const finalPath = nodePath.join(resolvedDirectory, 'content');
     try {
       await mkdir(resolvedDirectory, { recursive: true });
+      // HIGH-2 physical containment: compare the target's REALPATH against
+      // the canonical root's realpath. Both are physical (long-form) paths,
+      // so a lexical 8.3 alias can never masquerade as containment, and a
+      // symlink/junction ancestor resolves outside and fails closed.
+      const physicalDirectory = GitObservationPersistenceService.normalizePhysical(
+        await realpath(resolvedDirectory),
+      );
+      if (!this.isWithinRoot(canonicalRoot, physicalDirectory)) {
+        throw new GitObservationPersistenceError(
+          'ARTIFACT_STAGING_FAILED',
+          'physical Artifact directory resolves outside the canonical Artifact root',
+        );
+      }
+      await this.assertNoLinkedAncestors(canonicalRoot, physicalDirectory);
       this.faults.beforeTempWrite?.();
       if (this.faults.failTempWrite) {
         this.faults.failTempWrite();
@@ -388,10 +439,19 @@ export class GitObservationPersistenceService {
         await rename(temporaryPath, finalPath);
       }
       // Crash window I: a process crash after the final rename but before
-      // BEGIN leaves an orphan file whose bytes can never be referenced.
-      this.faults.crashBeforeBegin?.();
+      // BEGIN leaves an orphan file. This seam bypasses normal-failure cleanup
+      // to model a real crash; the throw propagates WITHOUT the catch below
+      // cleaning up, so the orphan final content is observable.
+      if (this.faults.crashBeforeBegin) {
+        this.faults.crashBeforeBegin();
+      }
     } catch (error) {
-      await this.removeStagedArtifact(resolvedDirectory);
+      // A simulated process crash is not a normal failure: it must NOT clean
+      // up the staged directory, so the orphan final file remains.
+      if (error instanceof SimulatedProcessCrash) {
+        throw error;
+      }
+      await this.removeStagedArtifact(resolvedDirectory, canonicalRoot);
       if (error instanceof GitObservationPersistenceError) throw error;
       throw new GitObservationPersistenceError(
         'ARTIFACT_STAGING_FAILED',
@@ -402,15 +462,100 @@ export class GitObservationPersistenceService {
     return { artifactId, storageKey, directory: resolvedDirectory };
   }
 
-  private isWithinArtifactRoot(resolved: string): boolean {
-    const root = nodePath.resolve(this.artifactRoot);
-    return resolved === root || resolved.startsWith(root + nodePath.sep);
+  /**
+   * Canonicalizes the server-owned Artifact root to a physical path. The root
+   * is created if absent, then realpath'd so every containment proof compares
+   * against the real location, not a lexical alias.
+   */
+  private async canonicalArtifactRoot(): Promise<string> {
+    await mkdir(nodePath.resolve(this.artifactRoot), { recursive: true });
+    return GitObservationPersistenceService.normalizePhysical(
+      await realpath(nodePath.resolve(this.artifactRoot)),
+    );
   }
 
-  private async removeStagedArtifact(directory: string): Promise<void> {
+  private isWithinRoot(canonicalRoot: string, candidate: string): boolean {
+    const root = canonicalRoot;
+    const target = GitObservationPersistenceService.normalizePhysical(candidate);
+    return target === root || target.startsWith(root + nodePath.sep);
+  }
+
+  /**
+   * Normalizes a Windows physical path for prefix comparison: strips the
+   * realpath \\?\ device prefix and lowercases drive-letter paths so a realpath
+   * of the root and a lexical descendant compare on the same canonical form.
+   */
+  private static normalizePhysical(value: string): string {
+    let out = value;
+    if (out.startsWith('\\\\?\\')) out = out.slice(4);
+    if (/^[A-Za-z]:/.test(out)) out = out[0]!.toUpperCase() + out.slice(1);
+    return out;
+  }
+
+  /**
+   * Walks the existing ancestors between the canonical root and the target
+   * directory, failing closed if any is a symlink or Windows junction. This
+   * catches a pre-planted link BEFORE mkdir/realpath, so writeFile can never
+   * reach outside through a reparse-point ancestor.
+   */
+  private async assertNoLinkedAncestors(canonicalRoot: string, targetDirectory: string): Promise<void> {
+    const relative = nodePath.relative(canonicalRoot, targetDirectory);
+    if (relative.startsWith('..') || nodePath.isAbsolute(relative)) {
+      throw new GitObservationPersistenceError(
+        'ARTIFACT_STAGING_FAILED',
+        'Artifact target directory escapes the canonical Artifact root',
+      );
+    }
+    let current = canonicalRoot;
+    for (const segment of relative.split(nodePath.sep).filter(s => s.length > 0)) {
+      current = nodePath.join(current, segment);
+      let stat;
+      try {
+        stat = await lstat(current);
+      } catch {
+        // Component does not exist yet; deeper components cannot be links.
+        break;
+      }
+      if (stat.isSymbolicLink()) {
+        throw new GitObservationPersistenceError(
+          'ARTIFACT_STAGING_FAILED',
+          'Artifact path ancestor is a symlink/junction: ' + current,
+        );
+      }
+      if (!stat.isDirectory()) {
+        throw new GitObservationPersistenceError(
+          'ARTIFACT_STAGING_FAILED',
+          'Artifact path ancestor is not a directory: ' + current,
+        );
+      }
+    }
+  }
+
+  private async removeStagedArtifact(directory: string, canonicalRoot?: string): Promise<void> {
+    const root = canonicalRoot ?? nodePath.resolve(this.artifactRoot);
     const resolved = nodePath.resolve(directory);
-    if (!this.isWithinArtifactRoot(resolved)) return;
-    await rm(resolved, { recursive: true, force: true });
+    // Cleanup must never recursively operate on an outside target.
+    // Compare on PHYSICAL form: realpath the target so a lexical 8.3 alias of
+    // the same directory is correctly recognized as inside the canonical root
+    // (and a junction escape resolves outside and is refused).
+    let physical: string;
+    try {
+      physical = GitObservationPersistenceService.normalizePhysical(await realpath(resolved));
+    } catch {
+      // Target already absent; nothing to clean.
+      return;
+    }
+    if (!this.isWithinRoot(root, physical) || physical === GitObservationPersistenceService.normalizePhysical(root)) return;
+    // Windows can briefly hold a just-created directory; retry the recursive
+    // removal a few times so normal-failure cleanup is deterministic.
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      try {
+        await rm(physical, { recursive: true, force: true });
+        return;
+      } catch {
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+    }
   }
 
   // ------------------------------------------------------------------
