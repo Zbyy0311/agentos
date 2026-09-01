@@ -403,12 +403,38 @@ export class GitObservationPersistenceService {
     const storageKey = nodePath
       .join(workspaceId, canonicalRunId, artifactId, 'content')
       .replaceAll(nodePath.sep, '/');
-    const resolvedDirectory = nodePath.resolve(directory);
 
-    // HIGH-2: establish and canonicalize the server-owned Artifact root, then
-    // prove no existing ancestor is a symlink/junction escape before writing.
+    // HIGH-2 (round 2): TWO distinct containment phases.
+    //
+    // PHASE 1 runs BEFORE mkdir and walks the ORIGINAL lexical path
+    // (lexicalRoot -> workspaceId -> canonicalRunId -> artifactId) with
+    // lstat. A pre-planted workspace junction (artifactRoot/ws-a -> anywhere)
+    // or a canonical-run junction is still visible at this point, so the
+    // proof catches it BEFORE mkdir(recursive) can ever traverse the link and
+    // create directories through it.
+    //
+    // The lexical containment proof compares the target against the LEXICAL
+    // (resolved, non-realpath) Artifact root: the server owns every component
+    // between them (workspaceId / canonicalRunId / artifactId), so a lexical
+    // compare cannot be spoofed by an attacker-controlled symlink. Only the
+    // linked-ancestor walk below uses the canonical physical root as its
+    // fixed starting point.
+    const lexicalRoot = nodePath.resolve(this.artifactRoot);
+    const lexicalTarget = nodePath.resolve(
+      lexicalRoot,
+      workspaceId,
+      canonicalRunId,
+      artifactId,
+    );
+    const lexicalRelative = this.assertLexicalContainment(lexicalRoot, lexicalTarget);
+
     const canonicalRoot = await this.canonicalArtifactRoot();
+    await this.assertNoLinkedAncestors(canonicalRoot, lexicalRelative);
 
+    // PHASE 2 runs AFTER Phase 1 succeeded: only now may mkdir create the
+    // physical hierarchy. The realpath proof then confirms the created
+    // directory physically remains beneath the canonical Artifact root.
+    const resolvedDirectory = lexicalTarget;
     const temporaryPath = nodePath.join(resolvedDirectory, 'content.tmp-' + randomUUID());
     const finalPath = nodePath.join(resolvedDirectory, 'content');
     try {
@@ -426,7 +452,6 @@ export class GitObservationPersistenceService {
           'physical Artifact directory resolves outside the canonical Artifact root',
         );
       }
-      await this.assertNoLinkedAncestors(canonicalRoot, physicalDirectory);
       this.faults.beforeTempWrite?.();
       if (this.faults.failTempWrite) {
         this.faults.failTempWrite();
@@ -474,6 +499,30 @@ export class GitObservationPersistenceService {
     );
   }
 
+  /**
+   * PHASE 1a — lexical containment, BEFORE mkdir: the original (unresolved)
+   * target path must be a separator-contained descendant of the resolved
+   * lexical Artifact root. This rejects traversal components before any
+   * filesystem mutation and never follows links because nothing is resolved
+   * through the filesystem.
+   */
+  private assertLexicalContainment(lexicalRoot: string, lexicalTarget: string): string {
+    const relative = nodePath.relative(lexicalRoot, lexicalTarget);
+    if (
+      relative.length === 0
+      || relative.startsWith('..')
+      || nodePath.isAbsolute(relative)
+      || GitObservationPersistenceService.normalizePhysical(nodePath.parse(lexicalTarget).root)
+        !== GitObservationPersistenceService.normalizePhysical(nodePath.parse(lexicalRoot).root)
+    ) {
+      throw new GitObservationPersistenceError(
+        'ARTIFACT_STAGING_FAILED',
+        'Artifact target directory escapes the canonical Artifact root',
+      );
+    }
+    return relative;
+  }
+
   private isWithinRoot(canonicalRoot: string, candidate: string): boolean {
     const root = canonicalRoot;
     const target = GitObservationPersistenceService.normalizePhysical(candidate);
@@ -493,21 +542,17 @@ export class GitObservationPersistenceService {
   }
 
   /**
-   * Walks the existing ancestors between the canonical root and the target
-   * directory, failing closed if any is a symlink or Windows junction. This
-   * catches a pre-planted link BEFORE mkdir/realpath, so writeFile can never
-   * reach outside through a reparse-point ancestor.
+   * PHASE 1b — linked-ancestor proof on the ORIGINAL lexical path, BEFORE
+   * mkdir/realpath: walks canonicalRoot -> workspaceId -> canonicalRunId ->
+   * artifactId with lstat, failing closed if any EXISTING descendant
+   * component is a symlink/Windows junction (or not a real directory). The
+   * target is deliberately NOT realpath-resolved first: resolution would
+   * erase the link identity, so a pre-planted workspace or canonical-run
+   * junction would become invisible and mkdir would silently traverse it.
    */
-  private async assertNoLinkedAncestors(canonicalRoot: string, targetDirectory: string): Promise<void> {
-    const relative = nodePath.relative(canonicalRoot, targetDirectory);
-    if (relative.startsWith('..') || nodePath.isAbsolute(relative)) {
-      throw new GitObservationPersistenceError(
-        'ARTIFACT_STAGING_FAILED',
-        'Artifact target directory escapes the canonical Artifact root',
-      );
-    }
+  private async assertNoLinkedAncestors(canonicalRoot: string, lexicalRelative: string): Promise<void> {
     let current = canonicalRoot;
-    for (const segment of relative.split(nodePath.sep).filter(s => s.length > 0)) {
+    for (const segment of lexicalRelative.split(nodePath.sep).filter(s => s.length > 0)) {
       current = nodePath.join(current, segment);
       let stat;
       try {

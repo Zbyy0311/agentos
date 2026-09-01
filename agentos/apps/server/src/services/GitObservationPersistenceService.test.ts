@@ -20,7 +20,7 @@ import {
 import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceGitObservationRepository } from '../store/WorkspaceGitObservationRepository.js';
 import { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
-import { RuntimeEventOutboxWriter, RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
+import { RuntimeEventOutboxWriter, RuntimeEventRepository, RuntimeEventRepositoryError } from '../store/RuntimeEventRepository.js';
 import { RunSequenceAllocator } from '../store/RunSequenceAllocator.js';
 import { OutboxRepository } from '../store/OutboxRepository.js';
 import { inTransaction } from '../store/Transaction.js';
@@ -973,12 +973,11 @@ test('HIGH-2: a workspace-id junction to outside fails closed and writes nothing
       () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
       (e: unknown) => (e as GitObservationPersistenceError).code === 'ARTIFACT_STAGING_FAILED',
     );
-    // Outside target received no content file and zero DB rows committed.
-    // mkdir(recursive) may legitimately create empty subdirs through the
-    // junction before the realpath proof fires; the binding guarantees are
-    // that no content FILE is written outside and zero DB rows commit.
-    assert.equal(existsSync(join(outside, 'run-a')), true);
-    assert.equal(readdirSync(join(outside, 'run-a')).filter(f => f === 'content').length, 0);
+    // Outside target received no content and zero DB rows committed. Round 2
+    // strengthened the proof to run BEFORE mkdir, so the junction is never
+    // traversed and no run/artifact subdirectory is created outside at all.
+    assert.equal(existsSync(join(outside, 'run-a')), false);
+    assert.equal(readdirSync(outside).length, 0);
     assert.equal(observationCount(fx), 0);
     assert.equal(artifactCount(fx), 0);
     assert.equal(eventCount(fx), 0);
@@ -1384,5 +1383,363 @@ test('canonical GIT with diffState not_applicable produces no Artifact', async (
     const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC(), gitSnapshot({ diffState: 'not_applicable' })));
     assert.equal(result.diffArtifactId, null);
     assert.equal(artifactCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// HIGH-1 round 2: the writer itself owns the one-connection invariant. Each
+// test deliberately miswires ONE internal collaborator onto a second real
+// database (DB-B) while the writer DB stays DB-A; construction must fail
+// immediately and no durable mutation may occur for the rejected graph.
+// ---------------------------------------------------------------------------
+test('HIGH-1 R2 A: a RuntimeEventRepository from DB-B fails writer construction', () => {
+  const fx = createFixture();
+  const other = createFixture();
+  try {
+    const eventsA = new RuntimeEventRepository(fx.db, createM3RuntimeEventRegistry());
+    const eventsB = new RuntimeEventRepository(other.db, createM3RuntimeEventRegistry());
+    const allocatorA = new RunSequenceAllocator(fx.db);
+    // Outbox wiring is otherwise consistent (DB-A Outbox reads events A).
+    const outboxA = new OutboxRepository(fx.db, eventsA);
+    assert.equal(eventsB.transactionDatabase as unknown, other.db as unknown);
+    assert.throws(
+      () => new RuntimeEventOutboxWriter(eventsB, allocatorA, outboxA, fx.db),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(observationCount(fx), 0);
+  } finally { fx.close(); other.close(); }
+});
+
+test('HIGH-1 R2 B: a RunSequenceAllocator from DB-B fails writer construction', () => {
+  const fx = createFixture();
+  const other = createFixture();
+  try {
+    const eventsA = new RuntimeEventRepository(fx.db, createM3RuntimeEventRegistry());
+    const allocatorB = new RunSequenceAllocator(other.db);
+    const outboxA = new OutboxRepository(fx.db, eventsA);
+    assert.equal(allocatorB.transactionDatabase as unknown, other.db as unknown);
+    assert.throws(
+      () => new RuntimeEventOutboxWriter(eventsA, allocatorB, outboxA, fx.db),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(observationCount(fx), 0);
+  } finally { fx.close(); other.close(); }
+});
+
+test('HIGH-1 R2 C: an OutboxRepository from DB-B fails writer construction', () => {
+  const fx = createFixture();
+  const other = createFixture();
+  try {
+    const eventsA = new RuntimeEventRepository(fx.db, createM3RuntimeEventRegistry());
+    const eventsB = new RuntimeEventRepository(other.db, createM3RuntimeEventRegistry());
+    const allocatorA = new RunSequenceAllocator(fx.db);
+    // The Outbox is consistent WITH ITSELF (DB-B Outbox reads events B), but
+    // its declared/write DB is not the writer DB-A.
+    const outboxB = new OutboxRepository(other.db, eventsB);
+    assert.equal(outboxB.transactionDatabase as unknown, other.db as unknown);
+    assert.throws(
+      () => new RuntimeEventOutboxWriter(eventsA, allocatorA, outboxB, fx.db),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(observationCount(fx), 0);
+  } finally { fx.close(); other.close(); }
+});
+
+test('HIGH-1 R2 D: an OutboxRepository on DB-A reading a DB-B RuntimeEventRepository fails writer construction', () => {
+  const fx = createFixture();
+  const other = createFixture();
+  try {
+    const eventsA = new RuntimeEventRepository(fx.db, createM3RuntimeEventRegistry());
+    const eventsB = new RuntimeEventRepository(other.db, createM3RuntimeEventRegistry());
+    const allocatorA = new RunSequenceAllocator(fx.db);
+    // Outbox declares/writes on DB-A but reads persisted Events through DB-B.
+    // Its declared DB alone cannot hide the cross-connection Event binding.
+    const outboxCrossBound = new OutboxRepository(fx.db, eventsB);
+    assert.equal(outboxCrossBound.transactionDatabase as unknown, fx.db as unknown);
+    assert.equal(outboxCrossBound.runtimeEventRepository, eventsB);
+    assert.throws(
+      () => new RuntimeEventOutboxWriter(eventsA, allocatorA, outboxCrossBound, fx.db),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(observationCount(fx), 0);
+  } finally { fx.close(); other.close(); }
+});
+
+test('HIGH-1 R2 E: an all-DB-A composition succeeds and exposes the proven identities', () => {
+  const fx = createFixture();
+  try {
+    const eventsA = new RuntimeEventRepository(fx.db, createM3RuntimeEventRegistry());
+    const allocatorA = new RunSequenceAllocator(fx.db);
+    const outboxA = new OutboxRepository(fx.db, eventsA);
+    const writer = new RuntimeEventOutboxWriter(eventsA, allocatorA, outboxA, fx.db);
+    assert.equal(writer.transactionDatabase as unknown, fx.db as unknown);
+    assert.equal(eventsA.transactionDatabase as unknown, fx.db as unknown);
+    assert.equal(allocatorA.transactionDatabase as unknown, fx.db as unknown);
+    assert.equal(outboxA.transactionDatabase as unknown, fx.db as unknown);
+    assert.equal(outboxA.runtimeEventRepository, eventsA);
+  } finally { fx.close(); }
+});
+
+test('HIGH-1 R2 F: the M3 service can never accept a writer with a cross-connection internal graph', async () => {
+  const fx = createFixture();
+  const other = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const eventsA = new RuntimeEventRepository(fx.db, createM3RuntimeEventRegistry());
+    const eventsB = new RuntimeEventRepository(other.db, createM3RuntimeEventRegistry());
+    const allocatorA = new RunSequenceAllocator(fx.db);
+    const outboxA = new OutboxRepository(fx.db, eventsA);
+    // Every internally miswired composition fails at the writer boundary, so
+    // there is no constructed object the service could even be handed.
+    assert.throws(
+      () => new RuntimeEventOutboxWriter(eventsB, allocatorA, outboxA, fx.db),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.throws(
+      () => new RuntimeEventOutboxWriter(eventsA, new RunSequenceAllocator(other.db), outboxA, fx.db),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.throws(
+      () => new RuntimeEventOutboxWriter(eventsA, allocatorA, new OutboxRepository(other.db, eventsB), fx.db),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.throws(
+      () => new RuntimeEventOutboxWriter(eventsA, allocatorA, new OutboxRepository(fx.db, eventsB), fx.db),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    // A correctly composed writer is still accepted and commits atomically.
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC()));
+    assert.ok(result.diffArtifactId);
+    assert.equal(observationCount(fx), 1);
+    assert.equal(artifactCount(fx), 1);
+    assert.equal(eventCount(fx), 2);
+    assert.equal(outboxCount(fx), 2);
+    // DB-B received no durable facts whatsoever.
+    assert.equal((other.db.prepare('SELECT COUNT(*) AS c FROM runtime_events').get() as { c: number }).c, 0);
+    assert.equal((other.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages').get() as { c: number }).c, 0);
+    assert.equal((other.db.prepare('SELECT COUNT(*) AS c FROM runtime_artifacts').get() as { c: number }).c, 0);
+    assert.equal((other.db.prepare('SELECT COUNT(*) AS c FROM workspace_git_observations').get() as { c: number }).c, 0);
+  } finally { fx.close(); other.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// HIGH-2 round 2: the linked-ancestor proof runs on the ORIGINAL lexical
+// path BEFORE mkdir can traverse a link; the physical proof runs AFTER.
+// ---------------------------------------------------------------------------
+test('HIGH-2 R2: a workspace junction to OUTSIDE is rejected before mkdir traverses it', async (t) => {
+  const fx = createFixture();
+  let outside = '';
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    outside = mkdtempSync(join(tmpdir(), 'agentos-l1c-outside-'));
+    writeFileSync(join(outside, 'sentinel.txt'), 'precious', 'utf8');
+    mkdirSync(join(fx.artifactRoot), { recursive: true });
+    try {
+      symlinkSync(outside, join(fx.artifactRoot, 'ws-a'), 'junction');
+    } catch (error) {
+      t.skip('Windows junction creation unavailable: ' + (error as Error).message);
+      return;
+    }
+    const { service } = makeService(fx);
+    await assert.rejects(
+      () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
+      (e: unknown) => (e as GitObservationPersistenceError).code === 'ARTIFACT_STAGING_FAILED',
+    );
+    // Round-2 guarantee: mkdir NEVER traversed the link, so the outside
+    // target gained no run/artifact subdirectory at all.
+    assert.equal(existsSync(join(outside, 'run-a')), false);
+    assert.equal(readdirSync(outside).length, 1);
+    assert.equal(readFileSync(join(outside, 'sentinel.txt'), 'utf8'), 'precious');
+    assert.equal(observationCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+  } finally {
+    fx.close();
+    if (outside) rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('HIGH-2 R2: a canonical-run junction to OUTSIDE is rejected before mkdir traverses it', async (t) => {
+  const fx = createFixture();
+  let outside = '';
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    outside = mkdtempSync(join(tmpdir(), 'agentos-l1c-outside-'));
+    writeFileSync(join(outside, 'sentinel.txt'), 'precious', 'utf8');
+    mkdirSync(join(fx.artifactRoot, 'ws-a'), { recursive: true });
+    try {
+      symlinkSync(outside, join(fx.artifactRoot, 'ws-a', 'run-a'), 'junction');
+    } catch (error) {
+      t.skip('Windows junction creation unavailable: ' + (error as Error).message);
+      return;
+    }
+    const { service } = makeService(fx);
+    await assert.rejects(
+      () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
+      (e: unknown) => (e as GitObservationPersistenceError).code === 'ARTIFACT_STAGING_FAILED',
+    );
+    // No artifact directory was created through the junction outside.
+    assert.equal(readdirSync(outside).length, 1);
+    assert.equal(readFileSync(join(outside, 'sentinel.txt'), 'utf8'), 'precious');
+    assert.equal(observationCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+  } finally {
+    fx.close();
+    if (outside) rmSync(outside, { recursive: true, force: true });
+  }
+});
+
+test('HIGH-2 R2: a workspace junction to a SIBLING inside artifactRoot is rejected with zero durable work', async (t) => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    mkdirSync(join(fx.artifactRoot, 'ws-b'), { recursive: true });
+    try {
+      symlinkSync(join(fx.artifactRoot, 'ws-b'), join(fx.artifactRoot, 'ws-a'), 'junction');
+    } catch (error) {
+      t.skip('Windows junction creation unavailable: ' + (error as Error).message);
+      return;
+    }
+    const { service } = makeService(fx);
+    await assert.rejects(
+      () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
+      (e: unknown) => (e as GitObservationPersistenceError).code === 'ARTIFACT_STAGING_FAILED',
+    );
+    // Nothing was written through ws-a into ws-b's Artifact namespace: mkdir
+    // never traversed the link, so ws-b gained no run/artifact subdirectory.
+    assert.equal(existsSync(join(fx.artifactRoot, 'ws-b', 'run-a')), false);
+    assert.equal(readdirSync(join(fx.artifactRoot, 'ws-b')).length, 0);
+    assert.equal(observationCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-2 R2: a canonical-run junction to another in-root directory is rejected', async (t) => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    mkdirSync(join(fx.artifactRoot, 'ws-a', 'run-other'), { recursive: true });
+    try {
+      symlinkSync(join(fx.artifactRoot, 'ws-a', 'run-other'), join(fx.artifactRoot, 'ws-a', 'run-a'), 'junction');
+    } catch (error) {
+      t.skip('Windows junction creation unavailable: ' + (error as Error).message);
+      return;
+    }
+    const { service } = makeService(fx);
+    await assert.rejects(
+      () => service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC())),
+      (e: unknown) => (e as GitObservationPersistenceError).code === 'ARTIFACT_STAGING_FAILED',
+    );
+    assert.equal(readdirSync(join(fx.artifactRoot, 'ws-a', 'run-other')).length, 0);
+    assert.equal(observationCount(fx), 0);
+    assert.equal(artifactCount(fx), 0);
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('HIGH-2 R2: a normal physical hierarchy still succeeds end to end', async () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    insertOperation(fx, 'run-a', 'op-a', 'corr-a');
+    const admissionId = insertAdmission(fx);
+    const { service } = makeService(fx);
+    const result = await service.persist(canonicalCommand(admissionId, 'run-a', OP_SRC()));
+    assert.ok(result.diffArtifactId);
+    assert.ok(existsSync(join(artifactDir(fx.artifactRoot, 'run-a', result.diffArtifactId!), 'content')));
+    assert.equal(eventCount(fx), 2);
+    assert.equal(outboxCount(fx), 2);
+  } finally { fx.close(); }
+});
+
+// ---------------------------------------------------------------------------
+// MEDIUM-1 round 2: artifact.diff.registered additionally requires
+// artifact_type = diff; a CANONICAL file/report Artifact can never emit it.
+// ---------------------------------------------------------------------------
+function seedCanonicalArtifactTyped(
+  fx: Fixture,
+  artifactId: string,
+  type: 'diff' | 'file' | 'report',
+  runId = 'run-a',
+  sizeBytes = DIFF_BYTES.byteLength,
+  sha256 = DIFF_SHA,
+): void {
+  fx.store.createCanonicalRuntimeArtifact({
+    id: artifactId, workspaceId: 'ws-a', type, title: 'd', sizeBytes, sha256,
+    contentAvailable: true, createdAt: NOW.toISOString(),
+  }, { kind: 'CANONICAL', canonicalRunId: runId }, 'sink/' + artifactId);
+}
+
+test('MEDIUM-1 R2: CANONICAL type=diff is accepted when all other fields match', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    const h = makeWriter(fx);
+    const result = inTransaction(fx.db, () => {
+      seedCanonicalArtifactTyped(fx, 'artifact-type-diff', 'diff');
+      return h.writer.appendWithinTransaction(diffRegisteredInput('artifact-type-diff'));
+    });
+    assert.equal(result.event.type, 'artifact.diff.registered');
+    assert.equal(eventCount(fx), 1);
+    assert.equal(outboxCount(fx), 1);
+  } finally { fx.close(); }
+});
+
+test('MEDIUM-1 R2: CANONICAL type=file is rejected with zero Runtime Events and zero Outbox rows', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    const h = makeWriter(fx);
+    seedCanonicalArtifactTyped(fx, 'artifact-type-file', 'file');
+    assert.throws(
+      () => attemptDiffRegistration(h, diffRegisteredInput('artifact-type-file')),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
+  } finally { fx.close(); }
+});
+
+test('MEDIUM-1 R2: CANONICAL type=report is rejected with zero Runtime Events and zero Outbox rows', () => {
+  const fx = createFixture();
+  try {
+    seedCanonicalRun(fx);
+    const h = makeWriter(fx);
+    seedCanonicalArtifactTyped(fx, 'artifact-type-report', 'report');
+    assert.throws(
+      () => attemptDiffRegistration(h, diffRegisteredInput('artifact-type-report')),
+      (e: unknown) => (e as RuntimeEventRepositoryError).code === 'RUNTIME_EVENT_PERSISTENCE_FAILED',
+    );
+    assert.equal(eventCount(fx), 0);
+    assert.equal(outboxCount(fx), 0);
   } finally { fx.close(); }
 });

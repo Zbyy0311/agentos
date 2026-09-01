@@ -128,6 +128,37 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
   ) {
     this.createEventId = options.createEventId ?? (() => createEntityId('event'));
     this.createOutboxId = options.createOutboxId ?? (eventId => `outbox_${eventId}`);
+    // HIGH-1 round 2: the writer owns the frozen one-BEGIN / one-connection
+    // invariant, so construction must fail immediately when ANY internal
+    // collaborator is bound to a different TransactionDatabase. Identity
+    // assertions (=== on the better-sqlite3 handle) are structural: a caller
+    // can never assemble a cross-connection persistence graph whose Runtime
+    // Events or Outbox rows would commit through a second connection while
+    // Artifact rows commit through this.db.
+    if (runtimeEvents.transactionDatabase !== db) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'RuntimeEventOutboxWriter requires its RuntimeEventRepository to share the writer TransactionDatabase',
+      );
+    }
+    if (runSequenceAllocator.transactionDatabase !== db) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'RuntimeEventOutboxWriter requires its RunSequenceAllocator to share the writer TransactionDatabase',
+      );
+    }
+    if (outbox.transactionDatabase !== db) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'RuntimeEventOutboxWriter requires its OutboxRepository to share the writer TransactionDatabase',
+      );
+    }
+    if (outbox.runtimeEventRepository !== runtimeEvents) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'RuntimeEventOutboxWriter requires its OutboxRepository to read through the same RuntimeEventRepository',
+      );
+    }
   }
 
   appendWithinTransaction(input: DurableRuntimeFactInput): DurableRuntimeFactResult {
@@ -305,13 +336,14 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
       fail('artifact.diff.registered envelope artifactId must equal payload artifactId');
     }
     const row = this.db.prepare(`
-      SELECT workspace_id, provenance_kind, canonical_run_id, content_available, sha256, size_bytes
+      SELECT workspace_id, provenance_kind, canonical_run_id, artifact_type, content_available, sha256, size_bytes
       FROM runtime_artifacts
       WHERE id = ?
     `).get(artifactId) as {
       workspace_id: string;
       provenance_kind: string;
       canonical_run_id: string | null;
+      artifact_type: string;
       content_available: number;
       sha256: string | null;
       size_bytes: number;
@@ -323,10 +355,14 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
       workspace_id: string;
       provenance_kind: string;
       canonical_run_id: string | null;
+      artifact_type: string;
       content_available: number;
       sha256: string | null;
       size_bytes: number;
     };
+    if (artifact.artifact_type !== 'diff') {
+      fail('artifact.diff.registered requires an Artifact whose artifact_type is diff');
+    }
     if (artifact.workspace_id !== input.workspaceId) {
       fail('artifact.diff.registered Artifact belongs to another Workspace');
     }
@@ -483,6 +519,15 @@ export class RuntimeEventRepository {
     private readonly registry: CentralRuntimeEventRegistry,
     private readonly notifier?: RuntimeEventNotifier,
   ) {}
+
+  /**
+   * Exposes the bound transaction DB so a composing writer can prove the
+   * repository writes through ONE SQLite connection. This is an identity
+   * assertion, not a second persistence path.
+   */
+  get transactionDatabase(): TransactionDatabase {
+    return this.db;
+  }
 
   appendWithinTransaction<TPayload>(draft: RuntimeEventDraft<TPayload>): RuntimeEventEnvelope<TPayload> {
     if (!isValidEntityId(draft.id, 'event')) {
