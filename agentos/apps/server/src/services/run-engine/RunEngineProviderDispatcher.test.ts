@@ -18,6 +18,7 @@ import { RunSnapshotRepository } from '../../store/RunSnapshotRepository.js';
 import { ProviderSessionRepository } from '../../store/ProviderSessionRepository.js';
 import { ProcessRepository } from '../../store/ProcessRepository.js';
 import { ProcessOutputReferenceRepository } from '../../store/ProcessOutputReferenceRepository.js';
+import { WorkspaceAdmissionRepository } from '../../store/WorkspaceAdmissionRepository.js';
 import { OutboxRepository } from '../../store/OutboxRepository.js';
 import { RuntimeEventOutboxWriter, RuntimeEventRepository } from '../../store/RuntimeEventRepository.js';
 import { RunSequenceAllocator } from '../../store/RunSequenceAllocator.js';
@@ -26,6 +27,7 @@ import { DurableOutputReferenceRepositoryAdapter, DurableProcessRepositoryAdapte
 import { inTransaction } from '../../store/Transaction.js';
 import { LifecycleTransactionService } from '../LifecycleTransactionService.js';
 import { OperationService } from '../OperationService.js';
+import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
 import { RunEngine } from './RunEngine.js';
 import { StageExecutor } from './StageExecutor.js';
 import { StageExecutionCoordinator, type StageExecutionOutcome } from './StageExecutionCoordinator.js';
@@ -108,6 +110,29 @@ function seedGraph(db: Db, cancelGracePeriodMs = 5000): void {
   });
 }
 
+function seedAdmission(db: Db, state: 'GRANTED' | 'QUEUED' = 'GRANTED'): void {
+  new WorkspaceAdmissionRepository(db).insertAdmission({
+    id: 'adm_m4_dispatch',
+    workspaceId: WS,
+    subjectKind: 'CANONICAL_RUN',
+    canonicalRunId: RUN,
+    legacyRunId: null,
+    requestedMutationClass: 'MODIFYING',
+    effectiveMutationClass: 'MODIFYING',
+    enforcementEvidenceJson: null,
+    requestOrder: 1,
+    state,
+    queueReason: state === 'QUEUED' ? 'WAITING_FOR_WORKSPACE_ADMISSION' : null,
+    releaseReason: null,
+    requestedAt: NOW,
+    grantedAt: state === 'GRANTED' ? NOW : null,
+    releasedAt: null,
+    createdAt: NOW,
+    updatedAt: NOW,
+    version: 1,
+  });
+}
+
 class FakeHandle implements NativeProcessHandle {
   readonly pid = 4242;
   readonly identity: NativeIdentity = { pid: 4242, startedAtMs: Date.parse(NOW), executablePath: KIMI_EXE };
@@ -162,9 +187,11 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly useRealCoordinator?: boolean;
   readonly cancelGracePeriodMs?: number;
   readonly executeThrow?: Error;
+  readonly admissionState?: 'GRANTED' | 'QUEUED';
 } = {}) {
   const db = migratedDb();
   seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
+  seedAdmission(db, behavior.admissionState ?? 'GRANTED');
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-e2e-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
   const outbox = new OutboxRepository(db, events);
@@ -221,6 +248,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     engine, coordinator, runRepository: runRepo, runStageRepository: runStageRepo, runSnapshotRepository: runSnapshotRepo,
     operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => 'C:/ws',
     worktreePathFor: () => 'C:/ws/.agentos/worktrees/run-1',
+    admissionGate: new WorkspaceAdmissionAuthority({ store: { getDatabase: () => db } }),
     onDispatchFailure: report => { dispatchFailures.push(report); },
   });
   return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService, coordinatorCalls, dispatchFailures };
@@ -233,6 +261,7 @@ function realFixture() {
   REAL_EXECUTABLE = executable;
   const db = migratedDb();
   seedGraph(db);
+  seedAdmission(db);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-real-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
   const outbox = new OutboxRepository(db, events);
@@ -275,11 +304,35 @@ function realFixture() {
     engine, coordinator, runRepository: runRepo, runStageRepository: runStageRepo, runSnapshotRepository: runSnapshotRepo,
     operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => root,
     worktreePathFor: () => root,
+    admissionGate: new WorkspaceAdmissionAuthority({ store: { getDatabase: () => db } }),
   });
   return { db, root, runRepo, runStageRepo, driver, dispatcher };
 }
 
 describe('RunEngineProviderDispatcher E2E', () => {
+  it('L1D-I08 QUEUED admission causes zero engine, provider session, process, and spawn side effects', async () => {
+    const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","content":"must-not-run"}']));
+    const fx = fixture(driver, false, { admissionState: 'QUEUED' });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+
+      assert.deepEqual(result, { outcome: 'noop', reason: 'WORKSPACE_ADMISSION_NOT_GRANTED' });
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'queued');
+      assert.equal(fx.operationService.listByRun(WS, RUN)[0]?.status, 'queued');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'pending'));
+      assert.equal(fx.coordinatorCalls.count, 0);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(
+        (fx.db.prepare('SELECT COUNT(*) AS count FROM provider_sessions').get() as { count: number }).count,
+        0,
+      );
+      assert.equal(
+        (fx.db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get() as { count: number }).count,
+        0,
+      );
+    } finally { close(fx); }
+  });
+
   it('P5D maps only the exact proven stop identity into cancellation evidence', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle([])), false, {
       cancelOutcome: {

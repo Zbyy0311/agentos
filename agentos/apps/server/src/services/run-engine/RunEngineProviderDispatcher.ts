@@ -20,9 +20,21 @@ import type { LifecycleTransactionService } from '../LifecycleTransactionService
 import { RunEngine } from './RunEngine.js';
 import { StageExecutionCoordinator, type StageExecutionInput } from './StageExecutionCoordinator.js';
 
+export interface CanonicalRunAdmissionGate {
+  authorizeCanonicalRun(input: {
+    readonly workspaceId: string;
+    readonly runId: string;
+  }): {
+    readonly authorized: boolean;
+    readonly reason: 'ADMISSION_GRANTED' | 'ADMISSION_NOT_GRANTED' | 'ADMISSION_AUTHORITY_UNAVAILABLE';
+  };
+}
+
 export interface RunEngineProviderDispatcherOptions {
   readonly engine: RunEngine;
   readonly coordinator: StageExecutionCoordinator;
+  /** Required durable gate; it runs before RunEngine.tick or any provider work. */
+  readonly admissionGate: CanonicalRunAdmissionGate;
   readonly runRepository: Pick<RunRepository, 'findById'>;
   readonly runStageRepository: Pick<RunStageRepository, 'listByRun'>;
   readonly runSnapshotRepository: Pick<RunSnapshotRepository, 'findByRunId'>;
@@ -74,6 +86,7 @@ function isTerminalRun(status: Run['status']): boolean {
 export class RunEngineProviderDispatcher {
   private readonly engine: RunEngine;
   private readonly coordinator: StageExecutionCoordinator;
+  private readonly admissionGate: CanonicalRunAdmissionGate;
   private readonly runRepository: RunEngineProviderDispatcherOptions['runRepository'];
   private readonly runStageRepository: RunEngineProviderDispatcherOptions['runStageRepository'];
   private readonly runSnapshotRepository: RunEngineProviderDispatcherOptions['runSnapshotRepository'];
@@ -87,6 +100,7 @@ export class RunEngineProviderDispatcher {
   constructor(options: RunEngineProviderDispatcherOptions) {
     this.engine = options.engine;
     this.coordinator = options.coordinator;
+    this.admissionGate = options.admissionGate;
     this.runRepository = options.runRepository;
     this.runStageRepository = options.runStageRepository;
     this.runSnapshotRepository = options.runSnapshotRepository;
@@ -99,6 +113,15 @@ export class RunEngineProviderDispatcher {
   }
 
   async drive(workspaceId: string, runId: string): Promise<RunEngineProviderDriveResult> {
+    let authorization: ReturnType<CanonicalRunAdmissionGate['authorizeCanonicalRun']>;
+    try {
+      authorization = this.admissionGate.authorizeCanonicalRun({ workspaceId, runId });
+    } catch {
+      authorization = { authorized: false, reason: 'ADMISSION_AUTHORITY_UNAVAILABLE' };
+    }
+    if (!authorization.authorized) {
+      return { outcome: 'noop', reason: `WORKSPACE_${authorization.reason}` };
+    }
     const claim = this.engine.tick({ workspaceId, runId });
     if (claim.outcome !== 'claimed') {
       return { outcome: 'noop', reason: claim.reason };
