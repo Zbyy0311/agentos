@@ -106,6 +106,16 @@ export class WorkspaceGitObservationRepository {
     return row ? toRow(row) : undefined;
   }
 
+  findLatestWorkspaceOnly(workspaceId: string): WorkspaceGitObservationRow | undefined {
+    const row = this.db.prepare(
+      'SELECT ' + SELECT_COLUMNS
+        + ' FROM workspace_git_observations'
+        + ' WHERE workspace_id = ? AND admission_id IS NULL'
+        + ' ORDER BY created_at DESC, id DESC LIMIT 1',
+    ).get(workspaceId) as Row | undefined;
+    return row ? toRow(row) : undefined;
+  }
+
   listByAdmission(workspaceId: string, admissionId: string): WorkspaceGitObservationRow[] {
     const rows = this.db.prepare(
       'SELECT ' + SELECT_COLUMNS + ' FROM workspace_git_observations WHERE workspace_id = ? AND admission_id = ? ORDER BY created_at ASC, id ASC',

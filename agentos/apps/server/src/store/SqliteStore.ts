@@ -456,6 +456,7 @@ export class SqliteStore implements Store {
   private readonly runStreamServiceRepo: RunStreamService;
   private readonly runSequenceAllocatorRepo: RunSequenceAllocator;
   private readonly outboxRepo: OutboxRepository;
+  private readonly durableRuntimeFactWriterRepo: RuntimeEventOutboxWriter;
   private readonly deadLetterRepo: DeadLetterRepository;
   private readonly lifecycleTransactionServiceRepo: LifecycleTransactionService;
   private readonly operationServiceRepo: OperationService;
@@ -492,17 +493,20 @@ export class SqliteStore implements Store {
       this.runStreamServiceRepo = new RunStreamService(this.runtimeEventRepo, this.runtimeEventNotifier);
       this.runSequenceAllocatorRepo = new RunSequenceAllocator(this.database as any);
       this.outboxRepo = new OutboxRepository(this.database as any, this.runtimeEventRepo);
-      const durableFactWriter = new RuntimeEventOutboxWriter(
+      this.durableRuntimeFactWriterRepo = new RuntimeEventOutboxWriter(
         this.runtimeEventRepo,
         this.runSequenceAllocatorRepo,
         this.outboxRepo,
         this.database as any,
       );
-      this.providerSessionRepo = new ProviderSessionRepository(this.database as any, durableFactWriter);
-      this.processRepo = new ProcessRepository(this.database as any, durableFactWriter);
+      this.providerSessionRepo = new ProviderSessionRepository(
+        this.database as any,
+        this.durableRuntimeFactWriterRepo,
+      );
+      this.processRepo = new ProcessRepository(this.database as any, this.durableRuntimeFactWriterRepo);
       this.processOutputReferenceRepo = new ProcessOutputReferenceRepository(
         this.database as any,
-        durableFactWriter,
+        this.durableRuntimeFactWriterRepo,
       );
       this.deadLetterRepo = new DeadLetterRepository(this.database as any);
       this.lifecycleTransactionServiceRepo = new LifecycleTransactionService({
@@ -579,6 +583,11 @@ export class SqliteStore implements Store {
 
   runtimeEventRepository(): RuntimeEventRepository {
     return this.runtimeEventRepo;
+  }
+
+  /** Existing one-connection Runtime Event + Outbox writer for bounded service composition. */
+  runtimeEventOutboxWriter(): RuntimeEventOutboxWriter {
+    return this.durableRuntimeFactWriterRepo;
   }
 
   runStreamService(): RunStreamService {
