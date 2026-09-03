@@ -49,6 +49,13 @@ export interface DurableRuntimeFactInput {
   readonly processId?: string;
   readonly artifactId?: string;
   readonly timestamp: string;
+  /**
+   * Optional Runtime Event source. Omission preserves the historical
+   * process-manager default. When supplied it must equal the Registry
+   * definition source for the event type; a caller can never invent a
+   * source string the Registry does not own.
+   */
+  readonly source?: RuntimeEventSource;
   /** Accepted Operation/Run execution context; never generated here. */
   readonly eventContext: RuntimeEventContext;
   readonly metadata?: RuntimeEventMetadata;
@@ -103,6 +110,15 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
   private readonly createEventId: () => string;
   private readonly createOutboxId: (eventId: string) => string;
 
+  /**
+   * Exposes the bound transaction DB so a composing service can prove all of
+   * its collaborators share ONE SQLite connection before opening BEGIN
+   * IMMEDIATE. This is an identity assertion, not a second persistence path.
+   */
+  get transactionDatabase(): TransactionDatabase {
+    return this.db;
+  }
+
   constructor(
     private readonly runtimeEvents: RuntimeEventRepository,
     private readonly runSequenceAllocator: RunSequenceAllocator,
@@ -112,6 +128,37 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
   ) {
     this.createEventId = options.createEventId ?? (() => createEntityId('event'));
     this.createOutboxId = options.createOutboxId ?? (eventId => `outbox_${eventId}`);
+    // HIGH-1 round 2: the writer owns the frozen one-BEGIN / one-connection
+    // invariant, so construction must fail immediately when ANY internal
+    // collaborator is bound to a different TransactionDatabase. Identity
+    // assertions (=== on the better-sqlite3 handle) are structural: a caller
+    // can never assemble a cross-connection persistence graph whose Runtime
+    // Events or Outbox rows would commit through a second connection while
+    // Artifact rows commit through this.db.
+    if (runtimeEvents.transactionDatabase !== db) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'RuntimeEventOutboxWriter requires its RuntimeEventRepository to share the writer TransactionDatabase',
+      );
+    }
+    if (runSequenceAllocator.transactionDatabase !== db) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'RuntimeEventOutboxWriter requires its RunSequenceAllocator to share the writer TransactionDatabase',
+      );
+    }
+    if (outbox.transactionDatabase !== db) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'RuntimeEventOutboxWriter requires its OutboxRepository to share the writer TransactionDatabase',
+      );
+    }
+    if (outbox.runtimeEventRepository !== runtimeEvents) {
+      throw new RuntimeEventRepositoryError(
+        'RUNTIME_EVENT_PERSISTENCE_FAILED',
+        'RuntimeEventOutboxWriter requires its OutboxRepository to read through the same RuntimeEventRepository',
+      );
+    }
   }
 
   appendWithinTransaction(input: DurableRuntimeFactInput): DurableRuntimeFactResult {
@@ -146,7 +193,7 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
       ...(input.artifactId === undefined ? {} : { artifactId: input.artifactId }),
       sequence,
       timestamp: input.timestamp,
-      source: 'process-manager',
+      source: input.source ?? 'process-manager',
       correlationId: context.correlationId,
       causationId: context.causationId,
       ...(context.parentEventId === undefined ? {} : { parentEventId: context.parentEventId }),
@@ -262,6 +309,77 @@ export class RuntimeEventOutboxWriter implements DurableRuntimeFactWriter {
           'Runtime fact artifact reference is not bound to the Process output reference',
         );
       }
+    }
+
+    if (input.type === 'artifact.diff.registered') {
+      this.#assertCanonicalDiffArtifactBinding(input);
+    }
+  }
+
+  /**
+   * artifact.diff.registered must reference a real canonical Artifact inserted
+   * (possibly earlier in the SAME transaction) in this Workspace/Run, with a
+   * content hash/size that exactly matches the Event payload. The Registry can
+   * only validate the payload shape; this closes the DB binding hole so a fake
+   * or mismatched Artifact can never be published.
+   */
+  #assertCanonicalDiffArtifactBinding(input: DurableRuntimeFactInput): void {
+    const fail = (message: string): never => {
+      throw new RuntimeEventRepositoryError('RUNTIME_EVENT_PERSISTENCE_FAILED', message);
+    };
+    const artifactId = input.artifactId;
+    if (artifactId === undefined || artifactId.trim().length === 0) {
+      fail('artifact.diff.registered requires an envelope artifactId');
+    }
+    const payload = input.payload;
+    if (payload.artifactId !== artifactId) {
+      fail('artifact.diff.registered envelope artifactId must equal payload artifactId');
+    }
+    const row = this.db.prepare(`
+      SELECT workspace_id, provenance_kind, canonical_run_id, artifact_type, content_available, sha256, size_bytes
+      FROM runtime_artifacts
+      WHERE id = ?
+    `).get(artifactId) as {
+      workspace_id: string;
+      provenance_kind: string;
+      canonical_run_id: string | null;
+      artifact_type: string;
+      content_available: number;
+      sha256: string | null;
+      size_bytes: number;
+    } | undefined;
+    if (row === undefined) {
+      fail('artifact.diff.registered references a nonexistent Artifact');
+    }
+    const artifact = row as {
+      workspace_id: string;
+      provenance_kind: string;
+      canonical_run_id: string | null;
+      artifact_type: string;
+      content_available: number;
+      sha256: string | null;
+      size_bytes: number;
+    };
+    if (artifact.artifact_type !== 'diff') {
+      fail('artifact.diff.registered requires an Artifact whose artifact_type is diff');
+    }
+    if (artifact.workspace_id !== input.workspaceId) {
+      fail('artifact.diff.registered Artifact belongs to another Workspace');
+    }
+    if (artifact.provenance_kind !== 'CANONICAL') {
+      fail('artifact.diff.registered requires a CANONICAL provenance Artifact');
+    }
+    if (artifact.canonical_run_id !== input.runId) {
+      fail('artifact.diff.registered Artifact belongs to another canonical Run');
+    }
+    if (artifact.content_available !== 1) {
+      fail('artifact.diff.registered requires a content-available Artifact');
+    }
+    if (artifact.sha256 === null || artifact.sha256 !== payload.contentHash) {
+      fail('artifact.diff.registered content hash does not match the Artifact');
+    }
+    if (artifact.size_bytes !== payload.sizeBytes) {
+      fail('artifact.diff.registered size does not match the Artifact');
     }
   }
 
@@ -401,6 +519,15 @@ export class RuntimeEventRepository {
     private readonly registry: CentralRuntimeEventRegistry,
     private readonly notifier?: RuntimeEventNotifier,
   ) {}
+
+  /**
+   * Exposes the bound transaction DB so a composing writer can prove the
+   * repository writes through ONE SQLite connection. This is an identity
+   * assertion, not a second persistence path.
+   */
+  get transactionDatabase(): TransactionDatabase {
+    return this.db;
+  }
 
   appendWithinTransaction<TPayload>(draft: RuntimeEventDraft<TPayload>): RuntimeEventEnvelope<TPayload> {
     if (!isValidEntityId(draft.id, 'event')) {
