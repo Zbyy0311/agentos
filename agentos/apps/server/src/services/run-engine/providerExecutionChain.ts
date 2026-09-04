@@ -22,6 +22,7 @@ import { RunEngine } from './RunEngine.js';
 import { StageExecutor } from './StageExecutor.js';
 import { StageExecutionCoordinator, type CanonicalRunEventObservationPort } from './StageExecutionCoordinator.js';
 import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
+import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
 
 export interface ProviderExecutionChainOptions {
   readonly store: SqliteStore;
@@ -35,6 +36,7 @@ export interface ProviderExecutionChainOptions {
 }
 
 export interface ProviderExecutionChain {
+  readonly admissionAuthority: WorkspaceAdmissionAuthority;
   readonly engine: RunEngine;
   readonly coordinator: StageExecutionCoordinator;
   readonly dispatcher: RunEngineProviderDispatcher;
@@ -42,6 +44,7 @@ export interface ProviderExecutionChain {
 
 export function createProviderExecutionChain(options: ProviderExecutionChainOptions): ProviderExecutionChain {
   const store = options.store;
+  const admissionAuthority = new WorkspaceAdmissionAuthority({ store });
   const driver = new NodeProcessDriver();
   const probe = options.probe ?? new NodeProcessProbePort();
   const seam = store.atomicSeam();
@@ -91,6 +94,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
   const dispatcher = new RunEngineProviderDispatcher({
     engine,
     coordinator,
+    admissionGate: admissionAuthority,
     runRepository: store.runRepository(),
     runStageRepository: store.runStageRepository(),
     runSnapshotRepository: store.runSnapshotRepository(),
@@ -99,5 +103,5 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
   });
-  return { engine, coordinator, dispatcher };
+  return { admissionAuthority, engine, coordinator, dispatcher };
 }
