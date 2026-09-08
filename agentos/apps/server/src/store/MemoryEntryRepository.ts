@@ -84,6 +84,12 @@ export interface UpdateMemoryEntryStatusInput {
   readonly updatedAt: string;
 }
 
+export interface ListMemoryRetrievalCandidatesInput {
+  readonly workspaceId: string;
+  readonly reach: readonly { readonly scope: MemoryScope; readonly ownerId: string | null }[];
+  readonly statuses: readonly MemoryEntryStatus[];
+}
+
 export interface MemoryEntryRecord {
   readonly id: string;
   readonly workspaceId: string;
@@ -153,6 +159,15 @@ const SELECT_COLUMNS = [
   'normalized_text_hash', 'token_estimate', 'sensitivity', 'version',
   'created_at', 'updated_at',
 ].join(', ');
+
+const OWNER_COLUMN: Record<MemoryScope, string> = {
+  global: 'owner_task_id',
+  workspace: 'owner_task_id',
+  agent: 'owner_agent_id',
+  conversation: 'owner_conversation_id',
+  task: 'owner_task_id',
+  run: 'owner_run_id',
+};
 
 function nonBlank(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -224,6 +239,11 @@ function toRecord(row: EntryRow, sources: readonly MemoryEntrySourceInput[]): Me
 
 export class MemoryEntryRepository {
   constructor(private readonly db: TransactionDatabase) {}
+
+  /** @internal Read-only database seam for the MF-3 retrieval service. */
+  getDatabase(): TransactionDatabase {
+    return this.db;
+  }
 
   /**
    * Insert a forward Memory Entry with its sources and FTS row in one
@@ -321,7 +341,7 @@ export class MemoryEntryRepository {
     }
     const owner = validateMemoryScopeOwner({
       scope: input.scope,
-      workspaceId: input.workspaceId,
+      ...(input.scope === 'global' ? {} : { workspaceId: input.workspaceId }),
       ...(input.ownerAgentId === undefined ? {} : { agentId: input.ownerAgentId }),
       ...(input.ownerConversationId === undefined ? {} : { conversationId: input.ownerConversationId }),
       ...(input.ownerTaskId === undefined ? {} : { taskId: input.ownerTaskId }),
@@ -369,8 +389,36 @@ export class MemoryEntryRepository {
     return entry;
   }
 
-  private readSources(entryId: string): MemoryEntrySourceInput[] {
+  /**
+   * Scope-filtered retrieval candidates for one Workspace.
+   *
+   * Only rows whose Scope/owner pair is in `reach` are considered, and only
+   * statuses eligible for retrieval. `ftsQuery` is optional; when supplied, the
+   * FTS5 rank is joined in but rows are never dropped for a zero/absent rank
+   * (structured filters remain authoritative).
+   */
+  listRetrievalCandidates(input: ListMemoryRetrievalCandidatesInput): MemoryEntryRecord[] {
+    if (!nonBlank(input.workspaceId)) throw new MemoryEntryRepositoryError('INPUT_INVALID');
+    if (input.reach.length === 0) return [];
+    const scopeClauses: string[] = [];
+    const params: unknown[] = [input.workspaceId];
+    for (const reach of input.reach) {
+      scopeClauses.push('(scope = ? AND ' + OWNER_COLUMN[reach.scope] + ' IS ?)');
+      params.push(reach.scope, reach.ownerId);
+    }
+    const statusClauses = input.statuses.map(() => '?').join(', ');
+    params.push(...input.statuses);
     const rows = this.db.prepare(
+      'SELECT ' + SELECT_COLUMNS + ' FROM memory_entries'
+        + ' WHERE workspace_id = ?'
+        + ' AND (' + scopeClauses.join(' OR ') + ')'
+        + ' AND status IN (' + statusClauses + ')'
+        + ' ORDER BY updated_at DESC, id ASC',
+    ).all(...params) as EntryRow[];
+    return rows.map(row => toRecord(row, this.readSources(row.id)));
+  }
+
+  private readSources(entryId: string): MemoryEntrySourceInput[] {    const rows = this.db.prepare(
       'SELECT source_kind, source_id FROM memory_entry_sources WHERE memory_entry_id = ? ORDER BY source_kind ASC, source_id ASC',
     ).all(entryId) as Array<{ source_kind: string; source_id: string }>;
     return rows.map(row => ({ kind: row.source_kind as MemorySourceKind, id: row.source_id }));
