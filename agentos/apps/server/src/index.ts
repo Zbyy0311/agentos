@@ -49,6 +49,10 @@ import { createApprovalRoutes } from './routes/approvals.js';
 import { createProviderConfigRoutes } from './routes/providerConfigs.js';
 import { createLocalCorsOptions, createLocalWriteGuard, resolveLocalApiSecurityConfig } from './localApiSecurity.js';
 import { acquireServerOwnership, type ServerOwnership } from './serverOwnership.js';
+import {
+  WorkspaceAdmissionStartupReconciler,
+  WorkspaceAdmissionStartupReconciliationError,
+} from './services/WorkspaceAdmissionStartupReconciler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -77,6 +81,7 @@ type StableStartupCode =
   | 'SERVER_ALREADY_RUNNING'
   | 'SERVER_OWNERSHIP_UNAVAILABLE'
   | 'STARTUP_RECOVERY_FAILED'
+  | 'STARTUP_ADMISSION_RECONCILIATION_FAILED'
   | 'SERVER_LISTEN_FAILED'
   | 'SERVER_STARTUP_FAILED';
 
@@ -87,6 +92,13 @@ class StartupFailure extends Error {
   }
 }
 
+class StartupAdmissionReconciliationFailure extends Error {
+  constructor() {
+    super('STARTUP_ADMISSION_RECONCILIATION_FAILED');
+    this.name = 'StartupAdmissionReconciliationFailure';
+  }
+}
+
 function classifyStartupError(error: unknown): StableStartupCode {
   const code = (error as { code?: unknown } | null)?.code;
   if (code === 'SERVER_ALREADY_RUNNING' || code === 'SERVER_OWNERSHIP_UNAVAILABLE') {
@@ -94,6 +106,9 @@ function classifyStartupError(error: unknown): StableStartupCode {
   }
   if (error instanceof StartupFailure) {
     return error.stableCode;
+  }
+  if (error instanceof StartupAdmissionReconciliationFailure) {
+    return 'STARTUP_ADMISSION_RECONCILIATION_FAILED';
   }
   return 'SERVER_STARTUP_FAILED';
 }
@@ -174,6 +189,21 @@ async function bootstrap(): Promise<void> {
     } catch {
       // The recovery transaction already rolled back; only the stable code escapes.
       throw new StartupFailure('STARTUP_RECOVERY_FAILED');
+    }
+
+    // P6-L1E Startup Admission Reconciliation. Runs strictly AFTER existing
+    // recovery (so recovery-terminal subjects are never backfilled) and BEFORE
+    // services/routes/listen. It bootstraps missing pre-016 active-state
+    // Admissions fail-closed (MODIFYING) and reuses the single L1D winner
+    // algorithm for queue advancement. Any durable conflict aborts startup
+    // with a stable, data-free code and leaves zero partial bootstrap state.
+    try {
+      await new WorkspaceAdmissionStartupReconciler({ store }).reconcileOnStartup();
+    } catch (error) {
+      // Reconciler throws only the stable, data-free boundary error; anything
+      // else is collapsed to the same code here so no internal detail escapes.
+      void (error instanceof WorkspaceAdmissionStartupReconciliationError);
+      throw new StartupAdmissionReconciliationFailure();
     }
 
     phase = 'services';

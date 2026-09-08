@@ -146,6 +146,31 @@ export class WorkspaceAdmissionRepository {
   }
 
   /**
+   * P6-L1E: highest allocated request_order for a Workspace, or null when the
+   * Workspace has no Admissions. Workspace-scoped so bootstrap allocation for
+   * one Workspace never reads or disturbs another's ordering.
+   */
+  maxRequestOrder(workspaceId: string): number | null {
+    const row = this.db.prepare(
+      'SELECT MAX(request_order) AS max_order FROM workspace_admissions WHERE workspace_id = ?',
+    ).get(workspaceId) as { max_order: number | null };
+    return row.max_order;
+  }
+
+  /**
+   * P6-L1E: every persisted Admission, deterministically ordered for a
+   * restart-safe startup reconciliation sweep. The reconciler groups rows by
+   * Workspace; this read never crosses or re-binds subjects between
+   * Workspaces.
+   */
+  listAllInRequestOrder(): WorkspaceAdmissionRow[] {
+    const rows = this.db.prepare(
+      'SELECT ' + SELECT_COLUMNS + ' FROM workspace_admissions ORDER BY workspace_id ASC, request_order ASC, id ASC',
+    ).all() as Row[];
+    return rows.map(toRow);
+  }
+
+  /**
    * Persistence-level conditional state update (CAS on version). The caller
    * (a later slice) owns the state-machine decision; this only applies a
    * frozen transition shape and returns false when the row changed under it.
