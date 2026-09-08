@@ -35,7 +35,7 @@ const MEM = 'mem_' + 'a'.repeat(26);
 
 const FULL_IDS = [
   '001', '002', '003', '004', '005', '006', '007', '008',
-  '009', '010', '011', '012', '013', '014', '015', '016', '017',
+  '009', '010', '011', '012', '013', '014', '015', '016', '017', '018',
 ];
 
 const INSERT_ENTRY_SQL =
@@ -145,7 +145,7 @@ test('MF1-A1 fresh DB applies 001-017 in order', () => {
 test('MF1-A2 upgrade from 016 applies 017 additively', () => {
   const fx = fileDb('agentos-mf1-a2-');
   try {
-    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '017'));
+    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => Number(id) <= 16));
     insertWorkspace(fx.db, WS);
     fx.db.prepare(
       'INSERT INTO memories (id, workspace_id, memory_type, status, title, summary, content_path, tags_json, related_files_json, importance, confidence, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
@@ -333,10 +333,11 @@ test('MF1-A14 migration 017 is idempotent', () => {
   } finally { fx.close(); }
 });
 
-// Registry contract: 017 is the next numeric id after 016 and is non-destructive.
+// Registry contract: 017 is non-destructive and precedes any later additive id.
 test('MF1 registry entry is numeric, ordered, and non-destructive', () => {
   const ids = DEFAULT_REGISTRY_MIGRATIONS.map(m => m.id);
   assert.deepEqual(ids, FULL_IDS);
+  assert.ok(ids.indexOf('017') > ids.indexOf('016'));
   assert.equal(migration017.id, '017');
   assert.equal(migration017.destructive, false);
   assert.match(migration017.checksum, /^[0-9a-f]{16}$/);
