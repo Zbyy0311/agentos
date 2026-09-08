@@ -225,12 +225,15 @@ function admissionRow(overrides: Record<string, unknown> = {}): Record<string, u
 }
 
 // ---------------------------------------------------------------------------
-// L1B-01 default registry ends in 016
+// L1B-01 default registry contains 001-016 in order
 // ---------------------------------------------------------------------------
-test('L1B-01 default registry ends in 016', () => {
+// Later additive migrations (017+, MF-1 Memory Entry persistence) may append
+// after 016; this contract asserts the 016 prefix and its position, not that
+// 016 is the registry tail.
+test('L1B-01 default registry contains 001-016 in order', () => {
   const ids = DEFAULT_REGISTRY_MIGRATIONS.map(m => m.id);
-  assert.equal(ids[ids.length - 1], '016');
   assert.deepEqual(ids.slice(0, 16), ['001','002','003','004','005','006','007','008','009','010','011','012','013','014','015','016']);
+  assert.ok(ids.includes('016'));
 });
 
 // L1B-02 016 checksum deterministic

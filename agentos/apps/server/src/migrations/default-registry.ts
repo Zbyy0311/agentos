@@ -14,6 +14,7 @@ import { migration013 } from './migrations/013-workflow-creation-metadata-v2.js'
 import { migration014 } from './migrations/014-m4-process-runtime-schema.js';
 import { migration015 } from './migrations/015-p6-m3b-windows-native-birth-identity.js';
 import { migration016 } from './migrations/016-p6-l1-workspace-admission-persistence.js';
+import { migration017 } from './migrations/017-mf1-memory-entry-persistence.js';
 import type { Migration } from './types.js';
 
 /**
@@ -35,6 +36,7 @@ import type { Migration } from './types.js';
  * 015: P6-M3b Windows native process birth identity (additive canonical column)
  * 016: P6-L1B Workspace Admission persistence (admissions, git observations,
  *      runtime_artifacts provenance rebuild, same-Workspace legacy subject key)
+ * 017: MF-1 Memory Entry persistence (forward memory_entries, sources, FTS5)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -53,4 +55,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration014,
   migration015,
   migration016,
+  migration017,
 ];
