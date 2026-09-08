@@ -59,5 +59,8 @@ jobs:
       - name: Shared P6-L1C-M1 contract harness
         run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/p6-l1c-git-observation-contract.test.ts ../../packages/shared/p6-l1c-porcelain-v2.test.ts
 
+      - name: Shared MF-0 memory contract harness
+        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/mf0-memory-contracts.test.ts
+
       - name: Workspace build
         run: pnpm build
