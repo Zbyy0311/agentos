@@ -351,9 +351,9 @@ This section is a non-authoritative status snapshot dated 2026-08-28. Architectu
   - dedicated column canonical with evidence-JSON mirror failing closed;
   - classification only, with no control, reattach, or ownership changes.
 
-### 11.2 P6-M3b Closeout Status
+### 11.2 P6-M3b Merged Status
 
-At the date of this snapshot, P6-M3b is in closeout and is not yet contained by merged `main`. Its implementation evidence includes:
+P6-M3b is contained by merged `main` (PR #66, merge `6fc8f21e`). Its implementation evidence includes:
 
 - canonical `win32:filetime:<unsigned-decimal>` validator;
 - Windows helper capture of the full 64-bit creation FILETIME at spawn;
@@ -363,7 +363,7 @@ At the date of this snapshot, P6-M3b is in closeout and is not yet contained by 
 - additive migration 015 (`native_birth_identity` column, immutability trigger, partial index);
 - server repository validation and binding of the birth identity.
 
-Until merged `main` contains that work, Lite treats P6-M3b as closeout implementation evidence rather than shipped behavior. When it becomes merged, only this status label changes; the Windows identity, fail-closed classification, compatibility, and no-reattach architecture contracts do not.
+Merged status changes only this label; the Windows identity, fail-closed classification, compatibility, and no-reattach architecture contracts do not. Real Windows gates W1/W2/W3/W4 pass on the merged baseline; see `docs/implementation/milestones/P6-recovery-closeout.md`.
 
 ## 12. No Reattach, Adoption, or Ownership Transfer
 
