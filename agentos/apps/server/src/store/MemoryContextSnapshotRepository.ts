@@ -115,48 +115,55 @@ export class MemoryContextSnapshotRepository {
    * never left with a partially recorded context.
    */
   createSnapshot(input: CreateMemoryContextSnapshotInput): MemoryContextSnapshotRecord {
-    this.validateInput(input);
     try {
-      return inTransaction(this.db, () => {
-        this.assertRunExists(input.workspaceId, input.runId);
-        this.db.prepare(
-          'INSERT INTO memory_context_snapshots ('
-            + 'id, schema_version, workspace_id, agent_id, task_id, run_id, stage_id, provider_config_id,'
-            + ' query_hash, retrieval_strategy_version, budget_json, total_tokens, truncated, prompt_artifact_id, created_at'
-            + ') VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        ).run(
-          input.id, input.workspaceId, input.agentId ?? null, input.taskId ?? null,
-          input.runId, input.stageId ?? null, input.providerConfigId ?? null,
-          input.queryHash, input.retrievalStrategyVersion, JSON.stringify(input.budget),
-          input.totalTokens, input.truncated ? 1 : 0, input.promptArtifactId ?? null,
-          input.createdAt,
-        );
-        for (const selected of input.selected) {
-          this.db.prepare(
-            'INSERT INTO memory_context_snapshot_entries ('
-              + 'snapshot_id, memory_entry_id, memory_entry_version, selected, rank, score, scope, category,'
-              + ' authority, confidence, importance, token_cost, reasons_json, source_refs_json, content_hash'
-              + ') VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
-          ).run(
-            input.id, selected.memoryId, selected.memoryVersion, selected.rank, selected.score,
-            selected.scope, selected.category, selected.authority, selected.confidence,
-            selected.importance, selected.tokenCost, JSON.stringify(selected.reasons),
-            JSON.stringify(selected.sourceRefs),
-          );
-        }
-        for (const exclusion of input.exclusions) {
-          this.db.prepare(
-            'INSERT INTO memory_context_snapshot_entries ('
-              + 'snapshot_id, memory_entry_id, memory_entry_version, selected, rank, score, scope, category,'
-              + ' authority, confidence, importance, token_cost, reasons_json, source_refs_json, content_hash'
-              + ') VALUES (?, ?, 1, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, \'[]\', NULL)',
-          ).run(input.id, exclusion.memoryId, JSON.stringify([exclusion.reason]));
-        }
-        return this.requireSnapshot(input.workspaceId, input.id);
-      });
+      return inTransaction(this.db, () => this.createSnapshotWithinTransaction(input));
     } catch (error) {
       throw this.publicError(error);
     }
+  }
+
+  /**
+   * MF-5 emission seam: persist the snapshot inside an ALREADY ACTIVE
+   * transaction so a caller can commit the snapshot and its Runtime Event +
+   * Outbox row atomically. The caller owns BEGIN/COMMIT.
+   */
+  createSnapshotWithinTransaction(input: CreateMemoryContextSnapshotInput): MemoryContextSnapshotRecord {
+    this.validateInput(input);
+    this.assertRunExists(input.workspaceId, input.runId);
+    this.db.prepare(
+      'INSERT INTO memory_context_snapshots ('
+        + 'id, schema_version, workspace_id, agent_id, task_id, run_id, stage_id, provider_config_id,'
+        + ' query_hash, retrieval_strategy_version, budget_json, total_tokens, truncated, prompt_artifact_id, created_at'
+        + ') VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(
+      input.id, input.workspaceId, input.agentId ?? null, input.taskId ?? null,
+      input.runId, input.stageId ?? null, input.providerConfigId ?? null,
+      input.queryHash, input.retrievalStrategyVersion, JSON.stringify(input.budget),
+      input.totalTokens, input.truncated ? 1 : 0, input.promptArtifactId ?? null,
+      input.createdAt,
+    );
+    for (const selected of input.selected) {
+      this.db.prepare(
+        'INSERT INTO memory_context_snapshot_entries ('
+          + 'snapshot_id, memory_entry_id, memory_entry_version, selected, rank, score, scope, category,'
+          + ' authority, confidence, importance, token_cost, reasons_json, source_refs_json, content_hash'
+          + ') VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL)',
+      ).run(
+        input.id, selected.memoryId, selected.memoryVersion, selected.rank, selected.score,
+        selected.scope, selected.category, selected.authority, selected.confidence,
+        selected.importance, selected.tokenCost, JSON.stringify(selected.reasons),
+        JSON.stringify(selected.sourceRefs),
+      );
+    }
+    for (const exclusion of input.exclusions) {
+      this.db.prepare(
+        'INSERT INTO memory_context_snapshot_entries ('
+          + 'snapshot_id, memory_entry_id, memory_entry_version, selected, rank, score, scope, category,'
+          + ' authority, confidence, importance, token_cost, reasons_json, source_refs_json, content_hash'
+          + ') VALUES (?, ?, 1, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, \'[]\', NULL)',
+      ).run(input.id, exclusion.memoryId, JSON.stringify([exclusion.reason]));
+    }
+    return this.requireSnapshot(input.workspaceId, input.id);
   }
 
   /** Read one snapshot with its selection and exclusion rows; Workspace-scoped. */
