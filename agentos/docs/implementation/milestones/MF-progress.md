@@ -1,6 +1,6 @@
 # Memory Foundation — Progress and Remaining Work
 
-Status: MF-0/MF-1/MF-3/MF-4 MERGED — MF-2 AND MF-5 NOT STARTED — MEMORY FOUNDATION IN PROGRESS
+Status: MF-0/MF-1/MF-2/MF-3/MF-4 MERGED — MF-5 NOT STARTED — MEMORY FOUNDATION IN PROGRESS
 
 ## 1. Purpose
 
@@ -12,9 +12,9 @@ legible without re-auditing the repository.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ 56328944` (Merge PR #84) |
-| Migration ledger | `001`–`018` present; `019` absent |
-| Main CI | Run `34292955479`, conclusion `success` |
+| Baseline | `origin-https/main @ cafaa969` (Merge PR #87) |
+| Migration ledger | `001`–`019` present; `020` absent |
+| Main CI | Post-merge runs through `3bda580b` conclusion `success`; `cafaa969` in progress at record time |
 | Preceding gates | Workspace single-writer rule COMPLETE; Recovery closeout COMPLETE |
 
 ## 3. Slice status
@@ -23,7 +23,7 @@ legible without re-auditing the repository.
 |---|---|---|---|
 | MF-0 | Shared contracts (Scope/Category/Authority, scope-owner validation, promotion gate, budget policy, snapshot identity, event family) | **MERGED** | #79 |
 | MF-1 | Memory Entry persistence + FTS5 (migration 017, `MemoryEntryRepository`) | **MERGED** | #80 (auth), #81 (impl) |
-| MF-2 | Candidate pipeline + dedup/conflict | **NOT STARTED** | — |
+| MF-2 | Candidate pipeline + dedup/conflict | **MERGED** | #86 (auth), #87 (impl) |
 | MF-3 | Scope-filtered retrieval + deterministic ranking + reasons | **MERGED** | #82 |
 | MF-4 | Budget policy + immutable Context Snapshot | **MERGED** | #83 (auth), #84 (impl) |
 | MF-5 | Events, API, UI, Inspector surfaces | **NOT STARTED** | — |
@@ -39,7 +39,9 @@ legible without re-auditing the repository.
 | MF-4 migration 018 | 10/10 PASS |
 | MF-4 snapshot repository | 8/8 PASS |
 | MF-4 budget selector | 10/10 PASS |
-| Full Server first run (MF-4 head) | 2376 total, 2371 passed, 2 failed, 3 skipped |
+| MF-2 migration 019 | 10/10 PASS |
+| MF-2 candidate/conflict repository | 11/11 PASS |
+| Full Server first run (MF-2 head) | 2397 total, 2392 passed, 2 failed, 3 skipped |
 
 The 2 server failures are pre-existing Windows `tar` environment issues in
 `WorktreeArtifactService`, unrelated to Memory Foundation. First runs were
@@ -61,24 +63,19 @@ post-merge `main` CI.
 
 ## 6. Remaining work
 
-### MF-2 — Candidate pipeline + dedup/conflict (NOT STARTED)
+### MF-2 — Candidate pipeline + dedup/conflict (MERGED)
 
-Needed for the Lite contract:
+Merged via PR #86 (schema authorization, migration 019) and PR #87
+(implementation). Provides forward `memory_candidate_entries`,
+`memory_candidate_sources`, and `memory_conflicts`, plus
+`MemoryCandidateRepository` with the MF-0 promotion gate, versioned review,
+`merge-with-existing` binding, exact-duplicate lookup, and conflict
+open/resolve that never deletes.
 
-- candidate generation bounded to meaningful transitions (user save, terminal
-  outcome, accepted approval, completed review/test Artifact, compaction,
-  explicit import);
-- exact and near-duplicate convergence (content hash, normalized hash, same
-  source, FTS similarity, category/entity key);
-- conflict detection and explicit resolution using supersession links, never
-  hard deletion;
-- conservative outcome writeback as new Candidates;
-- review-required routing for Global Scope, security category, inferred
-  preference, Scope promotion, and unresolved conflict.
-
-MF-2 needs a schema authorization package before any new table (e.g. conflict
-links) is added; existing baseline `memory_candidates` remains **COMPATIBILITY**
-and must not be presented as the forward model.
+Remaining within MF-2 scope (not yet done): candidate generation triggers
+bound to meaningful transitions (user save, terminal outcome, accepted
+approval, completed review/test Artifact, compaction, explicit import) and
+near-duplicate FTS-similarity detection beyond the exact/normalized hashes.
 
 ### MF-5 — Events, API, UI, Inspector surfaces (NOT STARTED)
 
