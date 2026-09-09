@@ -25,7 +25,7 @@ beyond the merged evidence it cites.
 | Minimal Git Observation + Workspace single-writer rule | **COMPLETE** | PR #68–#76 (L1A–L1E) |
 | Recovery closeout | **COMPLETE** | PR #77 |
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
-| Conversation Runtime | **PARTIAL (CR-0/CR-1 MERGED)** | PR #95–#97; `CR-progress.md` |
+| Conversation Runtime | **PARTIAL (CR-0..CR-2 MERGED)** | PR #95–#97; `CR-progress.md` |
 | Polished UI Foundation | **PARTIAL (tokens MERGED)** | PR #100; four-column shell still open |
 | Direct Conversation UX | **NOT STARTED** | — |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |
@@ -57,7 +57,7 @@ preserved; no rerun-to-green was used.
 
 - **Memory Foundation**: MF-5 Memory/Context Snapshot APIs, UI Memory
   explanation, Inspector memory view.
-- **Conversation Runtime**: CR-2 Agent Turns, CR-3 streaming checkpoints,
+- **Conversation Runtime**: CR-3 streaming checkpoints,
   CR-4 Task/Run bridge + Event projection, CR-5 bounded Group, CR-6 history.
 - **Polished UI Foundation**: the four-column shell consuming the token system.
 - **Direct Conversation UX**, **Controlled Group Conversation**,
