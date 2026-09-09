@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1 MERGED — CR-2..CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
+Status: CR-0/CR-1/CR-2 MERGED — CR-3..CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
 
 ## 1. Purpose
 
@@ -23,7 +23,7 @@ without re-auditing the repository.
 |---|---|---|---|
 | CR-0 | Shared Conversation contracts | **MERGED** | #95 |
 | CR-1 | Forward Conversation/Member/Message persistence (migration 020) | **MERGED** | #96 (auth), #97 (impl) |
-| CR-2 | Message revisions + Agent Turn records | **PARTIAL** (revisions merged; Turns NOT STARTED) | — |
+| CR-2 | Message revisions + Agent Turn records (migration 021, AgentTurnRepository) | **MERGED** | (auth retro), (impl) |
 | CR-3 | Durable streaming checkpoints + reconnect cursor | **NOT STARTED** | — |
 | CR-4 | Explicit Task/Run bridge + idempotent Event projection | **NOT STARTED** | — |
 | CR-5 | Bounded Group budgets/stop/loop guard + per-Agent context | **NOT STARTED** | — |
@@ -36,6 +36,8 @@ without re-auditing the repository.
 | CR-0 contracts | 10/10 PASS |
 | CR-1 migration 020 | 11/11 PASS |
 | CR-1 ConversationRepository | 15/15 PASS |
+| CR-2 migration 021 | 7/7 PASS |
+| CR-2 AgentTurnRepository | 14/14 PASS |
 | Full Server first run (CR-1 head) | 2446 total, 2441 passed, 2 failed, 3 skipped |
 
 The 2 server failures are pre-existing Windows `tar` environment issues in
@@ -57,11 +59,11 @@ The 2 server failures are pre-existing Windows `tar` environment issues in
 
 ## 6. Remaining work
 
-### CR-2 — Agent Turn records (NOT STARTED)
+### CR-2 — Agent Turn records (MERGED)
 
-- durable Agent Turn records (`created`/`streaming`/`final`/`failed`/`cancelled`);
-- link a Turn to its Conversation, Message, and optional Run;
-- per-Turn bounded context reference.
+- durable Agent Turn records (`created`/`streaming`/`final`/`failed`/`cancelled`) 鈥?done via migration 021 `cr_agent_turns`;
+- link a Turn to its Conversation, Message, and optional Run 鈥?done via `task_id`/`run_id`/`source_message_id`;
+- per-Turn bounded context reference 鈥?done via `context_snapshot_id`.
 
 ### CR-3 — Streaming checkpoints (NOT STARTED)
 
