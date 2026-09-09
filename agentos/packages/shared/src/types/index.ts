@@ -977,3 +977,4 @@ export * from './p6-l1b-artifact.js';
 export * from './p6-l1c-git-observation.js';
 export * from './mf0-memory-contracts.js';
 export * from './mf3-memory-ranking.js';
+export * from './mf5-memory-events.js';
