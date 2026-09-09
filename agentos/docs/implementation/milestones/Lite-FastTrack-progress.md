@@ -13,9 +13,9 @@ beyond the merged evidence it cites.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ 8dc49b5d` (Merge PR #101) |
+| Baseline | `origin-https/main @ 1af40ebe` (Merge PR #103) |
 | Migration ledger | `001`–`020` present; `021` absent |
-| Main CI | Post-merge runs through `2d54ac6f` conclusion `success`; `8dc49b5d` in progress at record time |
+| Main CI | Post-merge runs through `6e42ce4e` conclusion `success`; `1af40ebe` in progress at record time |
 
 ## 3. Fast-Track status
 
@@ -30,7 +30,7 @@ beyond the merged evidence it cites.
 | Direct Conversation UX | **NOT STARTED** | — |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |
 | Controlled Group Conversation | **NOT STARTED** | — |
-| Workflow Templates | **PARTIAL (catalog MERGED)** | PR #99; instantiation wiring still open |
+| Workflow Templates | **PARTIAL (catalog + instantiation MERGED)** | PR #99, PR #103; durable Task/Run/Stage wiring still open |
 | Agent History + Search | **NOT STARTED** | — |
 
 ## 4. Merged evidence (this workstream)
@@ -43,6 +43,7 @@ beyond the merged evidence it cites.
 | CR-0 contracts | 10/10 PASS |
 | CR-1 migration + repository | 11/11 + 15/15 PASS |
 | Workflow Templates | 13/13 PASS |
+| Workflow Template instantiation | 10/10 PASS |
 | UI Foundation tokens | 13/13 PASS (includes 4.5:1 contrast gate) |
 | Runtime Inspector | 11/11 PASS |
 | Full Server first run (Inspector head) | 2457 total, 2452 passed, 2 failed, 3 skipped |
@@ -61,7 +62,7 @@ preserved; no rerun-to-green was used.
 - **Polished UI Foundation**: the four-column shell consuming the token system.
 - **Direct Conversation UX**, **Controlled Group Conversation**,
   **Agent History + Search**: not started.
-- **Workflow Templates**: instantiate templates into durable Task/Run/Stage.
+- **Workflow Templates**: wire the compiled definition into durable Task/Run/Stage creation.
 - **Runtime Inspector**: API route and UI surface over the merged projection.
 
 ## 6. Non-goals (unchanged)
