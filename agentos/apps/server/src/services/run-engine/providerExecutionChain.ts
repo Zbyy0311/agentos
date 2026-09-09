@@ -23,6 +23,11 @@ import { StageExecutor } from './StageExecutor.js';
 import { StageExecutionCoordinator, type CanonicalRunEventObservationPort } from './StageExecutionCoordinator.js';
 import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
 import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
+import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
+import { MemoryContextResolver } from '../MemoryContextResolver.js';
+import { MemoryEntryRepository } from '../../store/MemoryEntryRepository.js';
+import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
+import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
 
 export interface ProviderExecutionChainOptions {
   readonly store: SqliteStore;
@@ -40,6 +45,7 @@ export interface ProviderExecutionChain {
   readonly engine: RunEngine;
   readonly coordinator: StageExecutionCoordinator;
   readonly dispatcher: RunEngineProviderDispatcher;
+  readonly memoryContextResolver: MemoryContextResolver;
 }
 
 export function createProviderExecutionChain(options: ProviderExecutionChainOptions): ProviderExecutionChain {
@@ -91,10 +97,21 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
     runInTransaction: <T>(fn: () => T): T => store.runInTransaction(fn),
   });
+  // MF-4 Run startup integration: the dispatcher resolves, freezes, and gates
+  // Memory through the MF-3 retrieval + MF-4 snapshot contracts before any
+  // provider work, and injects only the bounded persisted context.
+  const memoryContextResolver = new MemoryContextResolver({
+    store,
+    selector: new MemoryContextBudgetSelector(
+      new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase())),
+      new MemoryContextSnapshotRepository(store.getDatabase()),
+    ),
+  });
   const dispatcher = new RunEngineProviderDispatcher({
     engine,
     coordinator,
     admissionGate: admissionAuthority,
+    memoryContextResolver,
     runRepository: store.runRepository(),
     runStageRepository: store.runStageRepository(),
     runSnapshotRepository: store.runSnapshotRepository(),
@@ -103,5 +120,5 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
   });
-  return { admissionAuthority, engine, coordinator, dispatcher };
+  return { admissionAuthority, engine, coordinator, dispatcher, memoryContextResolver };
 }

@@ -235,6 +235,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly admissionEffectiveMutationClass?: 'READ_ONLY' | 'MODIFYING';
   readonly admissionEvidenceJson?: string | null;
   readonly admissionEvidenceCollector?: WorkspaceAdmissionEvidenceCollector;
+  readonly memoryContextResolver?: import('./RunEngineProviderDispatcher.js').MemoryContextResolverPort;
 } = {}) {
   const db = migratedDb();
   seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
@@ -262,6 +263,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   const adapter = new KimiCodeProviderAdapter({ probe: probeFor(authFailure), discover: async () => ({ found: true, selected: KIMI_EXE, candidates: [{ executable: KIMI_EXE, source: 'configuration', confidence: 1 }], warnings: [] }) });
   const registry = new ProviderRegistry([adapter]);
   const coordinatorCalls = { count: 0 };
+  const capturedInputs: Array<Parameters<StageExecutionCoordinator['execute']>[0]> = [];
   const realCoordinator = new StageExecutionCoordinator({
     registry, durableCoordinator, sessionRepository: sessionAdapter, driver, probe: probeFor(authFailure),
     claimOwner: 'run-engine', claimLeaseMs: 60000, now: () => NOW,
@@ -269,6 +271,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   const stubCoordinator = {
     execute: async (input: Parameters<StageExecutionCoordinator['execute']>[0]) => {
       coordinatorCalls.count += 1;
+      capturedInputs.push(input);
       if (behavior.executeThrow !== undefined) throw behavior.executeThrow;
       if (behavior.returnActive === true) return { kind: 'active' as const };
       if (behavior.returnStopped === true) return { kind: 'stopped' as const, cleanup: null, proven: false, stopOrigin: 'EXPLICIT_CANCEL' as const };
@@ -305,9 +308,10 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
       evidenceCollector: behavior.admissionEvidenceCollector,
       now: () => new Date(NOW),
     }),
+    ...(behavior.memoryContextResolver === undefined ? {} : { memoryContextResolver: behavior.memoryContextResolver }),
     onDispatchFailure: report => { dispatchFailures.push(report); },
   });
-  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService, coordinatorCalls, dispatchFailures };
+  return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService, coordinatorCalls, capturedInputs, dispatchFailures };
 }
 
 function close(fx: ReturnType<typeof fixture>): void { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
@@ -755,6 +759,51 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
       await fx.dispatcher.driveSafely(WS, RUN);
       assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
+    } finally { close(fx); }
+  });
+
+  it('MF-4 integration: a configured resolver injects the persisted memory context into the stage prompt', async () => {
+    const fakeSnapshot = { id: 'mctx_inject', runId: RUN } as never;
+    const resolveCalls: Array<Record<string, unknown>> = [];
+    const resolver = {
+      resolve: (input: Record<string, unknown>) => {
+        resolveCalls.push(input);
+        return { snapshot: fakeSnapshot, contextText: 'MEMORY_CONTEXT_BODY', reused: false } as never;
+      },
+      isInjectable: () => true,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false, { memoryContextResolver: resolver as never });
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.ok(resolveCalls.length >= 1, 'resolver must be called before provider execution');
+      assert.equal(resolveCalls[0].workspaceId, WS);
+      assert.equal(resolveCalls[0].runId, RUN);
+      assert.ok(fx.capturedInputs.length >= 1, 'stage must be executed');
+      assert.ok(fx.capturedInputs[0].prompt.startsWith('MEMORY_CONTEXT_BODY'), 'memory context must precede the base prompt');
+    } finally { close(fx); }
+  });
+
+  it('MF-4 integration: a blocked injection prevents provider execution', async () => {
+    const resolver = {
+      resolve: () => ({ snapshot: { id: 'mctx_blocked', runId: RUN }, contextText: 'x', reused: false } as never),
+      isInjectable: () => false,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { memoryContextResolver: resolver as never });
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      assert.equal(fx.driver.spawnCalls, 0, 'a blocked injection must not spawn a provider process');
+    } finally { close(fx); }
+  });
+
+  it('MF-4 integration: a resolver snapshot failure prevents provider execution', async () => {
+    const resolver = {
+      resolve: () => { throw new Error('MEMORY_CONTEXT_RESOLVER_SNAPSHOT_FAILED'); },
+      isInjectable: () => true,
+    };
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { memoryContextResolver: resolver as never });
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      assert.equal(fx.driver.spawnCalls, 0, 'a snapshot failure must not spawn a provider process');
     } finally { close(fx); }
   });
 });
