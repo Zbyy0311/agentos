@@ -34,7 +34,7 @@ const SNAP = 'mctx_' + 'd'.repeat(26);
 
 const FULL_IDS = [
   '001', '002', '003', '004', '005', '006', '007', '008', '009', '010',
-  '011', '012', '013', '014', '015', '016', '017', '018',
+  '011', '012', '013', '014', '015', '016', '017', '018', '019',
 ];
 
 function fileDb(prefix: string): { root: string; path: string; db: SqliteDb; close(): void } {
@@ -103,7 +103,7 @@ test('MF4-A1 fresh DB applies 001-018 in order', () => {
 test('MF4-A2 upgrade from 017 applies 018 additively', () => {
   const fx = fileDb('agentos-mf4-a2-');
   try {
-    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '018'));
+    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => Number(id) <= 17));
     seedBase(fx.db);
     const before = count(fx.db, 'SELECT COUNT(*) AS c FROM memory_entries');
     applyThrough(fx.db, fx.path, FULL_IDS);

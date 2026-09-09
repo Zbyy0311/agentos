@@ -16,6 +16,7 @@ import { migration015 } from './migrations/015-p6-m3b-windows-native-birth-ident
 import { migration016 } from './migrations/016-p6-l1-workspace-admission-persistence.js';
 import { migration017 } from './migrations/017-mf1-memory-entry-persistence.js';
 import { migration018 } from './migrations/018-mf4-memory-context-snapshot.js';
+import { migration019 } from './migrations/019-mf2-memory-candidate-conflict.js';
 import type { Migration } from './types.js';
 
 /**
@@ -39,6 +40,7 @@ import type { Migration } from './types.js';
  *      runtime_artifacts provenance rebuild, same-Workspace legacy subject key)
  * 017: MF-1 Memory Entry persistence (forward memory_entries, sources, FTS5)
  * 018: MF-4 Memory Context Snapshot (immutable per-Run/Stage selection)
+ * 019: MF-2 Memory Candidate and Conflict persistence
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -59,4 +61,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration016,
   migration017,
   migration018,
+  migration019,
 ];
