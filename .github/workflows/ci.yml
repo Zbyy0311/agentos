@@ -71,5 +71,8 @@ jobs:
       - name: Shared workflow template harness
         run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/wf-templates.test.ts
 
+      - name: Shared workflow template instantiation harness
+        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/wf-template-instantiation.test.ts
+
       - name: Workspace build
         run: pnpm build
