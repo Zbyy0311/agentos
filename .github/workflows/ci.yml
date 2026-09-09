@@ -62,5 +62,8 @@ jobs:
       - name: Shared MF-0 memory contract harness
         run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/mf0-memory-contracts.test.ts
 
+      - name: Shared MF-5 memory event harness
+        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/mf5-memory-events.test.ts
+
       - name: Workspace build
         run: pnpm build
