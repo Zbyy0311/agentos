@@ -19,6 +19,7 @@ import type { OperationCancellationEvidence, OperationService } from '../Operati
 import type { LifecycleTransactionService } from '../LifecycleTransactionService.js';
 import { RunEngine } from './RunEngine.js';
 import { StageExecutionCoordinator, type StageExecutionInput } from './StageExecutionCoordinator.js';
+import type { ResolveRunMemoryContextInput, ResolvedMemoryContext } from '../MemoryContextResolver.js';
 
 export interface CanonicalRunAdmissionGate {
   authorizeCanonicalRun(input: {
@@ -28,6 +29,17 @@ export interface CanonicalRunAdmissionGate {
     readonly authorized: boolean;
     readonly reason: 'ADMISSION_GRANTED' | 'ADMISSION_NOT_GRANTED' | 'ADMISSION_AUTHORITY_UNAVAILABLE';
   }>;
+}
+
+/**
+ * MF-4 port. Resolves and persists the immutable Context Snapshot for a Run or
+ * Stage. `resolve` must persist before returning; `assertInjectable` is the
+ * fail-closed gate the dispatcher calls before building the prompt.
+ */
+export interface MemoryContextResolverPort {
+  resolve(input: ResolveRunMemoryContextInput): ResolvedMemoryContext;
+  /** Fail-closed gate: false means injection must not proceed. */
+  isInjectable(resolved: ResolvedMemoryContext | undefined): boolean;
 }
 
 export interface RunEngineProviderDispatcherOptions {
@@ -46,6 +58,13 @@ export interface RunEngineProviderDispatcherOptions {
   readonly workspaceRootFor: (workspaceId: string) => string;
   readonly worktreePathFor?: (workspaceId: string, runId: string) => string | undefined;
   readonly maxDispatchSteps?: number;
+  /**
+   * MF-4 Run startup integration. When supplied, the dispatcher resolves and
+   * freezes Memory for the Run/Stage BEFORE provider execution and injects the
+   * bounded context into the stage prompt. Snapshot persistence failure blocks
+   * injection: the stage is not dispatched.
+   */
+  readonly memoryContextResolver?: MemoryContextResolverPort;
   /** P6-M1: called for any dispatch failure that could not be folded into a canonical lifecycle transition. */
   readonly onDispatchFailure?: (report: DispatchFailureReport) => void;
 }
@@ -95,6 +114,7 @@ export class RunEngineProviderDispatcher {
   private readonly workspaceRootFor: (workspaceId: string) => string;
   private readonly worktreePathFor: ((workspaceId: string, runId: string) => string | undefined) | undefined;
   private readonly maxDispatchSteps: number;
+  private readonly memoryContextResolver: MemoryContextResolverPort | undefined;
   private readonly onDispatchFailure: ((report: DispatchFailureReport) => void) | undefined;
 
   constructor(options: RunEngineProviderDispatcherOptions) {
@@ -109,6 +129,7 @@ export class RunEngineProviderDispatcher {
     this.workspaceRootFor = options.workspaceRootFor;
     this.worktreePathFor = options.worktreePathFor;
     this.maxDispatchSteps = options.maxDispatchSteps ?? 128;
+    this.memoryContextResolver = options.memoryContextResolver;
     this.onDispatchFailure = options.onDispatchFailure;
   }
 
@@ -375,6 +396,15 @@ export class RunEngineProviderDispatcher {
       throw new Error('RUN_ENGINE_SNAPSHOT_INVALID: provider stage snapshots are missing');
     }
     const operation = this.requireStartOperation(workspaceId, runId);
+    const basePrompt = stageDefinition.agent.systemPrompt || 'Execute the requested task.';
+    // MF-4 Run startup integration: resolve, freeze, and gate Memory BEFORE
+    // provider execution. A snapshot failure throws and blocks the stage.
+    const memoryContext = this.resolveStageMemoryContext(workspaceId, runId, stage, snapshot.payload.run.taskId);
+    const prompt = memoryContext === null || memoryContext.contextText.length === 0
+      ? basePrompt
+      : `${memoryContext.contextText}
+
+${basePrompt}`;
     const input: StageExecutionInput = {
       workspaceId,
       taskId: snapshot.payload.run.taskId,
@@ -386,7 +416,7 @@ export class RunEngineProviderDispatcher {
       providerSnapshot: stageDefinition.provider,
       workspaceRoot: this.workspaceRootFor(workspaceId),
       worktreePath: this.worktreePathFor === undefined ? undefined : this.worktreePathFor(workspaceId, runId),
-      prompt: stageDefinition.agent.systemPrompt || 'Execute the requested task.',
+      prompt,
       operationId: operation.id,
     };
     const outcome = await this.coordinator.execute(input);
@@ -456,6 +486,32 @@ export class RunEngineProviderDispatcher {
     const run = this.runRepository.findById(workspaceId, runId);
     if (run === undefined) throw new Error('RUN_NOT_FOUND: ' + runId);
     return run;
+  }
+
+  /**
+   * Resolve the frozen Memory Context for this Stage. Returns null when no
+   * resolver is configured (feature off). When configured, a snapshot failure
+   * propagates so the stage is not dispatched.
+   */
+  private resolveStageMemoryContext(
+    workspaceId: string,
+    runId: string,
+    stage: RunStage,
+    taskId: string,
+  ): ResolvedMemoryContext | null {
+    const resolver = this.memoryContextResolver;
+    if (resolver === undefined) return null;
+    const resolved = resolver.resolve({
+      workspaceId,
+      runId,
+      taskId,
+      stageId: stage.id,
+      createdAt: new Date().toISOString(),
+    });
+    if (!resolver.isInjectable(resolved)) {
+      throw new Error('MEMORY_CONTEXT_INJECTION_BLOCKED');
+    }
+    return resolved;
   }
 
   private requireStartOperation(workspaceId: string, runId: string): ApiOperation {
