@@ -251,39 +251,46 @@ export class MemoryEntryRepository {
    * owner or a default Scope.
    */
   createEntry(input: CreateMemoryEntryInput): MemoryEntryRecord {
-    const validated = this.validateCreateInput(input);
     try {
-      return inTransaction(this.db, () => {
-        this.assertWorkspaceExists(validated.workspaceId);
-        this.db.prepare(
-          'INSERT INTO memory_entries ('
-            + SELECT_COLUMNS
-            + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-        ).run(
-          validated.id, validated.workspaceId, validated.scope,
-          validated.ownerAgentId ?? null, validated.ownerConversationId ?? null,
-          validated.ownerTaskId ?? null, validated.ownerRunId ?? null,
-          validated.category, validated.authority, validated.confidence,
-          validated.importance, validated.title, validated.summary ?? '',
-          validated.content ?? '', JSON.stringify(validated.tags ?? []),
-          validated.status, validated.pinned === true ? 1 : 0,
-          validated.validFrom ?? null, validated.validUntil ?? null,
-          validated.expiresAt ?? null, validated.exactContentHash ?? null,
-          validated.normalizedTextHash ?? null, validated.tokenEstimate ?? 0,
-          validated.sensitivity ?? 'ordinary', 1, validated.createdAt,
-          validated.createdAt,
-        );
-        for (const source of validated.sources) {
-          this.db.prepare(
-            'INSERT INTO memory_entry_sources (memory_entry_id, source_kind, source_id) VALUES (?, ?, ?)',
-          ).run(validated.id, source.kind, source.id);
-        }
-        this.replaceFts(validated.id, validated.title, validated.content ?? '', validated.summary ?? '', (validated.tags ?? []).join(' '));
-        return this.requireEntry(validated.workspaceId, validated.id);
-      });
+      return inTransaction(this.db, () => this.createEntryWithinTransaction(input));
     } catch (error) {
       throw this.publicError(error);
     }
+  }
+
+  /**
+   * MF-5 emission seam: perform the Entry write inside an ALREADY ACTIVE
+   * transaction so a caller can commit the Entry and its Runtime Event +
+   * Outbox row atomically. The caller owns BEGIN/COMMIT.
+   */
+  createEntryWithinTransaction(input: CreateMemoryEntryInput): MemoryEntryRecord {
+    const validated = this.validateCreateInput(input);
+    this.assertWorkspaceExists(validated.workspaceId);
+    this.db.prepare(
+      'INSERT INTO memory_entries ('
+        + SELECT_COLUMNS
+        + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    ).run(
+      validated.id, validated.workspaceId, validated.scope,
+      validated.ownerAgentId ?? null, validated.ownerConversationId ?? null,
+      validated.ownerTaskId ?? null, validated.ownerRunId ?? null,
+      validated.category, validated.authority, validated.confidence,
+      validated.importance, validated.title, validated.summary ?? '',
+      validated.content ?? '', JSON.stringify(validated.tags ?? []),
+      validated.status, validated.pinned === true ? 1 : 0,
+      validated.validFrom ?? null, validated.validUntil ?? null,
+      validated.expiresAt ?? null, validated.exactContentHash ?? null,
+      validated.normalizedTextHash ?? null, validated.tokenEstimate ?? 0,
+      validated.sensitivity ?? 'ordinary', 1, validated.createdAt,
+      validated.createdAt,
+    );
+    for (const source of validated.sources) {
+      this.db.prepare(
+        'INSERT INTO memory_entry_sources (memory_entry_id, source_kind, source_id) VALUES (?, ?, ?)',
+      ).run(validated.id, source.kind, source.id);
+    }
+    this.replaceFts(validated.id, validated.title, validated.content ?? '', validated.summary ?? '', (validated.tags ?? []).join(' '));
+    return this.requireEntry(validated.workspaceId, validated.id);
   }
 
   /** Read one Entry with its sources; Workspace-scoped. */
@@ -301,29 +308,36 @@ export class MemoryEntryRepository {
    * and the new version increments by exactly one (enforced by trigger).
    */
   updateStatus(input: UpdateMemoryEntryStatusInput): MemoryEntryRecord {
+    try {
+      return inTransaction(this.db, () => this.updateStatusWithinTransaction(input));
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /**
+   * MF-5 emission seam: perform the status update inside an ALREADY ACTIVE
+   * transaction so a caller can commit the update and its Runtime Event +
+   * Outbox row atomically. The caller owns BEGIN/COMMIT.
+   */
+  updateStatusWithinTransaction(input: UpdateMemoryEntryStatusInput): MemoryEntryRecord {
     if (!nonBlank(input.workspaceId) || !nonBlank(input.entryId) || !isStatus(input.status)
       || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
       || !nonBlank(input.updatedAt)) {
       throw new MemoryEntryRepositoryError('INPUT_INVALID');
     }
-    try {
-      return inTransaction(this.db, () => {
-        const current = this.db.prepare(
-          'SELECT ' + SELECT_COLUMNS + ' FROM memory_entries WHERE workspace_id = ? AND id = ?',
-        ).get(input.workspaceId, input.entryId) as EntryRow | undefined;
-        if (current === undefined) throw new MemoryEntryRepositoryError('ENTRY_NOT_FOUND');
-        if (current.status === 'deleted') throw new MemoryEntryRepositoryError('ENTRY_NOT_UPDATABLE');
-        if (current.version !== input.expectedVersion) {
-          throw new MemoryEntryRepositoryError('ENTRY_NOT_UPDATABLE');
-        }
-        this.db.prepare(
-          'UPDATE memory_entries SET status = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
-        ).run(input.status, input.updatedAt, input.workspaceId, input.entryId, input.expectedVersion);
-        return this.requireEntry(input.workspaceId, input.entryId);
-      });
-    } catch (error) {
-      throw this.publicError(error);
+    const current = this.db.prepare(
+      'SELECT ' + SELECT_COLUMNS + ' FROM memory_entries WHERE workspace_id = ? AND id = ?',
+    ).get(input.workspaceId, input.entryId) as EntryRow | undefined;
+    if (current === undefined) throw new MemoryEntryRepositoryError('ENTRY_NOT_FOUND');
+    if (current.status === 'deleted') throw new MemoryEntryRepositoryError('ENTRY_NOT_UPDATABLE');
+    if (current.version !== input.expectedVersion) {
+      throw new MemoryEntryRepositoryError('ENTRY_NOT_UPDATABLE');
     }
+    this.db.prepare(
+      'UPDATE memory_entries SET status = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
+    ).run(input.status, input.updatedAt, input.workspaceId, input.entryId, input.expectedVersion);
+    return this.requireEntry(input.workspaceId, input.entryId);
   }
 
   /** Soft delete (status = 'deleted'); never a hard row removal. */

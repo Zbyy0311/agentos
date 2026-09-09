@@ -180,6 +180,32 @@ function isDisposition(value: unknown): value is MemoryConflictDisposition {
   return (MEMORY_CONFLICT_DISPOSITIONS as readonly unknown[]).includes(value);
 }
 
+export interface ReviewMemoryCandidateInput {
+  readonly workspaceId: string;
+  readonly candidateId: string;
+  readonly expectedVersion: number;
+  readonly outcome: MemoryCandidateOutcome;
+  readonly mergedIntoEntryId?: string;
+  readonly reviewedAt: string;
+}
+
+export interface OpenMemoryConflictInput {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly conflictType: MemoryConflictType;
+  readonly entryAId: string;
+  readonly entryBId: string;
+  readonly createdAt: string;
+}
+
+export interface ResolveMemoryConflictInput {
+  readonly workspaceId: string;
+  readonly conflictId: string;
+  readonly expectedVersion: number;
+  readonly disposition: MemoryConflictDisposition;
+  readonly resolvedAt: string;
+}
+
 export class MemoryCandidateRepository {
   constructor(private readonly db: TransactionDatabase) {}
 
@@ -189,6 +215,19 @@ export class MemoryCandidateRepository {
    * rejected fail-closed.
    */
   createCandidate(input: CreateMemoryCandidateInput): MemoryCandidateRecord {
+    try {
+      return inTransaction(this.db, () => this.createCandidateWithinTransaction(input));
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /**
+   * MF-5 emission seam: perform the Candidate write inside an ALREADY ACTIVE
+   * transaction so a caller can commit the Candidate and its Runtime Event +
+   * Outbox row atomically. The caller owns BEGIN/COMMIT.
+   */
+  createCandidateWithinTransaction(input: CreateMemoryCandidateInput): MemoryCandidateRecord {
     this.validateCandidateInput(input);
     const decision = decideMemoryPromotion({
       scope: input.scope,
@@ -206,40 +245,34 @@ export class MemoryCandidateRepository {
       minConfidence: input.minConfidence,
     });
     if (decision === 'reject') throw new MemoryCandidateRepositoryError('SOURCE_REQUIRED');
-    try {
-      return inTransaction(this.db, () => {
-        this.assertWorkspaceExists(input.workspaceId);
-        this.db.prepare(
-          'INSERT INTO memory_candidate_entries ('
-            + 'id, workspace_id, scope, owner_agent_id, owner_conversation_id, owner_task_id, owner_run_id,'
-            + ' category, authority, confidence, importance, title, summary, content, tags_json,'
-            + ' exact_content_hash, normalized_text_hash, token_estimate, inferred_preference,'
-            + ' scope_promotion, contains_secret, outcome, decision, merged_into_entry_id, version, created_at, reviewed_at'
-            + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, NULL)',
-        ).run(
-          input.id, input.workspaceId, input.scope,
-          input.ownerAgentId ?? null, input.ownerConversationId ?? null,
-          input.ownerTaskId ?? null, input.ownerRunId ?? null,
-          input.category, input.authority, input.confidence, input.importance,
-          input.title, input.summary ?? '', input.content ?? '',
-          JSON.stringify(input.tags ?? []), input.exactContentHash ?? null,
-          input.normalizedTextHash ?? null, input.tokenEstimate ?? 0,
-          input.inferredPreference === true ? 1 : 0,
-          input.scopePromotion === true ? 1 : 0,
-          input.containsSecret === true ? 1 : 0,
-          decision === 'auto-accept' ? 'accept' : 'review-required',
-          decision, input.createdAt,
-        );
-        for (const source of input.sources) {
-          this.db.prepare(
-            'INSERT INTO memory_candidate_sources (candidate_id, source_kind, source_id) VALUES (?, ?, ?)',
-          ).run(input.id, source.kind, source.id);
-        }
-        return this.requireCandidate(input.workspaceId, input.id);
-      });
-    } catch (error) {
-      throw this.publicError(error);
+    this.assertWorkspaceExists(input.workspaceId);
+    this.db.prepare(
+      'INSERT INTO memory_candidate_entries ('
+        + 'id, workspace_id, scope, owner_agent_id, owner_conversation_id, owner_task_id, owner_run_id,'
+        + ' category, authority, confidence, importance, title, summary, content, tags_json,'
+        + ' exact_content_hash, normalized_text_hash, token_estimate, inferred_preference,'
+        + ' scope_promotion, contains_secret, outcome, decision, merged_into_entry_id, version, created_at, reviewed_at'
+        + ') VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, 1, ?, NULL)',
+    ).run(
+      input.id, input.workspaceId, input.scope,
+      input.ownerAgentId ?? null, input.ownerConversationId ?? null,
+      input.ownerTaskId ?? null, input.ownerRunId ?? null,
+      input.category, input.authority, input.confidence, input.importance,
+      input.title, input.summary ?? '', input.content ?? '',
+      JSON.stringify(input.tags ?? []), input.exactContentHash ?? null,
+      input.normalizedTextHash ?? null, input.tokenEstimate ?? 0,
+      input.inferredPreference === true ? 1 : 0,
+      input.scopePromotion === true ? 1 : 0,
+      input.containsSecret === true ? 1 : 0,
+      decision === 'auto-accept' ? 'accept' : 'review-required',
+      decision, input.createdAt,
+    );
+    for (const source of input.sources) {
+      this.db.prepare(
+        'INSERT INTO memory_candidate_sources (candidate_id, source_kind, source_id) VALUES (?, ?, ?)',
+      ).run(input.id, source.kind, source.id);
     }
+    return this.requireCandidate(input.workspaceId, input.id);
   }
 
   findCandidateById(workspaceId: string, candidateId: string): MemoryCandidateRecord | undefined {
@@ -255,14 +288,20 @@ export class MemoryCandidateRepository {
    * Record a review outcome. `merge-with-existing` requires the target Entry in
    * the same Workspace. Review never deletes the Candidate.
    */
-  reviewCandidate(input: {
-    readonly workspaceId: string;
-    readonly candidateId: string;
-    readonly expectedVersion: number;
-    readonly outcome: MemoryCandidateOutcome;
-    readonly mergedIntoEntryId?: string;
-    readonly reviewedAt: string;
-  }): MemoryCandidateRecord {
+  reviewCandidate(input: ReviewMemoryCandidateInput): MemoryCandidateRecord {
+    try {
+      return inTransaction(this.db, () => this.reviewCandidateWithinTransaction(input));
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /**
+   * MF-5 emission seam: perform the review inside an ALREADY ACTIVE
+   * transaction so a caller can commit the review and its Runtime Event +
+   * Outbox row atomically. The caller owns BEGIN/COMMIT.
+   */
+  reviewCandidateWithinTransaction(input: ReviewMemoryCandidateInput): MemoryCandidateRecord {
     if (!nonBlank(input.workspaceId) || !nonBlank(input.candidateId)
       || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
       || !nonBlank(input.reviewedAt)) {
@@ -270,99 +309,94 @@ export class MemoryCandidateRepository {
     }
     const outcomes: readonly string[] = ['accept', 'edit-and-accept', 'reject', 'merge-with-existing', 'review-required'];
     if (!outcomes.includes(input.outcome)) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    const current = this.db.prepare(
+      'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
+    ).get(input.workspaceId, input.candidateId) as CandidateRow | undefined;
+    if (current === undefined) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_FOUND');
+    if (current.version !== input.expectedVersion) {
+      throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+    }
+    let mergedInto: string | null = current.merged_into_entry_id;
+    if (input.outcome === 'merge-with-existing') {
+      if (!nonBlank(input.mergedIntoEntryId)) {
+        throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      }
+      const entry = this.db.prepare(
+        'SELECT 1 AS present FROM memory_entries WHERE workspace_id = ? AND id = ?',
+      ).get(input.workspaceId, input.mergedIntoEntryId);
+      if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
+      mergedInto = input.mergedIntoEntryId;
+    }
+    this.db.prepare(
+      'UPDATE memory_candidate_entries SET outcome = ?, merged_into_entry_id = ?, version = version + 1, reviewed_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
+    ).run(input.outcome, mergedInto, input.reviewedAt, input.workspaceId, input.candidateId, input.expectedVersion);
+    return this.requireCandidate(input.workspaceId, input.candidateId);
+  }
+
+  /** Open a conflict between two distinct Entries in one Workspace. */
+  openConflict(input: OpenMemoryConflictInput): MemoryConflictRecord {
     try {
-      return inTransaction(this.db, () => {
-        const current = this.db.prepare(
-          'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
-        ).get(input.workspaceId, input.candidateId) as CandidateRow | undefined;
-        if (current === undefined) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_FOUND');
-        if (current.version !== input.expectedVersion) {
-          throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
-        }
-        let mergedInto: string | null = current.merged_into_entry_id;
-        if (input.outcome === 'merge-with-existing') {
-          if (!nonBlank(input.mergedIntoEntryId)) {
-            throw new MemoryCandidateRepositoryError('INPUT_INVALID');
-          }
-          const entry = this.db.prepare(
-            'SELECT 1 AS present FROM memory_entries WHERE workspace_id = ? AND id = ?',
-          ).get(input.workspaceId, input.mergedIntoEntryId);
-          if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
-          mergedInto = input.mergedIntoEntryId;
-        }
-        this.db.prepare(
-          'UPDATE memory_candidate_entries SET outcome = ?, merged_into_entry_id = ?, version = version + 1, reviewed_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
-        ).run(input.outcome, mergedInto, input.reviewedAt, input.workspaceId, input.candidateId, input.expectedVersion);
-        return this.requireCandidate(input.workspaceId, input.candidateId);
-      });
+      return inTransaction(this.db, () => this.openConflictWithinTransaction(input));
     } catch (error) {
       throw this.publicError(error);
     }
   }
 
-  /** Open a conflict between two distinct Entries in one Workspace. */
-  openConflict(input: {
-    readonly id: string;
-    readonly workspaceId: string;
-    readonly conflictType: MemoryConflictType;
-    readonly entryAId: string;
-    readonly entryBId: string;
-    readonly createdAt: string;
-  }): MemoryConflictRecord {
+  /**
+   * MF-5 emission seam: open a conflict inside an ALREADY ACTIVE transaction so
+   * a caller can commit the conflict and its Runtime Event + Outbox row
+   * atomically. The caller owns BEGIN/COMMIT.
+   */
+  openConflictWithinTransaction(input: OpenMemoryConflictInput): MemoryConflictRecord {
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.createdAt)
       || !isConflictType(input.conflictType) || !nonBlank(input.entryAId)
       || !nonBlank(input.entryBId) || input.entryAId === input.entryBId) {
       throw new MemoryCandidateRepositoryError('INPUT_INVALID');
     }
+    this.assertWorkspaceExists(input.workspaceId);
+    for (const entryId of [input.entryAId, input.entryBId]) {
+      const entry = this.db.prepare(
+        'SELECT 1 AS present FROM memory_entries WHERE workspace_id = ? AND id = ?',
+      ).get(input.workspaceId, entryId);
+      if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
+    }
+    this.db.prepare(
+      'INSERT INTO memory_conflicts (id, workspace_id, conflict_type, entry_a_id, entry_b_id, status, disposition, resolved_at, created_at, version) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, 1)',
+    ).run(input.id, input.workspaceId, input.conflictType, input.entryAId, input.entryBId, 'open', input.createdAt);
+    return this.requireConflict(input.workspaceId, input.id);
+  }
+
+  /** Resolve a conflict with an explicit disposition; never deletes. */
+  resolveConflict(input: ResolveMemoryConflictInput): MemoryConflictRecord {
     try {
-      return inTransaction(this.db, () => {
-        this.assertWorkspaceExists(input.workspaceId);
-        for (const entryId of [input.entryAId, input.entryBId]) {
-          const entry = this.db.prepare(
-            'SELECT 1 AS present FROM memory_entries WHERE workspace_id = ? AND id = ?',
-          ).get(input.workspaceId, entryId);
-          if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
-        }
-        this.db.prepare(
-          'INSERT INTO memory_conflicts (id, workspace_id, conflict_type, entry_a_id, entry_b_id, status, disposition, resolved_at, created_at, version) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, 1)',
-        ).run(input.id, input.workspaceId, input.conflictType, input.entryAId, input.entryBId, 'open', input.createdAt);
-        return this.requireConflict(input.workspaceId, input.id);
-      });
+      return inTransaction(this.db, () => this.resolveConflictWithinTransaction(input));
     } catch (error) {
       throw this.publicError(error);
     }
   }
 
-  /** Resolve a conflict with an explicit disposition; never deletes. */
-  resolveConflict(input: {
-    readonly workspaceId: string;
-    readonly conflictId: string;
-    readonly expectedVersion: number;
-    readonly disposition: MemoryConflictDisposition;
-    readonly resolvedAt: string;
-  }): MemoryConflictRecord {
+  /**
+   * MF-5 emission seam: resolve a conflict inside an ALREADY ACTIVE
+   * transaction so a caller can commit the resolution and its Runtime Event +
+   * Outbox row atomically. The caller owns BEGIN/COMMIT.
+   */
+  resolveConflictWithinTransaction(input: ResolveMemoryConflictInput): MemoryConflictRecord {
     if (!nonBlank(input.workspaceId) || !nonBlank(input.conflictId)
       || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
       || !isDisposition(input.disposition) || !nonBlank(input.resolvedAt)) {
       throw new MemoryCandidateRepositoryError('INPUT_INVALID');
     }
-    try {
-      return inTransaction(this.db, () => {
-        const current = this.db.prepare(
-          'SELECT * FROM memory_conflicts WHERE workspace_id = ? AND id = ?',
-        ).get(input.workspaceId, input.conflictId) as ConflictRow | undefined;
-        if (current === undefined) throw new MemoryCandidateRepositoryError('CONFLICT_NOT_FOUND');
-        if (current.status !== 'open' || current.version !== input.expectedVersion) {
-          throw new MemoryCandidateRepositoryError('CONFLICT_NOT_RESOLVABLE');
-        }
-        this.db.prepare(
-          'UPDATE memory_conflicts SET status = ?, disposition = ?, resolved_at = ?, version = version + 1 WHERE workspace_id = ? AND id = ? AND version = ?',
-        ).run('resolved', input.disposition, input.resolvedAt, input.workspaceId, input.conflictId, input.expectedVersion);
-        return this.requireConflict(input.workspaceId, input.conflictId);
-      });
-    } catch (error) {
-      throw this.publicError(error);
+    const current = this.db.prepare(
+      'SELECT * FROM memory_conflicts WHERE workspace_id = ? AND id = ?',
+    ).get(input.workspaceId, input.conflictId) as ConflictRow | undefined;
+    if (current === undefined) throw new MemoryCandidateRepositoryError('CONFLICT_NOT_FOUND');
+    if (current.status !== 'open' || current.version !== input.expectedVersion) {
+      throw new MemoryCandidateRepositoryError('CONFLICT_NOT_RESOLVABLE');
     }
+    this.db.prepare(
+      'UPDATE memory_conflicts SET status = ?, disposition = ?, resolved_at = ?, version = version + 1 WHERE workspace_id = ? AND id = ? AND version = ?',
+    ).run('resolved', input.disposition, input.resolvedAt, input.workspaceId, input.conflictId, input.expectedVersion);
+    return this.requireConflict(input.workspaceId, input.conflictId);
   }
 
   /** Exact-duplicate lookup by content hash inside one Workspace. */
