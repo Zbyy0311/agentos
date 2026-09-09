@@ -979,3 +979,4 @@ export * from './mf0-memory-contracts.js';
 export * from './mf3-memory-ranking.js';
 export * from './mf5-memory-events.js';
 export * from './cr0-conversation-contracts.js';
+export * from './wf-templates.js';

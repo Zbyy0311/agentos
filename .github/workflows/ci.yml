@@ -68,5 +68,8 @@ jobs:
       - name: Shared CR-0 conversation contract harness
         run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/cr0-conversation-contracts.test.ts
 
+      - name: Shared workflow template harness
+        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/wf-templates.test.ts
+
       - name: Workspace build
         run: pnpm build
