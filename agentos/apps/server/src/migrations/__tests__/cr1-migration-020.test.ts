@@ -78,7 +78,7 @@ test('CR1-A1 fresh DB applies 001-020 in order', () => {
 test('CR1-A2 upgrade from 019 applies 020 additively', () => {
   const fx = fileDb('agentos-cr1-a2-');
   try {
-    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '020'));
+    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '020' && id !== '021'));
     seedWorkspace(fx.db);
     const before = count(fx.db, 'SELECT COUNT(*) AS c FROM conversations');
     applyThrough(fx.db, fx.path, FULL_IDS);
