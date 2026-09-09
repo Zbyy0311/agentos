@@ -377,3 +377,4 @@ describe('M2.4 migration 005/006 schema', () => {
     assert.equal(DEFAULT_REGISTRY_MIGRATIONS[5], migration006);
   });
 });
+    assert.deepEqual(ids.slice(4), ['005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021']);

@@ -37,7 +37,7 @@ const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '
 // The full default registry now continues past 015 into 016 (P6-L1B). These
 // M4/P6-M3b suites intentionally stop at 015; FULL_MIGRATION_IDS documents the
 // registry-order assertion's complete expected sequence.
-const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020'];
+const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021'];
 const M4_TABLES = ['process_output_references', 'provider_sessions', 'runtime_processes'];
 
 const WS = 'ws_m4';
