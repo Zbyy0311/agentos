@@ -1,6 +1,6 @@
 # Memory Foundation — Progress and Remaining Work
 
-Status: MF-0/MF-1/MF-2/MF-3/MF-4 MERGED — MF-5 NOT STARTED — MEMORY FOUNDATION IN PROGRESS
+Status: MF-0/MF-1/MF-2/MF-3/MF-4 MERGED — MF-5 EVENTS MERGED, EMISSION/API/UI OPEN — MEMORY FOUNDATION IN PROGRESS
 
 ## 1. Purpose
 
@@ -12,9 +12,9 @@ legible without re-auditing the repository.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ cafaa969` (Merge PR #87) |
+| Baseline | `origin-https/main @ 8192c8ad` (Merge PR #89) |
 | Migration ledger | `001`–`019` present; `020` absent |
-| Main CI | Post-merge runs through `3bda580b` conclusion `success`; `cafaa969` in progress at record time |
+| Main CI | Post-merge runs through `904794e8` conclusion `success`; `8192c8ad` in progress at record time |
 | Preceding gates | Workspace single-writer rule COMPLETE; Recovery closeout COMPLETE |
 
 ## 3. Slice status
@@ -26,7 +26,7 @@ legible without re-auditing the repository.
 | MF-2 | Candidate pipeline + dedup/conflict | **MERGED** | #86 (auth), #87 (impl) |
 | MF-3 | Scope-filtered retrieval + deterministic ranking + reasons | **MERGED** | #82 |
 | MF-4 | Budget policy + immutable Context Snapshot | **MERGED** | #83 (auth), #84 (impl) |
-| MF-5 | Events, API, UI, Inspector surfaces | **NOT STARTED** | — |
+| MF-5 | Events (MERGED); emission wiring, API, UI, Inspector (NOT STARTED) | **PARTIAL** | #89 (events) |
 
 ## 4. Merged evidence
 
@@ -41,7 +41,8 @@ legible without re-auditing the repository.
 | MF-4 budget selector | 10/10 PASS |
 | MF-2 migration 019 | 10/10 PASS |
 | MF-2 candidate/conflict repository | 11/11 PASS |
-| Full Server first run (MF-2 head) | 2397 total, 2392 passed, 2 failed, 3 skipped |
+| MF-5 memory events | 8/8 PASS |
+| Full Server first run (MF-5 head) | 2397 total, 2392 passed, 2 failed, 3 skipped |
 
 The 2 server failures are pre-existing Windows `tar` environment issues in
 `WorktreeArtifactService`, unrelated to Memory Foundation. First runs were
@@ -77,13 +78,15 @@ bound to meaningful transitions (user save, terminal outcome, accepted
 approval, completed review/test Artifact, compaction, explicit import) and
 near-duplicate FTS-similarity detection beyond the exact/normalized hashes.
 
-### MF-5 — Events, API, UI, Inspector surfaces (NOT STARTED)
+### MF-5 — Events, API, UI, Inspector surfaces (PARTIAL)
 
-Needed for the Lite contract:
+Merged via PR #89: the canonical `memory` Runtime Event domain and the 13
+definition family with payload guards on the existing registry, so Memory
+facts can flow through the merged Event + Outbox path.
 
-- the memory event family (`memory.entry_created`, `memory.entry_conflicted`,
-  `memory.retrieval_completed`, `memory.context_created`, `memory.injected`,
-  etc.) through the canonical Runtime Event + Outbox path;
+Not started within MF-5:
+
+- emission wiring at the MF-1/MF-2/MF-4 boundaries (Runtime Event + Outbox);
 - Memory and Context Snapshot APIs (`memory/retrieve`,
   `GET /runs/:runId/memory-context`, `GET /memory-contexts/:id`,
   conflict resolution);
@@ -94,7 +97,7 @@ Needed for the Lite contract:
 
 - No production Run currently creates an Admission at start, and no production
   path yet calls the MF-4 selector or injects a Context Snapshot into a
-  Provider. MF-5 (or a dedicated integration slice) must wire the selector into
+  Provider. A dedicated integration slice (or MF-5) must wire the selector into
   Run startup so the snapshot is persisted before injection, and must preserve
   the injection gate.
 
