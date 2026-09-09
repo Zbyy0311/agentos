@@ -34,7 +34,7 @@ const MEM_B = 'mem_' + 'b'.repeat(26);
 
 const FULL_IDS = [
   '001', '002', '003', '004', '005', '006', '007', '008', '009', '010',
-  '011', '012', '013', '014', '015', '016', '017', '018', '019',
+  '011', '012', '013', '014', '015', '016', '017', '018', '019', '020',
 ];
 
 function fileDb(prefix: string): { root: string; path: string; db: SqliteDb; close(): void } {
@@ -112,7 +112,7 @@ test('MF2-A1 fresh DB applies 001-019 in order', () => {
 test('MF2-A2 upgrade from 018 applies 019 additively', () => {
   const fx = fileDb('agentos-mf2-a2-');
   try {
-    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '019'));
+    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => Number(id) <= 18));
     seedBase(fx.db);
     const before = count(fx.db, 'SELECT COUNT(*) AS c FROM memory_entries');
     applyThrough(fx.db, fx.path, FULL_IDS);
