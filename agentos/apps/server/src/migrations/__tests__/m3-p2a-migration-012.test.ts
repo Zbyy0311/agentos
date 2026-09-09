@@ -38,7 +38,7 @@ function freshDb(): Db {
 
 function registryBefore012(): MigrationRegistry {
   return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
-    migration => migration.id !== '012' && migration.id !== '013' && migration.id !== '014' && migration.id !== '015' && migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020',
+    migration => migration.id !== '012' && migration.id !== '013' && migration.id !== '014' && migration.id !== '015' && migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021',
   ));
 }
 
@@ -49,7 +49,7 @@ function registryBefore012(): MigrationRegistry {
  */
 function registryThrough015(): MigrationRegistry {
   return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
-    migration => migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020',
+    migration => migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021',
   ));
 }
 
