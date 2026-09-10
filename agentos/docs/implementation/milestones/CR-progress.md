@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 IN PR #106 (pending review/merge) — CR-5 COMMITTED on runtime/cr5-bounded-group (PUSHED, MIGRATION 023, PENDING REVIEW/MERGE) — CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
+Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 IN PR #106 (pending review/merge) — CR-5 IN PR #107 (stacked on #106; migration 023; pending review/merge) — CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
 
 ## 1. Purpose
 
@@ -28,7 +28,7 @@ without re-auditing the repository.
 | CR-3 | Durable streaming checkpoints + reconnect cursor | **COMMITTED** (`1218a23b`, pending review/merge) | `ConversationStreamService.ts` + `CR3-streaming-contract.md` |
 | CR-4a | Explicit Task/Run bridge from a Message | **COMMITTED** (`1218a23b`, pending review/merge) | `ConversationBridgeService.ts`, `CR4-schema-authorization.md` |
 | CR-4b | Idempotent Runtime Event projection (migration 022) | **COMMITTED** (`1218a23b`, pending review/merge) | `cr4-migration-022.test.ts`, `ConversationProjectionService.ts` |
-| CR-5 | Bounded Group budgets/stop/loop guard + per-Agent context | **COMMITTED** (branch runtime/cr5-bounded-group, pushed; migration 023) | `BoundedGroupService.ts`, `CR5-schema-authorization.md` |
+| CR-5 | Bounded Group budgets/stop/loop guard + per-Agent context | **IN PR #107** (stacked on #106; migration 023) | `BoundedGroupService.ts`, `CR5-schema-authorization.md` |
 | CR-6 | Archive/restore + history references | **PARTIAL** (archive/restore merged; history NOT STARTED) | — |
 
 ## 4. Merged evidence
