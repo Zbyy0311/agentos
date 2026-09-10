@@ -26,6 +26,8 @@ export const ENTITY_ID_PREFIXES = {
   conversation: 'conv',
   message: 'msg',
   turn: 'turn',
+  checkpoint: 'cp',
+  projection: 'proj',
   artifact: 'artifact',
   extension: 'ext',
   idempotency: 'idem',

@@ -36,6 +36,8 @@ const EXPECTED_PREFIXES: Record<EntityIdKind, string> = {
   conversation: 'conv',
   message: 'msg',
   turn: 'turn',
+  checkpoint: 'cp',
+  projection: 'proj',
   artifact: 'artifact',
   extension: 'ext',
   idempotency: 'idem',
@@ -48,7 +50,7 @@ describe('Identity — canonical entity IDs', () => {
   // ---- production singleton tests ----
 
   it('all prefix constants map to valid EntityIdKind', () => {
-    assert.equal(kinds.length, 28);
+    assert.equal(kinds.length, 30);
     for (const kind of kinds) {
       assert.ok(ENTITY_ID_PREFIXES[kind].length >= 2);
     }
@@ -303,9 +305,9 @@ describe('Identity — M2.6 idempotency kind', () => {
     assert.ok(!isValidEntityId(taskId, 'idempotency'));
   });
 
-  it('all 27 pre-operation kinds remain unchanged', () => {
+  it('all 29 pre-operation kinds remain unchanged', () => {
     const priorKinds = kinds.filter((kind) => kind !== 'operation');
-    assert.equal(priorKinds.length, 27);
+    assert.equal(priorKinds.length, 29);
     assert.ok(priorKinds.includes('idempotency'));
     assert.deepEqual(ENTITY_ID_PREFIXES, EXPECTED_PREFIXES);
     const operationId = createEntityId('operation');
