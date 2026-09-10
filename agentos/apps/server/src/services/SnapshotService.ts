@@ -17,6 +17,9 @@ import type { RunStageRepository } from '../store/RunStageRepository.js';
 import type { AgentSnapshotSourceRecord } from '../store/SqliteStore.js';
 import { WorkflowDefinitionResolver, WorkflowNotAvailableError } from './WorkflowDefinitionResolver.js';
 import type { WorkflowDefinition } from '@agentos/shared';
+import type { WorkflowDefinitionPayloadV2 } from '@agentos/shared';
+
+type V2WorkflowDefinition = WorkflowDefinition & { payload: WorkflowDefinitionPayloadV2 };
 
 export interface ResolvedStageConfiguration {
   workflowStageKey: string;
@@ -369,8 +372,41 @@ export class SnapshotService {
     }
   }
 
+  /**
+   * Bind a persisted V2 definition (for example a compiled Workflow Template) to a
+   * Workspace's Agents and Providers. Additive: resolveLegacy keeps its exact
+   * behavior and shares this binding.
+   */
+  resolveDefinition(workspace: Workspace, definition: WorkflowDefinition): ResolvedRunConfiguration {
+    if (definition.payload.schemaVersion !== 2) throw new RunSnapshotFailedError();
+    try {
+      return this.bindDefinition(workspace, definition as V2WorkflowDefinition);
+    } catch (error) {
+      if (error instanceof AgentNotAvailableError || error instanceof ProviderConfigNotAvailableError) throw error;
+      if (error instanceof WorkflowNotAvailableError) throw error;
+      if (error instanceof RunSnapshotFailedError) throw error;
+      throw new RunSnapshotFailedError(error);
+    }
+  }
+
   resolveLegacy(workspace: Workspace): ResolvedRunConfiguration {
     try {
+      const workflow = this.deps.workflowDefinitionResolver.resolveLegacyPipeline();
+      return this.bindDefinition(workspace, workflow);
+    } catch (error) {
+      if (error instanceof AgentNotAvailableError || error instanceof ProviderConfigNotAvailableError) throw error;
+      if (error instanceof WorkflowNotAvailableError) throw error;
+      if (error instanceof RunSnapshotFailedError) throw error;
+      throw new RunSnapshotFailedError(error);
+    }
+  }
+
+  /** Shared Agent/Provider binding for one V2 definition. */
+  private bindDefinition(
+    workspace: Workspace,
+    workflow: V2WorkflowDefinition,
+  ): ResolvedRunConfiguration {
+    {
       const workspaceAgentIds = new Set<string>();
       for (const agent of workspace.agents) {
         if (typeof agent.id !== 'string' || !agent.id.trim() || workspaceAgentIds.has(agent.id)) {
@@ -378,7 +414,6 @@ export class SnapshotService {
         }
         workspaceAgentIds.add(agent.id);
       }
-      const workflow = this.deps.workflowDefinitionResolver.resolveLegacyPipeline();
       const agents = new Map<string, {
         snapshot: AgentSnapshotV1;
         provider: ProviderConfigurationSnapshotV1;
@@ -441,11 +476,6 @@ export class SnapshotService {
       }
 
       return { workflow, stages, worktreeMode: workflow.payload.worktreeMode, redactionApplied: false };
-    } catch (error) {
-      if (error instanceof AgentNotAvailableError || error instanceof ProviderConfigNotAvailableError) throw error;
-      if (error instanceof WorkflowNotAvailableError) throw error;
-      if (error instanceof RunSnapshotFailedError) throw error;
-      throw new RunSnapshotFailedError(error);
     }
   }
 

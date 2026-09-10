@@ -94,6 +94,7 @@ import { ConversationProjectionService } from '../services/ConversationProjectio
 import { BoundedGroupService } from '../services/BoundedGroupService.js';
 import { AgentHistoryService } from '../services/AgentHistoryService.js';
 import { RuntimeInspector } from '../services/RuntimeInspector.js';
+import { WorkflowTemplateService } from '../services/WorkflowTemplateService.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -722,6 +723,24 @@ export class SqliteStore implements Store {
       runStageRepository: this.runStageRepo,
       runSnapshotRepository: this.runSnapshotRepo,
       runtimeEventRepository: this.runtimeEventRepo,
+    });
+  }
+
+  /**
+   * Workflow Template durable wiring (WF-templates-durable-wiring.md): compiles a
+   * template definition, binds its Stages, and creates durable Task/Run/Snapshot/Stage
+   * primitives in one transaction.
+   */
+  workflowTemplateService(): WorkflowTemplateService {
+    return new WorkflowTemplateService({
+      store: this,
+      workflowDefinitionRepository: () => this.workflowDefinitionRepo,
+      taskRepository: () => this.taskRepo,
+      runRepository: () => this.runRepo,
+      runSnapshotRepository: () => this.runSnapshotRepo,
+      runStageRepository: () => this.runStageRepo,
+      providerConfigurationRepository: () => this.providerConfigRepo,
+      findAgentSnapshotSource: (workspaceId, agentId) => this.findAgentSnapshotSource(workspaceId, agentId),
     });
   }
 
