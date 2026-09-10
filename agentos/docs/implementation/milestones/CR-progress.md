@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4a + CR-4b IN PR #106 (runtime/cr3-cr4-conversation-runtime, pending review/merge; migration 022) — CR-5/CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
+Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 IN PR #106 (pending review/merge) — CR-5 IMPLEMENTED IN WORKING TREE (UNCOMMITTED, MIGRATION 023) — CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
 
 ## 1. Purpose
 
@@ -28,7 +28,7 @@ without re-auditing the repository.
 | CR-3 | Durable streaming checkpoints + reconnect cursor | **COMMITTED** (`1218a23b`, pending review/merge) | `ConversationStreamService.ts` + `CR3-streaming-contract.md` |
 | CR-4a | Explicit Task/Run bridge from a Message | **COMMITTED** (`1218a23b`, pending review/merge) | `ConversationBridgeService.ts`, `CR4-schema-authorization.md` |
 | CR-4b | Idempotent Runtime Event projection (migration 022) | **COMMITTED** (`1218a23b`, pending review/merge) | `cr4-migration-022.test.ts`, `ConversationProjectionService.ts` |
-| CR-5 | Bounded Group budgets/stop/loop guard + per-Agent context | **NOT STARTED** | — |
+| CR-5 | Bounded Group budgets/stop/loop guard + per-Agent context | **IMPLEMENTED** (working tree, uncommitted; migration 023) | `BoundedGroupService.ts`, `CR5-schema-authorization.md` |
 | CR-6 | Archive/restore + history references | **PARTIAL** (archive/restore merged; history NOT STARTED) | — |
 
 ## 4. Merged evidence
@@ -50,6 +50,8 @@ CR-3/CR-4 evidence at commit `1218a23b` (not merged — `docs/implementation/mil
 | CR-4a Task/Run bridge | 14/14 PASS |
 | Migration 022 schema | 8/8 PASS |
 | Conversation projection | 10/10 PASS |
+| CR-5 migration 023 schema | 8/8 PASS |
+| CR-5 bounded group | 17/17 PASS |
 | CR-1 ConversationRepository (refactored seams) | 15/15 PASS |
 | CR-2 AgentTurnRepository (refactored seams) | 14/14 PASS |
 | CR-0 contracts including CR0-11 | 11/11 PASS |

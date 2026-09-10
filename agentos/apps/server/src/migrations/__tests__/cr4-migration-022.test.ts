@@ -32,7 +32,7 @@ const WS = 'ws_cr4';
 
 const FULL_IDS = [
   '001', '002', '003', '004', '005', '006', '007', '008', '009', '010',
-  '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022',
+  '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023',
 ];
 
 function fileDb(prefix: string): { root: string; path: string; db: SqliteDb; close(): void } {
@@ -81,7 +81,7 @@ test('CR4-A1 fresh DB applies 001-022 in order', () => {
 test('CR4-A2 upgrade from 021 applies 022 additively and leaves cards readable', () => {
   const fx = fileDb('agentos-cr4-a2-');
   try {
-    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '022'));
+    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '022' && id !== '023'));
     seedWorkspace(fx.db);
     seedConversationAndMessage(fx.db);
     assert.throws(
@@ -98,7 +98,7 @@ test('CR4-A2 upgrade from 021 applies 022 additively and leaves cards readable',
 test('CR4-A3 migration 022 fails without 020/021 prerequisites and records nothing', () => {
   const fx = fileDb('agentos-cr4-a3-');
   try {
-    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '020' && id !== '021' && id !== '022'));
+    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '020' && id !== '021' && id !== '022' && id !== '023'));
     assert.throws(
       () => {
         const registry = new MigrationRegistry([migration022]);

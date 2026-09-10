@@ -25,7 +25,7 @@ beyond the merged evidence it cites.
 | Minimal Git Observation + Workspace single-writer rule | **COMPLETE** | PR #68–#76 (L1A–L1E) |
 | Recovery closeout | **COMPLETE** | PR #77 |
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
-| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3 + CR-4a + CR-4b IN PR #106, PENDING REVIEW/MERGE** | PR #95–#97, #105, #106; `CR-progress.md`, `CR3-streaming-contract.md`, `CR4-schema-authorization.md` |
+| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3 + CR-4 IN PR #106; CR-5 IMPLEMENTED (uncommitted)** | PR #95–#97, #105, #106; `CR-progress.md`, `CR3/CR4/CR5-*.md` |
 | Polished UI Foundation | **PARTIAL (tokens MERGED)** | PR #100; four-column shell still open |
 | Direct Conversation UX | **NOT STARTED** | — |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |
@@ -70,8 +70,9 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
   explanation, Inspector memory view.
 - **Conversation Runtime**: CR-3 streaming checkpoints, CR-4a explicit Task/Run
   bridge, and CR-4b idempotent Event projection (migration 022) are committed on
-  `runtime/cr3-cr4-conversation-runtime` (`1218a23b`) and await review/merge;
-  CR-5 bounded Group and CR-6 history are not started.
+  `runtime/cr3-cr4-conversation-runtime` (`1218a23b`) and await review/merge; CR-5
+  bounded Group (budgets/stop/loop guard + per-Agent context, migration 023) is
+  implemented in the working tree (uncommitted); CR-6 history is not started.
 - **Polished UI Foundation**: the four-column shell consuming the token system.
 - **Direct Conversation UX**, **Controlled Group Conversation**,
   **Agent History + Search**: not started.
