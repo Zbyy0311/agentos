@@ -140,4 +140,3 @@ export function BoundedGroupView(props: BoundedGroupViewProps) {
     </div>
   );
 }
-

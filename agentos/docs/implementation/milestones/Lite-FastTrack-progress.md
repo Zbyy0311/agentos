@@ -31,7 +31,7 @@ beyond the merged evidence it cites.
 | Lite Runtime Inspector | **PARTIAL (projection MERGED; route + UI IN PR #115)** | PR #101, #115; `runtimeInspector.ts`, `RuntimeInspectorView.tsx` |
 | Controlled Group Conversation | **PARTIAL (routes + view IN PR #116; group orchestration open)** | PR #116; `BoundedGroupView.tsx` |
 | Workflow Templates | **PARTIAL (catalog + instantiation MERGED; durable wiring IN PR #117)** | PR #99, #103, #117; `WF-templates-durable-wiring.md` |
-| Agent History + Search | **NOT STARTED** | — |
+| Agent History + Search | **PARTIAL (CR-6 read surface MERGED; search UI IN PR #118)** | PR #108, #118; `HistorySearchView.tsx` |
 
 ## 4. Merged evidence (this workstream)
 
