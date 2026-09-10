@@ -1,8 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation.js';
-import type { UiTheme } from '../../lib/uiFoundation.js';
+import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation';
+import type { UiTheme } from '../../lib/uiFoundation';
 
 /**
  * Controlled Group Conversation UX (Lite 12 §13).
@@ -43,7 +43,7 @@ export interface BoundedGroupViewProps {
   readonly replies: readonly GroupReplyDto[];
   readonly stopping: boolean;
   readonly error?: string;
-  readonly onStop(): void;
+  readonly onStop: () => void;
 }
 
 function Meter(props: { readonly label: string; readonly used: number; readonly remaining: number }) {

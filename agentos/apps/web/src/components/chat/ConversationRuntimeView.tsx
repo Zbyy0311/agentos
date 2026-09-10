@@ -1,12 +1,12 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation.js';
-import type { UiTheme } from '../../lib/uiFoundation.js';
-import type { ConversationStreamState } from '../../lib/directConversationStream.js';
-import type { ComposerMode } from '../../lib/directComposer.js';
-import { COMPOSER_MODES } from '../../lib/directComposer.js';
-import type { ForwardMessage } from '../../lib/directConversationClient.js';
+import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation';
+import type { UiTheme } from '../../lib/uiFoundation';
+import type { ConversationStreamState } from '../../lib/directConversationStream';
+import type { ComposerMode } from '../../lib/directComposer';
+import { COMPOSER_MODES } from '../../lib/directComposer';
+import type { ForwardMessage } from '../../lib/directConversationClient';
 
 /**
  * Direct Conversation UX — the forward Conversation runtime view (Lite 12 §12).

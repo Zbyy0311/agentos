@@ -1,13 +1,13 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { WorkbenchShell } from '../layout/WorkbenchShell.js';
-import { ConversationRuntimeView } from '../chat/ConversationRuntimeView.js';
-import type { UiTheme } from '../../lib/uiFoundation.js';
-import { UI_SPACING_BASE_PX, UI_RADIUS_TOKENS } from '../../lib/uiFoundation.js';
-import type { ConversationStreamState } from '../../lib/directConversationStream.js';
-import type { ComposerMode } from '../../lib/directComposer.js';
-import type { ForwardConversation, ForwardMessage } from '../../lib/directConversationClient.js';
+import { WorkbenchShell } from '../layout/WorkbenchShell';
+import { ConversationRuntimeView } from '../chat/ConversationRuntimeView';
+import type { UiTheme } from '../../lib/uiFoundation';
+import { UI_SPACING_BASE_PX, UI_RADIUS_TOKENS } from '../../lib/uiFoundation';
+import type { ConversationStreamState } from '../../lib/directConversationStream';
+import type { ComposerMode } from '../../lib/directComposer';
+import type { ForwardConversation, ForwardMessage } from '../../lib/directConversationClient';
 
 /**
  * Direct Conversation UX — the composed four-column workbench (Lite 12 §5).
