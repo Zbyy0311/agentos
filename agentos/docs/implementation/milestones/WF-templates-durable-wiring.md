@@ -27,7 +27,7 @@ Status: FROZEN DESIGN — WIRING NOT IMPLEMENTED — AWAITING OWNER AUTHORIZATIO
 
 To instantiate a template into durable Task/Run/Stage primitives:
 
-- **(A) Persist the compiled definition as a new Workflow Definition row, then resolve and bind it.** This makes a template a first-class durable definition. It requires a NEW insert capability on `WorkflowDefinitionRepository` (today definitions are immutable built-ins) and a generalized resolver that resolves an arbitrary V2 definition (not the hardcoded legacy/unbound keys). Largest, most faithful.
+- **(A) Persist the compiled definition as a new Workflow Definition row, then resolve and bind it.** This makes a template a first-class durable definition. It requires a durable write seam (the read repository stays read-only) and a generalized resolver that resolves an arbitrary V2 definition (not the hardcoded legacy/unbound keys). Largest, most faithful.
 - **(B) Resolve the compiled template in-memory into a ResolvedRunConfiguration without persisting the definition, and reference the template by key on the Snapshot.** No new repository write; the Snapshot records the definition identity but the definition itself is not a durable row. Smaller, but the definition is then not a first-class record.
 
 Recommendation: **(A)** — the Lite contract says templates *instantiate durable primitives*, and a persisted definition is auditable and re-runnable. But (A) adds a write capability to a repository that today holds only immutable built-ins, so it needs the owner.
@@ -37,7 +37,7 @@ Recommendation: **(A)** — the Lite contract says templates *instantiate durabl
 ```text
 WorkflowTemplateService.instantiateTemplateRun({ workspaceId, template, roleBindings, createdBy })
   -> compile (instantiateWorkflowTemplate) — pure, deterministic
-  -> persist the compiled WorkflowDefinition (NEW insert capability)
+  -> persist the compiled WorkflowDefinition through the WorkflowDefinitionWriter seam
   -> resolve+bind each Stage to a workspace Agent + enabled Provider (generalize the resolveLegacy binding)
   -> create the Task (TaskRepository)
   -> create the Run + persist Snapshot + Stages (persistResolvedRun path)
@@ -73,8 +73,17 @@ Frozen rules:
 
 ## 7. Explicit prohibitions
 
+### Implementation note (2026-09-10): the read repository stays read-only
+
+The first implementation added `insert` directly to `WorkflowDefinitionRepository` and
+was correctly rejected by the frozen guard test `exposes no mutation API`
+(`store/WorkflowDefinitionRepository.test.ts`), which pins the repository as read-only
+because built-in definitions are immutable. The write now lives in a separate
+`WorkflowDefinitionWriter` seam that only ever INSERTs and reads back through the
+validating repository; the read repository is unchanged. Frozen guard test 11/11 and
+template service 4/4 pass, server build clean.
+
 - No edit to the canonical Run startup's existing resolve paths; the wiring adds, it does not rewrite.
 - No admission bypass; no second workflow authority.
 - No route/UI in this slice; the durable wiring is a service seam.
 - No mutation of the immutable built-in definitions.
-

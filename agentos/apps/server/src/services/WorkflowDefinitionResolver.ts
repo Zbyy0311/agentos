@@ -103,4 +103,25 @@ export class WorkflowDefinitionResolver {
       throw snapshotFailure('RUN_SNAPSHOT_FAILED: unbound workflow definition could not be resolved');
     }
   }
+
+  /**
+   * Resolve any persisted V2 definition by key (Workflow Template instantiation).
+   * Structural validity is enforced by the repository row validation; this method
+   * only requires the V2 schema and availability.
+   */
+  resolveDefinitionByKey(definitionKey: string): V2WorkflowDefinition {
+    if (typeof definitionKey !== 'string' || definitionKey.trim().length === 0) {
+      throw snapshotFailure('RUN_SNAPSHOT_FAILED: workflow definition key is required');
+    }
+    try {
+      const definition = this.repository.findLatestAvailableByKey(definitionKey);
+      if (!definition) throw new WorkflowNotAvailableError(definitionKey);
+      return requireV2(definition);
+    } catch (error) {
+      if (error instanceof WorkflowNotAvailableError || (error as { code?: string } | null)?.code === 'RUN_SNAPSHOT_FAILED') {
+        throw error;
+      }
+      throw snapshotFailure('RUN_SNAPSHOT_FAILED: workflow definition could not be resolved');
+    }
+  }
 }
