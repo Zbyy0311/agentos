@@ -1,0 +1,327 @@
+import { Router, type Request, type Response } from 'express';
+
+import { createEntityId } from '../store/Identity.js';
+import type { SqliteStore } from '../store/SqliteStore.js';
+import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import {
+  CONVERSATION_REPLY_MODES,
+  type ConversationReplyMode,
+} from '@agentos/shared';
+import type { ConversationStatus } from '@agentos/shared';
+
+/**
+ * Forward Conversation Runtime HTTP surface (Lite 11-API-Specification section 10).
+ *
+ * Workspace-scoped under `/api/workspaces/:workspaceId/runtime` — the forward paths
+ * from the Lite contract are realized under the app's existing workspace mount without
+ * colliding with the legacy `/conversations` surface, which remains COMPATIBILITY.
+ *
+ * This router is a thin API boundary over the merged CR seams:
+ *   ConversationRepository (CR-1) + AgentTurnRepository (CR-2) + ConversationStreamService
+ *   (CR-3) + ConversationBridgeService (CR-4a) + BoundedGroupService (CR-5) +
+ *   AgentHistoryService (CR-6).
+ *
+ * It never spawns a process, never touches Provider credentials, and sends a user
+ * Message by persisting before any routing. The chat reply stream (a Provider-backed
+ * Agent Turn over the CR-3 seam) is the Direct Conversation UX slice, not this one.
+ */
+
+interface ErrorMapping { readonly status: number; readonly code: string }
+
+function mapError(error: unknown): ErrorMapping {
+  const code = error instanceof Error ? (error as { code?: string }).code ?? error.message : String(error);
+  if (/NOT_FOUND/.test(code)) return { status: 404, code };
+  if (/INPUT_INVALID|INVALID/.test(code)) return { status: 400, code };
+  if (/NOT_TRANSITIONABLE|CONFLICT|TERMINATED|BUDGET_EXCEEDED|LOOP_GUARD|ARCHIVED|NOT_ACTIVE/.test(code)) {
+    return { status: 409, code };
+  }
+  return { status: 500, code };
+}
+
+function fail(res: Response, error: unknown): void {
+  const mapped = mapError(error);
+  res.status(mapped.status).json({ error: mapped.code });
+}
+
+function isConversationReplyMode(value: unknown): value is ConversationReplyMode {
+  return (CONVERSATION_REPLY_MODES as readonly unknown[]).includes(value);
+}
+
+export function createConversationRuntimeRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
+  const router = Router({ mergeParams: true });
+
+  const requireWorkspace = (req: Request, res: Response) => {
+    const workspace = workspaceManager.get(req.params.workspaceId);
+    if (!workspace) {
+      res.status(404).json({ error: 'Workspace not found' });
+      return null;
+    }
+    return workspace;
+  };
+
+  const conversations = () => store.conversationRepository();
+
+  // ---- Conversations ------------------------------------------------------
+
+  router.post('/conversations', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const kind = body.kind;
+    if (kind !== 'direct' && kind !== 'group') {
+      res.status(400).json({ error: 'kind must be direct or group' });
+      return;
+    }
+    const title = typeof body.title === 'string' && body.title.trim().length > 0 ? body.title.trim() : null;
+    const now = new Date().toISOString();
+    const userId = typeof body.userId === 'string' && body.userId.trim().length > 0
+      ? body.userId.trim()
+      : store.getDefaultUserProfile().id;
+    try {
+      if (kind === 'direct') {
+        const agentId = typeof body.agentId === 'string' ? body.agentId : null;
+        if (agentId === null) { res.status(400).json({ error: 'agentId is required for a direct Conversation' }); return; }
+        const agent = store.listAgentProfiles(workspace.id).find(p => p.id === agentId && p.enabled);
+        if (!agent) { res.status(400).json({ error: 'Agent is unavailable' }); return; }
+        const conversation = conversations().createConversation({
+          id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'direct',
+          title: title ?? `与 ${agent.name} 的对话`, createdAt: now,
+        });
+        conversations().addMember({
+          id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
+          subjectType: 'user', subjectId: userId, displayNameSnapshot: 'You', role: 'owner',
+          replyMode: 'always', joinedAt: now,
+        });
+        conversations().addMember({
+          id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
+          subjectType: 'agent', subjectId: agent.id, displayNameSnapshot: agent.name, role: 'participant',
+          replyMode: 'always', joinedAt: now,
+        });
+        res.status(201).json({ conversation, members: conversations().listMembers(workspace.id, conversation.id) });
+        return;
+      }
+      // group
+      const replyMode = body.replyMode;
+      if (replyMode === undefined || !isConversationReplyMode(replyMode)) {
+        res.status(400).json({ error: 'replyMode is required for a group Conversation' });
+        return;
+      }
+      const memberAgentIds = Array.isArray(body.memberAgentIds)
+        ? (body.memberAgentIds as unknown[]).filter((id): id is string => typeof id === 'string')
+        : [];
+      if (memberAgentIds.length < 2) {
+        res.status(400).json({ error: 'a group Conversation needs at least two Agents' });
+        return;
+      }
+      const profiles = new Map(store.listAgentProfiles(workspace.id).filter(p => p.enabled).map(p => [p.id, p]));
+      if (memberAgentIds.some(id => !profiles.has(id))) {
+        res.status(400).json({ error: 'a group member Agent is unavailable' });
+        return;
+      }
+      const conversation = conversations().createConversation({
+        id: createEntityId('conversation'), workspaceId: workspace.id, kind: 'group',
+        title: title ?? 'Group', replyMode, createdAt: now,
+      });
+      conversations().addMember({
+        id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
+        subjectType: 'user', subjectId: userId, displayNameSnapshot: 'You', role: 'owner',
+        replyMode: 'always', joinedAt: now,
+      });
+      for (const agentId of memberAgentIds) {
+        conversations().addMember({
+          id: createEntityId('conversation'), conversationId: conversation.id, workspaceId: workspace.id,
+          subjectType: 'agent', subjectId: agentId, displayNameSnapshot: profiles.get(agentId)!.name,
+          role: 'participant', replyMode: 'always', joinedAt: now,
+        });
+      }
+      res.status(201).json({ conversation, members: conversations().listMembers(workspace.id, conversation.id) });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  router.get('/conversations', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const status = req.query.status;
+    if (status !== undefined && (status !== 'active' && status !== 'archived')) {
+      res.status(400).json({ error: 'status must be active or archived' });
+      return;
+    }
+    res.json({ conversations: conversations().listConversations(workspace.id, status as ConversationStatus | undefined) });
+  });
+
+  router.get('/conversations/:conversationId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    res.json({ conversation });
+  });
+
+  router.post('/conversations/:conversationId/archive', (req: Request, res: Response) => {
+    transitionConversation(req, res, 'archive');
+  });
+  router.post('/conversations/:conversationId/restore', (req: Request, res: Response) => {
+    transitionConversation(req, res, 'restore');
+  });
+  function transitionConversation(req: Request, res: Response, action: 'archive' | 'restore'): void {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const expectedVersion = typeof body.expectedVersion === 'number' ? body.expectedVersion : null;
+    if (expectedVersion === null) { res.status(400).json({ error: 'expectedVersion is required' }); return; }
+    try {
+      const conversation = conversations().transitionConversation({
+        workspaceId: workspace.id, conversationId: req.params.conversationId,
+        expectedVersion, action, changedAt: new Date().toISOString(),
+      });
+      res.json({ conversation });
+    } catch (error) {
+      fail(res, error);
+    }
+  }
+
+  router.get('/conversations/:conversationId/members', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    res.json({ members: conversations().listMembers(workspace.id, req.params.conversationId) });
+  });
+
+  router.get('/conversations/:conversationId/turns', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    res.json({ turns: store.agentTurnRepository().listTurnsByConversation(workspace.id, req.params.conversationId) });
+  });
+
+  // ---- Messages -----------------------------------------------------------
+
+  router.get('/conversations/:conversationId/messages', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const afterSequence = typeof req.query.afterSequence === 'string' ? Number(req.query.afterSequence) : 0;
+    if (!Number.isSafeInteger(afterSequence) || afterSequence < 0) {
+      res.status(400).json({ error: 'afterSequence must be a non-negative integer' });
+      return;
+    }
+    res.json({ messages: conversations().listMessages(workspace.id, req.params.conversationId, afterSequence) });
+  });
+
+  /**
+   * Send a user Message: persisted before any routing. No Task, Run, or Agent Turn
+   * is created here; the Provider-backed reply stream is the Direct Conversation UX
+   * slice. clientMessageId makes a retried send converge on one Message.
+   */
+  router.post('/conversations/:conversationId/messages', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const content = body.content;
+    if (typeof content !== 'string' || content.trim().length === 0) {
+      res.status(400).json({ error: 'content is required' });
+      return;
+    }
+    const kind = body.kind === undefined ? 'text' : body.kind;
+    if (kind !== 'text') { res.status(400).json({ error: 'only text Messages are supported here' }); return; }
+    try {
+      const message = conversations().appendMessage({
+        id: createEntityId('message'), conversationId: req.params.conversationId, workspaceId: workspace.id,
+        senderType: 'user', kind: 'text', status: 'final', content,
+        ...(typeof body.clientMessageId === 'string' && body.clientMessageId.trim().length > 0
+          ? { clientMessageId: body.clientMessageId.trim() } : {}),
+        createdAt: new Date().toISOString(),
+      });
+      res.status(201).json({ message });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  // Durable streaming reconnect (CR-3): replay checkpoints after the client cursor.
+  router.get('/conversations/:conversationId/messages/:messageId/checkpoints', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const afterCursor = typeof req.query.afterCursor === 'string' ? Number(req.query.afterCursor) : 0;
+    if (!Number.isSafeInteger(afterCursor) || afterCursor < 0) {
+      res.status(400).json({ error: 'afterCursor must be a non-negative integer' });
+      return;
+    }
+    try {
+      const replay = store.conversationStreamService().replayStream({
+        workspaceId: workspace.id, messageId: req.params.messageId, afterCursor,
+      });
+      if (replay.message.conversationId !== req.params.conversationId) {
+        res.status(404).json({ error: 'Message not found in this Conversation' });
+        return;
+      }
+      res.json(replay);
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  // ---- Task / Run bridge (CR-4a) -------------------------------------------
+
+  router.post('/messages/:messageId/create-task', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    try {
+      const result = store.conversationBridgeService().createTaskFromMessage({
+        workspaceId: workspace.id, messageId: req.params.messageId,
+        createdBy: typeof body.createdBy === 'string' ? body.createdBy : store.getDefaultUserProfile().id,
+        ...(typeof body.title === 'string' ? { title: body.title } : {}),
+        createdAt: new Date().toISOString(),
+      });
+      res.status(result.created ? 201 : 200).json(result);
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  router.post('/messages/:messageId/start-run', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    try {
+      const result = store.conversationBridgeService().startRunFromMessage({
+        workspaceId: workspace.id, messageId: req.params.messageId,
+        createdBy: typeof body.createdBy === 'string' ? body.createdBy : store.getDefaultUserProfile().id,
+        ...(typeof body.objective === 'string' ? { objective: body.objective } : {}),
+        ...(body.requestedIntent === 'READ_ONLY' || body.requestedIntent === 'MODIFYING'
+          ? { requestedIntent: body.requestedIntent } : {}),
+        createdAt: new Date().toISOString(),
+      });
+      res.status(result.runCreated ? 201 : 200).json(result);
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  // ---- Agent History (CR-6) ----------------------------------------------
+
+  router.get('/agents/:agentId/history', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const q = req.query;
+    try {
+      const entries = store.agentHistoryService().history(workspace.id, req.params.agentId, {
+        ...(typeof q.kind === 'string' ? { kind: q.kind as never } : {}),
+        ...(typeof q.status === 'string' ? { status: q.status } : {}),
+        ...(typeof q.conversationId === 'string' ? { conversationId: q.conversationId } : {}),
+        ...(typeof q.taskId === 'string' ? { taskId: q.taskId } : {}),
+        ...(typeof q.runId === 'string' ? { runId: q.runId } : {}),
+        ...(typeof q.providerConfigId === 'string' ? { providerConfigId: q.providerConfigId } : {}),
+        ...(typeof q.from === 'string' ? { from: q.from } : {}),
+        ...(typeof q.to === 'string' ? { to: q.to } : {}),
+        ...(typeof q.q === 'string' ? { q: q.q } : {}),
+        ...(typeof q.limit === 'string' ? { limit: Number(q.limit) } : {}),
+      });
+      res.json({ history: entries });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
+  return router;
+}

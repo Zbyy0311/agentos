@@ -82,6 +82,17 @@ import { RuntimeEventNotifier } from '../services/RuntimeEventNotifier.js';
 import { RunStreamService } from '../services/RunStreamService.js';
 import { RuntimeEventDeliverySink } from '../services/RuntimeEventDeliverySink.js';
 import { OutboxPublisher, type OutboxPublisherRuntimeOptions } from '../services/OutboxPublisher.js';
+import { ConversationRepository } from './ConversationRepository.js';
+import { AgentTurnRepository } from './AgentTurnRepository.js';
+import { MessageProjectionRepository } from './MessageProjectionRepository.js';
+import { GroupInteractionRepository } from './GroupInteractionRepository.js';
+import { TurnContextSnapshotRepository } from './TurnContextSnapshotRepository.js';
+import { WorkspaceAdmissionRepository } from './WorkspaceAdmissionRepository.js';
+import { ConversationStreamService } from '../services/ConversationStreamService.js';
+import { ConversationBridgeService } from '../services/ConversationBridgeService.js';
+import { ConversationProjectionService } from '../services/ConversationProjectionService.js';
+import { BoundedGroupService } from '../services/BoundedGroupService.js';
+import { AgentHistoryService } from '../services/AgentHistoryService.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -460,6 +471,12 @@ export class SqliteStore implements Store {
   private readonly deadLetterRepo: DeadLetterRepository;
   private readonly lifecycleTransactionServiceRepo: LifecycleTransactionService;
   private readonly operationServiceRepo: OperationService;
+  private readonly conversationRepo: ConversationRepository;
+  private readonly agentTurnRepo: AgentTurnRepository;
+  private readonly messageProjectionRepo: MessageProjectionRepository;
+  private readonly groupInteractionRepo: GroupInteractionRepository;
+  private readonly turnContextSnapshotRepo: TurnContextSnapshotRepository;
+  private readonly workspaceAdmissionRepo: WorkspaceAdmissionRepository;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -520,6 +537,12 @@ export class SqliteStore implements Store {
       this.operationServiceRepo = new OperationService(this.database as any, {
         lifecycleTransactionService: this.lifecycleTransactionServiceRepo,
       });
+      this.conversationRepo = new ConversationRepository(this.database as any);
+      this.agentTurnRepo = new AgentTurnRepository(this.database as any);
+      this.messageProjectionRepo = new MessageProjectionRepository(this.database as any);
+      this.groupInteractionRepo = new GroupInteractionRepository(this.database as any);
+      this.turnContextSnapshotRepo = new TurnContextSnapshotRepository(this.database as any);
+      this.workspaceAdmissionRepo = new WorkspaceAdmissionRepository(this.database as any);
       this.runMigrations(dataDir);
       this.migrateAgentEventSequences();
       this.migrateLegacyExecutionRuns();
@@ -631,6 +654,63 @@ export class SqliteStore implements Store {
    */
   operationService(): OperationService {
     return this.operationServiceRepo;
+  }
+
+  /** CR-1 forward Conversation repository (shares this store's SQLite handle). */
+  conversationRepository(): ConversationRepository {
+    return this.conversationRepo;
+  }
+
+  /** CR-2 Agent Turn + streaming checkpoint repository. */
+  agentTurnRepository(): AgentTurnRepository {
+    return this.agentTurnRepo;
+  }
+
+  /** CR-4b idempotent message projection repository. */
+  messageProjectionRepository(): MessageProjectionRepository {
+    return this.messageProjectionRepo;
+  }
+
+  /** CR-5 bounded group interaction repository. */
+  groupInteractionRepository(): GroupInteractionRepository {
+    return this.groupInteractionRepo;
+  }
+
+  /** CR-5 Turn-scoped per-Agent context snapshot repository. */
+  turnContextSnapshotRepository(): TurnContextSnapshotRepository {
+    return this.turnContextSnapshotRepo;
+  }
+
+  /** P6-L1 workspace admission repository (read access for the Conversation bridge). */
+  workspaceAdmissionRepository(): WorkspaceAdmissionRepository {
+    return this.workspaceAdmissionRepo;
+  }
+
+  /** CR-3 durable Conversation streaming seam. */
+  conversationStreamService(): ConversationStreamService {
+    return new ConversationStreamService(this.database as any, this.conversationRepo, this.agentTurnRepo);
+  }
+
+  /** CR-4a explicit Message -> Task/Run bridge. */
+  conversationBridgeService(): ConversationBridgeService {
+    return new ConversationBridgeService(
+      this.database as any, this.conversationRepo, this.taskRepo, this.runRepo, this.workspaceAdmissionRepo,
+    );
+  }
+
+  /** CR-4b idempotent Conversation Event projection. */
+  conversationProjectionService(): ConversationProjectionService {
+    return new ConversationProjectionService(this.database as any, this.conversationRepo, this.messageProjectionRepo);
+  }
+
+  /** CR-5 bounded Group Conversation service (isolated empty context until Memory wiring lands). */
+  boundedGroupService(): BoundedGroupService {
+    return new BoundedGroupService(this.database as any, this.groupInteractionRepo, this.turnContextSnapshotRepo);
+  }
+
+  /** CR-6 unified Agent History read surface. */
+  agentHistoryService(): AgentHistoryService {
+    return new AgentHistoryService(this.database as any);
   }
 
   /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */

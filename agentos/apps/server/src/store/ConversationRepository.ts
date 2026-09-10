@@ -274,6 +274,17 @@ export class ConversationRepository {
     return row === undefined ? undefined : toConversationRecord(row);
   }
 
+  /** All forward Conversations for one Workspace, newest activity first. */
+  listConversations(workspaceId: string, status?: ConversationStatus): ConversationRecord[] {
+    if (!nonBlank(workspaceId)) return [];
+    const rows = status === undefined
+      ? this.db.prepare('SELECT * FROM cr_conversations WHERE workspace_id = ? ORDER BY updated_at DESC, id ASC')
+        .all(workspaceId) as ConversationRow[]
+      : this.db.prepare('SELECT * FROM cr_conversations WHERE workspace_id = ? AND status = ? ORDER BY updated_at DESC, id ASC')
+        .all(workspaceId, status) as ConversationRow[];
+    return rows.map(toConversationRecord);
+  }
+
   /** Archive or restore under optimistic concurrency; never cascades. */
   transitionConversation(input: {
     readonly workspaceId: string;
