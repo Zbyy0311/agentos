@@ -301,6 +301,70 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
   });
 
   // ---- Agent History (CR-6) ----------------------------------------------
+
+  // ---- Bounded Group Conversation (CR-5) ---------------------------------
+
+  router.post('/conversations/:conversationId/interactions', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const budget = body.budget;
+    if (typeof budget !== 'object' || budget === null) { res.status(400).json({ error: 'budget is required' }); return; }
+    try {
+      const interaction = store.boundedGroupService().createInteraction({
+        workspaceId: workspace.id, conversationId: req.params.conversationId,
+        budget: budget as never, createdAt: new Date().toISOString(),
+      });
+      res.status(201).json({ interaction });
+    } catch (error) { fail(res, error); }
+  });
+
+  router.get('/interactions/:interactionId', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
+    if (!interaction) { res.status(404).json({ error: 'Interaction not found' }); return; }
+    res.json({
+      interaction,
+      replies: store.groupInteractionRepository().listReplies(interaction.id),
+      budget: store.boundedGroupService().budgetStatus(interaction),
+    });
+  });
+
+  router.post('/interactions/:interactionId/replies', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    try {
+      const result = store.boundedGroupService().recordReply({
+        workspaceId: workspace.id,
+        interactionId: req.params.interactionId,
+        agentId: typeof body.agentId === 'string' ? body.agentId : '',
+        messageId: typeof body.messageId === 'string' ? body.messageId : '',
+        content: typeof body.content === 'string' ? body.content : '',
+        ...(typeof body.hopFromAgentId === 'string' ? { hopFromAgentId: body.hopFromAgentId } : {}),
+        ...(Array.isArray(body.mentionTargets) ? { mentionTargets: (body.mentionTargets as unknown[]).filter((t): t is string => typeof t === 'string') } : {}),
+        createdAt: new Date().toISOString(),
+      });
+      res.status(201).json(result);
+    } catch (error) { fail(res, error); }
+  });
+
+  router.post('/interactions/:interactionId/stop', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = req.body as Record<string, unknown>;
+    const expectedVersion = typeof body.expectedVersion === 'number' ? body.expectedVersion : null;
+    if (expectedVersion === null) { res.status(400).json({ error: 'expectedVersion is required' }); return; }
+    try {
+      const interaction = store.boundedGroupService().stopInteraction({
+        workspaceId: workspace.id, interactionId: req.params.interactionId,
+        expectedVersion, endedAt: new Date().toISOString(),
+      });
+      res.json({ interaction });
+    } catch (error) { fail(res, error); }
+  });
+
   /**
    * Send a user Message and stream the primary Agent member's reply as durable
    * checkpoints (CR-3). The reply's deltas are SSE 'checkpoint' events carrying the

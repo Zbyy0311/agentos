@@ -29,8 +29,8 @@ beyond the merged evidence it cites.
 | Polished UI Foundation | **PARTIAL (tokens MERGED; four-column shell IN PR #109)** | PR #100, #109; `WorkbenchShell.tsx` |
 | Direct Conversation UX | **PARTIAL (routes + reply stream #110; client #111; view #112; controller #113; page composition IN #114)** | PR #110–#114 |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED; route + UI IN PR #115)** | PR #101, #115; `runtimeInspector.ts`, `RuntimeInspectorView.tsx` |
-| Controlled Group Conversation | **NOT STARTED** | — |
-| Workflow Templates | **PARTIAL (catalog + instantiation MERGED)** | PR #99, PR #103; durable Task/Run/Stage wiring still open |
+| Controlled Group Conversation | **PARTIAL (routes + view IN PR #116; group orchestration open)** | PR #116; `BoundedGroupView.tsx` |
+| Workflow Templates | **PARTIAL (catalog + instantiation MERGED; durable wiring DESIGN FROZEN, awaiting authorization)** | PR #99, #103; `WF-templates-durable-wiring.md` |
 | Agent History + Search | **NOT STARTED** | — |
 
 ## 4. Merged evidence (this workstream)
@@ -85,7 +85,10 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
   (create/list/archive/restore, members, turns, messages, checkpoint replay,
   create-task/start-run bridge, history) are implemented and wired through
   `SqliteStore`; the Provider-backed reply stream and the Composer are not started.
-- **Workflow Templates**: wire the compiled definition into durable Task/Run/Stage creation.
+- **Workflow Templates**: wire the compiled definition into durable Task/Run/Stage
+  creation. Frozen design + integration audit in `WF-templates-durable-wiring.md`;
+  it touches the canonical Run startup path and needs a new write capability on the
+  immutable-definitions repository, so it awaits owner authorization (option A vs B).
 - **Runtime Inspector**: API route and UI surface over the merged projection.
 
 ## 6. Non-goals (unchanged)
