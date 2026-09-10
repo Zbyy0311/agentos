@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 IN PR #106; CR-5 IN PR #107 (stacked); CR-6 IN PR #108 (stacked) — CONVERSATION RUNTIME COMPLETE PENDING REVIEW/MERGE
+Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 MERGED via PR #106 (main @ 20fe838b) — CR-5 MERGED via PR #107 (main @ 772151a6) — CR-6 IN PR #108 (retargeted to main) — CONVERSATION RUNTIME COMPLETE PENDING REVIEW/MERGE
 
 ## 1. Purpose
 
