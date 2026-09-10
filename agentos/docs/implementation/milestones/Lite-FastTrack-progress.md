@@ -29,7 +29,7 @@ beyond the merged evidence it cites.
 | Polished UI Foundation | **PARTIAL (tokens MERGED; four-column shell IN PR #109)** | PR #100, #109; `WorkbenchShell.tsx` |
 | Direct Conversation UX | **PARTIAL (routes + reply stream #110; client #111; view #112; controller #113; page composition IN #114)** | PR #110–#114 |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED; route + UI IN PR #115)** | PR #101, #115; `runtimeInspector.ts`, `RuntimeInspectorView.tsx` |
-| Controlled Group Conversation | **NOT STARTED** | — |
+| Controlled Group Conversation | **PARTIAL (routes + view IN PR #116; group orchestration open)** | PR #116; `BoundedGroupView.tsx` |
 | Workflow Templates | **PARTIAL (catalog + instantiation MERGED)** | PR #99, PR #103; durable Task/Run/Stage wiring still open |
 | Agent History + Search | **NOT STARTED** | — |
 
