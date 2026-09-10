@@ -11,8 +11,8 @@ import {
   resolveMotionDuration,
   uiCssVariables,
   visibleColumns,
-} from '../../lib/uiFoundation.js';
-import type { UiColumn, UiTheme } from '../../lib/uiFoundation.js';
+} from '../../lib/uiFoundation';
+import type { UiColumn, UiTheme } from '../../lib/uiFoundation';
 
 /**
  * Lite four-column workbench shell.

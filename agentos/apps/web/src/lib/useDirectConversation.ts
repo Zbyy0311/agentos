@@ -6,11 +6,11 @@ import {
   type DirectConversationClient,
   type ForwardConversation,
   type ForwardMessage,
-} from './directConversationClient.js';
-import { DirectConversationController } from './directConversationController.js';
-import type { ConversationStreamState } from './directConversationStream.js';
-import type { ComposerMode } from './directComposer.js';
-import type { AgentSummary } from '../components/chat/DirectConversationWorkbench.js';
+} from './directConversationClient';
+import { DirectConversationController } from './directConversationController';
+import type { ConversationStreamState } from './directConversationStream';
+import type { ComposerMode } from './directComposer';
+import type { AgentSummary } from '../components/chat/DirectConversationWorkbench';
 
 /**
  * Direct Conversation UX — the React binding for the forward runtime.
