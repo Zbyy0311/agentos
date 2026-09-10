@@ -32,7 +32,7 @@ const WS = 'ws_cr2';
 
 const FULL_IDS = [
   '001', '002', '003', '004', '005', '006', '007', '008', '009', '010',
-  '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022',
+  '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023',
 ];
 
 function fileDb(prefix: string): { root: string; path: string; db: SqliteDb; close(): void } {
@@ -77,7 +77,7 @@ test('CR2-A1 fresh DB applies 001-021 in order', () => {
 test('CR2-A2 upgrade from 020 applies 021 additively', () => {
   const fx = fileDb('agentos-cr2-a2-');
   try {
-    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '021' && id !== '022'));
+    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '021' && id !== '022' && id !== '023'));
     assert.equal(
       fx.db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'cr_agent_turns'").get(),
       undefined,
@@ -92,7 +92,7 @@ test('CR2-A2 upgrade from 020 applies 021 additively', () => {
 test('CR2-A3 migration 021 fails without 020 prerequisites', () => {
   const fx = fileDb('agentos-cr2-a3-');
   try {
-    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '020' && id !== '021' && id !== '022'));
+    applyThrough(fx.db, fx.path, FULL_IDS.filter(id => id !== '020' && id !== '021' && id !== '022' && id !== '023'));
     assert.equal(
       fx.db.prepare("SELECT 1 AS present FROM sqlite_master WHERE type = 'table' AND name = 'cr_conversations'").get(),
       undefined,

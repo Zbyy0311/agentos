@@ -20,6 +20,7 @@ import { migration019 } from './migrations/019-mf2-memory-candidate-conflict.js'
 import { migration020 } from './migrations/020-cr1-conversation-runtime-persistence.js';
 import { migration021 } from './migrations/021-cr2-agent-turn-persistence.js';
 import { migration022 } from './migrations/022-cr4-message-projection-persistence.js';
+import { migration023 } from './migrations/023-cr5-bounded-group-persistence.js';
 import type { Migration } from './types.js';
 
 /**
@@ -47,6 +48,8 @@ import type { Migration } from './types.js';
  * 020: CR-1 Conversation Runtime persistence (forward conversations/members/messages)
  * 021: CR-2 Agent Turn and streaming checkpoint persistence
  * 022: CR-4b idempotent Conversation message projection key persistence
+ * 023: CR-5 bounded Group Conversation persistence (budgets, stop, loop guard,
+ *      per-Agent Turn-scoped context snapshots)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -71,4 +74,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration020,
   migration021,
   migration022,
+  migration023,
 ];
