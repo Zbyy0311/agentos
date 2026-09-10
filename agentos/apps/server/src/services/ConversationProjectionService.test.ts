@@ -170,8 +170,9 @@ test('CR4P-06 a projection failure is reported, never propagated (Run isolation)
   const fx = fixture();
   try {
     const bad = fx.service.tryProjectEvent(eventInput({ conversationId: 'conv_missing' }));
+    assert.ok(!('message' in bad));
     assert.equal(bad.ok, false);
-    assert.equal((bad as { code: string }).code, 'PROJECTION_CONVERSATION_NOT_FOUND');
+    assert.equal(bad.code, 'PROJECTION_CONVERSATION_NOT_FOUND');
     const good = fx.service.tryProjectEvent(eventInput());
     assert.equal('message' in good, true);
     assert.equal(countRows(fx.db, 'cr_messages'), 1);
@@ -251,4 +252,3 @@ test('CR4P-10 the projection table stores no secret value and is readable by mes
     assert.equal(byMessage[0]?.sourceEventId, result.message.sourceEventId);
   } finally { fx.close(); }
 });
-
