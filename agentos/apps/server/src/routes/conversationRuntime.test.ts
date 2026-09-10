@@ -167,3 +167,31 @@ test('unknown workspace and conversation fail closed with 404', async () => {
     assert.equal(noConv.status, 404);
   });
 });
+
+test('messages/stream sends, streams durable checkpoints, and finalizes a reply', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl) => {
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      const conversation = (created.json as { conversation: { id: string } }).conversation;
+      const response = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'plan the release' }),
+      });
+      assert.equal(response.status, 200);
+      assert.ok((response.headers.get('content-type') ?? '').includes('text/event-stream'));
+      const text = await response.text();
+      assert.ok(text.includes('event: turn.start'));
+      assert.ok(text.includes('event: checkpoint'));
+      assert.ok(text.includes('event: turn.final'));
+      const messages = await fetch(`${baseUrl}/conversations/${conversation.id}/messages`).then(r => r.json()) as { messages: Array<{ senderType: string; status: string }> };
+      const reply = messages.messages.find(m => m.senderType === 'agent');
+      assert.ok(reply !== undefined);
+      assert.equal(reply!.status, 'final');
+      const turns = await fetch(`${baseUrl}/conversations/${conversation.id}/turns`).then(r => r.json()) as { turns: Array<{ status: string }> };
+      assert.ok(turns.turns.some(t => t.status === 'final'));
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});

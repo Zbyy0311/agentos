@@ -3,6 +3,8 @@ import { Router, type Request, type Response } from 'express';
 import { createEntityId } from '../store/Identity.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { createSseWriter, startSseHeartbeat } from './sse.js';
+import { ConversationTurnDriver } from '../services/ConversationTurnDriver.js';
 import {
   CONVERSATION_REPLY_MODES,
   type ConversationReplyMode,
@@ -299,6 +301,79 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
   });
 
   // ---- Agent History (CR-6) ----------------------------------------------
+  /**
+   * Send a user Message and stream the primary Agent member's reply as durable
+   * checkpoints (CR-3). The reply's deltas are SSE 'checkpoint' events carrying the
+   * durable cursor; a reconnect replays from the checkpoints endpoint. A chat reply
+   * creates no Task or Run; browser disconnect closes only the subscription.
+   */
+  router.post('/conversations/:conversationId/messages/stream', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const body = req.body as Record<string, unknown>;
+    const content = typeof body.content === 'string' ? body.content.trim() : '';
+    if (content.length === 0) { res.status(400).json({ error: 'content is required' }); return; }
+    const agent = conversations().listMembers(workspace.id, conversation.id)
+      .find(member => member.subjectType === 'agent' && member.status === 'active');
+    if (!agent) { res.status(400).json({ error: 'no active Agent member' }); return; }
+
+    // Persist the user Message before any routing or Provider call.
+    let userMessage;
+    try {
+      userMessage = conversations().appendMessage({
+        id: createEntityId('message'), conversationId: conversation.id, workspaceId: workspace.id,
+        senderType: 'user', kind: 'text', status: 'final', content, createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      fail(res, error);
+      return;
+    }
+
+    const turnId = createEntityId('turn');
+    const responseMessageId = createEntityId('message');
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = createSseWriter(res);
+    const stopHeartbeat = startSseHeartbeat(res);
+    send('turn.start', { turnId, messageId: responseMessageId, sourceMessageId: userMessage.id });
+    const driver = new ConversationTurnDriver(
+      conversations(),
+      store.conversationStreamService(),
+      (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
+    );
+    try {
+      const result = await driver.replyWithTurn({
+        workspaceId: workspace.id,
+        workspaceRoot: workspace.rootPath,
+        conversationId: conversation.id,
+        agentId: agent.subjectId,
+        sourceMessageId: userMessage.id,
+        content,
+        turnId,
+        responseMessageId,
+        onDelta: (delta, cursor) => send('checkpoint', { messageId: responseMessageId, cursor, delta }),
+        createdAt: new Date().toISOString(),
+      });
+      if (result.turn.status === 'final') {
+        send('turn.final', { turn: result.turn, message: result.message });
+      } else {
+        send('turn.failed', { turn: result.turn, message: result.message });
+      }
+    } catch (error) {
+      send('turn.failed', { error: error instanceof Error ? error.message : String(error) });
+    } finally {
+      stopHeartbeat();
+      res.end();
+    }
+  });
+
 
   router.get('/agents/:agentId/history', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
