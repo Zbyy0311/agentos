@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 IN PR #106 (pending review/merge) — CR-5 IN PR #107 (stacked on #106; migration 023; pending review/merge) — CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
+Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 MERGED via PR #106 (main @ 20fe838b) — CR-5 IN PR #107 (retargeted to main; migration 023; pending review/merge) — CR-6 IN PR #108 — CONVERSATION RUNTIME IN PROGRESS
 
 ## 1. Purpose
 
@@ -12,7 +12,7 @@ without re-auditing the repository.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ b9c38aa4` (Merge PR #105, CR-2 Agent Turn persistence) |
+| Baseline | `main @ 20fe838b` (Merge PR #106, CR-3 streaming + CR-4 bridge/projection) |
 | Migration ledger | `001`–`021` present |
 | Main CI | Post-merge runs through PR #105 recorded at merge time; earlier CR-1 records remain in history |
 | CR-3/CR-4 delivery | commit `1218a23b` on `runtime/cr3-cr4-conversation-runtime` (pushed; branched from `b9c38aa4`) |
