@@ -22,6 +22,8 @@ import {
   resolveMotionDuration,
   shouldAnimateTransform,
   spacingPx,
+  uiCssVariables,
+  columnWidthPx,
   visibleColumns,
 } from './uiFoundation.js';
 
@@ -157,4 +159,34 @@ test('UIF-13 accessibility rules', () => {
   assert.equal(UI_FOCUS_RULES.restoreAfterClose, true);
   assert.equal(UI_FOCUS_RULES.streamStealsFocus, false);
   assert.equal(UI_FOCUS_RULES.modalTrapOnlyForBlocking, true);
+});
+
+// UIF-14 — the CSS-variable bridge flattens every semantic token without omission.
+test('UIF-14 uiCssVariables flattens all semantic tokens', () => {
+  const dark = uiCssVariables('dark');
+  assert.equal(dark['--surface-base'], UI_COLOR_TOKENS.dark.surfaceBase);
+  assert.equal(dark['--text-primary'], UI_COLOR_TOKENS.dark.textPrimary);
+  assert.equal(dark['--focus-ring'], UI_COLOR_TOKENS.dark.focusRing);
+  assert.equal(dark['--accent-default'], UI_COLOR_TOKENS.dark.accentDefault);
+  for (const status of UI_STATUS_TOKENS) {
+    assert.equal(dark[`--status-${status}`], UI_COLOR_TOKENS.dark.status[status]);
+  }
+  assert.equal(dark['--status-running'], UI_COLOR_TOKENS.dark.status.running);
+  // both themes produce the same key set
+  assert.deepEqual(Object.keys(uiCssVariables('light')).sort(), Object.keys(dark).sort());
+});
+
+// UIF-15 — column widths clamp to guidance and report 0 for a hidden column.
+test('UIF-15 columnWidthPx follows guidance and visibility', () => {
+  assert.equal(columnWidthPx('agents', 'wide'), UI_COLUMN_WIDTHS.agents.min);
+  assert.equal(columnWidthPx('conversations', 'wide'), UI_COLUMN_WIDTHS.conversations.min);
+  assert.equal(columnWidthPx('inspector', 'wide'), UI_COLUMN_WIDTHS.inspector.min);
+  assert.equal(columnWidthPx('canvas', 'wide'), UI_COLUMN_WIDTHS.canvas.min);
+  // standard collapses the Inspector
+  assert.equal(columnWidthPx('inspector', 'standard'), 0);
+  // compact collapses Conversations and Inspector
+  assert.equal(columnWidthPx('conversations', 'compact'), 0);
+  assert.equal(columnWidthPx('inspector', 'compact'), 0);
+  assert.equal(columnWidthPx('canvas', 'compact'), UI_COLUMN_WIDTHS.canvas.min);
+  assert.throws(() => columnWidthPx('bogus' as never, 'wide'), /UI_COLUMN_INVALID/);
 });

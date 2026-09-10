@@ -26,7 +26,7 @@ beyond the merged evidence it cites.
 | Recovery closeout | **COMPLETE** | PR #77 |
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
 | Conversation Runtime | **CR-0..CR-2 MERGED; CR-3..CR-6 IN PRs #106–#108 (stacked)** | PR #95–#97, #105–#108; `CR-progress.md` |
-| Polished UI Foundation | **PARTIAL (tokens MERGED)** | PR #100; four-column shell still open |
+| Polished UI Foundation | **PARTIAL (tokens MERGED; four-column shell IN PR #109)** | PR #100, #109; `WorkbenchShell.tsx` |
 | Direct Conversation UX | **NOT STARTED** | — |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |
 | Controlled Group Conversation | **NOT STARTED** | — |
@@ -46,6 +46,7 @@ beyond the merged evidence it cites.
 | Workflow Template instantiation | 10/10 PASS |
 | UI Foundation tokens | 13/13 PASS (includes 4.5:1 contrast gate) |
 | Runtime Inspector | 11/11 PASS |
+| UI shell (foundation + component) | 15/15 + 9/9 PASS (110/110 full web suite) |
 | Full Server first run (Inspector head) | 2457 total, 2452 passed, 2 failed, 3 skipped |
 | Full web test suite (UI Foundation head) | 99/99 PASS |
 
@@ -76,7 +77,10 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
   implemented on `runtime/cr6-history` (PR #108, stacked) — a read surface over
   existing durable tables, no migration. Conversation Runtime is complete pending
   review/merge of PRs #106–#108.
-- **Polished UI Foundation**: the four-column shell consuming the token system.
+- **Polished UI Foundation**: the four-column shell consuming the token system is
+  implemented (`WorkbenchShell.tsx` + `uiCssVariables`/`columnWidthPx`), with adaptive
+  collapse, reduced-motion, and client-only panel state; data wiring stays with the
+  Direct Conversation UX step.
 - **Direct Conversation UX**, **Controlled Group Conversation**,
   **Agent History + Search**: not started.
 - **Workflow Templates**: wire the compiled definition into durable Task/Run/Stage creation.
