@@ -25,7 +25,7 @@ beyond the merged evidence it cites.
 | Minimal Git Observation + Workspace single-writer rule | **COMPLETE** | PR #68–#76 (L1A–L1E) |
 | Recovery closeout | **COMPLETE** | PR #77 |
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
-| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3 + CR-4 IN PR #106; CR-5 IN PR #107 (stacked); CR-6 IMPLEMENTED (history read surface)** | PR #95–#97, #105–#107; `CR-progress.md` |
+| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3..CR-6 IN PRs #106–#108 (stacked)** | PR #95–#97, #105–#108; `CR-progress.md` |
 | Polished UI Foundation | **PARTIAL (tokens MERGED)** | PR #100; four-column shell still open |
 | Direct Conversation UX | **NOT STARTED** | — |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |
@@ -72,9 +72,10 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
   bridge, and CR-4b idempotent Event projection (migration 022) are committed on
   `runtime/cr3-cr4-conversation-runtime` (`1218a23b`) and await review/merge; CR-5
   bounded Group (budgets/stop/loop guard + per-Agent context, migration 023) is
-  committed on `runtime/cr5-bounded-group` and pushed (pending review/merge);
-  CR-6 history is implemented (`AgentHistoryService`, a read surface over existing
-  durable tables, no migration) on the next branch.
+  committed on `runtime/cr5-bounded-group` (PR #107, stacked); CR-6 history is
+  implemented on `runtime/cr6-history` (PR #108, stacked) — a read surface over
+  existing durable tables, no migration. Conversation Runtime is complete pending
+  review/merge of PRs #106–#108.
 - **Polished UI Foundation**: the four-column shell consuming the token system.
 - **Direct Conversation UX**, **Controlled Group Conversation**,
   **Agent History + Search**: not started.
