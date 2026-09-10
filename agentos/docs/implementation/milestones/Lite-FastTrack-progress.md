@@ -27,7 +27,7 @@ beyond the merged evidence it cites.
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
 | Conversation Runtime | **CR-0..CR-2 MERGED; CR-3..CR-6 IN PRs #106–#108 (stacked)** | PR #95–#97, #105–#108; `CR-progress.md` |
 | Polished UI Foundation | **PARTIAL (tokens MERGED; four-column shell IN PR #109)** | PR #100, #109; `WorkbenchShell.tsx` |
-| Direct Conversation UX | **PARTIAL (routes + reply stream IN PR #110; client foundation IN #111; view IN PR #112; page composition open)** | PR #110–#112; `conversationRuntime.ts`, `ConversationTurnDriver.ts`, `directConversation*.ts`, `ConversationRuntimeView.tsx` |
+| Direct Conversation UX | **PARTIAL (routes + reply stream IN PR #110; client IN #111; view IN #112; controller IN #113; page wiring open)** | PR #110–#113 |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |
 | Controlled Group Conversation | **NOT STARTED** | — |
 | Workflow Templates | **PARTIAL (catalog + instantiation MERGED)** | PR #99, PR #103; durable Task/Run/Stage wiring still open |
