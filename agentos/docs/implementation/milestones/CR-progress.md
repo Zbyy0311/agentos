@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1/CR-2 MERGED — CR-3, CR-4a AND CR-4b IMPLEMENTED IN WORKING TREE (UNCOMMITTED, MIGRATION 022) — CR-5/CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
+Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4a + CR-4b COMMITTED on runtime/cr3-cr4-conversation-runtime (1218a23b, pushed, PENDING REVIEW/MERGE; migration 022) — CR-5/CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
 
 ## 1. Purpose
 
@@ -15,7 +15,7 @@ without re-auditing the repository.
 | Baseline | `origin-https/main @ b9c38aa4` (Merge PR #105, CR-2 Agent Turn persistence) |
 | Migration ledger | `001`–`021` present |
 | Main CI | Post-merge runs through PR #105 recorded at merge time; earlier CR-1 records remain in history |
-| CR-3 working tree | `main @ b9c38aa4` plus uncommitted CR-3 changes; no CR-3 commit exists yet |
+| CR-3/CR-4 delivery | commit `1218a23b` on `runtime/cr3-cr4-conversation-runtime` (pushed; branched from `b9c38aa4`) |
 | Prior gates | Workspace single-writer COMPLETE; Recovery closeout COMPLETE; Memory Foundation MF-0..MF-4 + MF-5 events/emission/Run-injection MERGED |
 
 ## 3. Slice status
@@ -25,9 +25,9 @@ without re-auditing the repository.
 | CR-0 | Shared Conversation contracts | **MERGED** | #95 |
 | CR-1 | Forward Conversation/Member/Message persistence (migration 020) | **MERGED** | #96 (auth), #97 (impl) |
 | CR-2 | Message revisions + Agent Turn records (migration 021, AgentTurnRepository) | **MERGED** | (auth retro), (impl) |
-| CR-3 | Durable streaming checkpoints + reconnect cursor | **IMPLEMENTED** (uncommitted, pending commit/merge) | working tree + `CR3-streaming-contract.md` |
-| CR-4a | Explicit Task/Run bridge from a Message | **IMPLEMENTED** (working tree, uncommitted) | `ConversationBridgeService.ts`, `CR4-schema-authorization.md` |
-| CR-4b | Idempotent Runtime Event projection (migration 022) | **IMPLEMENTED** (working tree, uncommitted) | `cr4-migration-022.test.ts`, `ConversationProjectionService.ts` |
+| CR-3 | Durable streaming checkpoints + reconnect cursor | **COMMITTED** (`1218a23b`, pending review/merge) | `ConversationStreamService.ts` + `CR3-streaming-contract.md` |
+| CR-4a | Explicit Task/Run bridge from a Message | **COMMITTED** (`1218a23b`, pending review/merge) | `ConversationBridgeService.ts`, `CR4-schema-authorization.md` |
+| CR-4b | Idempotent Runtime Event projection (migration 022) | **COMMITTED** (`1218a23b`, pending review/merge) | `cr4-migration-022.test.ts`, `ConversationProjectionService.ts` |
 | CR-5 | Bounded Group budgets/stop/loop guard + per-Agent context | **NOT STARTED** | — |
 | CR-6 | Archive/restore + history references | **PARTIAL** (archive/restore merged; history NOT STARTED) | — |
 
@@ -42,7 +42,7 @@ without re-auditing the repository.
 | CR-2 AgentTurnRepository | 14/14 PASS |
 | Full Server first run (CR-1 head) | 2446 total, 2441 passed, 2 failed, 3 skipped |
 
-CR-3 working-tree evidence (uncommitted, not merged — `docs/implementation/milestones/CR3-streaming-contract.md`):
+CR-3/CR-4 evidence at commit `1218a23b` (not merged — `docs/implementation/milestones/CR3-streaming-contract.md`):
 
 | Suite | Result |
 |---|---|
@@ -56,6 +56,7 @@ CR-3 working-tree evidence (uncommitted, not merged — `docs/implementation/mil
 | Identity prefixes including checkpoint | 34/34 PASS |
 | Full Server run (CR-3 working tree, hash-frozen) | 2498 total, 2491 passed, 4 failed, 3 skipped |
 | Full Server run (CR-4a working tree, hash-frozen) | 2512 total, 2505 passed, 4 failed, 3 skipped |
+| Full Server run (CR-3 + CR-4 tree, hash-frozen) | 2530 total, 2523 passed, 4 failed, 3 skipped |
 
 All four failures are the pre-existing Windows `ENOTEMPTY` temp-directory teardown
 races (`routes/worktrees.test.ts` x2, `services/ConversationService.test.ts`
@@ -92,7 +93,7 @@ The 2 server failures are pre-existing Windows `tar` environment issues in
 - link a Turn to its Conversation, Message, and optional Run 鈥?done via `task_id`/`run_id`/`source_message_id`;
 - per-Turn bounded context reference 鈥?done via `context_snapshot_id`.
 
-### CR-3 — Streaming checkpoints (IMPLEMENTED, pending independent review/merge)
+### CR-3 — Streaming checkpoints (IMPLEMENTED, commit 1218a23b, pending review/merge)
 
 - durable ordered Message checkpoints with a monotonic cursor — done via
   `ConversationStreamService` (cursor === ordinal, contiguous per Message and per Turn);
@@ -102,7 +103,7 @@ The 2 server failures are pre-existing Windows `tar` environment issues in
   window, current Message/Turn state, fail-closed on durable loss);
 - no schema change: migration 021 already provides `cr_message_checkpoints`.
 
-### CR-4 — Task/Run bridge + Event projection (IMPLEMENTED in the working tree)
+### CR-4 — Task/Run bridge + Event projection (IMPLEMENTED, commit 1218a23b)
 
 - explicit `create-task` and `start-run` operations from a Message;
 - idempotent Runtime Event projection using `source_event_id` dedup;

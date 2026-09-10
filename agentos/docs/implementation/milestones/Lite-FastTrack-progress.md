@@ -1,6 +1,6 @@
 # Lite Fast Track — Progress Summary
 
-Status: TRACKED — P6/L1 + RECOVERY + MEMORY FOUNDATION + CR-0..CR-2 + WORKFLOW TEMPLATES + UI FOUNDATION + RUNTIME INSPECTOR MERGED — CR-3 AND CR-4 IMPLEMENTED IN WORKING TREE (UNCOMMITTED, MIGRATION 022) — REMAINING STEPS LISTED
+Status: TRACKED — P6/L1 + RECOVERY + MEMORY FOUNDATION + CR-0..CR-2 + WORKFLOW TEMPLATES + UI FOUNDATION + RUNTIME INSPECTOR MERGED — CR-3 + CR-4 COMMITTED (1218a23b, PENDING REVIEW/MERGE) — REMAINING STEPS LISTED
 
 ## 1. Purpose
 
@@ -25,7 +25,7 @@ beyond the merged evidence it cites.
 | Minimal Git Observation + Workspace single-writer rule | **COMPLETE** | PR #68–#76 (L1A–L1E) |
 | Recovery closeout | **COMPLETE** | PR #77 |
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
-| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3 + CR-4a + CR-4b IMPLEMENTED (uncommitted)** | PR #95–#97, #105; `CR-progress.md`, `CR3-streaming-contract.md`, `CR4-schema-authorization.md` |
+| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3 + CR-4a + CR-4b COMMITTED, PENDING REVIEW/MERGE** (`1218a23b` on `runtime/cr3-cr4-conversation-runtime`) | PR #95–#97, #105; `CR-progress.md`, `CR3-streaming-contract.md`, `CR4-schema-authorization.md` |
 | Polished UI Foundation | **PARTIAL (tokens MERGED)** | PR #100; four-column shell still open |
 | Direct Conversation UX | **NOT STARTED** | — |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |
@@ -53,7 +53,7 @@ The 2 server failures are pre-existing Windows `tar` environment issues in
 `WorktreeArtifactService`, unrelated to the Lite work. First runs were
 preserved; no rerun-to-green was used.
 
-CR-3/CR-4a working-tree evidence (uncommitted, not merged): streaming seam 20/20, bridge 14/14, ConversationRepository
+CR-3/CR-4a evidence (commit 1218a23b, not merged): streaming seam 20/20, bridge 14/14, ConversationRepository
 15/15, AgentTurnRepository 14/14, CR-0 contracts 11/11 (including CR0-11), Identity
 prefixes 34/34. See `CR3-streaming-contract.md`.
 
@@ -69,9 +69,9 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
 - **Memory Foundation**: MF-5 Memory/Context Snapshot APIs, UI Memory
   explanation, Inspector memory view.
 - **Conversation Runtime**: CR-3 streaming checkpoints, CR-4a explicit Task/Run
-  bridge, and CR-4b idempotent Event projection (migration 022) are all implemented
-  in the working tree but uncommitted; CR-5 bounded Group and CR-6 history are not
-  started.
+  bridge, and CR-4b idempotent Event projection (migration 022) are committed on
+  `runtime/cr3-cr4-conversation-runtime` (`1218a23b`) and await review/merge;
+  CR-5 bounded Group and CR-6 history are not started.
 - **Polished UI Foundation**: the four-column shell consuming the token system.
 - **Direct Conversation UX**, **Controlled Group Conversation**,
   **Agent History + Search**: not started.

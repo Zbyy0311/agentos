@@ -1,6 +1,6 @@
 # Conversation Runtime CR-3 Streaming Contract — Frozen Design Record
 
-Status: IMPLEMENTED IN WORKING TREE (UNCOMMITTED at b9c38aa4) — PENDING COMMIT, INDEPENDENT RE-VERIFICATION, AND MERGE — NO NEW MIGRATION
+Status: IMPLEMENTED AND COMMITTED on runtime/cr3-cr4-conversation-runtime (1218a23b, pushed) — PENDING INDEPENDENT RE-VERIFICATION AND MERGE — NO NEW MIGRATION
 
 ## 1. Authorization basis and scope
 
@@ -12,7 +12,7 @@ Status: IMPLEMENTED IN WORKING TREE (UNCOMMITTED at b9c38aa4) — PENDING COMMIT
 | Product authority | docs/Runtime-Specification lite/09-Conversation-Runtime.md section 8 |
 | Schema | NONE — migration 021 (CR-2) already provides cr_message_checkpoints |
 | Package kind | Slice design record plus uncommitted implementation in the main worktree |
-| Working-tree state | `main @ b9c38aa4` plus the CR-3 changes; no CR-3 branch or commit exists yet because git metadata (`E:\workspace\Multi-Agent\.git`) is outside the agent's writable roots and the escalation path was unavailable at record time |
+| Delivery state | committed as `1218a23b` on `runtime/cr3-cr4-conversation-runtime` (branched from `b9c38aa4`) and pushed to `origin-https`; CR-3, CR-4a and CR-4b share that commit because they interleave in the same files |
 
 > Honesty note: migration 021 already created the checkpoint table, so CR-3 adds no
 > schema and no registry entry. This document records the streaming semantics the
@@ -102,6 +102,7 @@ orchestration change.
 | CR-0 contracts including CR0-11 | 11/11 PASS |
 | Identity prefixes including checkpoint | 34/34 PASS |
 | Full Server run (hash-frozen working tree) | 2498 total, 2491 passed, 4 failed, 3 skipped |
+| Full Server run (committed CR-3+CR-4 tree, hash-frozen) | 2530 total, 2523 passed, 4 failed, 3 skipped |
 
 The four failures are pre-existing Windows `ENOTEMPTY` teardown races in
 `routes/worktrees.test.ts`, `services/ConversationService.test.ts`, and
@@ -122,7 +123,7 @@ An independent verifier reviewed the first implementation revision and returned
 NOT ACCEPTED with two medium findings: Turn-to-Message ownership was not enforced
 at append (a same-Conversation foreign Turn could claim another stream's ordinal 1
 before its first checkpoint), and CR3-A9 as written contradicted the
-window-scoped replay check. Both were remediated in the working tree (ownership proof
+window-scoped replay check. Both were remediated on this workstream (ownership proof
 plus strict whole-set replay validation, new CR3S-19/CR3S-20 coverage) and the
 findings it also raised were addressed: branch/state wording, archive-retry
 ordering documentation, and Turn-not-transitionable error mapping symmetry.

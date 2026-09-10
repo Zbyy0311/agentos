@@ -1,6 +1,6 @@
 # Conversation Runtime CR-4 Schema Authorization Package — Frozen Design
 
-Status: CR-4a AND CR-4b IMPLEMENTED IN WORKING TREE (UNCOMMITTED) — CR-4 SLICE COMPLETE PENDING COMMIT, INDEPENDENT REVIEW, AND MERGE
+Status: CR-4a AND CR-4b IMPLEMENTED AND COMMITTED on runtime/cr3-cr4-conversation-runtime (1218a23b, pushed) — PENDING INDEPENDENT REVIEW AND MERGE
 
 ## 1. Authorization basis and scope
 
@@ -242,6 +242,10 @@ CR-4b evidence (working tree, uncommitted):
 |---|---|
 | Migration 022 schema acceptance | 8/8 PASS (apps/server/src/migrations/__tests__/cr4-migration-022.test.ts) |
 | Conversation projection | 10/10 PASS (apps/server/src/services/ConversationProjectionService.test.ts) |
+| Full Server run (hash-frozen tree including CR-3/CR-4) | 2530 total, 2523 passed, 4 failed, 3 skipped |
+
+The four failures are the same pre-existing Windows `ENOTEMPTY` teardown races; no
+CR-3/CR-4 test failed, and source hashes were identical before and after the run.
 | Full Server run (hash-frozen working tree, includes CR-4a) | 2512 total, 2505 passed, 4 failed, 3 skipped |
 
 The four failures are the same pre-existing Windows `ENOTEMPTY` temp-directory
