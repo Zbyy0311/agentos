@@ -93,6 +93,7 @@ import { ConversationBridgeService } from '../services/ConversationBridgeService
 import { ConversationProjectionService } from '../services/ConversationProjectionService.js';
 import { BoundedGroupService } from '../services/BoundedGroupService.js';
 import { AgentHistoryService } from '../services/AgentHistoryService.js';
+import { RuntimeInspector } from '../services/RuntimeInspector.js';
 
 type SqliteStatement = {
   all(...parameters: unknown[]): unknown[];
@@ -711,6 +712,17 @@ export class SqliteStore implements Store {
   /** CR-6 unified Agent History read surface. */
   agentHistoryService(): AgentHistoryService {
     return new AgentHistoryService(this.database as any);
+  }
+
+  /** Lite Runtime Inspector read-only projection (PR #101). */
+  runtimeInspector(): RuntimeInspector {
+    return new RuntimeInspector({
+      store: this,
+      runRepository: this.runRepo,
+      runStageRepository: this.runStageRepo,
+      runSnapshotRepository: this.runSnapshotRepo,
+      runtimeEventRepository: this.runtimeEventRepo,
+    });
   }
 
   /** Cross-repository atomic transaction boundary for services (e.g. TaskRunService). */
