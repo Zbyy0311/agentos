@@ -64,6 +64,9 @@ create-task/start-run, history). Route tests 6/6 PASS.
 Frozen full Server run over the route tree: 2568 total, 2561 passed, 4 failed
 (same pre-existing Windows ENOTEMPTY teardowns), 3 skipped. PR #110.
 
+Reply-stream revision (ConversationTurnDriver + messages/stream): frozen full Server
+run 2575 total, 2568 passed, 4 failed (same ENOTEMPTY class), 3 skipped.
+
 The four failures are the same pre-existing Windows `ENOTEMPTY` teardown races; no
 CR test failed at any CR-3..CR-6 revision.
 | CR-1 ConversationRepository (refactored seams) | 15/15 PASS |

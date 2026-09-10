@@ -83,6 +83,10 @@ The SSE stream reuses the app's SSE conventions and never cancels the Turn on
 |---|---|
 | ConversationTurnDriver (delta mapping, finalize, failure/cancel/crash/waiting paths) | 6/6 PASS |
 | Route slice incl. `messages/stream` SSE | 7/7 PASS |
+| Full Server run (reply-stream tree, hash-frozen) | 2575 total, 2568 passed, 4 failed, 3 skipped |
+
+The four failures are the same pre-existing Windows `ENOTEMPTY` teardown races; no CR
+or route test failed.
 
 ## 6. Acceptance matrix (Direct Conversation UX reply stream)
 
