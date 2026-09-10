@@ -14,11 +14,11 @@
  * - secrets never enter client state (no content beyond what the Server returns).
  */
 
-import type { DirectConversationClient, ForwardMessage } from './directConversationClient.js';
-import type { ComposerDraft } from './directComposer.js';
-import { resolveComposerAction } from './directComposer.js';
-import { ConversationStreamMachine, type ConversationStreamState } from './directConversationStream.js';
-import { consumeSseResponse, UnexpectedStreamEndError } from './streamReconnect.js';
+import type { DirectConversationClient, ForwardMessage } from './directConversationClient';
+import type { ComposerDraft } from './directComposer';
+import { resolveComposerAction } from './directComposer';
+import { ConversationStreamMachine, type ConversationStreamState } from './directConversationStream';
+import { consumeSseResponse, UnexpectedStreamEndError } from './streamReconnect';
 
 export interface DirectConversationControllerOptions {
   readonly client: DirectConversationClient;
