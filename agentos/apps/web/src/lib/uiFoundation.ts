@@ -306,6 +306,45 @@ export function shouldAnimateTransform(reducedMotion: boolean): boolean {
   return !reducedMotion;
 }
 
+/**
+ * Flatten the semantic tokens of one theme into CSS custom properties, so the
+ * four-column shell and any component consume tokens through a single boundary
+ * rather than hard-coding colors. Framework-agnostic and deterministic.
+ */
+export function uiCssVariables(theme: UiTheme): Record<string, string> {
+  const tokens = UI_COLOR_TOKENS[theme];
+  const out: Record<string, string> = {
+    '--surface-base': tokens.surfaceBase,
+    '--surface-subtle': tokens.surfaceSubtle,
+    '--surface-raised': tokens.surfaceRaised,
+    '--surface-overlay': tokens.surfaceOverlay,
+    '--surface-selected': tokens.surfaceSelected,
+    '--text-primary': tokens.textPrimary,
+    '--text-secondary': tokens.textSecondary,
+    '--text-tertiary': tokens.textTertiary,
+    '--text-disabled': tokens.textDisabled,
+    '--border-subtle': tokens.borderSubtle,
+    '--border-default': tokens.borderDefault,
+    '--border-strong': tokens.borderStrong,
+    '--focus-ring': tokens.focusRing,
+    '--accent-default': tokens.accentDefault,
+    '--accent-hover': tokens.accentHover,
+    '--accent-pressed': tokens.accentPressed,
+  };
+  for (const [status, color] of Object.entries(tokens.status)) {
+    out[`--status-${status}`] = color;
+  }
+  return out;
+}
+
+/** Column pixel width for a resolved layout, clamped to the token guidance. */
+export function columnWidthPx(column: UiColumn, mode: UiLayoutMode): number {
+  if (!UI_COLUMNS.includes(column)) throw new Error('UI_COLUMN_INVALID');
+  if (!UI_LAYOUT_MODES.includes(mode)) throw new Error('UI_LAYOUT_MODE_INVALID');
+  if (!visibleColumns(mode).includes(column)) return 0;
+  return UI_COLUMN_WIDTHS[column].min;
+}
+
 // ---------------------------------------------------------------------------
 // Accessibility rules
 // ---------------------------------------------------------------------------
