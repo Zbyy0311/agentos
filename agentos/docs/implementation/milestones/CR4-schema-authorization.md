@@ -285,5 +285,37 @@ frozen tree (source hashes identical before and after) produced identical totals
 - No secret values, no unsanitized Markdown, no Message-into-Event conversion.
 - CR-4a and CR-4b were both implemented under the standing "continue per the documents"
   instruction using the recommended options recorded in section 9, with the CR-2
-  retroactive-record precedent. Nothing here is committed, merged, or independently
-  reviewed yet; migration 022 remains vetoable before merge.
+  retroactive-record precedent. Committed as `1218a23b` (+`5d422e5b` docs,
+  +`4dd6e480` test fix) on `runtime/cr3-cr4-conversation-runtime` and pushed;
+  pending review/merge. Migration 022 remains revertible before merge.
+
+## 11. Review outcome
+
+### CR-4a (explicit Task/Run bridge)
+
+Independent verification returned ACCEPTED with no HIGH or MEDIUM findings: retry and
+concurrent calls converge on one Task/Run, a transaction abort leaves no partial
+Task/Run/binding, the request body cannot influence effective admission class or
+enforcement evidence, and the bridge writes no admission rows. The reviewer's one LOW
+(reasons requiring a parent Run were accepted then failed deep) was remediated by
+restricting the accepted reason set to `initial`/`manual` and mapping the durable
+one-active-Run-per-Task violation to a conflict, covered by CR4B-13/CR4B-14.
+
+### CR-4b (migration 022 + projection)
+
+Independent review was requested, but the subagent channel was unavailable at review
+time (the routed provider returned 402 Insufficient Balance and the fallback returned
+429). The slice is therefore verified by the maintainer, self-checked against the
+acceptance matrix, not by an independent reviewer; this is a weaker guarantee than
+CR-4a and should be re-reviewed independently before merge. Self-verification
+results: server build exit 0; migration 022 acceptance 8/8; projection service 10/10;
+bridge 14/14; streaming seam 20/20; frozen full Server suite 2530 total / 2523 passed /
+4 failed (pre-existing Windows ENOTEMPTY teardowns only) / 3 skipped; remote and local
+SHAs match. Gates CR4-A1..A12 each map to at least one passing test; no duplicate-card
+path exists because the dedup row is read and inserted inside the same BEGIN IMMEDIATE
+transaction.
+
+Known non-blocking limitation (documents CR-4a scope, needs a route-layer decision in
+the API slice): a projected card stores caller-supplied Task/Run references without an
+FK to those tables, because `cr_messages` has no such FKs (020) and widening them is
+out of scope. No external caller exists today, so nothing can be forged.
