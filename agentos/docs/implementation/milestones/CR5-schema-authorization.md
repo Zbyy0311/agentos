@@ -1,6 +1,6 @@
 # Conversation Runtime CR-5 Schema Authorization Package — Frozen Design
 
-Status: IMPLEMENTED IN WORKING TREE (UNCOMMITTED) — PENDING INDEPENDENT REVIEW AND MERGE
+Status: COMMITTED on runtime/cr5-bounded-group (pushed) — PENDING INDEPENDENT REVIEW AND MERGE
 
 ## Evidence
 
@@ -9,8 +9,19 @@ Status: IMPLEMENTED IN WORKING TREE (UNCOMMITTED) — PENDING INDEPENDENT REVIEW
 | Migration 023 schema acceptance | 8/8 PASS (apps/server/src/migrations/__tests__/cr5-migration-023.test.ts) |
 | Bounded group service | 17/17 PASS (apps/server/src/services/BoundedGroupService.test.ts) |
 
-Both run over the working tree on top of commit `1218a23b`; the full Server suite
-totals for this revision are recorded below after the frozen run completes.
+Both run over the committed tree on `runtime/cr5-bounded-group`. The frozen full
+Server suite over that tree:
+
+| Suite | Result |
+|---|---|
+| Full Server run (hash-frozen, includes CR-5) | 2555 total, 2548 passed, 4 failed, 3 skipped |
+
+The four failures are the same pre-existing Windows `ENOTEMPTY` teardown races; no
+CR-5 test failed and source hashes were identical before and after the run.
+
+Independent review was requested but the subagent provider returned 402 (insufficient
+balance), so CR-5 is verified by maintainer self-check against the acceptance matrix;
+an independent review before merge is still required.
 
 ## 1. Authorization basis and scope
 
