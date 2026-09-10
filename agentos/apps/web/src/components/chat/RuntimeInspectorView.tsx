@@ -1,8 +1,8 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation.js';
-import type { UiTheme } from '../../lib/uiFoundation.js';
+import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation';
+import type { UiTheme } from '../../lib/uiFoundation';
 
 /**
  * Lite Runtime Inspector view (13-Runtime-Inspector.md).
