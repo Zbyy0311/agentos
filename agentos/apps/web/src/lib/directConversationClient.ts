@@ -74,6 +74,22 @@ export function directConversationClient(options: DirectConversationClientOption
       jsonPost(`/conversations/${encodeURIComponent(conversationId)}/messages`, {
         content, ...(clientMessageId === undefined ? {} : { clientMessageId }),
       }) as Promise<{ message: ForwardMessage }>,
+    /**
+     * The reply stream (SSE). Returns the raw Response; the controller consumes it.
+     * Not OK responses throw before the stream is read.
+     */
+    streamReply: async (conversationId: string, content: string): Promise<Response> => {
+      const response = await fetch(`${base}/conversations/${encodeURIComponent(conversationId)}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ content }),
+      });
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({ error: response.statusText })) as { error?: string };
+        const error = new Error(body.error ?? `HTTP ${response.status}`) as ConversationRuntimeError;
+        (error as { status: number }).status = response.status;
+        throw error;
+      }
+      return response;
+    },
     replayCheckpoints: (conversationId: string, messageId: string, afterCursor: number) =>
       apiFetch<CheckpointReplay>(base, `/conversations/${encodeURIComponent(conversationId)}/messages/${encodeURIComponent(messageId)}/checkpoints?afterCursor=${afterCursor}`),
     createTaskFromMessage: (messageId: string, body: Record<string, unknown> = {}) =>
@@ -86,4 +102,3 @@ export function directConversationClient(options: DirectConversationClientOption
 }
 
 export type DirectConversationClient = ReturnType<typeof directConversationClient>;
-

@@ -366,8 +366,10 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       } else {
         send('turn.failed', { turn: result.turn, message: result.message });
       }
+      send('done', { messageId: responseMessageId, turnId });
     } catch (error) {
       send('turn.failed', { error: error instanceof Error ? error.message : String(error) });
+      send('done', { messageId: responseMessageId, turnId });
     } finally {
       stopHeartbeat();
       res.end();
