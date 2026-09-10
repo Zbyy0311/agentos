@@ -19,6 +19,7 @@ import { createOpenApiRoutes } from './routes/openapi.js';
 import { createAgentRoutes } from './routes/agents.js';
 import { createGitRoutes } from './routes/git.js';
 import { createConversationRoutes } from './routes/conversations.js';
+import { createConversationRuntimeRoutes } from './routes/conversationRuntime.js';
 import { recoverInterruptedTaskRuntime, type RecoveredTaskRuntime } from './taskRecovery.js';
 import { recoverInterruptedRuns } from './runRecovery.js';
 import {
@@ -278,6 +279,7 @@ async function bootstrap(): Promise<void> {
 
     app.use('/api/workspaces', createWorkspaceRoutes(workspaceManager));
     app.use('/api/workspaces/:workspaceId', createConversationRoutes(store, workspaceManager, undefined, eventBus, artifactService, preferenceService, worktreeManager));
+    app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createRunRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceManager, artifactService));
     app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));

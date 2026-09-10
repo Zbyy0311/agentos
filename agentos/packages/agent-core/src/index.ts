@@ -1,5 +1,5 @@
 export { AgentRunner } from './runner.js';
-export { ConversationAgentRunner, type ConversationExecutionEvent } from './conversationRunner.js';
+export { ConversationAgentRunner, type ConversationExecutionEvent, type ConversationRunResult } from './conversationRunner.js';
 export { MockCLI } from './mock.js';
 export { CLIExecutor, CLIError, resolveAgentRuntimeConfig } from './executor.js';
 export { AGENT_CONFIGS, DEFAULT_WORKSPACE_AGENTS, FORCE_MOCK, isCodexCli, STAGE_ROLE_MAP } from './config.js';

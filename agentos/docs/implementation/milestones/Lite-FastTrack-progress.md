@@ -27,7 +27,7 @@ beyond the merged evidence it cites.
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
 | Conversation Runtime | **CR-0..CR-2 MERGED; CR-3..CR-6 IN PRs #106–#108 (stacked)** | PR #95–#97, #105–#108; `CR-progress.md` |
 | Polished UI Foundation | **PARTIAL (tokens MERGED; four-column shell IN PR #109)** | PR #100, #109; `WorkbenchShell.tsx` |
-| Direct Conversation UX | **NOT STARTED** | — |
+| Direct Conversation UX | **PARTIAL (forward routes IN PR #110; reply stream IMPLEMENTED on the same branch)** | PR #110; `conversationRuntime.ts`, `ConversationTurnDriver.ts` |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |
 | Controlled Group Conversation | **NOT STARTED** | — |
 | Workflow Templates | **PARTIAL (catalog + instantiation MERGED)** | PR #99, PR #103; durable Task/Run/Stage wiring still open |
@@ -81,8 +81,10 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
   implemented (`WorkbenchShell.tsx` + `uiCssVariables`/`columnWidthPx`), with adaptive
   collapse, reduced-motion, and client-only panel state; data wiring stays with the
   Direct Conversation UX step.
-- **Direct Conversation UX**, **Controlled Group Conversation**,
-  **Agent History + Search**: not started.
+- **Direct Conversation UX**: the forward Conversation runtime routes
+  (create/list/archive/restore, members, turns, messages, checkpoint replay,
+  create-task/start-run bridge, history) are implemented and wired through
+  `SqliteStore`; the Provider-backed reply stream and the Composer are not started.
 - **Workflow Templates**: wire the compiled definition into durable Task/Run/Stage creation.
 - **Runtime Inspector**: API route and UI surface over the merged projection.
 
