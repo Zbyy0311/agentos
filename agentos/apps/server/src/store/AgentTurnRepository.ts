@@ -134,28 +134,31 @@ export class AgentTurnRepository {
   constructor(private readonly db: TransactionDatabase) {}
 
   createTurn(input: CreateAgentTurnInput): AgentTurnRecord {
+    try {
+      return inTransaction(this.db, () => this.createTurnWithinTransaction(input));
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /** Transaction-free variant for callers already inside `inTransaction`. */
+  createTurnWithinTransaction(input: CreateAgentTurnInput): AgentTurnRecord {
     if (!nonBlank(input.id) || !nonBlank(input.conversationId) || !nonBlank(input.workspaceId)
       || !nonBlank(input.agentId) || !nonBlank(input.createdAt)) {
       throw new AgentTurnRepositoryError('TURN_INPUT_INVALID');
     }
-    try {
-      return inTransaction(this.db, () => {
-        this.assertConversation(input.workspaceId, input.conversationId);
-        this.db.prepare(
-          `INSERT INTO cr_agent_turns
-            (id, conversation_id, workspace_id, agent_id, source_message_id,
-             status, context_snapshot_id, version, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, 'created', ?, 1, ?, ?)`,
-        ).run(
-          input.id, input.conversationId, input.workspaceId, input.agentId,
-          input.sourceMessageId ?? null, input.contextSnapshotId ?? null,
-          input.createdAt, input.createdAt,
-        );
-        return this.requireTurn(input.workspaceId, input.id);
-      });
-    } catch (error) {
-      throw this.publicError(error);
-    }
+    this.assertConversation(input.workspaceId, input.conversationId);
+    this.db.prepare(
+      `INSERT INTO cr_agent_turns
+        (id, conversation_id, workspace_id, agent_id, source_message_id,
+         status, context_snapshot_id, version, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, 'created', ?, 1, ?, ?)`,
+    ).run(
+      input.id, input.conversationId, input.workspaceId, input.agentId,
+      input.sourceMessageId ?? null, input.contextSnapshotId ?? null,
+      input.createdAt, input.createdAt,
+    );
+    return this.requireTurn(input.workspaceId, input.id);
   }
 
   findTurnById(workspaceId: string, turnId: string): AgentTurnRecord | undefined {
@@ -175,50 +178,67 @@ export class AgentTurnRepository {
   }
 
   transitionTurn(input: TransitionAgentTurnInput): AgentTurnRecord {
-    if (!nonBlank(input.workspaceId) || !nonBlank(input.turnId)
-      || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
-      || !nonBlank(input.updatedAt) || !isStatus(input.to)) {
-      throw new AgentTurnRepositoryError('TURN_INPUT_INVALID');
-    }
     try {
-      return inTransaction(this.db, () => {
-        const current = this.db.prepare(
-          'SELECT * FROM cr_agent_turns WHERE workspace_id = ? AND id = ?',
-        ).get(input.workspaceId, input.turnId) as TurnRow | undefined;
-        if (current === undefined) throw new AgentTurnRepositoryError('TURN_NOT_FOUND');
-        if (current.version !== input.expectedVersion
-          || !canTransition(current.status as AgentTurnStatus, input.to)) {
-          throw new AgentTurnRepositoryError('TURN_NOT_TRANSITIONABLE');
-        }
-        const isTerminal = isAgentTurnTerminal(input.to);
-        this.db.prepare(
-          `UPDATE cr_agent_turns
-           SET status = ?, failure_code = ?, failure_message = ?,
-               provider_session_id = COALESCE(?, provider_session_id),
-               task_id = COALESCE(?, task_id),
-               run_id = COALESCE(?, run_id),
-               completed_at = ?,
-               version = version + 1, updated_at = ?
-           WHERE workspace_id = ? AND id = ? AND version = ?`,
-        ).run(
-          input.to,
-          input.failureCode ?? null,
-          input.failureMessage ?? null,
-          input.providerSessionId ?? null,
-          input.taskId ?? null,
-          input.runId ?? null,
-          isTerminal ? input.updatedAt : null,
-          input.updatedAt,
-          input.workspaceId, input.turnId, input.expectedVersion,
-        );
-        return this.requireTurn(input.workspaceId, input.turnId);
-      });
+      return inTransaction(this.db, () => this.transitionTurnWithinTransaction(input));
     } catch (error) {
       throw this.publicError(error);
     }
   }
 
+  /** Transaction-free variant for callers already inside `inTransaction`. */
+  transitionTurnWithinTransaction(input: TransitionAgentTurnInput): AgentTurnRecord {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.turnId)
+      || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
+      || !nonBlank(input.updatedAt) || !isStatus(input.to)) {
+      throw new AgentTurnRepositoryError('TURN_INPUT_INVALID');
+    }
+    const current = this.db.prepare(
+      'SELECT * FROM cr_agent_turns WHERE workspace_id = ? AND id = ?',
+    ).get(input.workspaceId, input.turnId) as TurnRow | undefined;
+    if (current === undefined) throw new AgentTurnRepositoryError('TURN_NOT_FOUND');
+    if (current.version !== input.expectedVersion
+      || !canTransition(current.status as AgentTurnStatus, input.to)) {
+      throw new AgentTurnRepositoryError('TURN_NOT_TRANSITIONABLE');
+    }
+    const isTerminal = isAgentTurnTerminal(input.to);
+    this.db.prepare(
+      `UPDATE cr_agent_turns
+       SET status = ?, failure_code = ?, failure_message = ?,
+           provider_session_id = COALESCE(?, provider_session_id),
+           task_id = COALESCE(?, task_id),
+           run_id = COALESCE(?, run_id),
+           completed_at = ?,
+           version = version + 1, updated_at = ?
+       WHERE workspace_id = ? AND id = ? AND version = ?`,
+    ).run(
+      input.to,
+      input.failureCode ?? null,
+      input.failureMessage ?? null,
+      input.providerSessionId ?? null,
+      input.taskId ?? null,
+      input.runId ?? null,
+      isTerminal ? input.updatedAt : null,
+      input.updatedAt,
+      input.workspaceId, input.turnId, input.expectedVersion,
+    );
+    return this.requireTurn(input.workspaceId, input.turnId);
+  }
+
   appendCheckpoint(input: AppendCheckpointInput): CheckpointRecord {
+    try {
+      return inTransaction(this.db, () => this.appendCheckpointWithinTransaction(input));
+    } catch (error) {
+      if (error instanceof AgentTurnRepositoryError) throw error;
+      throw new AgentTurnRepositoryError('CHECKPOINT_PERSISTENCE_FAILED');
+    }
+  }
+
+  /**
+   * Transaction-free variant: the CR-3 streaming seam composes this insert with
+   * Message and Turn writes in one transaction. Ordinal/cursor retry rules are
+   * enforced by the seam; this method stays a fail-closed raw insert.
+   */
+  appendCheckpointWithinTransaction(input: AppendCheckpointInput): CheckpointRecord {
     if (!nonBlank(input.id) || !nonBlank(input.messageId) || !nonBlank(input.turnId)
       || !Number.isSafeInteger(input.ordinal) || input.ordinal < 1
       || !Number.isSafeInteger(input.cursor) || input.cursor < 0
@@ -226,17 +246,15 @@ export class AgentTurnRepository {
       throw new AgentTurnRepositoryError('CHECKPOINT_INPUT_INVALID');
     }
     try {
-      return inTransaction(this.db, () => {
-        this.db.prepare(
-          `INSERT INTO cr_message_checkpoints
-            (id, message_id, turn_id, ordinal, cursor, delta, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          input.id, input.messageId, input.turnId, input.ordinal,
-          input.cursor, input.delta, input.createdAt,
-        );
-        return this.requireCheckpoint(input.id);
-      });
+      this.db.prepare(
+        `INSERT INTO cr_message_checkpoints
+          (id, message_id, turn_id, ordinal, cursor, delta, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
+        input.id, input.messageId, input.turnId, input.ordinal,
+        input.cursor, input.delta, input.createdAt,
+      );
+      return this.requireCheckpoint(input.id);
     } catch (error) {
       if (error instanceof AgentTurnRepositoryError) throw error;
       if (error instanceof Error && error.message.includes('UNIQUE')) {
@@ -260,6 +278,33 @@ export class AgentTurnRepository {
       'SELECT * FROM cr_message_checkpoints WHERE turn_id = ? ORDER BY ordinal ASC',
     ).all(turnId) as CheckpointRow[];
     return rows.map(toCheckpointRecord);
+  }
+
+  /** Durable retry lookup: the checkpoint already stored at one ordinal. */
+  findCheckpointByOrdinal(messageId: string, ordinal: number): CheckpointRecord | undefined {
+    if (!nonBlank(messageId) || !Number.isSafeInteger(ordinal)) return undefined;
+    const row = this.db.prepare(
+      'SELECT * FROM cr_message_checkpoints WHERE message_id = ? AND ordinal = ?',
+    ).get(messageId, ordinal) as CheckpointRow | undefined;
+    return row === undefined ? undefined : toCheckpointRecord(row);
+  }
+
+  /** Highest Message checkpoint: the durable resume head for one stream. */
+  lastCheckpointForMessage(messageId: string): CheckpointRecord | undefined {
+    if (!nonBlank(messageId)) return undefined;
+    const row = this.db.prepare(
+      'SELECT * FROM cr_message_checkpoints WHERE message_id = ? ORDER BY ordinal DESC LIMIT 1',
+    ).get(messageId) as CheckpointRow | undefined;
+    return row === undefined ? undefined : toCheckpointRecord(row);
+  }
+
+  /** Highest Turn checkpoint: guards one shared ordinal sequence per Turn. */
+  lastCheckpointForTurn(turnId: string): CheckpointRecord | undefined {
+    if (!nonBlank(turnId)) return undefined;
+    const row = this.db.prepare(
+      'SELECT * FROM cr_message_checkpoints WHERE turn_id = ? ORDER BY ordinal DESC LIMIT 1',
+    ).get(turnId) as CheckpointRow | undefined;
+    return row === undefined ? undefined : toCheckpointRecord(row);
   }
 
   private assertConversation(workspaceId: string, conversationId: string): void {

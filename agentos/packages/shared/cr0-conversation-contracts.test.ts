@@ -5,12 +5,15 @@ import {
   CONVERSATION_BOUNDARY_RULES,
   CONVERSATION_KINDS,
   CONVERSATION_REPLY_MODES,
+  DEFAULT_CONVERSATION_PROJECTOR_ID,
   MESSAGE_NON_FINAL_STATUSES,
+  MESSAGE_STATUS_TRANSITIONS,
   MENTION_ALL,
   MEMBER_REPLY_MODES,
   MEMBER_ROLES,
   MEMBER_STATUSES,
   canTransitionConversation,
+  canTransitionMessage,
   clientMessageKeyId,
   isAgentTurnTerminal,
   isMessageFinal,
@@ -119,4 +122,26 @@ test('CR0-10 mention targets', () => {
   assert.ok(!validateMentionTarget({ kind: 'agent', agentId: '   ' }));
   assert.ok(!validateMentionTarget({ kind: 'all', agentId: 'agent_1' }));
   assert.ok(!validateMentionTarget(null));
+});
+
+// CR0-11 — CR-3 freezes Message streaming transitions as one-way finalization.
+test('CR0-11 message status transitions', () => {
+  assert.deepEqual([...MESSAGE_STATUS_TRANSITIONS.draft], ['streaming', 'failed', 'deleted']);
+  assert.deepEqual([...MESSAGE_STATUS_TRANSITIONS.streaming], ['final', 'failed', 'deleted']);
+  assert.ok(canTransitionMessage('streaming', 'final'));
+  assert.ok(canTransitionMessage('streaming', 'failed'));
+  assert.ok(canTransitionMessage('draft', 'streaming'));
+  assert.ok(!canTransitionMessage('final', 'streaming'));
+  assert.ok(!canTransitionMessage('failed', 'final'));
+  assert.ok(!canTransitionMessage('deleted', 'draft'));
+  assert.ok(!canTransitionMessage('final', 'failed'));
+});
+
+// CR0-12 — the CR-4b projector identity is frozen and cannot silently drift.
+test('CR0-12 default conversation projector identity', () => {
+  assert.equal(DEFAULT_CONVERSATION_PROJECTOR_ID, 'conversation.event-card.v1');
+  assert.equal(
+    projectionKeyId({ projectorId: DEFAULT_CONVERSATION_PROJECTOR_ID, sourceEventId: 'evt_1' }),
+    'conversation.event-card.v1|evt_1',
+  );
 });

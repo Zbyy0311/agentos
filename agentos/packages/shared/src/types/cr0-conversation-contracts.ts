@@ -109,6 +109,24 @@ export function isMessageFinal(status: MessageStatus): boolean {
   return status === 'final' || status === 'edited';
 }
 
+/**
+ * CR-3 frozen Message status transitions. The durable streaming contract only
+ * needs reservation (draft/streaming) and one-way finalization (final, failed,
+ * deleted); every other transition stays rejected until a later slice freezes it.
+ */
+export const MESSAGE_STATUS_TRANSITIONS = {
+  draft: ['streaming', 'failed', 'deleted'],
+  streaming: ['final', 'failed', 'deleted'],
+  final: [],
+  failed: [],
+  edited: [],
+  deleted: [],
+} as const satisfies Record<MessageStatus, readonly MessageStatus[]>;
+
+export function canTransitionMessage(from: MessageStatus, to: MessageStatus): boolean {
+  return (MESSAGE_STATUS_TRANSITIONS[from] as readonly MessageStatus[]).includes(to);
+}
+
 // ---------------------------------------------------------------------------
 // Agent Turn
 // ---------------------------------------------------------------------------
@@ -260,6 +278,12 @@ export interface ConversationProjectionKeyV1 {
 export function projectionKeyId(key: ConversationProjectionKeyV1): string {
   return key.projectorId + '|' + key.sourceEventId;
 }
+
+/**
+ * Frozen CR-4b projector identity. The projection key column is generalized, so a
+ * later projector must claim its own id instead of colliding with this one.
+ */
+export const DEFAULT_CONVERSATION_PROJECTOR_ID = 'conversation.event-card.v1' as const;
 
 /**
  * Frozen boundary rules: a normal Message never creates a Task or Run, and an

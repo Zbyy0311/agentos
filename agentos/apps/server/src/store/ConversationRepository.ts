@@ -9,6 +9,7 @@ import {
   MESSAGE_KINDS,
   MESSAGE_STATUSES,
   canTransitionConversation,
+  canTransitionMessage,
   type ConversationKind,
   type ConversationLifecycleAction,
   type ConversationReplyMode,
@@ -39,6 +40,7 @@ export type ConversationRepositoryErrorCode =
   | 'CONVERSATION_NOT_TRANSITIONABLE'
   | 'MEMBER_NOT_FOUND'
   | 'MESSAGE_NOT_FOUND'
+  | 'MESSAGE_NOT_TRANSITIONABLE'
   | 'SEQUENCE_CONFLICT'
   | 'PERSISTENCE_FAILED';
 
@@ -135,6 +137,24 @@ export interface MessageRecord {
   readonly version: number;
   readonly createdAt: string;
   readonly updatedAt: string;
+}
+
+export interface TransitionMessageStatusInput {
+  readonly workspaceId: string;
+  readonly messageId: string;
+  readonly expectedVersion: number;
+  readonly to: MessageStatus;
+  readonly content?: string;
+  readonly changedAt: string;
+}
+
+export interface BindMessageReferencesInput {
+  readonly workspaceId: string;
+  readonly messageId: string;
+  readonly expectedVersion: number;
+  readonly taskId?: string;
+  readonly runId?: string;
+  readonly boundAt: string;
 }
 
 interface ConversationRow {
@@ -327,36 +347,43 @@ export class ConversationRepository {
    * second row.
    */
   appendMessage(input: AppendMessageInput): MessageRecord {
-    this.validateMessageInput(input);
     try {
-      return inTransaction(this.db, () => {
-        this.assertConversation(input.workspaceId, input.conversationId);
-        if (input.clientMessageId !== undefined) {
-          const existing = this.db.prepare(
-            'SELECT * FROM cr_messages WHERE conversation_id = ? AND client_message_id = ?',
-          ).get(input.conversationId, input.clientMessageId) as MessageRow | undefined;
-          if (existing !== undefined) return toMessageRecord(existing);
-        }
-        const next = (this.db.prepare(
-          'SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM cr_messages WHERE conversation_id = ?',
-        ).get(input.conversationId) as { next: number }).next;
-        this.db.prepare(
-          'INSERT INTO cr_messages (id, conversation_id, workspace_id, sequence, sender_type, sender_agent_id, kind, status, content, client_message_id, task_id, run_id, source_event_id, reply_to_message_id, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
-        ).run(
-          input.id, input.conversationId, input.workspaceId, next, input.senderType,
-          input.senderAgentId ?? null, input.kind, input.status, input.content,
-          input.clientMessageId ?? null, input.taskId ?? null, input.runId ?? null,
-          input.sourceEventId ?? null, input.replyToMessageId ?? null,
-          input.createdAt, input.createdAt,
-        );
-        this.db.prepare(
-          'UPDATE cr_conversations SET last_message_id = ?, last_message_at = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ?',
-        ).run(input.id, input.createdAt, input.createdAt, input.workspaceId, input.conversationId);
-        return this.requireMessage(input.workspaceId, input.id);
-      });
+      return inTransaction(this.db, () => this.appendMessageWithinTransaction(input));
     } catch (error) {
       throw this.publicError(error);
     }
+  }
+
+  /**
+   * Transaction-free variant: callers already inside `inTransaction` compose a
+   * Message append with other durable writes (for example the CR-3 streaming
+   * reservation and finalization).
+   */
+  appendMessageWithinTransaction(input: AppendMessageInput): MessageRecord {
+    this.validateMessageInput(input);
+    this.assertConversation(input.workspaceId, input.conversationId);
+    if (input.clientMessageId !== undefined) {
+      const existing = this.db.prepare(
+        'SELECT * FROM cr_messages WHERE conversation_id = ? AND client_message_id = ?',
+      ).get(input.conversationId, input.clientMessageId) as MessageRow | undefined;
+      if (existing !== undefined) return toMessageRecord(existing);
+    }
+    const next = (this.db.prepare(
+      'SELECT COALESCE(MAX(sequence), 0) + 1 AS next FROM cr_messages WHERE conversation_id = ?',
+    ).get(input.conversationId) as { next: number }).next;
+    this.db.prepare(
+      'INSERT INTO cr_messages (id, conversation_id, workspace_id, sequence, sender_type, sender_agent_id, kind, status, content, client_message_id, task_id, run_id, source_event_id, reply_to_message_id, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
+    ).run(
+      input.id, input.conversationId, input.workspaceId, next, input.senderType,
+      input.senderAgentId ?? null, input.kind, input.status, input.content,
+      input.clientMessageId ?? null, input.taskId ?? null, input.runId ?? null,
+      input.sourceEventId ?? null, input.replyToMessageId ?? null,
+      input.createdAt, input.createdAt,
+    );
+    this.db.prepare(
+      'UPDATE cr_conversations SET last_message_id = ?, last_message_at = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ?',
+    ).run(input.id, input.createdAt, input.createdAt, input.workspaceId, input.conversationId);
+    return this.requireMessage(input.workspaceId, input.id);
   }
 
   /**
@@ -415,6 +442,88 @@ export class ConversationRepository {
       'SELECT * FROM cr_messages WHERE workspace_id = ? AND source_event_id = ? ORDER BY sequence ASC LIMIT 1',
     ).get(workspaceId, sourceEventId) as MessageRow | undefined;
     return row === undefined ? undefined : toMessageRecord(row);
+  }
+
+  /**
+   * CR-4 bridge seam: bind durable Task/Run references onto a Message under
+   * optimistic concurrency. Message identity, sequence, and content are
+   * untouched; a reference is only ever added, never cleared.
+   */
+  bindMessageReferences(input: BindMessageReferencesInput): MessageRecord {
+    try {
+      return inTransaction(this.db, () => this.bindMessageReferencesWithinTransaction(input));
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /** Transaction-free variant for callers already inside `inTransaction`. */
+  bindMessageReferencesWithinTransaction(input: BindMessageReferencesInput): MessageRecord {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.messageId)
+      || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
+      || !nonBlank(input.boundAt)
+      || (input.taskId === undefined && input.runId === undefined)) {
+      throw new ConversationRepositoryError('INPUT_INVALID');
+    }
+    const current = this.db.prepare(
+      'SELECT * FROM cr_messages WHERE workspace_id = ? AND id = ?',
+    ).get(input.workspaceId, input.messageId) as MessageRow | undefined;
+    if (current === undefined) throw new ConversationRepositoryError('MESSAGE_NOT_FOUND');
+    if (current.version !== input.expectedVersion) {
+      throw new ConversationRepositoryError('MESSAGE_NOT_TRANSITIONABLE');
+    }
+    this.db.prepare(
+      'UPDATE cr_messages SET task_id = COALESCE(?, task_id), run_id = COALESCE(?, run_id), version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
+    ).run(
+      input.taskId ?? null, input.runId ?? null, input.boundAt,
+      input.workspaceId, input.messageId, input.expectedVersion,
+    );
+    return this.requireMessage(input.workspaceId, input.messageId);
+  }
+
+  findMessageById(workspaceId: string, messageId: string): MessageRecord | undefined {
+    if (!nonBlank(workspaceId) || !nonBlank(messageId)) return undefined;
+    const row = this.db.prepare(
+      'SELECT * FROM cr_messages WHERE workspace_id = ? AND id = ?',
+    ).get(workspaceId, messageId) as MessageRow | undefined;
+    return row === undefined ? undefined : toMessageRecord(row);
+  }
+
+  /**
+   * CR-3 finalization primitive: move a Message to a frozen next status under
+   * optimistic concurrency. Identity fields stay immutable and the allowed
+   * transition set is frozen by the shared contracts.
+   */
+  transitionMessageStatus(input: TransitionMessageStatusInput): MessageRecord {
+    try {
+      return inTransaction(this.db, () => this.transitionMessageStatusWithinTransaction(input));
+    } catch (error) {
+      throw this.publicError(error);
+    }
+  }
+
+  /** Transaction-free variant of `transitionMessageStatus`. */
+  transitionMessageStatusWithinTransaction(input: TransitionMessageStatusInput): MessageRecord {
+    if (!nonBlank(input.workspaceId) || !nonBlank(input.messageId)
+      || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
+      || !nonBlank(input.changedAt) || !isMessageStatus(input.to)) {
+      throw new ConversationRepositoryError('INPUT_INVALID');
+    }
+    const current = this.db.prepare(
+      'SELECT * FROM cr_messages WHERE workspace_id = ? AND id = ?',
+    ).get(input.workspaceId, input.messageId) as MessageRow | undefined;
+    if (current === undefined) throw new ConversationRepositoryError('MESSAGE_NOT_FOUND');
+    if (current.version !== input.expectedVersion
+      || !canTransitionMessage(current.status as MessageStatus, input.to)) {
+      throw new ConversationRepositoryError('MESSAGE_NOT_TRANSITIONABLE');
+    }
+    this.db.prepare(
+      'UPDATE cr_messages SET status = ?, content = COALESCE(?, content), version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
+    ).run(
+      input.to, input.content ?? null, input.changedAt,
+      input.workspaceId, input.messageId, input.expectedVersion,
+    );
+    return this.requireMessage(input.workspaceId, input.messageId);
   }
 
   private validateMessageInput(input: AppendMessageInput): void {
