@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 IN PR #106 (pending review/merge) — CR-5 IN PR #107 (stacked on #106; migration 023; pending review/merge) — CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
+Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 IN PR #106; CR-5 IN PR #107 (stacked) — CR-6 IMPLEMENTED (history read surface, no migration) — CONVERSATION RUNTIME COMPLETE PENDING REVIEW/MERGE
 
 ## 1. Purpose
 
@@ -29,7 +29,7 @@ without re-auditing the repository.
 | CR-4a | Explicit Task/Run bridge from a Message | **COMMITTED** (`1218a23b`, pending review/merge) | `ConversationBridgeService.ts`, `CR4-schema-authorization.md` |
 | CR-4b | Idempotent Runtime Event projection (migration 022) | **COMMITTED** (`1218a23b`, pending review/merge) | `cr4-migration-022.test.ts`, `ConversationProjectionService.ts` |
 | CR-5 | Bounded Group budgets/stop/loop guard + per-Agent context | **IN PR #107** (stacked on #106; migration 023) | `BoundedGroupService.ts`, `CR5-schema-authorization.md` |
-| CR-6 | Archive/restore + history references | **PARTIAL** (archive/restore merged; history NOT STARTED) | — |
+| CR-6 | Archive/restore + history references | **IMPLEMENTED** (history read surface; archive/restore merged in CR-1) | `AgentHistoryService.ts` |
 
 ## 4. Merged evidence
 
@@ -53,6 +53,7 @@ CR-3/CR-4 evidence at commit `1218a23b` (not merged — `docs/implementation/mil
 | CR-5 migration 023 schema | 8/8 PASS |
 | CR-5 bounded group | 17/17 PASS |
 | Full Server run (CR-5 tree, hash-frozen) | 2555 total, 2548 passed, 4 failed, 3 skipped |
+| CR-6 history read surface | 7/7 PASS |
 | CR-1 ConversationRepository (refactored seams) | 15/15 PASS |
 | CR-2 AgentTurnRepository (refactored seams) | 14/14 PASS |
 | CR-0 contracts including CR0-11 | 11/11 PASS |
@@ -127,7 +128,7 @@ resolution, and the projector identity set.
 - per-Agent isolated Memory Context;
 - `@all` never authorizes parallel modification.
 
-### CR-6 — History references (NOT STARTED)
+### CR-6 — History references (IMPLEMENTED — no migration; read surface over existing durable tables)
 
 - unified Agent History links across Conversation/Message/Task/Run/Memory/
   Artifact;
