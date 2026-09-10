@@ -25,7 +25,7 @@ beyond the merged evidence it cites.
 | Minimal Git Observation + Workspace single-writer rule | **COMPLETE** | PR #68–#76 (L1A–L1E) |
 | Recovery closeout | **COMPLETE** | PR #77 |
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
-| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3 + CR-4a + CR-4b COMMITTED, PENDING REVIEW/MERGE** (`1218a23b` on `runtime/cr3-cr4-conversation-runtime`) | PR #95–#97, #105; `CR-progress.md`, `CR3-streaming-contract.md`, `CR4-schema-authorization.md` |
+| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3 + CR-4a + CR-4b IN PR #106, PENDING REVIEW/MERGE** | PR #95–#97, #105, #106; `CR-progress.md`, `CR3-streaming-contract.md`, `CR4-schema-authorization.md` |
 | Polished UI Foundation | **PARTIAL (tokens MERGED)** | PR #100; four-column shell still open |
 | Direct Conversation UX | **NOT STARTED** | — |
 | Lite Runtime Inspector | **PARTIAL (projection MERGED)** | PR #101; UI surface still open |

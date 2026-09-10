@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4a + CR-4b COMMITTED on runtime/cr3-cr4-conversation-runtime (1218a23b, pushed, PENDING REVIEW/MERGE; migration 022) — CR-5/CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
+Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4a + CR-4b IN PR #106 (runtime/cr3-cr4-conversation-runtime, pending review/merge; migration 022) — CR-5/CR-6 NOT STARTED — CONVERSATION RUNTIME IN PROGRESS
 
 ## 1. Purpose
 
