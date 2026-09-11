@@ -25,6 +25,7 @@ import { RunEngineProviderDispatcher } from './RunEngineProviderDispatcher.js';
 import { WorkspaceAdmissionAuthority } from '../WorkspaceAdmissionAuthority.js';
 import { MemoryContextBudgetSelector } from '../MemoryContextBudgetSelector.js';
 import { MemoryContextResolver } from '../MemoryContextResolver.js';
+import { MemoryCandidateGenerationService } from '../MemoryCandidateGenerationService.js';
 import { MemoryEntryRepository } from '../../store/MemoryEntryRepository.js';
 import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
 import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
@@ -112,6 +113,17 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     coordinator,
     admissionGate: admissionAuthority,
     memoryContextResolver,
+    // MF-2R terminal-outcome trigger: bounded Evidence Bundle candidate after
+    // the terminal commit; failures surface on stderr and never affect the Run.
+    memoryCandidateGenerator: new MemoryCandidateGenerationService({
+      store,
+      runs: store.runRepository(),
+      stages: store.runStageRepository(),
+      tasks: store.taskRepository(),
+    }),
+    onCandidateGenerationError: (error, runId) => {
+      console.error(`MEMORY_CANDIDATE_GENERATION_FAILED run=${runId}:`, error);
+    },
     runRepository: store.runRepository(),
     runStageRepository: store.runStageRepository(),
     runSnapshotRepository: store.runSnapshotRepository(),

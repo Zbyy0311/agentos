@@ -67,6 +67,22 @@ export interface RunEngineProviderDispatcherOptions {
   readonly memoryContextResolver?: MemoryContextResolverPort;
   /** P6-M1: called for any dispatch failure that could not be folded into a canonical lifecycle transition. */
   readonly onDispatchFailure?: (report: DispatchFailureReport) => void;
+  /**
+   * MF-2R terminal-outcome trigger. When supplied, candidate generation runs
+   * AFTER completeRun commits. Generation is enrichment: a failure is caught
+   * and reported through onCandidateGenerationError, and never changes the
+   * already-terminal Run.
+   */
+  readonly memoryCandidateGenerator?: MemoryCandidateGenerationPort;
+  readonly onCandidateGenerationError?: (error: unknown, runId: string) => void;
+}
+
+export interface MemoryCandidateGenerationPort {
+  readonly generateForRunTerminal: (input: {
+    readonly workspaceId: string;
+    readonly runId: string;
+    readonly createdAt: string;
+  }) => unknown;
 }
 
 export type RunEngineProviderDriveResult =
@@ -116,6 +132,8 @@ export class RunEngineProviderDispatcher {
   private readonly maxDispatchSteps: number;
   private readonly memoryContextResolver: MemoryContextResolverPort | undefined;
   private readonly onDispatchFailure: ((report: DispatchFailureReport) => void) | undefined;
+  private readonly memoryCandidateGenerator: MemoryCandidateGenerationPort | undefined;
+  private readonly onCandidateGenerationError: ((error: unknown, runId: string) => void) | undefined;
 
   constructor(options: RunEngineProviderDispatcherOptions) {
     this.engine = options.engine;
@@ -131,6 +149,8 @@ export class RunEngineProviderDispatcher {
     this.maxDispatchSteps = options.maxDispatchSteps ?? 128;
     this.memoryContextResolver = options.memoryContextResolver;
     this.onDispatchFailure = options.onDispatchFailure;
+    this.memoryCandidateGenerator = options.memoryCandidateGenerator;
+    this.onCandidateGenerationError = options.onCandidateGenerationError;
   }
 
   async drive(workspaceId: string, runId: string): Promise<RunEngineProviderDriveResult> {
@@ -450,6 +470,7 @@ ${basePrompt}`;
           artifactIds: [...outcome.artifactIds],
           outputContractSatisfied: outcome.outputContractSatisfied,
         });
+        this.generateTerminalMemoryCandidate(workspaceId, runId);
       } else {
         await this.lifecycleTransactionService.transitionStage({
           workspaceId,
@@ -486,6 +507,23 @@ ${basePrompt}`;
     const run = this.runRepository.findById(workspaceId, runId);
     if (run === undefined) throw new Error('RUN_NOT_FOUND: ' + runId);
     return run;
+  }
+
+  /**
+   * MF-2R: fire the terminal-outcome candidate trigger after the terminal
+   * commit. A generation failure is reported and never mutates the Run.
+   */
+  private generateTerminalMemoryCandidate(workspaceId: string, runId: string): void {
+    if (this.memoryCandidateGenerator === undefined) return;
+    try {
+      this.memoryCandidateGenerator.generateForRunTerminal({
+        workspaceId,
+        runId,
+        createdAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      this.onCandidateGenerationError?.(error, runId);
+    }
   }
 
   /**

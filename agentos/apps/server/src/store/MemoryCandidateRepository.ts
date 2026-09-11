@@ -425,6 +425,19 @@ export class MemoryCandidateRepository {
     return row?.id;
   }
 
+  /**
+   * MF-2R: normalized-text-hash lookup (dedup order step 2). A hit is a
+   * near-duplicate SIGNAL — the caller marks duplicate handling unresolved so
+   * the promotion gate routes to review; it never converges silently.
+   */
+  findEntryByNormalizedHash(workspaceId: string, hash: string): string | undefined {
+    if (!nonBlank(workspaceId) || !nonBlank(hash)) return undefined;
+    const row = this.db.prepare(
+      'SELECT id FROM memory_entries WHERE workspace_id = ? AND normalized_text_hash = ? ORDER BY id ASC LIMIT 1',
+    ).get(workspaceId, hash) as { id: string } | undefined;
+    return row?.id;
+  }
+
   private validateCandidateInput(input: CreateMemoryCandidateInput): void {
     if (typeof input !== 'object' || input === null) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.title)

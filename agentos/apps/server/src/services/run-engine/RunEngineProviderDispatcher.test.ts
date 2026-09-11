@@ -236,6 +236,8 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly admissionEvidenceJson?: string | null;
   readonly admissionEvidenceCollector?: WorkspaceAdmissionEvidenceCollector;
   readonly memoryContextResolver?: import('./RunEngineProviderDispatcher.js').MemoryContextResolverPort;
+  readonly memoryCandidateGenerator?: import('./RunEngineProviderDispatcher.js').MemoryCandidateGenerationPort;
+  readonly onCandidateGenerationError?: (error: unknown, runId: string) => void;
 } = {}) {
   const db = migratedDb();
   seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
@@ -309,6 +311,8 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
       now: () => new Date(NOW),
     }),
     ...(behavior.memoryContextResolver === undefined ? {} : { memoryContextResolver: behavior.memoryContextResolver }),
+    ...(behavior.memoryCandidateGenerator === undefined ? {} : { memoryCandidateGenerator: behavior.memoryCandidateGenerator }),
+    ...(behavior.onCandidateGenerationError === undefined ? {} : { onCandidateGenerationError: behavior.onCandidateGenerationError }),
     onDispatchFailure: report => { dispatchFailures.push(report); },
   });
   return { db, root, runRepo, runStageRepo, events, outbox, driver, dispatcher, operationService, coordinatorCalls, capturedInputs, dispatchFailures };
@@ -804,6 +808,51 @@ describe('RunEngineProviderDispatcher E2E', () => {
     try {
       await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
       assert.equal(fx.driver.spawnCalls, 0, 'a snapshot failure must not spawn a provider process');
+    } finally { close(fx); }
+  });
+
+  it('MF-2R integration: terminal completion fires the candidate trigger once, Run-scoped', async () => {
+    const calls: Array<{ workspaceId: string; runId: string; createdAt: string }> = [];
+    const generator = {
+      generateForRunTerminal: (input: { workspaceId: string; runId: string; createdAt: string }) => {
+        calls.push(input);
+      },
+    };
+    const fx = fixture(
+      new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])),
+      false,
+      { memoryCandidateGenerator: generator },
+    );
+    try {
+      await fx.dispatcher.driveSafely(WS, RUN);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      assert.equal(calls.length, 1, 'one terminal-outcome trigger per Run completion');
+      assert.equal(calls[0]!.workspaceId, WS);
+      assert.equal(calls[0]!.runId, RUN);
+    } finally { close(fx); }
+  });
+
+  it('MF-2R integration: a failing generator never changes the terminal Run', async () => {
+    const errors: unknown[] = [];
+    const generator = {
+      generateForRunTerminal: () => { throw new Error('MEMORY_CANDIDATE_GENERATION_FAILED'); },
+    };
+    const fx = fixture(
+      new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])),
+      false,
+      {
+        memoryCandidateGenerator: generator,
+        onCandidateGenerationError: (error) => { errors.push(error); },
+      },
+    );
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      assert.equal(
+        fx.runRepo.findById(WS, RUN)?.status,
+        'completed',
+        'generation failure must not affect the terminal Run',
+      );
+      assert.equal(errors.length, 1);
     } finally { close(fx); }
   });
 });
