@@ -44,7 +44,11 @@ errors. Frozen payload design and historical replay behavior are documented in
 `MF-snapshot-replay-design.md`. Full server first run: 2617 total, 2608 passed,
 6 failed, 3 skipped. Two missed migration-order assertions outside the migration
 test directory were corrected and passed targeted verification (2/2). Four
-Windows ENOTEMPTY teardown failures remain recorded; CI closeout is pending.
+Windows ENOTEMPTY teardown failures remain recorded. All four reproduced in a
+detached `800d6dd2` baseline checkout on the same Node 24 environment. Baseline
+tests reused unchanged workspace dependency builds; the first Conversation
+attempt lacked a shared dist link, then reproduced ENOTEMPTY once that setup
+issue was corrected. No full-suite rerun was used. CI closeout is pending.
 
 Record each fix with its commit, focused behavioral tests and CI result.
 Do not treat a green component test or a merged PR as proof of the full Lite
