@@ -29,7 +29,7 @@ beyond the merged evidence it cites.
 | Polished UI Foundation | **MERGED (tokens + four-column shell)** | PR #100, #109; `WorkbenchShell.tsx` |
 | Direct Conversation UX | **MERGED (routes, reply stream, client, view, controller, page)** | PR #110–#114 |
 | Lite Runtime Inspector | **MERGED (projection + route + UI)** | PR #101, #115; `runtimeInspector.ts`, `RuntimeInspectorView.tsx` |
-| Controlled Group Conversation | **MERGED (bounded routes + budget/stop/loop-guard view + speaker orchestration)** | PR #116; `BoundedGroupView.tsx`; audit + decisions #129; resolver + bounded walk #130 (`GroupSpeakerResolver.ts`, `GroupTurnDriver.ts`) |
+| Controlled Group Conversation | **MERGED (bounded routes + budget/stop/loop-guard view + speaker orchestration + forward-UI walk wiring)** | PR #116; `BoundedGroupView.tsx`; audit + decisions #129; resolver + bounded walk #130 (`GroupSpeakerResolver.ts`, `GroupTurnDriver.ts`); forward-UI walk wiring #132 (`GroupConversationCanvas.tsx`) |
 | Workflow Templates | **MERGED (catalog + instantiation + durable Task/Run/Stage wiring)** | PR #99, #103, #117; `WF-templates-durable-wiring.md` |
 | Agent History + Search | **MERGED (CR-6 read surface + search UI)** | PR #108, #118; `HistorySearchView.tsx` |
 
@@ -55,6 +55,7 @@ beyond the merged evidence it cites.
 | MF-5 UI | web 162/162 PASS; `next build` clean |
 | MF-5 Workspace Event stream (migration 025 + writer/authority/sequence, gates A5..A18) | 12/12 + 3/3 + 1/1 + 8/8 PASS; full Server 2673/2666/4/3 |
 | Controlled Group speaker orchestration (resolver + bounded walk) | 7/7 + 7/7 PASS; route 5/5; full Server 2689/2682/4/3 |
+| Controlled Group forward-UI walk wiring | web 170/170 PASS; `next build` clean |
 
 The 2 server failures are pre-existing Windows `tar` environment issues in
 `WorktreeArtifactService`, unrelated to the Lite work. First runs were
