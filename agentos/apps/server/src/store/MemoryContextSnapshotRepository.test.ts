@@ -158,6 +158,25 @@ test('MF4R-03 a later snapshot appends without rewriting history', () => {
   } finally { fx.close(); }
 });
 
+// MF4R-09 — MF-5 API read: every snapshot of a Run in creation order.
+test('MF4R-09 listForRun returns all snapshots in creation order', () => {
+  const fx = fixture();
+  try {
+    assert.deepEqual(fx.repo.listForRun(WS, RUN), []);
+    fx.repo.createSnapshot(snapshotInput());
+    fx.repo.createSnapshot(snapshotInput({ id: SNAP + '2', createdAt: NOW2, stageId: 'stage_mf4r', totalTokens: 20 }));
+    const listed = fx.repo.listForRun(WS, RUN);
+    assert.equal(listed.length, 2);
+    assert.equal(listed[0]!.id, SNAP);
+    assert.equal(listed[0]!.stageId, null);
+    assert.equal(listed[1]!.id, SNAP + '2');
+    assert.equal(listed[1]!.stageId, 'stage_mf4r');
+    // Workspace-scoped and input-guarded.
+    assert.deepEqual(fx.repo.listForRun('ws_other', RUN), []);
+    assert.deepEqual(fx.repo.listForRun('', ''), []);
+  } finally { fx.close(); }
+});
+
 // MF4R-04 — invalid input fails closed.
 test('MF4R-04 invalid input fails closed', () => {
   const fx = fixture();

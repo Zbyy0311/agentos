@@ -33,6 +33,7 @@ import { createRunRoutes } from './routes/runs.js';
 import { createArtifactRoutes } from './routes/artifacts.js';
 import { createMemoryRoutes } from './routes/memories.js';
 import { createMemoryCandidateRoutes } from './routes/memoryCandidates.js';
+import { createMemoryRuntimeRoutes } from './routes/memoryRuntime.js';
 import { createApiNotFoundHandler, createProblemErrorHandler, createRequestIdMiddleware } from './problemDetails.js';
 import { getSignalExitCode } from './signals.js';
 import { resolveProjectRoot } from './projectRoot.js';
@@ -286,6 +287,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createArtifactRoutes(store, workspaceManager, artifactService));
     app.use('/api/workspaces/:workspaceId', createMemoryRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createMemoryCandidateRoutes(store, workspaceManager, eventBus));
+    app.use('/api/workspaces/:workspaceId', createMemoryRuntimeRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId', createAgentPresenceRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store));

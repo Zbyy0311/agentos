@@ -56,7 +56,13 @@ export interface RetrievedMemoryEntry {
 }
 
 export interface RetrieveMemoryResult {
-  /** True when FTS5 was unavailable and structured filters were used instead. */
+  readonly results: RetrievedMemoryEntry[];
+  /**
+   * True when a non-blank query was supplied but FTS ranking was not applied
+   * (FTS5 unavailable/error, or the query held no usable tokens after
+   * neutralization). Structured filters and deterministic ranking still ran;
+   * the caller must surface this visibly (MF-3 contract).
+   */
   readonly degraded: boolean;
 }
 
@@ -75,6 +81,14 @@ export class MemoryRetrievalService {
   constructor(private readonly entries: MemoryEntryRepository) {}
 
   retrieve(input: RetrieveMemoryInput): RetrievedMemoryEntry[] {
+    return this.retrieveWithStatus(input).results;
+  }
+
+  /**
+   * MF-5 API seam: retrieve with the FTS-degraded flag that the read surface
+   * must expose. `retrieve` remains the budget-selector contract.
+   */
+  retrieveWithStatus(input: RetrieveMemoryInput): RetrieveMemoryResult {
     if (typeof input !== 'object' || input === null || typeof input.context !== 'object' || input.context === null) {
       throw new MemoryRetrievalError('INPUT_INVALID');
     }
@@ -108,7 +122,8 @@ export class MemoryRetrievalService {
       return true;
     });
 
-    const ftsRanks = this.readFtsRanks(context.workspaceId, input.query, filtered.map(entry => entry.id));
+    const fts = this.readFtsRanks(context.workspaceId, input.query, filtered.map(entry => entry.id));
+    const ftsRanks = fts.ranks;
     const nowMs = Date.now();
     const rankingCandidates: MemoryRankingCandidate[] = filtered.map(entry => ({
       memoryId: entry.id,
@@ -128,13 +143,16 @@ export class MemoryRetrievalService {
 
     const byId = new Map(filtered.map(entry => [entry.id, entry]));
     const limit = input.limit ?? ranked.length;
-    return ranked.slice(0, limit).map(result => ({
-      entry: byId.get(result.memoryId) as MemoryEntryRecord,
-      rank: result.rank,
-      score: result.score,
-      reasons: result.reasons,
-      ftsRank: ftsRanks.get(result.memoryId) ?? null,
-    }));
+    return {
+      degraded: fts.degraded,
+      results: ranked.slice(0, limit).map(result => ({
+        entry: byId.get(result.memoryId) as MemoryEntryRecord,
+        rank: result.rank,
+        score: result.score,
+        reasons: result.reasons,
+        ftsRank: ftsRanks.get(result.memoryId) ?? null,
+      })),
+    };
   }
 
   /**
@@ -146,11 +164,11 @@ export class MemoryRetrievalService {
     workspaceId: string,
     query: string | undefined,
     ids: readonly string[],
-  ): Map<string, number> {
+  ): { readonly ranks: Map<string, number>; readonly degraded: boolean } {
     const ranks = new Map<string, number>();
-    if (query === undefined || !nonBlank(query) || ids.length === 0) return ranks;
+    if (query === undefined || !nonBlank(query) || ids.length === 0) return { ranks, degraded: false };
     const ftsQuery = toSafeFtsQuery(query);
-    if (ftsQuery === null) return ranks;
+    if (ftsQuery === null) return { ranks, degraded: true };
     const db = this.entries.getDatabase();
     const placeholders = ids.map(() => '?').join(', ');
     try {
@@ -166,8 +184,8 @@ export class MemoryRetrievalService {
       for (const row of rows) ranks.set(row.id, row.rank);
     } catch {
       // Degraded mode: no FTS rank; structured filters remain authoritative.
-      return new Map();
+      return { ranks: new Map(), degraded: true };
     }
-    return ranks;
+    return { ranks, degraded: false };
   }
 }
