@@ -186,6 +186,20 @@ export class MemoryContextSnapshotRepository {
     return this.toRecord(row);
   }
 
+  /**
+   * MF-5 API: every snapshot a Run received, in creation order. A Run with
+   * multiple Stages freezes one snapshot per Stage; the read surface must
+   * expose all of them so a caller can answer "what did this Run or Stage
+   * receive" without guessing which single snapshot is authoritative.
+   */
+  listForRun(workspaceId: string, runId: string): MemoryContextSnapshotRecord[] {
+    if (!nonBlank(workspaceId) || !nonBlank(runId)) return [];
+    const rows = this.db.prepare(
+      'SELECT * FROM memory_context_snapshots WHERE workspace_id = ? AND run_id = ? ORDER BY created_at ASC, id ASC',
+    ).all(workspaceId, runId) as SnapshotRow[];
+    return rows.map(row => this.toRecord(row));
+  }
+
   private validateInput(input: CreateMemoryContextSnapshotInput): void {
     if (typeof input !== 'object' || input === null) throw new MemoryContextSnapshotError('INPUT_INVALID');
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.runId)
