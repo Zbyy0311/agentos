@@ -1,6 +1,6 @@
 # Lite Fast Track — Progress Summary
 
-Status: IN PROGRESS — merged slice evidence is recorded below; Memory Foundation integration and controlled group speaker orchestration remain open
+Status: IN PROGRESS — merged slice evidence is recorded below. Controlled Group speaker orchestration (incl. the forward-UI walk wiring) is merged (PR #129/#130/#132). The one Fast-Track step still PARTIAL is Memory Foundation: its remaining item is the MF-2 candidate-generation triggers beyond the terminal-outcome trigger, which need new durable seams (approval decision, review/test artifact, compaction, import, user save) and therefore a new authorization before any implementation.
 
 ## 1. Purpose
 
