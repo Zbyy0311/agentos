@@ -123,6 +123,86 @@ function count(db: SqliteDb, sql: string, ...params: unknown[]): number {
   return (db.prepare(sql).get(...params) as { c: number }).c;
 }
 
+function candidateInput(id: string, auto = false) {
+  return {
+    id, workspaceId: WS, scope: 'task' as const, ownerTaskId: TASK,
+    category: 'decision' as const, authority: 'system-verified' as const,
+    confidence: 0.9, importance: 0.5, title: 'candidate', content: 'bounded',
+    sources: [{ kind: 'run' as const, id: RUN }], createdAt: NOW,
+    minConfidence: auto ? 0.5 : 1, maxTokenEstimate: 100,
+    runId: RUN, eventContext: EVENT_CONTEXT,
+  };
+}
+
+test('candidate rejection records review with no invented Entry lifecycle event', () => {
+  const fx = fixture();
+  try {
+    fx.emitter.emitCandidateCreated(candidateInput('reject-me'));
+    const reviewed = fx.emitter.emitCandidateReviewed({ workspaceId: WS, candidateId: 'reject-me',
+      expectedVersion: 1, outcome: 'reject', reviewedAt: NOW, runId: RUN, eventContext: EVENT_CONTEXT });
+    const row = fx.db.prepare('SELECT type, payload_json FROM runtime_events WHERE id = ?').get(reviewed.eventId) as { type: string; payload_json: string };
+    assert.equal(row.type, 'memory.candidate_reviewed');
+    assert.deepEqual(JSON.parse(row.payload_json), { candidateId: 'reject-me', candidateVersion: 2, outcome: 'reject', memoryEntryId: null });
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM memory_entries'), 0);
+    assert.equal(count(fx.db, "SELECT COUNT(*) AS c FROM runtime_events WHERE type LIKE 'memory.entry_%'"), 0);
+    assert.deepEqual(reviewed.additionalEvents, []);
+  } finally { fx.close(); }
+});
+
+test('accepted review records separate Candidate and actual Entry versions', () => {
+  const fx = fixture();
+  try {
+    fx.emitter.emitCandidateCreated(candidateInput('accept-me'));
+    const reviewed = fx.emitter.emitCandidateReviewed({ workspaceId: WS, candidateId: 'accept-me',
+      expectedVersion: 1, outcome: 'accept', reviewedAt: NOW, runId: RUN, eventContext: EVENT_CONTEXT });
+    assert.equal(reviewed.record.version, 2);
+    assert.equal(reviewed.additionalEvents?.length, 1);
+    const row = fx.db.prepare('SELECT type, payload_json FROM runtime_events WHERE id = ?').get(reviewed.additionalEvents![0].eventId) as { type: string; payload_json: string };
+    assert.equal(row.type, 'memory.entry_created');
+    assert.equal(JSON.parse(row.payload_json).version, 1);
+    assert.equal(JSON.parse(row.payload_json).memoryEntryId, reviewed.record.mergedIntoEntryId);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM memory_entries'), 1);
+  } finally { fx.close(); }
+});
+
+test('merge review emits deduplication with the persisted target version, not creation', () => {
+  const fx = fixture();
+  try {
+    fx.emitter.emitEntryCreated(entryInput());
+    fx.emitter.emitCandidateCreated({ ...candidateInput('merge-me'), sources: [{ kind: 'artifact', id: 'new-evidence' }] });
+    const reviewed = fx.emitter.emitCandidateReviewed({ workspaceId: WS, candidateId: 'merge-me',
+      expectedVersion: 1, outcome: 'merge-with-existing', mergedIntoEntryId: MEM,
+      reviewedAt: NOW, runId: RUN, eventContext: EVENT_CONTEXT });
+    const row = fx.db.prepare('SELECT type, payload_json FROM runtime_events WHERE id = ?').get(reviewed.additionalEvents![0].eventId) as { type: string; payload_json: string };
+    assert.equal(row.type, 'memory.entry_deduplicated');
+    assert.equal(JSON.parse(row.payload_json).memoryEntryId, MEM);
+    assert.equal(JSON.parse(row.payload_json).version, 2);
+    assert.equal(count(fx.db, "SELECT COUNT(*) AS c FROM runtime_events WHERE type = 'memory.entry_created'"), 1);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM memory_entries'), 1);
+  } finally { fx.close(); }
+});
+
+test('automatic promotion and both events roll back if secondary Outbox insertion fails', () => {
+  const fx = fixture();
+  try {
+    fx.db.prepare(`CREATE TRIGGER fail_entry_outbox BEFORE INSERT ON outbox_messages
+      WHEN (SELECT type FROM runtime_events WHERE id = NEW.event_id) = 'memory.entry_created'
+      BEGIN SELECT RAISE(ABORT, 'injected outbox failure'); END`).run();
+    assert.throws(() => fx.emitter.emitCandidateCreated(candidateInput('auto', true)), /EMISSION_FAILED/);
+    for (const table of ['memory_candidate_entries', 'memory_entries', 'runtime_events', 'outbox_messages']) {
+      assert.equal(count(fx.db, `SELECT COUNT(*) AS c FROM ${table}`), 0, table);
+    }
+    fx.db.prepare('DROP TRIGGER fail_entry_outbox').run();
+    const result = fx.emitter.emitCandidateCreated(candidateInput('auto', true));
+    assert.equal(result.additionalEvents?.length, 1);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM memory_entries'), 1);
+    assert.deepEqual(fx.db.prepare('SELECT type, sequence FROM runtime_events ORDER BY sequence').all().map(row => ({ ...(row as object) })), [
+      { type: 'memory.candidate_created', sequence: 1 }, { type: 'memory.entry_created', sequence: 2 },
+    ]);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 2);
+  } finally { fx.close(); }
+});
+
 // MF5E-01 — entry create and its Event + Outbox commit together.
 test('MF5E-01 entry create emits entry_created with one Outbox row', () => {
   const fx = fixture();

@@ -72,6 +72,8 @@ export interface MemoryFactEmissionResult<TRecord> {
   readonly record: TRecord;
   readonly eventId: string;
   readonly outboxId: string;
+  /** Related Entry facts, committed atomically after the primary fact. */
+  readonly additionalEvents?: readonly { readonly eventId: string; readonly outboxId: string }[];
 }
 
 interface RunScope {
@@ -159,6 +161,10 @@ export class MemoryRuntimeEventEmitter {
       return {
         record,
         type: 'memory.candidate_created',
+        additional: record.mergedIntoEntryId === null ? [] : [{
+          type: 'memory.entry_created',
+          payload: entryPayload(this.requireEntry(record.workspaceId, record.mergedIntoEntryId)),
+        }],
         payload: {
           candidateId: record.id,
           scope: record.scope,
@@ -170,7 +176,7 @@ export class MemoryRuntimeEventEmitter {
     }, scope);
   }
 
-  /** Review a Candidate and emit the resulting Entry lifecycle Event in one transaction. */
+  /** Record the review itself, plus only the Entry mutation that actually occurred. */
   emitCandidateReviewed(
     input: ReviewMemoryCandidateInput & {
       readonly runId: string;
@@ -182,15 +188,19 @@ export class MemoryRuntimeEventEmitter {
     const scope = this.resolveScope(input);
     return this.emit(() => {
       const record = this.candidates.reviewCandidateWithinTransaction(input);
+      const additional = record.mergedIntoEntryId === null ? [] : [{
+        type: record.outcome === 'merge-with-existing' ? 'memory.entry_deduplicated' : 'memory.entry_created',
+        payload: entryPayload(this.requireEntry(record.workspaceId, record.mergedIntoEntryId)),
+      }];
       return {
         record,
-        type: record.outcome === 'reject' ? 'memory.entry_expired' : 'memory.entry_created',
+        type: 'memory.candidate_reviewed',
+        additional,
         payload: {
-          memoryEntryId: record.mergedIntoEntryId ?? record.id,
-          version: record.version,
-          scope: record.scope,
-          category: record.category,
-          authority: record.authority,
+          candidateId: record.id,
+          candidateVersion: record.version,
+          outcome: record.outcome,
+          memoryEntryId: record.mergedIntoEntryId,
         },
       };
     }, scope);
@@ -295,13 +305,14 @@ export class MemoryRuntimeEventEmitter {
   }
 
   private emit<TRecord>(
-    write: () => { readonly record: TRecord; readonly type: string; readonly payload: Record<string, unknown> },
+    write: () => { readonly record: TRecord; readonly type: string; readonly payload: Record<string, unknown>;
+      readonly additional?: readonly { readonly type: string; readonly payload: Record<string, unknown> }[] },
     scope: RunScope,
   ): MemoryFactEmissionResult<TRecord> {
     try {
       return inTransaction(this.db, () => {
-        const { record, type, payload } = write();
-        const { event, outbox } = this.writer.appendWithinTransaction({
+        const { record, type, payload, additional = [] } = write();
+        const append = (type: string, payload: Record<string, unknown>) => this.writer.appendWithinTransaction({
           type,
           workspaceId: workspaceIdOf(record),
           runId: scope.runId,
@@ -312,12 +323,23 @@ export class MemoryRuntimeEventEmitter {
           eventContext: scope.eventContext,
           payload,
         });
-        return { record, eventId: event.id, outboxId: outbox.id };
+        const { event, outbox } = append(type, payload);
+        const additionalEvents = additional.map(fact => {
+          const emitted = append(fact.type, fact.payload);
+          return { eventId: emitted.event.id, outboxId: emitted.outbox.id };
+        });
+        return { record, eventId: event.id, outboxId: outbox.id, additionalEvents };
       });
     } catch (error) {
       if (error instanceof MemoryRuntimeEventEmissionError) throw error;
       throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
     }
+  }
+
+  private requireEntry(workspaceId: string, entryId: string): MemoryEntryRecord {
+    const entry = this.entries.findById(workspaceId, entryId);
+    if (entry === undefined) throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+    return entry;
   }
 }
 

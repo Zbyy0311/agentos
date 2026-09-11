@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   MF5_MEMORY_EVENT_DEFINITIONS,
   isMemoryCandidateEventPayload,
+  isMemoryCandidateReviewEventPayload,
   isMemoryConflictEventPayload,
   isMemoryContextEventPayload,
   isMemoryEntryEventPayload,
@@ -57,7 +58,7 @@ test('MF5-01 memory is a canonical Runtime Event domain', () => {
 test('MF5-02 definitions cover the Lite memory event family', () => {
   const types = MF5_MEMORY_EVENT_DEFINITIONS.map(d => d.type);
   assert.deepEqual(types, [...MEMORY_EVENT_TYPES]);
-  assert.equal(types.length, 13);
+  assert.equal(types.length, 14);
 });
 
 // MF5-03 — every definition is a memory-domain, memory-engine, durable event.
@@ -125,6 +126,7 @@ test('MF5-08 registry accepts representative payloads', () => {
     'memory.entry_expired': ENTRY_PAYLOAD,
     'memory.entry_archived': ENTRY_PAYLOAD,
     'memory.candidate_created': CANDIDATE_PAYLOAD,
+    'memory.candidate_reviewed': { candidateId: 'candidate', candidateVersion: 2, outcome: 'reject', memoryEntryId: null },
     'memory.retrieval_completed': RETRIEVAL_PAYLOAD,
     'memory.retrieval_failed': RETRIEVAL_PAYLOAD,
     'memory.revalidation_completed': RETRIEVAL_PAYLOAD,
@@ -136,4 +138,13 @@ test('MF5-08 registry accepts representative payloads', () => {
     assert.ok(payload !== undefined, definition.type);
     assert.ok(definition.validatePayload(payload), definition.type);
   }
+});
+
+test('candidate review payload distinguishes Candidate and Entry outcomes', () => {
+  const rejected = { candidateId: 'candidate', candidateVersion: 2, outcome: 'reject', memoryEntryId: null };
+  assert.ok(isMemoryCandidateReviewEventPayload(rejected));
+  assert.ok(!isMemoryCandidateReviewEventPayload({ ...rejected, memoryEntryId: 'invented' }));
+  assert.ok(!isMemoryCandidateReviewEventPayload({ ...rejected, outcome: 'accept' }));
+  assert.ok(isMemoryCandidateReviewEventPayload({ ...rejected, outcome: 'accept', memoryEntryId: 'entry' }));
+  assert.ok(!isMemoryCandidateReviewEventPayload({ ...rejected, content: 'not allowed' }));
 });

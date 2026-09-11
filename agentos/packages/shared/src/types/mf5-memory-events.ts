@@ -48,6 +48,21 @@ export interface MemoryCandidateEventPayload {
   readonly decision: 'auto-accept' | 'review-required' | 'reject';
 }
 
+export interface MemoryCandidateReviewEventPayload {
+  readonly candidateId: string;
+  readonly candidateVersion: number;
+  readonly outcome: 'accept' | 'edit-and-accept' | 'reject' | 'merge-with-existing' | 'review-required';
+  readonly memoryEntryId: string | null;
+}
+
+export function isMemoryCandidateReviewEventPayload(value: unknown): value is MemoryCandidateReviewEventPayload {
+  if (!isRecord(value) || !hasOnly(value, ['candidateId', 'candidateVersion', 'outcome', 'memoryEntryId'])) return false;
+  if (!isNonEmptyString(value.candidateId) || !isPositiveSafeInteger(value.candidateVersion)) return false;
+  if (value.outcome === 'reject' || value.outcome === 'review-required') return value.memoryEntryId === null;
+  return (value.outcome === 'accept' || value.outcome === 'edit-and-accept' || value.outcome === 'merge-with-existing')
+    && isNonEmptyString(value.memoryEntryId);
+}
+
 export interface MemoryConflictEventPayload {
   readonly conflictId: string;
   readonly conflictType: string;
@@ -167,6 +182,8 @@ export const MF5_MEMORY_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = O
     ['candidateId', 'scope', 'category', 'authority', 'decision'],
     isMemoryCandidateEventPayload,
   ),
+  memoryEventDefinition('memory.candidate_reviewed', 'A Candidate review was committed; an Entry lifecycle change is recorded separately.',
+    ['candidateId', 'candidateVersion', 'outcome', 'memoryEntryId'], isMemoryCandidateReviewEventPayload),
   memoryEventDefinition('memory.entry_created', 'A Memory Entry became durable.', ENTRY_FIELDS, isMemoryEntryEventPayload),
   memoryEventDefinition('memory.entry_updated', 'A Memory Entry was updated under optimistic concurrency.', ENTRY_FIELDS, isMemoryEntryEventPayload),
   memoryEventDefinition('memory.entry_conflicted', 'A Memory Entry entered the conflicted state.', ENTRY_FIELDS, isMemoryEntryEventPayload),

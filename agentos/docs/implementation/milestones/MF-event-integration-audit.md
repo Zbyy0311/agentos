@@ -1,6 +1,7 @@
 # Memory event integration: source audit before production wiring
 
-Base: PR #126 head `151ca9f9`. Status: next-slice audit, not implemented.
+Base: PR #126. Status: Candidate event corrections implemented on the next
+branch; production wiring and conflict effects remain open.
 
 ## Findings
 
@@ -43,3 +44,15 @@ Tests must assert the actual durable Memory row change alongside each emitted
 event, not only registry payload validity. Cover rejection with zero Entry
 events, merge with no Entry creation, automatic acceptance with both facts,
 outbox rollback, correct versions, scope isolation and replay.
+
+## Candidate correction evidence
+
+An additive `memory.candidate_reviewed` event carries Candidate ID/version,
+outcome and nullable resulting Entry ID. Entry mutation events follow it only
+when applicable and use the persisted Entry version. Automatic acceptance emits
+Candidate creation followed by Entry creation within the same transaction.
+Tests prove that failure inserting the secondary Outbox row rolls back both
+records, both events, both Outbox rows and sequence allocation.
+
+Focused emitter tests: 14/14; shared M3/MF0/MF5 contracts: 62/62; server
+TypeScript passed. No migration or production event wiring is included yet.

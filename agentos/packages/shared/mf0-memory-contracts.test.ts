@@ -243,7 +243,7 @@ test('MF0-19 snapshot immutability and event payload rules are frozen', () => {
 
 // MF0-20 — the event family covers the Lite §15 list.
 test('MF0-20 event family covers Lite memory events', () => {
-  assert.equal(MEMORY_EVENT_TYPES.length, 13);
+  assert.equal(MEMORY_EVENT_TYPES.length, 14);
   assert.ok(MEMORY_EVENT_TYPES.includes('memory.context_created'));
   assert.ok(MEMORY_EVENT_TYPES.includes('memory.entry_conflicted'));
   assert.ok(MEMORY_EVENT_TYPES.includes('memory.retrieval_failed'));
