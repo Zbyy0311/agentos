@@ -285,6 +285,23 @@ export class MemoryCandidateRepository {
   }
 
   /**
+   * MF-5 API read surface: list Candidates of one Workspace in creation order,
+   * optionally narrowed to one review outcome (the review queue is
+   * `review-required`). Read-only; never crosses Workspace.
+   */
+  listCandidates(workspaceId: string, outcome?: MemoryCandidateOutcome): MemoryCandidateRecord[] {
+    if (!nonBlank(workspaceId)) return [];
+    const rows = outcome === undefined
+      ? this.db.prepare(
+          'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? ORDER BY created_at ASC, id ASC',
+        ).all(workspaceId) as CandidateRow[]
+      : this.db.prepare(
+          'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND outcome = ? ORDER BY created_at ASC, id ASC',
+        ).all(workspaceId, outcome) as CandidateRow[];
+    return rows.map(row => this.toCandidateRecord(row));
+  }
+
+  /**
    * Record a review outcome. `merge-with-existing` requires the target Entry in
    * the same Workspace. Review never deletes the Candidate.
    */

@@ -73,6 +73,7 @@ import type { StoredConversationAttachment } from '../services/ConversationAttac
 import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
 import { createM3RuntimeEventRegistry } from '@agentos/shared';
 import { RuntimeEventOutboxWriter, RuntimeEventRepository } from './RuntimeEventRepository.js';
+import { MemoryContextSnapshotRepository } from './MemoryContextSnapshotRepository.js';
 import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import { OutboxRepository } from './OutboxRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
@@ -723,6 +724,7 @@ export class SqliteStore implements Store {
       runStageRepository: this.runStageRepo,
       runSnapshotRepository: this.runSnapshotRepo,
       runtimeEventRepository: this.runtimeEventRepo,
+      memoryContextSnapshots: new MemoryContextSnapshotRepository(this.database as any),
     });
   }
 

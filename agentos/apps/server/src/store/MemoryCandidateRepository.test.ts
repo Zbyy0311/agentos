@@ -262,3 +262,28 @@ test('MF2R-11 record exposes no secret value field', () => {
     }
   } finally { fx.close(); }
 });
+
+// MF2R-12 — MF-5 API read: creation-ordered, outcome-filtered, guarded listing.
+test('MF2R-12 listCandidates orders, filters, and guards', () => {
+  const fx = fixture();
+  try {
+    assert.deepEqual(fx.repo.listCandidates(WS), []);
+    const first = fx.repo.createCandidate(candidateInput());
+    const second = fx.repo.createCandidate(candidateInput({
+      id: CAND + '2', exactContentHash: 'h2', normalizedTextHash: 'n2',
+      inferredPreference: true, createdAt: NOW2,
+    }));
+    assert.equal(first.outcome, 'accept'); // auto-accepted by the promotion gate
+    assert.equal(second.outcome, 'review-required'); // inferred preference always requires review
+
+    const all = fx.repo.listCandidates(WS);
+    assert.deepEqual(all.map(c => c.id), [first.id, second.id]);
+
+    const queue = fx.repo.listCandidates(WS, 'review-required');
+    assert.deepEqual(queue.map(c => c.id), [second.id]);
+
+    // Workspace-scoped and input-guarded.
+    assert.deepEqual(fx.repo.listCandidates('ws_other'), []);
+    assert.deepEqual(fx.repo.listCandidates(''), []);
+  } finally { fx.close(); }
+});

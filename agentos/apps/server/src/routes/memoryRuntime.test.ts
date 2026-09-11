@@ -23,6 +23,7 @@ const MEM_B = 'mem_' + 'b'.repeat(26);
 const SNAP_RUN = 'mctx_' + 'r'.repeat(26);
 const SNAP_STAGE = 'mctx_' + 's'.repeat(26);
 const CONFLICT = 'mcf_' + 'c'.repeat(26);
+const CAND = 'mc_' + 'd'.repeat(26);
 
 const BUDGET: MemoryBudgetPolicyV1 = {
   maxTokens: 100,
@@ -163,6 +164,25 @@ function seedConflict(store: SqliteStore): void {
     entryAId: MEM_A,
     entryBId: MEM_B,
     createdAt: NOW,
+  });
+}
+
+function seedCandidate(store: SqliteStore): void {
+  new MemoryCandidateRepository(store.getDatabase()).createCandidate({
+    id: CAND,
+    workspaceId: WS,
+    scope: 'workspace',
+    category: 'preference',
+    authority: 'agent-derived',
+    confidence: 0.6,
+    importance: 0.5,
+    title: 'Inferred preference candidate',
+    content: 'The user seems to prefer compact answers.',
+    inferredPreference: true, // always review-required per the MF-0 gate
+    sources: [{ kind: 'run', id: RUN }],
+    createdAt: NOW,
+    minConfidence: 0.5,
+    maxTokenEstimate: 1000,
   });
 }
 
@@ -321,5 +341,55 @@ test('MF-5 conflict resolve: 200 once, 409 on replay or version skew, 404 unknow
       expectedVersion: 2, disposition: 'delete-everything',
     });
     assert.equal(badDisposition.status, 400);
+  });
+});
+
+test('MF-5 candidate queue: list, outcome filter, and version-guarded review', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    seedEntries(store);
+    seedCandidate(store);
+
+    const queue = await fetch(`${baseUrl}/memory/candidates?outcome=review-required`)
+      .then(r => r.json()) as { candidates: Array<{ id: string; outcome: string; decision: string }> };
+    assert.equal(queue.candidates.length, 1);
+    assert.equal(queue.candidates[0]!.id, CAND);
+    assert.equal(queue.candidates[0]!.outcome, 'review-required');
+
+    const all = await fetch(`${baseUrl}/memory/candidates`).then(r => r.json()) as { candidates: unknown[] };
+    assert.equal(all.candidates.length, 1);
+
+    const badFilter = await fetch(`${baseUrl}/memory/candidates?outcome=bogus`);
+    assert.equal(badFilter.status, 400);
+
+    const missing = await postJson(`${baseUrl}/memory/candidates/mc_missing/review`, {
+      expectedVersion: 1, outcome: 'accept',
+    });
+    assert.equal(missing.status, 404);
+
+    const skewed = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 99, outcome: 'accept',
+    });
+    assert.equal(skewed.status, 409);
+
+    const mergeNoTarget = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 1, outcome: 'merge-with-existing',
+    });
+    assert.equal(mergeNoTarget.status, 400);
+
+    const merged = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 1, outcome: 'merge-with-existing', mergedIntoEntryId: MEM_A,
+    });
+    assert.equal(merged.status, 200);
+    const { candidate } = merged.json as { candidate: { outcome: string; mergedIntoEntryId: string | null; version: number } };
+    assert.equal(candidate.outcome, 'merge-with-existing');
+    assert.equal(candidate.mergedIntoEntryId, MEM_A);
+    assert.equal(candidate.version, 2);
+
+    const rejected = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 2, outcome: 'reject',
+    });
+    assert.equal(rejected.status, 200);
+    assert.equal((rejected.json as { candidate: { outcome: string } }).candidate.outcome, 'reject');
   });
 });
