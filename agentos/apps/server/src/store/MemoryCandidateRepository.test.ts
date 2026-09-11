@@ -11,6 +11,7 @@ import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { createFileBackupProvider } from '../migrations/backup.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import type { TransactionDatabase } from './Transaction.js';
+import { MemoryEntryRepository } from './MemoryEntryRepository.js';
 import {
   MemoryCandidateRepository,
   MemoryCandidateRepositoryError,
@@ -260,6 +261,33 @@ test('MF2R-11 record exposes no secret value field', () => {
     for (const forbidden of ['secret', 'token', 'password', 'credential']) {
       assert.ok(!Object.keys(candidate).includes(forbidden), forbidden);
     }
+  } finally { fx.close(); }
+});
+
+test('MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2)', () => {
+  const fx = fixture();
+  try {
+    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase);
+    const entryId = 'mem_' + 'z'.repeat(26);
+    entries.createEntry({
+      id: entryId,
+      workspaceId: WS,
+      scope: 'task',
+      ownerTaskId: TASK,
+      category: 'decision',
+      authority: 'system-verified',
+      confidence: 0.9,
+      importance: 0.5,
+      title: 'normalized target',
+      status: 'active',
+      normalizedTextHash: 'norm-hash-1',
+      sources: [{ kind: 'run', id: RUN }],
+      createdAt: NOW,
+    });
+    assert.equal(fx.repo.findEntryByNormalizedHash(WS, 'norm-hash-1'), entryId);
+    assert.equal(fx.repo.findEntryByNormalizedHash(WS, 'nope'), undefined);
+    assert.equal(fx.repo.findEntryByNormalizedHash('ws_other', 'norm-hash-1'), undefined);
+    assert.equal(fx.repo.findEntryByNormalizedHash('', ''), undefined);
   } finally { fx.close(); }
 });
 
