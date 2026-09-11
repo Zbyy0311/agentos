@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   MEMORY_AUTHORITIES,
   MEMORY_CATEGORIES,
@@ -17,6 +19,7 @@ import {
   type MemorySourceKind,
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
+import { MemoryEntryRepository } from './MemoryEntryRepository.js';
 
 /**
  * MF-2 Memory Candidate and Conflict persistence.
@@ -106,6 +109,13 @@ export interface MemoryCandidateRecord {
   readonly sources: readonly MemoryCandidateSourceInput[];
 }
 
+export interface MemoryCandidateEdits {
+  readonly title?: string;
+  readonly summary?: string;
+  readonly content?: string;
+  readonly tags?: readonly string[];
+}
+
 export interface MemoryConflictRecord {
   readonly id: string;
   readonly workspaceId: string;
@@ -123,6 +133,10 @@ interface CandidateRow {
   id: string;
   workspace_id: string;
   scope: string;
+  owner_agent_id: string | null;
+  owner_conversation_id: string | null;
+  owner_task_id: string | null;
+  owner_run_id: string | null;
   category: string;
   authority: string;
   confidence: number;
@@ -140,6 +154,17 @@ interface CandidateRow {
   version: number;
   created_at: string;
   reviewed_at: string | null;
+}
+
+interface EntryMergeRow {
+  id: string;
+  workspace_id: string;
+  scope: string;
+  owner_agent_id: string | null;
+  owner_conversation_id: string | null;
+  owner_task_id: string | null;
+  owner_run_id: string | null;
+  status: string;
 }
 
 interface ConflictRow {
@@ -186,6 +211,7 @@ export interface ReviewMemoryCandidateInput {
   readonly expectedVersion: number;
   readonly outcome: MemoryCandidateOutcome;
   readonly mergedIntoEntryId?: string;
+  readonly edits?: MemoryCandidateEdits;
   readonly reviewedAt: string;
 }
 
@@ -207,7 +233,11 @@ export interface ResolveMemoryConflictInput {
 }
 
 export class MemoryCandidateRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  private readonly entries: MemoryEntryRepository;
+
+  constructor(private readonly db: TransactionDatabase) {
+    this.entries = new MemoryEntryRepository(db);
+  }
 
   /**
    * Create a Candidate. The promotion decision is computed by the MF-0 gate and
@@ -272,6 +302,17 @@ export class MemoryCandidateRepository {
         'INSERT INTO memory_candidate_sources (candidate_id, source_kind, source_id) VALUES (?, ?, ?)',
       ).run(input.id, source.kind, source.id);
     }
+    if (decision === 'auto-accept') {
+      const candidate = this.requireCandidateRow(input.workspaceId, input.id);
+      const promotion = this.promoteCandidateToEntryWithinTransaction(candidate, input.createdAt);
+      const promoted = this.db.prepare(
+        'UPDATE memory_candidate_entries SET merged_into_entry_id = ?, reviewed_at = ?'
+          + ' WHERE workspace_id = ? AND id = ? AND outcome = ? AND version = 1',
+      ).run(promotion.entry.id, input.createdAt, input.workspaceId, input.id, 'accept') as { changes?: number | bigint };
+      if (Number(promoted.changes ?? 0) !== 1) {
+        throw new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
+      }
+    }
     return this.requireCandidate(input.workspaceId, input.id);
   }
 
@@ -326,27 +367,88 @@ export class MemoryCandidateRepository {
     }
     const outcomes: readonly string[] = ['accept', 'edit-and-accept', 'reject', 'merge-with-existing', 'review-required'];
     if (!outcomes.includes(input.outcome)) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    this.validateReviewEdits(input);
     const current = this.db.prepare(
       'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
     ).get(input.workspaceId, input.candidateId) as CandidateRow | undefined;
     if (current === undefined) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_FOUND');
+    if (isTerminalCandidate(current)) {
+      throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+    }
     if (current.version !== input.expectedVersion) {
       throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
     }
-    let mergedInto: string | null = current.merged_into_entry_id;
+    let mergedInto: string | null = null;
+    let reviewedFields: {
+      readonly title: string;
+      readonly summary: string;
+      readonly content: string;
+      readonly tags: readonly string[];
+      readonly exactContentHash: string | null;
+      readonly normalizedTextHash: string | null;
+      readonly tokenEstimate: number;
+    } | undefined;
+
+    if (input.outcome === 'accept' || input.outcome === 'edit-and-accept') {
+      const edits = input.outcome === 'edit-and-accept' ? input.edits : undefined;
+      const promotion = this.promoteCandidateToEntryWithinTransaction(current, input.reviewedAt, edits);
+      mergedInto = promotion.entry.id;
+      if (input.outcome === 'edit-and-accept') {
+        reviewedFields = promotion.fields;
+      }
+    }
+
     if (input.outcome === 'merge-with-existing') {
       if (!nonBlank(input.mergedIntoEntryId)) {
         throw new MemoryCandidateRepositoryError('INPUT_INVALID');
       }
       const entry = this.db.prepare(
-        'SELECT 1 AS present FROM memory_entries WHERE workspace_id = ? AND id = ?',
+        'SELECT id, workspace_id, scope, owner_agent_id, owner_conversation_id, owner_task_id, owner_run_id, status'
+          + ' FROM memory_entries WHERE workspace_id = ? AND id = ?',
       ).get(input.workspaceId, input.mergedIntoEntryId);
       if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
-      mergedInto = input.mergedIntoEntryId;
+      const target = entry as EntryMergeRow;
+      if (target.status !== 'active'
+        || target.scope !== current.scope
+        || !sameOwners(target, current)) {
+        throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+      }
+      const sources = this.readCandidateSources(current.id);
+      let addedSources = 0;
+      for (const source of sources) {
+        const result = this.db.prepare(
+          'INSERT OR IGNORE INTO memory_entry_sources (memory_entry_id, source_kind, source_id) VALUES (?, ?, ?)',
+        ).run(target.id, source.kind, source.id) as { changes?: number | bigint };
+        addedSources += Number(result.changes ?? 0);
+      }
+      if (addedSources > 0) {
+        const targetUpdate = this.db.prepare(
+          'UPDATE memory_entries SET version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND status = ?'
+        ).run(input.reviewedAt, input.workspaceId, target.id, 'active') as { changes?: number | bigint };
+        if (Number(targetUpdate.changes ?? 0) !== 1) {
+          throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+        }
+      }
+      mergedInto = target.id;
     }
-    this.db.prepare(
-      'UPDATE memory_candidate_entries SET outcome = ?, merged_into_entry_id = ?, version = version + 1, reviewed_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
-    ).run(input.outcome, mergedInto, input.reviewedAt, input.workspaceId, input.candidateId, input.expectedVersion);
+
+    const update = reviewedFields === undefined
+      ? this.db.prepare(
+          'UPDATE memory_candidate_entries SET outcome = ?, merged_into_entry_id = ?, version = version + 1, reviewed_at = ?'
+            + ' WHERE workspace_id = ? AND id = ? AND version = ?',
+        ).run(input.outcome, mergedInto, input.reviewedAt, input.workspaceId, input.candidateId, input.expectedVersion)
+      : this.db.prepare(
+          'UPDATE memory_candidate_entries SET outcome = ?, merged_into_entry_id = ?, title = ?, summary = ?, content = ?, tags_json = ?,'
+            + ' exact_content_hash = ?, normalized_text_hash = ?, token_estimate = ?, version = version + 1, reviewed_at = ?'
+            + ' WHERE workspace_id = ? AND id = ? AND version = ?',
+        ).run(
+          input.outcome, mergedInto, reviewedFields.title, reviewedFields.summary, reviewedFields.content,
+          JSON.stringify(reviewedFields.tags), reviewedFields.exactContentHash, reviewedFields.normalizedTextHash,
+          reviewedFields.tokenEstimate, input.reviewedAt, input.workspaceId, input.candidateId, input.expectedVersion,
+        );
+    if (Number((update as { changes?: number | bigint }).changes ?? 0) !== 1) {
+      throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+    }
     return this.requireCandidate(input.workspaceId, input.candidateId);
   }
 
@@ -478,6 +580,99 @@ export class MemoryCandidateRepository {
     }
   }
 
+  private validateReviewEdits(input: ReviewMemoryCandidateInput): void {
+    const hasEdits = input.edits !== undefined;
+    if (input.outcome === 'edit-and-accept') {
+      if (!hasEdits) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      this.assertValidEdits(input.edits);
+    } else if (hasEdits) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    if (input.outcome === 'merge-with-existing') {
+      if (input.mergedIntoEntryId !== undefined && !nonBlank(input.mergedIntoEntryId)) {
+        throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      }
+    } else if (input.mergedIntoEntryId !== undefined) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+  }
+
+  private promoteCandidateToEntryWithinTransaction(
+    current: CandidateRow,
+    createdAt: string,
+    edits?: MemoryCandidateEdits,
+  ) {
+    const isEdit = edits !== undefined;
+    const title = edits?.title ?? current.title;
+    const summary = edits?.summary ?? current.summary;
+    const content = edits?.content ?? current.content;
+    const tags = edits?.tags ?? this.parseCandidateTags(current.tags_json);
+    const exactContentHash = isEdit ? hashMemoryText(content) : current.exact_content_hash;
+    const normalizedTextHash = isEdit
+      ? hashMemoryText(normalizeMemoryText(content))
+      : current.normalized_text_hash;
+    const tokenEstimate = isEdit ? estimateMemoryTokens(content) : current.token_estimate;
+    const entry = this.entries.createEntryWithinTransaction({
+      id: current.id,
+      workspaceId: current.workspace_id,
+      scope: current.scope as MemoryScope,
+      ...(current.owner_agent_id === null ? {} : { ownerAgentId: current.owner_agent_id }),
+      ...(current.owner_conversation_id === null ? {} : { ownerConversationId: current.owner_conversation_id }),
+      ...(current.owner_task_id === null ? {} : { ownerTaskId: current.owner_task_id }),
+      ...(current.owner_run_id === null ? {} : { ownerRunId: current.owner_run_id }),
+      category: current.category as MemoryCategory,
+      authority: current.authority as MemoryAuthority,
+      confidence: current.confidence,
+      importance: current.importance,
+      title,
+      summary,
+      content,
+      tags,
+      status: 'active',
+      exactContentHash: exactContentHash ?? undefined,
+      normalizedTextHash: normalizedTextHash ?? undefined,
+      tokenEstimate,
+      sources: this.readCandidateSources(current.id),
+      createdAt,
+    });
+    return {
+      entry,
+      fields: {
+        title,
+        summary,
+        content,
+        tags,
+        exactContentHash,
+        normalizedTextHash,
+        tokenEstimate,
+      },
+    };
+  }
+
+  private assertValidEdits(edits: MemoryCandidateEdits | undefined): void {
+    if (!isPlainRecord(edits)) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    const allowed = new Set(['title', 'summary', 'content', 'tags']);
+    const keys = Object.keys(edits);
+    if (keys.length === 0 || keys.some(key => !allowed.has(key))) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    if (Object.prototype.hasOwnProperty.call(edits, 'title') && !nonBlank(edits.title)) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    for (const key of ['summary', 'content'] as const) {
+      if (Object.prototype.hasOwnProperty.call(edits, key) && typeof edits[key] !== 'string') {
+        throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(edits, 'tags')) {
+      if (!Array.isArray(edits.tags) || edits.tags.some(tag => !nonBlank(tag))) {
+        throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      }
+      const tags = edits.tags as readonly string[];
+      if (new Set(tags).size !== tags.length) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+  }
+
   private assertWorkspaceExists(workspaceId: string): void {
     const row = this.db.prepare('SELECT 1 AS present FROM workspaces WHERE id = ?').get(workspaceId);
     if (row === undefined) throw new MemoryCandidateRepositoryError('WORKSPACE_NOT_FOUND');
@@ -489,6 +684,34 @@ export class MemoryCandidateRepository {
     return candidate;
   }
 
+  private requireCandidateRow(workspaceId: string, candidateId: string): CandidateRow {
+    const row = this.db.prepare(
+      'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
+    ).get(workspaceId, candidateId) as CandidateRow | undefined;
+    if (row === undefined) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_FOUND');
+    return row;
+  }
+
+  private parseCandidateTags(tagsJson: string): string[] {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(tagsJson);
+    } catch {
+      throw new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
+    }
+    if (!Array.isArray(parsed) || parsed.some(tag => typeof tag !== 'string')) {
+      throw new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
+    }
+    return parsed;
+  }
+
+  private readCandidateSources(candidateId: string): MemoryCandidateSourceInput[] {
+    const rows = this.db.prepare(
+      'SELECT source_kind, source_id FROM memory_candidate_sources WHERE candidate_id = ? ORDER BY source_kind ASC, source_id ASC',
+    ).all(candidateId) as Array<{ source_kind: string; source_id: string }>;
+    return rows.map(source => ({ kind: source.source_kind as MemorySourceKind, id: source.source_id }));
+  }
+
   private requireConflict(workspaceId: string, conflictId: string): MemoryConflictRecord {
     const row = this.db.prepare(
       'SELECT * FROM memory_conflicts WHERE workspace_id = ? AND id = ?',
@@ -498,9 +721,6 @@ export class MemoryCandidateRepository {
   }
 
   private toCandidateRecord(row: CandidateRow): MemoryCandidateRecord {
-    const sourceRows = this.db.prepare(
-      'SELECT source_kind, source_id FROM memory_candidate_sources WHERE candidate_id = ? ORDER BY source_kind ASC, source_id ASC',
-    ).all(row.id) as Array<{ source_kind: string; source_id: string }>;
     return {
       id: row.id,
       workspaceId: row.workspace_id,
@@ -522,7 +742,7 @@ export class MemoryCandidateRepository {
       version: row.version,
       createdAt: row.created_at,
       reviewedAt: row.reviewed_at,
-      sources: sourceRows.map(source => ({ kind: source.source_kind as MemorySourceKind, id: source.source_id })),
+      sources: this.readCandidateSources(row.id),
     };
   }
 
@@ -545,4 +765,36 @@ export class MemoryCandidateRepository {
     if (error instanceof MemoryCandidateRepositoryError) return error;
     return new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
   }
+}
+
+const TERMINAL_CANDIDATE_OUTCOMES = new Set(['accept', 'edit-and-accept', 'reject', 'merge-with-existing']);
+
+function isTerminalCandidate(candidate: Pick<CandidateRow, 'outcome' | 'reviewed_at' | 'merged_into_entry_id'>): boolean {
+  return TERMINAL_CANDIDATE_OUTCOMES.has(candidate.outcome)
+    && (candidate.reviewed_at !== null || candidate.merged_into_entry_id !== null);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function normalizeMemoryText(text: string): string {
+  return text.toLowerCase().replace(/\s+/gu, ' ').trim();
+}
+
+function hashMemoryText(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+function estimateMemoryTokens(content: string): number {
+  return Math.max(1, Math.ceil(content.length / 4));
+}
+
+function sameOwners(a: EntryMergeRow, b: CandidateRow): boolean {
+  return a.owner_agent_id === b.owner_agent_id
+    && a.owner_conversation_id === b.owner_conversation_id
+    && a.owner_task_id === b.owner_task_id
+    && a.owner_run_id === b.owner_run_id;
 }

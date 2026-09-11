@@ -389,7 +389,67 @@ test('MF-5 candidate queue: list, outcome filter, and version-guarded review', a
     const rejected = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
       expectedVersion: 2, outcome: 'reject',
     });
-    assert.equal(rejected.status, 200);
-    assert.equal((rejected.json as { candidate: { outcome: string } }).candidate.outcome, 'reject');
+    assert.equal(rejected.status, 409);
+    assert.equal((rejected.json as { error: string }).error, 'CANDIDATE_NOT_REVIEWABLE');
+  });
+});
+
+test('MF-5 candidate review: strict edits promote an Entry and retrieval sees only the active Entry', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    seedEntries(store);
+    seedCandidate(store);
+
+    const invalidEdit = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 1,
+      outcome: 'edit-and-accept',
+      edits: { content: 'changed', scope: 'global' },
+    });
+    assert.equal(invalidEdit.status, 400);
+
+    const forbiddenTopLevel = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 1,
+      outcome: 'accept',
+      authority: 'user-explicit',
+    });
+    assert.equal(forbiddenTopLevel.status, 400);
+
+    const edited = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 1,
+      outcome: 'edit-and-accept',
+      edits: {
+        title: 'Edited compact preference',
+        summary: 'edited summary',
+        content: 'Edited compact answers are preferred.',
+        tags: ['reviewed'],
+      },
+    });
+    assert.equal(edited.status, 200);
+    const editedCandidate = edited.json as {
+      candidate: { outcome: string; version: number; mergedIntoEntryId: string | null; title: string };
+    };
+    assert.equal(editedCandidate.candidate.outcome, 'edit-and-accept');
+    assert.equal(editedCandidate.candidate.version, 2);
+    assert.equal(editedCandidate.candidate.mergedIntoEntryId, CAND);
+    assert.equal(editedCandidate.candidate.title, 'Edited compact preference');
+
+    const entries = new MemoryEntryRepository(store.getDatabase());
+    const entry = entries.findById(WS, CAND);
+    assert.equal(entry?.status, 'active');
+    assert.equal(entry?.scope, 'workspace');
+    assert.equal(entry?.authority, 'agent-derived');
+    assert.deepEqual(entry?.tags, ['reviewed']);
+
+    const retrieved = await postJson(`${baseUrl}/memory/retrieve`, { query: 'compact' });
+    assert.equal(retrieved.status, 200);
+    const results = (retrieved.json as { results: Array<{ entry: { id: string }; ftsRank: number | null }> }).results;
+    const promoted = results.find(result => result.entry.id === CAND);
+    assert.ok(promoted);
+    assert.ok(promoted.ftsRank !== null);
+
+    const replay = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 2, outcome: 'accept',
+    });
+    assert.equal(replay.status, 409);
   });
 });
