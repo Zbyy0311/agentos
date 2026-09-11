@@ -24,6 +24,7 @@ export interface AgentSummary {
 }
 
 export interface DirectConversationWorkbenchProps {
+  readonly inspector?: ReactNode;
   readonly theme: UiTheme;
   readonly viewportWidth: number;
   readonly reducedMotion?: boolean;
@@ -130,7 +131,7 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
       agents={agentsColumn}
       conversations={conversationsColumn}
       canvas={canvasColumn}
-      inspector={inspectorColumn}
+      inspector={props.inspector ?? inspectorColumn}
     />
   );
 }

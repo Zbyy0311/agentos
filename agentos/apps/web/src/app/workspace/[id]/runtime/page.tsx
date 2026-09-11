@@ -3,6 +3,7 @@
 import { useParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { DirectConversationWorkbench } from '@/components/chat/DirectConversationWorkbench';
+import { RunInspectorPanel } from '@/components/chat/RunInspectorPanel';
 import { useDirectConversation } from '@/lib/useDirectConversation';
 import { useApi } from '@/lib/useApi';
 import { resolveLayoutMode } from '@/lib/uiFoundation';
@@ -31,10 +32,13 @@ export default function DirectConversationPage() {
 
   const active = state.conversations.find(c => c.id === state.activeConversationId);
   const theme: UiTheme = 'dark';
+  const runIds = [...new Set(state.messages.flatMap(message => message.runId ? [message.runId] : []))].reverse();
 
   return (
     <DirectConversationWorkbench
       theme={theme}
+      inspector={<RunInspectorPanel key={state.activeConversationId ?? workspaceId} workspaceId={workspaceId}
+        apiBase={API_BASE} runIds={runIds} theme={theme} />}
       viewportWidth={viewportWidth}
       workspaceName={workspaceId}
       agents={state.agents}
@@ -56,4 +60,3 @@ export default function DirectConversationPage() {
     />
   );
 }
-

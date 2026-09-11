@@ -189,10 +189,10 @@ test('INSP-08 memory context projection', () => {
   try {
     fx.db.prepare(
       'INSERT INTO memory_context_snapshots (id, schema_version, workspace_id, run_id, query_hash, retrieval_strategy_version, budget_json, total_tokens, truncated, created_at) VALUES (?, 1, ?, ?, ?, ?, ?, ?, 0, ?)',
-    ).run('mctx_1', WS, RUN, 'qh', 'mf3-ranking-v1', '{}', 10, NOW);
+    ).run('mctx_1', WS, RUN, 'qh', 'mf3-ranking-v1', '{"maxTokens":100}', 10, NOW);
     fx.db.prepare(
       'INSERT INTO memory_context_snapshot_entries (snapshot_id, memory_entry_id, memory_entry_version, selected, rank, score, scope, category, authority, confidence, importance, token_cost, reasons_json, source_refs_json, content_hash) VALUES (?, ?, 1, 1, 1, 9.5, ?, ?, ?, 0.9, 0.5, 10, ?, ?, NULL)',
-    ).run('mctx_1', 'mem_1', 'task', 'decision', 'system-verified', '["scope-match"]', '[]');
+    ).run('mctx_1', 'mem_1', 'task', 'decision', 'system-verified', '["scope-match"]', '[{"kind":"run","id":"source-run"}]');
     fx.db.prepare(
       'INSERT INTO memory_context_snapshot_entries (snapshot_id, memory_entry_id, memory_entry_version, selected, rank, score, scope, category, authority, confidence, importance, token_cost, reasons_json, source_refs_json, content_hash) VALUES (?, ?, 1, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, \'[]\', NULL)',
     ).run('mctx_1', 'mem_2', '["below-confidence"]');
@@ -200,6 +200,13 @@ test('INSP-08 memory context projection', () => {
     assert.ok(projection.memoryContext !== null);
     assert.equal(projection.memoryContext?.memoryContextId, 'mctx_1');
     assert.equal(projection.memoryContext?.selected.length, 1);
+    assert.equal(projection.memoryContext?.maxTokens, 100);
+    assert.deepEqual(projection.memoryContext?.selected[0], {
+      memoryId: 'mem_1', memoryVersion: 1, rank: 1, score: 9.5,
+      scope: 'task', category: 'decision', authority: 'system-verified',
+      confidence: 0.9, importance: 0.5, tokenCost: 10, reasons: ['scope-match'],
+      sourceRefs: [{ kind: 'run', id: 'source-run' }],
+    });
     assert.deepEqual(projection.memoryContext?.selected[0].reasons, ['scope-match']);
     assert.deepEqual(projection.memoryContext?.exclusions, [{ memoryId: 'mem_2', reason: 'below-confidence' }]);
   } finally { fx.close(); }

@@ -128,12 +128,21 @@ Completed after the API slice:
   offered in the UI because the merged review contract records the outcome
   without applying edited fields.
 
-MF-5 remains partial. A source audit after PR #125 found that the merged
-Candidate review updates its outcome without promoting an Entry, and
-`edit-and-accept` does not apply edits. These behaviors require implementation
-and transactional acceptance tests before review can be called complete.
-Canonical Event infrastructure is present, but production emission and the
-trusted Inspector UI path still require end-to-end verification.
+MF-5 remains partial. A source audit after PR #125 found that Candidate review
+updated its outcome without promoting an Entry. The local correction now
+creates the Entry atomically for accept and automatic acceptance, applies
+validated edit-and-accept fields, and merges source evidence only into an active
+same-owner/same-scope Entry. Reviewed terminal candidates reject replay; old
+auto-accepted rows without promotion metadata remain explicitly reviewable.
+Candidate/generation/API tests passed 33/33. This does not close the remaining
+trigger, duplicate-convergence, conflict-disposition or production Event gaps.
+
+The Inspector projection now includes Scope, Category, Authority, Confidence,
+Importance, sources and maximum token budget. Its production conversation
+workbench panel selects a linked Run and supports refresh. Server Inspector
+tests passed 14/14 and Playwright/Edge desktop fixture QA exercised conversation
+selection, Run switching, and refresh with no console errors. The fixture test
+is not a live Provider execution acceptance test.
 
 PR #125 (`800d6dd2`) adds candidate generation after successful Run completion
 in the provider dispatcher, with normalized-hash and title-FTS duplicate

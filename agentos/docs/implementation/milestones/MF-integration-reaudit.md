@@ -35,11 +35,13 @@ Status: open findings; merged components are not end-to-end acceptance.
 
 ## Acceptance reporting
 
-Current correction: exact Run/Stage lookup now searches the requested scope
-directly, including nullable Stage for Run-level context. Resolver/snapshot
-focused tests passed 20/20, including replay of Stage A and Run-level context
-after newer Stage B; server TypeScript passed. This does not close the frozen
-payload finding. Its additive design is `MF-snapshot-replay-design.md`.
+Current local corrections address findings 1, 2 and the production mounting in
+4. Candidate/generation/API tests passed 33/33; snapshot/budget/migration024
+tests passed 36/36; Inspector projection/routes passed 14/14. Migration suite:
+351 passed, 1 skipped. Web suite: 162/162. Desktop Playwright/Edge fixture QA
+verified the actual workbench route, Run switching and refresh without console
+errors. Frozen payload design and historical replay behavior are documented in
+`MF-snapshot-replay-design.md`. PR CI and full-suite closeout are pending.
 
 Record each fix with its commit, focused behavioral tests and CI result.
 Do not treat a green component test or a merged PR as proof of the full Lite
