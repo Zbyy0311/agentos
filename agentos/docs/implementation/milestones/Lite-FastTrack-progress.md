@@ -1,6 +1,6 @@
 # Lite Fast Track — Progress Summary
 
-Status: TRACKED — P6/L1 + RECOVERY + MEMORY FOUNDATION + CR-0..CR-2 + WORKFLOW TEMPLATES + UI FOUNDATION + RUNTIME INSPECTOR MERGED — CR-3 + CR-4 COMMITTED (1218a23b, PENDING REVIEW/MERGE) — REMAINING STEPS LISTED
+Status: MERGED — P6/L1 + RECOVERY + MEMORY FOUNDATION + CONVERSATION RUNTIME (CR-0..CR-6) + UI FOUNDATION + DIRECT CONVERSATION UX + RUNTIME INSPECTOR + CONTROLLED GROUP UX + WORKFLOW TEMPLATES + AGENT HISTORY & SEARCH ALL MERGED (main @ b9da96b2) — DEFERRED NON-GOALS REMAIN DEFERRED
 
 ## 1. Purpose
 
@@ -13,9 +13,9 @@ beyond the merged evidence it cites.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ b9c38aa4` (Merge PR #105) |
-| Migration ledger | `001`–`021` present |
-| Main CI | Post-merge runs through `6e42ce4e` conclusion `success`; `1af40ebe` in progress at record time |
+| Baseline | `origin-https/main @ b9da96b2` (Merge PR #118) |
+| Migration ledger | `001`–`023` present |
+| Main CI | `b9da96b2` post-merge run conclusion `success` |
 
 ## 3. Fast-Track status
 
@@ -25,13 +25,13 @@ beyond the merged evidence it cites.
 | Minimal Git Observation + Workspace single-writer rule | **COMPLETE** | PR #68–#76 (L1A–L1E) |
 | Recovery closeout | **COMPLETE** | PR #77 |
 | Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
-| Conversation Runtime | **CR-0..CR-2 MERGED; CR-3..CR-6 IN PRs #106–#108 (stacked)** | PR #95–#97, #105–#108; `CR-progress.md` |
-| Polished UI Foundation | **PARTIAL (tokens MERGED; four-column shell IN PR #109)** | PR #100, #109; `WorkbenchShell.tsx` |
-| Direct Conversation UX | **PARTIAL (routes + reply stream #110; client #111; view #112; controller #113; page composition IN #114)** | PR #110–#114 |
-| Lite Runtime Inspector | **PARTIAL (projection MERGED; route + UI IN PR #115)** | PR #101, #115; `runtimeInspector.ts`, `RuntimeInspectorView.tsx` |
-| Controlled Group Conversation | **PARTIAL (routes + view IN PR #116; group orchestration open)** | PR #116; `BoundedGroupView.tsx` |
-| Workflow Templates | **PARTIAL (catalog + instantiation MERGED; durable wiring IN PR #117)** | PR #99, #103, #117; `WF-templates-durable-wiring.md` |
-| Agent History + Search | **PARTIAL (CR-6 read surface MERGED; search UI IN PR #118)** | PR #108, #118; `HistorySearchView.tsx` |
+| Conversation Runtime | **MERGED (CR-0..CR-6 complete)** | PR #95–#97, #105–#108; `CR-progress.md` |
+| Polished UI Foundation | **MERGED (tokens + four-column shell)** | PR #100, #109; `WorkbenchShell.tsx` |
+| Direct Conversation UX | **MERGED (routes, reply stream, client, view, controller, page)** | PR #110–#114 |
+| Lite Runtime Inspector | **MERGED (projection + route + UI)** | PR #101, #115; `runtimeInspector.ts`, `RuntimeInspectorView.tsx` |
+| Controlled Group Conversation | **PARTIAL (bounded routes + budget/stop/loop-guard view MERGED; speaker orchestration open)** | PR #116; `BoundedGroupView.tsx` |
+| Workflow Templates | **MERGED (catalog + instantiation + durable Task/Run/Stage wiring)** | PR #99, #103, #117; `WF-templates-durable-wiring.md` |
+| Agent History + Search | **MERGED (CR-6 read surface + search UI)** | PR #108, #118; `HistorySearchView.tsx` |
 
 ## 4. Merged evidence (this workstream)
 
