@@ -3,6 +3,8 @@
 import type { ReactNode } from 'react';
 import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation';
 import type { UiTheme } from '../../lib/uiFoundation';
+import { MemoryExplanationView } from '../memory/MemoryExplanationView';
+import type { MemoryExplanationSnapshotDto } from '../memory/MemoryExplanationView';
 
 /**
  * Lite Runtime Inspector view (13-Runtime-Inspector.md).
@@ -52,11 +54,12 @@ export interface InspectorEventDto {
   readonly severity: string;
 }
 
-export interface InspectorMemoryDto {
-  readonly totalTokens: number;
-  readonly truncated: boolean;
-  readonly selectedCount: number;
-}
+/**
+ * MF-5: the Inspector Memory section renders the full frozen Context Snapshot
+ * summary (13-Runtime-Inspector section 10 + 12-UI-Architecture section 14),
+ * not just counters.
+ */
+export type InspectorMemoryDto = MemoryExplanationSnapshotDto;
 
 export interface InspectorProjectionDto {
   readonly overview: InspectorRunOverviewDto;
@@ -186,14 +189,9 @@ export function RuntimeInspectorView(props: RuntimeInspectorViewProps) {
         {memoryContext === null ? (
           <p style={{ margin: 0, color: 'var(--text-tertiary)' }}>No Memory Context snapshot.</p>
         ) : (
-          <dl style={{ margin: 0, display: 'grid', rowGap: 2 }}>
-            <Field label="total tokens" value={memoryContext.totalTokens} />
-            <Field label="truncated" value={memoryContext.truncated ? 'yes' : 'no'} />
-            <Field label="selected entries" value={memoryContext.selectedCount} />
-          </dl>
+          <MemoryExplanationView snapshot={memoryContext} />
         )}
       </Section>
     </div>
   );
 }
-

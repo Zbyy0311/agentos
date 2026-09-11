@@ -23,7 +23,16 @@ const PROJECTION: InspectorProjectionDto = {
     { eventId: 'evt_2', sequence: 2, type: 'stage.completed', timestamp: 't', severity: 'info' },
   ],
   highWatermark: 12,
-  memoryContext: { totalTokens: 42, truncated: false, selectedCount: 2 },
+  memoryContext: {
+    memoryContextId: 'mctx_1', queryHash: 'qh', retrievalStrategyVersion: 'mf3-ranking-v1',
+    totalTokens: 42, truncated: false, createdAt: '2026-09-01T00:00:00Z',
+    selected: [{
+      memoryId: 'mem_1', memoryVersion: 1, rank: 1, score: 42.5, scope: 'workspace',
+      category: 'decision', authority: 'system-verified', confidence: 0.9, importance: 0.8,
+      tokenCost: 42, reasons: ['scope-match', 'importance'], sourceRefs: [{ kind: 'run', id: 'run_1' }],
+    }],
+    exclusions: [{ memoryId: 'mem_2', reason: 'below-confidence' }],
+  },
   truncated: false,
 };
 
@@ -72,6 +81,18 @@ test('INS-05 Memory Context is a section, and its absence is named, not hidden',
   assert.ok(noMem.includes('No Memory Context snapshot'));
 });
 
+test('INS-07 Memory Context explains selection and exclusion from the frozen Snapshot', async () => {
+  const markup = await render();
+  assert.ok(markup.includes('data-agentos="memory-explanation"'));
+  assert.ok(markup.includes('mctx_1'));
+  assert.ok(markup.includes('mf3-ranking-v1'));
+  assert.ok(markup.includes('#1 mem_1'));
+  assert.ok(markup.includes('scope-match, importance'));
+  assert.ok(markup.includes('run:run_1'));
+  assert.ok(markup.includes('mem_2'));
+  assert.ok(markup.includes('below-confidence'));
+});
+
 test('INS-06 a section error is an alert, never a page failure', async () => {
   const markup = await render({ error: 'RUNTIME_INSPECTOR_RUN_NOT_FOUND' });
   assert.ok(markup.includes('role="alert"'));
@@ -79,4 +100,3 @@ test('INS-06 a section error is an alert, never a page failure', async () => {
   // the rest of the page still renders
   assert.ok(markup.includes('run_1'));
 });
-
