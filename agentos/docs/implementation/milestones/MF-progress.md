@@ -1,6 +1,6 @@
 # Memory Foundation — Progress and Remaining Work
 
-Status: MF-0..MF-4 MERGED — MF-5 EVENTS + EMISSION + RUN INJECTION + API MERGED, UI OPEN — MEMORY FOUNDATION IN PROGRESS
+Status: MF-0..MF-5 MERGED — MF-2 REMAINDER (candidate generation triggers, near-duplicate detection) OPEN — MEMORY FOUNDATION IN PROGRESS
 
 ## 1. Purpose
 
@@ -12,7 +12,7 @@ legible without re-auditing the repository.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ e8f64b15` (Merge PR #120) |
+| Baseline | `origin-https/main @ 88c79869` (Merge PR #123) |
 | Migration ledger | `001`–`023` present; no MF-5 API migration (read/write composition over MF-1..MF-4 tables) |
 | Main CI | `e8f64b15` PR CI run `34560421871` conclusion `success` |
 | Preceding gates | Workspace single-writer rule COMPLETE; Recovery closeout COMPLETE |
@@ -26,7 +26,7 @@ legible without re-auditing the repository.
 | MF-2 | Candidate pipeline + dedup/conflict | **MERGED** | #86 (auth), #87 (impl) |
 | MF-3 | Scope-filtered retrieval + deterministic ranking + reasons | **MERGED** | #82 |
 | MF-4 | Budget policy + immutable Context Snapshot | **MERGED** | #83 (auth), #84 (impl) |
-| MF-5 | Events + emission + Run injection + API MERGED; UI/Inspector NOT STARTED | **PARTIAL** | #89 (events), #91 (emission), #120 (API) |
+| MF-5 | Events, emission, Run injection, API, Candidate review API, UI, Inspector surfaces | **MERGED** | #89 (events), #91 (emission), #92 (Run injection), #120 (API), #122 (Candidate API + Inspector wiring), #123 (UI) |
 
 ## 4. Merged evidence
 
@@ -47,7 +47,10 @@ legible without re-auditing the repository.
 | Dispatcher MF-4 integration gates | 3/3 PASS |
 | MF-5 API routes | 5/5 PASS |
 | MF-4R-09 `listForRun` | 1/1 PASS (within 9/9 snapshot suite) |
+| MF-5 Candidate queue API + review + Inspector wiring | 21/21 focused PASS (incl. MF2R-12) |
+| MF-5 UI (explanation, review queue, Inspector detail) | web 162/162 PASS; `next build` clean |
 | Full Server run (MF-5 API head) | 2590 total, 2583 passed, 4 failed, 3 skipped |
+| Full Server run (MF-5 Candidate API head) | 2593 total, 2586 passed, 4 failed, 3 skipped |
 
 The 4 server failures are pre-existing Windows `ENOTEMPTY` temp-directory
 teardown flakes in `worktrees.test.ts` (2), `ConversationService.test.ts`,
@@ -113,11 +116,18 @@ user-initiated conflict resolution above records the fact transactionally
 without emitting a canonical Event. A Workspace-scoped memory Event context
 contract is required to close this; not yet authorized.
 
-Not started within MF-5:
+Completed after the API slice:
 
-- UI Memory explanation and Candidate review (consumes the merged API; the
-  forward Candidate review endpoints are scoped with that UI slice);
-- Inspector Context Snapshot view.
+- PR #122: forward Candidate queue + version-guarded review endpoints
+  (`GET /memory/candidates`, `POST /memory/candidates/:id/review`) and the
+  production Inspector `memoryContextSnapshots` wiring (the projection
+  previously always returned `null`).
+- PR #123: Memory explanation view (12 §14), forward Candidate review queue
+  UI, and the Inspector Memory detail section. `edit-and-accept` is not
+  offered in the UI because the merged review contract records the outcome
+  without applying edited fields.
+
+MF-5 is complete; no MF-5 work remains open.
 
 ### Run startup integration (CLOSED)
 

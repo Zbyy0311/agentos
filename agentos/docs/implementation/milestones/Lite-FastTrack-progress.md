@@ -13,7 +13,7 @@ beyond the merged evidence it cites.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ e8f64b15` (Merge PR #120) |
+| Baseline | `origin-https/main @ 88c79869` (Merge PR #123) |
 | Migration ledger | `001`–`023` present |
 | Main CI | `e8f64b15` PR CI run `34560421871` conclusion `success` |
 
@@ -24,7 +24,7 @@ beyond the merged evidence it cites.
 | P6 / Windows recovery correctness | **COMPLETE** | PR #63–#66; `P6-recovery-closeout.md` (PR #77) |
 | Minimal Git Observation + Workspace single-writer rule | **COMPLETE** | PR #68–#76 (L1A–L1E) |
 | Recovery closeout | **COMPLETE** | PR #77 |
-| Memory Foundation | **PARTIAL (core + MF-5 API MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92), MF-5 API (PR #120); `MF-progress.md` |
+| Memory Foundation | **PARTIAL (MF-0..MF-5 MERGED; MF-2 remainder open)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection/API/UI/Inspector (PR #89/#91/#92/#120/#122/#123); `MF-progress.md` |
 | Conversation Runtime | **MERGED (CR-0..CR-6 complete)** | PR #95–#97, #105–#108; `CR-progress.md` |
 | Polished UI Foundation | **MERGED (tokens + four-column shell)** | PR #100, #109; `WorkbenchShell.tsx` |
 | Direct Conversation UX | **MERGED (routes, reply stream, client, view, controller, page)** | PR #110–#114 |
@@ -51,6 +51,8 @@ beyond the merged evidence it cites.
 | Full web test suite (UI Foundation head) | 99/99 PASS |
 | MF-5 API routes + listForRun | 5/5 + 9/9 PASS |
 | Full Server run (MF-5 API head) | 2590 total, 2583 passed, 4 failed (pre-existing Windows ENOTEMPTY teardowns), 3 skipped |
+| MF-5 Candidate API + Inspector wiring | 21/21 focused PASS; full Server 2593/2586/4/3 |
+| MF-5 UI | web 162/162 PASS; `next build` clean |
 
 The 2 server failures are pre-existing Windows `tar` environment issues in
 `WorktreeArtifactService`, unrelated to the Lite work. First runs were
@@ -69,12 +71,11 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
 
 ## 5. Remaining work
 
-- **Memory Foundation**: MF-5 UI Memory explanation + Candidate review and the
-  Inspector Context Snapshot view (the MF-5 APIs they consume are merged via
-  PR #120). Recorded gap: user-initiated conflict resolution does not emit a
-  canonical Memory Event because emission is Run-scoped; a Workspace-scoped
-  memory Event context contract is not yet authorized. MF-2 remainder:
-  candidate generation triggers and near-duplicate FTS-similarity detection.
+- **Memory Foundation**: MF-2 remainder — candidate generation triggers bound
+  to meaningful transitions and near-duplicate FTS-similarity detection.
+  Recorded gap: user-initiated conflict resolution and Candidate review do not
+  emit canonical Memory Events because emission is Run-scoped; a
+  Workspace-scoped memory Event context contract is not yet authorized.
 - **Controlled Group Conversation**: speaker orchestration remains open; the
   bounded routes and the budget/stop/loop-guard view are merged (PR #116).
 
