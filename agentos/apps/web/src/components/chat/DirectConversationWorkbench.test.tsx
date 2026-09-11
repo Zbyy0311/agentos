@@ -17,6 +17,8 @@ async function render(overrides: Record<string, unknown> = {}): Promise<string> 
     <DirectConversationWorkbench
       theme="dark"
       viewportWidth={1800}
+      workspaceId="ws_a"
+      apiBase="http://127.0.0.1:1"
       workspaceName="ws"
       agents={[{ id: 'agent_a', name: 'Codex', status: 'idle' }]}
       conversations={[
@@ -71,3 +73,14 @@ test('WB-04 the Canvas column contains the Conversation runtime view', async () 
   assert.ok(markup.includes('data-agentos="composer-send"'));
 });
 
+test('WB-05 a group Conversation gets the bounded group canvas, not the direct composer', async () => {
+  const markup = await render({
+    activeConversationId: 'conv_2',
+    activeConversationTitle: 'Team',
+    activeConversationKind: 'group',
+  });
+  assert.ok(markup.includes('data-agentos="group-conversation-canvas"'));
+  assert.ok(markup.includes('bounded group'));
+  assert.ok(!markup.includes('data-agentos="conversation-runtime-view"'));
+  assert.ok(!markup.includes('data-agentos="composer-send"'));
+});

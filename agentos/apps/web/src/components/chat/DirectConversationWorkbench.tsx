@@ -3,6 +3,7 @@
 import type { ReactNode } from 'react';
 import { WorkbenchShell } from '../layout/WorkbenchShell';
 import { ConversationRuntimeView } from '../chat/ConversationRuntimeView';
+import { GroupConversationCanvas } from '../chat/GroupConversationCanvas';
 import type { UiTheme } from '../../lib/uiFoundation';
 import { UI_SPACING_BASE_PX, UI_RADIUS_TOKENS } from '../../lib/uiFoundation';
 import type { ConversationStreamState } from '../../lib/directConversationStream';
@@ -27,6 +28,8 @@ export interface DirectConversationWorkbenchProps {
   readonly inspector?: ReactNode;
   readonly theme: UiTheme;
   readonly viewportWidth: number;
+  readonly workspaceId: string;
+  readonly apiBase: string;
   readonly reducedMotion?: boolean;
   readonly workspaceName: string;
   readonly agents: readonly AgentSummary[];
@@ -95,22 +98,34 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
     </div>
   );
 
-  const canvasColumn = (
-    <ConversationRuntimeView
-      theme={props.theme}
-      conversationTitle={props.activeConversationTitle}
-      conversationKind={props.activeConversationKind}
-      messages={props.messages}
-      stream={props.stream}
-      composerMode={props.composerMode}
-      composerContent={props.composerContent}
-      sending={props.sending}
-      {...(props.error === undefined ? {} : { error: props.error })}
-      onModeChange={props.onModeChange}
-      onContentChange={props.onContentChange}
-      onSend={props.onSend}
-    />
-  );
+  // A group Conversation gets the bounded group canvas (it owns its own composer
+  // and its bounded walk); a direct Conversation keeps the reply stream canvas.
+  const canvasColumn = props.activeConversationKind === 'group'
+    ? (
+      <GroupConversationCanvas
+        theme={props.theme}
+        workspaceId={props.workspaceId}
+        apiBase={props.apiBase}
+        conversationId={props.activeConversationId ?? ''}
+        conversationTitle={props.activeConversationTitle}
+      />
+    )
+    : (
+      <ConversationRuntimeView
+        theme={props.theme}
+        conversationTitle={props.activeConversationTitle}
+        conversationKind={props.activeConversationKind}
+        messages={props.messages}
+        stream={props.stream}
+        composerMode={props.composerMode}
+        composerContent={props.composerContent}
+        sending={props.sending}
+        {...(props.error === undefined ? {} : { error: props.error })}
+        onModeChange={props.onModeChange}
+        onContentChange={props.onContentChange}
+        onSend={props.onSend}
+      />
+    );
 
   const inspectorColumn = (
     <div style={{ padding: UI_SPACING_BASE_PX * 2, color: 'var(--text-secondary)', fontSize: 12 }}>

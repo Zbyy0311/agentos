@@ -38,6 +38,8 @@ export default function DirectConversationPage() {
   return (
     <DirectConversationWorkbench
       theme={theme}
+      workspaceId={workspaceId}
+      apiBase={API_BASE}
       inspector={<RunInspectorPanel key={state.activeConversationId ?? workspaceId} workspaceId={workspaceId}
         apiBase={API_BASE} runIds={runIds} theme={theme} />}
       viewportWidth={viewportWidth}
