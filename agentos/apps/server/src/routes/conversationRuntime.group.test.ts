@@ -118,3 +118,92 @@ test('create interaction fails closed for an invalid budget or missing conversat
     assert.equal(noConv.status, 404);
   });
 });
+test('bounded group respond: the runtime selects speakers, streams the walk, and records replies', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const { conversationId, messageId } = await seedConversation(baseUrl);
+      const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+        budget: { maxAgentsPerTurn: 4, maxRepliesPerAgent: 2, maxTotalReplies: 6, maxAgentHops: 4 },
+      });
+      assert.equal(created.status, 201);
+      const interaction = (created.json as { interaction: { id: string } }).interaction;
+
+      const response = await fetch(
+        `${baseUrl}/conversations/${conversationId}/interactions/${interaction.id}/respond`,
+        {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sourceMessageId: messageId }),
+        },
+      );
+      assert.equal(response.status, 200);
+      assert.ok((response.headers.get('content-type') ?? '').includes('text/event-stream'));
+      const text = await response.text();
+
+      // The plan is announced before any Turn starts; the walk finishes with group.done.
+      assert.ok(text.indexOf('event: group.plan') < text.indexOf('event: group.turn.start'));
+      assert.ok(text.indexOf('event: group.done') > text.lastIndexOf('event: group.turn.'));
+      assert.ok(text.includes('"endedBy":"completed"'));
+      // Both members spoke, in membership order (codex joined before kimi).
+      assert.equal((text.match(/event: group.turn.start/g) ?? []).length, 2);
+      assert.equal((text.match(/event: group.turn.final/g) ?? []).length, 2);
+      assert.ok(text.indexOf('"agentId":"codex"') < text.indexOf('"agentId":"kimi"'));
+      assert.ok(text.includes('event: checkpoint'));
+
+      const read = await fetch(`${baseUrl}/interactions/${interaction.id}`).then(r => r.json()) as {
+        interaction: { replyCount: number; status: string };
+        replies: Array<{ agentId: string }>;
+      };
+      assert.equal(read.interaction.replyCount, 2);
+      assert.deepEqual(read.replies.map(reply => reply.agentId), ['codex', 'kimi']);
+
+      const db = store.getDatabase();
+      const snapshots = db.prepare('SELECT COUNT(*) AS n FROM cr_turn_context_snapshots').get() as { n: number | bigint };
+      assert.equal(Number(snapshots.n), 2);
+      const wsEvents = db.prepare('SELECT COUNT(*) AS n FROM workspace_events').get() as { n: number | bigint };
+      assert.equal(Number(wsEvents.n), 0);
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});
+
+test('bounded group respond: validation and lifecycle failures fail closed', async () => {
+  await withServer(async (baseUrl) => {
+    const { conversationId, messageId } = await seedConversation(baseUrl);
+    const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+      budget: { maxAgentsPerTurn: 2, maxRepliesPerAgent: 2, maxTotalReplies: 3, maxAgentHops: 2 },
+    });
+    const interaction = (created.json as { interaction: { id: string; version: number } }).interaction;
+    const respond = `${baseUrl}/conversations/${conversationId}/interactions/${interaction.id}/respond`;
+
+    const missingMessage = await postJson(respond, {});
+    assert.equal(missingMessage.status, 400);
+    const badMessage = await postJson(respond, { sourceMessageId: 'msg_missing' });
+    assert.equal(badMessage.status, 400);
+    const badList = await postJson(respond, { sourceMessageId: messageId, orchestratedOrder: 'codex' });
+    assert.equal(badList.status, 400);
+
+    const stopped = await postJson(`${baseUrl}/interactions/${interaction.id}/stop`, { expectedVersion: interaction.version });
+    assert.equal(stopped.status, 200);
+    const inactive = await postJson(respond, { sourceMessageId: messageId });
+    assert.equal(inactive.status, 409);
+
+    const missingInteraction = await postJson(
+      `${baseUrl}/conversations/${conversationId}/interactions/interaction_missing/respond`,
+      { sourceMessageId: messageId },
+    );
+    assert.equal(missingInteraction.status, 404);
+
+    // A direct Conversation can never host a bounded walk.
+    const direct = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+    const directConversation = (direct.json as { conversation: { id: string } }).conversation;
+    const directMessage = await postJson(`${baseUrl}/conversations/${directConversation.id}/messages`, { content: 'hi' });
+    const directMessageId = (directMessage.json as { message: { id: string } }).message.id;
+    const onDirect = await postJson(
+      `${baseUrl}/conversations/${directConversation.id}/interactions/${interaction.id}/respond`,
+      { sourceMessageId: directMessageId },
+    );
+    assert.equal(onDirect.status, 400);
+  });
+});
