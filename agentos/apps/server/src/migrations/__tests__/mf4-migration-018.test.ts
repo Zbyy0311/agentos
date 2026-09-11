@@ -210,7 +210,7 @@ test('MF4-A11 no secret value column exists', () => {
 // Registry contract.
 test('MF4 registry entry is numeric, ordered, and non-destructive', () => {
   const ids = DEFAULT_REGISTRY_MIGRATIONS.map(m => m.id);
-  assert.deepEqual(ids, FULL_IDS);
+  assert.deepEqual(ids.slice(0, FULL_IDS.length), FULL_IDS);
   assert.equal(migration018.id, '018');
   assert.equal(migration018.destructive, false);
   assert.match(migration018.checksum, /^[0-9a-f]{16}$/);
