@@ -32,7 +32,8 @@ export default function DirectConversationPage() {
 
   const active = state.conversations.find(c => c.id === state.activeConversationId);
   const theme: UiTheme = 'dark';
-  const runIds = [...new Set(state.messages.flatMap(message => message.runId ? [message.runId] : []))].reverse();
+  const runIds = [...new Set(state.messages.flatMap(message =>
+    message.conversationId === state.activeConversationId && message.runId ? [message.runId] : []))].reverse();
 
   return (
     <DirectConversationWorkbench

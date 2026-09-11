@@ -22,6 +22,8 @@ export interface ForwardConversation {
 
 export interface ForwardMessage {
   readonly id: string;
+  /** Present on the canonical API response; older client fixtures may omit it. */
+  readonly conversationId?: string;
   readonly sequence: number;
   readonly senderType: string;
   readonly senderAgentId: string | null;
