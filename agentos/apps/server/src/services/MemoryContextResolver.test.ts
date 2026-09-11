@@ -139,6 +139,24 @@ test('MF4I-03 stage scope is distinct from run scope', () => {
 });
 
 // MF4I-04 — snapshot persistence failure blocks injection.
+test('replaying an earlier scope after a later Stage does not recreate its snapshot', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx);
+    const run = fx.resolver.resolve(resolveInput());
+    const stageA = fx.resolver.resolve(resolveInput({ stageId: 'stage_a', createdAt: '2026-09-09T01:00:00.000Z' }));
+    fx.resolver.resolve(resolveInput({ stageId: 'stage_b', createdAt: '2026-09-09T02:00:00.000Z' }));
+    const replayA = fx.resolver.resolve(resolveInput({ stageId: 'stage_a' }));
+    const replayRun = fx.resolver.resolve(resolveInput());
+    assert.equal(replayA.reused, true);
+    assert.equal(replayA.snapshot.id, stageA.snapshot.id);
+    assert.equal(replayRun.reused, true);
+    assert.equal(replayRun.snapshot.id, run.snapshot.id);
+    assert.equal(fx.snapshots.listForRun(WS, RUN).length, 3);
+    assert.equal(fx.snapshots.findLatestForScope('another-workspace', RUN, 'stage_a'), undefined);
+  } finally { fx.close(); }
+});
+
 test('MF4I-04 snapshot failure blocks injection', () => {
   const fx = fixture();
   try {

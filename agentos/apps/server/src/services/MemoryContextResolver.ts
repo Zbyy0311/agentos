@@ -161,13 +161,7 @@ export class MemoryContextResolver {
   }
 
   private findExisting(input: ResolveRunMemoryContextInput): MemoryContextSnapshotRecord | undefined {
-    if (input.stageId === undefined) {
-      const latest = this.snapshots.findLatestForRun(input.workspaceId, input.runId);
-      // Only reuse a Run-level snapshot (no stage) to avoid mixing stage scopes.
-      return latest !== undefined && latest.stageId === null ? latest : undefined;
-    }
-    const latest = this.snapshots.findLatestForRun(input.workspaceId, input.runId);
-    return latest !== undefined && latest.stageId === input.stageId ? latest : undefined;
+    return this.snapshots.findLatestForScope(input.workspaceId, input.runId, input.stageId);
   }
 
   /**

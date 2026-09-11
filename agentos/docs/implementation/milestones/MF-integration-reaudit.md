@@ -35,6 +35,12 @@ Status: open findings; merged components are not end-to-end acceptance.
 
 ## Acceptance reporting
 
+Current correction: exact Run/Stage lookup now searches the requested scope
+directly, including nullable Stage for Run-level context. Resolver/snapshot
+focused tests passed 20/20, including replay of Stage A and Run-level context
+after newer Stage B; server TypeScript passed. This does not close the frozen
+payload finding. Its additive design is `MF-snapshot-replay-design.md`.
+
 Record each fix with its commit, focused behavioral tests and CI result.
 Do not treat a green component test or a merged PR as proof of the full Lite
 07 contract. Historical suite failures remain historical observations until

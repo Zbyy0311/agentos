@@ -177,6 +177,16 @@ export class MemoryContextSnapshotRepository {
   }
 
   /** Latest snapshot for a Run, deterministically ordered. */
+  findLatestForScope(workspaceId: string, runId: string, stageId?: string): MemoryContextSnapshotRecord | undefined {
+    if (!nonBlank(workspaceId) || !nonBlank(runId)
+      || (stageId !== undefined && !nonBlank(stageId))) return undefined;
+    const row = this.db.prepare(
+      'SELECT * FROM memory_context_snapshots WHERE workspace_id = ? AND run_id = ? AND stage_id IS ? ORDER BY created_at DESC, id DESC LIMIT 1',
+    ).get(workspaceId, runId, stageId ?? null) as SnapshotRow | undefined;
+    return row === undefined ? undefined : this.toRecord(row);
+  }
+
+  /** Latest snapshot across all Stages of a Run, for inspection. */
   findLatestForRun(workspaceId: string, runId: string): MemoryContextSnapshotRecord | undefined {
     if (!nonBlank(workspaceId) || !nonBlank(runId)) return undefined;
     const row = this.db.prepare(
