@@ -1,6 +1,6 @@
 # Conversation Runtime — Progress and Remaining Work
 
-Status: CR-0/CR-1/CR-2 MERGED — CR-3 + CR-4 MERGED via PR #106 (main @ 20fe838b) — CR-5 MERGED via PR #107 (main @ 772151a6, migration 023) — CR-6 IN PR #108 (retargeted to main) — CONVERSATION RUNTIME COMPLETE PENDING MERGE
+Status: CR-0..CR-6 ALL MERGED — CR-3/CR-4 via PR #106, CR-5 via PR #107, CR-6 via PR #108 (main @ b9da96b2) — CONVERSATION RUNTIME COMPLETE
 
 ## 1. Purpose
 
@@ -12,10 +12,10 @@ without re-auditing the repository.
 
 | Field | Value |
 |---|---|
-| Baseline | `main @ 20fe838b` (Merge PR #106, CR-3 streaming + CR-4 bridge/projection) |
-| Migration ledger | `001`–`021` present |
-| Main CI | Post-merge runs through PR #105 recorded at merge time; earlier CR-1 records remain in history |
-| CR-3/CR-4 delivery | commit `1218a23b` on `runtime/cr3-cr4-conversation-runtime` (pushed; branched from `b9c38aa4`) |
+| Baseline | `main @ b9da96b2` (all Conversation Runtime PRs merged: #106, #107, #108) |
+| Migration ledger | `001`–`023` present |
+| Main CI | `b9da96b2` post-merge run conclusion `success` |
+| CR-3/CR-4 delivery | merged as PR #106 (`20fe838b`); CR-5 as PR #107 (`772151a6`); CR-6 as PR #108 (`4d8a057a`) |
 | Prior gates | Workspace single-writer COMPLETE; Recovery closeout COMPLETE; Memory Foundation MF-0..MF-4 + MF-5 events/emission/Run-injection MERGED |
 
 ## 3. Slice status
