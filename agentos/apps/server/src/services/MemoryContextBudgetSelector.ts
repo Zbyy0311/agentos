@@ -11,6 +11,7 @@ import type { MemoryRetrievalService, RetrievedMemoryEntry, RetrieveMemoryInput 
 import {
   MemoryContextSnapshotRepository,
   MemoryContextSnapshotError,
+  type CreateMemoryContextSnapshotInput,
   type MemoryContextSnapshotRecord,
 } from '../store/MemoryContextSnapshotRepository.js';
 
@@ -54,6 +55,16 @@ export interface SelectedMemoryContext {
   readonly contextText: string;
 }
 
+/**
+ * The exact snapshot payload plus the text it would persist. Computed by
+ * `plan` without writing, so a caller that must commit the snapshot together
+ * with its Runtime Event and Outbox row can own the single transaction.
+ */
+export interface PlannedMemoryContextSnapshot {
+  readonly snapshotInput: CreateMemoryContextSnapshotInput;
+  readonly contextText: string;
+}
+
 function nonBlank(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -76,7 +87,14 @@ export class MemoryContextBudgetSelector {
     private readonly snapshots: MemoryContextSnapshotRepository,
   ) {}
 
-  select(input: SelectMemoryContextInput): SelectedMemoryContext {
+  /**
+   * MF-5 emission seam: compute the snapshot payload WITHOUT persisting it.
+   * `select` keeps owning the standalone BEGIN/COMMIT path; an emitter caller
+   * (MemoryRuntimeEventEmitter.emitContextCreated) persists this payload inside
+   * the transaction that also writes the canonical Event + Outbox row, so
+   * retrieval, budget selection and persistence still run exactly once.
+   */
+  plan(input: SelectMemoryContextInput): PlannedMemoryContextSnapshot {
     if (typeof input !== 'object' || input === null || !nonBlank(input.snapshotId)
       || !nonBlank(input.createdAt)) {
       throw new MemoryBudgetSelectionError('INPUT_INVALID');
@@ -90,9 +108,9 @@ export class MemoryContextBudgetSelector {
     const contextText = selected
       .map(item => `### ${item.entry.title}\n${item.entry.content}`)
       .join('\n\n');
-    let snapshot: MemoryContextSnapshotRecord;
-    try {
-      snapshot = this.snapshots.createSnapshot({
+    return {
+      contextText,
+      snapshotInput: {
         contextText,
         id: input.snapshotId,
         workspaceId: input.retrieval.context.workspaceId,
@@ -110,7 +128,15 @@ export class MemoryContextBudgetSelector {
         createdAt: input.createdAt,
         selected: selected.map(item => item.explanation),
         exclusions,
-      });
+      },
+    };
+  }
+
+  select(input: SelectMemoryContextInput): SelectedMemoryContext {
+    const planned = this.plan(input);
+    let snapshot: MemoryContextSnapshotRecord;
+    try {
+      snapshot = this.snapshots.createSnapshot(planned.snapshotInput);
     } catch (error) {
       if (error instanceof MemoryContextSnapshotError) throw new MemoryBudgetSelectionError('SNAPSHOT_FAILED');
       throw new MemoryBudgetSelectionError('SNAPSHOT_FAILED');

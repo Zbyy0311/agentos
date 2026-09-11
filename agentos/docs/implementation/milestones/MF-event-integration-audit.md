@@ -1,8 +1,9 @@
 # Memory event integration: source audit before production wiring
 
 Base: PR #126. Status: Candidate and conflict event corrections implemented on
-the next branch; production wiring and the Workspace-scoped event context
-remain open.
+the next branch; Run-scoped production wiring is implemented on this branch
+(see "Production wiring evidence"); only the Workspace-scoped event context
+remains open.
 
 ## Findings
 
@@ -35,7 +36,7 @@ would produce incorrect facts:
 3. [done — see evidence below] Complete conflict Entry effects before claiming
    conflicted/superseded events; use persisted Entry metadata, never placeholder
    authority/scope/category.
-4. Wire the real Run-startup snapshot and terminal Candidate seams with
+4. [done — see evidence below] Wire the real Run-startup snapshot and terminal Candidate seams with
    authorized causal context. Preserve snapshot replay idempotency and prove
    that Event or Outbox failure rolls back the associated Memory write.
 5. Design Workspace-only review/save event sequencing additively; do not weaken
@@ -96,6 +97,41 @@ Event/Outbox row (`MF5E-15`). Full local server run: 2625/2632, the four
 failures being the known Windows `ENOTEMPTY` teardown class reproduced at the
 baseline.
 
-Still open on this branch: the emitter is not constructed in production, and a
-Workspace-only user review or resolve action has no authorized causal context
-yet.
+## Production wiring evidence
+
+`createProviderExecutionChain` now constructs ONE `MemoryRuntimeEventEmitter`
+over the store's bound Runtime Event + Outbox writer plus a
+`DurableMemoryRuntimeEventContextAuthority`, and injects it into both Run
+scopes: the Run-startup `MemoryContextResolver` and the terminal
+`MemoryCandidateGenerationService`. Two seams and their failure semantics are
+proven against real implementations, not doubles:
+
+- the composition root is constructible only because the writer and the
+  repositories share one SQLite connection (`WRITER_NOT_BOUND` otherwise);
+  `providerExecutionChain.emission.test.ts` MF5W-01..04 prove the production
+  resolver refuses a missing `eventContext`, persists the snapshot together
+  with exactly one `memory.context_created` Event + Outbox row bound to the
+  Run's persisted `run.start` Operation, and reuses that snapshot on replay
+  without appending a second Event;
+- `MemoryCandidateGenerationService.emission.test.ts` MF5C-1..6 prove the
+  terminal Candidate and `memory.candidate_created` commit together, that
+  replay converges with no second Event, that an injected Outbox failure rolls
+  back the Candidate, the Event and the sequence allocation, and that a missing,
+  unknown or foreign-Run Operation fails closed with zero writes;
+- `MemoryContextResolver.emission.test.ts` MF5R-01..05 prove the same atomic
+  commit, replay and rollback for the snapshot seam, where an Outbox failure
+  blocks injection;
+- `MemoryRuntimeEventContextAuthority.test.ts` proves the claim-then-proof
+  authority itself: the caller's correlation/causation claim is accepted only
+  when the durable row proves it, the returned context is re-derived from the
+  row, and `canonical_command` always fails closed.
+
+Evidence: 162 tests across the six Memory/Event suites plus the Operation and
+Memory routes, 161 pass / 1 skipped (environment-gated Provider test) / 0 fail;
+`tsc --noEmit` exit 0. Retaining the wrong semantics is not possible here —
+every assertion is anchored on the durable `operations` row and on the actual
+Memory table counts, so an unwired implementation fails the tests.
+
+Still open on this branch: a Workspace-only user review or resolve action has no
+authorized causal context yet, so those routes keep recording the fact without
+emitting a canonical Event (see item 5).

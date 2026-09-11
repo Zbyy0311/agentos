@@ -149,6 +149,24 @@ in the provider dispatcher, with normalized-hash and title-FTS duplicate
 signals. This is one trigger slice, not completion of all six triggers or
 dedup evidence convergence.
 
+An event-integration audit followed the promotion corrections
+(`MF-event-integration-audit.md`). On this branch the Run-scoped production
+seams are now wired: `createProviderExecutionChain` builds one
+`MemoryRuntimeEventEmitter` over the store's bound Runtime Event + Outbox
+writer and a `DurableMemoryRuntimeEventContextAuthority`, and hands it to the
+Run-startup `MemoryContextResolver` and the terminal
+`MemoryCandidateGenerationService`. Each Memory fact and its canonical Event
+now commit in one transaction; the caller's causal context is a claim that the
+durable `operations`/`runtime_events` row must prove, so an unproven origin
+fails closed instead of fabricating causation. Replay stays a pure read and
+appends no second Event; an Event or Outbox failure rolls the Memory write back.
+Evidence: 161/162 across the affected suites plus the Operation and Memory
+routes (1 environment-gated skip), `tsc --noEmit` exit 0, with dedicated
+emission suites for the authority, the composition root, the snapshot seam and
+the candidate seam. The Workspace-only Memory routes still record their fact
+without a canonical Event; that contract gap is unchanged and not yet
+authorized.
+
 ### Run startup integration (MERGED; replay integrity OPEN)
 
 Merged via PR #92: `MemoryContextResolver` composes MF-3 retrieval + MF-4

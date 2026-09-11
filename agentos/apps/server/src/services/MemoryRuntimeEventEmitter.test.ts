@@ -84,6 +84,12 @@ function fixture() {
   db.prepare(
     'INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, created_by, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
   ).run(RUN, WS, TASK, RUN, 'queued', 'initial', 'test', NOW, NOW);
+  // The authorized causal record every emission binds to: a durable Operation
+  // of THIS Workspace/Run. Without it the emitter's in-transaction provenance
+  // proof fails closed, so the fixture must contain the real row.
+  db.prepare(
+    'INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, created_at, started_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+  ).run('op_mf5e', 'run.start', 'running', WS, 'run', RUN, RUN, 'corr-mf5e', NOW, NOW, NOW);
 
   const tx = db as unknown as TransactionDatabase;
   const events = new RuntimeEventRepository(tx, createM3RuntimeEventRegistry());

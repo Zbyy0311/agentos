@@ -2,6 +2,7 @@ import {
   validateMemoryBudgetPolicy,
   type MemoryBudgetPolicyV1,
   type MemoryRetrievalContext,
+  type RuntimeEventContextAuthoritySourceV1,
 } from '@agentos/shared';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import {
@@ -14,6 +15,7 @@ import {
   RETRIEVAL_STRATEGY_VERSION_V1,
   type SelectMemoryContextInput,
 } from './MemoryContextBudgetSelector.js';
+import type { MemoryRuntimeEventEmitter } from './MemoryRuntimeEventEmitter.js';
 
 /**
  * MF-4 Run startup integration: resolve, freeze, and gate Memory context.
@@ -31,6 +33,12 @@ import {
  *
  * Snapshot persistence failure blocks injection: the resolver throws and the
  * caller must not proceed to Provider execution.
+ *
+ * MF-5 production wiring: when an `emitter` is supplied the snapshot and its
+ * canonical `memory.context_created` Event + Outbox row commit in ONE
+ * transaction, and the authorized causal context becomes a required input.
+ * The replay path stays a pure read: a reused snapshot emits nothing, so a
+ * re-dispatch never appends a second Event for the same fact.
  */
 
 export const DEFAULT_MEMORY_BUDGET_POLICY_V1: MemoryBudgetPolicyV1 = Object.freeze({
@@ -67,6 +75,14 @@ export interface ResolveRunMemoryContextInput {
   readonly query?: string;
   readonly budget?: MemoryBudgetPolicyV1;
   readonly createdAt: string;
+  /**
+   * Authorized causal context for the `memory.context_created` Event. Required
+   * on EVERY call once the resolver is wired with an emitter, including a
+   * replay: the check runs before the lookup, so an unproven origin can never
+   * be mistaken for an authorized caller. The replay path itself writes
+   * nothing, so it produces no Event no matter what context is passed.
+   */
+  readonly eventContext?: RuntimeEventContextAuthoritySourceV1;
 }
 
 export interface ResolvedMemoryContext {
@@ -87,12 +103,19 @@ export interface MemoryContextResolverOptions {
   readonly snapshots?: MemoryContextSnapshotRepository;
   readonly entries?: MemoryEntryRepository;
   readonly createSnapshotId?: (input: ResolveRunMemoryContextInput) => string;
+  /**
+   * MF-5 seam. When supplied, the snapshot is persisted through
+   * `emitContextCreated`, so the frozen context and the Event that records it
+   * share one transaction and one rollback boundary.
+   */
+  readonly emitter?: MemoryRuntimeEventEmitter;
 }
 
 export class MemoryContextResolver {
   private readonly snapshots: MemoryContextSnapshotRepository;
   private readonly selector: MemoryContextBudgetSelector;
   private readonly createSnapshotId: (input: ResolveRunMemoryContextInput) => string;
+  private readonly emitter: MemoryRuntimeEventEmitter | undefined;
 
   constructor(options: MemoryContextResolverOptions) {
     const db = options.store.getDatabase();
@@ -100,6 +123,7 @@ export class MemoryContextResolver {
     this.selector = options.selector;
     this.createSnapshotId = options.createSnapshotId
       ?? (input => `mctx_${input.runId}_${input.stageId ?? 'run'}_${RETRIEVAL_STRATEGY_VERSION_V1}`);
+    this.emitter = options.emitter;
   }
 
   /**
@@ -113,6 +137,12 @@ export class MemoryContextResolver {
     const budget = input.budget ?? DEFAULT_MEMORY_BUDGET_POLICY_V1;
     const budgetCheck = validateMemoryBudgetPolicy(budget);
     if (!budgetCheck.valid) throw new MemoryContextResolverError('INPUT_INVALID');
+    // Fail closed: an emitter-wired resolver must never persist a snapshot
+    // whose canonical Event cannot be authorized. Silently degrading to an
+    // uneventful write would hide the Run's memory facts from the event stream.
+    if (this.emitter !== undefined && input.eventContext === undefined) {
+      throw new MemoryContextResolverError('INPUT_INVALID');
+    }
 
     const existing = this.findExisting(input);
     if (existing !== undefined) {
@@ -140,14 +170,25 @@ export class MemoryContextResolver {
       createdAt: input.createdAt,
     };
 
-    let resolved;
+    let snapshot: MemoryContextSnapshotRecord;
     try {
-      resolved = this.selector.select(selection);
-    } catch (error) {
-      // Snapshot persistence failed: injection must not proceed.
+      if (this.emitter === undefined) {
+        snapshot = this.selector.select(selection).snapshot;
+      } else {
+        snapshot = this.emitter.emitContextCreated({
+          ...this.selector.plan(selection).snapshotInput,
+          eventContext: input.eventContext as RuntimeEventContextAuthoritySourceV1,
+          timestamp: input.createdAt,
+        }).record;
+      }
+    } catch {
+      // Snapshot persistence failed (or its Event/Outbox row did, rolling the
+      // snapshot back): injection must not proceed.
       throw new MemoryContextResolverError('SNAPSHOT_FAILED');
     }
-    return { snapshot: resolved.snapshot, contextText: resolved.contextText, reused: false };
+    const persistedText = this.snapshots.readContextText(snapshot.workspaceId, snapshot.id);
+    if (persistedText === undefined) throw new MemoryContextResolverError('SNAPSHOT_FAILED');
+    return { snapshot, contextText: persistedText, reused: false };
   }
 
   /**

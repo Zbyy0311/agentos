@@ -29,6 +29,8 @@ import { MemoryCandidateGenerationService } from '../MemoryCandidateGenerationSe
 import { MemoryEntryRepository } from '../../store/MemoryEntryRepository.js';
 import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
 import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
+import { MemoryRuntimeEventEmitter } from '../MemoryRuntimeEventEmitter.js';
+import { DurableMemoryRuntimeEventContextAuthority } from '../MemoryRuntimeEventContextAuthority.js';
 
 export interface ProviderExecutionChainOptions {
   readonly store: SqliteStore;
@@ -98,6 +100,17 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     stageExecutor: new StageExecutor(() => ({ outcome: 'active' })),
     runInTransaction: <T>(fn: () => T): T => store.runInTransaction(fn),
   });
+  // MF-5 production wiring: the Memory Runtime owns ONE emitter over the
+  // store's existing one-connection Runtime Event + Outbox writer, and ONE
+  // durable causal-context authority. Both composition seams below (Run
+  // startup snapshot, terminal Candidate) must use it, so the Memory fact and
+  // the canonical Event that records it always share a transaction; an
+  // unproven origin fails closed instead of fabricating causation.
+  const memoryEventEmitter = new MemoryRuntimeEventEmitter({
+    store,
+    factWriter: store.runtimeEventOutboxWriter(),
+    eventAuthority: new DurableMemoryRuntimeEventContextAuthority(store.getDatabase()),
+  });
   // MF-4 Run startup integration: the dispatcher resolves, freezes, and gates
   // Memory through the MF-3 retrieval + MF-4 snapshot contracts before any
   // provider work, and injects only the bounded persisted context.
@@ -107,6 +120,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
       new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase())),
       new MemoryContextSnapshotRepository(store.getDatabase()),
     ),
+    emitter: memoryEventEmitter,
   });
   const dispatcher = new RunEngineProviderDispatcher({
     engine,
@@ -120,6 +134,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
       runs: store.runRepository(),
       stages: store.runStageRepository(),
       tasks: store.taskRepository(),
+      emitter: memoryEventEmitter,
     }),
     onCandidateGenerationError: (error, runId) => {
       console.error(`MEMORY_CANDIDATE_GENERATION_FAILED run=${runId}:`, error);

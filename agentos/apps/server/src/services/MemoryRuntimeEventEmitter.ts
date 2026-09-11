@@ -311,9 +311,16 @@ export class MemoryRuntimeEventEmitter {
     try {
       return inTransaction(this.db, () => {
         const { record, type, payload, additional = [] } = write();
+        const workspaceId = workspaceIdOf(record);
+        // Provenance + binding: the authorized causal record must exist inside
+        // THIS Workspace/Run, verified in the same transaction that writes the
+        // fact. The authority proves the record is durable; this proves it
+        // belongs to this fact, so an Operation or Event from another Run can
+        // never label this Event's causation.
+        this.assertAuthorityOriginProven(workspaceId, scope.runId, scope.eventContext);
         const append = (type: string, payload: Record<string, unknown>) => this.writer.appendWithinTransaction({
           type,
-          workspaceId: workspaceIdOf(record),
+          workspaceId,
           runId: scope.runId,
           ...(scope.taskId === undefined ? {} : { taskId: scope.taskId }),
           ...(scope.stageId === undefined ? {} : { stageId: scope.stageId }),
@@ -339,6 +346,37 @@ export class MemoryRuntimeEventEmitter {
     const entry = this.entries.findById(workspaceId, entryId);
     if (entry === undefined) throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
     return entry;
+  }
+
+  /**
+   * Per-origin binding proof over the SAME transaction/connection. Mirrors the
+   * frozen GitObservation precedent: `canonical_command` has no durable
+   * registry here, so it fails closed instead of fabricating causation.
+   */
+  private assertAuthorityOriginProven(
+    workspaceId: string,
+    runId: string,
+    authorized: AuthorizedRuntimeEventContextV1,
+  ): void {
+    if (authorized.origin === 'operation') {
+      const row = this.db.prepare(
+        'SELECT 1 AS present FROM operations WHERE workspace_id = ? AND run_id = ? AND id = ?',
+      ).get(workspaceId, runId, authorized.authorityId) as { present: number } | undefined;
+      if (row === undefined) {
+        throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+      }
+      return;
+    }
+    if (authorized.origin === 'persisted_event') {
+      const row = this.db.prepare(
+        'SELECT 1 AS present FROM runtime_events WHERE workspace_id = ? AND run_id = ? AND id = ?',
+      ).get(workspaceId, runId, authorized.authorityId) as { present: number } | undefined;
+      if (row === undefined) {
+        throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+      }
+      return;
+    }
+    throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
   }
 
   /** One Event per Entry whose status this conflict mutation actually changed. */
