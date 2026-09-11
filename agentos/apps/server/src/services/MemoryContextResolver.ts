@@ -91,14 +91,12 @@ export interface MemoryContextResolverOptions {
 
 export class MemoryContextResolver {
   private readonly snapshots: MemoryContextSnapshotRepository;
-  private readonly entries: MemoryEntryRepository;
   private readonly selector: MemoryContextBudgetSelector;
   private readonly createSnapshotId: (input: ResolveRunMemoryContextInput) => string;
 
   constructor(options: MemoryContextResolverOptions) {
     const db = options.store.getDatabase();
     this.snapshots = options.snapshots ?? new MemoryContextSnapshotRepository(db);
-    this.entries = options.entries ?? new MemoryEntryRepository(db);
     this.selector = options.selector;
     this.createSnapshotId = options.createSnapshotId
       ?? (input => `mctx_${input.runId}_${input.stageId ?? 'run'}_${RETRIEVAL_STRATEGY_VERSION_V1}`);
@@ -157,7 +155,13 @@ export class MemoryContextResolver {
    * snapshot) before sending Memory to a Provider.
    */
   isInjectable(resolved: ResolvedMemoryContext | undefined): boolean {
-    return resolved !== undefined && resolved.snapshot !== undefined;
+    if (resolved?.snapshot === undefined) return false;
+    try {
+      const persisted = this.snapshots.readContextText(resolved.snapshot.workspaceId, resolved.snapshot.id);
+      return persisted !== undefined && persisted === resolved.contextText;
+    } catch {
+      return false;
+    }
   }
 
   private findExisting(input: ResolveRunMemoryContextInput): MemoryContextSnapshotRecord | undefined {
@@ -165,17 +169,13 @@ export class MemoryContextResolver {
   }
 
   /**
-   * Reassemble bounded context text for a reused snapshot. Selection is frozen
-   * by the snapshot; content is re-read from the current Entry so the caller
-   * receives usable text. A missing Entry contributes no text (never invented).
+   * Replay only the durable text originally injected, never current Entries.
    */
   private assemble(snapshot: MemoryContextSnapshotRecord): string {
-    const sections: string[] = [];
-    for (const item of snapshot.selected) {
-      const entry = this.entries.findById(snapshot.workspaceId, item.memoryId);
-      if (entry === undefined) continue;
-      sections.push(`### ${entry.title}\n${entry.content}`);
-    }
-    return sections.join('\n\n');
+    try {
+      const text = this.snapshots.readContextText(snapshot.workspaceId, snapshot.id);
+      if (text !== undefined) return text;
+    } catch { /* Missing or corrupt historical context must not reach a Provider. */ }
+    throw new MemoryContextResolverError('INJECTION_BLOCKED');
   }
 }

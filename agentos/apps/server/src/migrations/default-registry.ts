@@ -21,6 +21,7 @@ import { migration020 } from './migrations/020-cr1-conversation-runtime-persiste
 import { migration021 } from './migrations/021-cr2-agent-turn-persistence.js';
 import { migration022 } from './migrations/022-cr4-message-projection-persistence.js';
 import { migration023 } from './migrations/023-cr5-bounded-group-persistence.js';
+import { migration024 } from './migrations/024-memory-snapshot-payloads.js';
 import type { Migration } from './types.js';
 
 /**
@@ -75,4 +76,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration021,
   migration022,
   migration023,
+  migration024,
 ];

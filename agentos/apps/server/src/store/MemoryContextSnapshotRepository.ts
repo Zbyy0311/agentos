@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type {
   MemoryBudgetPolicyV1,
   MemorySelectionExplanationV1,
@@ -29,6 +30,8 @@ export class MemoryContextSnapshotError extends Error {
 }
 
 export interface CreateMemoryContextSnapshotInput {
+  /** Omitted only by legacy metadata-only callers; such snapshots cannot replay injection. */
+  readonly contextText?: string;
   readonly id: string;
   readonly workspaceId: string;
   readonly agentId?: string;
@@ -163,7 +166,24 @@ export class MemoryContextSnapshotRepository {
           + ') VALUES (?, ?, 1, 0, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 0, ?, \'[]\', NULL)',
       ).run(input.id, exclusion.memoryId, JSON.stringify([exclusion.reason]));
     }
+    if (input.contextText !== undefined) {
+      this.db.prepare(
+        'INSERT INTO memory_context_snapshot_payloads (snapshot_id, context_text, content_sha256) VALUES (?, ?, ?)',
+      ).run(input.id, input.contextText, createHash('sha256').update(input.contextText).digest('hex'));
+    }
     return this.requireSnapshot(input.workspaceId, input.id);
+  }
+
+  /** Missing historical payload is distinct from a frozen empty context. */
+  readContextText(workspaceId: string, snapshotId: string): string | undefined {
+    const row = this.db.prepare(
+      'SELECT p.context_text, p.content_sha256 FROM memory_context_snapshot_payloads p JOIN memory_context_snapshots s ON s.id = p.snapshot_id WHERE s.workspace_id = ? AND s.id = ?',
+    ).get(workspaceId, snapshotId) as { context_text: string; content_sha256: string } | undefined;
+    if (row === undefined) return undefined;
+    if (createHash('sha256').update(row.context_text).digest('hex') !== row.content_sha256) {
+      throw new MemoryContextSnapshotError('PERSISTENCE_FAILED');
+    }
+    return row.context_text;
   }
 
   /** Read one snapshot with its selection and exclusion rows; Workspace-scoped. */
@@ -212,6 +232,9 @@ export class MemoryContextSnapshotRepository {
 
   private validateInput(input: CreateMemoryContextSnapshotInput): void {
     if (typeof input !== 'object' || input === null) throw new MemoryContextSnapshotError('INPUT_INVALID');
+    if (input.contextText !== undefined && typeof input.contextText !== 'string') {
+      throw new MemoryContextSnapshotError('INPUT_INVALID');
+    }
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.runId)
       || !nonBlank(input.queryHash) || !nonBlank(input.retrievalStrategyVersion)
       || !nonBlank(input.createdAt)) {

@@ -1,6 +1,7 @@
 # Immutable injected Memory content: additive correction design
 
-Status: design for implementation; no migration added by this document.
+Status: implemented locally as migration 024 and repository/resolver changes;
+focused verification in progress, not yet merged.
 Audit base: `800d6dd2`; see `MF-integration-reaudit.md` finding 2.
 Authority: Lite 07 sections 12 and 14 and the ongoing Lite implementation task.
 
@@ -14,8 +15,8 @@ Legacy snapshot inspection remains available.
 
 ## Persistence design
 
-The next available migration is 024 at the audit base; recheck the registry
-before implementation. Add `memory_context_snapshot_payloads` with:
+Registry 001–023 was rechecked before implementation. Additive migration 024
+adds `memory_context_snapshot_payloads` with:
 
 ```sql
 CREATE TABLE memory_context_snapshot_payloads (

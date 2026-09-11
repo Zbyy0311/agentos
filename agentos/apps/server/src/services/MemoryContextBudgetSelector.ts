@@ -87,9 +87,13 @@ export class MemoryContextBudgetSelector {
     const ranked = this.retrieval.retrieve(input.retrieval);
     const { selected, exclusions, totalTokens, truncated } = applyBudget(ranked, input.budget);
 
+    const contextText = selected
+      .map(item => `### ${item.entry.title}\n${item.entry.content}`)
+      .join('\n\n');
     let snapshot: MemoryContextSnapshotRecord;
     try {
       snapshot = this.snapshots.createSnapshot({
+        contextText,
         id: input.snapshotId,
         workspaceId: input.retrieval.context.workspaceId,
         agentId: input.agentId,
@@ -112,10 +116,9 @@ export class MemoryContextBudgetSelector {
       throw new MemoryBudgetSelectionError('SNAPSHOT_FAILED');
     }
 
-    const contextText = selected
-      .map(item => `### ${item.entry.title}\n${item.entry.content}`)
-      .join('\n\n');
-    return { snapshot, contextText };
+    const persistedText = this.snapshots.readContextText(snapshot.workspaceId, snapshot.id);
+    if (persistedText === undefined) throw new MemoryBudgetSelectionError('SNAPSHOT_FAILED');
+    return { snapshot, contextText: persistedText };
   }
 }
 

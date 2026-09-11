@@ -150,11 +150,13 @@ injection or snapshot failure prevents the provider spawn. The production
 `createProviderExecutionChain` supplies the resolver. Resolution is idempotent
 per (Run, Stage).
 
-Reopened integrity gap: `MemoryContextResolver.assemble` reads current Entry
-content when reusing a snapshot. Selection identity alone does not establish
-the immutable injected content required by Lite 07 section 12. Snapshot reuse
-must be corrected and tested against later Entry changes before this
-integration can be considered closed end to end.
+Reopened integrity gap at PR #125: replay read current Entry content. The local
+correction stores the injected text and SHA-256 in additive migration 024,
+atomically with the snapshot. Replay reads that frozen payload and rejects
+missing/corrupt historical payloads. Exact Run/Stage lookup is also corrected.
+Behavioral tests cover Entry edits/logical deletion, empty payload, corrupt
+payload, historical metadata-only snapshots and rollback. Merge/CI closeout is
+still pending; see `MF-snapshot-replay-design.md`.
 
 ## 7. Non-goals (unchanged)
 
