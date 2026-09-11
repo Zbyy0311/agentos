@@ -174,7 +174,7 @@ the candidate seam. The Workspace-only Memory routes now also emit canonical
 Events through the MF-5 Workspace Event stream (PR #127/#128), closing the
 contract gap.
 
-### Run startup integration (MERGED; replay integrity OPEN)
+### Run startup integration (MERGED; replay integrity closed)
 
 Merged via PR #92: `MemoryContextResolver` composes MF-3 retrieval + MF-4
 budget selection, persists the immutable Context Snapshot BEFORE injection, and
@@ -189,8 +189,9 @@ correction stores the injected text and SHA-256 in additive migration 024,
 atomically with the snapshot. Replay reads that frozen payload and rejects
 missing/corrupt historical payloads. Exact Run/Stage lookup is also corrected.
 Behavioral tests cover Entry edits/logical deletion, empty payload, corrupt
-payload, historical metadata-only snapshots and rollback. Merge/CI closeout is
-still pending; see `MF-snapshot-replay-design.md`.
+payload, historical metadata-only snapshots and rollback. That correction
+merged as PR #126 (`fix(memory): complete promotion, frozen replay and
+Inspector integration`); the gap is closed. See `MF-snapshot-replay-design.md`.
 
 ## 7. Non-goals (unchanged)
 
