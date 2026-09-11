@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from 'express';
 
-import type { MemoryRetrievalContext } from '@agentos/shared';
+import { MEMORY_CANDIDATE_OUTCOMES, type MemoryCandidateOutcome, type MemoryRetrievalContext } from '@agentos/shared';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
@@ -19,6 +19,10 @@ import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
  *   GET  /runs/:runId/memory-context             every frozen Context Snapshot of a Run
  *   GET  /memory-contexts/:memoryContextId       one frozen Context Snapshot
  *   POST /memory-conflicts/:conflictId/resolve   MF-2 transactional conflict resolution
+ *   GET  /memory/candidates                      forward Candidate queue (MF-2 tables)
+ *   POST /memory/candidates/:candidateId/review  version-guarded review (accept /
+ *                                                edit-and-accept / reject /
+ *                                                merge-with-existing)
  *
  * Boundary notes:
  * - Retrieval is a pure read: it never persists a Context Snapshot. Budget
@@ -29,7 +33,9 @@ import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
  *   (MemoryRuntimeEventEmitter requires a Run + L1C event context); a
  *   user-initiated resolution has no Run scope, so this route records the
  *   fact without emitting a canonical Event. That contract gap is recorded in
- *   this slice's PR evidence and queued for the MF-progress.md update.
+ *   MF-progress.md. The same applies to user-initiated Candidate review.
+ * - Forward Candidate paths live under /memory/ because the literal Lite
+ *   section-14 /memory-candidates paths are held by the COMPATIBILITY router.
  * - This router never spawns a Process, never touches Provider credentials,
  *   and never mutates an Entry.
  */
@@ -39,7 +45,7 @@ interface ErrorMapping { readonly status: number; readonly code: string }
 function mapError(error: unknown): ErrorMapping {
   const code = error instanceof Error ? (error as { code?: string }).code ?? error.message : String(error);
   if (/NOT_FOUND/.test(code)) return { status: 404, code };
-  if (/NOT_RESOLVABLE|CONFLICT/.test(code) && !/NOT_FOUND/.test(code)) return { status: 409, code };
+  if (/NOT_RESOLVABLE|NOT_REVIEWABLE|CONFLICT/.test(code) && !/NOT_FOUND/.test(code)) return { status: 409, code };
   if (/INPUT_INVALID|INVALID/.test(code)) return { status: 400, code };
   return { status: 500, code };
 }
@@ -61,6 +67,10 @@ function optionalStringArray(value: unknown): readonly string[] | undefined {
   if (!Array.isArray(value)) return undefined;
   const items = value.filter(nonBlank);
   return items.length > 0 ? items : undefined;
+}
+
+function isOutcome(value: unknown): value is MemoryCandidateOutcome {
+  return (MEMORY_CANDIDATE_OUTCOMES as readonly unknown[]).includes(value);
 }
 
 export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
@@ -148,6 +158,42 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   });
 
   // ---- Conflict resolution (transactional write) ---------------------------
+
+  // ---- Forward Candidate queue (MF-2 tables) -------------------------------
+
+  router.get('/memory/candidates', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const outcomeParam = req.query.outcome;
+    let outcome: MemoryCandidateOutcome | undefined;
+    if (outcomeParam !== undefined) {
+      if (typeof outcomeParam !== 'string' || !isOutcome(outcomeParam)) {
+        res.status(400).json({ error: 'MEMORY_CANDIDATE_INPUT_INVALID' });
+        return;
+      }
+      outcome = outcomeParam;
+    }
+    res.json({ candidates: candidates.listCandidates(workspace.id, outcome) });
+  });
+
+  router.post('/memory/candidates/:candidateId/review', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    try {
+      const candidate = candidates.reviewCandidate({
+        workspaceId: workspace.id,
+        candidateId: req.params.candidateId,
+        expectedVersion: body.expectedVersion as number,
+        outcome: body.outcome as MemoryCandidateOutcome,
+        ...(nonBlank(body.mergedIntoEntryId) ? { mergedIntoEntryId: body.mergedIntoEntryId as string } : {}),
+        reviewedAt: new Date().toISOString(),
+      });
+      res.json({ candidate });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
 
   router.post('/memory-conflicts/:conflictId/resolve', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);

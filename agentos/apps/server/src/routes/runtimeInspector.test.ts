@@ -7,6 +7,8 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { createRuntimeInspectorRoutes } from './runtimeInspector.js';
 
 function createProjectRoot(): string {
@@ -58,5 +60,58 @@ test('GET /runs/:runId/inspector fails closed for an unknown Run and workspace',
   await withServer(async (baseUrl) => {
     const missing = await fetch(`${baseUrl}/runs/run_missing/inspector`);
     assert.equal(missing.status, 404);
+  });
+});
+
+test('GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring)', async () => {
+  await withServer(async (baseUrl, store) => {
+    const task = store.taskRepository().insert({ workspaceId: 'workspace-a', title: 'T', createdBy: 'user' });
+    const run = store.runRepository().insert({ workspaceId: 'workspace-a', taskId: task.id, origin: 'v2_api', createdBy: 'user' });
+    const db = store.getDatabase();
+    const entryId = 'mem_' + 'e'.repeat(26);
+    new MemoryEntryRepository(db).createEntry({
+      id: entryId,
+      workspaceId: 'workspace-a',
+      scope: 'workspace',
+      category: 'decision',
+      authority: 'system-verified',
+      confidence: 0.9,
+      importance: 0.8,
+      title: 'Inspector-visible memory',
+      status: 'active',
+      sources: [{ kind: 'run', id: run.id }],
+      createdAt: '2026-09-11T00:00:00.000Z',
+    });
+    const snapshotId = 'mctx_' + 'i'.repeat(26);
+    new MemoryContextSnapshotRepository(db).createSnapshot({
+      id: snapshotId,
+      workspaceId: 'workspace-a',
+      taskId: task.id,
+      runId: run.id,
+      queryHash: 'qh',
+      retrievalStrategyVersion: 'mf3-ranking-v1',
+      budget: {
+        maxTokens: 100, maxEntries: 5, perScopeLimits: {}, perCategoryLimits: {},
+        minConfidence: 0.5, minImportance: 0.3, maxTruncation: 1, requireDiversity: false,
+      },
+      totalTokens: 10,
+      truncated: false,
+      createdAt: '2026-09-11T00:00:01.000Z',
+      selected: [{
+        memoryId: entryId, memoryVersion: 1, rank: 1, score: 42.5,
+        scope: 'workspace', category: 'decision', authority: 'system-verified',
+        confidence: 0.9, importance: 0.8, tokenCost: 10,
+        reasons: ['scope-match'], sourceRefs: [{ kind: 'run', id: run.id }],
+      }],
+      exclusions: [],
+    });
+
+    const response = await fetch(`${baseUrl}/runs/${run.id}/inspector`);
+    assert.equal(response.status, 200);
+    const body = await response.json() as {
+      projection: { memoryContext: { memoryContextId: string; selected: Array<{ memoryId: string }> } | null };
+    };
+    assert.equal(body.projection.memoryContext?.memoryContextId, snapshotId);
+    assert.equal(body.projection.memoryContext?.selected[0]?.memoryId, entryId);
   });
 });
