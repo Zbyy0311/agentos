@@ -12,9 +12,9 @@ legible without re-auditing the repository.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ 800d6dd2` (Merge PR #125) |
-| Migration ledger | `001`–`023` present; no MF-5 API migration (read/write composition over MF-1..MF-4 tables) |
-| Main CI | `e8f64b15` PR CI run `34560421871` conclusion `success` |
+| Baseline | `origin-https/main @ 26838b3f` (Merge PR #130) |
+| Migration ledger | `001`–`025` present; MF-5 Workspace Event stream added migration `025` (`workspace_events` + `workspaces.next_event_sequence`) |
+| Main CI | `26838b3f` PR CI run `34615517814` conclusion `success` |
 | Preceding gates | Workspace single-writer rule COMPLETE; Recovery closeout COMPLETE |
 
 ## 3. Slice status
@@ -26,7 +26,7 @@ legible without re-auditing the repository.
 | MF-2 | Candidate pipeline + dedup/conflict | **MERGED** | #86 (auth), #87 (impl) |
 | MF-3 | Scope-filtered retrieval + deterministic ranking + reasons | **MERGED** | #82 |
 | MF-4 | Budget policy + immutable Context Snapshot | **MERGED** | #83 (auth), #84 (impl) |
-| MF-5 | Events, emission, Run injection, API, Candidate review API, UI, Inspector surfaces | **MERGED** | #89 (events), #91 (emission), #92 (Run injection), #120 (API), #122 (Candidate API + Inspector wiring), #123 (UI) |
+| MF-5 | Events, emission, Run injection, API, Candidate review API, UI, Inspector surfaces, Workspace Event stream | **MERGED** | #89 (events), #91 (emission), #92 (Run injection), #120 (API), #122 (Candidate API + Inspector wiring), #123 (UI), #127 (Workspace Event stream auth), #128 (Workspace Event stream impl) |
 
 ## 4. Merged evidence
 
@@ -49,6 +49,11 @@ legible without re-auditing the repository.
 | MF-4R-09 `listForRun` | 1/1 PASS (within 9/9 snapshot suite) |
 | MF-5 Candidate queue API + review + Inspector wiring | 21/21 focused PASS (incl. MF2R-12) |
 | MF-5 UI (explanation, review queue, Inspector detail) | web 162/162 PASS; `next build` clean |
+| MF-5 Workspace Event stream (migration 025) | 3/3 PASS |
+| MF-5 Workspace Event writer/authority/sequence (gates A5..A18) | 12/12 PASS |
+| MF-5 Workspace Event sanctioned Workspace delete (gate A15) | 1/1 PASS |
+| MF-5 Workspace Event shared contracts | 8/8 PASS |
+| Full Server run (MF-5 Workspace Event stream head) | 2673 total, 2666 passed, 4 failed, 3 skipped |
 | Full Server run (MF-5 API head) | 2590 total, 2583 passed, 4 failed, 3 skipped |
 | Full Server run (MF-5 Candidate API head) | 2593 total, 2586 passed, 4 failed, 3 skipped |
 
@@ -111,11 +116,13 @@ Merged via PR #120 (API):
 - `POST .../memory-conflicts/:conflictId/resolve` — transactional MF-2
   resolution with optimistic `expectedVersion`.
 
-Known contract gap: canonical Memory Event emission is Run-scoped
-(`MemoryRuntimeEventEmitter` requires a Run + L1C event context), so the
-user-initiated conflict resolution above records the fact transactionally
-without emitting a canonical Event. A Workspace-scoped memory Event context
-contract is required to close this; not yet authorized.
+This contract gap is closed by PR #127 (schema authorization) + PR #128
+(implementation): the MF-5 Workspace Event stream (migration `025`, one
+`WorkspaceEventWriter` bound to the store connection, a
+claim-then-proof `DurableWorkspaceEventContextAuthority`, and the section 9
+route seams) lets a Workspace-scoped Memory fact commit its canonical Event
+without a Run. The user-initiated conflict resolution and Candidate review
+now commit fact + Workspace Events in one transaction.
 
 Completed after the API slice:
 
@@ -163,11 +170,11 @@ appends no second Event; an Event or Outbox failure rolls the Memory write back.
 Evidence: 161/162 across the affected suites plus the Operation and Memory
 routes (1 environment-gated skip), `tsc --noEmit` exit 0, with dedicated
 emission suites for the authority, the composition root, the snapshot seam and
-the candidate seam. The Workspace-only Memory routes still record their fact
-without a canonical Event; that contract gap is unchanged and not yet
-authorized.
+the candidate seam. The Workspace-only Memory routes now also emit canonical
+Events through the MF-5 Workspace Event stream (PR #127/#128), closing the
+contract gap.
 
-### Run startup integration (MERGED; replay integrity OPEN)
+### Run startup integration (MERGED; replay integrity closed)
 
 Merged via PR #92: `MemoryContextResolver` composes MF-3 retrieval + MF-4
 budget selection, persists the immutable Context Snapshot BEFORE injection, and
@@ -182,8 +189,9 @@ correction stores the injected text and SHA-256 in additive migration 024,
 atomically with the snapshot. Replay reads that frozen payload and rejects
 missing/corrupt historical payloads. Exact Run/Stage lookup is also corrected.
 Behavioral tests cover Entry edits/logical deletion, empty payload, corrupt
-payload, historical metadata-only snapshots and rollback. Merge/CI closeout is
-still pending; see `MF-snapshot-replay-design.md`.
+payload, historical metadata-only snapshots and rollback. That correction
+merged as PR #126 (`fix(memory): complete promotion, frozen replay and
+Inspector integration`); the gap is closed. See `MF-snapshot-replay-design.md`.
 
 ## 7. Non-goals (unchanged)
 
