@@ -5,6 +5,7 @@ import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
 import { ConversationTurnDriver } from '../services/ConversationTurnDriver.js';
+import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import {
   CONVERSATION_REPLY_MODES,
   type ConversationReplyMode,
@@ -363,6 +364,113 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       });
       res.json({ interaction });
     } catch (error) { fail(res, error); }
+  });
+
+  /**
+   * Bounded group walk (CG-S5..CG-S9): resolve the speaker plan, then run each
+   * speaker sequentially through the CR-3 reply stream and record every reply
+   * through CR-5 `recordReply`. The runtime selects the speakers; the caller
+   * supplies the triggering user Message and, for `manual` / `orchestrated`
+   * modes, the explicit list / template order. The stream emits one
+   * `group.plan` event (speakers + skipped with stable reasons), one
+   * `group.turn.start` / `checkpoint` / `group.turn.final|failed` chain per
+   * speaker, and one `group.done`.
+   */
+  router.post('/conversations/:conversationId/interactions/:interactionId/respond', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.kind !== 'group') { res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const interaction = store.boundedGroupService().findInteraction(workspace.id, req.params.interactionId);
+    if (!interaction || interaction.conversationId !== conversation.id) { res.status(404).json({ error: 'Interaction not found' }); return; }
+    if (interaction.status !== 'active') {
+      res.status(409).json({ error: 'GROUP_INTERACTION_TERMINATED' });
+      return;
+    }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const sourceMessageId = typeof body.sourceMessageId === 'string' ? body.sourceMessageId : '';
+    const source = sourceMessageId.length === 0
+      ? undefined
+      : conversations().findMessageById(workspace.id, sourceMessageId);
+    if (!source || source.conversationId !== conversation.id || source.senderType !== 'user') {
+      res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' });
+      return;
+    }
+    const stringList = (value: unknown): string[] | undefined => {
+      if (value === undefined) return undefined;
+      if (!Array.isArray(value) || value.some(item => typeof item !== 'string')) return undefined;
+      return value as string[];
+    };
+    const mentionedAgentIds = stringList(body.mentionedAgentIds);
+    const namedAgentIds = stringList(body.namedAgentIds);
+    const orchestratedOrder = stringList(body.orchestratedOrder);
+    if ((body.mentionedAgentIds !== undefined && mentionedAgentIds === undefined)
+      || (body.namedAgentIds !== undefined && namedAgentIds === undefined)
+      || (body.orchestratedOrder !== undefined && orchestratedOrder === undefined)) {
+      res.status(400).json({ error: 'GROUP_WALK_INPUT_INVALID' });
+      return;
+    }
+
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
+    });
+    const send = createSseWriter(res);
+    const stopHeartbeat = startSseHeartbeat(res);
+    const interactionId = interaction.id;
+    const driver = new GroupTurnDriver(
+      store.boundedGroupService(),
+      store.groupInteractionRepository(),
+      conversations(),
+      store.conversationStreamService(),
+      (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
+    );
+    try {
+      const result = await driver.run(
+        {
+          workspaceId: workspace.id,
+          workspaceRoot: workspace.rootPath,
+          conversationId: conversation.id,
+          interactionId,
+          sourceMessageId: source.id,
+          ...(mentionedAgentIds === undefined ? {} : { mentionedAgentIds }),
+          ...(namedAgentIds === undefined ? {} : { namedAgentIds }),
+          ...(orchestratedOrder === undefined ? {} : { orchestratedOrder }),
+          createdAt: new Date().toISOString(),
+        },
+        {
+          onPlan: plan => send('group.plan', {
+            interactionId,
+            speakers: plan.speakers.map(speaker => speaker.agentId),
+            skipped: plan.skipped,
+            ...(plan.terminalReason === undefined ? {} : { terminalReason: plan.terminalReason }),
+          }),
+          onSpeakerTurnStart: speaker => send('group.turn.start', { interactionId, agentId: speaker.agentId, turnId: speaker.turnId, messageId: speaker.messageId }),
+          onSpeakerDelta: (agentId, turnId, messageId, delta, cursor) => send('checkpoint', { agentId, turnId, messageId, cursor, delta }),
+          onSpeakerTurnEnd: outcome => send(
+            outcome.status === 'final' ? 'group.turn.final' : 'group.turn.failed',
+            { interactionId, agentId: outcome.agentId, turnId: outcome.turnId, messageId: outcome.messageId, replyId: outcome.replyId },
+          ),
+        },
+      );
+      send('group.done', {
+        interactionId,
+        endedBy: result.endedBy,
+        speakers: result.speakers,
+        ...(result.interaction === undefined ? {} : { interaction: result.interaction }),
+      });
+    } catch (error) {
+      const code = error instanceof GroupTurnDriverError ? error.code : (error instanceof Error ? error.message : 'GROUP_WALK_FAILED');
+      send('group.error', { interactionId, error: code });
+      send('group.done', { interactionId, endedBy: 'provider-failed' });
+    } finally {
+      stopHeartbeat();
+      res.end();
+    }
   });
 
   /**
