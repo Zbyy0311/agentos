@@ -21,6 +21,12 @@ import {
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
 import { MemoryEntryRepository, MemoryEntryRepositoryError, type MemoryEntryRecord } from './MemoryEntryRepository.js';
+import type {
+  WorkspaceEventContextV1,
+  WorkspaceEventOriginV1,
+  WorkspaceEventWriter,
+} from './WorkspaceEventWriter.js';
+import { deriveWorkspaceEventContext } from './WorkspaceEventWriter.js';
 
 /**
  * MF-2 Memory Candidate and Conflict persistence.
@@ -235,6 +241,20 @@ export interface ReviewMemoryCandidateInput {
   readonly reviewedAt: string;
 }
 
+/**
+ * Workspace-stream emission seam (MF-5 authorization section 9).
+ *
+ * When present, the review/resolution fact and every Workspace Event it
+ * implies commit in ONE transaction through the store's single connection, so
+ * a durable fact is never left without its Event (section 8.4). When absent,
+ * both methods behave exactly as they did before this slice: no Workspace row
+ * is touched and no sequence is consumed.
+ */
+export interface MemoryWorkspaceEmissionOptions {
+  /** The ONE Workspace Event append path, bound to this repository's connection. */
+  readonly writer: WorkspaceEventWriter;
+}
+
 export interface OpenMemoryConflictInput {
   readonly id: string;
   readonly workspaceId: string;
@@ -366,9 +386,18 @@ export class MemoryCandidateRepository {
    * Record a review outcome. `merge-with-existing` requires the target Entry in
    * the same Workspace. Review never deletes the Candidate.
    */
-  reviewCandidate(input: ReviewMemoryCandidateInput): MemoryCandidateRecord {
+  reviewCandidate(
+    input: ReviewMemoryCandidateInput,
+    emission?: MemoryWorkspaceEmissionOptions,
+  ): MemoryCandidateRecord {
     try {
-      return inTransaction(this.db, () => this.reviewCandidateWithinTransaction(input));
+      // With a writer the review fact and its Workspace Events share this one
+      // transaction; without one nothing about today's behavior changes.
+      return inTransaction(this.db, () => {
+        const record = this.reviewCandidateWithinTransaction(input);
+        if (emission !== undefined) this.emitReviewEvents(record, input, emission);
+        return record;
+      });
     } catch (error) {
       throw this.publicError(error);
     }
@@ -512,9 +541,18 @@ export class MemoryCandidateRepository {
   }
 
   /** Resolve a conflict with an explicit disposition; never deletes. */
-  resolveConflict(input: ResolveMemoryConflictInput): MemoryConflictRecord {
+  resolveConflict(
+    input: ResolveMemoryConflictInput,
+    emission?: MemoryWorkspaceEmissionOptions,
+  ): MemoryConflictRecord {
     try {
-      return inTransaction(this.db, () => this.resolveConflictWithinTransaction(input)).conflict;
+      return inTransaction(this.db, () => {
+        const { conflict, effects } = this.resolveConflictWithinTransaction(input);
+        if (emission !== undefined) {
+          this.emitConflictResolutionEvents(conflict, effects, input, emission);
+        }
+        return conflict;
+      });
     } catch (error) {
       throw this.publicError(error);
     }
@@ -547,9 +585,16 @@ export class MemoryCandidateRepository {
     if (current.status !== 'open' || current.version !== input.expectedVersion) {
       throw new MemoryCandidateRepositoryError('CONFLICT_NOT_RESOLVABLE');
     }
-    this.db.prepare(
+    const resolved = this.db.prepare(
       'UPDATE memory_conflicts SET status = ?, disposition = ?, resolved_at = ?, version = version + 1 WHERE workspace_id = ? AND id = ? AND version = ?',
     ).run('resolved', input.disposition, input.resolvedAt, input.workspaceId, input.conflictId, input.expectedVersion);
+    // Frozen section 8.4 prerequisite: the version predicate alone is not a
+    // sufficient replay guard, because a lost race would silently resolve
+    // nothing and still commit. Asserting the row count makes one committed
+    // resolution yield exactly one Event set.
+    if (Number((resolved as { changes?: number | bigint }).changes ?? 0) !== 1) {
+      throw new MemoryCandidateRepositoryError('CONFLICT_NOT_RESOLVABLE');
+    }
     const conflict = this.requireConflict(input.workspaceId, input.conflictId);
     const entryA = this.requireConflictEntry(input.workspaceId, conflict.entryAId, true);
     const entryB = this.requireConflictEntry(input.workspaceId, conflict.entryBId, true);
@@ -861,6 +906,97 @@ export class MemoryCandidateRepository {
     };
   }
 
+  /**
+   * The Workspace-stream effect of one committed review (frozen sections 7.3
+   * and 8.3): the review Event first, then exactly one Event for the Entry
+   * mutation the review actually persisted, then nothing. An Entry the review
+   * did not touch appends no Event, and the payload carries ids, versions, and
+   * outcomes only - never Entry content (section 10).
+   */
+  private emitReviewEvents(
+    record: MemoryCandidateRecord,
+    input: ReviewMemoryCandidateInput,
+    emission: MemoryWorkspaceEmissionOptions,
+  ): void {
+    const origin: WorkspaceEventOriginV1 = {
+      kind: 'memory.candidate_review',
+      candidateId: record.id,
+      candidateVersion: record.version,
+    };
+    const append = this.workspaceEventAppender(emission, record.workspaceId, input.reviewedAt, origin);
+    append('memory.candidate_reviewed', {
+      candidateId: record.id,
+      candidateVersion: record.version,
+      outcome: record.outcome,
+      memoryEntryId: record.mergedIntoEntryId,
+    });
+    if (record.mergedIntoEntryId === null) return;
+    append(
+      record.outcome === 'merge-with-existing' ? 'memory.entry_deduplicated' : 'memory.entry_created',
+      entryEventPayload(this.requireEntry(record.workspaceId, record.mergedIntoEntryId)),
+    );
+  }
+
+  /**
+   * The Workspace-stream effect of one committed resolution (frozen sections
+   * 7.3 and 8.3): the resolution Event first, then one Event per Entry whose
+   * status the disposition actually changed, each carrying the PERSISTED Entry
+   * version rather than a placeholder. A status change whose Event type is
+   * outside the Workspace allowlist is refused by the writer, which fails the
+   * whole transaction closed instead of recording a half-described fact.
+   */
+  private emitConflictResolutionEvents(
+    conflict: MemoryConflictRecord,
+    effects: readonly MemoryConflictEntryEffect[],
+    input: ResolveMemoryConflictInput,
+    emission: MemoryWorkspaceEmissionOptions,
+  ): void {
+    const origin: WorkspaceEventOriginV1 = {
+      kind: 'memory.conflict_resolution',
+      conflictId: conflict.id,
+      conflictVersion: conflict.version,
+    };
+    const append = this.workspaceEventAppender(emission, conflict.workspaceId, input.resolvedAt, origin);
+    append('memory.conflict_resolved', {
+      conflictId: conflict.id,
+      conflictType: conflict.conflictType,
+      entryAId: conflict.entryAId,
+      entryBId: conflict.entryBId,
+      disposition: conflict.disposition,
+    });
+    for (const effect of effects) {
+      if (effect.toStatus === effect.fromStatus) continue;
+      append(
+        entryStatusEventType(effect.toStatus),
+        entryEventPayload(this.requireEntry(conflict.workspaceId, effect.entryId)),
+      );
+    }
+  }
+
+  /**
+   * One Workspace Event per call through the single append path, in the
+   * caller's transaction. The claim is the context DERIVED from the persisted
+   * fact, never a caller-supplied string, so the authority re-derives exactly
+   * the same chain (frozen section 8.1).
+   */
+  private workspaceEventAppender(
+    emission: MemoryWorkspaceEmissionOptions,
+    workspaceId: string,
+    timestamp: string,
+    origin: WorkspaceEventOriginV1,
+  ): (type: string, payload: Record<string, unknown>) => void {
+    const context: WorkspaceEventContextV1 = deriveWorkspaceEventContext(origin);
+    return (type, payload) => {
+      emission.writer.appendWithinTransaction({ type, workspaceId, timestamp, origin, context, payload });
+    };
+  }
+
+  private requireEntry(workspaceId: string, entryId: string): MemoryEntryRecord {
+    const entry = this.entries.findById(workspaceId, entryId);
+    if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
+    return entry;
+  }
+
   private publicError(error: unknown): MemoryCandidateRepositoryError {
     if (error instanceof MemoryCandidateRepositoryError) return error;
     return new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
@@ -924,4 +1060,35 @@ function sameOwners(a: EntryMergeRow, b: CandidateRow): boolean {
     && a.owner_conversation_id === b.owner_conversation_id
     && a.owner_task_id === b.owner_task_id
     && a.owner_run_id === b.owner_run_id;
+}
+
+/**
+ * The registered `memory.entry_*` payload projection (frozen section 10: the
+ * same shape the Run-side emitter projects, so the two streams describe an
+ * Entry identically). Ids, versions, and scope metadata only - never content.
+ */
+function entryEventPayload(record: MemoryEntryRecord): Record<string, unknown> {
+  return {
+    memoryEntryId: record.id,
+    version: record.version,
+    scope: record.scope,
+    category: record.category,
+    authority: record.authority,
+  };
+}
+
+/**
+ * Mirrors `statusEventType` in `MemoryRuntimeEventEmitter.ts`, restricted in
+ * practice to the statuses a disposition can produce (`active` -> updated,
+ * `superseded`, `rejected`), all of which are on the Workspace allowlist.
+ */
+function entryStatusEventType(status: MemoryEntryStatus): string {
+  switch (status) {
+    case 'archived': return 'memory.entry_archived';
+    case 'expired': return 'memory.entry_expired';
+    case 'rejected': return 'memory.entry_rejected';
+    case 'superseded': return 'memory.entry_superseded';
+    case 'conflicted': return 'memory.entry_conflicted';
+    default: return 'memory.entry_updated';
+  }
 }

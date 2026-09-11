@@ -27,6 +27,12 @@ import {
 } from './m3-runtime.js';
 import { V2_RUN_REASONS, WORKTREE_MODES } from './m3-runtime-contracts.js';
 import { MF5_MEMORY_EVENT_DEFINITIONS } from './mf5-memory-events.js';
+import {
+  WORKSPACE_EVENT_FORBIDDEN_ENVELOPE_KEYS,
+  isWorkspaceEventStreamType,
+  type WorkspaceEventDraft,
+  type WorkspaceEventEnvelope,
+} from './mf5-workspace-events.js';
 
 export const CURRENT_RUNTIME_EVENT_SCHEMA_VERSION = 1;
 
@@ -94,7 +100,8 @@ export type RuntimeEventRegistryErrorCode =
   | 'MISSING_ARTIFACT_ID'
   | 'MISSING_APPROVAL_REQUEST_ID'
   | 'INVALID_EVENT_TIMESTAMP'
-  | 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE';
+  | 'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE'
+  | 'WORKSPACE_EVENT_TYPE_NOT_ALLOWED';
 
 export class RuntimeEventRegistryError extends Error {
   constructor(
@@ -245,6 +252,57 @@ export class CentralRuntimeEventRegistry {
       );
     }
     return this.validateKnownDraft(draft, definition as RuntimeEventDefinition<TPayload>);
+  }
+
+  /**
+   * Workspace Event stream entry point (authorization section 7.2).
+   *
+   * It applies the Run envelope checks with the Workspace difference: the
+   * binding the envelope must carry is a non-empty `workspaceId`, and every
+   * Run-bound reference is refused instead of ignored. Payload validation
+   * reuses the registered definition through `validateKnownDraft` unchanged,
+   * and the type must be on the frozen Workspace allowlist (section 7.3). The
+   * Run `publish` path and every existing definition stay untouched.
+   */
+  publishWorkspace<TPayload>(draft: WorkspaceEventDraft<TPayload>): WorkspaceEventEnvelope<TPayload> {
+    if (!isRecord(draft)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Workspace Event draft must be an object',
+      );
+    }
+
+    if (draft.schemaVersion > CURRENT_RUNTIME_EVENT_SCHEMA_VERSION) {
+      throw new RuntimeEventRegistryError(
+        'UNKNOWN_FUTURE_EVENT_NOT_PUBLISHABLE',
+        'Future Workspace Event cannot be published by the current Registry: ' + draft.type,
+      );
+    }
+
+    this.validateWorkspaceEnvelopeShape(draft);
+
+    if (!isWorkspaceEventStreamType(draft.type)) {
+      throw new RuntimeEventRegistryError(
+        'WORKSPACE_EVENT_TYPE_NOT_ALLOWED',
+        'Runtime Event type is not appendable to the Workspace stream: ' + draft.type,
+      );
+    }
+
+    const definition = this.definitions.get(draft.type);
+    if (!definition) {
+      throw new RuntimeEventRegistryError(
+        'UNREGISTERED_CORE_EVENT',
+        'Core Runtime Event type is not registered: ' + draft.type,
+      );
+    }
+
+    // The Workspace envelope is the Run envelope minus every Run-bound
+    // reference, so shared payload and definition validation applies as-is;
+    // only attribution (source/severity/visibility/durability) is defaulted.
+    return this.validateKnownDraft(
+      draft as unknown as RuntimeEventDraft<TPayload>,
+      definition as RuntimeEventDefinition<TPayload>,
+    ) as unknown as WorkspaceEventEnvelope<TPayload>;
   }
 
   consume(record: unknown): RuntimeEventConsumptionResult {
@@ -515,6 +573,87 @@ export class CentralRuntimeEventRegistry {
       throw new RuntimeEventRegistryError(
         'INVALID_EVENT_TIMESTAMP',
         'Runtime Event timestamp must use canonical UTC milliseconds: ' + draft.timestamp,
+      );
+    }
+
+    if (draft.source !== undefined && !hasValue(RUNTIME_EVENT_SOURCES, draft.source)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Unsupported Runtime Event source: ' + draft.source,
+      );
+    }
+
+    if (draft.severity !== undefined && !hasValue(RUNTIME_EVENT_SEVERITIES, draft.severity)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Unsupported Runtime Event severity: ' + draft.severity,
+      );
+    }
+
+    if (draft.visibility !== undefined && !hasValue(RUNTIME_EVENT_VISIBILITIES, draft.visibility)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Unsupported Runtime Event visibility: ' + draft.visibility,
+      );
+    }
+
+    if (draft.durability !== undefined && !hasValue(RUNTIME_EVENT_DURABILITIES, draft.durability)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Unsupported Runtime Event durability: ' + draft.durability,
+      );
+    }
+  }
+
+  /**
+   * The Run envelope checks (section 7.2), with the two Workspace rules:
+   * `workspaceId` is the binding that must be present, and no Run-bound
+   * reference key may appear at all. `source`, `severity`, `visibility`, and
+   * `durability` stay optional here because `validateKnownDraft` fills them
+   * from the registered definition, exactly as it does for the Run stream.
+   *
+   * `causationId` is required rather than optional: the frozen Workspace
+   * envelope (section 7.1) only accepts an origin proven against a durable row
+   * in the same Workspace (section 8.1), and the table stores it NOT NULL.
+   * Requiring it here fails closed in the Registry instead of at the INSERT.
+   */
+  private validateWorkspaceEnvelopeShape(draft: WorkspaceEventDraft): void {
+    if (!isPositiveSafeInteger(draft.schemaVersion)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_SCHEMA_VERSION',
+        'Workspace Event schemaVersion must be a positive safe integer',
+      );
+    }
+
+    if (
+      !isNonEmptyString(draft.id)
+      || !isNonEmptyString(draft.type)
+      || !isNonEmptyString(draft.workspaceId)
+      || !isNonEmptyString(draft.correlationId)
+      || !isNonEmptyString(draft.causationId)
+      || !isNonEmptyString(draft.timestamp)
+      || !isPositiveSafeInteger(draft.sequence)
+    ) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Workspace Event envelope is incomplete',
+      );
+    }
+
+    const runBound = WORKSPACE_EVENT_FORBIDDEN_ENVELOPE_KEYS.filter(
+      key => (draft as unknown as Record<string, unknown>)[key] !== undefined,
+    );
+    if (runBound.length > 0) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_ENVELOPE',
+        'Workspace Event must not carry Run-bound references: ' + runBound.join(', '),
+      );
+    }
+
+    if (!isCanonicalRuntimeTimestamp(draft.timestamp)) {
+      throw new RuntimeEventRegistryError(
+        'INVALID_EVENT_TIMESTAMP',
+        'Workspace Event timestamp must use canonical UTC milliseconds: ' + draft.timestamp,
       );
     }
 

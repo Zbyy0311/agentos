@@ -256,7 +256,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         ...(body.mergedIntoEntryId === undefined ? {} : { mergedIntoEntryId: body.mergedIntoEntryId }),
         ...(body.edits === undefined ? {} : { edits: body.edits }),
         reviewedAt: new Date().toISOString(),
-      });
+      }, { writer: store.workspaceEventWriter() });
       res.json({ candidate });
     } catch (error) {
       fail(res, error);
@@ -274,7 +274,7 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
         expectedVersion: body.expectedVersion as number,
         disposition: body.disposition as never,
         resolvedAt: new Date().toISOString(),
-      });
+      }, { writer: store.workspaceEventWriter() });
       res.json({ conflict });
     } catch (error) {
       fail(res, error);

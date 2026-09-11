@@ -211,6 +211,79 @@ async function postJson(url: string, body: unknown): Promise<{ status: number; j
   return { status: response.status, json: await response.json() };
 }
 
+interface WorkspaceEventRow {
+  readonly id: string;
+  readonly type: string;
+  readonly sequence: number;
+  readonly correlation_id: string;
+  readonly causation_id: string;
+  readonly payload_json: string;
+}
+
+function workspaceEvents(store: SqliteStore, workspaceId: string): WorkspaceEventRow[] {
+  return store.getDatabase().prepare(
+    'SELECT id, type, sequence, correlation_id, causation_id, payload_json FROM workspace_events'
+    + ' WHERE workspace_id = ? ORDER BY sequence ASC',
+  ).all(workspaceId) as WorkspaceEventRow[];
+}
+
+function scalar(store: SqliteStore, sql: string, ...params: readonly string[]): number {
+  const row = store.getDatabase().prepare(sql).get(...params) as { n: number | bigint };
+  return Number(row.n);
+}
+
+test('MF5W-A10/A14: the review and resolve routes append Workspace Events, not Run-scoped rows', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    seedEntries(store);
+    seedCandidate(store);
+    seedConflict(store);
+    assert.deepEqual(workspaceEvents(store, WS), []);
+
+    const reviewed = await postJson(`${baseUrl}/memory/candidates/${CAND}/review`, {
+      expectedVersion: 1, outcome: 'accept',
+    });
+    assert.equal(reviewed.status, 200);
+    const reviewedRow = reviewed.json as { candidate: { mergedIntoEntryId: string | null; version: number } };
+    assert.equal(reviewedRow.candidate.version, 2);
+    assert.deepEqual(workspaceEvents(store, WS).map(event => event.type), [
+      'memory.candidate_reviewed', 'memory.entry_created',
+    ]);
+    // The chain is the DERIVED one: the durable Candidate row owns it.
+    const reviewEvent = workspaceEvents(store, WS)[0]!;
+    assert.equal(reviewEvent.correlation_id, 'memory-candidate:' + CAND + ':v2');
+    assert.equal(reviewEvent.causation_id, CAND);
+    assert.deepEqual(JSON.parse(reviewEvent.payload_json), {
+      candidateId: CAND, candidateVersion: 2, outcome: 'accept',
+      memoryEntryId: reviewedRow.candidate.mergedIntoEntryId,
+    });
+
+    const resolved = await postJson(`${baseUrl}/memory-conflicts/${CONFLICT}/resolve`, {
+      expectedVersion: 1, disposition: 'keep-both',
+    });
+    assert.equal(resolved.status, 200);
+    assert.deepEqual(workspaceEvents(store, WS).map(event => [event.sequence, event.type]), [
+      [1, 'memory.candidate_reviewed'], [2, 'memory.entry_created'],
+      [3, 'memory.conflict_resolved'], [4, 'memory.entry_updated'], [5, 'memory.entry_updated'],
+    ]);
+    assert.equal(workspaceEvents(store, WS)[2]!.correlation_id, 'memory-conflict:' + CONFLICT + ':v2');
+    assert.equal(workspaceEvents(store, WS)[2]!.causation_id, CONFLICT);
+
+    // One Workspace stream only: no Run-scoped fact, sequence, or Outbox row.
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM runtime_events'), 0);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM outbox_messages'), 0);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM operations'), 0);
+    assert.equal(scalar(store, 'SELECT next_event_sequence AS n FROM runs WHERE id = ?', RUN), 1);
+    assert.equal(
+      scalar(store, 'SELECT next_event_sequence AS n FROM workspaces WHERE id = ?', WS),
+      workspaceEvents(store, WS).length + 1,
+    );
+    // Events survive as the Workspace's own history, readable in append order.
+    const tail = workspaceEvents(store, WS).slice(-1)[0]!;
+    assert.equal(tail.sequence, 5);
+  });
+});
+
 test('MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag', async () => {
   await withServer(async (baseUrl, store) => {
     seedDurableRows(store);

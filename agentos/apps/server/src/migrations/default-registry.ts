@@ -22,6 +22,7 @@ import { migration021 } from './migrations/021-cr2-agent-turn-persistence.js';
 import { migration022 } from './migrations/022-cr4-message-projection-persistence.js';
 import { migration023 } from './migrations/023-cr5-bounded-group-persistence.js';
 import { migration024 } from './migrations/024-memory-snapshot-payloads.js';
+import { migration025 } from './migrations/025-mf5-workspace-event-stream.js';
 import type { Migration } from './types.js';
 
 /**
@@ -51,6 +52,9 @@ import type { Migration } from './types.js';
  * 022: CR-4b idempotent Conversation message projection key persistence
  * 023: CR-5 bounded Group Conversation persistence (budgets, stop, loop guard,
  *      per-Agent Turn-scoped context snapshots)
+ * 024: MF-4 Memory Context Snapshot frozen injected-payload persistence
+ * 025: MF-5 Workspace Event stream (Run-less canonical Event history +
+ *      per-Workspace sequence allocator column)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -77,4 +81,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration022,
   migration023,
   migration024,
+  migration025,
 ];

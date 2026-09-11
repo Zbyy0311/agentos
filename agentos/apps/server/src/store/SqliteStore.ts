@@ -89,6 +89,10 @@ import { MessageProjectionRepository } from './MessageProjectionRepository.js';
 import { GroupInteractionRepository } from './GroupInteractionRepository.js';
 import { TurnContextSnapshotRepository } from './TurnContextSnapshotRepository.js';
 import { WorkspaceAdmissionRepository } from './WorkspaceAdmissionRepository.js';
+import { WorkspaceEventRepository } from './WorkspaceEventRepository.js';
+import { WorkspaceEventWriter } from './WorkspaceEventWriter.js';
+import { WorkspaceSequenceAllocator } from './WorkspaceSequenceAllocator.js';
+import { DurableWorkspaceEventContextAuthority } from '../services/WorkspaceEventContextAuthority.js';
 import { ConversationStreamService } from '../services/ConversationStreamService.js';
 import { ConversationBridgeService } from '../services/ConversationBridgeService.js';
 import { ConversationProjectionService } from '../services/ConversationProjectionService.js';
@@ -480,6 +484,8 @@ export class SqliteStore implements Store {
   private readonly groupInteractionRepo: GroupInteractionRepository;
   private readonly turnContextSnapshotRepo: TurnContextSnapshotRepository;
   private readonly workspaceAdmissionRepo: WorkspaceAdmissionRepository;
+  private readonly workspaceEventRepo: WorkspaceEventRepository;
+  private readonly workspaceEventWriterRepo: WorkspaceEventWriter;
   private readonly legacy: JsonFileStore;
   private readonly database: SqliteDatabase;
 
@@ -517,6 +523,18 @@ export class SqliteStore implements Store {
         this.runtimeEventRepo,
         this.runSequenceAllocatorRepo,
         this.outboxRepo,
+        this.database as any,
+      );
+      // MF-5 Workspace Event stream: one allocator, one repository, one
+      // proving authority, and ONE writer, all bound to this store's single
+      // SQLite connection (authorization section 9). The writer refuses
+      // construction if any collaborator is bound elsewhere, so a Memory fact
+      // and its Workspace Events can never commit on separate connections.
+      this.workspaceEventRepo = new WorkspaceEventRepository(this.database as any, runtimeEventRegistry);
+      this.workspaceEventWriterRepo = new WorkspaceEventWriter(
+        this.workspaceEventRepo,
+        new WorkspaceSequenceAllocator(this.database as any),
+        new DurableWorkspaceEventContextAuthority(this.database as any),
         this.database as any,
       );
       this.providerSessionRepo = new ProviderSessionRepository(
@@ -614,6 +632,16 @@ export class SqliteStore implements Store {
   /** Existing one-connection Runtime Event + Outbox writer for bounded service composition. */
   runtimeEventOutboxWriter(): RuntimeEventOutboxWriter {
     return this.durableRuntimeFactWriterRepo;
+  }
+
+  /**
+   * The ONE MF-5 Workspace Event append path, bound to this store's single
+   * SQLite connection (authorization sections 6.5 and 9). Callers use the
+   * store accessor rather than assembling a second writer, so every Workspace
+   * Event commits through the same connection as the Memory fact it records.
+   */
+  workspaceEventWriter(): WorkspaceEventWriter {
+    return this.workspaceEventWriterRepo;
   }
 
   runStreamService(): RunStreamService {
@@ -839,6 +867,10 @@ export class SqliteStore implements Store {
       this.database.prepare('DELETE FROM conversations WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM agent_profiles WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM provider_configurations WHERE workspace_id = ?').run(workspaceId);
+      // MF-5 section 6.5: the Workspace Event stream is removed only with an
+      // explicit Workspace delete, and its FK is RESTRICT, so this delete is
+      // the required child step of the frozen delete path.
+      this.database.prepare('DELETE FROM workspace_events WHERE workspace_id = ?').run(workspaceId);
       this.database.prepare('DELETE FROM workspaces WHERE id = ?').run(workspaceId);
       this.database.prepare('INSERT OR IGNORE INTO _workspace_tombstones (workspace_id, deleted_at) VALUES (?, ?)').run(workspaceId, new Date().toISOString());
     });
