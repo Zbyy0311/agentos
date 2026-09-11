@@ -13,9 +13,9 @@ beyond the merged evidence it cites.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ b9da96b2` (Merge PR #118) |
+| Baseline | `origin-https/main @ e8f64b15` (Merge PR #120) |
 | Migration ledger | `001`–`023` present |
-| Main CI | `b9da96b2` post-merge run conclusion `success` |
+| Main CI | `e8f64b15` PR CI run `34560421871` conclusion `success` |
 
 ## 3. Fast-Track status
 
@@ -24,7 +24,7 @@ beyond the merged evidence it cites.
 | P6 / Windows recovery correctness | **COMPLETE** | PR #63–#66; `P6-recovery-closeout.md` (PR #77) |
 | Minimal Git Observation + Workspace single-writer rule | **COMPLETE** | PR #68–#76 (L1A–L1E) |
 | Recovery closeout | **COMPLETE** | PR #77 |
-| Memory Foundation | **PARTIAL (core MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92); `MF-progress.md` |
+| Memory Foundation | **PARTIAL (core + MF-5 API MERGED)** | MF-0..MF-4 (PR #79–#87), MF-5 events/emission/Run-injection (PR #89/#91/#92), MF-5 API (PR #120); `MF-progress.md` |
 | Conversation Runtime | **MERGED (CR-0..CR-6 complete)** | PR #95–#97, #105–#108; `CR-progress.md` |
 | Polished UI Foundation | **MERGED (tokens + four-column shell)** | PR #100, #109; `WorkbenchShell.tsx` |
 | Direct Conversation UX | **MERGED (routes, reply stream, client, view, controller, page)** | PR #110–#114 |
@@ -49,6 +49,8 @@ beyond the merged evidence it cites.
 | UI shell (foundation + component) | 15/15 + 9/9 PASS (110/110 full web suite) |
 | Full Server first run (Inspector head) | 2457 total, 2452 passed, 2 failed, 3 skipped |
 | Full web test suite (UI Foundation head) | 99/99 PASS |
+| MF-5 API routes + listForRun | 5/5 + 9/9 PASS |
+| Full Server run (MF-5 API head) | 2590 total, 2583 passed, 4 failed (pre-existing Windows ENOTEMPTY teardowns), 3 skipped |
 
 The 2 server failures are pre-existing Windows `tar` environment issues in
 `WorktreeArtifactService`, unrelated to the Lite work. First runs were
@@ -67,29 +69,17 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
 
 ## 5. Remaining work
 
-- **Memory Foundation**: MF-5 Memory/Context Snapshot APIs, UI Memory
-  explanation, Inspector memory view.
-- **Conversation Runtime**: CR-3 streaming checkpoints, CR-4a explicit Task/Run
-  bridge, and CR-4b idempotent Event projection (migration 022) are committed on
-  `runtime/cr3-cr4-conversation-runtime` (`1218a23b`) and await review/merge; CR-5
-  bounded Group (budgets/stop/loop guard + per-Agent context, migration 023) is
-  committed on `runtime/cr5-bounded-group` (PR #107, stacked); CR-6 history is
-  implemented on `runtime/cr6-history` (PR #108, stacked) — a read surface over
-  existing durable tables, no migration. Conversation Runtime is complete pending
-  review/merge of PRs #106–#108.
-- **Polished UI Foundation**: the four-column shell consuming the token system is
-  implemented (`WorkbenchShell.tsx` + `uiCssVariables`/`columnWidthPx`), with adaptive
-  collapse, reduced-motion, and client-only panel state; data wiring stays with the
-  Direct Conversation UX step.
-- **Direct Conversation UX**: the forward Conversation runtime routes
-  (create/list/archive/restore, members, turns, messages, checkpoint replay,
-  create-task/start-run bridge, history) are implemented and wired through
-  `SqliteStore`; the Provider-backed reply stream and the Composer are not started.
-- **Workflow Templates**: wire the compiled definition into durable Task/Run/Stage
-  creation. Frozen design + integration audit in `WF-templates-durable-wiring.md`;
-  it touches the canonical Run startup path and needs a new write capability on the
-  immutable-definitions repository, so it awaits owner authorization (option A vs B).
-- **Runtime Inspector**: API route and UI surface over the merged projection.
+- **Memory Foundation**: MF-5 UI Memory explanation + Candidate review and the
+  Inspector Context Snapshot view (the MF-5 APIs they consume are merged via
+  PR #120). Recorded gap: user-initiated conflict resolution does not emit a
+  canonical Memory Event because emission is Run-scoped; a Workspace-scoped
+  memory Event context contract is not yet authorized. MF-2 remainder:
+  candidate generation triggers and near-duplicate FTS-similarity detection.
+- **Controlled Group Conversation**: speaker orchestration remains open; the
+  bounded routes and the budget/stop/loop-guard view are merged (PR #116).
+
+All other Fast-Track steps are MERGED per section 3; this section lists only
+genuinely open work.
 
 ## 6. Non-goals (unchanged)
 

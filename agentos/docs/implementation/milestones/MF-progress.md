@@ -1,6 +1,6 @@
 # Memory Foundation — Progress and Remaining Work
 
-Status: MF-0..MF-4 MERGED — MF-5 EVENTS + EMISSION + RUN INJECTION MERGED, API/UI OPEN — MEMORY FOUNDATION IN PROGRESS
+Status: MF-0..MF-4 MERGED — MF-5 EVENTS + EMISSION + RUN INJECTION + API MERGED, UI OPEN — MEMORY FOUNDATION IN PROGRESS
 
 ## 1. Purpose
 
@@ -12,9 +12,9 @@ legible without re-auditing the repository.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ bd4cc7d4` (Merge PR #92) |
-| Migration ledger | `001`–`019` present; `020` absent |
-| Main CI | Post-merge runs through `380a5c6f` conclusion `success`; `bd4cc7d4` in progress at record time |
+| Baseline | `origin-https/main @ e8f64b15` (Merge PR #120) |
+| Migration ledger | `001`–`023` present; no MF-5 API migration (read/write composition over MF-1..MF-4 tables) |
+| Main CI | `e8f64b15` PR CI run `34560421871` conclusion `success` |
 | Preceding gates | Workspace single-writer rule COMPLETE; Recovery closeout COMPLETE |
 
 ## 3. Slice status
@@ -26,7 +26,7 @@ legible without re-auditing the repository.
 | MF-2 | Candidate pipeline + dedup/conflict | **MERGED** | #86 (auth), #87 (impl) |
 | MF-3 | Scope-filtered retrieval + deterministic ranking + reasons | **MERGED** | #82 |
 | MF-4 | Budget policy + immutable Context Snapshot | **MERGED** | #83 (auth), #84 (impl) |
-| MF-5 | Events + emission + Run injection MERGED; API/UI/Inspector NOT STARTED | **PARTIAL** | #89 (events), #91 (emission) |
+| MF-5 | Events + emission + Run injection + API MERGED; UI/Inspector NOT STARTED | **PARTIAL** | #89 (events), #91 (emission), #120 (API) |
 
 ## 4. Merged evidence
 
@@ -45,12 +45,16 @@ legible without re-auditing the repository.
 | MF-5 emitter | 10/10 PASS |
 | MF-4 Run-startup resolver | 10/10 PASS |
 | Dispatcher MF-4 integration gates | 3/3 PASS |
-| Full Server first run (MF-4 integration head) | 2420 total, 2415 passed, 2 failed, 3 skipped |
+| MF-5 API routes | 5/5 PASS |
+| MF-4R-09 `listForRun` | 1/1 PASS (within 9/9 snapshot suite) |
+| Full Server run (MF-5 API head) | 2590 total, 2583 passed, 4 failed, 3 skipped |
 
-The 2 server failures are pre-existing Windows `tar` environment issues in
-`WorktreeArtifactService`, unrelated to Memory Foundation. First runs were
-preserved; no rerun-to-green was used. Each slice also passed its PR CI and the
-post-merge `main` CI.
+The 4 server failures are pre-existing Windows `ENOTEMPTY` temp-directory
+teardown flakes in `worktrees.test.ts` (2), `ConversationService.test.ts`,
+and `LegacyTaskItemImportService.test.ts`, unrelated to Memory Foundation.
+Earlier runs recorded the same class as `tar` environment issues in
+`WorktreeArtifactService`. Runs were preserved; no rerun-to-green was used.
+Each slice also passed its PR CI and the post-merge `main` CI.
 
 ## 5. What the merged slices provide
 
@@ -91,12 +95,28 @@ Merged:
   plus `MemoryRuntimeEventEmitter`, so a Memory fact and its canonical Event +
   Outbox row commit in one transaction.
 
+Merged via PR #120 (API):
+
+- `POST /api/workspaces/:workspaceId/memory/retrieve` — MF-3 retrieval as a
+  read-only explanation surface with a visible `degraded` flag
+  (`MemoryRetrievalService.retrieveWithStatus`); never persists a snapshot.
+- `GET .../runs/:runId/memory-context` — every frozen Context Snapshot of a
+  Run via the additive `MemoryContextSnapshotRepository.listForRun`;
+- `GET .../memory-contexts/:memoryContextId` — one frozen snapshot with
+  selection/exclusion reasons;
+- `POST .../memory-conflicts/:conflictId/resolve` — transactional MF-2
+  resolution with optimistic `expectedVersion`.
+
+Known contract gap: canonical Memory Event emission is Run-scoped
+(`MemoryRuntimeEventEmitter` requires a Run + L1C event context), so the
+user-initiated conflict resolution above records the fact transactionally
+without emitting a canonical Event. A Workspace-scoped memory Event context
+contract is required to close this; not yet authorized.
+
 Not started within MF-5:
 
-- Memory and Context Snapshot APIs (`memory/retrieve`,
-  `GET /runs/:runId/memory-context`, `GET /memory-contexts/:id`,
-  conflict resolution);
-- UI Memory explanation and Candidate review;
+- UI Memory explanation and Candidate review (consumes the merged API; the
+  forward Candidate review endpoints are scoped with that UI slice);
 - Inspector Context Snapshot view.
 
 ### Run startup integration (CLOSED)
