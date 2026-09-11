@@ -7,11 +7,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { MigrationRegistry } from '../migrations/registry.js';
+import type { MemoryConflictDisposition } from '@agentos/shared';
 import { MigrationRunner } from '../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../migrations/default-registry.js';
 import { createFileBackupProvider } from '../migrations/backup.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
-import type { TransactionDatabase } from './Transaction.js';
+import { inTransaction, type TransactionDatabase } from './Transaction.js';
 import { MemoryEntryRepository } from './MemoryEntryRepository.js';
 import {
   MemoryCandidateRepository,
@@ -40,6 +41,7 @@ const RUN = 'run_mf2r';
 const CAND = 'mcand_' + 'a'.repeat(26);
 const MEM_A = 'mem_' + 'a'.repeat(26);
 const MEM_B = 'mem_' + 'b'.repeat(26);
+const CONFLICT_ID = 'conf_' + 'd'.repeat(26);
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), 'agentos-mf2-repo-'));
@@ -122,6 +124,36 @@ function expectCode(error: unknown, code: MemoryCandidateRepositoryError['code']
   assert.ok(error instanceof MemoryCandidateRepositoryError);
   assert.equal(error.code, code);
   return true;
+}
+
+function entryStateOf(db: SqliteDb, entryId: string): { status: string; version: number } {
+  const row = db.prepare('SELECT status, version FROM memory_entries WHERE id = ?').get(entryId) as {
+    status: string; version: number;
+  };
+  return { status: row.status, version: row.version };
+}
+
+function openPair(
+  fx: ReturnType<typeof fixture>,
+  conflictId = CONFLICT_ID,
+  entryAId = MEM_A,
+  entryBId = MEM_B,
+) {
+  return inTransaction(fx.db as unknown as TransactionDatabase, () => fx.repo.openConflictWithinTransaction({
+    id: conflictId, workspaceId: WS, conflictType: 'contradiction',
+    entryAId, entryBId, createdAt: NOW,
+  }));
+}
+
+function resolvePair(
+  fx: ReturnType<typeof fixture>,
+  conflictId: string,
+  expectedVersion: number,
+  disposition: MemoryConflictDisposition,
+) {
+  return inTransaction(fx.db as unknown as TransactionDatabase, () => fx.repo.resolveConflictWithinTransaction({
+    workspaceId: WS, conflictId, expectedVersion, disposition, resolvedAt: NOW2,
+  }));
 }
 
 // MF2R-01 — create persists candidate, sources, and the promotion decision.
@@ -485,6 +517,121 @@ test('MF2R-10 conflict input validation', () => {
       () => fx.repo.openConflict({ id: 'conf_y', workspaceId: WS, conflictType: 'contradiction', entryAId: MEM_A, entryBId: 'mem_missing', createdAt: NOW }),
       (e: unknown) => expectCode(e, 'ENTRY_NOT_FOUND'),
     );
+  } finally { fx.close(); }
+});
+
+// MF2R-20 — a conflict open reports only the Entry moves it persisted.
+test('MF2R-20 conflict open reports the entry effects it persisted', () => {
+  const fx = fixture();
+  try {
+    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase);
+    entries.updateStatus({ workspaceId: WS, entryId: MEM_B, expectedVersion: 1, status: 'archived', updatedAt: NOW });
+    const result = openPair(fx);
+    assert.deepEqual(result.effects, [
+      { entryId: MEM_A, fromStatus: 'active', toStatus: 'conflicted', version: 2 },
+      { entryId: MEM_B, fromStatus: 'archived', toStatus: 'archived', version: 2 },
+    ]);
+    assert.deepEqual(entryStateOf(fx.db, MEM_A), { status: 'conflicted', version: 2 });
+    assert.deepEqual(entryStateOf(fx.db, MEM_B), { status: 'archived', version: 2 });
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_conflicts').get() as { c: number }).c, 1);
+    assert.equal(result.conflict.status, 'open');
+  } finally { fx.close(); }
+});
+
+// MF2R-21 — keep-both releases both sides without deleting anything.
+test('MF2R-21 keep-both releases both conflicted entries', () => {
+  const fx = fixture();
+  try {
+    openPair(fx);
+    const resolved = resolvePair(fx, CONFLICT_ID, 1, 'keep-both');
+    assert.equal(resolved.conflict.status, 'resolved');
+    assert.equal(resolved.conflict.disposition, 'keep-both');
+    assert.deepEqual(resolved.effects, [
+      { entryId: MEM_A, fromStatus: 'conflicted', toStatus: 'active', version: 3 },
+      { entryId: MEM_B, fromStatus: 'conflicted', toStatus: 'active', version: 3 },
+    ]);
+    assert.deepEqual(entryStateOf(fx.db, MEM_A), { status: 'active', version: 3 });
+    assert.deepEqual(entryStateOf(fx.db, MEM_B), { status: 'active', version: 3 });
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_entries').get() as { c: number }).c, 2);
+  } finally { fx.close(); }
+});
+
+// MF2R-22 — supersede dispositions target exactly the addressed side.
+test('MF2R-22 supersede dispositions target the addressed side', () => {
+  const earlier = fixture();
+  const later = fixture();
+  try {
+    const earlierOpened = openPair(earlier);
+    const earlierResolved = resolvePair(earlier, earlierOpened.conflict.id, 1, 'supersede-earlier');
+    assert.deepEqual(earlierResolved.effects, [
+      { entryId: MEM_A, fromStatus: 'conflicted', toStatus: 'superseded', version: 3 },
+      { entryId: MEM_B, fromStatus: 'conflicted', toStatus: 'active', version: 3 },
+    ]);
+    assert.deepEqual(entryStateOf(earlier.db, MEM_A), { status: 'superseded', version: 3 });
+    assert.deepEqual(entryStateOf(earlier.db, MEM_B), { status: 'active', version: 3 });
+
+    const laterOpened = openPair(later);
+    const laterResolved = resolvePair(later, laterOpened.conflict.id, 1, 'supersede-later');
+    assert.deepEqual(laterResolved.effects, [
+      { entryId: MEM_A, fromStatus: 'conflicted', toStatus: 'active', version: 3 },
+      { entryId: MEM_B, fromStatus: 'conflicted', toStatus: 'superseded', version: 3 },
+    ]);
+    assert.deepEqual(entryStateOf(later.db, MEM_A), { status: 'active', version: 3 });
+    assert.deepEqual(entryStateOf(later.db, MEM_B), { status: 'superseded', version: 3 });
+  } finally { earlier.close(); later.close(); }
+});
+
+// MF2R-23 — reject-both rejects both sides and keeps both rows.
+test('MF2R-23 reject-both rejects both sides', () => {
+  const fx = fixture();
+  try {
+    openPair(fx);
+    const resolved = resolvePair(fx, CONFLICT_ID, 1, 'reject-both');
+    assert.deepEqual(resolved.effects, [
+      { entryId: MEM_A, fromStatus: 'conflicted', toStatus: 'rejected', version: 3 },
+      { entryId: MEM_B, fromStatus: 'conflicted', toStatus: 'rejected', version: 3 },
+    ]);
+    assert.deepEqual(entryStateOf(fx.db, MEM_A), { status: 'rejected', version: 3 });
+    assert.deepEqual(entryStateOf(fx.db, MEM_B), { status: 'rejected', version: 3 });
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_entries').get() as { c: number }).c, 2);
+  } finally { fx.close(); }
+});
+
+// MF2R-24 — a neighbour conflict holds the entry; a deleted entry refuses the mutation.
+test('MF2R-24 conflict mutations respect other open conflicts and deleted entries', () => {
+  const fx = fixture();
+  try {
+    const entries = new MemoryEntryRepository(fx.db as unknown as TransactionDatabase);
+    const third = 'mem_' + 'c'.repeat(26);
+    entries.createEntry({
+      id: third, workspaceId: WS, scope: 'task', ownerTaskId: TASK, category: 'decision',
+      authority: 'system-verified', confidence: 0.9, importance: 0.5, title: 'third',
+      status: 'active', sources: [{ kind: 'run', id: RUN }], createdAt: NOW,
+    });
+    openPair(fx, CONFLICT_ID);
+    const overlay = openPair(fx, CONFLICT_ID + '2', MEM_A, third);
+    assert.deepEqual(overlay.effects, [
+      { entryId: MEM_A, fromStatus: 'conflicted', toStatus: 'conflicted', version: 2 },
+      { entryId: third, fromStatus: 'active', toStatus: 'conflicted', version: 2 },
+    ]);
+    const resolved = resolvePair(fx, CONFLICT_ID, 1, 'keep-both');
+    assert.deepEqual(resolved.effects, [
+      { entryId: MEM_A, fromStatus: 'conflicted', toStatus: 'conflicted', version: 2 },
+      { entryId: MEM_B, fromStatus: 'conflicted', toStatus: 'active', version: 3 },
+    ]);
+    assert.deepEqual(entryStateOf(fx.db, MEM_A), { status: 'conflicted', version: 2 });
+    assert.deepEqual(entryStateOf(fx.db, third), { status: 'conflicted', version: 2 });
+
+    entries.softDelete(WS, third, 2, NOW2);
+    assert.throws(
+      () => fx.repo.openConflict({
+        id: CONFLICT_ID + '3', workspaceId: WS, conflictType: 'contradiction',
+        entryAId: MEM_A, entryBId: third, createdAt: NOW2,
+      }),
+      (e: unknown) => expectCode(e, 'ENTRY_NOT_UPDATABLE'),
+    );
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_conflicts').get() as { c: number }).c, 2);
+    assert.deepEqual(entryStateOf(fx.db, third), { status: 'deleted', version: 3 });
   } finally { fx.close(); }
 });
 

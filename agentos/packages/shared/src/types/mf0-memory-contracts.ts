@@ -499,10 +499,13 @@ export const MEMORY_CONTEXT_SNAPSHOT_IMMUTABILITY = Object.freeze({
 export const MEMORY_EVENT_TYPES = [
   'memory.candidate_created',
   'memory.candidate_reviewed',
+  'memory.conflict_opened',
+  'memory.conflict_resolved',
   'memory.entry_created',
   'memory.entry_updated',
   'memory.entry_conflicted',
   'memory.entry_deduplicated',
+  'memory.entry_rejected',
   'memory.entry_superseded',
   'memory.entry_expired',
   'memory.entry_archived',

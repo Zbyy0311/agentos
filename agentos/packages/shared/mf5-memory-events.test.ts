@@ -5,6 +5,7 @@ import {
   isMemoryCandidateEventPayload,
   isMemoryCandidateReviewEventPayload,
   isMemoryConflictEventPayload,
+  isMemoryConflictResolutionEventPayload,
   isMemoryContextEventPayload,
   isMemoryEntryEventPayload,
   isMemoryRetrievalEventPayload,
@@ -33,6 +34,10 @@ const CONFLICT_PAYLOAD = {
   entryAId: 'mem_1',
   entryBId: 'mem_2',
 };
+const CONFLICT_RESOLUTION_PAYLOAD = {
+  ...CONFLICT_PAYLOAD,
+  disposition: 'supersede-earlier',
+};
 const RETRIEVAL_PAYLOAD = {
   queryHash: 'a'.repeat(64),
   strategyVersion: 'mf3-ranking-v1',
@@ -58,7 +63,7 @@ test('MF5-01 memory is a canonical Runtime Event domain', () => {
 test('MF5-02 definitions cover the Lite memory event family', () => {
   const types = MF5_MEMORY_EVENT_DEFINITIONS.map(d => d.type);
   assert.deepEqual(types, [...MEMORY_EVENT_TYPES]);
-  assert.equal(types.length, 14);
+  assert.equal(types.length, 17);
 });
 
 // MF5-03 — every definition is a memory-domain, memory-engine, durable event.
@@ -87,6 +92,7 @@ test('MF5-05 guards accept well-formed payloads', () => {
   assert.ok(isMemoryEntryEventPayload(ENTRY_PAYLOAD));
   assert.ok(isMemoryCandidateEventPayload(CANDIDATE_PAYLOAD));
   assert.ok(isMemoryConflictEventPayload(CONFLICT_PAYLOAD));
+  assert.ok(isMemoryConflictResolutionEventPayload(CONFLICT_RESOLUTION_PAYLOAD));
   assert.ok(isMemoryRetrievalEventPayload(RETRIEVAL_PAYLOAD));
   assert.ok(isMemoryContextEventPayload(CONTEXT_PAYLOAD));
 });
@@ -101,6 +107,9 @@ test('MF5-06 guards reject extra fields and bad values', () => {
   assert.ok(!isMemoryRetrievalEventPayload({ ...RETRIEVAL_PAYLOAD, totalTokens: -1 }));
   assert.ok(!isMemoryContextEventPayload({ ...CONTEXT_PAYLOAD, runId: '' }));
   assert.ok(!isMemoryConflictEventPayload({ ...CONFLICT_PAYLOAD, conflictType: '' }));
+  assert.ok(!isMemoryConflictResolutionEventPayload({ ...CONFLICT_RESOLUTION_PAYLOAD, disposition: 'keep-one' }));
+  assert.ok(!isMemoryConflictResolutionEventPayload({ ...CONFLICT_RESOLUTION_PAYLOAD, disposition: null }));
+  assert.ok(!isMemoryConflictResolutionEventPayload({ ...CONFLICT_RESOLUTION_PAYLOAD, notes: 'extra' }));
 });
 
 // MF5-07 — payloads never carry full Memory content.
@@ -122,9 +131,12 @@ test('MF5-08 registry accepts representative payloads', () => {
     'memory.entry_updated': ENTRY_PAYLOAD,
     'memory.entry_conflicted': ENTRY_PAYLOAD,
     'memory.entry_deduplicated': ENTRY_PAYLOAD,
+    'memory.entry_rejected': ENTRY_PAYLOAD,
     'memory.entry_superseded': ENTRY_PAYLOAD,
     'memory.entry_expired': ENTRY_PAYLOAD,
     'memory.entry_archived': ENTRY_PAYLOAD,
+    'memory.conflict_opened': CONFLICT_PAYLOAD,
+    'memory.conflict_resolved': CONFLICT_RESOLUTION_PAYLOAD,
     'memory.candidate_created': CANDIDATE_PAYLOAD,
     'memory.candidate_reviewed': { candidateId: 'candidate', candidateVersion: 2, outcome: 'reject', memoryEntryId: null },
     'memory.retrieval_completed': RETRIEVAL_PAYLOAD,
@@ -147,4 +159,11 @@ test('candidate review payload distinguishes Candidate and Entry outcomes', () =
   assert.ok(!isMemoryCandidateReviewEventPayload({ ...rejected, outcome: 'accept' }));
   assert.ok(isMemoryCandidateReviewEventPayload({ ...rejected, outcome: 'accept', memoryEntryId: 'entry' }));
   assert.ok(!isMemoryCandidateReviewEventPayload({ ...rejected, content: 'not allowed' }));
+});
+
+test('conflict resolution payload requires a declared disposition only', () => {
+  for (const disposition of ['keep-both', 'supersede-earlier', 'supersede-later', 'promote-source', 'reject-both']) {
+    assert.ok(isMemoryConflictResolutionEventPayload({ ...CONFLICT_PAYLOAD, disposition }), disposition);
+  }
+  assert.ok(!isMemoryConflictResolutionEventPayload(CONFLICT_PAYLOAD));
 });

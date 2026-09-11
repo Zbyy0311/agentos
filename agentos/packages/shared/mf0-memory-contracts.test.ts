@@ -243,11 +243,29 @@ test('MF0-19 snapshot immutability and event payload rules are frozen', () => {
 
 // MF0-20 — the event family covers the Lite §15 list.
 test('MF0-20 event family covers Lite memory events', () => {
-  assert.equal(MEMORY_EVENT_TYPES.length, 14);
-  assert.ok(MEMORY_EVENT_TYPES.includes('memory.context_created'));
-  assert.ok(MEMORY_EVENT_TYPES.includes('memory.entry_conflicted'));
-  assert.ok(MEMORY_EVENT_TYPES.includes('memory.retrieval_failed'));
-  assert.ok(MEMORY_EVENT_TYPES.includes('memory.injected'));
+  const liteSection15 = [
+    'memory.candidate_created',
+    'memory.entry_created',
+    'memory.entry_updated',
+    'memory.entry_conflicted',
+    'memory.entry_deduplicated',
+    'memory.entry_superseded',
+    'memory.entry_expired',
+    'memory.entry_archived',
+    'memory.retrieval_completed',
+    'memory.retrieval_failed',
+    'memory.context_created',
+    'memory.injected',
+    'memory.revalidation_completed',
+  ] as const;
+  for (const type of liteSection15) assert.ok(MEMORY_EVENT_TYPES.includes(type), type);
+  // Additive facts the Lite list only implies: the review itself, the durable
+  // conflict open/resolve pair, and the non-destructive rejection status.
+  assert.deepEqual(
+    MEMORY_EVENT_TYPES.filter(type => !(liteSection15 as readonly string[]).includes(type)),
+    ['memory.candidate_reviewed', 'memory.conflict_opened', 'memory.conflict_resolved', 'memory.entry_rejected'],
+  );
+  assert.equal(MEMORY_EVENT_TYPES.length, liteSection15.length + 4);
 });
 
 function makeGateInput(overrides: Partial<MemoryPromotionGateInput> = {}): MemoryPromotionGateInput {

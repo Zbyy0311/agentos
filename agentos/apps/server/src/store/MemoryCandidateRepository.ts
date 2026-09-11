@@ -14,12 +14,13 @@ import {
   type MemoryCategory,
   type MemoryConflictDisposition,
   type MemoryConflictType,
+  type MemoryEntryStatus,
   type MemoryPromotionDecision,
   type MemoryScope,
   type MemorySourceKind,
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
-import { MemoryEntryRepository } from './MemoryEntryRepository.js';
+import { MemoryEntryRepository, MemoryEntryRepositoryError, type MemoryEntryRecord } from './MemoryEntryRepository.js';
 
 /**
  * MF-2 Memory Candidate and Conflict persistence.
@@ -39,6 +40,7 @@ export type MemoryCandidateRepositoryErrorCode =
   | 'CANDIDATE_NOT_REVIEWABLE'
   | 'SOURCE_REQUIRED'
   | 'ENTRY_NOT_FOUND'
+  | 'ENTRY_NOT_UPDATABLE'
   | 'CONFLICT_NOT_FOUND'
   | 'CONFLICT_NOT_RESOLVABLE'
   | 'PERSISTENCE_FAILED';
@@ -127,6 +129,24 @@ export interface MemoryConflictRecord {
   readonly resolvedAt: string | null;
   readonly createdAt: string;
   readonly version: number;
+}
+
+/**
+ * One Entry status change caused by a conflict mutation. `fromStatus ===
+ * toStatus` records an inspected Entry that the disposition left untouched
+ * (for example an Entry that is still referenced by another open conflict).
+ */
+export interface MemoryConflictEntryEffect {
+  readonly entryId: string;
+  readonly fromStatus: MemoryEntryStatus;
+  readonly toStatus: MemoryEntryStatus;
+  readonly version: number;
+}
+
+/** A conflict mutation and the Entry effects it actually persisted. */
+export interface MemoryConflictMutationResult {
+  readonly conflict: MemoryConflictRecord;
+  readonly effects: readonly MemoryConflictEntryEffect[];
 }
 
 interface CandidateRow {
@@ -455,7 +475,7 @@ export class MemoryCandidateRepository {
   /** Open a conflict between two distinct Entries in one Workspace. */
   openConflict(input: OpenMemoryConflictInput): MemoryConflictRecord {
     try {
-      return inTransaction(this.db, () => this.openConflictWithinTransaction(input));
+      return inTransaction(this.db, () => this.openConflictWithinTransaction(input)).conflict;
     } catch (error) {
       throw this.publicError(error);
     }
@@ -465,30 +485,36 @@ export class MemoryCandidateRepository {
    * MF-5 emission seam: open a conflict inside an ALREADY ACTIVE transaction so
    * a caller can commit the conflict and its Runtime Event + Outbox row
    * atomically. The caller owns BEGIN/COMMIT.
+   *
+   * Opening a conflict is a real Entry effect, not only a conflict row: a
+   * stored Entry in `active` state transitions to `conflicted` with a version
+   * bump. Entries already in a non-active state are inspected but left
+   * untouched, and a soft-deleted Entry refuses the mutation.
    */
-  openConflictWithinTransaction(input: OpenMemoryConflictInput): MemoryConflictRecord {
+  openConflictWithinTransaction(input: OpenMemoryConflictInput): MemoryConflictMutationResult {
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.createdAt)
       || !isConflictType(input.conflictType) || !nonBlank(input.entryAId)
       || !nonBlank(input.entryBId) || input.entryAId === input.entryBId) {
       throw new MemoryCandidateRepositoryError('INPUT_INVALID');
     }
     this.assertWorkspaceExists(input.workspaceId);
-    for (const entryId of [input.entryAId, input.entryBId]) {
-      const entry = this.db.prepare(
-        'SELECT 1 AS present FROM memory_entries WHERE workspace_id = ? AND id = ?',
-      ).get(input.workspaceId, entryId);
-      if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
-    }
+    const entries = [input.entryAId, input.entryBId]
+      .map(entryId => this.requireConflictEntry(input.workspaceId, entryId, false));
     this.db.prepare(
       'INSERT INTO memory_conflicts (id, workspace_id, conflict_type, entry_a_id, entry_b_id, status, disposition, resolved_at, created_at, version) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, 1)',
     ).run(input.id, input.workspaceId, input.conflictType, input.entryAId, input.entryBId, 'open', input.createdAt);
-    return this.requireConflict(input.workspaceId, input.id);
+    const effects = entries.map(entry => this.applyConflictEntryStatus(
+      entry,
+      entry.status === 'active' ? 'conflicted' : entry.status,
+      input.createdAt,
+    ));
+    return { conflict: this.requireConflict(input.workspaceId, input.id), effects };
   }
 
   /** Resolve a conflict with an explicit disposition; never deletes. */
   resolveConflict(input: ResolveMemoryConflictInput): MemoryConflictRecord {
     try {
-      return inTransaction(this.db, () => this.resolveConflictWithinTransaction(input));
+      return inTransaction(this.db, () => this.resolveConflictWithinTransaction(input)).conflict;
     } catch (error) {
       throw this.publicError(error);
     }
@@ -498,8 +524,17 @@ export class MemoryCandidateRepository {
    * MF-5 emission seam: resolve a conflict inside an ALREADY ACTIVE
    * transaction so a caller can commit the resolution and its Runtime Event +
    * Outbox row atomically. The caller owns BEGIN/COMMIT.
+   *
+   * The disposition is applied to the two stored Entries:
+   * - `keep-both` and `promote-source` release the conflicted state unless
+   *   another open conflict still references that Entry;
+   * - `supersede-earlier` / `supersede-later` supersede the earlier / later
+   *   Entry (by `createdAt`, then id) and release the other one;
+   * - `reject-both` rejects both Entries.
+   * Nothing is deleted, and an Entry the disposition does not change keeps its
+   * row untouched and reports a no-change effect.
    */
-  resolveConflictWithinTransaction(input: ResolveMemoryConflictInput): MemoryConflictRecord {
+  resolveConflictWithinTransaction(input: ResolveMemoryConflictInput): MemoryConflictMutationResult {
     if (!nonBlank(input.workspaceId) || !nonBlank(input.conflictId)
       || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
       || !isDisposition(input.disposition) || !nonBlank(input.resolvedAt)) {
@@ -515,7 +550,22 @@ export class MemoryCandidateRepository {
     this.db.prepare(
       'UPDATE memory_conflicts SET status = ?, disposition = ?, resolved_at = ?, version = version + 1 WHERE workspace_id = ? AND id = ? AND version = ?',
     ).run('resolved', input.disposition, input.resolvedAt, input.workspaceId, input.conflictId, input.expectedVersion);
-    return this.requireConflict(input.workspaceId, input.conflictId);
+    const conflict = this.requireConflict(input.workspaceId, input.conflictId);
+    const entryA = this.requireConflictEntry(input.workspaceId, conflict.entryAId, true);
+    const entryB = this.requireConflictEntry(input.workspaceId, conflict.entryBId, true);
+    const aIsEarlier = isEarlierEntry(entryA, entryB);
+    const effects = ([[entryA, aIsEarlier], [entryB, !aIsEarlier]] as const).map(([entry, isEarlier]) =>
+      this.applyConflictEntryStatus(
+        entry,
+        resolveConflictTargetStatus(
+          input.disposition,
+          isEarlier,
+          entry.status,
+          this.countOtherOpenConflicts(input.workspaceId, entry.id, conflict.id) > 0,
+        ),
+        input.resolvedAt,
+      ));
+    return { conflict, effects };
   }
 
   /** Exact-duplicate lookup by content hash inside one Workspace. */
@@ -720,6 +770,56 @@ export class MemoryCandidateRepository {
     return this.toConflictRecord(row);
   }
 
+  /**
+   * Read one Entry of a conflict inside the active transaction. A soft-deleted
+   * Entry is refused when the caller must mutate it, and is returned untouched
+   * when the caller only inspects both sides of a resolution.
+   */
+  private requireConflictEntry(workspaceId: string, entryId: string, allowDeleted: boolean): MemoryEntryRecord {
+    const entry = this.entries.findById(workspaceId, entryId);
+    if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
+    if (!allowDeleted && entry.status === 'deleted') {
+      throw new MemoryCandidateRepositoryError('ENTRY_NOT_UPDATABLE');
+    }
+    return entry;
+  }
+
+  /** Apply one Entry status transition under optimistic concurrency. */
+  private applyConflictEntryStatus(
+    entry: MemoryEntryRecord,
+    target: MemoryEntryStatus,
+    updatedAt: string,
+  ): MemoryConflictEntryEffect {
+    if (target === entry.status) {
+      return { entryId: entry.id, fromStatus: entry.status, toStatus: entry.status, version: entry.version };
+    }
+    try {
+      const updated = this.entries.updateStatusWithinTransaction({
+        workspaceId: entry.workspaceId,
+        entryId: entry.id,
+        expectedVersion: entry.version,
+        status: target,
+        updatedAt,
+      });
+      return { entryId: updated.id, fromStatus: entry.status, toStatus: updated.status, version: updated.version };
+    } catch (error) {
+      if (error instanceof MemoryEntryRepositoryError) {
+        throw new MemoryCandidateRepositoryError(
+          error.code === 'ENTRY_NOT_FOUND' ? 'ENTRY_NOT_FOUND' : 'ENTRY_NOT_UPDATABLE',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** Open conflicts that still reference this Entry, excluding the given one. */
+  private countOtherOpenConflicts(workspaceId: string, entryId: string, conflictId: string): number {
+    const row = this.db.prepare(
+      "SELECT COUNT(*) AS c FROM memory_conflicts WHERE workspace_id = ? AND status = 'open' AND id <> ? AND (entry_a_id = ? OR entry_b_id = ?)",
+    ).get(workspaceId, conflictId, entryId, entryId) as { c: number };
+    return row.c;
+  }
+
   private toCandidateRecord(row: CandidateRow): MemoryCandidateRecord {
     return {
       id: row.id,
@@ -768,6 +868,33 @@ export class MemoryCandidateRepository {
 }
 
 const TERMINAL_CANDIDATE_OUTCOMES = new Set(['accept', 'edit-and-accept', 'reject', 'merge-with-existing']);
+
+/** Earlier Entry by `createdAt`, then by id for a deterministic tie-break. */
+function isEarlierEntry(left: MemoryEntryRecord, right: MemoryEntryRecord): boolean {
+  if (left.createdAt !== right.createdAt) return left.createdAt < right.createdAt;
+  return left.id < right.id;
+}
+
+/**
+ * The Entry status a disposition targets for one side of a conflict. Returning
+ * the current status means the disposition leaves that Entry untouched: it is
+ * soft-deleted or terminal, or it is still referenced by another open conflict.
+ */
+function resolveConflictTargetStatus(
+  disposition: MemoryConflictDisposition,
+  isEarlier: boolean,
+  current: MemoryEntryStatus,
+  hasOtherOpenConflict: boolean,
+): MemoryEntryStatus {
+  if (current === 'deleted') return current;
+  if (disposition === 'reject-both') return current === 'rejected' ? current : 'rejected';
+  const releaseConflicted = (): MemoryEntryStatus =>
+    current === 'conflicted' && !hasOtherOpenConflict ? 'active' : current;
+  if (disposition === 'keep-both' || disposition === 'promote-source') return releaseConflicted();
+  const supersededSide = disposition === 'supersede-earlier' ? isEarlier : !isEarlier;
+  if (!supersededSide) return releaseConflicted();
+  return current === 'superseded' ? current : 'superseded';
+}
 
 function isTerminalCandidate(candidate: Pick<CandidateRow, 'outcome' | 'reviewed_at' | 'merged_into_entry_id'>): boolean {
   return TERMINAL_CANDIDATE_OUTCOMES.has(candidate.outcome)

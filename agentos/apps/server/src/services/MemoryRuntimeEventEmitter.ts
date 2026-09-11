@@ -17,6 +17,7 @@ import {
   type OpenMemoryConflictInput,
   type ResolveMemoryConflictInput,
   type ReviewMemoryCandidateInput,
+  type MemoryConflictEntryEffect,
   type MemoryConflictRecord,
 } from '../store/MemoryCandidateRepository.js';
 import {
@@ -206,7 +207,11 @@ export class MemoryRuntimeEventEmitter {
     }, scope);
   }
 
-  /** Open a conflict and emit `memory.entry_conflicted` in one transaction. */
+  /**
+   * Open a conflict and emit `memory.conflict_opened` in one transaction. Each
+   * Entry that the mutation actually moved to `conflicted` carries its own
+   * persisted-version Event; a fabricated Entry payload is never emitted.
+   */
   emitConflictOpened(
     input: OpenMemoryConflictInput & {
       readonly runId: string;
@@ -217,22 +222,21 @@ export class MemoryRuntimeEventEmitter {
   ): MemoryFactEmissionResult<MemoryConflictRecord> {
     const scope = this.resolveScope(input);
     return this.emit(() => {
-      const record = this.candidates.openConflictWithinTransaction(input);
+      const { conflict, effects } = this.candidates.openConflictWithinTransaction(input);
       return {
-        record,
-        type: 'memory.entry_conflicted',
-        payload: {
-          memoryEntryId: record.entryAId,
-          version: 1,
-          scope: 'workspace',
-          category: 'decision',
-          authority: 'system-verified',
-        },
+        record: conflict,
+        type: 'memory.conflict_opened',
+        payload: conflictPayload(conflict),
+        additional: this.entryStatusEvents(conflict.workspaceId, effects),
       };
     }, scope);
   }
 
-  /** Resolve a conflict and emit `memory.entry_updated` in one transaction. */
+  /**
+   * Resolve a conflict and emit `memory.conflict_resolved` in one transaction,
+   * plus one persisted-Entry Event per side whose status the disposition
+   * actually changed.
+   */
   emitConflictResolved(
     input: ResolveMemoryConflictInput & {
       readonly runId: string;
@@ -243,17 +247,12 @@ export class MemoryRuntimeEventEmitter {
   ): MemoryFactEmissionResult<MemoryConflictRecord> {
     const scope = this.resolveScope(input);
     return this.emit(() => {
-      const record = this.candidates.resolveConflictWithinTransaction(input);
+      const { conflict, effects } = this.candidates.resolveConflictWithinTransaction(input);
       return {
-        record,
-        type: 'memory.entry_updated',
-        payload: {
-          memoryEntryId: record.entryAId,
-          version: record.version,
-          scope: 'workspace',
-          category: 'decision',
-          authority: 'system-verified',
-        },
+        record: conflict,
+        type: 'memory.conflict_resolved',
+        payload: { ...conflictPayload(conflict), disposition: conflict.disposition },
+        additional: this.entryStatusEvents(conflict.workspaceId, effects),
       };
     }, scope);
   }
@@ -341,6 +340,19 @@ export class MemoryRuntimeEventEmitter {
     if (entry === undefined) throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
     return entry;
   }
+
+  /** One Event per Entry whose status this conflict mutation actually changed. */
+  private entryStatusEvents(
+    workspaceId: string,
+    effects: readonly MemoryConflictEntryEffect[],
+  ): readonly { readonly type: string; readonly payload: Record<string, unknown> }[] {
+    return effects
+      .filter(effect => effect.toStatus !== effect.fromStatus)
+      .map(effect => ({
+        type: statusEventType(effect.toStatus),
+        payload: entryPayload(this.requireEntry(workspaceId, effect.entryId)),
+      }));
+  }
 }
 
 function workspaceIdOf(record: unknown): string {
@@ -359,10 +371,20 @@ function entryPayload(record: MemoryEntryRecord): Record<string, unknown> {
   };
 }
 
+function conflictPayload(record: MemoryConflictRecord): Record<string, unknown> {
+  return {
+    conflictId: record.id,
+    conflictType: record.conflictType,
+    entryAId: record.entryAId,
+    entryBId: record.entryBId,
+  };
+}
+
 function statusEventType(status: MemoryEntryRecord['status']): string {
   switch (status) {
     case 'archived': return 'memory.entry_archived';
     case 'expired': return 'memory.entry_expired';
+    case 'rejected': return 'memory.entry_rejected';
     case 'superseded': return 'memory.entry_superseded';
     case 'conflicted': return 'memory.entry_conflicted';
     default: return 'memory.entry_updated';
