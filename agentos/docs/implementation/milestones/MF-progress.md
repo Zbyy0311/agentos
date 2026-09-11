@@ -89,10 +89,14 @@ Merged via PR #86 (schema authorization, migration 019) and PR #87
 `merge-with-existing` binding, exact-duplicate lookup, and conflict
 open/resolve that never deletes.
 
-Remaining within MF-2 scope (not yet done): candidate generation triggers
-bound to meaningful transitions (user save, terminal outcome, accepted
-approval, completed review/test Artifact, compaction, explicit import) and
-near-duplicate FTS-similarity detection beyond the exact/normalized hashes.
+MF-2 remainder status: the terminal-outcome trigger, normalized-hash and
+FTS-similarity near-duplicate detection were closed by the MF-2R slice
+(PR #125). Still open, each needing a new durable seam before a candidate can
+be generated from it: user save (legacy `MemoryService.create` is
+non-transactional), accepted approval decision (`ApprovalRegistry` is
+in-memory), completed review/test Artifact (no such Artifact type), compaction
+(no compaction implementation), and explicit import (Workspace import forces
+`memory: false`). These are separate authorized work, not this slice.
 
 ### MF-5 — Events, API, UI, Inspector surfaces (PARTIAL)
 
