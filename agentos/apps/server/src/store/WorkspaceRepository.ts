@@ -167,6 +167,10 @@ export class WorkspaceRepository {
   deleteById(id: string): void {
     inTransaction(this.db, () => {
       this.db.prepare('DELETE FROM agent_profiles WHERE workspace_id = ?').run(id);
+      // MF-5 section 6.5: Workspace Events are removed only with an explicit
+      // Workspace delete, and `workspace_events.workspace_id` is RESTRICT, so
+      // this delete is the required child step of the frozen delete path.
+      this.db.prepare('DELETE FROM workspace_events WHERE workspace_id = ?').run(id);
       this.db.prepare('DELETE FROM workspaces WHERE id = ?').run(id);
     });
   }

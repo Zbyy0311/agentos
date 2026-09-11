@@ -60,6 +60,21 @@ function createDb() {
     version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL, updated_at TEXT NOT NULL, archived_at TEXT
   )`);
+  // MF-5 section 6.5: `WorkspaceRepository.deleteById` deletes the Workspace's
+  // Events inside its own transaction, before the Workspace row, because the
+  // production FK is ON DELETE RESTRICT. The minimal fixture has to carry the
+  // same child table for the sanctioned order to be representable here.
+  db.exec(`CREATE TABLE workspace_events (
+    id TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
+    type TEXT NOT NULL, workspace_id TEXT NOT NULL, sequence INTEGER NOT NULL,
+    timestamp TEXT NOT NULL, source TEXT NOT NULL,
+    correlation_id TEXT NOT NULL, causation_id TEXT NOT NULL,
+    parent_event_id TEXT, severity TEXT NOT NULL, visibility TEXT NOT NULL,
+    durability TEXT NOT NULL, payload_json TEXT NOT NULL, metadata_json TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (workspace_id, sequence),
+    FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE RESTRICT
+  )`);
   return db;
 }
 
