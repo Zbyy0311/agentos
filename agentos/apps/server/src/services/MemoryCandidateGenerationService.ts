@@ -1,14 +1,17 @@
 import { createHash } from 'node:crypto';
 
+import type { RuntimeEventContextAuthoritySourceV1 } from '@agentos/shared';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import {
   MemoryCandidateRepository,
+  type CreateMemoryCandidateInput,
   type MemoryCandidateRecord,
 } from '../store/MemoryCandidateRepository.js';
 import type { RunRepository } from '../store/RunRepository.js';
 import type { RunStageRepository } from '../store/RunStageRepository.js';
 import type { TaskRepository } from '../store/TaskRepository.js';
 import { toSafeFtsQuery } from './MemoryRetrievalService.js';
+import type { MemoryRuntimeEventEmitter } from './MemoryRuntimeEventEmitter.js';
 
 /**
  * MF-2R candidate generation trigger (07-Memory-Runtime.md section 7;
@@ -31,9 +34,11 @@ import { toSafeFtsQuery } from './MemoryRetrievalService.js';
  * (mcand_terminal_<runId>) with a find-before-create guard, so a replay or
  * re-dispatch converges instead of duplicating.
  *
- * No canonical Memory Event is emitted: production has no authorized
- * Run-scoped memory emission authority (deny-all precedent,
- * WorkspaceGitObservationService). Recorded in MF-progress.md.
+ * MF-5 production wiring: when an `emitter` is supplied the Candidate and its
+ * canonical `memory.candidate_created` Event + Outbox row commit in ONE
+ * transaction, bound to the caller's authorized causal context (the persisted
+ * `run.start` Operation). The convergence paths stay pure reads and emit
+ * nothing, so a replay never appends a second Event for the same Candidate.
  */
 
 export function normalizeMemoryText(text: string): string {
@@ -64,6 +69,12 @@ export interface GenerateForRunTerminalInput {
   readonly workspaceId: string;
   readonly runId: string;
   readonly createdAt: string;
+  /**
+   * Authorized causal context for the `memory.candidate_created` Event.
+   * Required whenever the service is wired with an emitter; the origin is
+   * proven against a durable Operation/Event row inside the same transaction.
+   */
+  readonly eventContext?: RuntimeEventContextAuthoritySourceV1;
 }
 
 export interface TerminalGenerationResult {
@@ -79,6 +90,12 @@ export interface MemoryCandidateGenerationServiceDependencies {
   readonly stages: Pick<RunStageRepository, 'listByRun'>;
   readonly tasks: Pick<TaskRepository, 'findById'>;
   readonly candidates?: MemoryCandidateRepository;
+  /**
+   * MF-5 seam. When supplied, the Candidate is created through
+   * `emitCandidateCreated`, so the fact and the Event that records it share
+   * one transaction and one rollback boundary.
+   */
+  readonly emitter?: MemoryRuntimeEventEmitter;
 }
 
 function nonBlank(value: unknown): value is string {
@@ -95,6 +112,7 @@ export class MemoryCandidateGenerationService {
   private readonly runs: MemoryCandidateGenerationServiceDependencies['runs'];
   private readonly stages: MemoryCandidateGenerationServiceDependencies['stages'];
   private readonly tasks: MemoryCandidateGenerationServiceDependencies['tasks'];
+  private readonly emitter: MemoryRuntimeEventEmitter | undefined;
 
   constructor(dependencies: MemoryCandidateGenerationServiceDependencies) {
     this.db = dependencies.store.getDatabase();
@@ -102,6 +120,7 @@ export class MemoryCandidateGenerationService {
     this.runs = dependencies.runs;
     this.stages = dependencies.stages;
     this.tasks = dependencies.tasks;
+    this.emitter = dependencies.emitter;
   }
 
   generateForRunTerminal(input: GenerateForRunTerminalInput): TerminalGenerationResult {
@@ -112,6 +131,11 @@ export class MemoryCandidateGenerationService {
     const run = this.runs.findById(input.workspaceId, input.runId);
     if (run === undefined) return { outcome: 'run-not-found' };
     if (run.status !== 'completed') return { outcome: 'not-completed' };
+    // Fail closed: an emitter-wired generator must never create a Candidate
+    // whose canonical Event cannot be authorized.
+    if (this.emitter !== undefined && input.eventContext === undefined) {
+      throw new MemoryCandidateGenerationError('INPUT_INVALID');
+    }
 
     const candidateId = `mcand_terminal_${input.runId}`;
     const existing = this.candidates.findCandidateById(input.workspaceId, candidateId);
@@ -145,8 +169,7 @@ export class MemoryCandidateGenerationService {
     const ftsHit = normalizedHit === undefined ? this.findFtsNearDuplicate(input.workspaceId, title, summary) : undefined;
     const duplicateOf = normalizedHit ?? ftsHit;
 
-    try {
-      const candidate = this.candidates.createCandidate({
+    const candidateInput: CreateMemoryCandidateInput = {
         id: candidateId,
         workspaceId: input.workspaceId,
         scope: 'task',
@@ -168,13 +191,25 @@ export class MemoryCandidateGenerationService {
         // here; the reviewer decides through the MF-5 queue.
         minConfidence: 0.9,
         maxTokenEstimate: 4000,
-      });
+    };
+    try {
+      const candidate = this.emitter === undefined
+        ? this.candidates.createCandidate(candidateInput)
+        : this.emitter.emitCandidateCreated({
+          ...candidateInput,
+          runId: input.runId,
+          eventContext: input.eventContext as RuntimeEventContextAuthoritySourceV1,
+          timestamp: input.createdAt,
+        }).record;
       return duplicateOf === undefined
         ? { outcome: 'created', candidate }
         : { outcome: 'created', candidate, duplicateOfEntryId: duplicateOf };
     } catch (error) {
-      if (error instanceof Error && /UNIQUE/i.test(error.message)) {
-        // Lost a same-id race: converge on the existing row (idempotent).
+      // Lost same-id race: the failed write rolled back, so any surviving row
+      // can only have been written by the concurrent winner — converge on it.
+      // The emitter path is included because it wraps the underlying UNIQUE
+      // violation, and converging is still the truthful outcome.
+      if ((error instanceof Error && /UNIQUE/i.test(error.message)) || this.emitter !== undefined) {
         const won = this.candidates.findCandidateById(input.workspaceId, candidateId);
         if (won !== undefined) return { outcome: 'existing', candidate: won };
       }

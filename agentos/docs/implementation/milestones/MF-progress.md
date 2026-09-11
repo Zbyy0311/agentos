@@ -1,6 +1,6 @@
 # Memory Foundation — Progress and Remaining Work
 
-Status: MF-0..MF-5 MERGED — MF-2 REMAINDER (candidate generation triggers, near-duplicate detection) OPEN — MEMORY FOUNDATION IN PROGRESS
+Status: PARTIAL — merged slices do not yet constitute an end-to-end Memory Foundation closeout
 
 ## 1. Purpose
 
@@ -12,7 +12,7 @@ legible without re-auditing the repository.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ 88c79869` (Merge PR #123) |
+| Baseline | `origin-https/main @ 800d6dd2` (Merge PR #125) |
 | Migration ledger | `001`–`023` present; no MF-5 API migration (read/write composition over MF-1..MF-4 tables) |
 | Main CI | `e8f64b15` PR CI run `34560421871` conclusion `success` |
 | Preceding gates | Workspace single-writer rule COMPLETE; Recovery closeout COMPLETE |
@@ -52,12 +52,13 @@ legible without re-auditing the repository.
 | Full Server run (MF-5 API head) | 2590 total, 2583 passed, 4 failed, 3 skipped |
 | Full Server run (MF-5 Candidate API head) | 2593 total, 2586 passed, 4 failed, 3 skipped |
 
-The 4 server failures are pre-existing Windows `ENOTEMPTY` temp-directory
-teardown flakes in `worktrees.test.ts` (2), `ConversationService.test.ts`,
-and `LegacyTaskItemImportService.test.ts`, unrelated to Memory Foundation.
-Earlier runs recorded the same class as `tar` environment issues in
-`WorktreeArtifactService`. Runs were preserved; no rerun-to-green was used.
-Each slice also passed its PR CI and the post-merge `main` CI.
+The recorded 4 server failures were Windows `ENOTEMPTY` temp-directory
+teardown failures in `worktrees.test.ts` (2), `ConversationService.test.ts`,
+and `LegacyTaskItemImportService.test.ts`. Their recurrence alone does not
+prove baseline equivalence or unrelatedness. Earlier `tar` failures in
+`WorktreeArtifactService` are separate historical observations. The MF-5
+full suite was also repeated to capture logs; do not interpret these records
+as a single unrepeated run. CI evidence is revision-specific as listed above.
 
 ## 5. What the merged slices provide
 
@@ -127,9 +128,46 @@ Completed after the API slice:
   offered in the UI because the merged review contract records the outcome
   without applying edited fields.
 
-MF-5 is complete; no MF-5 work remains open.
+MF-5 remains partial. A source audit after PR #125 found that Candidate review
+updated its outcome without promoting an Entry. The local correction now
+creates the Entry atomically for accept and automatic acceptance, applies
+validated edit-and-accept fields, and merges source evidence only into an active
+same-owner/same-scope Entry. Reviewed terminal candidates reject replay; old
+auto-accepted rows without promotion metadata remain explicitly reviewable.
+Candidate/generation/API tests passed 33/33. This does not close the remaining
+trigger, duplicate-convergence, conflict-disposition or production Event gaps.
 
-### Run startup integration (CLOSED)
+The Inspector projection now includes Scope, Category, Authority, Confidence,
+Importance, sources and maximum token budget. Its production conversation
+workbench panel selects a linked Run and supports refresh. Server Inspector
+tests passed 14/14 and Playwright/Edge desktop fixture QA exercised conversation
+selection, Run switching, and refresh with no console errors. The fixture test
+is not a live Provider execution acceptance test.
+
+PR #125 (`800d6dd2`) adds candidate generation after successful Run completion
+in the provider dispatcher, with normalized-hash and title-FTS duplicate
+signals. This is one trigger slice, not completion of all six triggers or
+dedup evidence convergence.
+
+An event-integration audit followed the promotion corrections
+(`MF-event-integration-audit.md`). On this branch the Run-scoped production
+seams are now wired: `createProviderExecutionChain` builds one
+`MemoryRuntimeEventEmitter` over the store's bound Runtime Event + Outbox
+writer and a `DurableMemoryRuntimeEventContextAuthority`, and hands it to the
+Run-startup `MemoryContextResolver` and the terminal
+`MemoryCandidateGenerationService`. Each Memory fact and its canonical Event
+now commit in one transaction; the caller's causal context is a claim that the
+durable `operations`/`runtime_events` row must prove, so an unproven origin
+fails closed instead of fabricating causation. Replay stays a pure read and
+appends no second Event; an Event or Outbox failure rolls the Memory write back.
+Evidence: 161/162 across the affected suites plus the Operation and Memory
+routes (1 environment-gated skip), `tsc --noEmit` exit 0, with dedicated
+emission suites for the authority, the composition root, the snapshot seam and
+the candidate seam. The Workspace-only Memory routes still record their fact
+without a canonical Event; that contract gap is unchanged and not yet
+authorized.
+
+### Run startup integration (MERGED; replay integrity OPEN)
 
 Merged via PR #92: `MemoryContextResolver` composes MF-3 retrieval + MF-4
 budget selection, persists the immutable Context Snapshot BEFORE injection, and
@@ -138,6 +176,14 @@ bounded context into the stage prompt when a resolver is configured; a blocked
 injection or snapshot failure prevents the provider spawn. The production
 `createProviderExecutionChain` supplies the resolver. Resolution is idempotent
 per (Run, Stage).
+
+Reopened integrity gap at PR #125: replay read current Entry content. The local
+correction stores the injected text and SHA-256 in additive migration 024,
+atomically with the snapshot. Replay reads that frozen payload and rejects
+missing/corrupt historical payloads. Exact Run/Stage lookup is also corrected.
+Behavioral tests cover Entry edits/logical deletion, empty payload, corrupt
+payload, historical metadata-only snapshots and rollback. Merge/CI closeout is
+still pending; see `MF-snapshot-replay-design.md`.
 
 ## 7. Non-goals (unchanged)
 

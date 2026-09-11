@@ -12,7 +12,7 @@ function details(): AgentRunDetails {
       { eventId: 'e2', schemaVersion: 2, sequence: 2, type: 'execution.tool.completed', workspaceId: 'w', conversationId: 'c', runId: 'run', timestamp: '2026-01-01T00:00:00Z', payload: { toolName: 'read_file', summary: 'executor.ts' } },
       { eventId: 'e1', schemaVersion: 2, sequence: 1, type: 'run.step.updated', workspaceId: 'w', conversationId: 'c', runId: 'run', timestamp: '2026-01-01T00:00:00Z', payload: { step: { title: 'Context', status: 'completed' } } },
     ],
-    cliInvocations: [], fileChanges: [{ path: 'executor.ts', changeType: 'modified' }], artifacts: [], usedMemories: [], preferenceApplications: [], steps: [],
+    cliInvocations: [], fileChanges: [{ runId: 'run', path: 'executor.ts', changeType: 'modified' }], artifacts: [], usedMemories: [], preferenceApplications: [], steps: [],
   };
 }
 

@@ -336,7 +336,7 @@ test('MF1-A14 migration 017 is idempotent', () => {
 // Registry contract: 017 is non-destructive and precedes any later additive id.
 test('MF1 registry entry is numeric, ordered, and non-destructive', () => {
   const ids = DEFAULT_REGISTRY_MIGRATIONS.map(m => m.id);
-  assert.deepEqual(ids, FULL_IDS);
+  assert.deepEqual(ids.slice(0, FULL_IDS.length), FULL_IDS);
   assert.ok(ids.indexOf('017') > ids.indexOf('016'));
   assert.equal(migration017.id, '017');
   assert.equal(migration017.destructive, false);

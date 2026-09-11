@@ -17,6 +17,7 @@ import {
   type OpenMemoryConflictInput,
   type ResolveMemoryConflictInput,
   type ReviewMemoryCandidateInput,
+  type MemoryConflictEntryEffect,
   type MemoryConflictRecord,
 } from '../store/MemoryCandidateRepository.js';
 import {
@@ -72,6 +73,8 @@ export interface MemoryFactEmissionResult<TRecord> {
   readonly record: TRecord;
   readonly eventId: string;
   readonly outboxId: string;
+  /** Related Entry facts, committed atomically after the primary fact. */
+  readonly additionalEvents?: readonly { readonly eventId: string; readonly outboxId: string }[];
 }
 
 interface RunScope {
@@ -159,6 +162,10 @@ export class MemoryRuntimeEventEmitter {
       return {
         record,
         type: 'memory.candidate_created',
+        additional: record.mergedIntoEntryId === null ? [] : [{
+          type: 'memory.entry_created',
+          payload: entryPayload(this.requireEntry(record.workspaceId, record.mergedIntoEntryId)),
+        }],
         payload: {
           candidateId: record.id,
           scope: record.scope,
@@ -170,7 +177,7 @@ export class MemoryRuntimeEventEmitter {
     }, scope);
   }
 
-  /** Review a Candidate and emit the resulting Entry lifecycle Event in one transaction. */
+  /** Record the review itself, plus only the Entry mutation that actually occurred. */
   emitCandidateReviewed(
     input: ReviewMemoryCandidateInput & {
       readonly runId: string;
@@ -182,21 +189,29 @@ export class MemoryRuntimeEventEmitter {
     const scope = this.resolveScope(input);
     return this.emit(() => {
       const record = this.candidates.reviewCandidateWithinTransaction(input);
+      const additional = record.mergedIntoEntryId === null ? [] : [{
+        type: record.outcome === 'merge-with-existing' ? 'memory.entry_deduplicated' : 'memory.entry_created',
+        payload: entryPayload(this.requireEntry(record.workspaceId, record.mergedIntoEntryId)),
+      }];
       return {
         record,
-        type: record.outcome === 'reject' ? 'memory.entry_expired' : 'memory.entry_created',
+        type: 'memory.candidate_reviewed',
+        additional,
         payload: {
-          memoryEntryId: record.mergedIntoEntryId ?? record.id,
-          version: record.version,
-          scope: record.scope,
-          category: record.category,
-          authority: record.authority,
+          candidateId: record.id,
+          candidateVersion: record.version,
+          outcome: record.outcome,
+          memoryEntryId: record.mergedIntoEntryId,
         },
       };
     }, scope);
   }
 
-  /** Open a conflict and emit `memory.entry_conflicted` in one transaction. */
+  /**
+   * Open a conflict and emit `memory.conflict_opened` in one transaction. Each
+   * Entry that the mutation actually moved to `conflicted` carries its own
+   * persisted-version Event; a fabricated Entry payload is never emitted.
+   */
   emitConflictOpened(
     input: OpenMemoryConflictInput & {
       readonly runId: string;
@@ -207,22 +222,21 @@ export class MemoryRuntimeEventEmitter {
   ): MemoryFactEmissionResult<MemoryConflictRecord> {
     const scope = this.resolveScope(input);
     return this.emit(() => {
-      const record = this.candidates.openConflictWithinTransaction(input);
+      const { conflict, effects } = this.candidates.openConflictWithinTransaction(input);
       return {
-        record,
-        type: 'memory.entry_conflicted',
-        payload: {
-          memoryEntryId: record.entryAId,
-          version: 1,
-          scope: 'workspace',
-          category: 'decision',
-          authority: 'system-verified',
-        },
+        record: conflict,
+        type: 'memory.conflict_opened',
+        payload: conflictPayload(conflict),
+        additional: this.entryStatusEvents(conflict.workspaceId, effects),
       };
     }, scope);
   }
 
-  /** Resolve a conflict and emit `memory.entry_updated` in one transaction. */
+  /**
+   * Resolve a conflict and emit `memory.conflict_resolved` in one transaction,
+   * plus one persisted-Entry Event per side whose status the disposition
+   * actually changed.
+   */
   emitConflictResolved(
     input: ResolveMemoryConflictInput & {
       readonly runId: string;
@@ -233,17 +247,12 @@ export class MemoryRuntimeEventEmitter {
   ): MemoryFactEmissionResult<MemoryConflictRecord> {
     const scope = this.resolveScope(input);
     return this.emit(() => {
-      const record = this.candidates.resolveConflictWithinTransaction(input);
+      const { conflict, effects } = this.candidates.resolveConflictWithinTransaction(input);
       return {
-        record,
-        type: 'memory.entry_updated',
-        payload: {
-          memoryEntryId: record.entryAId,
-          version: record.version,
-          scope: 'workspace',
-          category: 'decision',
-          authority: 'system-verified',
-        },
+        record: conflict,
+        type: 'memory.conflict_resolved',
+        payload: { ...conflictPayload(conflict), disposition: conflict.disposition },
+        additional: this.entryStatusEvents(conflict.workspaceId, effects),
       };
     }, scope);
   }
@@ -295,15 +304,23 @@ export class MemoryRuntimeEventEmitter {
   }
 
   private emit<TRecord>(
-    write: () => { readonly record: TRecord; readonly type: string; readonly payload: Record<string, unknown> },
+    write: () => { readonly record: TRecord; readonly type: string; readonly payload: Record<string, unknown>;
+      readonly additional?: readonly { readonly type: string; readonly payload: Record<string, unknown> }[] },
     scope: RunScope,
   ): MemoryFactEmissionResult<TRecord> {
     try {
       return inTransaction(this.db, () => {
-        const { record, type, payload } = write();
-        const { event, outbox } = this.writer.appendWithinTransaction({
+        const { record, type, payload, additional = [] } = write();
+        const workspaceId = workspaceIdOf(record);
+        // Provenance + binding: the authorized causal record must exist inside
+        // THIS Workspace/Run, verified in the same transaction that writes the
+        // fact. The authority proves the record is durable; this proves it
+        // belongs to this fact, so an Operation or Event from another Run can
+        // never label this Event's causation.
+        this.assertAuthorityOriginProven(workspaceId, scope.runId, scope.eventContext);
+        const append = (type: string, payload: Record<string, unknown>) => this.writer.appendWithinTransaction({
           type,
-          workspaceId: workspaceIdOf(record),
+          workspaceId,
           runId: scope.runId,
           ...(scope.taskId === undefined ? {} : { taskId: scope.taskId }),
           ...(scope.stageId === undefined ? {} : { stageId: scope.stageId }),
@@ -312,12 +329,67 @@ export class MemoryRuntimeEventEmitter {
           eventContext: scope.eventContext,
           payload,
         });
-        return { record, eventId: event.id, outboxId: outbox.id };
+        const { event, outbox } = append(type, payload);
+        const additionalEvents = additional.map(fact => {
+          const emitted = append(fact.type, fact.payload);
+          return { eventId: emitted.event.id, outboxId: emitted.outbox.id };
+        });
+        return { record, eventId: event.id, outboxId: outbox.id, additionalEvents };
       });
     } catch (error) {
       if (error instanceof MemoryRuntimeEventEmissionError) throw error;
       throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
     }
+  }
+
+  private requireEntry(workspaceId: string, entryId: string): MemoryEntryRecord {
+    const entry = this.entries.findById(workspaceId, entryId);
+    if (entry === undefined) throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+    return entry;
+  }
+
+  /**
+   * Per-origin binding proof over the SAME transaction/connection. Mirrors the
+   * frozen GitObservation precedent: `canonical_command` has no durable
+   * registry here, so it fails closed instead of fabricating causation.
+   */
+  private assertAuthorityOriginProven(
+    workspaceId: string,
+    runId: string,
+    authorized: AuthorizedRuntimeEventContextV1,
+  ): void {
+    if (authorized.origin === 'operation') {
+      const row = this.db.prepare(
+        'SELECT 1 AS present FROM operations WHERE workspace_id = ? AND run_id = ? AND id = ?',
+      ).get(workspaceId, runId, authorized.authorityId) as { present: number } | undefined;
+      if (row === undefined) {
+        throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+      }
+      return;
+    }
+    if (authorized.origin === 'persisted_event') {
+      const row = this.db.prepare(
+        'SELECT 1 AS present FROM runtime_events WHERE workspace_id = ? AND run_id = ? AND id = ?',
+      ).get(workspaceId, runId, authorized.authorityId) as { present: number } | undefined;
+      if (row === undefined) {
+        throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+      }
+      return;
+    }
+    throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+  }
+
+  /** One Event per Entry whose status this conflict mutation actually changed. */
+  private entryStatusEvents(
+    workspaceId: string,
+    effects: readonly MemoryConflictEntryEffect[],
+  ): readonly { readonly type: string; readonly payload: Record<string, unknown> }[] {
+    return effects
+      .filter(effect => effect.toStatus !== effect.fromStatus)
+      .map(effect => ({
+        type: statusEventType(effect.toStatus),
+        payload: entryPayload(this.requireEntry(workspaceId, effect.entryId)),
+      }));
   }
 }
 
@@ -337,10 +409,20 @@ function entryPayload(record: MemoryEntryRecord): Record<string, unknown> {
   };
 }
 
+function conflictPayload(record: MemoryConflictRecord): Record<string, unknown> {
+  return {
+    conflictId: record.id,
+    conflictType: record.conflictType,
+    entryAId: record.entryAId,
+    entryBId: record.entryBId,
+  };
+}
+
 function statusEventType(status: MemoryEntryRecord['status']): string {
   switch (status) {
     case 'archived': return 'memory.entry_archived';
     case 'expired': return 'memory.entry_expired';
+    case 'rejected': return 'memory.entry_rejected';
     case 'superseded': return 'memory.entry_superseded';
     case 'conflicted': return 'memory.entry_conflicted';
     default: return 'memory.entry_updated';

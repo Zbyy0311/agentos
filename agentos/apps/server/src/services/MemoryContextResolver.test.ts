@@ -139,6 +139,24 @@ test('MF4I-03 stage scope is distinct from run scope', () => {
 });
 
 // MF4I-04 — snapshot persistence failure blocks injection.
+test('replaying an earlier scope after a later Stage does not recreate its snapshot', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx);
+    const run = fx.resolver.resolve(resolveInput());
+    const stageA = fx.resolver.resolve(resolveInput({ stageId: 'stage_a', createdAt: '2026-09-09T01:00:00.000Z' }));
+    fx.resolver.resolve(resolveInput({ stageId: 'stage_b', createdAt: '2026-09-09T02:00:00.000Z' }));
+    const replayA = fx.resolver.resolve(resolveInput({ stageId: 'stage_a' }));
+    const replayRun = fx.resolver.resolve(resolveInput());
+    assert.equal(replayA.reused, true);
+    assert.equal(replayA.snapshot.id, stageA.snapshot.id);
+    assert.equal(replayRun.reused, true);
+    assert.equal(replayRun.snapshot.id, run.snapshot.id);
+    assert.equal(fx.snapshots.listForRun(WS, RUN).length, 3);
+    assert.equal(fx.snapshots.findLatestForScope('another-workspace', RUN, 'stage_a'), undefined);
+  } finally { fx.close(); }
+});
+
 test('MF4I-04 snapshot failure blocks injection', () => {
   const fx = fixture();
   try {
@@ -171,6 +189,7 @@ test('MF4I-06 injection gate rejects absent snapshot', () => {
     assert.equal(fx.resolver.isInjectable(undefined), false);
     const resolved = fx.resolver.resolve(resolveInput());
     assert.equal(fx.resolver.isInjectable(resolved), true);
+    assert.equal(fx.resolver.isInjectable({ ...resolved, contextText: 'unpersisted replacement' }), false);
   } finally { fx.close(); }
 });
 
@@ -188,12 +207,64 @@ test('MF4I-07 later entry edits do not rewrite the snapshot', () => {
 });
 
 // MF4I-08 — no memories still persists an empty snapshot (reproducible).
+test('frozen injection survives content edits and logical deletion of its Entry', () => {
+  const fx = fixture();
+  try {
+    const id = addEntry(fx, { title: 'original', content: 'original body' });
+    const first = fx.resolver.resolve(resolveInput());
+    assert.equal(first.contextText, '### original\noriginal body');
+    fx.db.prepare('UPDATE memory_entries SET title = ?, content = ?, version = version + 1 WHERE id = ?').run('changed', 'changed body', id);
+    assert.equal(fx.resolver.resolve(resolveInput()).contextText, first.contextText);
+    fx.entries.updateStatus({ workspaceId: WS, entryId: id, expectedVersion: 2, status: 'deleted', updatedAt: NOW });
+    assert.equal(fx.resolver.resolve(resolveInput()).contextText, first.contextText);
+    assert.equal(fx.snapshots.readContextText('wrong-workspace', first.snapshot.id), undefined);
+    assert.throws(() => fx.db.prepare('UPDATE memory_context_snapshot_payloads SET context_text = ? WHERE snapshot_id = ?').run('modified', first.snapshot.id), /IMMUTABLE/);
+    assert.throws(() => fx.db.prepare('DELETE FROM memory_context_snapshot_payloads WHERE snapshot_id = ?').run(first.snapshot.id), /IMMUTABLE/);
+  } finally { fx.close(); }
+});
+
+test('historical metadata-only snapshot is inspectable but blocks injection', () => {
+  const fx = fixture();
+  try {
+    fx.snapshots.createSnapshot({ id: 'historical', workspaceId: WS, runId: RUN,
+      queryHash: 'old', retrievalStrategyVersion: 'old', budget: BUDGET,
+      totalTokens: 0, truncated: false, createdAt: NOW, selected: [], exclusions: [] });
+    assert.ok(fx.snapshots.findById(WS, 'historical'));
+    assert.throws(() => fx.resolver.resolve(resolveInput()), (error: unknown) =>
+      error instanceof MemoryContextResolverError && error.code === 'INJECTION_BLOCKED');
+  } finally { fx.close(); }
+});
+
+test('payload failure rolls back the snapshot and its selections', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx);
+    fx.db.prepare("CREATE TRIGGER payload_fault BEFORE INSERT ON memory_context_snapshot_payloads BEGIN SELECT RAISE(ABORT, 'fault'); END").run();
+    assert.throws(() => fx.resolver.resolve(resolveInput()), /SNAPSHOT_FAILED/);
+    assert.equal(fx.snapshots.listForRun(WS, RUN).length, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshot_entries').get() as { c: number }).c, 0);
+  } finally { fx.close(); }
+});
+
+test('corrupt frozen payload blocks replay', () => {
+  const fx = fixture();
+  try {
+    const first = fx.resolver.resolve(resolveInput());
+    // Simulate out-of-band database corruption, not a supported mutation path.
+    fx.db.prepare('DROP TRIGGER memory_context_snapshot_payloads_immutable').run();
+    fx.db.prepare('UPDATE memory_context_snapshot_payloads SET content_sha256 = ? WHERE snapshot_id = ?').run('0'.repeat(64), first.snapshot.id);
+    assert.throws(() => fx.resolver.resolve(resolveInput()), /INJECTION_BLOCKED/);
+  } finally { fx.close(); }
+});
+
 test('MF4I-08 empty store still persists a snapshot', () => {
   const fx = fixture();
   try {
     const resolved = fx.resolver.resolve(resolveInput());
     assert.equal(resolved.snapshot.selected.length, 0);
     assert.equal(resolved.contextText, '');
+    assert.equal(fx.snapshots.readContextText(WS, resolved.snapshot.id), '');
+    assert.equal(fx.resolver.resolve(resolveInput()).contextText, '');
     assert.equal(fx.resolver.isInjectable(resolved), true);
   } finally { fx.close(); }
 });

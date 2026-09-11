@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import {
   MEMORY_AUTHORITIES,
   MEMORY_CATEGORIES,
@@ -12,11 +14,13 @@ import {
   type MemoryCategory,
   type MemoryConflictDisposition,
   type MemoryConflictType,
+  type MemoryEntryStatus,
   type MemoryPromotionDecision,
   type MemoryScope,
   type MemorySourceKind,
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
+import { MemoryEntryRepository, MemoryEntryRepositoryError, type MemoryEntryRecord } from './MemoryEntryRepository.js';
 
 /**
  * MF-2 Memory Candidate and Conflict persistence.
@@ -36,6 +40,7 @@ export type MemoryCandidateRepositoryErrorCode =
   | 'CANDIDATE_NOT_REVIEWABLE'
   | 'SOURCE_REQUIRED'
   | 'ENTRY_NOT_FOUND'
+  | 'ENTRY_NOT_UPDATABLE'
   | 'CONFLICT_NOT_FOUND'
   | 'CONFLICT_NOT_RESOLVABLE'
   | 'PERSISTENCE_FAILED';
@@ -106,6 +111,13 @@ export interface MemoryCandidateRecord {
   readonly sources: readonly MemoryCandidateSourceInput[];
 }
 
+export interface MemoryCandidateEdits {
+  readonly title?: string;
+  readonly summary?: string;
+  readonly content?: string;
+  readonly tags?: readonly string[];
+}
+
 export interface MemoryConflictRecord {
   readonly id: string;
   readonly workspaceId: string;
@@ -119,10 +131,32 @@ export interface MemoryConflictRecord {
   readonly version: number;
 }
 
+/**
+ * One Entry status change caused by a conflict mutation. `fromStatus ===
+ * toStatus` records an inspected Entry that the disposition left untouched
+ * (for example an Entry that is still referenced by another open conflict).
+ */
+export interface MemoryConflictEntryEffect {
+  readonly entryId: string;
+  readonly fromStatus: MemoryEntryStatus;
+  readonly toStatus: MemoryEntryStatus;
+  readonly version: number;
+}
+
+/** A conflict mutation and the Entry effects it actually persisted. */
+export interface MemoryConflictMutationResult {
+  readonly conflict: MemoryConflictRecord;
+  readonly effects: readonly MemoryConflictEntryEffect[];
+}
+
 interface CandidateRow {
   id: string;
   workspace_id: string;
   scope: string;
+  owner_agent_id: string | null;
+  owner_conversation_id: string | null;
+  owner_task_id: string | null;
+  owner_run_id: string | null;
   category: string;
   authority: string;
   confidence: number;
@@ -140,6 +174,17 @@ interface CandidateRow {
   version: number;
   created_at: string;
   reviewed_at: string | null;
+}
+
+interface EntryMergeRow {
+  id: string;
+  workspace_id: string;
+  scope: string;
+  owner_agent_id: string | null;
+  owner_conversation_id: string | null;
+  owner_task_id: string | null;
+  owner_run_id: string | null;
+  status: string;
 }
 
 interface ConflictRow {
@@ -186,6 +231,7 @@ export interface ReviewMemoryCandidateInput {
   readonly expectedVersion: number;
   readonly outcome: MemoryCandidateOutcome;
   readonly mergedIntoEntryId?: string;
+  readonly edits?: MemoryCandidateEdits;
   readonly reviewedAt: string;
 }
 
@@ -207,7 +253,11 @@ export interface ResolveMemoryConflictInput {
 }
 
 export class MemoryCandidateRepository {
-  constructor(private readonly db: TransactionDatabase) {}
+  private readonly entries: MemoryEntryRepository;
+
+  constructor(private readonly db: TransactionDatabase) {
+    this.entries = new MemoryEntryRepository(db);
+  }
 
   /**
    * Create a Candidate. The promotion decision is computed by the MF-0 gate and
@@ -272,6 +322,17 @@ export class MemoryCandidateRepository {
         'INSERT INTO memory_candidate_sources (candidate_id, source_kind, source_id) VALUES (?, ?, ?)',
       ).run(input.id, source.kind, source.id);
     }
+    if (decision === 'auto-accept') {
+      const candidate = this.requireCandidateRow(input.workspaceId, input.id);
+      const promotion = this.promoteCandidateToEntryWithinTransaction(candidate, input.createdAt);
+      const promoted = this.db.prepare(
+        'UPDATE memory_candidate_entries SET merged_into_entry_id = ?, reviewed_at = ?'
+          + ' WHERE workspace_id = ? AND id = ? AND outcome = ? AND version = 1',
+      ).run(promotion.entry.id, input.createdAt, input.workspaceId, input.id, 'accept') as { changes?: number | bigint };
+      if (Number(promoted.changes ?? 0) !== 1) {
+        throw new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
+      }
+    }
     return this.requireCandidate(input.workspaceId, input.id);
   }
 
@@ -326,34 +387,95 @@ export class MemoryCandidateRepository {
     }
     const outcomes: readonly string[] = ['accept', 'edit-and-accept', 'reject', 'merge-with-existing', 'review-required'];
     if (!outcomes.includes(input.outcome)) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    this.validateReviewEdits(input);
     const current = this.db.prepare(
       'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
     ).get(input.workspaceId, input.candidateId) as CandidateRow | undefined;
     if (current === undefined) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_FOUND');
+    if (isTerminalCandidate(current)) {
+      throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+    }
     if (current.version !== input.expectedVersion) {
       throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
     }
-    let mergedInto: string | null = current.merged_into_entry_id;
+    let mergedInto: string | null = null;
+    let reviewedFields: {
+      readonly title: string;
+      readonly summary: string;
+      readonly content: string;
+      readonly tags: readonly string[];
+      readonly exactContentHash: string | null;
+      readonly normalizedTextHash: string | null;
+      readonly tokenEstimate: number;
+    } | undefined;
+
+    if (input.outcome === 'accept' || input.outcome === 'edit-and-accept') {
+      const edits = input.outcome === 'edit-and-accept' ? input.edits : undefined;
+      const promotion = this.promoteCandidateToEntryWithinTransaction(current, input.reviewedAt, edits);
+      mergedInto = promotion.entry.id;
+      if (input.outcome === 'edit-and-accept') {
+        reviewedFields = promotion.fields;
+      }
+    }
+
     if (input.outcome === 'merge-with-existing') {
       if (!nonBlank(input.mergedIntoEntryId)) {
         throw new MemoryCandidateRepositoryError('INPUT_INVALID');
       }
       const entry = this.db.prepare(
-        'SELECT 1 AS present FROM memory_entries WHERE workspace_id = ? AND id = ?',
+        'SELECT id, workspace_id, scope, owner_agent_id, owner_conversation_id, owner_task_id, owner_run_id, status'
+          + ' FROM memory_entries WHERE workspace_id = ? AND id = ?',
       ).get(input.workspaceId, input.mergedIntoEntryId);
       if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
-      mergedInto = input.mergedIntoEntryId;
+      const target = entry as EntryMergeRow;
+      if (target.status !== 'active'
+        || target.scope !== current.scope
+        || !sameOwners(target, current)) {
+        throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+      }
+      const sources = this.readCandidateSources(current.id);
+      let addedSources = 0;
+      for (const source of sources) {
+        const result = this.db.prepare(
+          'INSERT OR IGNORE INTO memory_entry_sources (memory_entry_id, source_kind, source_id) VALUES (?, ?, ?)',
+        ).run(target.id, source.kind, source.id) as { changes?: number | bigint };
+        addedSources += Number(result.changes ?? 0);
+      }
+      if (addedSources > 0) {
+        const targetUpdate = this.db.prepare(
+          'UPDATE memory_entries SET version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND status = ?'
+        ).run(input.reviewedAt, input.workspaceId, target.id, 'active') as { changes?: number | bigint };
+        if (Number(targetUpdate.changes ?? 0) !== 1) {
+          throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+        }
+      }
+      mergedInto = target.id;
     }
-    this.db.prepare(
-      'UPDATE memory_candidate_entries SET outcome = ?, merged_into_entry_id = ?, version = version + 1, reviewed_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
-    ).run(input.outcome, mergedInto, input.reviewedAt, input.workspaceId, input.candidateId, input.expectedVersion);
+
+    const update = reviewedFields === undefined
+      ? this.db.prepare(
+          'UPDATE memory_candidate_entries SET outcome = ?, merged_into_entry_id = ?, version = version + 1, reviewed_at = ?'
+            + ' WHERE workspace_id = ? AND id = ? AND version = ?',
+        ).run(input.outcome, mergedInto, input.reviewedAt, input.workspaceId, input.candidateId, input.expectedVersion)
+      : this.db.prepare(
+          'UPDATE memory_candidate_entries SET outcome = ?, merged_into_entry_id = ?, title = ?, summary = ?, content = ?, tags_json = ?,'
+            + ' exact_content_hash = ?, normalized_text_hash = ?, token_estimate = ?, version = version + 1, reviewed_at = ?'
+            + ' WHERE workspace_id = ? AND id = ? AND version = ?',
+        ).run(
+          input.outcome, mergedInto, reviewedFields.title, reviewedFields.summary, reviewedFields.content,
+          JSON.stringify(reviewedFields.tags), reviewedFields.exactContentHash, reviewedFields.normalizedTextHash,
+          reviewedFields.tokenEstimate, input.reviewedAt, input.workspaceId, input.candidateId, input.expectedVersion,
+        );
+    if (Number((update as { changes?: number | bigint }).changes ?? 0) !== 1) {
+      throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
+    }
     return this.requireCandidate(input.workspaceId, input.candidateId);
   }
 
   /** Open a conflict between two distinct Entries in one Workspace. */
   openConflict(input: OpenMemoryConflictInput): MemoryConflictRecord {
     try {
-      return inTransaction(this.db, () => this.openConflictWithinTransaction(input));
+      return inTransaction(this.db, () => this.openConflictWithinTransaction(input)).conflict;
     } catch (error) {
       throw this.publicError(error);
     }
@@ -363,30 +485,36 @@ export class MemoryCandidateRepository {
    * MF-5 emission seam: open a conflict inside an ALREADY ACTIVE transaction so
    * a caller can commit the conflict and its Runtime Event + Outbox row
    * atomically. The caller owns BEGIN/COMMIT.
+   *
+   * Opening a conflict is a real Entry effect, not only a conflict row: a
+   * stored Entry in `active` state transitions to `conflicted` with a version
+   * bump. Entries already in a non-active state are inspected but left
+   * untouched, and a soft-deleted Entry refuses the mutation.
    */
-  openConflictWithinTransaction(input: OpenMemoryConflictInput): MemoryConflictRecord {
+  openConflictWithinTransaction(input: OpenMemoryConflictInput): MemoryConflictMutationResult {
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.createdAt)
       || !isConflictType(input.conflictType) || !nonBlank(input.entryAId)
       || !nonBlank(input.entryBId) || input.entryAId === input.entryBId) {
       throw new MemoryCandidateRepositoryError('INPUT_INVALID');
     }
     this.assertWorkspaceExists(input.workspaceId);
-    for (const entryId of [input.entryAId, input.entryBId]) {
-      const entry = this.db.prepare(
-        'SELECT 1 AS present FROM memory_entries WHERE workspace_id = ? AND id = ?',
-      ).get(input.workspaceId, entryId);
-      if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
-    }
+    const entries = [input.entryAId, input.entryBId]
+      .map(entryId => this.requireConflictEntry(input.workspaceId, entryId, false));
     this.db.prepare(
       'INSERT INTO memory_conflicts (id, workspace_id, conflict_type, entry_a_id, entry_b_id, status, disposition, resolved_at, created_at, version) VALUES (?, ?, ?, ?, ?, ?, NULL, NULL, ?, 1)',
     ).run(input.id, input.workspaceId, input.conflictType, input.entryAId, input.entryBId, 'open', input.createdAt);
-    return this.requireConflict(input.workspaceId, input.id);
+    const effects = entries.map(entry => this.applyConflictEntryStatus(
+      entry,
+      entry.status === 'active' ? 'conflicted' : entry.status,
+      input.createdAt,
+    ));
+    return { conflict: this.requireConflict(input.workspaceId, input.id), effects };
   }
 
   /** Resolve a conflict with an explicit disposition; never deletes. */
   resolveConflict(input: ResolveMemoryConflictInput): MemoryConflictRecord {
     try {
-      return inTransaction(this.db, () => this.resolveConflictWithinTransaction(input));
+      return inTransaction(this.db, () => this.resolveConflictWithinTransaction(input)).conflict;
     } catch (error) {
       throw this.publicError(error);
     }
@@ -396,8 +524,17 @@ export class MemoryCandidateRepository {
    * MF-5 emission seam: resolve a conflict inside an ALREADY ACTIVE
    * transaction so a caller can commit the resolution and its Runtime Event +
    * Outbox row atomically. The caller owns BEGIN/COMMIT.
+   *
+   * The disposition is applied to the two stored Entries:
+   * - `keep-both` and `promote-source` release the conflicted state unless
+   *   another open conflict still references that Entry;
+   * - `supersede-earlier` / `supersede-later` supersede the earlier / later
+   *   Entry (by `createdAt`, then id) and release the other one;
+   * - `reject-both` rejects both Entries.
+   * Nothing is deleted, and an Entry the disposition does not change keeps its
+   * row untouched and reports a no-change effect.
    */
-  resolveConflictWithinTransaction(input: ResolveMemoryConflictInput): MemoryConflictRecord {
+  resolveConflictWithinTransaction(input: ResolveMemoryConflictInput): MemoryConflictMutationResult {
     if (!nonBlank(input.workspaceId) || !nonBlank(input.conflictId)
       || !Number.isSafeInteger(input.expectedVersion) || input.expectedVersion < 1
       || !isDisposition(input.disposition) || !nonBlank(input.resolvedAt)) {
@@ -413,7 +550,22 @@ export class MemoryCandidateRepository {
     this.db.prepare(
       'UPDATE memory_conflicts SET status = ?, disposition = ?, resolved_at = ?, version = version + 1 WHERE workspace_id = ? AND id = ? AND version = ?',
     ).run('resolved', input.disposition, input.resolvedAt, input.workspaceId, input.conflictId, input.expectedVersion);
-    return this.requireConflict(input.workspaceId, input.conflictId);
+    const conflict = this.requireConflict(input.workspaceId, input.conflictId);
+    const entryA = this.requireConflictEntry(input.workspaceId, conflict.entryAId, true);
+    const entryB = this.requireConflictEntry(input.workspaceId, conflict.entryBId, true);
+    const aIsEarlier = isEarlierEntry(entryA, entryB);
+    const effects = ([[entryA, aIsEarlier], [entryB, !aIsEarlier]] as const).map(([entry, isEarlier]) =>
+      this.applyConflictEntryStatus(
+        entry,
+        resolveConflictTargetStatus(
+          input.disposition,
+          isEarlier,
+          entry.status,
+          this.countOtherOpenConflicts(input.workspaceId, entry.id, conflict.id) > 0,
+        ),
+        input.resolvedAt,
+      ));
+    return { conflict, effects };
   }
 
   /** Exact-duplicate lookup by content hash inside one Workspace. */
@@ -478,6 +630,99 @@ export class MemoryCandidateRepository {
     }
   }
 
+  private validateReviewEdits(input: ReviewMemoryCandidateInput): void {
+    const hasEdits = input.edits !== undefined;
+    if (input.outcome === 'edit-and-accept') {
+      if (!hasEdits) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      this.assertValidEdits(input.edits);
+    } else if (hasEdits) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    if (input.outcome === 'merge-with-existing') {
+      if (input.mergedIntoEntryId !== undefined && !nonBlank(input.mergedIntoEntryId)) {
+        throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      }
+    } else if (input.mergedIntoEntryId !== undefined) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+  }
+
+  private promoteCandidateToEntryWithinTransaction(
+    current: CandidateRow,
+    createdAt: string,
+    edits?: MemoryCandidateEdits,
+  ) {
+    const isEdit = edits !== undefined;
+    const title = edits?.title ?? current.title;
+    const summary = edits?.summary ?? current.summary;
+    const content = edits?.content ?? current.content;
+    const tags = edits?.tags ?? this.parseCandidateTags(current.tags_json);
+    const exactContentHash = isEdit ? hashMemoryText(content) : current.exact_content_hash;
+    const normalizedTextHash = isEdit
+      ? hashMemoryText(normalizeMemoryText(content))
+      : current.normalized_text_hash;
+    const tokenEstimate = isEdit ? estimateMemoryTokens(content) : current.token_estimate;
+    const entry = this.entries.createEntryWithinTransaction({
+      id: current.id,
+      workspaceId: current.workspace_id,
+      scope: current.scope as MemoryScope,
+      ...(current.owner_agent_id === null ? {} : { ownerAgentId: current.owner_agent_id }),
+      ...(current.owner_conversation_id === null ? {} : { ownerConversationId: current.owner_conversation_id }),
+      ...(current.owner_task_id === null ? {} : { ownerTaskId: current.owner_task_id }),
+      ...(current.owner_run_id === null ? {} : { ownerRunId: current.owner_run_id }),
+      category: current.category as MemoryCategory,
+      authority: current.authority as MemoryAuthority,
+      confidence: current.confidence,
+      importance: current.importance,
+      title,
+      summary,
+      content,
+      tags,
+      status: 'active',
+      exactContentHash: exactContentHash ?? undefined,
+      normalizedTextHash: normalizedTextHash ?? undefined,
+      tokenEstimate,
+      sources: this.readCandidateSources(current.id),
+      createdAt,
+    });
+    return {
+      entry,
+      fields: {
+        title,
+        summary,
+        content,
+        tags,
+        exactContentHash,
+        normalizedTextHash,
+        tokenEstimate,
+      },
+    };
+  }
+
+  private assertValidEdits(edits: MemoryCandidateEdits | undefined): void {
+    if (!isPlainRecord(edits)) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    const allowed = new Set(['title', 'summary', 'content', 'tags']);
+    const keys = Object.keys(edits);
+    if (keys.length === 0 || keys.some(key => !allowed.has(key))) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    if (Object.prototype.hasOwnProperty.call(edits, 'title') && !nonBlank(edits.title)) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    for (const key of ['summary', 'content'] as const) {
+      if (Object.prototype.hasOwnProperty.call(edits, key) && typeof edits[key] !== 'string') {
+        throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      }
+    }
+    if (Object.prototype.hasOwnProperty.call(edits, 'tags')) {
+      if (!Array.isArray(edits.tags) || edits.tags.some(tag => !nonBlank(tag))) {
+        throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+      }
+      const tags = edits.tags as readonly string[];
+      if (new Set(tags).size !== tags.length) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+  }
+
   private assertWorkspaceExists(workspaceId: string): void {
     const row = this.db.prepare('SELECT 1 AS present FROM workspaces WHERE id = ?').get(workspaceId);
     if (row === undefined) throw new MemoryCandidateRepositoryError('WORKSPACE_NOT_FOUND');
@@ -489,6 +734,34 @@ export class MemoryCandidateRepository {
     return candidate;
   }
 
+  private requireCandidateRow(workspaceId: string, candidateId: string): CandidateRow {
+    const row = this.db.prepare(
+      'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
+    ).get(workspaceId, candidateId) as CandidateRow | undefined;
+    if (row === undefined) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_FOUND');
+    return row;
+  }
+
+  private parseCandidateTags(tagsJson: string): string[] {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(tagsJson);
+    } catch {
+      throw new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
+    }
+    if (!Array.isArray(parsed) || parsed.some(tag => typeof tag !== 'string')) {
+      throw new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
+    }
+    return parsed;
+  }
+
+  private readCandidateSources(candidateId: string): MemoryCandidateSourceInput[] {
+    const rows = this.db.prepare(
+      'SELECT source_kind, source_id FROM memory_candidate_sources WHERE candidate_id = ? ORDER BY source_kind ASC, source_id ASC',
+    ).all(candidateId) as Array<{ source_kind: string; source_id: string }>;
+    return rows.map(source => ({ kind: source.source_kind as MemorySourceKind, id: source.source_id }));
+  }
+
   private requireConflict(workspaceId: string, conflictId: string): MemoryConflictRecord {
     const row = this.db.prepare(
       'SELECT * FROM memory_conflicts WHERE workspace_id = ? AND id = ?',
@@ -497,10 +770,57 @@ export class MemoryCandidateRepository {
     return this.toConflictRecord(row);
   }
 
+  /**
+   * Read one Entry of a conflict inside the active transaction. A soft-deleted
+   * Entry is refused when the caller must mutate it, and is returned untouched
+   * when the caller only inspects both sides of a resolution.
+   */
+  private requireConflictEntry(workspaceId: string, entryId: string, allowDeleted: boolean): MemoryEntryRecord {
+    const entry = this.entries.findById(workspaceId, entryId);
+    if (entry === undefined) throw new MemoryCandidateRepositoryError('ENTRY_NOT_FOUND');
+    if (!allowDeleted && entry.status === 'deleted') {
+      throw new MemoryCandidateRepositoryError('ENTRY_NOT_UPDATABLE');
+    }
+    return entry;
+  }
+
+  /** Apply one Entry status transition under optimistic concurrency. */
+  private applyConflictEntryStatus(
+    entry: MemoryEntryRecord,
+    target: MemoryEntryStatus,
+    updatedAt: string,
+  ): MemoryConflictEntryEffect {
+    if (target === entry.status) {
+      return { entryId: entry.id, fromStatus: entry.status, toStatus: entry.status, version: entry.version };
+    }
+    try {
+      const updated = this.entries.updateStatusWithinTransaction({
+        workspaceId: entry.workspaceId,
+        entryId: entry.id,
+        expectedVersion: entry.version,
+        status: target,
+        updatedAt,
+      });
+      return { entryId: updated.id, fromStatus: entry.status, toStatus: updated.status, version: updated.version };
+    } catch (error) {
+      if (error instanceof MemoryEntryRepositoryError) {
+        throw new MemoryCandidateRepositoryError(
+          error.code === 'ENTRY_NOT_FOUND' ? 'ENTRY_NOT_FOUND' : 'ENTRY_NOT_UPDATABLE',
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** Open conflicts that still reference this Entry, excluding the given one. */
+  private countOtherOpenConflicts(workspaceId: string, entryId: string, conflictId: string): number {
+    const row = this.db.prepare(
+      "SELECT COUNT(*) AS c FROM memory_conflicts WHERE workspace_id = ? AND status = 'open' AND id <> ? AND (entry_a_id = ? OR entry_b_id = ?)",
+    ).get(workspaceId, conflictId, entryId, entryId) as { c: number };
+    return row.c;
+  }
+
   private toCandidateRecord(row: CandidateRow): MemoryCandidateRecord {
-    const sourceRows = this.db.prepare(
-      'SELECT source_kind, source_id FROM memory_candidate_sources WHERE candidate_id = ? ORDER BY source_kind ASC, source_id ASC',
-    ).all(row.id) as Array<{ source_kind: string; source_id: string }>;
     return {
       id: row.id,
       workspaceId: row.workspace_id,
@@ -522,7 +842,7 @@ export class MemoryCandidateRepository {
       version: row.version,
       createdAt: row.created_at,
       reviewedAt: row.reviewed_at,
-      sources: sourceRows.map(source => ({ kind: source.source_kind as MemorySourceKind, id: source.source_id })),
+      sources: this.readCandidateSources(row.id),
     };
   }
 
@@ -545,4 +865,63 @@ export class MemoryCandidateRepository {
     if (error instanceof MemoryCandidateRepositoryError) return error;
     return new MemoryCandidateRepositoryError('PERSISTENCE_FAILED');
   }
+}
+
+const TERMINAL_CANDIDATE_OUTCOMES = new Set(['accept', 'edit-and-accept', 'reject', 'merge-with-existing']);
+
+/** Earlier Entry by `createdAt`, then by id for a deterministic tie-break. */
+function isEarlierEntry(left: MemoryEntryRecord, right: MemoryEntryRecord): boolean {
+  if (left.createdAt !== right.createdAt) return left.createdAt < right.createdAt;
+  return left.id < right.id;
+}
+
+/**
+ * The Entry status a disposition targets for one side of a conflict. Returning
+ * the current status means the disposition leaves that Entry untouched: it is
+ * soft-deleted or terminal, or it is still referenced by another open conflict.
+ */
+function resolveConflictTargetStatus(
+  disposition: MemoryConflictDisposition,
+  isEarlier: boolean,
+  current: MemoryEntryStatus,
+  hasOtherOpenConflict: boolean,
+): MemoryEntryStatus {
+  if (current === 'deleted') return current;
+  if (disposition === 'reject-both') return current === 'rejected' ? current : 'rejected';
+  const releaseConflicted = (): MemoryEntryStatus =>
+    current === 'conflicted' && !hasOtherOpenConflict ? 'active' : current;
+  if (disposition === 'keep-both' || disposition === 'promote-source') return releaseConflicted();
+  const supersededSide = disposition === 'supersede-earlier' ? isEarlier : !isEarlier;
+  if (!supersededSide) return releaseConflicted();
+  return current === 'superseded' ? current : 'superseded';
+}
+
+function isTerminalCandidate(candidate: Pick<CandidateRow, 'outcome' | 'reviewed_at' | 'merged_into_entry_id'>): boolean {
+  return TERMINAL_CANDIDATE_OUTCOMES.has(candidate.outcome)
+    && (candidate.reviewed_at !== null || candidate.merged_into_entry_id !== null);
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function normalizeMemoryText(text: string): string {
+  return text.toLowerCase().replace(/\s+/gu, ' ').trim();
+}
+
+function hashMemoryText(text: string): string {
+  return createHash('sha256').update(text, 'utf8').digest('hex');
+}
+
+function estimateMemoryTokens(content: string): number {
+  return Math.max(1, Math.ceil(content.length / 4));
+}
+
+function sameOwners(a: EntryMergeRow, b: CandidateRow): boolean {
+  return a.owner_agent_id === b.owner_agent_id
+    && a.owner_conversation_id === b.owner_conversation_id
+    && a.owner_task_id === b.owner_task_id
+    && a.owner_run_id === b.owner_run_id;
 }

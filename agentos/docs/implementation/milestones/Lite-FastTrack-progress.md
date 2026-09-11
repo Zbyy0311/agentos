@@ -1,6 +1,6 @@
 # Lite Fast Track — Progress Summary
 
-Status: MERGED — P6/L1 + RECOVERY + MEMORY FOUNDATION + CONVERSATION RUNTIME (CR-0..CR-6) + UI FOUNDATION + DIRECT CONVERSATION UX + RUNTIME INSPECTOR + CONTROLLED GROUP UX + WORKFLOW TEMPLATES + AGENT HISTORY & SEARCH ALL MERGED (main @ b9da96b2) — DEFERRED NON-GOALS REMAIN DEFERRED
+Status: IN PROGRESS — merged slice evidence is recorded below; Memory Foundation integration and controlled group speaker orchestration remain open
 
 ## 1. Purpose
 
@@ -13,7 +13,7 @@ beyond the merged evidence it cites.
 
 | Field | Value |
 |---|---|
-| Baseline | `origin-https/main @ 88c79869` (Merge PR #123) |
+| Baseline | `origin-https/main @ 800d6dd2` (Merge PR #125) |
 | Migration ledger | `001`–`023` present |
 | Main CI | `e8f64b15` PR CI run `34560421871` conclusion `success` |
 
@@ -79,8 +79,11 @@ the full Server suite for that revision is recorded in `CR4-schema-authorization
 - **Controlled Group Conversation**: speaker orchestration remains open; the
   bounded routes and the budget/stop/loop-guard view are merged (PR #116).
 
-All other Fast-Track steps are MERGED per section 3; this section lists only
-genuinely open work.
+The post-PR #125 source audit also reopened Candidate review promotion and
+immutable snapshot reuse; see `MF-progress.md`. Memory Event production
+emission and Inspector UI reachability require end-to-end verification.
+The merged labels in section 3 describe delivered slices, not proof that all
+Lite acceptance requirements are complete.
 
 ## 6. Non-goals (unchanged)
 

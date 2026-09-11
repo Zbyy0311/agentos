@@ -34,10 +34,10 @@ type Db = InstanceType<typeof DatabaseSync>;
 const NOW = '2026-08-13T00:00:00.000Z';
 const NOW2 = '2026-08-13T01:00:00.000Z';
 const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
-// The full default registry now continues past 015 into 016 (P6-L1B). These
+// The full default registry now continues past 015 into 016–024. These
 // M4/P6-M3b suites intentionally stop at 015; FULL_MIGRATION_IDS documents the
 // registry-order assertion's complete expected sequence.
-const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021', '022', '023'];
+const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021', '022', '023', '024'];
 const M4_TABLES = ['process_output_references', 'provider_sessions', 'runtime_processes'];
 
 const WS = 'ws_m4';
@@ -64,7 +64,7 @@ function freshDb(): Db {
 
 function registryThrough013(): MigrationRegistry {
   return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
-    migration => migration.id !== '014' && migration.id !== '015' && migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021' && migration.id !== '022' && migration.id !== '023',
+    migration => migration.id !== '014' && migration.id !== '015' && migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021' && migration.id !== '022' && migration.id !== '023' && migration.id !== '024',
   ));
 }
 
@@ -76,7 +76,7 @@ function registryThrough013(): MigrationRegistry {
  */
 function registryThrough015(): MigrationRegistry {
   return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
-    migration => migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021' && migration.id !== '022' && migration.id !== '023',
+    migration => migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021' && migration.id !== '022' && migration.id !== '023' && migration.id !== '024',
   ));
 }
 

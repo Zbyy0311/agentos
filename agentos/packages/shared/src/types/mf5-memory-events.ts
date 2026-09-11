@@ -11,6 +11,10 @@
  */
 
 import type { RuntimeEventDefinition, RuntimeEventPayloadGuard } from './m3-runtime-registry.js';
+import {
+  MEMORY_CONFLICT_DISPOSITIONS,
+  type MemoryConflictDisposition,
+} from './mf0-memory-contracts.js';
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -48,11 +52,34 @@ export interface MemoryCandidateEventPayload {
   readonly decision: 'auto-accept' | 'review-required' | 'reject';
 }
 
+export interface MemoryCandidateReviewEventPayload {
+  readonly candidateId: string;
+  readonly candidateVersion: number;
+  readonly outcome: 'accept' | 'edit-and-accept' | 'reject' | 'merge-with-existing' | 'review-required';
+  readonly memoryEntryId: string | null;
+}
+
+export function isMemoryCandidateReviewEventPayload(value: unknown): value is MemoryCandidateReviewEventPayload {
+  if (!isRecord(value) || !hasOnly(value, ['candidateId', 'candidateVersion', 'outcome', 'memoryEntryId'])) return false;
+  if (!isNonEmptyString(value.candidateId) || !isPositiveSafeInteger(value.candidateVersion)) return false;
+  if (value.outcome === 'reject' || value.outcome === 'review-required') return value.memoryEntryId === null;
+  return (value.outcome === 'accept' || value.outcome === 'edit-and-accept' || value.outcome === 'merge-with-existing')
+    && isNonEmptyString(value.memoryEntryId);
+}
+
 export interface MemoryConflictEventPayload {
   readonly conflictId: string;
   readonly conflictType: string;
   readonly entryAId: string;
   readonly entryBId: string;
+}
+
+export interface MemoryConflictResolutionEventPayload {
+  readonly conflictId: string;
+  readonly conflictType: string;
+  readonly entryAId: string;
+  readonly entryBId: string;
+  readonly disposition: MemoryConflictDisposition;
 }
 
 export interface MemoryRetrievalEventPayload {
@@ -107,6 +134,20 @@ export function isMemoryConflictEventPayload(value: unknown): value is MemoryCon
   );
 }
 
+export function isMemoryConflictResolutionEventPayload(value: unknown): value is MemoryConflictResolutionEventPayload {
+  if (!isRecord(value)) return false;
+  return (
+    hasOnly(value, ['conflictId', 'conflictType', 'entryAId', 'entryBId', 'disposition'])
+    && isMemoryConflictEventPayload({
+      conflictId: value.conflictId,
+      conflictType: value.conflictType,
+      entryAId: value.entryAId,
+      entryBId: value.entryBId,
+    })
+    && hasValue(MEMORY_CONFLICT_DISPOSITIONS, value.disposition)
+  );
+}
+
 export function isMemoryRetrievalEventPayload(value: unknown): value is MemoryRetrievalEventPayload {
   if (!isRecord(value)) return false;
   return (
@@ -133,6 +174,8 @@ export function isMemoryContextEventPayload(value: unknown): value is MemoryCont
 }
 
 const ENTRY_FIELDS = ['memoryEntryId', 'version', 'scope', 'category', 'authority'] as const;
+const CONFLICT_FIELDS = ['conflictId', 'conflictType', 'entryAId', 'entryBId'] as const;
+const CONFLICT_RESOLUTION_FIELDS = [...CONFLICT_FIELDS, 'disposition'] as const;
 const RETRIEVAL_FIELDS = [
   'queryHash', 'strategyVersion', 'candidateCount', 'selectedCount', 'totalTokens', 'degraded',
 ] as const;
@@ -167,10 +210,15 @@ export const MF5_MEMORY_EVENT_DEFINITIONS: readonly RuntimeEventDefinition[] = O
     ['candidateId', 'scope', 'category', 'authority', 'decision'],
     isMemoryCandidateEventPayload,
   ),
+  memoryEventDefinition('memory.candidate_reviewed', 'A Candidate review was committed; an Entry lifecycle change is recorded separately.',
+    ['candidateId', 'candidateVersion', 'outcome', 'memoryEntryId'], isMemoryCandidateReviewEventPayload),
+  memoryEventDefinition('memory.conflict_opened', 'A durable Memory conflict was opened between two stored Entries.', CONFLICT_FIELDS, isMemoryConflictEventPayload),
+  memoryEventDefinition('memory.conflict_resolved', 'A Memory conflict was explicitly resolved without deleting either Entry.', CONFLICT_RESOLUTION_FIELDS, isMemoryConflictResolutionEventPayload),
   memoryEventDefinition('memory.entry_created', 'A Memory Entry became durable.', ENTRY_FIELDS, isMemoryEntryEventPayload),
   memoryEventDefinition('memory.entry_updated', 'A Memory Entry was updated under optimistic concurrency.', ENTRY_FIELDS, isMemoryEntryEventPayload),
   memoryEventDefinition('memory.entry_conflicted', 'A Memory Entry entered the conflicted state.', ENTRY_FIELDS, isMemoryEntryEventPayload),
   memoryEventDefinition('memory.entry_deduplicated', 'An exact or near duplicate converged onto an existing Entry.', ENTRY_FIELDS, isMemoryEntryEventPayload),
+  memoryEventDefinition('memory.entry_rejected', 'A Memory Entry was rejected and remains stored without deletion.', ENTRY_FIELDS, isMemoryEntryEventPayload),
   memoryEventDefinition('memory.entry_superseded', 'A Memory Entry was superseded without deletion.', ENTRY_FIELDS, isMemoryEntryEventPayload),
   memoryEventDefinition('memory.entry_expired', 'A Memory Entry passed its validity window.', ENTRY_FIELDS, isMemoryEntryEventPayload),
   memoryEventDefinition('memory.entry_archived', 'A Memory Entry was archived.', ENTRY_FIELDS, isMemoryEntryEventPayload),

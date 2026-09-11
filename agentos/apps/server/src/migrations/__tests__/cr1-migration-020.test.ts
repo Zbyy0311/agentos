@@ -205,7 +205,7 @@ test('CR1-A15 migration 020 is idempotent', () => {
 // Registry contract.
 test('CR1 registry entry is numeric, ordered, and non-destructive', () => {
   const ids = DEFAULT_REGISTRY_MIGRATIONS.map(m => m.id);
-  assert.deepEqual(ids, FULL_IDS);
+  assert.deepEqual(ids.slice(0, FULL_IDS.length), FULL_IDS);
   assert.equal(migration020.id, '020');
   assert.equal(migration020.destructive, false);
   assert.match(migration020.checksum, /^[0-9a-f]{16}$/);

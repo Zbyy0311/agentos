@@ -89,6 +89,12 @@ export interface InspectorMemorySelection {
   readonly score: number;
   readonly tokenCost: number;
   readonly reasons: readonly string[];
+  readonly scope: string;
+  readonly category: string;
+  readonly authority: string;
+  readonly confidence: number;
+  readonly importance: number;
+  readonly sourceRefs: MemoryContextSnapshotRecord['selected'][number]['sourceRefs'];
 }
 
 export interface InspectorMemoryExclusion {
@@ -101,6 +107,7 @@ export interface InspectorMemoryContextSummary {
   readonly queryHash: string;
   readonly retrievalStrategyVersion: string;
   readonly totalTokens: number;
+  readonly maxTokens?: number;
   readonly truncated: boolean;
   readonly selected: readonly InspectorMemorySelection[];
   readonly exclusions: readonly InspectorMemoryExclusion[];
@@ -359,6 +366,7 @@ function toMemoryContextSummary(
     queryHash: snapshot.queryHash,
     retrievalStrategyVersion: snapshot.retrievalStrategyVersion,
     totalTokens: snapshot.totalTokens,
+    maxTokens: snapshot.budget.maxTokens,
     truncated: snapshot.truncated,
     selected: snapshot.selected.map(item => ({
       memoryId: item.memoryId,
@@ -367,6 +375,12 @@ function toMemoryContextSummary(
       score: item.score,
       tokenCost: item.tokenCost,
       reasons: [...item.reasons],
+      scope: item.scope,
+      category: item.category,
+      authority: item.authority,
+      confidence: item.confidence,
+      importance: item.importance,
+      sourceRefs: item.sourceRefs.map(source => ({ ...source })),
     })),
     exclusions: snapshot.exclusions.map(item => ({ memoryId: item.memoryId, reason: item.reason })),
     createdAt: snapshot.createdAt,

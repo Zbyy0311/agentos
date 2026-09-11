@@ -11,6 +11,7 @@ import type {
   RunSnapshot,
   RunSnapshotPayloadV2,
   RunStage,
+  RuntimeEventContextAuthoritySourceV1,
 } from '@agentos/shared';
 import type { RunRepository } from '../../store/RunRepository.js';
 import type { RunSnapshotRepository } from '../../store/RunSnapshotRepository.js';
@@ -82,7 +83,28 @@ export interface MemoryCandidateGenerationPort {
     readonly workspaceId: string;
     readonly runId: string;
     readonly createdAt: string;
+    /**
+     * MF-5: authorized causal context for the Candidate's canonical Event,
+     * derived from the persisted `run.start` Operation of this Run. Required
+     * by a generator that emits Events; ignored by an event-free generator.
+     */
+    readonly eventContext?: RuntimeEventContextAuthoritySourceV1;
   }) => unknown;
+}
+
+/**
+ * MF-5: the claimed causal context for a Memory fact this Run caused. It is a
+ * CLAIM only — the emitter's authority proves it against the persisted
+ * `operations` row inside the writing transaction and re-derives the accepted
+ * values from that row, so a mismatch fails closed instead of fabricating a
+ * causal chain.
+ */
+function authoritativeContext(operation: ApiOperation): RuntimeEventContextAuthoritySourceV1 {
+  return {
+    origin: 'operation',
+    operationId: operation.id,
+    context: { correlationId: operation.correlationId, causationId: operation.id },
+  };
 }
 
 export type RunEngineProviderDriveResult =
@@ -419,7 +441,9 @@ export class RunEngineProviderDispatcher {
     const basePrompt = stageDefinition.agent.systemPrompt || 'Execute the requested task.';
     // MF-4 Run startup integration: resolve, freeze, and gate Memory BEFORE
     // provider execution. A snapshot failure throws and blocks the stage.
-    const memoryContext = this.resolveStageMemoryContext(workspaceId, runId, stage, snapshot.payload.run.taskId);
+    const memoryContext = this.resolveStageMemoryContext(
+      workspaceId, runId, stage, snapshot.payload.run.taskId, operation,
+    );
     const prompt = memoryContext === null || memoryContext.contextText.length === 0
       ? basePrompt
       : `${memoryContext.contextText}
@@ -470,7 +494,7 @@ ${basePrompt}`;
           artifactIds: [...outcome.artifactIds],
           outputContractSatisfied: outcome.outputContractSatisfied,
         });
-        this.generateTerminalMemoryCandidate(workspaceId, runId);
+        this.generateTerminalMemoryCandidate(workspaceId, runId, operation);
       } else {
         await this.lifecycleTransactionService.transitionStage({
           workspaceId,
@@ -513,13 +537,14 @@ ${basePrompt}`;
    * MF-2R: fire the terminal-outcome candidate trigger after the terminal
    * commit. A generation failure is reported and never mutates the Run.
    */
-  private generateTerminalMemoryCandidate(workspaceId: string, runId: string): void {
+  private generateTerminalMemoryCandidate(workspaceId: string, runId: string, operation: ApiOperation): void {
     if (this.memoryCandidateGenerator === undefined) return;
     try {
       this.memoryCandidateGenerator.generateForRunTerminal({
         workspaceId,
         runId,
         createdAt: new Date().toISOString(),
+        eventContext: authoritativeContext(operation),
       });
     } catch (error) {
       this.onCandidateGenerationError?.(error, runId);
@@ -536,6 +561,7 @@ ${basePrompt}`;
     runId: string,
     stage: RunStage,
     taskId: string,
+    operation: ApiOperation,
   ): ResolvedMemoryContext | null {
     const resolver = this.memoryContextResolver;
     if (resolver === undefined) return null;
@@ -545,6 +571,10 @@ ${basePrompt}`;
       taskId,
       stageId: stage.id,
       createdAt: new Date().toISOString(),
+      // MF-5: the snapshot's canonical Event is caused by the Run's persisted
+      // `run.start` Operation. An emitter-wired resolver re-proves that row in
+      // the same transaction, so an unproven origin fails closed.
+      eventContext: authoritativeContext(operation),
     });
     if (!resolver.isInjectable(resolved)) {
       throw new Error('MEMORY_CONTEXT_INJECTION_BLOCKED');

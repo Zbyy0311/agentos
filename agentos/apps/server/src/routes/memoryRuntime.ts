@@ -4,7 +4,7 @@ import { MEMORY_CANDIDATE_OUTCOMES, type MemoryCandidateOutcome, type MemoryRetr
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
-import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
+import { MemoryCandidateRepository, type MemoryCandidateEdits } from '../store/MemoryCandidateRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
 
@@ -36,8 +36,8 @@ import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
  *   MF-progress.md. The same applies to user-initiated Candidate review.
  * - Forward Candidate paths live under /memory/ because the literal Lite
  *   section-14 /memory-candidates paths are held by the COMPATIBILITY router.
- * - This router never spawns a Process, never touches Provider credentials,
- *   and never mutates an Entry.
+ * - This router never spawns a Process or touches Provider credentials. Candidate
+ *   review can promote an Entry or append source evidence transactionally.
  */
 
 interface ErrorMapping { readonly status: number; readonly code: string }
@@ -71,6 +71,69 @@ function optionalStringArray(value: unknown): readonly string[] | undefined {
 
 function isOutcome(value: unknown): value is MemoryCandidateOutcome {
   return (MEMORY_CANDIDATE_OUTCOMES as readonly unknown[]).includes(value);
+}
+
+interface ReviewBody {
+  readonly expectedVersion: number;
+  readonly outcome: MemoryCandidateOutcome;
+  readonly mergedIntoEntryId?: string;
+  readonly edits?: MemoryCandidateEdits;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function parseReviewBody(value: unknown): ReviewBody | undefined {
+  if (!isPlainRecord(value)) return undefined;
+  const allowedKeys = new Set(['expectedVersion', 'outcome', 'mergedIntoEntryId', 'edits']);
+  if (Object.keys(value).some(key => !allowedKeys.has(key))) return undefined;
+  if (!Number.isSafeInteger(value.expectedVersion) || (value.expectedVersion as number) < 1) return undefined;
+  if (!isOutcome(value.outcome)) return undefined;
+
+  const hasMergedTarget = Object.prototype.hasOwnProperty.call(value, 'mergedIntoEntryId');
+  const hasEdits = Object.prototype.hasOwnProperty.call(value, 'edits');
+  let mergedIntoEntryId: string | undefined;
+  if (value.outcome === 'merge-with-existing') {
+    if (!hasMergedTarget || !nonBlank(value.mergedIntoEntryId)) return undefined;
+    mergedIntoEntryId = value.mergedIntoEntryId;
+  } else if (hasMergedTarget) {
+    return undefined;
+  }
+
+  let edits: MemoryCandidateEdits | undefined;
+  if (value.outcome === 'edit-and-accept') {
+    if (!hasEdits) return undefined;
+    edits = parseReviewEdits(value.edits);
+    if (edits === undefined) return undefined;
+  } else if (hasEdits) {
+    return undefined;
+  }
+
+  return {
+    expectedVersion: value.expectedVersion as number,
+    outcome: value.outcome,
+    ...(mergedIntoEntryId === undefined ? {} : { mergedIntoEntryId }),
+    ...(edits === undefined ? {} : { edits }),
+  };
+}
+
+function parseReviewEdits(value: unknown): MemoryCandidateEdits | undefined {
+  if (!isPlainRecord(value)) return undefined;
+  const allowedKeys = new Set(['title', 'summary', 'content', 'tags']);
+  const keys = Object.keys(value);
+  if (keys.length === 0 || keys.some(key => !allowedKeys.has(key))) return undefined;
+  if (Object.prototype.hasOwnProperty.call(value, 'title') && !nonBlank(value.title)) return undefined;
+  for (const key of ['summary', 'content'] as const) {
+    if (Object.prototype.hasOwnProperty.call(value, key) && typeof value[key] !== 'string') return undefined;
+  }
+  if (Object.prototype.hasOwnProperty.call(value, 'tags')) {
+    if (!Array.isArray(value.tags) || value.tags.some(tag => !nonBlank(tag))) return undefined;
+    if (new Set(value.tags).size !== value.tags.length) return undefined;
+  }
+  return value as MemoryCandidateEdits;
 }
 
 export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: WorkspaceManager): Router {
@@ -179,14 +242,19 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
   router.post('/memory/candidates/:candidateId/review', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    const body = (req.body ?? {}) as Record<string, unknown>;
+    const body = parseReviewBody(req.body);
+    if (body === undefined) {
+      res.status(400).json({ error: 'MEMORY_CANDIDATE_INPUT_INVALID' });
+      return;
+    }
     try {
       const candidate = candidates.reviewCandidate({
         workspaceId: workspace.id,
         candidateId: req.params.candidateId,
-        expectedVersion: body.expectedVersion as number,
-        outcome: body.outcome as MemoryCandidateOutcome,
-        ...(nonBlank(body.mergedIntoEntryId) ? { mergedIntoEntryId: body.mergedIntoEntryId as string } : {}),
+        expectedVersion: body.expectedVersion,
+        outcome: body.outcome,
+        ...(body.mergedIntoEntryId === undefined ? {} : { mergedIntoEntryId: body.mergedIntoEntryId }),
+        ...(body.edits === undefined ? {} : { edits: body.edits }),
         reviewedAt: new Date().toISOString(),
       });
       res.json({ candidate });
