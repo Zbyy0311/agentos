@@ -41,7 +41,10 @@ tests passed 36/36; Inspector projection/routes passed 14/14. Migration suite:
 351 passed, 1 skipped. Web suite: 162/162. Desktop Playwright/Edge fixture QA
 verified the actual workbench route, Run switching and refresh without console
 errors. Frozen payload design and historical replay behavior are documented in
-`MF-snapshot-replay-design.md`. PR CI and full-suite closeout are pending.
+`MF-snapshot-replay-design.md`. Full server first run: 2617 total, 2608 passed,
+6 failed, 3 skipped. Two missed migration-order assertions outside the migration
+test directory were corrected and passed targeted verification (2/2). Four
+Windows ENOTEMPTY teardown failures remain recorded; CI closeout is pending.
 
 Record each fix with its commit, focused behavioral tests and CI result.
 Do not treat a green component test or a merged PR as proof of the full Lite
