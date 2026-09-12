@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 10,
+  "matrixVersion": 11,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -69,17 +69,20 @@
       "section": "17. Acceptance Expectations",
       "line": 403,
       "requirement": "a persistent Agent can change Provider without losing canonical identity or history;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/store/SqliteStore.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-VERIFY-BATCH-11"
+      ],
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。“Workspace.agents projected fields match Provider Configuration after update”把同一Agent（id=codex）的Provider由codex改为opencode配置后，仍断言providerConfigId不变、provider/cliCommand/cliArgs/model随之更新：Agent身份与Provider配置绑定在Provider变更后保持。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-00-002",
@@ -145,17 +148,20 @@
       "section": "17. Acceptance Expectations",
       "line": 407,
       "requirement": "Runtime Events remain ordered, durable, replayable, and redacted;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/OutboxPublisher.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-VERIFY-BATCH-11"
+      ],
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。覆盖投递顺序（P11/P12确定性到期）、持久重试与退避、死信原子证据、崩溃后租约回收重投同一Event、sanitized错误分类，以及“投递只改Outbox/死信/通知状态，不触碰领域行与Runtime Event”。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-00-006",
@@ -203,17 +209,20 @@
       "section": "17. Acceptance Expectations",
       "line": 410,
       "requirement": "one Workspace never has two AgentOS modifying Runs executing concurrently;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-VERIFY-BATCH-11"
+      ],
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。“L1D-U09 an active MODIFYING admission blocks every later request”与U06 FIFO、U14/U15读写互斥共同证明同一Workspace不会同时有两个修改型Run执行。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-00-009",
@@ -239,17 +248,20 @@
       "section": "17. Acceptance Expectations",
       "line": 412,
       "requirement": "Memory selection is reproducible and explainable;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/MemoryContextResolver.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-VERIFY-BATCH-11"
+      ],
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。选择被持久化为快照（MF4I-01）、每scope幂等（MF4I-02/03）、条目后续编辑不改写快照（MF4I-07）、历史元数据快照可解释但阻止注入、工作区隔离（MF4I-10）：选择可复现且可解释。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-00-011",
@@ -257,17 +269,20 @@
       "section": "17. Acceptance Expectations",
       "line": 413,
       "requirement": "Git changes are observable without AgentOS owning Git workflow execution;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/GitObservationCollector.integration.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-VERIFY-BATCH-11"
+      ],
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。以只读收集器持久化Git观察快照（base/final commit SHA）并在终止时枚举自有进程树；不创建Git写操作或工作流。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-00-012",
@@ -275,17 +290,20 @@
       "section": "17. Acceptance Expectations",
       "line": 414,
       "requirement": "the UI presents the four-column engineering workbench with a focused Inspector;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-VERIFY-BATCH-11"
+      ],
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。“SHELL-01 wide mode renders all four columns with landmarks”断言agents/conversations/canvas/inspector四列与Inspector aria landmark，正是本条的四列工作台+聚焦Inspector。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-00-013",
@@ -293,17 +311,21 @@
       "section": "17. Acceptance Expectations",
       "line": 415,
       "requirement": "Group Conversation and workflow templates remain bounded.",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/BoundedGroupService.test.ts",
+        "packages/shared/wf-template-instantiation.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-VERIFY-BATCH-11"
+      ],
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。有界群聊由预算/循环守卫/终止原因断言覆盖；有界Workflow模板由模板实例化契约测试覆盖。两者共同构成本条“群聊与模板保持有界”。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-01-001",
@@ -479,19 +501,20 @@
       "section": "16. Acceptance Expectations",
       "line": 476,
       "requirement": "read-only concurrency requires tested technical Workspace write denial and does not bypass Provider or resource limits;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/store/Identity.test.ts"
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/store/Identity.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。U16/U18/U19/U20：只读证据必须在BEGIN IMMEDIATE内重新采集与重新分类，过期证据在无法采集时拒绝授权（denies dispatch authorization），陈旧只读读被重分类为MODIFYING后与其读同伴冲突并全部拒绝。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-01-010",
@@ -583,19 +606,20 @@
       "section": "16. Acceptance Expectations",
       "line": 481,
       "requirement": "unknown Provider details do not become invented facts;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/store/Identity.test.ts"
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/store/Identity.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。“parses golden, malformed, unknown and usage output without fabricating provider semantics”“fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence”“sanitizes discovery warning text”：未知Provider细节不编造成事实。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-01-015",
@@ -817,19 +841,20 @@
       "section": "21. Acceptance Expectations",
       "line": 531,
       "requirement": "reconnect provides gap-free, duplicate-free replay plus live delivery;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/LifecycleTransactionService.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。P5C-R01/R05系列：SSE默认游标0、afterSequence只重放更大序号、Last-Event-ID解析为持久序号、query与header的单调游标规则，配合重连断言证明断线后从真实游标无缝重放并继续实时投递。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-02-011",
@@ -1148,19 +1173,20 @@
       "section": "20. Acceptance Expectations",
       "line": 549,
       "requirement": "reconnect from a real cursor with replay, drain, live continuation, no gaps, and no duplicates;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/store/RuntimeEventRepository.ts"
       ],
       "tests": [
-        "apps/server/src/services/OutboxPublisher.test.ts"
+        "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/OutboxPublisher.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。同上的游标/重连断言：从真实游标重放、排空、继续实时，且严格大于已投递序号（无重复、无缺口）。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-03-010",
@@ -1401,7 +1427,7 @@
       "section": "19. Acceptance Expectations",
       "line": 490,
       "requirement": "Mock Provider covers success, auth, rate-limit, non-zero exit, cancel, and process-crash scenarios;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S4",
       "implementation": [
         "apps/server/src/services/run-engine/providerExecutionChain.ts"
@@ -1410,10 +1436,11 @@
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。认证三态（authenticated/unauthenticated/fails closed to unknown）、取消只经被接受的Process port票据、finalize结果映射与稳定失败；配合codexProviderAdapter的PROVIDER_RATE_LIMITED规范化，构成Mock Provider的失败矩阵。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-04-003",
@@ -1442,19 +1469,20 @@
       "section": "19. Acceptance Expectations",
       "line": 492,
       "requirement": "Provider switching preserves Agent identity and history;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S4",
       "implementation": [
         "apps/server/src/services/run-engine/providerExecutionChain.ts"
       ],
       "tests": [
-        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
+        "apps/server/src/store/SqliteStore.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。同一Agent在Provider配置由codex改为opencode后保持其id与providerConfigId绑定；Agent历史（消息/事件/执行）存放在按Agent id与外键关联的独立表中，不由Provider变更重写。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-04-005",
@@ -1462,19 +1490,20 @@
       "section": "19. Acceptance Expectations",
       "line": 493,
       "requirement": "browser disconnect does not cancel Provider execution;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S4",
       "implementation": [
         "apps/server/src/services/run-engine/providerExecutionChain.ts"
       ],
       "tests": [
-        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
+        "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。“P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues”与“unsubscribes ... exactly once”：浏览器断线不取消Provider执行。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-04-006",
@@ -2310,19 +2339,20 @@
       "section": "18. Acceptance Expectations",
       "line": 377,
       "requirement": "no bulk transcript or Provider-history promotion;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryContextResolver.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/MemoryContextResolver.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。候选只由完成的Run生成且有界证据（MF2R-G1），非完成或未知Run不生成任何内容（MF2R-G5）：不存在整段转录或Provider历史批量提升。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-07-011",
@@ -2925,19 +2955,20 @@
       "section": "18. Acceptance Expectations",
       "line": 440,
       "requirement": "Agent identity survives Provider changes;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/store/SqliteStore.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/ConversationTurnDriver.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。Provider配置变更后Agent的规范身份（id与配置绑定）保持：Agent identity survives Provider changes。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-09-010",
@@ -4326,19 +4357,20 @@
       "section": "19. Acceptance Expectations",
       "line": 325,
       "requirement": "concurrent read-only display requires effective write-denial evidence and cannot be derived from Provider-native worktrees;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "packages/shared/p6-l1a-admission.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-11"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/routes/runtimeInspector.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。“L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY”：并发只读展示必须基于已验证的技术性写拒绝证据，不能由提示词或声明推导。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
     {
       "id": "LITE-13-013",
@@ -7469,6 +7501,31 @@
         "LITE-01-101",
         "LITE-00-004",
         "LITE-00-007"
+      ]
+    },
+    {
+      "version": 11,
+      "baseline": "7de73abec2bb4e60a85e2de718d931f24cf62937",
+      "authority": "Main-agent S8 acceptance within user-approved scope",
+      "reason": "Re-point 17 RUNTIME-VERIFY rows at the file that actually asserts their clause and promote them on the executed counts; the previously named files passed but asserted different behaviour.",
+      "requirementIds": [
+        "LITE-00-001",
+        "LITE-00-005",
+        "LITE-00-008",
+        "LITE-00-010",
+        "LITE-00-011",
+        "LITE-00-012",
+        "LITE-00-013",
+        "LITE-01-009",
+        "LITE-01-014",
+        "LITE-02-010",
+        "LITE-03-009",
+        "LITE-04-002",
+        "LITE-04-004",
+        "LITE-04-005",
+        "LITE-07-010",
+        "LITE-09-009",
+        "LITE-13-012"
       ]
     }
   ]

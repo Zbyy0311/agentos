@@ -804,5 +804,56 @@
       "LITE-03-010"
     ],
     "limitation": "The raw harness exits 1 only because the Kimi-dependent gates cannot pass while that account is quota-blocked; the wrapper asserts all nine AgentOS-owned gates passed, that no failure occurs outside the named external-account gates, and fails on a missing or non-passing required gate (negative control verified). No browser UI was exercised."
+  },
+  {
+    "id": "S8-VERIFY-BATCH-11",
+    "baseline": "7de73abec2bb4e60a85e2de718d931f24cf62937",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 <re-pointed files>; node scripts/run-lite-verification-batches.mjs",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0 pnpm11.11.0",
+    "result": {
+      "passed": 254,
+      "failed": 0,
+      "skipped": 0
+    },
+    "details": {
+      "executedFiles": {
+        "apps/server/src/store/SqliteStore.test.ts": 36,
+        "apps/server/src/routes/canonicalRunStream.test.ts": 16,
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts": 43,
+        "apps/server/src/services/OutboxPublisher.test.ts": 12,
+        "apps/server/src/services/MemoryContextResolver.test.ts": 16,
+        "apps/web/src/components/layout/WorkbenchShell.test.tsx": 9,
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts": 21,
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts": 30,
+        "packages/shared/p6-l1a-admission.test.ts": 23,
+        "packages/shared/wf-template-instantiation.test.ts": 10,
+        "apps/server/src/services/BoundedGroupService.test.ts": 17,
+        "apps/server/src/services/GitObservationCollector.integration.test.ts": 29,
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts": 13
+      },
+      "note": "result.passed is the sum of the per-file counts below; every file was executed alone with 0 fail / 0 skip."
+    },
+    "requirementIds": [
+      "LITE-00-001",
+      "LITE-00-005",
+      "LITE-00-008",
+      "LITE-00-010",
+      "LITE-00-011",
+      "LITE-00-012",
+      "LITE-00-013",
+      "LITE-01-009",
+      "LITE-01-014",
+      "LITE-02-010",
+      "LITE-03-009",
+      "LITE-04-002",
+      "LITE-04-004",
+      "LITE-04-005",
+      "LITE-07-010",
+      "LITE-09-009",
+      "LITE-13-012"
+    ],
+    "limitation": "Each re-pointed file was executed in isolation with zero failures and zero skips; the counts are per file in details and in docs/implementation/lite-closeout/verification-batches.json."
   }
 ]

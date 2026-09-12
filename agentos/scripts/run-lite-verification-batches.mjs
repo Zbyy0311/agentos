@@ -29,6 +29,10 @@ const arg = (name, fallback) => {
   return value === undefined || value.startsWith('--') ? true : value;
 };
 const only = typeof arg('only', undefined) === 'string' ? String(arg('only')).split(',').map(s => s.trim()) : undefined;
+// --files <json> runs an explicit reviewed file list instead of deriving it from
+// the matrix. It exists so a set of files promoted in an earlier revision can be
+// re-executed at the current revision and carry a single, honest baseline.
+const filesArg = typeof arg('files', undefined) === 'string' ? String(arg('files')) : undefined;
 const listOnly = arg('list', false) === true;
 const timeoutMs = Number(arg('timeoutMs', 900_000));
 const outPath = typeof arg('json', undefined) === 'string' ? String(arg('json')) : 'docs/implementation/lite-closeout/verification-batches.json';
@@ -87,7 +91,12 @@ function parseCounts(output) {
 }
 
 const batches = new Map();
-for (const row of matrix.requirements) {
+if (filesArg !== undefined) {
+  const requested = JSON.parse(readFileSync(resolve(repoRoot, filesArg), 'utf8'));
+  if (!Array.isArray(requested) || requested.length === 0) throw new Error('file list must be a non-empty array');
+  for (const file of requested) batches.set(file, { file, ids: [] });
+}
+for (const row of filesArg === undefined ? matrix.requirements : []) {
   if (row.state !== 'RUNTIME-VERIFY') continue;
   if (only !== undefined && !only.includes(row.id)) continue;
   for (const file of (row.tests ?? []).filter(isTestFile)) {

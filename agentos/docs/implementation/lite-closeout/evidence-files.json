@@ -1,0 +1,23 @@
+[
+  "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+  "apps/server/src/routes/canonicalRunStream.test.ts",
+  "apps/server/src/routes/memoryRuntime.test.ts",
+  "apps/server/src/routes/runtimeInspector.test.ts",
+  "apps/server/src/services/AgentHistoryService.test.ts",
+  "apps/server/src/services/ConversationTurnDriver.test.ts",
+  "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+  "apps/server/src/services/MemoryContextResolver.test.ts",
+  "apps/server/src/services/OutboxPublisher.test.ts",
+  "apps/server/src/services/RuntimeInspector.test.ts",
+  "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+  "apps/server/src/store/Identity.test.ts",
+  "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+  "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+  "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+  "packages/shared/wf-template-instantiation.test.ts",
+  "apps/server/src/store/SqliteStore.test.ts",
+  "apps/server/src/services/BoundedGroupService.test.ts",
+  "apps/server/src/services/GitObservationCollector.integration.test.ts",
+  "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+  "packages/shared/p6-l1a-admission.test.ts"
+]
