@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 3,
+  "matrixVersion": 4,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -4040,9 +4040,12 @@
         "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
       "evidence": [
-        "S1C-SOURCE"
+        "S1C-SOURCE",
+        "S1C1-RED",
+        "S1C1-GREEN",
+        "S1DC1-INTEGRATION"
       ],
-      "finding": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。",
+      "finding": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。 S1-C1已过滤有效期/敏感度并取得新快照证据；FTS降级与预算解释尚未闭合，不标PASS。",
       "exit": "固定时钟下验证有效期和敏感度，显式降级与真实快照理由，不重构无关排名。"
     },
     {
@@ -6628,6 +6631,17 @@
       "requirementIds": [
         "LITE-07-003",
         "LITE-07-107"
+      ]
+    },
+    {
+      "version": 4,
+      "baseline": "ebb26b4990fabca9aaa9a312b31af80447a3a4c6",
+      "authority": "Main-agent integrated verification in frozen scope",
+      "reason": "Record S1-C1 validity/sensitivity counterexample and S1-D/C1 integrated tests. Preserve local first-run teardown failures and all remaining GAP classifications.",
+      "requirementIds": [
+        "LITE-07-003",
+        "LITE-07-107",
+        "LITE-07-109"
       ]
     }
   ]
