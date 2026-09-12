@@ -12,6 +12,7 @@ import {
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
 import { deriveWorkspaceEventContext } from '../store/WorkspaceEventWriter.js';
 import { hashMemoryText, normalizeMemoryText } from './MemoryCandidateGenerationService.js';
+import type { ConversationCompactionPort, PublishedCompactionSummary } from './ConversationTurnDriver.js';
 
 /**
  * S6 conversation compaction engine (authorization: S6-compaction-authorization.md).
@@ -104,6 +105,21 @@ interface CompactionEngineOptions {
 
 export function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4));
+}
+
+/**
+ * S6 production wiring for the Turn driver: the newest published compaction of
+ * a Conversation, read-only through the existing durable rows.
+ */
+export function createConversationCompactionPort(store: SqliteStore): ConversationCompactionPort {
+  const compactions = new CompactionRepository(store.getDatabase());
+  return {
+    latestPublished(workspaceId: string, conversationId: string): PublishedCompactionSummary | undefined {
+      const row = compactions.findLatestPublished(workspaceId, conversationId);
+      if (row === undefined || row.summary === null) return undefined;
+      return { id: row.id, summary: row.summary, sourceEndMessageId: row.sourceEndMessageId };
+    },
+  };
 }
 
 function hashSource(messages: readonly CompactionMessageView[]): string {

@@ -10,6 +10,10 @@ import {
   type ChatWorkspaceAuthorityPort,
 } from '../services/ConversationTurnDriver.js';
 import { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
+import {
+  createConversationCompactionPort,
+} from '../services/ConversationCompactionService.js';
+import { CompactionPolicyRepository, CompactionRepository } from '../store/CompactionRepository.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import {
   CONVERSATION_REPLY_MODES,
@@ -87,6 +91,12 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       };
     },
   };
+
+  // S6: published compaction summaries apply to new Turn contexts. The hard
+  // application budget is the frozen lite-v1 fallback when no provider bound
+  // is known, which is what the compaction policy records today.
+  const compactionPort = createConversationCompactionPort(store);
+  const compactionBudget = { hardBudgetTokens: 16384 };
 
   // ---- Conversations ------------------------------------------------------
 
@@ -219,6 +229,48 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
     res.json({ turns: store.agentTurnRepository().listTurnsByConversation(workspace.id, req.params.conversationId) });
+  });
+
+  /**
+   * S6 Inspector read surface (LITE-09-104/107): the effective compaction
+   * policy, every task of the Conversation with its frozen budget inputs, the
+   * applied summary and the attempts/failure state. Read-only, no Provider
+   * work, no mutation.
+   */
+  router.get('/conversations/:conversationId/compactions', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const compactions = new CompactionRepository(store.getDatabase());
+    const tasks = compactions.listForConversation(workspace.id, req.params.conversationId);
+    const policyIds = [...new Set(tasks.map(task => task.policyId))];
+    res.json({
+      tasks: tasks.map(task => ({
+        id: task.id, status: task.status, policyId: task.policyId,
+        sourceStartMessageId: task.sourceStartMessageId, sourceEndMessageId: task.sourceEndMessageId,
+        sourceMessageCount: task.sourceMessageCount, sourceHash: task.sourceHash,
+        priorSummaryId: task.priorSummaryId,
+        summary: task.summary, summaryHash: task.summaryHash, summaryTokenEstimate: task.summaryTokenEstimate,
+        candidateId: task.candidateId,
+        providerConfigId: task.providerConfigId, providerType: task.providerType,
+        adapterId: task.adapterId, adapterVersion: task.adapterVersion, model: task.model,
+        estimatorVersion: task.estimatorVersion, attempts: task.attempts,
+        leaseOwner: task.leaseOwner, leaseExpiresAt: task.leaseExpiresAt,
+        failureCode: task.failureCode, failureMessage: task.failureMessage,
+        createdAt: task.createdAt, updatedAt: task.updatedAt, publishedAt: task.publishedAt,
+        budget: JSON.parse(task.budgetJson) as Record<string, unknown>,
+      })),
+      policies: policyIds.map(id => {
+        const policy = new CompactionPolicyRepository(store.getDatabase()).findById(id);
+        return policy === undefined ? { id } : {
+          id: policy.id, policyVersion: policy.policyVersion, triggerRatio: policy.triggerRatio,
+          targetRatio: policy.targetRatio, minRecentMessages: policy.minRecentMessages,
+          summaryMaxTokens: policy.summaryMaxTokens, timeoutMs: policy.timeoutMs,
+          maxAutomaticRetries: policy.maxAutomaticRetries,
+          fallbackApplicationBudgetTokens: policy.fallbackApplicationBudgetTokens,
+          parameters: JSON.parse(policy.parametersJson) as Record<string, unknown>,
+        };
+      }),
+    });
   });
 
   // ---- Messages -----------------------------------------------------------
@@ -452,7 +504,12 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       conversations(),
       store.conversationStreamService(),
       (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
-      { snapshots: createDurableTurnContextSnapshotPort(store), workspaceAuthority: chatWorkspaceAuthority },
+      {
+        snapshots: createDurableTurnContextSnapshotPort(store),
+        workspaceAuthority: chatWorkspaceAuthority,
+        compaction: compactionPort,
+        compactionBudget,
+      },
     );
     try {
       const result = await driver.run(
@@ -545,7 +602,12 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       store.conversationStreamService(),
       (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
       undefined,
-      { snapshots: createDurableTurnContextSnapshotPort(store), workspaceAuthority: chatWorkspaceAuthority },
+      {
+        snapshots: createDurableTurnContextSnapshotPort(store),
+        workspaceAuthority: chatWorkspaceAuthority,
+        compaction: compactionPort,
+        compactionBudget,
+      },
     );
     try {
       const result = await driver.replyWithTurn({
