@@ -273,8 +273,15 @@
     "cwd": "apps/server",
     "command": "node --import tsx --test --test-concurrency=1 src/services/ArtifactCompletionService.test.ts src/services/RuntimeArtifactCollector.test.ts src/migrations/__tests__/mf2-migration-027.test.ts ../../packages/shared/mf5-workspace-events.test.ts",
     "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": { "passed": 27, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-07-104", "LITE-07-108"],
+    "result": {
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-104",
+      "LITE-07-108"
+    ],
     "limitation": "Actual Node test subprocess with fixture provider observations; not live model invocation. See S2-artifact-evidence.md for first failures and open gates."
   },
   {
@@ -283,8 +290,14 @@
     "kind": "runtime-verification",
     "command": "node external replay-qa.mts via tsx; node external browser.cjs (Playwright1.55.0/Chrome)",
     "environment": "Isolated3300/3301; 1280x900 and440x900; temporary QA data",
-    "result": { "failed": 0, "consoleErrors": 0, "acceptedApiStatus": 200 },
-    "requirementIds": ["LITE-07-104"],
+    "result": {
+      "failed": 0,
+      "consoleErrors": 0,
+      "acceptedApiStatus": 200
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
     "limitation": "Real Workspace page/queue/source popup/accept and actual subprocess; execution seeded, no live model. Exact local artifact paths/IDs in S2-artifact-evidence.md. Not used to mark PASS."
   },
   {
@@ -293,8 +306,13 @@
     "kind": "github-actions",
     "command": "gh pr view143; gh pr merge143 --merge --match-head-commit f82821c734ad95daf3580bb37ddad905ed1c4e10",
     "url": "https://github.com/Zbyy0311/agentos/actions/runs/34684841210",
-    "result": { "failed": 0, "conclusion": "success" },
-    "requirementIds": ["LITE-07-107"],
+    "result": {
+      "failed": 0,
+      "conclusion": "success"
+    },
+    "requirementIds": [
+      "LITE-07-107"
+    ],
     "limitation": "PR143 merged as50255d833ee40a498607397ae9e99264ca930ea2 after exact-head successful checks. Prior cancelled run retained. Not final Lite main CI."
   },
   {
@@ -304,8 +322,15 @@
     "cwd": "apps/server",
     "command": "pnpm --filter @agentos/server test",
     "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": { "passed": 2687, "failed": 53, "skipped": 3, "exitCode": 1 },
-    "requirementIds": ["LITE-07-104"],
+    "result": {
+      "passed": 2687,
+      "failed": 53,
+      "skipped": 3,
+      "exitCode": 1
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
     "limitation": "First full run preserved. 49 failures traced to stale016 replay helper; 4 separate ENOTEMPTY teardown failures. Not PASS evidence and no immediate rerun."
   },
   {
@@ -314,8 +339,15 @@
     "kind": "local-tests",
     "command": "pnpm --filter @agentos/agent-core test; pnpm build",
     "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": { "passed": 159, "failed": 0, "skipped": 0, "buildExitCode": 0 },
-    "requirementIds": ["LITE-07-104"],
+    "result": {
+      "passed": 159,
+      "failed": 0,
+      "skipped": 0,
+      "buildExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
     "limitation": "Agent-core26 files/159 tests and workspace build passed once. Does not prove corrected full Server suite or live Provider invocation."
   },
   {
@@ -325,8 +357,15 @@
     "cwd": "apps/server",
     "command": "node --import tsx --test --test-concurrency=1 src/migrations/__tests__/p6-l1b-migration-016.test.ts; pnpm exec tsc --noEmit",
     "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": { "passed": 56, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
-    "requirementIds": ["LITE-07-104"],
+    "result": {
+      "passed": 56,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
     "limitation": "Focused correction evidence for stale015-prefix test helper only; full Server suite and exact-head CI remain gates."
   },
   {
@@ -335,8 +374,13 @@
     "kind": "github-actions",
     "command": "gh run view 34687670603 --json status,conclusion,headSha",
     "url": "https://github.com/Zbyy0311/agentos/actions/runs/34687670603",
-    "result": { "failed": 1, "conclusion": "failure" },
-    "requirementIds": ["LITE-07-104"],
+    "result": {
+      "failed": 1,
+      "conclusion": "failure"
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
     "limitation": "First PR145 CI preserved. It used the stale016 replay helper before 419b7a13; not a green claim and no automatic rerun."
   },
   {
@@ -346,8 +390,18 @@
     "cwd": "apps/server",
     "command": "node --import tsx --test --test-concurrency=1 src/routes/runtimeApprovals.test.ts src/services/run-engine/RunEngineProviderDispatcher.test.ts src/store/RuntimeApprovalRepository.test.ts src/migrations/__tests__/lite-migration-028.test.ts; pnpm exec tsc --noEmit",
     "environment": "Windows Node24.18.0 pnpm11.11.0; rebased on merged main 48bb4321",
-    "result": { "passed": 38, "failed": 0, "skipped": 1, "typecheckExitCode": 0 },
-    "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "result": {
+      "passed": 38,
+      "failed": 0,
+      "skipped": 1,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-103",
+      "LITE-08-005",
+      "LITE-08-006",
+      "LITE-08-007"
+    ],
     "limitation": "Durable pre-spawn gate, original-Run continuation/restart scan, replay, expiry, drift and rollback evidence. One real Kimi invocation remains environment-skipped; no live Provider/browser approval acceptance."
   },
   {
@@ -356,8 +410,15 @@
     "kind": "source-audit",
     "command": "Read routes/approvals.ts, routes/approvalDecisions.ts, LifecycleTransactionService, TaskRunRecoveryService, RunEngineProviderDispatcher and StageExecutionCoordinator; documented in S3-production-gap.md",
     "cwd": "agentos",
-    "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
-    "result": { "findings": 5 },
+    "requirementIds": [
+      "LITE-07-103",
+      "LITE-08-005",
+      "LITE-08-006",
+      "LITE-08-007"
+    ],
+    "result": {
+      "findings": 5
+    },
     "environment": "Read-only source audit before implementation; no runtime evidence",
     "limitation": "Confirmed in-memory approvals, independent unproven decision route, missing pre-spawn persistence, original-Run continuation and transaction composition. Not PASS evidence."
   },
@@ -368,8 +429,17 @@
     "cwd": "apps/server",
     "command": "pnpm --filter @agentos/server test",
     "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": { "passed": 2748, "failed": 6, "skipped": 3, "exitCode": 1 },
-    "requirementIds": ["LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "result": {
+      "passed": 2748,
+      "failed": 6,
+      "skipped": 3,
+      "exitCode": 1
+    },
+    "requirementIds": [
+      "LITE-08-005",
+      "LITE-08-006",
+      "LITE-08-007"
+    ],
     "limitation": "First full S3 run preserved. Two failures were this slice's test fixtures (027 boundary comparison and route listener port); four separate ENOTEMPTY teardown failures. Not PASS evidence."
   },
   {
@@ -379,8 +449,18 @@
     "cwd": "apps/server",
     "command": "node --import tsx --test --test-concurrency=1 src/migrations/__tests__/mf2-migration-027.test.ts src/routes/runtimeApprovals.test.ts; pnpm exec tsc --noEmit",
     "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": { "passed": 8, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
-    "requirementIds": ["LITE-07-104", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "result": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-104",
+      "LITE-08-005",
+      "LITE-08-006",
+      "LITE-08-007"
+    ],
     "limitation": "Focused correction evidence after the first full S3 failure; corrected full Server suite and CI remain gates."
   },
   {
@@ -390,8 +470,18 @@
     "cwd": "apps/server",
     "command": "node --import tsx --test --test-name-pattern='LITE-08|LITE-07-103' src/services/run-engine/RunEngineProviderDispatcher.test.ts src/routes/runtimeApprovals.test.ts; pnpm exec tsc --noEmit",
     "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": { "passed": 13, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
-    "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "result": {
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-103",
+      "LITE-08-005",
+      "LITE-08-006",
+      "LITE-08-007"
+    ],
     "limitation": "Independent review P1/P2 fixes: spawn-right expiry revalidation, contradictory replay conflict, recovery-required resume exclusion, and environment-value drift hash. Not full-suite or live Provider evidence."
   },
   {
@@ -401,8 +491,18 @@
     "cwd": "apps/server",
     "command": "pnpm --filter @agentos/server test",
     "environment": "Windows Node24.18.0 pnpm11.11.0; source frozen during run",
-    "result": { "passed": 2753, "failed": 4, "skipped": 3, "exitCode": 1 },
-    "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "result": {
+      "passed": 2753,
+      "failed": 4,
+      "skipped": 3,
+      "exitCode": 1
+    },
+    "requirementIds": [
+      "LITE-07-103",
+      "LITE-08-005",
+      "LITE-08-006",
+      "LITE-08-007"
+    ],
     "limitation": "Final S3 full run preserved. All four failures are ENOTEMPTY teardown leftovers; no S3 assertion failure. The run remains non-green and is not used as PASS evidence; exact-head CI is required."
   },
   {
@@ -412,8 +512,15 @@
     "cwd": "apps/server",
     "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationTurnDriver.test.ts src/services/GroupTurnDriver.test.ts src/routes/conversationRuntime.test.ts; pnpm exec tsc --noEmit",
     "environment": "Windows Node24.18.0 pnpm11.11.0; S5 worktree on merged main 948b8008",
-    "result": { "passed": 22, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
-    "requirementIds": ["LITE-09-101"],
+    "result": {
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-101"
+    ],
     "limitation": "The frozen bounded window, pre-invocation snapshot persistence, Turn linkage and fail-closed path are proven, including over real HTTP through the runtime route. Direct-chat Memory selection is still the empty selector; Scope-budgeted selection remains open, so the requirement stays GAP."
   },
   {
@@ -422,8 +529,15 @@
     "kind": "source-audit",
     "command": "Read ConversationTurnDriver, GroupTurnDriver, BoundedGroupService, TurnContextSnapshotRepository, ConversationStreamService and the runtime route; documented in S5-execution-authorization.md",
     "cwd": "apps/server",
-    "requirementIds": ["LITE-09-010", "LITE-09-013", "LITE-09-101", "LITE-09-102"],
-    "result": { "findings": 4 },
+    "requirementIds": [
+      "LITE-09-010",
+      "LITE-09-013",
+      "LITE-09-101",
+      "LITE-09-102"
+    ],
+    "result": {
+      "findings": 4
+    },
     "environment": "Read-only source audit before S5 implementation",
     "limitation": "Confirmed the direct driver handed unbounded history to the Provider, recorded the per-Agent snapshot only after the reply, and had no Workspace admission gate at all. Not PASS evidence."
   },
@@ -434,8 +548,103 @@
     "cwd": "apps/server",
     "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationTurnDriver.test.ts src/services/GroupTurnDriver.test.ts src/routes/conversationRuntime.test.ts; pnpm exec tsc --noEmit",
     "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": { "passed": 25, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
-    "requirementIds": ["LITE-09-010", "LITE-09-013", "LITE-09-102"],
+    "result": {
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-010",
+      "LITE-09-013",
+      "LITE-09-102"
+    ],
     "limitation": "Chat refusal while another GRANTED MODIFYING subject holds the Workspace is proven at unit and real-HTTP level, with READ_ONLY holders not blocking. Two simultaneous chats are still not mutually serialized because chat has no admission subject row; that needs a separately authorized schema slice, so the rows stay GAP."
+  },
+  {
+    "id": "S6-REAL-SUMMARY",
+    "baseline": "00527516dd021fc9e304415a36daf8e73a5a85da",
+    "kind": "local-tests",
+    "command": "node --import tsx ../../scripts/verify-compaction-real-summary.mjs",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0; real Codex CLI (gpt-5.6-luna) under --sandbox read-only in an isolated scratch directory",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-105",
+      "LITE-09-104",
+      "LITE-09-105",
+      "LITE-09-106",
+      "LITE-09-107",
+      "LITE-09-108",
+      "LITE-09-109",
+      "LITE-09-110",
+      "LITE-13-101"
+    ],
+    "limitation": "Proves the real Provider summary path, the frozen identity, the read-only enforcement and convergence over the same source. It does not exercise a server restart, the over-budget failure branch, or a message edit.",
+    "details": {
+      "outcome": "published",
+      "model": "gpt-5.6-luna",
+      "adapter": "cli.codex@1.0.0",
+      "firstRunMs": 15124,
+      "repeatMs": 1,
+      "summaryChars": 209,
+      "sourceMessages": 4,
+      "tasks": 1
+    }
+  },
+  {
+    "id": "S6-TRIGGER-INTEGRATION",
+    "baseline": "00527516dd021fc9e304415a36daf8e73a5a85da",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/routes/conversationRuntime.compaction.test.ts src/routes/conversationCompactionInspector.test.ts",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0; real HTTP through createConversationRuntimeRoutes with AGENTOS_FORCE_MOCK for the Provider call only",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-105",
+      "LITE-09-104",
+      "LITE-09-105",
+      "LITE-09-106",
+      "LITE-09-107",
+      "LITE-09-108",
+      "LITE-09-109",
+      "LITE-09-110",
+      "LITE-13-101"
+    ],
+    "limitation": "The turn path is real (route, trigger, engine, store); the Provider output is the deterministic mock, so it proves wiring and application rather than Provider behaviour."
+  },
+  {
+    "id": "S6-LOCAL",
+    "baseline": "00527516dd021fc9e304415a36daf8e73a5a85da",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ProviderCompactionSummarizer.test.ts src/services/ConversationCompactionTrigger.test.ts src/services/ConversationCompactionService.test.ts src/services/CompactionContextApplication.test.ts src/store/CompactionRepository.test.ts src/routes/conversationCompactionInspector.test.ts src/routes/conversationRuntime.compaction.test.ts src/migrations/__tests__/lite-migration-029.test.ts; pnpm exec tsc --noEmit",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; S6 worktree on the S5 closeout branch",
+    "result": {
+      "passed": 31,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-105",
+      "LITE-09-104",
+      "LITE-09-105",
+      "LITE-09-106",
+      "LITE-09-107",
+      "LITE-09-108",
+      "LITE-09-109",
+      "LITE-09-110",
+      "LITE-13-101"
+    ],
+    "limitation": "Deterministic local evidence: engine, repository/migration, summarizer fail-closed branches, context application, Inspector read surface and the real-HTTP Turn integration. No server restart, no over-budget real run, no real message edit."
   }
 ]

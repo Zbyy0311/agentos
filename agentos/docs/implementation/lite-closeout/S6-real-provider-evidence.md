@@ -89,3 +89,45 @@ The read-only guarantee for a compaction run was prompt-level only until this
 slice: an allowlisted profile with no `--sandbox read-only` pair would have
 started a writable CLI. The summarizer now refuses such a profile, and the
 allowlist declares the sandbox pair explicitly.
+
++## Automatic trigger, adoption and Inspector (real HTTP turn path)
+
+`apps/server/src/routes/conversationRuntime.compaction.test.ts` drives the real
+runtime router (`createConversationRuntimeRoutes`) with one direct Codex
+Conversation: ten long Messages seeded through the real message endpoint, then
+one real `POST .../messages/stream` turn. The Provider call itself is the
+deterministic mock, so the test proves wiring and application, not Provider
+behaviour; the real Provider behaviour is the run above.
+
+Result: 1 test, 1 passed. Asserted:
+
+| Assertion | Requirement |
+|---|---|
+| exactly one compaction task exists and it is `published` with a durable summary | LITE-07-105 |
+| the task carries its review Candidate | LITE-07-105 |
+| only a bounded old prefix is compressed (`0 < sourceMessageCount < seeded`) | LITE-09-105 |
+| the adopted summary id in the Turn's frozen snapshot equals the published task | LITE-09-105, LITE-13-101 |
+| the covered Messages are absent from the frozen history while the newest seeded Message stays in the tail | LITE-09-105 |
+| no original Message was deleted | LITE-09-105 |
+| the Inspector names the adopting `turnId` and `snapshotId`, and that snapshot is the Turn's own `context_snapshot_id` | LITE-13-101 |
+| the Inspector explains the policy (`lite-v1`, 0.7 / 0.5 / 8) and the budget source (`lite-v1-fallback`) | LITE-09-104, LITE-13-101 |
+| a second Turn converges: exactly one task after the repeat | LITE-09-107 |
+
+### Defect found by this test
+
+The trigger originally evaluated the threshold over the RAW transcript. Because
+the raw history keeps growing, every following Turn produced a new bounded
+prefix, a new source hash and therefore a new compaction task, each chaining the
+previous summary. The trigger now evaluates the EFFECTIVE context: Messages an
+already-published summary covers are excluded, only the uncompressed tail is
+considered, and the previous summary is chained into the next one. If the
+published summary's end anchor can no longer be located, the previous summary is
+not reused as a prefix and the attempt recomputes from the full transcript
+(LITE-09-109) instead of compressing a range whose boundary cannot be proven.
+
+### Inspector adoption surface
+
+`GET /conversations/:conversationId/compactions` gained a read-only `adoptions`
+list derived from the durable `cr_turn_context_snapshots` rows: each entry names
+`summaryId`, the adopting `turnId` and the `snapshotId`. A published summary that
+no Turn adopted is reported as unadopted (`conversationCompactionInspector.test.ts`).
