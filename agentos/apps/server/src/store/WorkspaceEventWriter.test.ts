@@ -895,3 +895,65 @@ test('MF5W-A16: no secret and no Entry content is stored in any Workspace Event 
     fx.close();
   }
 });
+test('MF5W-E1/E3: the entry_save origin is proven against the saved Entry and refuses the rest', () => {
+  const fx = fixture();
+  try {
+    seedWorkspaceEntries(fx);
+    const origin = { kind: 'memory.entry_save', entryId: MEM_A, entryVersion: 1 } as const;
+    const input = (overrides: Record<string, unknown> = {}) => ({
+      type: 'memory.entry_created',
+      workspaceId: WS,
+      timestamp: NOW,
+      origin,
+      context: deriveWorkspaceEventContext(origin),
+      payload: { memoryEntryId: MEM_A, version: 1, scope: 'workspace', category: 'decision', authority: 'system-verified' },
+      ...overrides,
+    });
+
+    const event = inTransaction(fx.tx, () => fx.writer.appendWithinTransaction(input() as never));
+    assert.equal(event.type, 'memory.entry_created');
+    assert.equal(event.correlationId, 'memory-entry:' + MEM_A + ':v1');
+    assert.equal(event.causationId, MEM_A);
+    assert.equal(event.sequence, 1);
+
+    // A foreign Workspace cannot borrow this Entry as causation.
+    assertRefused(fx, input({ workspaceId: OTHER_WS }), 'WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+    // An Entry that does not exist proves nothing.
+    assertRefused(fx, input({
+      origin: { kind: 'memory.entry_save', entryId: 'mem_' + 'z'.repeat(26), entryVersion: 1 },
+      context: deriveWorkspaceEventContext({ kind: 'memory.entry_save', entryId: 'mem_' + 'z'.repeat(26), entryVersion: 1 }),
+    }), 'WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+    // A stale version claim is unproven.
+    assertRefused(fx, input({
+      origin: { kind: 'memory.entry_save', entryId: MEM_A, entryVersion: 2 },
+      context: deriveWorkspaceEventContext({ kind: 'memory.entry_save', entryId: MEM_A, entryVersion: 2 }),
+    }), 'WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+    assert.equal(countEvents(fx), 1);
+  } finally {
+    fx.close();
+  }
+});
+
+test('MF5W-E5: a rolled-back save consumes no sequence and leaves no Event', () => {
+  const fx = fixture();
+  try {
+    seedWorkspaceEntries(fx);
+    const origin = { kind: 'memory.entry_save', entryId: MEM_A, entryVersion: 1 } as const;
+    const before = nextSequence(fx);
+    assert.throws(
+      () => inTransaction(fx.tx, () => {
+        fx.writer.appendWithinTransaction({
+          type: 'memory.entry_created', workspaceId: WS, timestamp: NOW,
+          origin, context: deriveWorkspaceEventContext(origin),
+          payload: { memoryEntryId: MEM_A, version: 1, scope: 'workspace', category: 'decision', authority: 'system-verified' },
+        });
+        throw new Error('injected rollback after save');
+      }),
+      /injected rollback after save/u,
+    );
+    assert.equal(countEvents(fx), 0);
+    assert.equal(nextSequence(fx), before);
+  } finally {
+    fx.close();
+  }
+});

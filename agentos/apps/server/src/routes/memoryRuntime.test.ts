@@ -526,3 +526,51 @@ test('MF-5 candidate review: strict edits promote an Entry and retrieval sees on
     assert.equal(replay.status, 409);
   });
 });
+test('MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const saved = await postJson(`${baseUrl}/memory/entries`, {
+      title: '用户偏好', content: 'The user prefers compact answers.', scope: 'workspace', category: 'preference',
+    });
+    assert.equal(saved.status, 201);
+    const savedBody = saved.json as { entry: { id: string; status: string; authority: string; scope: string }; converged: boolean };
+    assert.equal(savedBody.converged, false);
+    assert.equal(savedBody.entry.status, 'active');
+    assert.equal(savedBody.entry.authority, 'user-explicit');
+    assert.equal(savedBody.entry.scope, 'workspace');
+
+    const db = store.getDatabase();
+    const wsEvents = db.prepare('SELECT type, sequence, correlation_id, causation_id, payload_json FROM workspace_events WHERE workspace_id = ? ORDER BY sequence')
+      .all(WS) as Array<{ type: string; sequence: number; correlation_id: string; causation_id: string; payload_json: string }>;
+    assert.equal(wsEvents.length, 1);
+    assert.equal(wsEvents[0]!.type, 'memory.entry_created');
+    assert.equal(wsEvents[0]!.correlation_id, 'memory-entry:' + savedBody.entry.id + ':v1');
+    assert.equal(wsEvents[0]!.causation_id, savedBody.entry.id);
+    const payload = JSON.parse(wsEvents[0]!.payload_json) as Record<string, unknown>;
+    assert.equal(payload.memoryEntryId, savedBody.entry.id);
+    assert.equal(payload.version, 1);
+    assert.equal(payload.authority, 'user-explicit');
+    // No Run-scoped fact was written.
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM runtime_events').get() as { n: number | bigint }).n), 0);
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM outbox_messages').get() as { n: number | bigint }).n), 0);
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM operations').get() as { n: number | bigint }).n), 0);
+
+    // The saved Entry is retrievable through the MF-3 explanation path.
+    const retrieved = await postJson(`${baseUrl}/memory/retrieve`, { query: 'compact' });
+    assert.equal(retrieved.status, 200);
+    const retrievedBody = retrieved.json as { results: Array<{ entry: { id: string; authority: string } }> };
+    assert.ok(retrievedBody.results.some(r => r.entry.id === savedBody.entry.id && r.entry.authority === 'user-explicit'));
+
+    // A duplicate save converges: no second Entry, no second Event, no sequence bump.
+    const dup = await postJson(`${baseUrl}/memory/entries`, {
+      title: '用户偏好（重复）', content: 'The user prefers compact answers.', scope: 'workspace', category: 'preference',
+    });
+    assert.equal(dup.status, 200);
+    assert.equal((dup.json as { converged: boolean }).converged, true);
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM workspace_events WHERE workspace_id = ?').get(WS) as { n: number | bigint }).n), 1);
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?').get(WS) as { n: number | bigint }).n), 1);
+
+    // The legacy memories surface writes no Workspace Event.
+    assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM workspace_events').get() as { n: number | bigint }).n), 1);
+  });
+});
