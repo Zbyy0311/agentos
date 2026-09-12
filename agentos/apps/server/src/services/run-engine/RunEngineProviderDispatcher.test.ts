@@ -76,15 +76,28 @@ const REAL_GATE_ADAPTER_VERSIONS: Record<'kimicode' | 'codex' | 'opencode', stri
   opencode: '1.0.0',
 };
 
+const DEFAULT_STAGE_PROMPT = 'Execute the requested task.';
+
+/**
+ * Real provider gates must be deterministic. A vague instruction made the
+ * OpenCode run wander the filesystem, hit an auto-rejected external-directory
+ * permission, and exit 0 without ever emitting a final assistant message, so
+ * the canonical chain correctly reported PROVIDER_OUTPUT_INVALID. The gate asks
+ * for an exact reply so it measures the AgentOS chain rather than how a
+ * particular model improvises around an underspecified task.
+ */
+const REAL_GATE_PROMPT = 'Reply with exactly: AGENTOS_PROVIDER_GATE_OK';
+
 /**
  * The OpenCode adapter only truthfully advertises what the repository has
- * verified about that CLI, so a real OpenCode gate has to use the conservative
- * configuration it admits: parsed-text output and no unverified capability.
+ * verified about that CLI, so a real OpenCode gate has to use the configuration
+ * it admits: parsed-text output, model selection, and cancellation through the
+ * owned Process Runtime stop port (the same mechanism Codex and Kimi use).
  */
 const OPENCODE_ADMITTED_CAPABILITIES = {
   sessionResume: false, structuredEvents: false, nativeApprovals: false, subagents: false,
   toolEvents: false, fileEvents: false, usageEvents: false, reasoningStream: false,
-  interactiveInput: false, pause: false, cancellation: false, modelSelection: true,
+  interactiveInput: false, pause: false, cancellation: true, modelSelection: true,
   workspaceAwareness: true, nativeSandbox: false, outputContracts: false,
 } as const;
 
@@ -131,14 +144,14 @@ function providerSnapshot(cancelGracePeriodMs = 5000): ProviderConfigurationSnap
   };
 }
 
-function agentSnapshot(): AgentSnapshotV1 {
-  return { agentId: 'agent_m4', name: 'Agent', role: 'codex', roleTitle: 'Executor', systemPrompt: 'Execute the requested task.', permissions: ['read','write'], providerConfigId: 'pcfg_m4', enabled: true, version: 1 };
+function agentSnapshot(systemPrompt = DEFAULT_STAGE_PROMPT): AgentSnapshotV1 {
+  return { agentId: 'agent_m4', name: 'Agent', role: 'codex', roleTitle: 'Executor', systemPrompt, permissions: ['read','write'], providerConfigId: 'pcfg_m4', enabled: true, version: 1 };
 }
 
-function snapshotPayload(cancelGracePeriodMs = 5000): RunSnapshotPayloadV2 {
+function snapshotPayload(cancelGracePeriodMs = 5000, systemPrompt = DEFAULT_STAGE_PROMPT): RunSnapshotPayloadV2 {
   const stages = STAGE_KEYS.map((key, index) => ({
     workflowStageKey: key, name: key, sequence: index + 1,
-    agent: agentSnapshot(), provider: providerSnapshot(cancelGracePeriodMs),
+    agent: agentSnapshot(systemPrompt), provider: providerSnapshot(cancelGracePeriodMs),
     dependsOn: index === 0 ? [] : [STAGE_KEYS[index - 1]],
   }));
   return {
@@ -162,8 +175,8 @@ function seed(db: Db): void {
   db.prepare(`INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, created_at, updated_at, version) VALUES (?, 'run.start', 'queued', ?, 'run', ?, ?, ?, ?, ?, 1)`).run(OP, WS, RUN, RUN, OP, NOW, NOW);
 }
 
-function seedGraph(db: Db, cancelGracePeriodMs = 5000): void {
-  const payload = snapshotPayload(cancelGracePeriodMs);
+function seedGraph(db: Db, cancelGracePeriodMs = 5000, systemPrompt = DEFAULT_STAGE_PROMPT): void {
+  const payload = snapshotPayload(cancelGracePeriodMs, systemPrompt);
   const snapshot = new RunSnapshotRepository(db).insert({
     workspaceId: WS,
     runId: RUN,
@@ -398,18 +411,27 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
 }
 
 function close(fx: ReturnType<typeof fixture>): void { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
-function realFailureDetails(root: string, run: { failureCode?: string; failureMessage?: string }, failedStages: unknown): string {
+/** Captured provider output from the durable artifact sink, for real gates. */
+function readSinkOutput(root: string, perFileLimit = 4000): string {
   const outputs: string[] = [];
   const walk = (directory: string): void => {
     for (const name of readdirSync(directory)) {
       const path = join(directory, name);
       if (statSync(path).isDirectory()) walk(path);
-      else if (statSync(path).size <= 64 * 1024) outputs.push(name + ': ' + readFileSync(path, 'utf8').slice(0, 2000));
+      else if (statSync(path).size <= 64 * 1024) outputs.push(name + ': ' + readFileSync(path, 'utf8').slice(0, perFileLimit));
     }
   };
-  const sink = join(root, 'sink');
-  try { walk(sink); } catch { /* no output sink */ }
-  return JSON.stringify({ failureCode: run.failureCode, failureMessage: run.failureMessage, failedStages, stderr: outputs });
+  try { walk(join(root, 'sink')); } catch { /* no output sink */ }
+  return outputs.join('\n');
+}
+
+function realFailureDetails(root: string, run: { failureCode?: string; failureMessage?: string }, failedStages: unknown): string {
+  return JSON.stringify({
+    failureCode: run.failureCode,
+    failureMessage: run.failureMessage,
+    failedStages,
+    stderr: readSinkOutput(root, 2000),
+  });
 }
 
 function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi') {
@@ -426,7 +448,7 @@ function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi') {
   REAL_EXECUTABLE = executable;
   REAL_PROVIDER_TYPE = provider === 'codex' ? 'codex' : provider === 'opencode' ? 'opencode' : 'kimicode';
   const db = migratedDb();
-  seedGraph(db);
+  seedGraph(db, 5000, REAL_GATE_PROMPT);
   seedAdmission(db);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-real-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
@@ -1064,7 +1086,7 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.ok(eventCount > 0);
     } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
   });
-  it('LITE-04-101: current-machine OpenCode gate fails closed and names what is unestablished (env-gated)', { skip: process.env.M4_P4_REAL_OPENCODE_GATE !== '1' }, async () => {
+  it('LITE-04-101: real OpenCode completes the canonical production chain (env-gated)', { skip: process.env.M4_P4_REAL_OPENCODE_GATE !== '1' }, async () => {
     // The canonical OpenCode adapter is deliberately fail-closed: it refuses the
     // RunEngine chain until three facts are established against the real CLI.
     // This gate records that refusal as an executable contract instead of
@@ -1080,14 +1102,30 @@ describe('RunEngineProviderDispatcher E2E', () => {
       const result = await fx.dispatcher.drive(WS, RUN);
       assert.equal(result.outcome, 'claimed-and-progressed');
       const run = fx.runRepo.findById(WS, RUN)!;
-      assert.equal(run.status, 'failed', 'the canonical OpenCode chain must fail closed, never half-run');
-      assert.equal(run.failureCode, 'PROVIDER_VERSION_UNSUPPORTED');
-      const failed = fx.runStageRepo.listByRun(WS, RUN).filter(stage => stage.status === 'failed');
-      assert.ok(failed.length >= 1);
-      assert.equal(failed[0]!.failureCode, 'PROVIDER_VERSION_UNSUPPORTED');
-      // No provider process may be spawned for a refused provider.
-      assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes WHERE run_id = ?').get(RUN) as { c: number }).c, 0);
-    } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+      assert.equal(run.status, 'completed', `OpenCode failed: ${run.failureCode}`);
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      const processes = fx.db.prepare('SELECT * FROM runtime_processes WHERE run_id = ?').all(RUN);
+      assert.equal(processes.length, STAGE_KEYS.length);
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.ok(eventCount > 0);
+      assert.equal(outboxCount, eventCount);
+      // The real provider's assistant text must reach AgentOS's durable output
+      // store; an empty sink would mean the chain completed on nothing.
+      const sinkOutput = readSinkOutput(fx.root);
+      assert.ok(
+        sinkOutput.includes('AGENTOS_PROVIDER_GATE_OK'),
+        `real OpenCode assistant output was not captured: ${sinkOutput.slice(0, 1500)}`,
+      );
+    } finally {
+      fx.restore();
+      fx.db.close();
+      if (process.env.M4_P4_KEEP_ROOT === '1') {
+        process.stderr.write(`LITE-04-101 kept root: ${fx.root}\n`);
+      } else {
+        rmSync(fx.root, { recursive: true, force: true });
+      }
+    }
   });
   it('legacy-originated runs flow through the same authority to completion (legacy projection parity)', async () => {
     ORIGIN = 'legacy_pipeline';

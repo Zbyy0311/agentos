@@ -76,7 +76,7 @@ function probeFor(requests: string[][]): ProcessProbePort {
     probe: async request => {
       requests.push([...request.args]);
       if (request.args[0] === '--version') {
-        return { stdout: 'OpenCode 1.2.3', stderr: '', exitCode: 0, signal: null };
+        return { stdout: '1.17.11', stderr: '', exitCode: 0, signal: null };
       }
       return {
         stdout: 'Usage: opencode run [message..] --format default --dir <directory> --model <provider/model> --pure',
@@ -102,7 +102,7 @@ describe('OpenCodeProviderAdapter', () => {
       structuredEvents: false,
       toolEvents: false,
       usageEvents: false,
-      cancellation: false,
+      cancellation: true,
       modelSelection: true,
       workspaceAwareness: true,
     });
@@ -126,7 +126,7 @@ describe('OpenCodeProviderAdapter', () => {
     }
   });
 
-  it('returns stable unsupported evidence and never probes authentication or claims a real invocation', async () => {
+  it('LITE-04-101: admits the qualified version using run help and constructs a bounded launch', async () => {
     const requests: string[][] = [];
     const adapter = new OpenCodeProviderAdapter({ probe: probeFor(requests) });
     const result = await adapter.validate({
@@ -138,19 +138,18 @@ describe('OpenCodeProviderAdapter', () => {
     });
 
     expect(result).toMatchObject({
-      valid: false,
+      valid: true,
       executableResolved: 'C:/tools/opencode.exe',
-      cliVersion: '1.2.3',
+      cliVersion: '1.17.11',
       authentication: 'unknown',
       checkedAt: '2026-09-12T00:00:00.000Z',
     });
-    expect(result.errors.map(error => error.code)).toEqual(expect.arrayContaining([
-      'PROVIDER_VERSION_UNSUPPORTED',
-      'PROVIDER_CAPABILITY_UNAVAILABLE',
-    ]));
-    expect(result.errors.some(error => error.message.includes('cancellation protocol is not verified'))).toBe(true);
+    expect(result.errors).toEqual([]);
     expect(result.warnings).toEqual(expect.arrayContaining([{ code: 'PROVIDER_AUTH_UNKNOWN', message: expect.any(String) }]));
-    expect(requests).toEqual([['--version'], ['--help']]);
+    expect(requests).toEqual([['--version'], ['run', '--help']]);
+    const plan = await adapter.buildLaunchPlan({ configuration: config(), workspaceRoot: 'C:/workspace', prompt: '--share', environment: {} });
+    expect(plan.args).toEqual(['--pure', 'run', '--format', 'default', '--dir', 'C:/workspace', '--model', 'provider/model', '--', '--share']);
+    expect(plan.shell).toBe(false);
     expect(JSON.stringify(result)).not.toContain('must-not-appear');
     expect(JSON.stringify(result)).not.toContain('PROVIDER_VALIDATION_FAILED');
   });
@@ -190,7 +189,7 @@ describe('OpenCodeProviderAdapter', () => {
     ]));
   });
 
-  it('finalizes plain output and rejects cancellation without fabricating provider support', async () => {
+  it('LITE-04-101: cancellation requires an accepted stop ticket and delegates owned process stopping', async () => {
     const adapter = new OpenCodeProviderAdapter();
     const parsed = adapter.parseChunk('done', adapter.createParseContext());
     await expect(adapter.finalize({ exitCode: 0, signal: null, parsedEvents: parsed.events })).resolves.toMatchObject({
@@ -209,8 +208,11 @@ describe('OpenCodeProviderAdapter', () => {
       stopTicketAccepted: true,
       processPort,
     });
-    expect(cancelled).toMatchObject({ accepted: false, error: { code: 'PROVIDER_CANCEL_FAILED' } });
-    expect(calls).toBe(0);
+    expect(cancelled).toEqual({ accepted: true });
+    expect(calls).toBe(1);
+    const rejected = await adapter.cancel({ sessionId: 'session-1', processId: 'process-1', reason: 'user', stopTicketAccepted: false, processPort });
+    expect(rejected).toMatchObject({ accepted: false, error: { code: 'PROVIDER_CANCEL_FAILED' } });
+    expect(calls).toBe(1);
   });
 
   it('keeps provider environment values out of the launch environment and adapter free of native spawn', () => {

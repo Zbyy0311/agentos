@@ -73,9 +73,84 @@ Exact conditions to clear for LITE-04-101 on this provider:
 2. verified non-interactive safe launch flags,
 3. a verified cancellation protocol.
 
-`M4_P4_REAL_OPENCODE_GATE=1` now runs that refusal as a contract: the Run reaches
-`failed`, the failure code is `PROVIDER_VERSION_UNSUPPORTED`, and zero provider
-processes are spawned. A refused provider must never half-run.
+`M4_P4_REAL_OPENCODE_GATE=1` used to run that refusal as a contract: the Run
+reached `failed`, the failure code was `PROVIDER_VERSION_UNSUPPORTED`, and zero
+provider processes were spawned. A refused provider must never half-run. That
+contract is superseded by section 3.1: the three conditions are now cleared
+against the real CLI instead of removed.
+
+## 3.1 Resolution — the canonical OpenCode chain completes (LITE-04-101)
+
+| Condition from §3 | How it was cleared |
+|---|---|
+| an adapter-supported CLI version range | `OPENCODE_SUPPORTED_CLI_VERSION = '1.17.11'` — the exact build the gate exercised. `validate` still refuses every other version, so a silent CLI upgrade cannot change launch semantics. |
+| verified non-interactive safe launch flags | the probe now runs `opencode run --help`. The top-level `--help` never lists `run` subcommand flags (`--pure`, `--dir`, `--model`, `--format`), so the old probe could not pass whatever the CLI answered. The admitted plan is `--pure run --format default --dir <cwd> [--model <m>] -- <prompt>`. |
+| a verified cancellation protocol | cancellation is the AgentOS-owned Process Runtime stop path (atomic suspended spawn, Windows Job Object, `gracefulStop` → `terminateTree` → `verifySurvivors`), which is the same mechanism Codex and Kimi rely on. The adapter now requires an accepted stop ticket and delegates the graceful request to that port. |
+
+Two harness defects had to be fixed as well, because together they made the
+refusal unfalsifiable:
+
+- `validate()` pushed `PROVIDER_VERSION_UNSUPPORTED` and
+  `PROVIDER_CAPABILITY_UNAVAILABLE` **unconditionally**, after a probe that had
+  succeeded, so `buildLaunchPlan` was unreachable for every configuration. The
+  version error is now conditional on the observed version.
+- `@agentos/agent-core` resolves through `dist/`. Without
+  `pnpm --filter @agentos/agent-core build` the gate keeps loading the previous
+  adapter, which showed up as a one-second `PROVIDER_VERSION_UNSUPPORTED`
+  failure that no source edit could clear.
+
+### Staged real verification
+
+Launch-only, through the adapter's own launch plan and the real CLI, with
+cancellation deliberately untouched (two runs, `--pure run --format default
+--dir <tmp> --model deepseek/deepseek-v4-flash -- <prompt>`):
+
+```
+prompt 'Reply with exactly: READY'      -> exit 0, completed, stdout 'READY', 4405 ms
+prompt '-x Reply with exactly: READY'   -> exit 0, completed, stdout 'READY', 4344 ms
+```
+
+The second run is the evidence for the `--` separator: without it a prompt that
+starts with `-` is parsed as a flag instead of the message positional.
+
+Cancellation-only, limited to the provider process tree the check spawned (no
+other process was signalled):
+
+```
+spawn      owned spawn, pid 91908, windows Job Object, native birth
+           identity win32:filetime:134337071867408619
+stop ticket not accepted -> accepted false, PROVIDER_CANCEL_FAILED
+stop ticket accepted     -> accepted true, graceful stop delivered
+outcome    exit observed inside the grace window, no terminateTree escalation
+survivors  classification 'complete', knownPids []
+pid        gone (process.kill(pid, 0) -> ESRCH)
+```
+
+Canonical gate:
+
+```
+command: M4_P4_REAL_OPENCODE_GATE=1
+         AGENTOS_OPENCODE_CLI=E:\software\opencode\node_modules\opencode-ai\bin\opencode.exe
+         AGENTOS_OPENCODE_MODEL=deepseek/deepseek-v4-flash
+         node --import tsx --test --test-name-pattern='real OpenCode completes'
+         src/services/run-engine/RunEngineProviderDispatcher.test.ts
+result:  PASS (22301 ms)
+         run.status completed, all 4 stages completed, 4 runtime_processes,
+         runtime_events > 0, outbox_messages == runtime_events,
+         durable sink contains the provider's assistant text AGENTOS_PROVIDER_GATE_OK
+```
+
+### Finding: a vague stage prompt made the gate measure the model, not the chain
+
+With the original fixture prompt `Execute the requested task.` the first real
+OpenCode run wandered the temp directory, hit an auto-rejected
+`external_directory` permission, and exited 0 **without ever emitting a final
+assistant message**; stdout was 0 bytes while stderr held 60 KB of transcript.
+The adapter correctly reported `PROVIDER_OUTPUT_INVALID`, so the failure was in
+the gate's input, not in the chain. Real gates now seed a deterministic prompt
+and assert that the provider's text reached the durable output sink, so the gate
+measures AgentOS rather than how one model improvises around an underspecified
+task.
 
 ## 4. Defect found and fixed: the OpenCode identity check read a field production never sets
 
@@ -112,4 +187,3 @@ surface. The projection now reports the durable admission row: `mutationClass`,
 explicitly `unknown` — a different statement from `unavailable`.
 
 Covered by `apps/server/src/routes/runtimeInspector.test.ts` (4 pass).
-
