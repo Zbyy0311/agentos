@@ -84,9 +84,11 @@ function providerSnapshot(cancelGracePeriodMs = 5000): ProviderConfigurationSnap
   return {
     providerConfigId: 'pcfg_m4', name: 'Kimi Gate', providerType: REAL_PROVIDER_TYPE,
     adapterId: REAL_PROVIDER_TYPE === 'codex' ? 'builtin.codex' : 'builtin.kimicode',
-    runtimeMode: 'cli', executable: REAL_EXECUTABLE, argsTemplate: [], model: null, environmentProfileId: null, secretProfileId: null,
+    runtimeMode: 'cli', executable: REAL_EXECUTABLE, argsTemplate: [],
+    model: REAL_PROVIDER_TYPE === 'codex' ? (process.env.AGENTOS_CODEX_MODEL ?? null) : null,
+    environmentProfileId: null, secretProfileId: null,
     workingDirectoryMode: 'workspace', workspaceRelativeWorkingDirectory: null,
-    capabilities: { sessionResume:false, structuredEvents:true, nativeApprovals:false, subagents:false, toolEvents:true, fileEvents:false, usageEvents:true, reasoningStream:false, interactiveInput:false, pause:false, cancellation:true, modelSelection:REAL_PROVIDER_TYPE !== 'codex', workspaceAwareness:true, nativeSandbox:false, outputContracts:false },
+    capabilities: { sessionResume:false, structuredEvents:true, nativeApprovals:false, subagents:false, toolEvents:true, fileEvents:false, usageEvents:true, reasoningStream:false, interactiveInput:false, pause:false, cancellation:true, modelSelection:true, workspaceAwareness:true, nativeSandbox:false, outputContracts:false },
     timeoutPolicy: { discoveryTimeoutMs:10000, validationTimeoutMs:30000, startupTimeoutMs:60000, idleTimeoutMs:null, totalTimeoutMs:null, cancelGracePeriodMs, approvalTimeoutMs:null },
     approvalMode: 'disabled', outputMode: 'structured', enabled: true, version: 1,
   };

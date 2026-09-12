@@ -61,7 +61,7 @@ const CODEX_CAPABILITIES: ProviderCapabilities = {
   interactiveInput: false,
   pause: false,
   cancellation: true,
-  modelSelection: false,
+  modelSelection: true,
   workspaceAwareness: true,
   nativeSandbox: false,
   outputContracts: false,
@@ -360,7 +360,7 @@ export class CodexProviderAdapter implements RuntimeProviderAdapter {
     const environment = input.environment ?? process.env;
     const executable = configuration.executable ?? environment.AGENTOS_CODEX_CLI ?? CODEX_DEFAULT_EXECUTABLE;
     if (!executable.trim()) throw new Error('PROVIDER_CONFIG_INVALID');
-    const args = buildCodexArgs(configuration.argsTemplate ?? [], input.prompt);
+    const args = buildCodexArgs(configuration.argsTemplate ?? [], input.prompt, configuration.model);
     const cwd = resolveWorkingDirectory(configuration, input.workspaceRoot, input.worktreePath);
     const safeEnvironment: Record<string, string> = safeEnvironmentForCodex(environment);
     const redactedEnvironmentKeys = Object.entries(environment)
@@ -508,9 +508,10 @@ function capabilitiesForStructuredOutput(structuredOutput: boolean): ProviderCap
   };
 }
 
-function buildCodexArgs(template: readonly string[], prompt: string): string[] {
+function buildCodexArgs(template: readonly string[], prompt: string, model?: string): string[] {
   const args = [...template];
-  if (args.some(argument => argument.includes('\u0000')) || prompt.includes('\u0000')) {
+  if (args.some(argument => argument.includes('\u0000')) || prompt.includes('\u0000')
+    || (model !== undefined && (model.includes('\u0000') || model.length > 128 || !/^[A-Za-z0-9._\/\-\[\]]+$/u.test(model)))) {
     throw new Error('PROVIDER_CONFIG_INVALID');
   }
   let execIndex = args.indexOf('exec');
@@ -520,6 +521,9 @@ function buildCodexArgs(template: readonly string[], prompt: string): string[] {
   }
   if (!args.includes('--json')) args.splice(execIndex + 1, 0, '--json');
   if (!args.includes('--skip-git-repo-check')) args.splice(args.indexOf('exec') + 1, 0, '--skip-git-repo-check');
+  if (model !== undefined && !args.includes('-m') && !args.includes('--model')) {
+    args.splice(args.indexOf('exec') + 1, 0, '--model', model);
+  }
   // Legacy Codex invocation marks prompt delivery as an argument; the
   // canonical coordinator therefore receives it as one final separated arg.
   args.push(prompt);

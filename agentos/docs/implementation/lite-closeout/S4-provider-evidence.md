@@ -38,6 +38,7 @@ Windows / Node 24.18.0 / pnpm 11.11.0.
 | Server focused regression (post-rebase) | 81 pass, 0 fail, 2 env-gated skips | Registry, provider routes, coordinator, dispatcher |
 | Real Kimi canonical gate (head 8cd7859a) | PASS, 197s | Full Run/Stage/Event/Outbox through the real CLI |
 | Real Codex canonical gate (head 8cd7859a) | PASS, 592s | Full canonical chain through the real codex.exe |
+| Real Codex canonical gate with explicit model (post-rebase head) | PASS, 327s | AGENTOS_CODEX_MODEL=gpt-5.6-luna |
 | OpenCode current-machine discovery | found=false, no candidate | External executable absent; unavailable evidence only |
 
 ### Final-head re-run is externally blocked
@@ -50,12 +51,18 @@ quota exhaustion, not a product regression:
 - Kimi gate: `PROVIDER_AUTH_REQUIRED` from the same Kimi-backed subscription
   path.
 
-Both real gates passed on the content-equivalent pre-rebase head; the rebase
-delta is the merged S3 approval-gate composition, which the focused suite
-covers. Because the final-head real invocation cannot run until the external
-quota resets, LITE-04-001/101 keep their GAP/RUNTIME-VERIFY states. OpenCode
-is not installed on this machine, so its canonical chain has unavailable
-evidence only; no Mock was substituted for a real call.
+Root cause: this machine's ~/.codex/config.toml sets model = "kimi/k3[1m]", so
+the local codex.exe routed requests through the local opencodex proxy
+(http://127.0.0.1:10100/v1/responses) into the Kimi subscription. That is a
+local CLI default, not an AgentOS adapter defect. The canonical adapter now
+forwards an explicit --model (an existing legacy capability) and rejects
+malformed model strings with PROVIDER_CONFIG_INVALID. With
+AGENTOS_CODEX_MODEL=gpt-5.6-luna the post-rebase canonical Codex gate passed
+(327s); the Kimi gate stays blocked by the same external weekly quota.
+OpenCode is not installed on this machine, so its canonical chain has
+unavailable evidence only; no Mock was substituted for a real call.
+LITE-04-001/101 keep GAP/RUNTIME-VERIFY until the Kimi-side quota instance and
+OpenCode can produce current evidence.
 
 ## First failures retained
 

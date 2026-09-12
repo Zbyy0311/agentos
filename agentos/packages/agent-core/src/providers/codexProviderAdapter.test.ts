@@ -171,6 +171,20 @@ describe('CodexProviderAdapter', () => {
       environment: {},
     });
     expect(barePlan.args).toEqual(['exec', '--skip-git-repo-check', '--json', 'Reply with ok']);
+
+    const modelPlan = await adapter.buildLaunchPlan({
+      configuration: config({ argsTemplate: [], model: 'gpt-5.6-luna' }),
+      workspaceRoot: 'C:/workspace/project',
+      prompt: 'Reply with ok',
+      environment: {},
+    });
+    expect(modelPlan.args).toEqual(['exec', '--model', 'gpt-5.6-luna', '--skip-git-repo-check', '--json', 'Reply with ok']);
+    await expect(adapter.buildLaunchPlan({
+      configuration: config({ argsTemplate: [], model: 'bad model; rm -rf' }),
+      workspaceRoot: 'C:/workspace/project',
+      prompt: 'Reply with ok',
+      environment: {},
+    })).rejects.toThrow('PROVIDER_CONFIG_INVALID');
   });
 
   it('reuses the legacy Codex JSON parser, requires assistant output, and finalizes stable failures', async () => {

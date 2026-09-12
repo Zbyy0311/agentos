@@ -436,5 +436,15 @@
     "result": { "findings": 5 },
     "environment": "Read-only source audit before S4 implementation; no runtime evidence",
     "limitation": "Confirmed the production registry registered only Kimi; Codex/OpenCode were legacy-only with no canonical adapter or real invocation evidence. Not PASS evidence."
+  },
+  {
+    "id": "S4-CODEX-LUNA-GATE",
+    "baseline": "c783e9280cd5d434479b482af40331acf8656907",
+    "kind": "runtime-verification",
+    "command": "M4_P4_REAL_CODEX_GATE=1 AGENTOS_CODEX_MODEL=gpt-5.6-luna AGENTOS_CODEX_CLI=... node --import tsx --test --test-name-pattern=Codex-gate src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "environment": "Windows Node24.18.0; real codex.exe 0.153.4 through the canonical dispatcher",
+    "result": { "failed": 0, "codexPassed": 1, "durationMs": 327381 },
+    "requirementIds": ["LITE-04-101"],
+    "limitation": "Real canonical Codex invocation passed with an explicit model. It does not prove the default local model path (kimi/k3[1m] via the local proxy) while that external quota is exhausted, and it is not OpenCode or Kimi evidence."
   }
 ]
