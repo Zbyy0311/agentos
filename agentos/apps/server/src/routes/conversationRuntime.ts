@@ -321,6 +321,46 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
   });
 
   // ---- Messages -----------------------------------------------------------
+  /**
+   * S6 / LITE-09-108: explicit retry for a Conversation whose automatic
+   * compaction could not complete. It runs exactly the same evaluation the
+   * Turn path runs, so it can never invent a different outcome, and it reports
+   * the durable task state instead of a bare success.
+   */
+  router.post('/conversations/:conversationId/compactions/retry', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const member = conversations().listMembers(workspace.id, conversation.id)
+      .find(candidate => candidate.subjectType === 'agent' && candidate.status === 'active');
+    if (member === undefined) { res.status(400).json({ error: 'no active Agent member' }); return; }
+    try {
+      const result = await compactionTrigger.ensureCompacted({
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        agentId: member.subjectId,
+      });
+      const task = result.taskId === undefined ? undefined : new CompactionRepository(store.getDatabase())
+        .findById(workspace.id, result.taskId);
+      // A blocked retry is not a server error: the reason is durable policy or
+      // execution state, and the caller needs it verbatim.
+      res.status(200).json({
+        outcome: result.outcome,
+        policyVersion: result.policyVersion,
+        ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }),
+        ...(task === undefined ? {} : { task: {
+          id: task.id, status: task.status, attempts: task.attempts,
+          failureCode: task.failureCode, failureMessage: task.failureMessage,
+          sourceMessageCount: task.sourceMessageCount, publishedAt: task.publishedAt,
+        } }),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
 
   router.get('/conversations/:conversationId/messages', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);

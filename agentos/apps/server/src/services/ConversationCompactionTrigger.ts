@@ -35,6 +35,18 @@ export interface CompactionAttemptObservation {
   readonly taskId?: string;
 }
 
+/**
+ * Result of one trigger evaluation. `outcome` is what the ENGINE decided;
+ * `blocked` names the reason no engine attempt was made at all, so an explicit
+ * retry can report a truthful reason instead of a bare failure.
+ */
+export interface CompactionTriggerResult {
+  readonly outcome: 'noop' | 'published' | 'retry-pending' | 'failed' | 'blocked';
+  readonly policyVersion: string;
+  readonly taskId?: string;
+  readonly blockedReason?: string;
+}
+
 export interface ConversationCompactionTriggerOptions {
   readonly store: SqliteStore;
   readonly engine: ConversationCompactionService;
@@ -57,13 +69,13 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
     readonly workspaceId: string;
     readonly conversationId: string;
     readonly agentId: string;
-  }): Promise<void> {
+  }): Promise<CompactionTriggerResult> {
     const policyVersion = this.options.policyVersion ?? DEFAULT_COMPACTION_POLICY_VERSION;
     try {
       const db = this.options.store.getDatabase();
       if (new CompactionPolicyRepository(db).findByVersion(policyVersion) === undefined) {
         this.options.onError?.('COMPACTION_POLICY_UNAVAILABLE', new Error(policyVersion));
-        return;
+        return { outcome: 'blocked', policyVersion, blockedReason: 'COMPACTION_POLICY_UNAVAILABLE' };
       }
       // LITE-09-107: an attempt that never came back (crash, restart, killed
       // process) leaves a durable `running` row with a lease. The persisted
@@ -73,7 +85,9 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
       const compactions = new CompactionRepository(db);
       const active = compactions.findActive(input.workspaceId, input.conversationId);
       if (active !== undefined && active.status === 'running') {
-        if (active.leaseExpiresAt === null || active.leaseExpiresAt > this.now()) return;
+        if (active.leaseExpiresAt === null || active.leaseExpiresAt > this.now()) {
+          return { outcome: 'blocked', policyVersion, taskId: active.id, blockedReason: 'COMPACTION_ATTEMPT_IN_FLIGHT' };
+        }
         try {
           const reclaimed = inTransaction(db, () => compactions.reclaimExpiredLeaseWithinTransaction({
             workspaceId: input.workspaceId, id: active.id, expectedVersion: active.version,
@@ -86,13 +100,13 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
           // A concurrent authority may have finished or reclaimed the same
           // attempt first; that is a converged outcome, not a new failure.
           this.options.onError?.('COMPACTION_LEASE_RECLAIM_FAILED', error);
-          return;
+          return { outcome: 'blocked', policyVersion, taskId: active.id, blockedReason: 'COMPACTION_LEASE_RECLAIM_FAILED' };
         }
       }
       const agent = this.options.getAgent(input.workspaceId, input.agentId);
       if (agent === undefined) {
         this.options.onError?.('COMPACTION_AGENT_UNAVAILABLE', new Error(input.agentId));
-        return;
+        return { outcome: 'blocked', policyVersion, blockedReason: 'COMPACTION_AGENT_UNAVAILABLE' };
       }
       // Fail closed when the Agent's CLI has no allowlisted summary profile or
       // no frozen model: an unavailable summary channel is an explicit failure
@@ -100,7 +114,7 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
       const provider = summarizationIdentityFor(agent);
       if (provider === undefined) {
         this.options.onError?.('COMPACTION_SUMMARIZER_UNAVAILABLE', new Error(agent.cliCommand));
-        return;
+        return { outcome: 'blocked', policyVersion, blockedReason: 'COMPACTION_SUMMARIZER_UNAVAILABLE' };
       }
       const messages: CompactionMessageView[] = this.options.store.conversationRepository()
         .listMessages(input.workspaceId, input.conversationId)
@@ -153,11 +167,17 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
         policyVersion,
         ...(result.task === undefined ? {} : { taskId: result.task.id }),
       });
+      return {
+        outcome: result.outcome,
+        policyVersion,
+        ...(result.task === undefined ? {} : { taskId: result.task.id }),
+      };
     } catch (error) {
       // The trigger is best effort by construction: a failed attempt must not
       // break the Turn. The engine already recorded the durable state, and the
       // driver's hard-budget check still gates the Provider call.
       this.options.onError?.('COMPACTION_ATTEMPT_FAILED', error);
+      return { outcome: 'failed', policyVersion, blockedReason: error instanceof Error ? error.message.slice(0, 200) : String(error) };
     }
   }
 }

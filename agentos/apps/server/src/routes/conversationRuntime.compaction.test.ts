@@ -151,6 +151,16 @@ test('S6: the automatic trigger compacts a long Conversation before the next Tur
       await second.text();
       const after = db.prepare('SELECT COUNT(*) AS n FROM conversation_compactions').get() as { n: number | bigint };
       assert.equal(Number(after.n), 1, 'a repeat does not create a second compaction task');
+
+      // LITE-09-108: the explicit retry reports durable state rather than a bare
+      // success, and is safe to call when nothing needs compacting.
+      const retry = await fetch(`${baseUrl}/conversations/${conversationId}/compactions/retry`, { method: 'POST' });
+      assert.equal(retry.status, 200);
+      const retryBody = await retry.json() as { outcome: string; policyVersion: string };
+      assert.equal(retryBody.outcome, 'noop', 'the effective tail is already inside the threshold');
+      assert.equal(retryBody.policyVersion, 'lite-v1');
+      const afterRetry = db.prepare('SELECT COUNT(*) AS n FROM conversation_compactions').get() as { n: number | bigint };
+      assert.equal(Number(afterRetry.n), 1, 'a retry must not fabricate a second task');
     });
   } finally {
     delete process.env.AGENTOS_FORCE_MOCK;
