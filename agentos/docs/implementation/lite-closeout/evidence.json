@@ -563,7 +563,7 @@
   },
   {
     "id": "S6-REAL-SUMMARY",
-    "baseline": "00527516dd021fc9e304415a36daf8e73a5a85da",
+    "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
     "kind": "local-tests",
     "command": "node --import tsx ../../scripts/verify-compaction-real-summary.mjs",
     "cwd": "apps/server",
@@ -579,10 +579,8 @@
       "LITE-09-105",
       "LITE-09-106",
       "LITE-09-107",
-      "LITE-09-108",
-      "LITE-09-109",
-      "LITE-09-110",
-      "LITE-13-101"
+      "LITE-13-101",
+      "LITE-09-110"
     ],
     "limitation": "Proves the real Provider summary path, the frozen identity, the read-only enforcement and convergence over the same source. It does not exercise a server restart, the over-budget failure branch, or a message edit.",
     "details": {
@@ -598,7 +596,7 @@
   },
   {
     "id": "S6-TRIGGER-INTEGRATION",
-    "baseline": "00527516dd021fc9e304415a36daf8e73a5a85da",
+    "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
     "kind": "local-tests",
     "command": "node --import tsx --test --test-concurrency=1 src/routes/conversationRuntime.compaction.test.ts src/routes/conversationCompactionInspector.test.ts",
     "cwd": "apps/server",
@@ -614,22 +612,20 @@
       "LITE-09-105",
       "LITE-09-106",
       "LITE-09-107",
-      "LITE-09-108",
-      "LITE-09-109",
-      "LITE-09-110",
-      "LITE-13-101"
+      "LITE-13-101",
+      "LITE-09-110"
     ],
     "limitation": "The turn path is real (route, trigger, engine, store); the Provider output is the deterministic mock, so it proves wiring and application rather than Provider behaviour."
   },
   {
     "id": "S6-LOCAL",
-    "baseline": "00527516dd021fc9e304415a36daf8e73a5a85da",
+    "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
     "kind": "local-tests",
     "command": "node --import tsx --test --test-concurrency=1 src/services/ProviderCompactionSummarizer.test.ts src/services/ConversationCompactionTrigger.test.ts src/services/ConversationCompactionService.test.ts src/services/CompactionContextApplication.test.ts src/store/CompactionRepository.test.ts src/routes/conversationCompactionInspector.test.ts src/routes/conversationRuntime.compaction.test.ts src/migrations/__tests__/lite-migration-029.test.ts; pnpm exec tsc --noEmit",
     "cwd": "apps/server",
     "environment": "Windows Node24.18.0 pnpm11.11.0; S6 worktree on the S5 closeout branch",
     "result": {
-      "passed": 31,
+      "passed": 33,
       "failed": 0,
       "skipped": 0,
       "typecheckExitCode": 0
@@ -646,5 +642,22 @@
       "LITE-13-101"
     ],
     "limitation": "Deterministic local evidence: engine, repository/migration, summarizer fail-closed branches, context application, Inspector read surface and the real-HTTP Turn integration. No server restart, no over-budget real run, no real message edit."
+  },
+  {
+    "id": "S6-RECOVERY",
+    "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationCompactionTrigger.test.ts",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0; durable SQLite lease rows, no wall-clock guessing",
+    "result": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
+    "limitation": "The crash is simulated by seeding a durable running row whose lease has already expired; no real process was killed mid-run."
   }
 ]
