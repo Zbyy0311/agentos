@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 13,
+  "matrixVersion": 14,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -4043,7 +4043,7 @@
       ],
       "finding": "真实触发：Turn组装前评估阈值，publish在一次事务内写入有界摘要+review-required候选+workspace事件（correlation=memory-compaction:<taskId>）。真实Provider运行与真实HTTP Turn均验证；摘要可用不等于Memory审核，候选保持待审核。",
       "exit": "来源记录、完成摘要、候选与事件原子提交，review-required；摘要可用性不等于Memory审核。",
-      "evidenceBaseline": "df0855c281e5307786b4b0fb5fcbdb484d890955"
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-07-106",
@@ -4240,7 +4240,7 @@
       ],
       "finding": "lite-v1作为不可变版本行持久化（0.70/0.50/8/2048/120000/1+16384回退），每次压缩记录预算组成、上限来源与estimator版本（lite-v1-chars4）；真实运行与真实HTTP Inspector均读到同一策略，历史不被后续策略改写。",
       "exit": "持久policyVersion及70%/50%/8/2048/120000/1；每次保存预算组成、上限来源、估算器版本；未来策略不重写历史。",
-      "evidenceBaseline": "df0855c281e5307786b4b0fb5fcbdb484d890955"
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-105",
@@ -4276,7 +4276,7 @@
       ],
       "finding": "真实HTTP路径证明：只压缩有界旧前缀（10条中2条），原消息保留（status<>deleted计数不变），触发它的同一Turn即为采用者（snapshot budget记录compactionSummaryId与summarizedMessages），frozen history = 摘要+未压缩尾部，已被覆盖的消息不再重发。",
       "exit": "保留原消息，摘要不可变；前序摘要+有界前缀分批；近期至少8条+当前输入，采用摘要+未压缩尾部。",
-      "evidenceBaseline": "df0855c281e5307786b4b0fb5fcbdb484d890955"
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-106",
@@ -4312,7 +4312,7 @@
       ],
       "finding": "真实Codex CLI产生摘要（verify-compaction-real-summary: passed, model=gpt-5.6-luna, adapter=cli.codex@1.0.0）。身份与模型在触发时冻结并落库；缺失profile、身份漂移、空模型、缺CLI级只读沙箱、出现任何tool.*/approval事件、超时、非零退出均fail-closed。修复了“只读仅靠提示词”的真实缺陷。",
       "exit": "冻结触发轮Provider，禁止静默切换；不可保证禁工具/禁写则不可调用，按预算失败分支处理。",
-      "evidenceBaseline": "df0855c281e5307786b4b0fb5fcbdb484d890955"
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-107",
@@ -4348,7 +4348,7 @@
       ],
       "finding": "单Conversation唯一running（部分唯一索引）+租约+版本CAS+重试上限；崩溃/重启后的旧执行状态由持久租约判定：过期租约先转retry-pending再恢复，未过期租约不被抢占（两个独立测试），旧租约无法发布（publish要求lease_owner与版本同时匹配），自动重试上限1且策略timeoutMs=120000。真实HTTP轮次重复收敛为仅1个任务。",
       "exit": "并发单持有者；重启先判断旧执行，不猜测结束；旧租约不可发布；自动重试最多一次，超时120秒。",
-      "evidenceBaseline": "df0855c281e5307786b4b0fb5fcbdb484d890955"
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-108",
@@ -4356,32 +4356,27 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "压缩失败的硬预算分支",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
-        "apps/server/src/services/ProviderCompactionSummarizer.ts",
-        "apps/server/src/services/summarizationCliProfiles.ts",
         "apps/server/src/services/ConversationTurnDriver.ts",
-        "apps/server/src/store/CompactionRepository.ts",
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
+        "apps/server/src/services/CompactionContextApplication.test.ts",
         "apps/server/src/services/ConversationCompactionService.test.ts",
         "apps/server/src/services/ConversationCompactionTrigger.test.ts",
-        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
-        "apps/server/src/services/CompactionContextApplication.test.ts",
-        "apps/server/src/store/CompactionRepository.test.ts",
-        "apps/server/src/routes/conversationCompactionInspector.test.ts",
-        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
-        "scripts/verify-compaction-real-summary.mjs"
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts"
       ],
       "evidence": [
-        "S6-LOCAL"
+        "S6-LOCAL",
+        "S6-RETRY"
       ],
-      "finding": "已实现并测试：预算内继续并进入retry-pending；摘要+尾部超硬预算时在任何Provider调用前以TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED失败且不截断消息。规范要求的“显式重试”接口尚未提供（当前依赖下一轮自动触发），保持GAP。",
-      "exit": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。"
+      "finding": "硬预算分支：预算内继续并进入retry-pending（有界，重试上限1）；摘要+尾部超硬预算时在Provider调用前以TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED失败、当前消息保留且不静默截断。显式重试接口 POST /conversations/:id/compactions/retry 复用同一评估：报告durable outcome(published/noop/retry-pending/failed)与blockedReason、任务状态、尝试次数与失败码，且不会伪造第二个任务。",
+      "exit": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-109",
@@ -4450,7 +4445,7 @@
       ],
       "finding": "来源审计：生产代码中没有任何路径读取Provider原生压缩作为canonical证据；canonical摘要只能由CompactionRepository.publishWithinTransaction发布，Inspector只读AgentOS持久化的policy/budget/source/summary/snapshot。",
       "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。",
-      "evidenceBaseline": "df0855c281e5307786b4b0fb5fcbdb484d890955"
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-13-101",
@@ -4486,7 +4481,7 @@
       ],
       "finding": "Inspector同时回答“为何触发”（策略版本、触发/目标比例、预算组成与上限来源、来源范围与条数、estimator版本、尝试与失败码）与“被谁采用”（adoptions：summaryId→turnId→snapshotId，且与turn.context_snapshot_id一致），未采用的摘要明确报告为未采用。",
       "exit": "展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。",
-      "evidenceBaseline": "df0855c281e5307786b4b0fb5fcbdb484d890955"
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-12-101",
@@ -6992,6 +6987,15 @@
       "reason": "Recover a crashed compaction attempt from its durable lease and prove it; LITE-09-107 moves to PASS.",
       "requirementIds": [
         "LITE-09-107"
+      ]
+    },
+    {
+      "version": 14,
+      "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
+      "authority": "Main-agent S6 explicit-retry slice within user-approved scope",
+      "reason": "Add the explicit conversation-level compaction retry that reports durable state and blocked reasons; LITE-09-108 moves to PASS.",
+      "requirementIds": [
+        "LITE-09-108"
       ]
     }
   ]

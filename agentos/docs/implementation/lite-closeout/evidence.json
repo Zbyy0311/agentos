@@ -563,7 +563,7 @@
   },
   {
     "id": "S6-REAL-SUMMARY",
-    "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
     "kind": "local-tests",
     "command": "node --import tsx ../../scripts/verify-compaction-real-summary.mjs",
     "cwd": "apps/server",
@@ -587,16 +587,16 @@
       "outcome": "published",
       "model": "gpt-5.6-luna",
       "adapter": "cli.codex@1.0.0",
-      "firstRunMs": 15124,
+      "firstRunMs": 25861,
       "repeatMs": 1,
-      "summaryChars": 209,
+      "summaryChars": 304,
       "sourceMessages": 4,
       "tasks": 1
     }
   },
   {
     "id": "S6-TRIGGER-INTEGRATION",
-    "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
     "kind": "local-tests",
     "command": "node --import tsx --test --test-concurrency=1 src/routes/conversationRuntime.compaction.test.ts src/routes/conversationCompactionInspector.test.ts",
     "cwd": "apps/server",
@@ -619,13 +619,13 @@
   },
   {
     "id": "S6-LOCAL",
-    "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
     "kind": "local-tests",
     "command": "node --import tsx --test --test-concurrency=1 src/services/ProviderCompactionSummarizer.test.ts src/services/ConversationCompactionTrigger.test.ts src/services/ConversationCompactionService.test.ts src/services/CompactionContextApplication.test.ts src/store/CompactionRepository.test.ts src/routes/conversationCompactionInspector.test.ts src/routes/conversationRuntime.compaction.test.ts src/migrations/__tests__/lite-migration-029.test.ts; pnpm exec tsc --noEmit",
     "cwd": "apps/server",
-    "environment": "Windows Node24.18.0 pnpm11.11.0; S6 worktree on the S5 closeout branch",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; S6 branch at the explicit-retry revision",
     "result": {
-      "passed": 33,
+      "passed": 34,
       "failed": 0,
       "skipped": 0,
       "typecheckExitCode": 0
@@ -645,7 +645,7 @@
   },
   {
     "id": "S6-RECOVERY",
-    "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
     "kind": "local-tests",
     "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationCompactionTrigger.test.ts",
     "cwd": "apps/server",
@@ -659,5 +659,22 @@
       "LITE-09-107"
     ],
     "limitation": "The crash is simulated by seeding a durable running row whose lease has already expired; no real process was killed mid-run."
+  },
+  {
+    "id": "S6-RETRY",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationCompactionTrigger.test.ts src/routes/conversationRuntime.compaction.test.ts",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0; real runtime router over real HTTP, deterministic Provider mock (8 trigger tests + 1 integration test)",
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-108"
+    ],
+    "limitation": "Proves the retry contract (durable outcome, blocked reason, no fabricated task) and the over-budget block; it does not force a real summary failure over a real Provider."
   }
 ]
