@@ -4,7 +4,12 @@ import { createEntityId } from '../store/Identity.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
-import { ConversationTurnDriver } from '../services/ConversationTurnDriver.js';
+import {
+  ConversationTurnDriver,
+  createDurableTurnContextSnapshotPort,
+  type ChatWorkspaceAuthorityPort,
+} from '../services/ConversationTurnDriver.js';
+import { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import {
   CONVERSATION_REPLY_MODES,
@@ -63,6 +68,25 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
   };
 
   const conversations = () => store.conversationRepository();
+
+  /**
+   * LITE-09-102 / D2=A: chat has no implicit modifying authority. The forward
+   * chat path is classified as modifying (no adapter proves enforced
+   * read-only), so it refuses while another subject holds the Workspace's
+   * single-writer authority instead of running concurrently with it.
+   */
+  const chatWorkspaceAuthority: ChatWorkspaceAuthorityPort = {
+    findModifyingHolder: (workspaceId: string) => {
+      const row = new WorkspaceAdmissionRepository(store.getDatabase())
+        .listByWorkspace(workspaceId)
+        .find(admission => admission.effectiveMutationClass === 'MODIFYING' && admission.state === 'GRANTED');
+      if (row === undefined) return undefined;
+      return {
+        subjectKind: row.subjectKind,
+        subjectId: row.canonicalRunId ?? row.legacyRunId ?? row.id,
+      };
+    },
+  };
 
   // ---- Conversations ------------------------------------------------------
 
@@ -428,6 +452,7 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       conversations(),
       store.conversationStreamService(),
       (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
+      { snapshots: createDurableTurnContextSnapshotPort(store), workspaceAuthority: chatWorkspaceAuthority },
     );
     try {
       const result = await driver.run(
@@ -519,6 +544,8 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       conversations(),
       store.conversationStreamService(),
       (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
+      undefined,
+      { snapshots: createDurableTurnContextSnapshotPort(store), workspaceAuthority: chatWorkspaceAuthority },
     );
     try {
       const result = await driver.replyWithTurn({

@@ -362,7 +362,15 @@ test('M4-I07 duplicate identical observations create two independent rows and ID
   }
 });
 
-test('M4-I08 concurrent same-Workspace observations collect independently and persist two rows', { timeout: 5_000 }, async () => {
+// The assertion is deterministic (two collectors must both start, then both
+// persist), but the budget is wall-clock, not behavioural. This test is the
+// only 5_000 ms timeout in the repository while every other explicit timeout is
+// 60_000 ms or more, and CI observed 6_862 ms for it: neighbouring tests in the
+// same CI file (M4-I09..I12) each took 1_6xx-2_2xx ms there against ~0.1 s
+// locally, so the runner is an order of magnitude slower than a developer
+// machine. Budget it like the other integration tests so a slow runner reports
+// the real outcome instead of a timeout.
+test('M4-I08 concurrent same-Workspace observations collect independently and persist two rows', { timeout: 120_000 }, async () => {
   const fx = createFixture();
   try {
     let started = 0;

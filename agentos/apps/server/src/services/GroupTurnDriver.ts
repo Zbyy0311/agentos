@@ -4,7 +4,7 @@ import type { GroupInteractionRecord, GroupInteractionRepository } from '../stor
 import { createEntityId } from '../store/Identity.js';
 import { BoundedGroupError, BoundedGroupService } from './BoundedGroupService.js';
 import type { ConversationStreamService } from './ConversationStreamService.js';
-import { ConversationTurnDriver } from './ConversationTurnDriver.js';
+import { ConversationTurnDriver, type ConversationTurnContextOptions } from './ConversationTurnDriver.js';
 import {
   resolveGroupSpeakers,
   type GroupSpeakerMember,
@@ -127,6 +127,8 @@ export class GroupTurnDriver {
     private readonly conversations: ConversationRepository,
     private readonly stream: ConversationStreamService,
     private readonly getAgent: (workspaceId: string, agentId: string) => AgentProfile | undefined,
+    /** LITE-09-101: per-Agent frozen context options handed to each speaker Turn. */
+    private readonly turnContext?: ConversationTurnContextOptions,
   ) {}
 
   /**
@@ -186,7 +188,7 @@ export class GroupTurnDriver {
     const outcomes: GroupSpeakerTurnOutcome[] = [];
     let previousAgentId: string | undefined;
     const driver = new ConversationTurnDriver(
-      this.conversations, this.stream, this.getAgent, options.runnerFactory,
+      this.conversations, this.stream, this.getAgent, options.runnerFactory, this.turnContext,
     );
 
     for (const speaker of plan.speakers) {

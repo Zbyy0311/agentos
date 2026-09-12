@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 9,
+  "matrixVersion": 11,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1251,7 +1251,7 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": ["S4-PROVIDER-SOURCE", "S4-ADAPTERS"],
+      "evidence": [],
       "finding": "三Provider已有CLI/解析能力，但当前生产composition root仅注册Kimi；Codex/OpenCode完整生产链缺口须定向补齐而非重写三者。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -2242,7 +2242,12 @@
         "apps/server/src/routes/runtimeApprovals.test.ts",
         "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "evidence": [
+        "S3-APPROVAL-SOURCE",
+        "S3-LOCAL-39",
+        "S3-REVIEW-FIX",
+        "S3-FULL-FINAL"
+      ],
       "finding": "S3已在真实协调器pre-spawn边界持久请求并使Run/Stage等待；批准后续跑原Run、重启扫描approved unconsumed、拒绝终止。实际Provider live调用与完整产品UI仍待验，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
@@ -2267,7 +2272,12 @@
         "apps/server/src/routes/runtimeApprovals.test.ts",
         "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "evidence": [
+        "S3-APPROVAL-SOURCE",
+        "S3-LOCAL-39",
+        "S3-REVIEW-FIX",
+        "S3-FULL-FINAL"
+      ],
       "finding": "S3已验证版本CAS重放、路由重试收敛和Event失败整体回滚；真实并发HTTP竞争和live Provider证据仍需补齐，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
@@ -2292,7 +2302,12 @@
         "apps/server/src/routes/runtimeApprovals.test.ts",
         "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "evidence": [
+        "S3-APPROVAL-SOURCE",
+        "S3-LOCAL-39",
+        "S3-REVIEW-FIX",
+        "S3-FULL-FINAL"
+      ],
       "finding": "S3已验证持久过期、Launch Plan/Agent/Provider快照哈希漂移拒绝及一次性消费；跨进程时钟和live Provider验收仍缺，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
@@ -2616,10 +2631,16 @@
         "apps/server/src/services/BoundedGroupService.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
-      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-101-LOCAL",
+        "S5-102-LOCAL"
+      ],
+      "finding": "保留基线反证：原driver把历史交旧Runner且快照在回复后记录。现执行前冻结隔离快照、Provider输入引用该快照，Group每speaker经同一driver并受Workspace修改权拒绝门约束；D3关闭（无并行修改）。真实浏览器与跨会话双chat互斥仍缺，保持GAP。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -2672,10 +2693,16 @@
         "apps/server/src/services/BoundedGroupService.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
-      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-101-LOCAL",
+        "S5-102-LOCAL"
+      ],
+      "finding": "保留基线反证。现每Turn在调用前写入自己的agent/turn快照，Provider收到该Turn冻结窗口，Turn行回指该快照，实现per-Agent隔离；跨会话双chat互斥仍待独立schema切片，保持GAP。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -3883,7 +3910,7 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": ["S4-PROVIDER-SOURCE", "S4-ADAPTERS", "S4-REAL-GATES"],
+      "evidence": [],
       "finding": "Legacy CLI和parser不等于RunEngine生产适配；composition root只注册Kimi。",
       "exit": "逐Provider沿Adapter→Registry→Process→RunEngine→SSE/UI验证；复用现有正确能力，只补断点。"
     },
@@ -3943,7 +3970,12 @@
         "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
         "apps/server/src/store/RuntimeApprovalRepository.test.ts"
       ],
-      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "evidence": [
+        "S3-APPROVAL-SOURCE",
+        "S3-LOCAL-39",
+        "S3-REVIEW-FIX",
+        "S3-FULL-FINAL"
+      ],
       "finding": "保留基线反证：旧approval-decisions为独立入口。S3 ead3001b已在pre-spawn gate、028请求/026决定、approval.resolved Candidate Event和重放回滚上取得证据；真实Provider live调用及浏览器审批验收仍缺，保持GAP。",
       "exit": "真实审批→原Run行为→持久决定→唯一带来源候选+事件；deny不生成候选。"
     },
@@ -3970,7 +4002,9 @@
         "apps/server/src/services/RuntimeArtifactCollector.test.ts"
       ],
       "evidence": [
-        "S2-ARTIFACT-SOURCE", "S2-LOCAL-27", "S2-BROWSER"
+        "S2-ARTIFACT-SOURCE",
+        "S2-LOCAL-27",
+        "S2-BROWSER"
       ],
       "finding": "保留基线反证：主线仅合并授权、原草稿无真实来源/事件。隔离提交02a50947已补显式退出证据、Collector及canonical结构化结果、027完成事实、事务候选/事件与审核来源链接；见S2-artifact-evidence.md。实际Node测试与页面审核已验证，但执行记录/Provider观察为夹具，真实模型调用、故障恢复及CI仍需验收，保持GAP。",
       "exit": "真实review/test→持久完成→候选+事件→Review Queue→接受→Entry；不以手工POST作为闭环。"
@@ -4054,7 +4088,8 @@
         "apps/server/src/store/WorkspaceEventWriter.test.ts"
       ],
       "evidence": [
-        "S2-ARTIFACT-SOURCE", "S2-LOCAL-27"
+        "S2-ARTIFACT-SOURCE",
+        "S2-LOCAL-27"
       ],
       "finding": "保留基线反证：Workspace allowlist无candidate_created。02a50947已为实际Artifact完成登记来源专属Workspace因果和事务校验，禁止借用其它origin；不伪造Run。审批/压缩/导入仍需各自真实来源登记，保持GAP。",
       "exit": "授权最小契约扩展；持久来源因果证明，未知或跨Workspace来源拒绝；回滚和重放验证。"
@@ -4095,14 +4130,20 @@
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts",
-        "apps/server/src/services/BoundedGroupService.ts"
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts",
+        "apps/server/src/store/TurnContextSnapshotRepository.ts"
       ],
       "tests": [
         "apps/server/src/services/ConversationTurnDriver.test.ts",
-        "apps/server/src/services/BoundedGroupService.test.ts"
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
-      "finding": "快照在recordReply创建，driver已先调用Provider；history未使用该快照。",
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-101-LOCAL"
+      ],
+      "finding": "保留基线反证：快照曾在recordReply创建且driver先调用Provider。现driver在调用前冻结并持久化有界窗口与选择契约，Turn关联该快照，快照失败则不调用Provider，真实HTTP路由已验证；但Direct chat生产Memory选择器仍为空，Scope预算选择未闭合，保持GAP。",
       "exit": "Direct/Group按实际调用前快照预算与Scope，provider收到冻结选中内容，事后记录引用原快照。"
     },
     {
@@ -4118,10 +4159,15 @@
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "tests": [
-        "apps/server/src/services/GroupTurnDriver.test.ts"
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
-      "finding": "单interaction串行不证明与其他Conversation/Run共享Workspace权限；driver无显式admission。",
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-102-LOCAL"
+      ],
+      "finding": "保留基线反证：driver曾无显式admission。现chat按modifying分类，另一GRANTED MODIFYING主体持权时以稳定码CONVERSATION_WORKSPACE_MODIFYING_BUSY拒绝（unit+真实HTTP），并指向显式Run；READ_ONLY不阻塞，D3保持关闭。双chat互斥需独立admission subject schema切片，保持GAP。",
       "exit": "无隐式modifying authority，缺可靠只读证据显示不可用/要求显式Run；并发与拒绝路径测试。"
     },
     {
@@ -6696,28 +6742,64 @@
       "baseline": "02a50947a82c692c61703f3d22f0b32c0b0a98ce",
       "authority": "Main-agent implementation and verification within approved S2 scope",
       "reason": "Record bounded Artifact lifecycle implementation and actual subprocess/page evidence. Keep original source audit and all GAP states; live model invocation and full gates still open. No new requirements or deferrals.",
-      "requirementIds": ["LITE-07-104", "LITE-07-108"]
+      "requirementIds": [
+        "LITE-07-104",
+        "LITE-07-108"
+      ]
     },
     {
       "version": 7,
       "baseline": "ead3001b82251fe85e1b176ce5b2d55fbbaa3e16",
       "authority": "Main-agent S3 implementation and verification within user-approved scope",
       "reason": "Record bounded runtime approval persistence, pre-spawn gate, original-Run continuation and candidate evidence. Keep GAP states because live Provider/browser and full CI acceptance remain open.",
-      "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"]
+      "requirementIds": [
+        "LITE-07-103",
+        "LITE-08-005",
+        "LITE-08-006",
+        "LITE-08-007"
+      ]
     },
     {
       "version": 8,
       "baseline": "d76cce343b83fa428ed7d5c191a2ad581df69c90",
       "authority": "Main-agent remediation of independent S3 review findings within approved scope",
       "reason": "Fix spawn-right expiry, contradictory replay, recovery-required resume bypass, and environment-value drift; preserve the non-green full suite and four ENOTEMPTY teardown failures. No matrix state changes.",
-      "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"]
+      "requirementIds": [
+        "LITE-07-103",
+        "LITE-08-005",
+        "LITE-08-006",
+        "LITE-08-007"
+      ]
     },
     {
       "version": 9,
       "baseline": "c783e9280cd5d434479b482af40331acf8656907",
       "authority": "Main-agent S4 implementation and verification within user-approved scope",
       "reason": "Register canonical Codex/OpenCode adapters in the production chain with bounded evidence; keep GAP/RUNTIME-VERIFY because the final-head real gate is blocked by external quota and OpenCode has only unavailable evidence. No state changes.",
-      "requirementIds": ["LITE-04-001", "LITE-04-101"]
+      "requirementIds": [
+        "LITE-04-001",
+        "LITE-04-101"
+      ]
+    },
+    {
+      "version": 10,
+      "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+      "authority": "Main-agent S5 implementation within user-approved scope",
+      "reason": "Record the pre-invocation frozen context snapshot slice for LITE-09-101; keep GAP because production Memory selection is still empty.",
+      "requirementIds": [
+        "LITE-09-101"
+      ]
+    },
+    {
+      "version": 11,
+      "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+      "authority": "Main-agent S5 implementation within user-approved scope",
+      "reason": "Record the chat modifying-authority refusal gate and per-Agent pre-invocation snapshots; keep GAP for cross-chat serialization, which needs a separate authorized schema slice.",
+      "requirementIds": [
+        "LITE-09-010",
+        "LITE-09-013",
+        "LITE-09-102"
+      ]
     }
   ]
 }
