@@ -1,0 +1,147 @@
+[
+  {
+    "id": "S0-V01",
+    "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/store/Identity.test.ts src/store/RuntimeEventRepository.test.ts src/services/RunStreamService.test.ts src/services/OutboxPublisher.test.ts src/services/MemoryCandidateGenerationService.test.ts",
+    "cwd": "apps/server",
+    "result": {
+      "passed": 66,
+      "failed": 0,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0; pnpm 11.11.0; fresh isolated worktree; shared/process-runtime/agent-core built",
+    "limitation": "Component/transaction tests only; not complete Provider or browser acceptance.",
+    "requirementIds": [
+      "LITE-02-008",
+      "LITE-03-007"
+    ]
+  },
+  {
+    "id": "S0-V02",
+    "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/m3-p2c2a-lifecycle-transaction.test.ts src/services/m3-p2c2b-composite-lifecycle.test.ts src/services/m3-p2c2c-run-graph-creation.test.ts src/services/run-engine/RunEngine.test.ts src/services/TaskRunRecoveryService.test.ts src/routes/canonicalRunStream.test.ts",
+    "cwd": "apps/server",
+    "result": {
+      "passed": 178,
+      "failed": 0,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0",
+    "limitation": "Real DB and HTTP plus deterministic lifecycle fixtures; no live Provider invocation.",
+    "requirementIds": [
+      "LITE-02-005",
+      "LITE-02-006",
+      "LITE-02-007",
+      "LITE-03-004",
+      "LITE-03-005",
+      "LITE-03-006",
+      "LITE-11-007"
+    ]
+  },
+  {
+    "id": "S0-V03",
+    "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/MemoryRetrievalService.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/store/MemoryCandidateRepository.test.ts",
+    "cwd": "apps/server",
+    "result": {
+      "passed": 70,
+      "failed": 0,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0",
+    "limitation": "Does not prove trigger reachability or actual Provider payloads.",
+    "requirementIds": [
+      "LITE-07-004",
+      "LITE-07-008",
+      "LITE-07-011"
+    ]
+  },
+  {
+    "id": "S0-CI01",
+    "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
+    "kind": "github-actions",
+    "command": "gh run list --branch main --limit 2 --json databaseId,headSha,status,conclusion",
+    "result": {
+      "failed": 0,
+      "conclusion": "success"
+    },
+    "url": "https://github.com/Zbyy0311/agentos/actions/runs/34674427378",
+    "environment": "GitHub Actions",
+    "limitation": "Baseline main CI success, not final closeout CI and not real Provider/browser acceptance.",
+    "requirementIds": []
+  },
+  {
+    "id": "S1A-RED",
+    "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/MemoryCandidateGenerationService.test.ts",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-07-003",
+      "LITE-07-107"
+    ],
+    "result": {
+      "passed": 7,
+      "failed": 6,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0; S1-A new regression tests against unmodified product code",
+    "limitation": "Six deterministic failures: five out-of-boundary exact convergences and one missing Run source; not a CI flake."
+  },
+  {
+    "id": "S1A-GREEN",
+    "baseline": "8e4cc3ae81bf2a92337662d329a2a10647aecfdb",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/services/MemoryRuntimeEventEmitter.test.ts src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-07-003",
+      "LITE-07-107"
+    ],
+    "result": {
+      "passed": 85,
+      "failed": 0,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0",
+    "limitation": "Terminal dedup slice only; explicit-save/review convergence remains open; source/Event/Outbox failures and archive race covered."
+  },
+  {
+    "id": "S1A-REGRESSION",
+    "baseline": "8e4cc3ae81bf2a92337662d329a2a10647aecfdb",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/routes/memoryRuntime.test.ts src/services/MemoryContextResolver.test.ts src/store/MemoryContextSnapshotRepository.test.ts",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-07-003",
+      "LITE-07-107"
+    ],
+    "result": {
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0",
+    "limitation": "Affected baseline path regression only, not complete acceptance of all save or context behaviors."
+  },
+  {
+    "id": "S1C-SOURCE",
+    "baseline": "8e4cc3ae81bf2a92337662d329a2a10647aecfdb",
+    "kind": "source-audit",
+    "command": "Read MemoryRetrievalService.retrieveWithStatus, MemoryEntryRepository.listRetrievalCandidates, MemoryContextBudgetSelector.plan/applyBudget; rg validFrom|validUntil|expiresAt|sensitivity|requireDiversity|degraded in same sources",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-07-007",
+      "LITE-07-013",
+      "LITE-07-109"
+    ],
+    "result": {
+      "findings": 3
+    },
+    "environment": "Read-only source inspection",
+    "limitation": "Static counterexamples only; bounded next runtime tests in S1-retrieval-counterexamples.md; never PASS evidence."
+  }
+]

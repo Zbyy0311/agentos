@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "policyVersion": "lite-v1",
+  "triggerRatio": 0.7,
+  "targetRatio": 0.5,
+  "minRecentMessages": 8,
+  "summaryMaxTokens": 2048,
+  "timeoutMs": 120000,
+  "maxAutomaticRetries": 1,
+  "fallbackApplicationBudgetTokens": 16384,
+  "source": "User-approved final closeout plan; defaults, not normative Provider context limits",
+  "failure": "Continue within hard budget; otherwise block new Provider call and preserve input. One automatic retry maximum.",
+  "canonicalEvidence": "Only AgentOS durable summary/source/policy/budget/snapshot; Provider native compaction is never canonical evidence.",
+  "persistence": "Each future compaction stores immutable effective policy and budget inputs. This design file is not runtime persistence."
+}

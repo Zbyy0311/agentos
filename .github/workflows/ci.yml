@@ -53,6 +53,12 @@ jobs:
       - name: Server tests
         run: pnpm --filter @agentos/server test
 
+      - name: Lite scope and evidence gates
+        run: |
+          node --test scripts/verify-lite-scope.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node scripts/verify-lite-scope.mjs
+
       - name: Shared M3 contract harness
         run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/m3-runtime.test.ts
 
