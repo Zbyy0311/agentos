@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 11,
+  "matrixVersion": 12,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -4018,13 +4018,21 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/services/ConversationTurnDriver.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts"
       ],
-      "evidence": [],
-      "finding": "无canonical compaction任务、摘要、策略或生产调用链。",
+      "evidence": [
+        "S6-LOCAL"
+      ],
+      "finding": "S6 engine 已在实际Conversation上实现来源触发：有界source range/hash、不可变摘要、review-required候选与规范事件原子提交（S6-LOCAL）。真实Provider摘要调用与Turn循环自动触发尚未接线，保护GAP。",
       "exit": "来源记录、完成摘要、候选与事件原子提交，review-required；摘要可用性不等于Memory审核。"
     },
     {
@@ -4036,13 +4044,19 @@
       "state": "GAP",
       "workPackage": "S7",
       "implementation": [
-        "apps/server/src/managers/WorkspaceManager.ts"
+        "apps/server/src/services/MemoryImportService.ts",
+        "apps/server/src/routes/memoryImport.ts",
+        "apps/server/src/migrations/migrations/030-s7-explicit-markdown-import.ts"
       ],
       "tests": [
-        "apps/server/src/services/LegacyTaskItemImportService.test.ts"
+        "apps/server/src/services/MemoryImportService.test.ts",
+        "apps/server/src/routes/memoryImport.test.ts",
+        "apps/server/src/migrations/__tests__/lite-migration-030.test.ts"
       ],
-      "evidence": [],
-      "finding": "Workspace import强制memory:false；没有forward Memory import入口。",
+      "evidence": [
+        "S7-LOCAL"
+      ],
+      "finding": "按要求实现了用户选择的UTF-8 Markdown（<=1MiB）预览→确认→有界分段候选/来源/事件，幂等且不动源文件；真实浏览器选择文件的端到端验收留待S8。",
       "exit": "用户选择UTF-8 Markdown<=1MiB→预览→确认→有界分段候选/来源/事件；幂等、源文件保持。"
     },
     {
@@ -4089,9 +4103,11 @@
       ],
       "evidence": [
         "S2-ARTIFACT-SOURCE",
-        "S2-LOCAL-27"
+        "S2-LOCAL-27",
+        "S7-LOCAL",
+        "S7-LOCAL"
       ],
-      "finding": "保留基线反证：Workspace allowlist无candidate_created。02a50947已为实际Artifact完成登记来源专属Workspace因果和事务校验，禁止借用其它origin；不伪造Run。审批/压缩/导入仍需各自真实来源登记，保持GAP。",
+      "finding": "保留基线反证：Workspace allowlist无candidate_created。02a50947已为实际Artifact完成登记来源专属Workspace因果和事务校验，禁止借用其它origin；不伪造Run。审批/压缩/导入仍需各自真实来源登记，保持GAP。 S7又为导入登记了来源专属memory.import因果（记录+候选+import来源同事务校验）。 S7又为导入登记了来源专属memory.import因果（记录+候选+import来源同事务校验）。",
       "exit": "授权最小契约扩展；持久来源因果证明，未知或跨Workspace来源拒绝；回滚和重放验证。"
     },
     {
@@ -4197,11 +4213,21 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/services/ConversationTurnDriver.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无持久策略或预算评估。",
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts"
+      ],
+      "evidence": [
+        "S6-LOCAL"
+      ],
+      "finding": "lite-v1策略已作为不可变版本持久化（0.70/0.50/8/2048/120000/1+16384回退），每次压缩保存预算组成、上限来源与estimator版本；未来策略不改写历史。",
       "exit": "持久policyVersion及70%/50%/8/2048/120000/1；每次保存预算组成、上限来源、估算器版本；未来策略不重写历史。"
     },
     {
@@ -4213,11 +4239,21 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/store/ConversationRepository.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无canonical summary/source range。",
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts"
+      ],
+      "evidence": [
+        "S6-LOCAL"
+      ],
+      "finding": "摘要按有界前缀发布且不可变，原消息不删除；新上下文采用\"前序摘要+未压缩尾部\"，最近至少8条与当前输入保留（含真实HTTP与单测证据）。",
       "exit": "保留原消息，摘要不可变；前序摘要+有界前缀分批；近期至少8条+当前输入，采用摘要+未压缩尾部。"
     },
     {
@@ -4229,11 +4265,19 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "packages/agent-core/src/conversationRunner.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts"
+      ],
       "evidence": [],
-      "finding": "无tool-free/write-denied摘要执行证据。",
+      "finding": "引擎以注入的summarizer端口隔离摘要调用，端口缺失即失败；但生产尚未提供tool-free/写拒绝的真实Provider摘要执行，保持GAP。",
       "exit": "冻结触发轮Provider，禁止静默切换；不可保证禁工具/禁写则不可调用，按预算失败分支处理。"
     },
     {
@@ -4245,11 +4289,21 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/index.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无压缩任务恢复状态。",
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts"
+      ],
+      "evidence": [
+        "S6-LOCAL"
+      ],
+      "finding": "单会话唯一running压缩（部分唯一索引）、租约、版本CAS、失败重试上限1与稳定失败均已验证；真实Provider超时与重启恢复场景仍待实测。",
       "exit": "并发单持有者；重启先判断旧执行，不猜测结束；旧租约不可发布；自动重试最多一次，超时120秒。"
     },
     {
@@ -4261,11 +4315,21 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/services/ConversationTurnDriver.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无硬预算门禁。",
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts"
+      ],
+      "evidence": [
+        "S6-LOCAL"
+      ],
+      "finding": "硬预算分支已实现：预算内继续并进入retry-pending；摘要+尾部超限时在Provider调用前以TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED失败且不截断消息。",
       "exit": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。"
     },
     {
@@ -4277,13 +4341,19 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/store/ConversationRepository.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/store/ConversationRepository.test.ts"
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts"
       ],
       "evidence": [],
-      "finding": "editMessage及cr_message_revisions已有；无压缩source校验。",
+      "finding": "复用现有Message可见性与哈希，未新增编辑API/versioning；来源变化使旧摘要不再进入新上下文且历史快照不变；实际编辑场景联调仍待S8验收。",
       "exit": "不新增编辑API/UI/versioning；实际内容变化或不可见使旧摘要不能进入新context，历史快照不变。"
     },
     {
@@ -4295,11 +4365,21 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "packages/agent-core/src/conversationRunner.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "新AgentOS压缩尚未实现，必须明确native诊断边界。",
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts"
+      ],
+      "evidence": [
+        "S6-LOCAL"
+      ],
+      "finding": "仅有AgentOS自身的持久summary/source/policy/budget/snapshot被采用并可经Inspector解释；Provider原生压缩不发布canonical摘要或候选。",
       "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。"
     },
     {
@@ -6789,6 +6869,42 @@
         "LITE-09-010",
         "LITE-09-013",
         "LITE-09-102"
+      ]
+    },
+    {
+      "version": 12,
+      "baseline": "03a65884f8325af64c94e16ef0b480dde3c77ec5",
+      "authority": "Main-agent S6/S7 implementation within user-approved scope",
+      "reason": "Attach compaction and import evidence to their existing requirements; keep every state unchanged because real Provider summary invocation, automatic trigger and browser acceptance remain open.",
+      "requirementIds": [
+        "LITE-07-105",
+        "LITE-07-106",
+        "LITE-07-108",
+        "LITE-09-104",
+        "LITE-09-105",
+        "LITE-09-106",
+        "LITE-09-107",
+        "LITE-09-108",
+        "LITE-09-109",
+        "LITE-09-110"
+      ]
+    },
+    {
+      "version": 12,
+      "baseline": "03a65884f8325af64c94e16ef0b480dde3c77ec5",
+      "authority": "Main-agent S6/S7 implementation within user-approved scope",
+      "reason": "Attach compaction and import evidence to their existing requirements; keep every state unchanged because real Provider summary invocation, automatic trigger and browser acceptance remain open.",
+      "requirementIds": [
+        "LITE-07-105",
+        "LITE-07-106",
+        "LITE-07-108",
+        "LITE-09-104",
+        "LITE-09-105",
+        "LITE-09-106",
+        "LITE-09-107",
+        "LITE-09-108",
+        "LITE-09-109",
+        "LITE-09-110"
       ]
     }
   ]

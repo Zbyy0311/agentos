@@ -437,5 +437,27 @@
     "result": { "passed": 25, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
     "requirementIds": ["LITE-09-010", "LITE-09-013", "LITE-09-102"],
     "limitation": "Chat refusal while another GRANTED MODIFYING subject holds the Workspace is proven at unit and real-HTTP level, with READ_ONLY holders not blocking. Two simultaneous chats are still not mutually serialized because chat has no admission subject row; that needs a separately authorized schema slice, so the rows stay GAP."
+  },
+  {
+    "id": "S6-LOCAL",
+    "baseline": "40265c7e413dde5e83c314c97813dfc5a9aad752",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationCompactionService.test.ts src/services/CompactionContextApplication.test.ts src/store/CompactionRepository.test.ts src/routes/conversationCompactionInspector.test.ts src/migrations/__tests__/lite-migration-029.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; S6 worktree on S5 head 7aedc907",
+    "result": { "passed": 15, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
+    "requirementIds": ["LITE-07-105", "LITE-09-104", "LITE-09-105", "LITE-09-107", "LITE-09-108", "LITE-09-110"],
+    "limitation": "Threshold/budget persistence, atomic publish with review-required Candidate and memory.compaction Event, retry/lease lifecycle, context application and Inspector are proven with a deterministic summarizer port. The real Provider summary invocation and automatic Turn-loop trigger are not wired, so LITE-09-106/107 stay open."
+  },
+  {
+    "id": "S7-LOCAL",
+    "baseline": "03a65884f8325af64c94e16ef0b480dde3c77ec5",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/MemoryImportService.test.ts src/routes/memoryImport.test.ts src/migrations/__tests__/lite-migration-030.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; S7 worktree on S6 head 40265c7e",
+    "result": { "passed": 11, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
+    "requirementIds": ["LITE-07-106", "LITE-07-108"],
+    "limitation": "Preview limits, bounded heading fragments, idempotent confirm, atomic rollback, review-required Candidates and the import Workspace origin are proven, including over real HTTP through the review queue to an accepted Entry. No browser acceptance run and no real user file was used."
   }
 ]
