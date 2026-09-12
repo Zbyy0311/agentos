@@ -77,8 +77,28 @@ export function toSafeFtsQuery(query: string): string | null {
   return tokens.map(token => '"' + token.replace(/"/gu, '""') + '"').join(' ');
 }
 
+/** LITE-07-109: temporal and access eligibility precede ranking, including FTS. */
+function isEligibleAt(entry: MemoryEntryRecord, nowMs: number): boolean {
+  // Current production callers have no verified restricted-content grant.
+  // Owner/Scope reach, pin and authority are not substitutes for that grant.
+  if (entry.sensitivity !== 'ordinary') return false;
+  if (entry.validFrom !== null) {
+    const start = Date.parse(entry.validFrom);
+    if (!Number.isFinite(start) || nowMs < start) return false;
+  }
+  for (const end of [entry.validUntil, entry.expiresAt]) {
+    if (end === null) continue;
+    const endMs = Date.parse(end);
+    if (!Number.isFinite(endMs) || nowMs >= endMs) return false;
+  }
+  return true;
+}
+
 export class MemoryRetrievalService {
-  constructor(private readonly entries: MemoryEntryRepository) {}
+  constructor(
+    private readonly entries: MemoryEntryRepository,
+    private readonly clock: () => number = () => Date.now(),
+  ) {}
 
   retrieve(input: RetrieveMemoryInput): RetrievedMemoryEntry[] {
     return this.retrieveWithStatus(input).results;
@@ -97,6 +117,8 @@ export class MemoryRetrievalService {
     if (input.limit !== undefined && (!Number.isSafeInteger(input.limit) || input.limit < 1)) {
       throw new MemoryRetrievalError('INPUT_INVALID');
     }
+    const nowMs = this.clock();
+    if (!Number.isFinite(nowMs)) throw new MemoryRetrievalError('INPUT_INVALID');
     const reach = resolveMemoryReach(context);
     let candidates: MemoryEntryRecord[];
     try {
@@ -113,6 +135,7 @@ export class MemoryRetrievalService {
     const categoryFilter = input.categoryFilter;
     const tagFilter = input.tagFilter;
     const filtered = candidates.filter(entry => {
+      if (!isEligibleAt(entry, nowMs)) return false;
       if (categoryFilter !== undefined && categoryFilter.length > 0 && !categoryFilter.includes(entry.category)) {
         return false;
       }
@@ -124,7 +147,6 @@ export class MemoryRetrievalService {
 
     const fts = this.readFtsRanks(context.workspaceId, input.query, filtered.map(entry => entry.id));
     const ftsRanks = fts.ranks;
-    const nowMs = Date.now();
     const rankingCandidates: MemoryRankingCandidate[] = filtered.map(entry => ({
       memoryId: entry.id,
       memoryVersion: entry.version,
