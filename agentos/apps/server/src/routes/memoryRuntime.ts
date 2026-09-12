@@ -3,7 +3,7 @@ import { Router, type Request, type Response } from 'express';
 import { MEMORY_CANDIDATE_OUTCOMES, type MemoryCandidateOutcome, type MemoryRetrievalContext } from '@agentos/shared';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
-import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import { MemoryEntryRepository, type CreateMemoryEntryInput, type MemoryEntryRecord } from '../store/MemoryEntryRepository.js';
 import { MemoryCandidateRepository, type MemoryCandidateEdits } from '../store/MemoryCandidateRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
@@ -250,28 +250,24 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
       return;
     }
+    // This existing save surface has no owner-specific contract. Reject owner
+    // claims rather than dropping them and saving into a broader scope.
+    if (['ownerAgentId', 'ownerConversationId', 'ownerTaskId', 'ownerRunId']
+      .some(key => body[key] !== undefined)) {
+      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
+      return;
+    }
     const scope = body.scope;
     const category = body.category;
     const now = new Date().toISOString();
     const exactHash = hashMemoryText(content);
     const normalizedHash = hashMemoryText(normalizeMemoryText(content));
     try {
-      // Dedup convergence (MF2T-03): an exact or normalized near-duplicate save
-      // returns the existing Entry without a second row or a second Event.
-      const existingId =
-        candidates.findEntryByExactHash(workspace.id, exactHash) ??
-        candidates.findEntryByNormalizedHash(workspace.id, normalizedHash);
-      if (existingId !== undefined) {
-        const existing = entries.findById(workspace.id, existingId);
-        if (existing !== undefined) {
-          res.json({ entry: existing, converged: true });
-          return;
-        }
-      }
-
       const db = store.getDatabase();
-      const entry = inTransaction(db, () => {
-        const created = entries.createEntryWithinTransaction({
+      const result = inTransaction(db, () => {
+        // LITE-07-107: invalid input must not become valid because its content
+        // happens to match an existing Entry. Do not silently discard malformed sources.
+        const input = entries.validateCreateInput({
           id: createEntityId('memory'),
           workspaceId: workspace.id,
           scope: scope as never,
@@ -279,31 +275,44 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
           authority: 'user-explicit',
           confidence, importance, title, content,
           ...(typeof body.summary === 'string' ? { summary: body.summary } : {}),
-          ...(Array.isArray(body.tags) ? { tags: (body.tags as unknown[]).filter((t): t is string => typeof t === 'string') } : {}),
+          ...(body.tags === undefined ? {} : { tags: body.tags as CreateMemoryEntryInput['tags'] }),
           status: 'active',
           exactContentHash: exactHash,
           normalizedTextHash: normalizedHash,
-          sources: Array.isArray(body.sources)
-            ? (body.sources as unknown[]).filter((s): s is { kind: never; id: string } =>
-                typeof s === 'object' && s !== null && typeof (s as Record<string, unknown>).id === 'string')
-            : [],
+          sources: (body.sources === undefined ? [] : body.sources) as CreateMemoryEntryInput['sources'],
           createdAt: now,
         });
-        const origin = { kind: 'memory.entry_save', entryId: created.id, entryVersion: created.version } as const;
-        store.workspaceEventWriter().appendWithinTransaction({
-          type: 'memory.entry_created',
-          workspaceId: workspace.id,
-          timestamp: now,
-          origin,
-          context: deriveWorkspaceEventContext(origin),
-          payload: {
-            memoryEntryId: created.id, version: created.version,
-            scope: created.scope, category: created.category, authority: created.authority,
-          },
-        });
-        return created;
+        const append = (type: 'memory.entry_created' | 'memory.entry_deduplicated', entry: MemoryEntryRecord) => {
+          const origin = { kind: 'memory.entry_save', entryId: entry.id, entryVersion: entry.version } as const;
+          store.workspaceEventWriter().appendWithinTransaction({
+            type, workspaceId: workspace.id, timestamp: now, origin,
+            context: deriveWorkspaceEventContext(origin),
+            payload: { memoryEntryId: entry.id, version: entry.version,
+              scope: entry.scope, category: entry.category, authority: entry.authority },
+          });
+        };
+        const exactId = candidates.findEntryByExactHash(workspace.id, exactHash, input);
+        if (exactId !== undefined) {
+          const existing = entries.findById(workspace.id, exactId)!;
+          if (input.sources.length === 0) return { entry: existing, converged: true };
+          const merged = entries.mergeExactSourcesWithinTransaction({ ...input, entryId: exactId,
+            exactContentHash: exactHash, updatedAt: now });
+          if (merged !== undefined) {
+            if (merged.changed) append('memory.entry_deduplicated', merged.record);
+            return { entry: merged.record, converged: true };
+          }
+        }
+        // Preserve the existing normalized-text save behavior within the exact
+        // ownership boundary. Provenance-bearing near-duplicates remain a separate gap.
+        const normalizedId = candidates.findEntryByNormalizedHash(workspace.id, normalizedHash, input);
+        if (normalizedId !== undefined) {
+          return { entry: entries.findById(workspace.id, normalizedId)!, converged: true };
+        }
+        const entry = entries.createEntryWithinTransaction(input);
+        append('memory.entry_created', entry);
+        return { entry, converged: false };
       });
-      res.status(201).json({ entry, converged: false });
+      res.status(result.converged ? 200 : 201).json(result);
     } catch (error) {
       fail(res, error);
     }

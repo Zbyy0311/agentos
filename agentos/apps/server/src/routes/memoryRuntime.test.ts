@@ -11,6 +11,7 @@ import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
+import { hashMemoryText, normalizeMemoryText } from '../services/MemoryCandidateGenerationService.js';
 import { createMemoryRuntimeRoutes } from './memoryRuntime.js';
 
 const NOW = '2026-09-11T00:00:00.000Z';
@@ -572,5 +573,258 @@ test('MF-2 explicit user save: creates the Entry and one Workspace Event in one 
 
     // The legacy memories surface writes no Workspace Event.
     assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM workspace_events').get() as { n: number | bigint }).n), 1);
+  });
+});
+
+test('LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    seedEntries(store);
+    const sameContent = 'All package management goes through pnpm workspace protocols.';
+    store.getDatabase().prepare('UPDATE memory_entries SET exact_content_hash = ?, normalized_text_hash = ?, version = version + 1 WHERE id = ?')
+      .run(hashMemoryText(sameContent), hashMemoryText(normalizeMemoryText(sameContent)), MEM_A);
+
+    const invalidBodies = [
+      { scope: 'not-a-scope', category: 'decision' },
+      { scope: 'workspace', category: 'not-a-category' },
+      { scope: 'workspace', category: 'decision', sources: [{ kind: 'not-a-source', id: RUN }] },
+      { scope: 'workspace', category: 'decision', sources: [null] },
+      { scope: 'workspace', category: 'decision', sources: { kind: 'run', id: RUN } },
+      { scope: 'workspace', category: 'decision', sources: [{ kind: 'run', id: RUN }, { kind: 'run', id: RUN }] },
+      { scope: 'workspace', category: 'decision', tags: 'invalid-tags' },
+      { scope: 'workspace', category: 'decision', tags: [null] },
+      { scope: 'workspace', category: 'decision', ownerAgentId: 'agent_unsupported' },
+      { scope: 'workspace', category: 'decision', ownerConversationId: 'conversation_unsupported' },
+      { scope: 'workspace', category: 'decision', ownerTaskId: TASK },
+      { scope: 'workspace', category: 'decision', ownerRunId: RUN },
+    ];
+    for (const fields of invalidBodies) {
+      const response = await postJson(`${baseUrl}/memory/entries`, {
+        title: 'same content, invalid envelope',
+        content: 'All package management goes through pnpm workspace protocols.',
+        ...fields,
+      });
+      assert.equal(response.status, 400);
+    }
+
+    assert.equal(workspaceEvents(store, WS).length, 0);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?', WS), 2);
+  });
+});
+
+test('LITE-07-003: explicit save does not converge across category or global/workspace scope', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const entries = new MemoryEntryRepository(store.getDatabase());
+    const content = 'This boundary probe must remain distinct by category and scope.';
+    const globalEntryId = 'mem_' + 'g'.repeat(26);
+    entries.createEntry({
+      id: globalEntryId,
+      workspaceId: WS,
+      scope: 'global',
+      category: 'decision',
+      authority: 'system-verified',
+      confidence: 1,
+      importance: 0.5,
+      title: 'global boundary seed',
+      content,
+      tags: [],
+      status: 'active',
+      tokenEstimate: 10,
+      exactContentHash: hashMemoryText(content),
+      normalizedTextHash: hashMemoryText(normalizeMemoryText(content)),
+      sources: [{ kind: 'run', id: RUN }],
+      createdAt: NOW,
+    });
+    const workspaceDecision = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'workspace decision', content, scope: 'workspace', category: 'decision',
+      sources: [{ kind: 'run', id: RUN }],
+    });
+    const workspacePreference = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'workspace preference', content, scope: 'workspace', category: 'preference',
+      sources: [{ kind: 'run', id: RUN }],
+    });
+
+    assert.equal(workspaceDecision.status, 201);
+    assert.equal(workspacePreference.status, 201);
+    const saved = [workspaceDecision, workspacePreference].map(result => result.json as {
+      converged: boolean; entry: { id: string };
+    });
+    assert.deepEqual(saved.map(result => result.converged), [false, false]);
+    assert.equal(new Set(saved.map(result => result.entry.id)).size, 2);
+    assert.notEqual(saved[0]!.entry.id, globalEntryId);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?', WS), 3);
+    assert.deepEqual(workspaceEvents(store, WS).map(event => event.type), [
+      'memory.entry_created', 'memory.entry_created',
+    ]);
+  });
+});
+
+test('LITE-07-003: an archived hash match does not swallow a legal explicit save', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const first = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'archived source', content: 'An archived memory must not capture a new save.',
+      scope: 'workspace', category: 'decision', sources: [{ kind: 'run', id: RUN }],
+    });
+    assert.equal(first.status, 201);
+    const firstEntry = first.json as { entry: { id: string; version: number } };
+    new MemoryEntryRepository(store.getDatabase()).updateStatus({
+      workspaceId: WS, entryId: firstEntry.entry.id, expectedVersion: 1,
+      status: 'archived', updatedAt: NOW2,
+    });
+
+    const saved = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'replacement save', content: 'An archived memory must not capture a new save.',
+      scope: 'workspace', category: 'decision', sources: [{ kind: 'run', id: RUN }],
+    });
+    assert.equal(saved.status, 201);
+    const savedBody = saved.json as { converged: boolean; entry: { id: string; status: string } };
+    assert.equal(savedBody.converged, false);
+    assert.notEqual(savedBody.entry.id, firstEntry.entry.id);
+    assert.equal(savedBody.entry.status, 'active');
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?', WS), 2);
+    assert.deepEqual(workspaceEvents(store, WS).map(event => event.type), [
+      'memory.entry_created', 'memory.entry_created',
+    ]);
+  });
+});
+
+test('LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const content = 'Exact duplicate provenance should extend the existing memory once.';
+    const first = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'original provenance', content, scope: 'workspace', category: 'decision',
+      sources: [{ kind: 'run', id: RUN }],
+    });
+    assert.equal(first.status, 201);
+    const firstBody = first.json as { entry: { id: string; version: number } };
+    assert.equal(firstBody.entry.version, 1);
+
+    const duplicateBody = {
+      title: 'new provenance', content, scope: 'workspace', category: 'decision',
+      sources: [{ kind: 'task', id: TASK }],
+    };
+    const merged = await postJson(`${baseUrl}/memory/entries`, duplicateBody);
+    assert.equal(merged.status, 200);
+    const mergedBody = merged.json as { converged: boolean; entry: { id: string; version: number } };
+    assert.equal(mergedBody.converged, true);
+    assert.equal(mergedBody.entry.id, firstBody.entry.id);
+    assert.equal(mergedBody.entry.version, 2);
+
+    const replay = await postJson(`${baseUrl}/memory/entries`, duplicateBody);
+    assert.equal(replay.status, 200);
+    const replayBody = replay.json as { converged: boolean; entry: { id: string; version: number } };
+    assert.equal(replayBody.converged, true);
+    assert.equal(replayBody.entry.version, 2);
+
+    const entry = new MemoryEntryRepository(store.getDatabase()).findById(WS, firstBody.entry.id);
+    assert.ok(entry);
+    assert.equal(entry.version, 2);
+    assert.deepEqual(entry.sources.map(source => source.kind + ':' + source.id).sort(), [
+      'run:' + RUN, 'task:' + TASK,
+    ].sort());
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?', WS), 1);
+    const events = workspaceEvents(store, WS);
+    assert.deepEqual(events.map(event => [event.sequence, event.type]), [
+      [1, 'memory.entry_created'], [2, 'memory.entry_deduplicated'],
+    ]);
+    assert.equal(events.filter(event => event.type === 'memory.entry_deduplicated').length, 1);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM runtime_events'), 0);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM outbox_messages'), 0);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM operations'), 0);
+  });
+});
+
+test('LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const content = 'A failed dedup event must leave the original provenance untouched.';
+    const first = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'transaction source', content, scope: 'workspace', category: 'decision',
+      sources: [{ kind: 'run', id: RUN }],
+    });
+    assert.equal(first.status, 201);
+    const firstBody = first.json as { entry: { id: string } };
+    const entries = new MemoryEntryRepository(store.getDatabase());
+    const before = entries.findById(WS, firstBody.entry.id);
+    assert.ok(before);
+    const sequenceBefore = scalar(store, 'SELECT next_event_sequence AS n FROM workspaces WHERE id = ?', WS);
+
+    // Deterministically fail only the deduplication Workspace Event append.
+    store.getDatabase().exec(`
+      CREATE TRIGGER fail_memory_entry_deduplicated
+      BEFORE INSERT ON workspace_events
+      WHEN NEW.type = 'memory.entry_deduplicated'
+      BEGIN
+        SELECT RAISE(ABORT, 'injected workspace event failure');
+      END;
+    `);
+    const failed = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'new source should roll back', content, scope: 'workspace', category: 'decision',
+      sources: [{ kind: 'task', id: TASK }],
+    });
+    assert.equal(failed.status, 500);
+
+    const after = entries.findById(WS, firstBody.entry.id);
+    assert.ok(after);
+    assert.equal(after.version, before.version);
+    assert.deepEqual(after.sources, before.sources);
+    assert.equal(scalar(store, 'SELECT next_event_sequence AS n FROM workspaces WHERE id = ?', WS), sequenceBefore);
+    assert.deepEqual(workspaceEvents(store, WS).map(event => [event.sequence, event.type]), [
+      [1, 'memory.entry_created'],
+    ]);
+  });
+});
+
+test('LITE-07-003: source write failure rolls back dedup before any Event is published', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const body = {
+      title: 'source rollback', content: 'The original evidence must survive a failed new source.',
+      scope: 'workspace', category: 'decision', sources: [{ kind: 'run', id: RUN }],
+    };
+    const first = await postJson(`${baseUrl}/memory/entries`, body);
+    assert.equal(first.status, 201);
+    const entryId = (first.json as { entry: { id: string } }).entry.id;
+    const entries = new MemoryEntryRepository(store.getDatabase());
+    const before = entries.findById(WS, entryId);
+    const sequenceBefore = scalar(store, 'SELECT next_event_sequence AS n FROM workspaces WHERE id = ?', WS);
+    store.getDatabase().exec(`
+      CREATE TRIGGER fail_save_source BEFORE INSERT ON memory_entry_sources
+      WHEN NEW.source_kind = 'task'
+      BEGIN SELECT RAISE(ABORT, 'injected source failure'); END;
+    `);
+    const failed = await postJson(`${baseUrl}/memory/entries`, {
+      ...body, sources: [{ kind: 'task', id: TASK }],
+    });
+    assert.equal(failed.status, 500);
+    assert.deepEqual(entries.findById(WS, entryId), before);
+    assert.equal(scalar(store, 'SELECT next_event_sequence AS n FROM workspaces WHERE id = ?', WS), sequenceBefore);
+    assert.deepEqual(workspaceEvents(store, WS).map(event => event.type), ['memory.entry_created']);
+  });
+});
+
+test('LITE-07-003: simultaneous exact saves converge to one source mutation and one Event', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const body = {
+      title: 'concurrent provenance', content: 'Concurrent explicit saves share the same bounded target.',
+      scope: 'workspace', category: 'decision', sources: [{ kind: 'run', id: RUN }],
+    };
+    const first = await postJson(`${baseUrl}/memory/entries`, body);
+    assert.equal(first.status, 201);
+    const entryId = (first.json as { entry: { id: string } }).entry.id;
+    const replies = await Promise.all(Array.from({ length: 4 }, () =>
+      postJson(`${baseUrl}/memory/entries`, { ...body, sources: [{ kind: 'task', id: TASK }] })));
+    assert.deepEqual(replies.map(reply => reply.status), [200, 200, 200, 200]);
+    const entry = new MemoryEntryRepository(store.getDatabase()).findById(WS, entryId)!;
+    assert.equal(entry.version, 2);
+    assert.equal(entry.sources.length, 2);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries'), 1);
+    assert.deepEqual(workspaceEvents(store, WS).map(event => [event.sequence, event.type]), [
+      [1, 'memory.entry_created'], [2, 'memory.entry_deduplicated'],
+    ]);
   });
 });
