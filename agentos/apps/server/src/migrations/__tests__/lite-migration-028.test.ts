@@ -20,7 +20,9 @@ test('LITE-08-005/006/007: fresh and through027 upgrade apply identical additive
     for (const original of before as Array<Record<string, unknown>>) {
       assert.deepEqual(upgrade.prepare('SELECT type,name,sql FROM sqlite_master WHERE name = ?').get(original.name), original);
     }
-    for (const migration of DEFAULT_REGISTRY_MIGRATIONS) migration.apply({ db: fresh });
+    // Compare at the 028 boundary; later additive migrations are outside this
+    // historical upgrade proof.
+    for (const migration of DEFAULT_REGISTRY_MIGRATIONS.filter(item => item.id <= '028')) migration.apply({ db: fresh });
     assert.deepEqual(upgrade.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all(),
       fresh.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all());
     assert.equal(migration028Checksum, createHash('sha256')
