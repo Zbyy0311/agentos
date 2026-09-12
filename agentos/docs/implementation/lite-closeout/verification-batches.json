@@ -1,0 +1,399 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-12T16:08:05.584Z",
+  "matrixVersion": 8,
+  "summary": {
+    "batches": 16,
+    "passed": 16,
+    "requirementsProvable": 178,
+    "requirementsTotal": 178
+  },
+  "results": [
+    {
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "requirementIds": [
+        "LITE-10-001",
+        "LITE-10-002",
+        "LITE-10-003",
+        "LITE-10-004",
+        "LITE-10-005",
+        "LITE-10-006",
+        "LITE-10-007",
+        "LITE-10-008",
+        "LITE-10-009",
+        "LITE-10-010",
+        "LITE-10-011",
+        "LITE-10-012",
+        "LITE-10-013",
+        "LITE-10-014",
+        "LITE-10-015",
+        "LITE-10-016",
+        "LITE-10-017"
+      ],
+      "status": "passed",
+      "durationMs": 238,
+      "counts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ P2 Migration Registry contains exactly the registered migrations in contract order (1.1256ms)\n✔ P2 Migration Registry preserves the exact padded order when instantiated (8.797ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 165.9065"
+    },
+    {
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "requirementIds": [
+        "LITE-11-001",
+        "LITE-11-002",
+        "LITE-11-003",
+        "LITE-11-004",
+        "LITE-11-005",
+        "LITE-11-006",
+        "LITE-11-008",
+        "LITE-11-009",
+        "LITE-11-010",
+        "LITE-11-011",
+        "LITE-11-012",
+        "LITE-11-013"
+      ],
+      "status": "passed",
+      "durationMs": 2616,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ P5C overflow closes the SSE transport without synthetic frames or durable writes (2.6122ms)\n✔ P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed (164.9307ms)\n✔ P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable) (151.0654ms)\n✔ P5C stream route does not shadow canonical Run, Events or Replay routes (156.7385ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2549.4418"
+    },
+    {
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "requirementIds": [
+        "LITE-07-101"
+      ],
+      "status": "passed",
+      "durationMs": 3271,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event (157.1248ms)\n✔ LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence (156.2499ms)\n✔ LITE-07-003: source write failure rolls back dedup before any Event is published (152.8055ms)\n✔ LITE-07-003: simultaneous exact saves converge to one source mutation and one Event (161.4453ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3202.3959"
+    },
+    {
+      "file": "apps/server/src/routes/runtimeInspector.test.ts",
+      "requirementIds": [
+        "LITE-13-001",
+        "LITE-13-002",
+        "LITE-13-003",
+        "LITE-13-004",
+        "LITE-13-005",
+        "LITE-13-006",
+        "LITE-13-007",
+        "LITE-13-008",
+        "LITE-13-009",
+        "LITE-13-010",
+        "LITE-13-011",
+        "LITE-13-012",
+        "LITE-13-013",
+        "LITE-13-014",
+        "LITE-13-015"
+      ],
+      "status": "passed",
+      "durationMs": 1867,
+      "counts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ GET /runs/:runId/inspector returns the redacted projection for a canonical Run (431.9298ms)\n✔ GET /runs/:runId/inspector fails closed for an unknown Run and workspace (814.1876ms)\n✔ GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring) (163.1456ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1800.2032"
+    },
+    {
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "requirementIds": [
+        "LITE-09-103"
+      ],
+      "status": "passed",
+      "durationMs": 1361,
+      "counts": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ CR6-A4 filters by kind, status, conversation, task, run, and time compose (165.5789ms)\n✔ CR6-A5 provider filter scopes Turns to their Provider configuration (157.9446ms)\n✔ CR6-A6 the limit is bounded and deterministic (160.5665ms)\n✔ CR6-A7 archive/restore is a read-only History concern and stays with CR-1 (164.7426ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1294.9602"
+    },
+    {
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "requirementIds": [
+        "LITE-09-001",
+        "LITE-09-002",
+        "LITE-09-003",
+        "LITE-09-004",
+        "LITE-09-005",
+        "LITE-09-006",
+        "LITE-09-007",
+        "LITE-09-008",
+        "LITE-09-009",
+        "LITE-09-011",
+        "LITE-09-012",
+        "LITE-09-014",
+        "LITE-09-015",
+        "LITE-09-016",
+        "LITE-09-017",
+        "LITE-09-018"
+      ],
+      "status": "passed",
+      "durationMs": 1063,
+      "counts": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ TD-03 a cancelled reply finalizes the Turn cancelled and the Message failed (128.9349ms)\n✔ TD-04 an unknown Agent fails closed without reserving a stream (131.0813ms)\n✔ TD-05 waiting_user finalizes the Turn final with the question as content (127.1522ms)\n✔ TD-06 a runner crash finalizes failed instead of leaving an open stream (129.5886ms)\nℹ tests 6\nℹ suites 0\nℹ pass 6\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 995.1729"
+    },
+    {
+      "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "requirementIds": [
+        "LITE-02-001",
+        "LITE-02-002",
+        "LITE-02-003",
+        "LITE-02-004",
+        "LITE-02-009",
+        "LITE-02-010",
+        "LITE-02-011",
+        "LITE-02-012",
+        "LITE-02-013",
+        "LITE-02-014",
+        "LITE-02-015",
+        "LITE-02-016",
+        "LITE-02-017",
+        "LITE-08-001",
+        "LITE-08-002",
+        "LITE-08-003",
+        "LITE-08-004",
+        "LITE-08-008",
+        "LITE-08-009",
+        "LITE-08-010",
+        "LITE-08-011",
+        "LITE-08-012",
+        "LITE-08-013",
+        "LITE-08-014",
+        "LITE-08-015"
+      ],
+      "status": "passed",
+      "durationMs": 4376,
+      "counts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ HANDOFF-05 new evidence seam is safe inside a caller-owned transaction (35.8681ms)\n✔ HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible (35.367ms)\n✔ HANDOFF-07 evidence seam returns synchronously without an async transaction callback (37.4076ms)\n✔ P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state (38.6292ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 4309.0232"
+    },
+    {
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "requirementIds": [
+        "LITE-07-001",
+        "LITE-07-002",
+        "LITE-07-005",
+        "LITE-07-006",
+        "LITE-07-009",
+        "LITE-07-010",
+        "LITE-07-012",
+        "LITE-07-014"
+      ],
+      "status": "passed",
+      "durationMs": 2481,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ MF4I-08 empty store still persists a snapshot (130.0994ms)\n✔ MF4I-09 default budget is frozen and valid (143.1797ms)\n✔ MF4I-10 workspace isolation (146.8598ms)\n✔ LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen (160.4126ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2412.1102"
+    },
+    {
+      "file": "apps/server/src/services/OutboxPublisher.test.ts",
+      "requirementIds": [
+        "LITE-03-001",
+        "LITE-03-002",
+        "LITE-03-003",
+        "LITE-03-008",
+        "LITE-03-009",
+        "LITE-03-010",
+        "LITE-03-011",
+        "LITE-03-012",
+        "LITE-03-013",
+        "LITE-03-014",
+        "LITE-03-015",
+        "LITE-03-016",
+        "LITE-03-017",
+        "LITE-03-018",
+        "LITE-03-019"
+      ],
+      "status": "passed",
+      "durationMs": 762,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ M3 P6A P13/P14 start-stop is timer-deterministic, idempotent, and inactive before start (43ms)\n✔ M3 P6A timer ticks reclaim leases that expire while the server remains alive before processing due work (40.8717ms)\n✔ M3 P6A F11 Outbox terminal mutation rolls back when dead-letter insertion fails (41.4334ms)\n✔ M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events (40.8328ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 694.028"
+    },
+    {
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "requirementIds": [
+        "LITE-13-102"
+      ],
+      "status": "passed",
+      "durationMs": 1739,
+      "counts": {
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ INSP-08 memory context projection (127.3257ms)\n✔ INSP-09 absent memory context is null (134.6366ms)\n✔ INSP-10 workspace isolation (149.0209ms)\n✔ INSP-11 stages are ordered (173.9425ms)\nℹ tests 11\nℹ suites 0\nℹ pass 11\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1670.1035"
+    },
+    {
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "requirementIds": [
+        "LITE-06-001",
+        "LITE-06-002",
+        "LITE-06-003",
+        "LITE-06-004",
+        "LITE-06-005",
+        "LITE-06-006",
+        "LITE-06-007",
+        "LITE-06-008",
+        "LITE-06-009",
+        "LITE-06-010",
+        "LITE-06-011"
+      ],
+      "status": "passed",
+      "durationMs": 2658,
+      "counts": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "  ✔ L1D-I14 a failure after release and grant writes rolls the whole transaction back (38.8022ms)\n  ✔ L1D-I15 a new service instance recovers the same durable authority state (146.4794ms)\n  ✔ L1D-I16 canonical and legacy subjects share one FIFO and release authority (41.5521ms)\n✔ WorkspaceAdmissionAuthority integration contract (1251.3294ms)\nℹ tests 43\nℹ suites 3\nℹ pass 43\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2588.9056"
+    },
+    {
+      "file": "apps/server/src/store/Identity.test.ts",
+      "requirementIds": [
+        "LITE-01-001",
+        "LITE-01-002",
+        "LITE-01-003",
+        "LITE-01-004",
+        "LITE-01-005",
+        "LITE-01-006",
+        "LITE-01-007",
+        "LITE-01-008",
+        "LITE-01-009",
+        "LITE-01-010",
+        "LITE-01-011",
+        "LITE-01-012",
+        "LITE-01-013",
+        "LITE-01-014",
+        "LITE-01-015"
+      ],
+      "status": "passed",
+      "durationMs": 211,
+      "counts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "  ✔ operation kind exists with op prefix (0.0515ms)\n  ✔ createEntityId operation starts with op_ and validates (0.0525ms)\n  ✔ operation IDs remain distinct from all existing kinds (0.0604ms)\n✔ Identity — M3 P3A operation kind (0.2316ms)\nℹ tests 34\nℹ suites 4\nℹ pass 34\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 139.3549"
+    },
+    {
+      "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "requirementIds": [
+        "LITE-12-001",
+        "LITE-12-002",
+        "LITE-12-003",
+        "LITE-12-004",
+        "LITE-12-005",
+        "LITE-12-006",
+        "LITE-12-007",
+        "LITE-12-008",
+        "LITE-12-009",
+        "LITE-12-010",
+        "LITE-12-011",
+        "LITE-12-012",
+        "LITE-12-013",
+        "LITE-12-014",
+        "LITE-12-015",
+        "LITE-12-016",
+        "LITE-12-101"
+      ],
+      "status": "passed",
+      "durationMs": 292,
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse (1.9697ms)\n✔ SHELL-07 dark and light themes emit their own token values (4.0422ms)\n✔ SHELL-08 the Canvas keeps its minimum width (2.1247ms)\n✔ SHELL-09 an optional toolbar renders above the columns (2.4563ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 227.6138"
+    },
+    {
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "requirementIds": [
+        "LITE-04-002",
+        "LITE-04-003",
+        "LITE-04-004",
+        "LITE-04-005",
+        "LITE-04-006",
+        "LITE-04-007",
+        "LITE-04-008",
+        "LITE-04-009",
+        "LITE-04-010",
+        "LITE-04-011",
+        "LITE-04-012"
+      ],
+      "status": "passed",
+      "durationMs": 984,
+      "counts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-s8-acceptance/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  21 passed (21)\n   Start at  00:08:01\n   Duration  321ms (transform 124ms, setup 0ms, import 159ms, tests 16ms, environment 0ms)"
+    },
+    {
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "requirementIds": [
+        "LITE-05-001",
+        "LITE-05-002",
+        "LITE-05-003",
+        "LITE-05-004",
+        "LITE-05-005",
+        "LITE-05-006",
+        "LITE-05-007",
+        "LITE-05-008",
+        "LITE-05-009",
+        "LITE-05-010",
+        "LITE-05-011",
+        "LITE-05-012"
+      ],
+      "status": "passed",
+      "durationMs": 3542,
+      "counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-s8-acceptance/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  10 passed (10)\n   Start at  00:08:02\n   Duration  2.89s (transform 60ms, setup 0ms, import 81ms, tests 2.67s, environment 0ms)"
+    },
+    {
+      "file": "packages/shared/wf-template-instantiation.test.ts",
+      "requirementIds": [
+        "LITE-01-101"
+      ],
+      "status": "passed",
+      "durationMs": 211,
+      "counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ WFI-07 definition overrides (0.0943ms)\n✔ WFI-08 invalid input fails closed (0.1437ms)\n✔ WFI-09 deterministic and non-mutating (0.1488ms)\n✔ WFI-10 every template compiles (0.2899ms)\nℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 145.3602"
+    }
+  ]
+}
