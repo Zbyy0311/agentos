@@ -52,7 +52,7 @@ const BUDGET: MemoryBudgetPolicyV1 = {
   requireDiversity: false,
 };
 
-function fixture() {
+function fixture(clock?: () => number) {
   const root = mkdtempSync(join(tmpdir(), 'agentos-mf4-resolver-'));
   const path = join(root, 'agentos.sqlite');
   const db = new DatabaseSync(path);
@@ -73,7 +73,7 @@ function fixture() {
   const tx = db as unknown as TransactionDatabase;
   const entries = new MemoryEntryRepository(tx);
   const snapshots = new MemoryContextSnapshotRepository(tx);
-  const selector = new MemoryContextBudgetSelector(new MemoryRetrievalService(entries), snapshots);
+  const selector = new MemoryContextBudgetSelector(new MemoryRetrievalService(entries, clock), snapshots);
   const resolver = new MemoryContextResolver({ store: { getDatabase: () => tx }, selector, entries, snapshots });
   return { db, entries, snapshots, resolver, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
 }
@@ -291,5 +291,29 @@ test('MF4I-10 workspace isolation', () => {
     addEntry(fx);
     const resolved = fx.resolver.resolve(resolveInput());
     assert.equal(fx.snapshots.findById('ws_other', resolved.snapshot.id), undefined);
+  } finally { fx.close(); }
+});
+
+test('LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen', () => {
+  let clockMs = Date.parse(NOW);
+  const fx = fixture(() => clockMs);
+  try {
+    const marker = 'restricted-resolver-fixture-not-a-real-secret';
+    addEntry(fx, { sensitivity: 'restricted', pinned: true, title: marker, content: marker });
+    addEntry(fx, { expiresAt: NOW, content: 'already-expired-fixture' });
+    const eligible = addEntry(fx, { expiresAt: new Date(clockMs + 1000).toISOString(),
+      content: 'previously-valid-fixture' });
+    const first = fx.resolver.resolve(resolveInput());
+    assert.deepEqual(first.snapshot.selected.map(row => row.memoryId), [eligible]);
+    assert.equal(first.contextText.includes(marker), false);
+    assert.equal(first.contextText.includes('already-expired-fixture'), false);
+    assert.equal(fx.snapshots.readContextText(WS, first.snapshot.id), first.contextText);
+    clockMs += 1000;
+    const next = fx.resolver.resolve(resolveInput({ stageId: STAGE }));
+    assert.equal(next.contextText, '');
+    assert.deepEqual(next.snapshot.selected, []);
+    assert.equal(fx.snapshots.readContextText(WS, first.snapshot.id), first.contextText);
+    assert.equal(first.contextText.includes('previously-valid-fixture'), true);
+    assert.equal(fx.entries.findById(WS, eligible)?.status, 'active');
   } finally { fx.close(); }
 });
