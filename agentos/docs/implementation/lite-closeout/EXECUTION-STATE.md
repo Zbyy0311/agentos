@@ -35,13 +35,16 @@ Counts include overlapping obligations and do not measure percent completion.
 `E:/workspace/Multi-Agent-worktrees/agentos-lite-s2-artifact/agentos`, branch
 codex/lite-s2-artifact, based on b61bc503 plus S2 source-audit and matrix mapping.
 S2 product committed02a50947a82c692c61703f3d22f0b32c0b0a98ce after authorization
-e7ab1f68/62e8992a. See S2-artifact-evidence.md for exact implementation, local
-27/66/2 test sets,305+1skip migration tests,6 parser/4 component tests, and real
-subprocess/page/source/accept evidence. Full suites/build run once under Luna
-Russell01a09513-5c63-7e11-aa73-e14a284eea44. Product source frozen during run.
-Original Artifact draft remains untouched. Actual live model invocation and
-failure/recovery acceptance still open; GAP remains GAP. Do not duplicate
-completed local QA or infer model evidence from the seeded execution records.
+e7ab1f68/62e8992a; PR145 docs/evidence head97b5b885. See S2-artifact-evidence.md
+for exact implementation, local27/66/2 test sets,305+1skip migration tests,
+6 parser/4 component tests, and real subprocess/page/source/accept evidence.
+First complete Server run under Luna Russell: 2687 pass/53 fail/3 skip, exit1;
+49 failures traced to stale016 replay helper and4 separate ENOTEMPTY preserved.
+Agent-core159/159 and full build passed. 419b7a13 fixes only the historical
+015-prefix test helper; focused016 replay56/0/0 and typecheck pass. Full suite
+at the corrected exact head and CI remain gates. Original Artifact draft remains
+untouched. Actual live model invocation and failure/recovery acceptance still
+open; GAP remains GAP. Do not infer model evidence from seeded execution records.
 
 Latest user requests faster progress: focus on shipping bounded mapped slices;
 delegate tests/CI, no repeated broad audits/status polls. S2 PR body PR-S2.md.

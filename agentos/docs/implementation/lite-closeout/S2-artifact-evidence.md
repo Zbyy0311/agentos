@@ -37,7 +37,7 @@ Windows / Node 24.18.0 / pnpm 11.11.0; local isolated worktree.
 | New Dispatcher LITE-07-104 tests | 2 pass, 0 fail/skip | Existing adapter/coordinator with fake process driver |
 | Codex parser tests | 6 pass | Explicit exit proof including missing/redacted/overlong refusal |
 | ReviewQueue component tests | 4 pass | URL encoding/body/SSR; no DOM |
-| Server and Web typecheck; agent-core build | exit 0 | Full workspace build separately pending |
+| Server and Web typecheck; agent-core build | exit 0 | Focused server typecheck; agent-core full suite and full workspace build evidence below |
 
 ### Browser product flow
 
@@ -63,6 +63,17 @@ Live invocation and canonical cancellation/restart windows remain to verify.
 
 ## First failures retained
 
+- First complete Server suite on 97b5b885: 2687 pass / 53 fail / 3 skipped,
+  exit 1. 49 failures came from the stale 016 replay helper; 4 separate
+  ENOTEMPTY teardown failures remain preserved and are not ignored. Agent-core
+  full suite: 159/159 pass. Full workspace build: exit 0.
+- 016 diagnosis: `registryThrough015()` filtered only `id !== '016'`, so it
+  accidentally applied 017-027 before replaying destructive 016. The 027 source
+  trigger then followed SQLite's table rename and referenced the old table.
+  `419b7a13` constrains the helper to the true 001-015 prefix. Focused 016
+  replay after the correction: 56 pass / 0 fail / 0 skip. This was a test
+  fixture correction; 027 product DDL is unchanged and no suite was rerun to
+  seek green.
 - Initial legacy Artifact test expected report after adding typed test; fixed
   the expectation only after verifying the explicit completion contract.
 - Workspace allowlist test expected TYPE_NOT_ALLOWED; source-specific refusal
@@ -86,7 +97,8 @@ Live invocation and canonical cancellation/restart windows remain to verify.
 
 ## Open gates
 
-Full server/core tests and workspace build execute once on the product commit;
-retain exact results and skips. PR CI must be green before merge. Real model
+The complete Server suite must be re-evaluated at the corrected exact head;
+retain first failures and skips. PR CI must be green before merge. Real model
 invocation and the wider six-trigger source/event requirements remain open in
-the matrix. No PASS, new deferral, goal closure, or flaky-test rerun is implied.
+the matrix. No PASS, new deferral, goal closure, or name-based flake rerun is
+implied.
