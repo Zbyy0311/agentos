@@ -4,7 +4,13 @@ import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { ProviderConfigurationRepository, DEFAULT_CAPABILITIES, DEFAULT_TIMEOUT_POLICY } from '../store/ProviderConfigurationRepository.js';
 import { createEntityId } from '../store/Identity.js';
 import type { ProviderConfiguration } from '../store/ProviderConfigurationRepository.js';
-import { KimiCodeProviderAdapter, ProviderRegistry, ProviderValidationService } from '@agentos/agent-core/providers';
+import {
+  CodexProviderAdapter,
+  KimiCodeProviderAdapter,
+  OpenCodeProviderAdapter,
+  ProviderRegistry,
+  ProviderValidationService,
+} from '@agentos/agent-core/providers';
 import { NodeProcessProbePort } from '@agentos/process-runtime';
 import type { ProviderValidationResult } from '@agentos/agent-core/providers';
 import { createHash } from 'node:crypto';
@@ -119,7 +125,11 @@ export function createProviderConfigRoutes(
   const router = Router({ mergeParams: true });
   const repo = new ProviderConfigurationRepository(store.getDatabase() as any);
   const validationService = options.validationService
-    ?? new ProviderValidationService(new ProviderRegistry([new KimiCodeProviderAdapter({ probe: new NodeProcessProbePort() })]));
+    ?? new ProviderValidationService(new ProviderRegistry([
+      new KimiCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
+      new CodexProviderAdapter({ probe: new NodeProcessProbePort() }),
+      new OpenCodeProviderAdapter({ probe: new NodeProcessProbePort() }),
+    ]));
 
   router.get('/provider-configs', (req: Request, res: Response) => {
     const workspace = workspaceManager.get(req.params.workspaceId);
