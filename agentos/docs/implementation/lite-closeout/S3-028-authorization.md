@@ -29,7 +29,7 @@ expiry, and consumption state that 026 deliberately does not own.
 Add `runtime_approval_requests`; no backfill and no rewrite of 026/027:
 
 - immutable identity: `id`, `workspace_id`, `run_id`, `stage_id`,
-  `stage_attempt`, `operation_id`, `source_key`;
+  `stage_attempt`, `operation_id`, `source_key`, `request_round`;
 - immutable redacted action: category/risk/title/description, bounded
   `request_snapshot_json`, `snapshot_hash`, `action_fingerprint`,
   `policy_version`, `requested_at`, `expires_at`;
@@ -40,8 +40,9 @@ Add `runtime_approval_requests`; no backfill and no rewrite of 026/027:
   Operation, and 026 decision record. The request stores IDs and redacted
   normalized facts only; never secret values, raw output, env values, or full
   prompts;
-- `UNIQUE(workspace_id, source_key)` gives deterministic replay for the same
-  Run/Stage/attempt/action; one partial unique pending request per Run;
+- `UNIQUE(workspace_id, source_key, request_round)` gives deterministic replay
+  for the same Run/Stage/attempt/action while allowing a new request after an
+  expired/consumed one; one partial unique pending request per Run;
 - identity/snapshot/action/requested fields are immutable. Mutable fields are
   only status/resolution/decision linkage/decision metadata/consumption,
   version and updated_at;
@@ -50,9 +51,10 @@ Add `runtime_approval_requests`; no backfill and no rewrite of 026/027:
   request cannot execute.
 
 `source_key` is a bounded hash of Workspace, Run, Stage, attempt and canonical
-action fingerprint. Caller text never becomes an unbounded key. Snapshot hash
-uses canonical JSON of the redacted snapshot. Unknown classification is
-modifying and therefore ASK_USER at this first boundary.
+action fingerprint; `request_round` is the next persisted round for that key.
+Caller text never becomes an unbounded key. Snapshot hash uses canonical JSON
+of the redacted snapshot. Unknown classification is modifying and therefore
+ASK_USER at this first boundary.
 
 ## Execution and continuation
 
