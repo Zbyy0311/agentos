@@ -328,5 +328,15 @@
     "result": { "passed": 56, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
     "requirementIds": ["LITE-07-104"],
     "limitation": "Focused correction evidence for stale015-prefix test helper only; full Server suite and exact-head CI remain gates."
+  },
+  {
+    "id": "S2-CI-FIRST",
+    "baseline": "97b5b88510569c5553e40a142f72cf6aa25888c8",
+    "kind": "github-actions",
+    "command": "gh run view 34687670603 --json status,conclusion,headSha",
+    "url": "https://github.com/Zbyy0311/agentos/actions/runs/34687670603",
+    "result": { "failed": 1, "conclusion": "failure" },
+    "requirementIds": ["LITE-07-104"],
+    "limitation": "First PR145 CI preserved. It used the stale016 replay helper before 419b7a13; not a green claim and no automatic rerun."
   }
 ]

@@ -42,7 +42,9 @@ First complete Server run under Luna Russell: 2687 pass/53 fail/3 skip, exit1;
 49 failures traced to stale016 replay helper and4 separate ENOTEMPTY preserved.
 Agent-core159/159 and full build passed. 419b7a13 fixes only the historical
 015-prefix test helper; focused016 replay56/0/0 and typecheck pass. Full suite
-at the corrected exact head and CI remain gates. Original Artifact draft remains
+at the corrected exact head and CI remain gates. First PR145 CI run34687670603
+completed FAILURE on97b5b885 with the same stale016 replay defect; preserved in
+S2-CI-FIRST. Original Artifact draft remains
 untouched. Actual live model invocation and failure/recovery acceptance still
 open; GAP remains GAP. Do not infer model evidence from seeded execution records.
 
