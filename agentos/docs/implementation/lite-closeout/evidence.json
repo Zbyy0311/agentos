@@ -249,5 +249,21 @@
       "skipped": 0
     },
     "limitation": "Integrated S1-D/C1 plus S1-A affected regression. Server typecheck exit 0. Exact-head CI still required; remaining review/source/FTS/budget/real invocation requirements stay open."
+  },
+  {
+    "id": "S2-ARTIFACT-SOURCE",
+    "baseline": "b61bc50314625c6fc1244f3affbb3c0e7935ed25",
+    "kind": "source-audit",
+    "command": "Read RuntimeArtifactCollector.recordRuntimeEvent, ConversationService.recordRuntimeEvent/finalize, SqliteStore.createRuntimeArtifact/createCanonicalRuntimeArtifact, canonical dispatcher, and preserved uncommitted 027/completion drafts",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-07-104",
+      "LITE-07-108"
+    ],
+    "result": {
+      "findings": 5
+    },
+    "environment": "Read-only Windows source audit; original draft not edited",
+    "limitation": "Exact producer/provenance/candidate/event gaps in S2-artifact-source-audit.md. Baseline SHA refers to committed production source; uncommitted draft findings are identified separately. Not runtime or completion evidence."
   }
 ]

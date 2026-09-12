@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 4,
+  "matrixVersion": 5,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -3931,13 +3931,18 @@
       "state": "GAP",
       "workPackage": "S2",
       "implementation": [
-        "apps/server/src/services/RuntimeArtifactService.ts"
+        "apps/server/src/services/RuntimeArtifactService.ts",
+        "apps/server/src/services/RuntimeArtifactCollector.ts",
+        "apps/server/src/services/ConversationService.ts",
+        "apps/server/src/store/SqliteStore.ts"
       ],
       "tests": [
         "apps/server/src/services/RuntimeArtifactService.test.ts"
       ],
-      "evidence": [],
-      "finding": "主线仅合并授权；027与完成实现仍在原工作区未提交草稿。",
+      "evidence": [
+        "S2-ARTIFACT-SOURCE"
+      ],
+      "finding": "主线仅合并授权；027与完成实现仍在原工作区未提交草稿。 已定位真实legacy测试Collector及canonical分离持久路径；完成记录/来源因果与真实调用仍需修复验收，见S2-artifact-source-audit.md。",
       "exit": "真实review/test→持久完成→候选+事件→Review Queue→接受→Entry；不以手工POST作为闭环。"
     },
     {
@@ -4018,8 +4023,10 @@
       "tests": [
         "apps/server/src/store/WorkspaceEventWriter.test.ts"
       ],
-      "evidence": [],
-      "finding": "Workspace allowlist无memory.candidate_created；无法为审批、Artifact、压缩和导入新候选写同事务事件。",
+      "evidence": [
+        "S2-ARTIFACT-SOURCE"
+      ],
+      "finding": "Workspace allowlist无memory.candidate_created；无法为审批、Artifact、压缩和导入新候选写同事务事件。 已定位真实legacy测试Collector及canonical分离持久路径；完成记录/来源因果与真实调用仍需修复验收，见S2-artifact-source-audit.md。",
       "exit": "授权最小契约扩展；持久来源因果证明，未知或跨Workspace来源拒绝；回滚和重放验证。"
     },
     {
@@ -6642,6 +6649,16 @@
         "LITE-07-003",
         "LITE-07-107",
         "LITE-07-109"
+      ]
+    },
+    {
+      "version": 5,
+      "baseline": "b61bc50314625c6fc1244f3affbb3c0e7935ed25",
+      "authority": "Main-agent source audit within user-approved S0 scope",
+      "reason": "Narrow existing Artifact production and Workspace candidate causation gaps before freezing 027 remediation. No state/identity changes, no speculative implementation.",
+      "requirementIds": [
+        "LITE-07-104",
+        "LITE-07-108"
       ]
     }
   ]
