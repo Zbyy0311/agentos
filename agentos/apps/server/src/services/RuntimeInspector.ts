@@ -74,6 +74,12 @@ export interface InspectorProcessSummary {
   readonly platform: string;
   /** Native PID is evidence-only and never an AgentOS identity. */
   readonly nativePidEvidenceOnly: number | null;
+  /**
+   * LITE-13-002: the Provider Session that owns this Process attempt. It is a
+   * different identifier from `processId` and from the native PID, so a reader
+   * can never collapse Provider, Process and evidence-only PID into one thing.
+   */
+  readonly providerSessionId: string | null;
   readonly nativeBirthIdentity: string | null;
   readonly cwd: string;
   readonly executable: string;
@@ -81,6 +87,18 @@ export interface InspectorProcessSummary {
   readonly exitCode: number | null;
   readonly terminationReason: string | null;
   readonly recoveryClassification: string | null;
+}
+
+export interface InspectorProviderSessionSummary {
+  readonly sessionId: string;
+  readonly stageId: string;
+  readonly stageAttempt: number;
+  readonly agentId: string;
+  readonly providerConfigId: string;
+  readonly providerType: string;
+  readonly adapterId: string;
+  readonly adapterVersion: string;
+  readonly status: string;
 }
 
 export interface InspectorMemorySelection {
@@ -148,6 +166,8 @@ export interface InspectorProjection {
   readonly overview: InspectorRunOverview;
   readonly stages: readonly InspectorStageSummary[];
   readonly processes: readonly InspectorProcessSummary[];
+  /** Provider Sessions for this Run, distinct from Stages and Processes. */
+  readonly providerSessions: readonly InspectorProviderSessionSummary[];
   readonly events: readonly InspectorEventSummary[];
   /** Event sequence the projection is consistent through; clients resume after it. */
   readonly highWatermark: number;
@@ -171,6 +191,7 @@ interface ProcessRow {
   id: string;
   run_id: string;
   stage_id: string | null;
+  provider_session_id: string | null;
   status: string;
   process_type: string;
   platform: string;
@@ -259,7 +280,7 @@ export class RuntimeInspector {
     const projected = eventRecords.slice(0, maxEvents).map(record => toEventSummary(record.event));
 
     const processRows = this.db.prepare(
-      'SELECT id, run_id, stage_id, status, process_type, platform, native_pid, native_birth_identity, cwd_resolved, executable_resolved, args_redacted_json, exit_code, termination_reason, recovery_classification FROM runtime_processes WHERE workspace_id = ? AND run_id = ? ORDER BY created_at ASC, id ASC',
+      'SELECT id, run_id, stage_id, provider_session_id, status, process_type, platform, native_pid, native_birth_identity, cwd_resolved, executable_resolved, args_redacted_json, exit_code, termination_reason, recovery_classification FROM runtime_processes WHERE workspace_id = ? AND run_id = ? ORDER BY created_at ASC, id ASC',
     ).all(query.workspaceId, query.runId) as ProcessRow[];
 
     const memoryContext = this.memoryContexts === undefined
@@ -267,6 +288,17 @@ export class RuntimeInspector {
       : toMemoryContextSummary(this.memoryContexts.findLatestForRun(query.workspaceId, query.runId));
 
     const payload = snapshot?.payload.schemaVersion === 2 ? snapshot.payload : null;
+
+    // LITE-13-002: Provider Sessions are their own durable records, so the
+    // projection names them separately instead of folding them into Stages or
+    // Processes.
+    const providerSessionRows = this.db.prepare(
+      'SELECT id, stage_id, stage_attempt, agent_id, provider_config_id, provider_type, adapter_id, adapter_version, status FROM provider_sessions WHERE workspace_id = ? AND run_id = ? ORDER BY created_at ASC, id ASC',
+    ).all(query.workspaceId, query.runId) as Array<{
+      id: string; stage_id: string; stage_attempt: number; agent_id: string;
+      provider_config_id: string; provider_type: string; adapter_id: string;
+      adapter_version: string; status: string;
+    }>;
 
     // LITE-08-004 / LITE-13-002: the effective mutation class is a durable
     // admission fact, so the Inspector reports it rather than leaving the field
@@ -312,6 +344,17 @@ export class RuntimeInspector {
         .sort((a, b) => (a.sequence - b.sequence) || a.id.localeCompare(b.id))
         .map(toStageSummary),
       processes: processRows.map(toProcessSummary),
+      providerSessions: providerSessionRows.map(row => ({
+        sessionId: row.id,
+        stageId: row.stage_id,
+        stageAttempt: row.stage_attempt,
+        agentId: row.agent_id,
+        providerConfigId: row.provider_config_id,
+        providerType: row.provider_type,
+        adapterId: row.adapter_id,
+        adapterVersion: row.adapter_version,
+        status: row.status,
+      })),
       events: projected,
       highWatermark,
       memoryContext,
@@ -344,6 +387,7 @@ function toProcessSummary(row: ProcessRow): InspectorProcessSummary {
     processType: row.process_type,
     platform: row.platform,
     nativePidEvidenceOnly: row.native_pid,
+    providerSessionId: row.provider_session_id,
     nativeBirthIdentity: row.native_birth_identity,
     cwd: row.cwd_resolved,
     executable: row.executable_resolved,
