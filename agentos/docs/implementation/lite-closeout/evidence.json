@@ -599,17 +599,14 @@
     "id": "S8-PROVIDER-CONTRACT-SUITE",
     "baseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85",
     "kind": "local-tests",
-    "cwd": ".",
-    "command": "packages/agent-core: pnpm exec vitest run; apps/server: node --import tsx --test src/services/run-engine/RunEngineProviderDispatcher.test.ts; apps/server: pnpm --filter @agentos/server exec tsc --noEmit",
+    "cwd": "packages/agent-core",
+    "command": "pnpm exec vitest run",
     "environment": "Windows Node 24.18.0 pnpm 11.11.0",
     "result": {
       "agentCoreFiles": 28,
-      "agentCorePassed": 171,
-      "agentCoreFailed": 0,
-      "dispatcherPassed": 31,
-      "dispatcherFailed": 0,
-      "dispatcherSkipped": 4,
-      "typecheckExitCode": 0
+      "passed": 171,
+      "failed": 0,
+      "skipped": 0
     },
     "requirementIds": [
       "LITE-04-001"

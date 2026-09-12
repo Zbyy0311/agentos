@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 12,
+  "matrixVersion": 13,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1420,12 +1420,10 @@
         "packages/agent-core/src/providers/opencodeProviderAdapter.test.ts"
       ],
       "evidence": [
-        "S4-PROVIDER-SOURCE",
-        "S4-ADAPTERS",
         "S8-PROVIDER-CONTRACT-SUITE"
       ],
-      "finding": "已修复：生产 composition root 现注册 Kimi/Codex/OpenCode 三个 canonical adapter；三个 adapter 的 discovery/validate/launch/parse/finalize/cancel/redaction 契约测试均具名存在并在同头全绿。",
-      "exit": "已完成：packages/agent-core 全量 28 文件 171 项通过，RunEngineProviderDispatcher 同头 31 通过 / 0 失败（4 项为环境门控真实 gate，另见 S4-OPENCODE-REAL-GATE），apps/server tsc --noEmit 退出码 0。",
+      "finding": "已修复：生产 composition root 现注册 Kimi/Codex/OpenCode 三个 canonical adapter；三个 adapter 的 discovery/validate/launch/parse/finalize/cancel/redaction 契约测试均具名存在。",
+      "exit": "已完成：同头全量 adapter 契约套件 28 文件 171 项通过、0 失败、0 跳过。",
       "evidenceBaseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85"
     },
     {
@@ -4448,7 +4446,7 @@
       "section": "§14; §15.2",
       "line": null,
       "requirement": "Codex/Kimi/OpenCode 的实际生产链接入与真实调用",
-      "state": "PASS",
+      "state": "RUNTIME-VERIFY",
       "workPackage": "S4",
       "implementation": [
         "apps/server/src/services/run-engine/providerExecutionChain.ts",
@@ -4466,9 +4464,8 @@
         "S4-CODEX-LUNA-GATE",
         "S4-OPENCODE-REAL-GATE"
       ],
-      "finding": "已修复且已取证：composition root 现注册三个 adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）在同头被真实清除，而非删除条件。",
-      "exit": "已完成：三 Provider 各沿 Adapter→Registry→Process→RunEngine 取得真实调用证据（OpenCode 22301ms、Kimi routed 22634ms、Codex 41671ms，0 失败），OpenCode 另断言真实回复文本进入持久输出汇。残留限制：Kimi 默认模型受外部配额限制，仅以显式路由模型取证；最终以合并后主线 CI 收口。",
-      "evidenceBaseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85"
+      "finding": "实现缺口已修复：composition root 现注册三个 canonical adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）已在同头被真实清除，而非删除条件。但本条要求的是「实际生产链接入与真实调用」，其证据必须是可被 CI 复算的运行记录，而本机三个 CLI 在 GitHub runner 上均不存在，故本地真实调用属机器相关证据，不足以支撑 PASS。",
+      "exit": "待闭合：需要一份 CI 可复算的真实调用证据（runner 内可用的 Provider CLI，或由 CI 触发的真实调用闸门），或将该条按用户批准的整体延期正式改判 DEFERRED。在此之前保持 RUNTIME-VERIFY，不按名称或本地结果提升。"
     },
     {
       "id": "LITE-07-101",
@@ -7545,6 +7542,16 @@
       "baseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85",
       "authority": "Main-agent S8 acceptance within user-approved scope",
       "reason": "Clear the canonical OpenCode gate: version admission (1.17.11), run-subcommand help probing, an argument-safe launch plan and Process Runtime cancellation replace the unconditional fail-closed refusals; all three providers then exercised the canonical chain for real at this head, so LITE-04-101 and LITE-04-001 leave GAP.",
+      "requirementIds": [
+        "LITE-04-001",
+        "LITE-04-101"
+      ]
+    },
+    {
+      "version": 13,
+      "baseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85",
+      "authority": "Main-agent correction after the CI scope/evidence gate rejected the promotion",
+      "reason": "The CI 'Lite scope and evidence gates' step rejected matrix v12: a PASS row may only cite evidence that carries an executed result, and a source audit is not execution proof. LITE-04-001 now cites only the agent-core contract suite (28 files / 171 passed / 0 failed / 0 skipped, same baseline). LITE-04-101 goes back to RUNTIME-VERIFY: the three real invocations and the OpenCode cancellation proof are genuine but machine-specific, and no CI-executable evidence exists for them, so the local runs cannot carry a PASS. The OpenCode implementation work itself is unchanged and still described in the row.",
       "requirementIds": [
         "LITE-04-001",
         "LITE-04-101"

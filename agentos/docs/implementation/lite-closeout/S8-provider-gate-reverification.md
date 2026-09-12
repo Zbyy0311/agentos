@@ -187,3 +187,45 @@ surface. The projection now reports the durable admission row: `mutationClass`,
 explicitly `unknown` — a different statement from `unavailable`.
 
 Covered by `apps/server/src/routes/runtimeInspector.test.ts` (4 pass).
+
+## 7. Correction: the local real invocations cannot carry LITE-04-101 to PASS
+
+The CI step `Lite scope and evidence gates` rejected matrix v12, and it was right
+to. Its rule for a PASS row is that every cited evidence entry must carry an
+EXECUTED result (`result.failed === 0`, plus `passed > 0` and `skipped === 0` for a
+`local-tests` entry, or a successful Actions run for a CI entry) and must match the
+row's baseline and requirement mapping. A `source-audit` entry has no result at
+all, so citing `S4-PROVIDER-SOURCE` — and the older `S4-ADAPTERS` /
+`S4-REAL-GATES` / `S4-CODEX-LUNA-GATE` entries from other baselines — as PASS
+proof was invalid.
+
+What changed:
+
+- `LITE-04-001` now cites only `S8-PROVIDER-CONTRACT-SUITE` (agent-core, 28 files,
+  171 passed, 0 failed, 0 skipped, same baseline).
+- `LITE-04-101` goes back to `RUNTIME-VERIFY`. The three real invocations and the
+  OpenCode cancellation proof above are genuine, but they depend on CLIs that exist
+  only on this machine (`E:\software\opencode\...`, the local `.codex` and
+  `.kimi-code` binaries), so they are machine-specific evidence: CI cannot recompute
+  them, and a PASS claim has to survive recomputation. The implementation work
+  itself is unchanged and is still described in the row.
+- `scripts/verify-lite-scope.test.mjs` case 4 cloned the first matrix row to build
+  its out-of-lock synthetic row. That only worked while the first row was
+  `RUNTIME-VERIFY`; once it is legitimately PASS, the evidence-mapping check fires
+  first and the scope-lock assertion is never reached. The synthetic row is now
+  explicitly neutral (`state: 'GAP'`, no evidence) so the case tests the scope lock
+  rather than row order. The assertion itself is unchanged.
+
+What would close `LITE-04-101` honestly: a CI-executable real invocation (a provider
+CLI available on the runner, or a CI-triggered gate), or a user-approved
+reclassification of the row. It is not closed by local runs, by renaming the
+evidence, or by relaxing the gate.
+
+Matrix v13 is the corrected revision. Both gate commands pass at this head:
+
+```
+node --test scripts/verify-lite-scope.test.mjs   8 pass / 0 fail
+node scripts/verify-lite-scope.mjs              {"matrixVersion":13,"status":"frozen",
+                                                 "PASS":196,"GAP":26,
+                                                 "RUNTIME-VERIFY":9,"DEFERRED":164}
+```
