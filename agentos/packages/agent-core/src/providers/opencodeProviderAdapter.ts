@@ -151,12 +151,17 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
   }
 
   normalizeConfiguration(configuration: ProviderConfigurationInput): ProviderConfigurationInput {
-    return {
+    const normalized: ProviderConfigurationInput = {
       ...configuration,
       ...(configuration.argsTemplate === undefined ? {} : { argsTemplate: [...configuration.argsTemplate] }),
       capabilities: { ...configuration.capabilities },
       timeoutPolicy: { ...configuration.timeoutPolicy },
     };
+    // The production snapshot projection carries no adapter version, so the
+    // configured identity is resolved the same way the other canonical adapters
+    // resolve it. Without this the OpenCode path was unreachable in production.
+    const frozenIdentity = resolveFrozenProviderIdentity(normalized);
+    return frozenIdentity === undefined ? normalized : { ...normalized, adapterVersion: frozenIdentity.adapterVersion };
   }
 
   async discover(input: ProviderDiscoveryInput): Promise<ProviderDiscoveryResult> {
@@ -234,7 +239,12 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
         retryable: false,
       });
     }
-    if (configuration.adapterVersion !== OPENCODE_ADAPTER_VERSION) {
+    // Mirror the other canonical adapters: check the resolved frozen identity,
+    // not the raw field, because production never populates the raw field.
+    const frozenIdentity = resolveFrozenProviderIdentity(configuration);
+    if (frozenIdentity === undefined
+      || frozenIdentity.adapterId !== this.manifest.id
+      || frozenIdentity.adapterVersion !== this.manifest.version) {
       errors.push({
         code: 'PROVIDER_VERSION_UNSUPPORTED',
         phase: 'validation',

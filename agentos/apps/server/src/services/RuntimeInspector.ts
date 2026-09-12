@@ -6,6 +6,7 @@ import type { RunRepository } from '../store/RunRepository.js';
 import type { RunStageRepository } from '../store/RunStageRepository.js';
 import type { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
 import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
+import type { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
 import { RuntimeEventRepositoryError } from '../store/RuntimeEventRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
 
@@ -125,6 +126,14 @@ export interface InspectorRunOverview {
   readonly rootRunId: string;
   readonly attempt: number | null;
   readonly mutationClass: string | null;
+  /**
+   * LITE-08-004: when the Run is MODIFYING because read-only could not be
+   * proven, the reason has to be visible instead of implied. `null` means the
+   * classification is genuinely unknown (no durable admission row), never a
+   * silent claim that enforcement was available.
+   */
+  readonly requestedMutationClass: string | null;
+  readonly readOnlyEnforcement: 'proven' | 'unavailable' | 'not-applicable' | 'unknown';
   readonly workflowDefinitionId: string | null;
   readonly workflowVersion: number | null;
   readonly createdAt: string;
@@ -194,6 +203,8 @@ export interface RuntimeInspectorDependencies {
   readonly runSnapshotRepository: Pick<RunSnapshotRepository, 'findByRunId'>;
   readonly runtimeEventRepository: Pick<RuntimeEventRepository, 'listByRunAfterSequence'>;
   readonly memoryContextSnapshots?: Pick<MemoryContextSnapshotRepository, 'findLatestForRun'>;
+  /** Durable admission row, so the projection can name the effective class. */
+  readonly workspaceAdmissions?: Pick<WorkspaceAdmissionRepository, 'findBySubject'>;
 }
 
 export class RuntimeInspector {
@@ -203,6 +214,7 @@ export class RuntimeInspector {
   private readonly snapshots: RuntimeInspectorDependencies['runSnapshotRepository'];
   private readonly events: RuntimeInspectorDependencies['runtimeEventRepository'];
   private readonly memoryContexts: RuntimeInspectorDependencies['memoryContextSnapshots'];
+  private readonly admissions: RuntimeInspectorDependencies['workspaceAdmissions'];
 
   constructor(dependencies: RuntimeInspectorDependencies) {
     this.db = dependencies.store.getDatabase();
@@ -211,6 +223,7 @@ export class RuntimeInspector {
     this.snapshots = dependencies.runSnapshotRepository;
     this.events = dependencies.runtimeEventRepository;
     this.memoryContexts = dependencies.memoryContextSnapshots;
+    this.admissions = dependencies.workspaceAdmissions;
   }
 
   /** Read-only projection for one Run. Never mutates or executes anything. */
@@ -255,6 +268,22 @@ export class RuntimeInspector {
 
     const payload = snapshot?.payload.schemaVersion === 2 ? snapshot.payload : null;
 
+    // LITE-08-004 / LITE-13-002: the effective mutation class is a durable
+    // admission fact, so the Inspector reports it rather than leaving the field
+    // permanently unknown. A missing row stays explicitly unknown.
+    const admission = this.admissions?.findBySubject(query.workspaceId, {
+      subjectKind: 'CANONICAL_RUN', canonicalRunId: run.id,
+    });
+    // READ_ONLY is only ever persisted with verified evidence, so an effective
+    // READ_ONLY proves enforcement; a READ_ONLY request that became MODIFYING is
+    // exactly the unavailable case; a Run that never asked for read-only has
+    // nothing to report.
+    const readOnlyEnforcement: InspectorRunOverview['readOnlyEnforcement'] = admission === undefined
+      ? 'unknown'
+      : admission.effectiveMutationClass === 'READ_ONLY'
+        ? (admission.enforcementEvidenceJson === null ? 'unavailable' : 'proven')
+        : admission.requestedMutationClass === 'READ_ONLY' ? 'unavailable' : 'not-applicable';
+
     return {
       overview: {
         runId: run.id,
@@ -266,7 +295,9 @@ export class RuntimeInspector {
         parentRunId: run.parentRunId ?? null,
         rootRunId: run.rootRunId,
         attempt: null,
-        mutationClass: null,
+        mutationClass: admission?.effectiveMutationClass ?? null,
+        requestedMutationClass: admission?.requestedMutationClass ?? null,
+        readOnlyEnforcement,
         workflowDefinitionId: payload?.workflow.definitionId ?? snapshot?.workflowDefinitionId ?? null,
         workflowVersion: payload?.workflow.definitionVersion ?? null,
         createdAt: run.createdAt,
