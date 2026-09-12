@@ -19,6 +19,12 @@ export const LEGACY_KIMI_PROVIDER_TYPE = 'kimi' as const;
 export const KIMICODE_ADAPTER_ID = 'builtin.kimicode' as const;
 export const KIMICODE_ADAPTER_VERSION = '1.0.0' as const;
 export const KIMICODE_DEFAULT_EXECUTABLE = 'kimi' as const;
+export const CODEX_ADAPTER_ID = 'builtin.codex' as const;
+export const CODEX_ADAPTER_VERSION = '1.0.0' as const;
+export const CODEX_DEFAULT_EXECUTABLE = 'codex' as const;
+export const OPENCODE_ADAPTER_ID = 'builtin.opencode' as const;
+export const OPENCODE_ADAPTER_VERSION = '1.0.0' as const;
+export const OPENCODE_DEFAULT_EXECUTABLE = 'opencode' as const;
 
 export type ProviderType = ProviderTypeV1 | typeof LEGACY_KIMI_PROVIDER_TYPE;
 export type CanonicalProviderType = ProviderTypeV1;
@@ -69,11 +75,15 @@ export function resolveFrozenProviderIdentity(
   if (configuration.adapterVersion !== undefined) {
     return { adapterId: configuration.adapterId, adapterVersion: configuration.adapterVersion };
   }
-  if (
-    canonicalProviderType(configuration.providerType) === KIMICODE_PROVIDER_TYPE
-    && configuration.adapterId === KIMICODE_ADAPTER_ID
-  ) {
+  const type = canonicalProviderType(configuration.providerType);
+  if (type === KIMICODE_PROVIDER_TYPE && configuration.adapterId === KIMICODE_ADAPTER_ID) {
     return { adapterId: KIMICODE_ADAPTER_ID, adapterVersion: KIMICODE_ADAPTER_VERSION };
+  }
+  if (type === 'codex' && configuration.adapterId === CODEX_ADAPTER_ID) {
+    return { adapterId: CODEX_ADAPTER_ID, adapterVersion: CODEX_ADAPTER_VERSION };
+  }
+  if (type === 'opencode' && configuration.adapterId === OPENCODE_ADAPTER_ID) {
+    return { adapterId: OPENCODE_ADAPTER_ID, adapterVersion: OPENCODE_ADAPTER_VERSION };
   }
   return undefined;
 }

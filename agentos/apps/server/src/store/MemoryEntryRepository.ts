@@ -391,7 +391,9 @@ export class MemoryEntryRepository {
     return { record: this.requireEntry(input.workspaceId, current.id), changed: added > 0 };
   }
 
-  private validateCreateInput(input: CreateMemoryEntryInput): CreateMemoryEntryInput {
+  /** Pure validation also used before explicit-save duplicate lookup (LITE-07-107). */
+  validateCreateInput(input: CreateMemoryEntryInput): CreateMemoryEntryInput {
+    if (typeof input !== 'object' || input === null) throw new MemoryEntryRepositoryError('INPUT_INVALID');
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId)) {
       throw new MemoryEntryRepositoryError('INPUT_INVALID');
     }
@@ -424,7 +426,7 @@ export class MemoryEntryRepository {
     if (!Array.isArray(input.sources)) throw new MemoryEntryRepositoryError('INPUT_INVALID');
     const seen = new Set<string>();
     for (const source of input.sources) {
-      if (!isSourceKind(source.kind) || !nonBlank(source.id)) {
+      if (typeof source !== 'object' || source === null || !isSourceKind(source.kind) || !nonBlank(source.id)) {
         throw new MemoryEntryRepositoryError('INPUT_INVALID');
       }
       const key = source.kind + ' ' + source.id;

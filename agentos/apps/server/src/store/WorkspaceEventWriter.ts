@@ -16,6 +16,7 @@ import {
 } from './WorkspaceEventRepository.js';
 import type { WorkspaceSequenceAllocator } from './WorkspaceSequenceAllocator.js';
 import { WorkspaceNotFoundError } from './WorkspaceSequenceAllocator.js';
+import { proveWorkspaceArtifactCompletion } from './ArtifactCompletionRepository.js';
 
 export type WorkspaceEventWriterErrorCode =
   | 'WORKSPACE_EVENT_WRITER_NOT_BOUND'
@@ -43,6 +44,7 @@ export class WorkspaceEventWriterError extends Error {
  * not defined either.
  */
 export type WorkspaceEventOriginV1 =
+  | { readonly kind: 'memory.artifact_completion'; readonly completionId: string }
   | {
       readonly kind: 'memory.candidate_review';
       readonly candidateId: string;
@@ -120,6 +122,9 @@ export class WorkspaceEventContextAuthorityError extends Error {
  * call this, so a claim can never drift from the proof.
  */
 export function deriveWorkspaceEventContext(origin: WorkspaceEventOriginV1): WorkspaceEventContextV1 {
+  if (origin.kind === 'memory.artifact_completion') {
+    return { correlationId: 'artifact-completion:' + origin.completionId, causationId: origin.completionId };
+  }
   if (origin.kind === 'memory.candidate_review') {
     return {
       correlationId: 'memory-candidate:' + origin.candidateId + ':v' + origin.candidateVersion,
@@ -296,6 +301,14 @@ export class WorkspaceEventWriter {
     const authorized = this.authorize(input.workspaceId, origin, context);
     // Prove, then allocate, then insert: a refused append consumes nothing.
     this.assertAuthorityOriginProven(input.workspaceId, authorized);
+    if (input.type === 'memory.candidate_created' || origin.kind === 'memory.artifact_completion') {
+      const proof = origin.kind === 'memory.artifact_completion'
+        ? proveWorkspaceArtifactCompletion(this.db, input.workspaceId, origin.completionId) : undefined;
+      if (input.type !== 'memory.candidate_created' || proof === undefined ||
+        Object.entries(proof).some(([key, value]) => input.payload[key] !== value)) {
+        throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN', 'Candidate creation requires its Artifact completion');
+      }
+    }
     const sequence = this.allocate(input.workspaceId);
 
     const draft: WorkspaceEventDraft<TPayload> = {
@@ -334,6 +347,10 @@ export class WorkspaceEventWriter {
   private requireOrigin(value: unknown): WorkspaceEventOriginV1 {
     if (!isPlainRecord(value)) {
       throw new WorkspaceEventWriterError('WORKSPACE_EVENT_INPUT_INVALID', 'origin is required');
+    }
+    if (value.kind === 'memory.artifact_completion') {
+      if (!nonBlank(value.completionId)) throw new WorkspaceEventWriterError('WORKSPACE_EVENT_INPUT_INVALID');
+      return { kind: 'memory.artifact_completion', completionId: value.completionId };
     }
     if (value.kind === CANDIDATE_REVIEW_ORIGIN) {
       if (!nonBlank(value.candidateId) || !isPositiveSafeInteger(value.candidateVersion)) {
@@ -454,6 +471,12 @@ export class WorkspaceEventWriter {
     workspaceId: string,
     authorized: AuthorizedWorkspaceEventContextV1,
   ): void {
+    if (authorized.origin === 'memory.artifact_completion') {
+      if (authorized.authorityVersion !== 1 || !proveWorkspaceArtifactCompletion(this.db, workspaceId, authorized.authorityId)) {
+        throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+      }
+      return;
+    }
     if (authorized.origin === CANDIDATE_REVIEW_ORIGIN) {
       const row = this.db.prepare(
         'SELECT 1 AS present FROM memory_candidate_entries'

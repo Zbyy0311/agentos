@@ -24,6 +24,8 @@ import { migration023 } from './migrations/023-cr5-bounded-group-persistence.js'
 import { migration024 } from './migrations/024-memory-snapshot-payloads.js';
 import { migration025 } from './migrations/025-mf5-workspace-event-stream.js';
 import { migration026 } from './migrations/026-mf2-approval-decision-persistence.js';
+import { migration027 } from './migrations/027-mf2-review-test-artifact.js';
+import { migration028 } from './migrations/028-lite-runtime-approval-requests.js';
 import type { Migration } from './types.js';
 
 /**
@@ -57,6 +59,8 @@ import type { Migration } from './types.js';
  * 025: MF-5 Workspace Event stream (Run-less canonical Event history +
  *      per-Workspace sequence allocator column)
  * 026: MF-2 approval-decision persistence (durable approval decision record)
+ * 027: MF-2 unique immutable Artifact completion with Candidate provenance
+ * 028: Lite runtime approval request persistence and one-shot consumption
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -85,4 +89,6 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration024,
   migration025,
   migration026,
+  migration027,
+  migration028,
 ];

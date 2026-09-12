@@ -73,7 +73,9 @@ function fileDb(): { root: string; path: string; db: Db; close(): void } {
 }
 
 function registryThrough015(): MigrationRegistry {
-  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(m => m.id !== '016'));
+  // Historical replay means the 001-015 prefix. Newer migrations (including
+  // later Artifact completion DDL) must not be applied before replaying 016.
+  return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(m => m.id < '016'));
 }
 
 function insertRow(db: Db, table: string, row: Record<string, unknown>): void {

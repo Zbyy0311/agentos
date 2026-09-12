@@ -81,8 +81,18 @@ export interface StageExecutionInput {
   readonly operationId: string;
 }
 
+export interface StageExecutionApprovalGate {
+  beforeLaunch(input: StageExecutionInput, plan: ProviderLaunchPlan):
+    | { readonly kind: 'allow'; readonly requestId?: string }
+    | { readonly kind: 'wait'; readonly requestId: string }
+    | { readonly kind: 'deny'; readonly code: string; readonly message: string };
+  afterLaunchAuthority(input: StageExecutionInput, requestId: string | undefined): void;
+  assertLaunchStillValid(input: StageExecutionInput, plan: ProviderLaunchPlan, requestId: string): void;
+}
+
 export type StageExecutionOutcome =
   | { readonly kind: 'active' }
+  | { readonly kind: 'waiting-approval'; readonly approvalRequestId: string }
   | {
       readonly kind: 'completed';
       readonly durationMs: number;
@@ -135,6 +145,7 @@ export interface StageExecutionCoordinatorOptions {
   readonly clock?: Clock;
   readonly now?: () => string;
   readonly stderrRetainedBytes?: number;
+  readonly approvalGate?: StageExecutionApprovalGate;
 }
 
 const DEFAULT_CLAIM_OWNER = 'run-engine';
@@ -213,6 +224,7 @@ export class StageExecutionCoordinator {
   private readonly clock: Clock;
   private readonly now: () => string;
   private readonly stderrRetainedBytes: number;
+  private readonly approvalGate: StageExecutionApprovalGate | undefined;
   private readonly inFlightValidation = new Map<string, Promise<ProviderValidationResult>>();
   private readonly liveAttempts = new Map<string, LiveAttemptRendezvous>();
 
@@ -229,6 +241,7 @@ export class StageExecutionCoordinator {
     this.clock = options.clock ?? new SystemClock();
     this.now = options.now ?? (() => new Date().toISOString());
     this.stderrRetainedBytes = options.stderrRetainedBytes ?? MAX_STDERR_RETAINED_BYTES;
+    this.approvalGate = options.approvalGate;
   }
 
   async execute(input: StageExecutionInput): Promise<StageExecutionOutcome> {
@@ -259,6 +272,31 @@ export class StageExecutionCoordinator {
       });
     } catch (error) {
       return this.failedFromError(error, 'startup', input);
+    }
+
+    let approvalRequestId: string | undefined;
+    if (this.approvalGate !== undefined) {
+      let approval: ReturnType<StageExecutionApprovalGate['beforeLaunch']>;
+      try {
+        approval = this.approvalGate.beforeLaunch(input, plan);
+      } catch (error) {
+        return this.failed(
+          error instanceof Error && 'code' in error && typeof error.code === 'string'
+            ? error.code
+            : 'RUNTIME_APPROVAL_GATE_FAILED',
+          error instanceof Error ? error.message : 'Runtime approval gate failed',
+          'startup',
+          input,
+          false,
+        );
+      }
+      if (approval.kind === 'wait') {
+        return { kind: 'waiting-approval', approvalRequestId: approval.requestId };
+      }
+      if (approval.kind === 'deny') {
+        return this.failed(approval.code, approval.message, 'startup', input, false);
+      }
+      approvalRequestId = approval.requestId;
     }
 
     const eventContext: RuntimeEventContext = {
@@ -324,6 +362,7 @@ export class StageExecutionCoordinator {
       },
     });
     if (established.joinedExisting) {
+      this.approvalGate?.afterLaunchAuthority(input, approvalRequestId);
       return { kind: 'active' };
     }
 
@@ -434,6 +473,9 @@ export class StageExecutionCoordinator {
         entry.stopOrigin ?? 'EXPLICIT_CANCEL',
       ),
       spawn: async () => {
+        if (approvalRequestId !== undefined) {
+          this.approvalGate?.assertLaunchStillValid(input, plan, approvalRequestId);
+        }
         const launch: ValidatedLaunch = {
           executable: plan.executable,
           args: [...plan.args],
@@ -461,6 +503,12 @@ export class StageExecutionCoordinator {
         await this.stopEntry(entry, entry.stopOrigin ?? 'EXPLICIT_CANCEL');
       }
       return entry.final.promise;
+    }
+    try {
+      this.approvalGate?.afterLaunchAuthority(input, approvalRequestId);
+    } catch (error) {
+      await this.stopEntry(entry, 'P4_ACTIVATION_FAILURE');
+      throw error;
     }
 
     const nativeStartedAt = spawned.outcome.kind === 'applied'

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 2,
+  "matrixVersion": 9,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1251,7 +1251,7 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": [],
+      "evidence": ["S4-PROVIDER-SOURCE", "S4-ADAPTERS"],
       "finding": "三Provider已有CLI/解析能力，但当前生产composition root仅注册Kimi；Codex/OpenCode完整生产链缺口须定向补齐而非重写三者。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -1912,15 +1912,21 @@
       "state": "GAP",
       "workPackage": "S1",
       "implementation": [
-        "apps/server/src/services/MemoryCandidateGenerationService.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.ts",
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryCandidateGenerationService.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+        "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S1A-RED"
+        "S1A-RED",
+        "S1A-GREEN",
+        "S1D-SOURCE",
+        "S1D-GREEN"
       ],
-      "finding": "精确/normalized hash查找仅限Workspace，未过滤status或Scope/owner；终态精确命中直接返回并丢弃新来源。见MemoryCandidateRepository.ts:617-637、MemoryCandidateGenerationService.ts:163-170。",
+      "finding": "精确/normalized hash查找仅限Workspace，未过滤status或Scope/owner；终态精确命中直接返回并丢弃新来源。见MemoryCandidateRepository.ts:617-637、MemoryCandidateGenerationService.ts:163-170。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
       "exit": "同Scope/owner精确重复原子汇聚来源和规范事件；重放零新增；不同owner不错误汇聚，近似重复保留审核。"
     },
     {
@@ -2224,13 +2230,20 @@
       "state": "GAP",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts"
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "apps/server/src/routes/runtimeApprovals.test.ts",
+        "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": [],
-      "finding": "实际approvals路由使用内存ApprovalRegistry；独立approval-decisions落库未证明与原Run授权链合一。",
+      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "finding": "S3已在真实协调器pre-spawn边界持久请求并使Run/Stage等待；批准后续跑原Run、重启扫描approved unconsumed、拒绝终止。实际Provider live调用与完整产品UI仍待验，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -2242,13 +2255,20 @@
       "state": "GAP",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts"
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "apps/server/src/routes/runtimeApprovals.test.ts",
+        "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": [],
-      "finding": "实际approvals路由使用内存ApprovalRegistry；独立approval-decisions落库未证明与原Run授权链合一。",
+      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "finding": "S3已验证版本CAS重放、路由重试收敛和Event失败整体回滚；真实并发HTTP竞争和live Provider证据仍需补齐，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -2260,13 +2280,20 @@
       "state": "GAP",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts"
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "apps/server/src/routes/runtimeApprovals.test.ts",
+        "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": [],
-      "finding": "实际approvals路由使用内存ApprovalRegistry；独立approval-decisions落库未证明与原Run授权链合一。",
+      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "finding": "S3已验证持久过期、Launch Plan/Agent/Provider快照哈希漂移拒绝及一次性消费；跨进程时钟和live Provider验收仍缺，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -3856,7 +3883,7 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": [],
+      "evidence": ["S4-PROVIDER-SOURCE", "S4-ADAPTERS", "S4-REAL-GATES"],
       "finding": "Legacy CLI和parser不等于RunEngine生产适配；composition root只注册Kimi。",
       "exit": "逐Provider沿Adapter→Registry→Process→RunEngine→SSE/UI验证；复用现有正确能力，只补断点。"
     },
@@ -3906,14 +3933,18 @@
       "state": "GAP",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts",
-        "apps/server/src/routes/approvalDecisions.ts"
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/MemoryRuntimeEventEmitter.ts"
       ],
       "tests": [
-        "apps/server/src/routes/approvalDecisions.test.ts"
+        "apps/server/src/routes/runtimeApprovals.test.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.test.ts"
       ],
-      "evidence": [],
-      "finding": "新增独立落库入口未接实际内存审批Registry，重复请求新ID，无规范candidate_created事件。",
+      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "finding": "保留基线反证：旧approval-decisions为独立入口。S3 ead3001b已在pre-spawn gate、028请求/026决定、approval.resolved Candidate Event和重放回滚上取得证据；真实Provider live调用及浏览器审批验收仍缺，保持GAP。",
       "exit": "真实审批→原Run行为→持久决定→唯一带来源候选+事件；deny不生成候选。"
     },
     {
@@ -3925,13 +3956,23 @@
       "state": "GAP",
       "workPackage": "S2",
       "implementation": [
-        "apps/server/src/services/RuntimeArtifactService.ts"
+        "apps/server/src/services/RuntimeArtifactService.ts",
+        "apps/server/src/services/RuntimeArtifactCollector.ts",
+        "apps/server/src/services/ConversationService.ts",
+        "apps/server/src/store/SqliteStore.ts",
+        "apps/server/src/services/ArtifactCompletionService.ts",
+        "apps/server/src/services/CanonicalArtifactResultService.ts",
+        "apps/web/src/components/memory/MemoryReviewQueue.tsx"
       ],
       "tests": [
-        "apps/server/src/services/RuntimeArtifactService.test.ts"
+        "apps/server/src/services/RuntimeArtifactService.test.ts",
+        "apps/server/src/services/ArtifactCompletionService.test.ts",
+        "apps/server/src/services/RuntimeArtifactCollector.test.ts"
       ],
-      "evidence": [],
-      "finding": "主线仅合并授权；027与完成实现仍在原工作区未提交草稿。",
+      "evidence": [
+        "S2-ARTIFACT-SOURCE", "S2-LOCAL-27", "S2-BROWSER"
+      ],
+      "finding": "保留基线反证：主线仅合并授权、原草稿无真实来源/事件。隔离提交02a50947已补显式退出证据、Collector及canonical结构化结果、027完成事实、事务候选/事件与审核来源链接；见S2-artifact-evidence.md。实际Node测试与页面审核已验证，但执行记录/Provider观察为夹具，真实模型调用、故障恢复及CI仍需验收，保持GAP。",
       "exit": "真实review/test→持久完成→候选+事件→Review Queue→接受→Entry；不以手工POST作为闭环。"
     },
     {
@@ -3981,15 +4022,20 @@
       "implementation": [
         "apps/server/src/store/MemoryCandidateRepository.ts",
         "apps/server/src/services/MemoryCandidateGenerationService.ts",
-        "apps/server/src/routes/memoryRuntime.ts"
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryCandidateGenerationService.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+        "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S1A-RED"
+        "S1A-RED",
+        "S1A-GREEN",
+        "S1D-SOURCE",
+        "S1D-GREEN"
       ],
-      "finding": "查重未隔离Scope/owner/category及active状态；终态精确命中缺来源合并与版本/Event/Outbox，显式save在完整校验前返回命中。",
+      "finding": "查重未隔离Scope/owner/category及active状态；终态精确命中缺来源合并与版本/Event/Outbox，显式save在完整校验前返回命中。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
       "exit": "补可证实重复分支：同owner来源合并并发收敛；不同owner不串线；近重复审核，来源保留。"
     },
     {
@@ -4007,8 +4053,10 @@
       "tests": [
         "apps/server/src/store/WorkspaceEventWriter.test.ts"
       ],
-      "evidence": [],
-      "finding": "Workspace allowlist无memory.candidate_created；无法为审批、Artifact、压缩和导入新候选写同事务事件。",
+      "evidence": [
+        "S2-ARTIFACT-SOURCE", "S2-LOCAL-27"
+      ],
+      "finding": "保留基线反证：Workspace allowlist无candidate_created。02a50947已为实际Artifact完成登记来源专属Workspace因果和事务校验，禁止借用其它origin；不伪造Run。审批/压缩/导入仍需各自真实来源登记，保持GAP。",
       "exit": "授权最小契约扩展；持久来源因果证明，未知或跨Workspace来源拒绝；回滚和重放验证。"
     },
     {
@@ -4029,9 +4077,12 @@
         "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
       "evidence": [
-        "S1C-SOURCE"
+        "S1C-SOURCE",
+        "S1C1-RED",
+        "S1C1-GREEN",
+        "S1DC1-INTEGRATION"
       ],
-      "finding": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。",
+      "finding": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。 S1-C1已过滤有效期/敏感度并取得新快照证据；FTS降级与预算解释尚未闭合，不标PASS。",
       "exit": "固定时钟下验证有效期和敏感度，显式降级与真实快照理由，不重构无关排名。"
     },
     {
@@ -6608,6 +6659,65 @@
           "reason": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。"
         }
       ]
+    },
+    {
+      "version": 3,
+      "baseline": "b1598a71ca9d8c0c82fe87f1bf044dbaa96daa84",
+      "authority": "Main-agent verification within frozen user-approved scope",
+      "reason": "Attach S1-D explicit-save evidence to existing requirements; preserve original counterevidence. No state changes or scope additions; remaining review/source obligations stay GAP.",
+      "requirementIds": [
+        "LITE-07-003",
+        "LITE-07-107"
+      ]
+    },
+    {
+      "version": 4,
+      "baseline": "ebb26b4990fabca9aaa9a312b31af80447a3a4c6",
+      "authority": "Main-agent integrated verification in frozen scope",
+      "reason": "Record S1-C1 validity/sensitivity counterexample and S1-D/C1 integrated tests. Preserve local first-run teardown failures and all remaining GAP classifications.",
+      "requirementIds": [
+        "LITE-07-003",
+        "LITE-07-107",
+        "LITE-07-109"
+      ]
+    },
+    {
+      "version": 5,
+      "baseline": "b61bc50314625c6fc1244f3affbb3c0e7935ed25",
+      "authority": "Main-agent source audit within user-approved S0 scope",
+      "reason": "Narrow existing Artifact production and Workspace candidate causation gaps before freezing 027 remediation. No state/identity changes, no speculative implementation.",
+      "requirementIds": [
+        "LITE-07-104",
+        "LITE-07-108"
+      ]
+    },
+    {
+      "version": 6,
+      "baseline": "02a50947a82c692c61703f3d22f0b32c0b0a98ce",
+      "authority": "Main-agent implementation and verification within approved S2 scope",
+      "reason": "Record bounded Artifact lifecycle implementation and actual subprocess/page evidence. Keep original source audit and all GAP states; live model invocation and full gates still open. No new requirements or deferrals.",
+      "requirementIds": ["LITE-07-104", "LITE-07-108"]
+    },
+    {
+      "version": 7,
+      "baseline": "ead3001b82251fe85e1b176ce5b2d55fbbaa3e16",
+      "authority": "Main-agent S3 implementation and verification within user-approved scope",
+      "reason": "Record bounded runtime approval persistence, pre-spawn gate, original-Run continuation and candidate evidence. Keep GAP states because live Provider/browser and full CI acceptance remain open.",
+      "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"]
+    },
+    {
+      "version": 8,
+      "baseline": "d76cce343b83fa428ed7d5c191a2ad581df69c90",
+      "authority": "Main-agent remediation of independent S3 review findings within approved scope",
+      "reason": "Fix spawn-right expiry, contradictory replay, recovery-required resume bypass, and environment-value drift; preserve the non-green full suite and four ENOTEMPTY teardown failures. No matrix state changes.",
+      "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"]
+    },
+    {
+      "version": 9,
+      "baseline": "c783e9280cd5d434479b482af40331acf8656907",
+      "authority": "Main-agent S4 implementation and verification within user-approved scope",
+      "reason": "Register canonical Codex/OpenCode adapters in the production chain with bounded evidence; keep GAP/RUNTIME-VERIFY because the final-head real gate is blocked by external quota and OpenCode has only unavailable evidence. No state changes.",
+      "requirementIds": ["LITE-04-001", "LITE-04-101"]
     }
   ]
 }

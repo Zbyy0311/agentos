@@ -10,7 +10,12 @@ import {
   NodeProcessProbePort,
 } from '@agentos/process-runtime';
 import type { ProcessProbePort } from '@agentos/process-runtime';
-import { KimiCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
+import {
+  CodexProviderAdapter,
+  KimiCodeProviderAdapter,
+  OpenCodeProviderAdapter,
+  ProviderRegistry,
+} from '@agentos/agent-core/providers';
 import type { SqliteStore } from '../../store/SqliteStore.js';
 
 import {
@@ -31,6 +36,10 @@ import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
 import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
 import { MemoryRuntimeEventEmitter } from '../MemoryRuntimeEventEmitter.js';
 import { DurableMemoryRuntimeEventContextAuthority } from '../MemoryRuntimeEventContextAuthority.js';
+import { CanonicalArtifactResultService } from '../CanonicalArtifactResultService.js';
+import { RuntimeArtifactService } from '../RuntimeArtifactService.js';
+import { RuntimeApprovalGate } from '../RuntimeApprovalGate.js';
+import { dirname } from 'node:path';
 
 export interface ProviderExecutionChainOptions {
   readonly store: SqliteStore;
@@ -45,10 +54,12 @@ export interface ProviderExecutionChainOptions {
 
 export interface ProviderExecutionChain {
   readonly admissionAuthority: WorkspaceAdmissionAuthority;
+  readonly providerRegistry: ProviderRegistry;
   readonly engine: RunEngine;
   readonly coordinator: StageExecutionCoordinator;
   readonly dispatcher: RunEngineProviderDispatcher;
   readonly memoryContextResolver: MemoryContextResolver;
+  readonly approvalGate: RuntimeApprovalGate;
 }
 
 export function createProviderExecutionChain(options: ProviderExecutionChainOptions): ProviderExecutionChain {
@@ -68,8 +79,15 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     atomicSeam: seam,
     driver,
   });
-  const adapter = new KimiCodeProviderAdapter({ probe });
-  const registry = new ProviderRegistry([adapter]);
+  const registry = new ProviderRegistry([
+    new KimiCodeProviderAdapter({ probe }),
+    new CodexProviderAdapter({ probe }),
+    new OpenCodeProviderAdapter({ probe }),
+  ]);
+  let dispatcher!: RunEngineProviderDispatcher;
+  const approvalGate = new RuntimeApprovalGate(store, {
+    continueRun: async (workspaceId, runId) => { await dispatcher.driveSafely(workspaceId, runId); },
+  });
   const runEventObservation: CanonicalRunEventObservationPort = {
     subscribe: input => store.runStreamService().subscribe({
       workspaceId: input.workspaceId,
@@ -90,6 +108,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     environment: options.environment ?? process.env,
     claimOwner: options.claimOwner,
     claimLeaseMs: options.claimLeaseMs,
+    approvalGate,
   });
   const engine = new RunEngine({
     runRepository: store.runRepository(),
@@ -122,7 +141,8 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     ),
     emitter: memoryEventEmitter,
   });
-  const dispatcher = new RunEngineProviderDispatcher({
+  dispatcher = new RunEngineProviderDispatcher({
+    artifactResults: new CanonicalArtifactResultService(new RuntimeArtifactService(store, dirname(dirname(options.artifactRoot)))),
     engine,
     coordinator,
     admissionGate: admissionAuthority,
@@ -147,5 +167,5 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
   });
-  return { admissionAuthority, engine, coordinator, dispatcher, memoryContextResolver };
+  return { admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher, memoryContextResolver, approvalGate };
 }
