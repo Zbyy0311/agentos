@@ -260,6 +260,53 @@ test('MF5R-03 wired resolver without an eventContext fails closed before any wri
   } finally { fx.close(); }
 });
 
+// MF5R-06 — a STAGE-scoped resolve is the production call shape (the dispatcher
+// passes stage.id) and must not put that stageId in the Event envelope: every
+// MF-5 memory Event definition sets `forbidsStageId`, so a forwarded stageId made
+// the registry reject the Event and the whole stage-scoped resolve fail closed.
+// The Stage association belongs on `memory_context_snapshots.stage_id`.
+test('MF5R-06 a stage-scoped resolve persists the snapshot with its stage and emits a stage-free envelope', () => {
+  const fx = fixture();
+  try {
+    const entryId = addActiveEntry(fx, 'staged', 'staged body');
+    const stageId = 'stage_' + 's'.repeat(20);
+    const resolved = fx.resolver.resolve(resolveInput({ stageId, eventContext: eventContext() }));
+
+    // The snapshot owns the Stage association…
+    const snapshotRow = fx.db.prepare(
+      'SELECT stage_id, run_id FROM memory_context_snapshots WHERE id = ?',
+    ).get(resolved.snapshot.id) as { stage_id: string | null; run_id: string };
+    assert.equal(snapshotRow.stage_id, stageId);
+    assert.equal(snapshotRow.run_id, RUN);
+    assert.equal(resolved.snapshot.stageId, stageId);
+    assert.deepEqual(resolved.snapshot.selected.map(selected => selected.memoryId), [entryId]);
+
+    // …and the Event envelope deliberately does not.
+    const events = contextCreatedEvents(fx);
+    assert.equal(events.length, 1);
+    const envelope = fx.db.prepare(
+      'SELECT stage_id, task_id, run_id FROM runtime_events WHERE id = ?',
+    ).get(events[0]!.id) as { stage_id: string | null; task_id: string | null; run_id: string };
+    assert.equal(envelope.stage_id, null, 'memory Events forbid an envelope stageId');
+    assert.equal(envelope.run_id, RUN);
+    // The envelope is Run-scoped: the Stage and Task associations are persisted
+    // on the snapshot row, which the payload names, not on the Event envelope.
+    assert.equal(envelope.task_id, null);
+
+    // Traceability is preserved through the payload, which names the snapshot.
+    const payload = JSON.parse(events[0]!.payload_json) as Record<string, unknown>;
+    assert.equal(payload.memoryContextId, resolved.snapshot.id);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages WHERE event_id = ?', events[0]!.id), 1);
+
+    // A second Stage of the same Run is its own frozen context, not a replay.
+    const otherStageId = 'stage_' + 't'.repeat(20);
+    const other = fx.resolver.resolve(resolveInput({ stageId: otherStageId, eventContext: eventContext() }));
+    assert.notEqual(other.snapshot.id, resolved.snapshot.id);
+    assert.equal(other.snapshot.stageId, otherStageId);
+    assert.equal(contextCreatedEvents(fx).length, 2);
+  } finally { fx.close(); }
+});
+
 // MF5R-04 — an Outbox failure must roll the snapshot back, not inject it unevented.
 test('MF5R-04 an injected Outbox failure rolls the snapshot back and emits nothing', () => {
   const fx = fixture();
