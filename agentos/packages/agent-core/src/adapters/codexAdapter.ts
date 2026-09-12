@@ -96,11 +96,19 @@ class CodexJsonParser implements CliEventParser {
     const status = stringValue(value.status);
     const success = exitCode === undefined ? status !== 'failed' && status !== 'error' : exitCode === 0;
     const output = stringValue(value.aggregated_output ?? value.output ?? value.result ?? value.content);
+    const command = stringValue(value.command);
+    // LITE-07-104: preserve explicit command evidence only. The existing
+    // status fallback remains useful for UI but cannot prove a test verdict.
+    const commandResult = itemType === 'command_execution' && stringValue(value.id) &&
+      exitCode !== undefined && Number.isSafeInteger(exitCode) && command.length > 0 && command.length <= 512 &&
+      redactRuntimeText(command, 512) === command
+      ? { command, exitCode } : undefined;
     return [{
       type: 'tool.completed',
       callId,
       toolName,
       success,
+      ...(commandResult ? { commandResult } : {}),
       summary: output ? redactRuntimeText(`${toolName} 完成`) : summary,
       ...(output ? { outputPreview: redactRuntimeText(output) } : {}),
       ...(numberValue(value.duration_ms ?? value.durationMs) !== undefined ? { durationMs: numberValue(value.duration_ms ?? value.durationMs) } : {}),

@@ -238,6 +238,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly memoryContextResolver?: import('./RunEngineProviderDispatcher.js').MemoryContextResolverPort;
   readonly memoryCandidateGenerator?: import('./RunEngineProviderDispatcher.js').MemoryCandidateGenerationPort;
   readonly onCandidateGenerationError?: (error: unknown, runId: string) => void;
+  readonly artifactResults?: import('./RunEngineProviderDispatcher.js').RunEngineProviderDispatcherOptions['artifactResults'];
 } = {}) {
   const db = migratedDb();
   seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
@@ -302,6 +303,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   });
   const dispatchFailures: Array<{ workspaceId: string; runId: string; phase: string; code: string }> = [];
   const dispatcher = new RunEngineProviderDispatcher({
+    artifactResults: behavior.artifactResults,
     engine, coordinator, runRepository: runRepo, runStageRepository: runStageRepo, runSnapshotRepository: runSnapshotRepo,
     operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => 'C:/ws',
     worktreePathFor: () => 'C:/ws/.agentos/worktrees/run-1',
@@ -374,6 +376,42 @@ function realFixture() {
 }
 
 describe('RunEngineProviderDispatcher E2E', () => {
+  it('LITE-07-104: completed adapter result reaches Artifact finalizer and Stage history before terminal Memory', async () => {
+    const structuredOutput = JSON.stringify({ agentosArtifact: { version: 1, type: 'review', conclusion: 'changes_requested', summary: 'Reviewed the actual bounded result.' } });
+    const captured: import('../CanonicalArtifactResultService.js').CanonicalArtifactResultInput[] = [];
+    const driver = new FakeDriver(new FakeHandle([JSON.stringify({ type: 'assistant', content: structuredOutput })]));
+    const fx = fixture(driver, false, { artifactResults: { capture: async input => {
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'running');
+      assert.equal(fx.runStageRepo.listByRun(WS, RUN).find(stage => stage.id === input.stageId)?.status, 'running');
+      captured.push(input);
+      return [`result-${input.stageId}`];
+    } } });
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      assert.equal(captured.length, 4);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      for (const input of captured) {
+        assert.equal(input.output, structuredOutput);
+        assert.equal(input.operationId, OP);
+        assert.equal(input.stageAttempt, 1);
+        const stageEvents = fx.db.prepare("SELECT payload_json FROM runtime_events WHERE type = 'stage.completed' AND stage_id = ?")
+          .all(input.stageId) as { payload_json: string }[];
+        assert.ok(stageEvents.some(event => JSON.parse(event.payload_json).artifactIds.includes(`result-${input.stageId}`)));
+      }
+      assert.ok(fx.capturedInputs.every(input => input.prompt.includes('agentosArtifact')));
+    } finally { close(fx); }
+  });
+
+  it('LITE-07-104: active execution cannot finalize a review Artifact', async () => {
+    let captures = 0;
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, { returnActive: true,
+      artifactResults: { capture: async () => { captures += 1; return []; } } });
+    try {
+      await fx.dispatcher.drive(WS, RUN);
+      assert.equal(captures, 0);
+    } finally { close(fx); }
+  });
+
   it('L1D-I08 QUEUED admission causes zero engine, provider session, process, and spawn side effects', async () => {
     const driver = new FakeDriver(new FakeHandle(['{"type":"assistant","content":"must-not-run"}']));
     const fx = fixture(driver, false, { admissionState: 'QUEUED' });

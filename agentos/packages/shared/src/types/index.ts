@@ -359,7 +359,7 @@ export interface PendingRunDecision {
   resolvedAt?: string;
 }
 
-export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log' | 'archive' | 'manifest';
+export type RuntimeArtifactType = 'file' | 'diff' | 'report' | 'image' | 'log' | 'archive' | 'manifest' | 'review' | 'test';
 
 export interface UntrackedManifestEntry { path: string; sizeBytes: number; sha256: string; }
 export interface WorktreeRecoveryBundle { trackedPatchArtifactId: string; untrackedArchiveArtifactId: string; manifestArtifactId: string; entryCount: number; }

@@ -58,8 +58,9 @@ function registryError(fn) {
   throw new Error('expected the Registry to throw');
 }
 
-test('MF5W-01 the frozen allowlist is exactly the eight Workspace Memory facts', () => {
+test('LITE-07-108 MF5W-01 allowlist adds source-proven Artifact candidate creation', () => {
   assert.deepEqual(WORKSPACE_EVENT_STREAM_TYPES, [
+    'memory.candidate_created',
     'memory.candidate_reviewed',
     'memory.conflict_opened',
     'memory.conflict_resolved',
@@ -77,6 +78,7 @@ test('MF5W-01 the frozen allowlist is exactly the eight Workspace Memory facts',
 test('MF5W-02 every allowlisted type publishes on the Workspace stream with canonical defaults', () => {
   const registry = createM3RuntimeEventRegistry();
   const payloads = {
+    'memory.candidate_created': { candidateId: 'mcand_1', scope: 'workspace', category: 'decision', authority: 'agent-derived', decision: 'review-required' },
     'memory.candidate_reviewed': CANDIDATE_REVIEW_PAYLOAD,
     'memory.conflict_opened': CONFLICT_PAYLOAD,
     'memory.conflict_resolved': CONFLICT_RESOLUTION_PAYLOAD,
@@ -105,8 +107,8 @@ test('MF5W-02 every allowlisted type publishes on the Workspace stream with cano
 test('MF5W-03 a registered type outside the allowlist is refused', () => {
   const registry = createM3RuntimeEventRegistry();
   const created = registryError(() => registry.publishWorkspace(workspaceDraft({
-    type: 'memory.candidate_created',
-    payload: { candidateId: 'mcand_1', scope: 'task', category: 'decision', authority: 'system-verified', decision: 'auto-accept' },
+    type: 'memory.context_created',
+    payload: {},
   })));
   assert.equal(created.code, 'WORKSPACE_EVENT_TYPE_NOT_ALLOWED');
   const runType = registryError(() => registry.publishWorkspace(workspaceDraft({ type: 'run.started', payload: {} })));
@@ -173,4 +175,3 @@ test('MF5W-08 published Workspace Events do not mutate the caller draft', () => 
   assert.equal(event.payload.version, 3);
   assert.equal(JSON.stringify(event).includes('runId'), false);
 });
-
