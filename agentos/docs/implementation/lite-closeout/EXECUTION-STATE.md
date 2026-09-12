@@ -1,7 +1,7 @@
 # Active execution handoff — 2026-09-12
 
 The Lite goal is ACTIVE, not complete. S0 remains the sole scope authority.
-Latest local matrix v5: 12 PASS / 28 GAP / 191 RUNTIME-VERIFY / 164 DEFERRED.
+Latest local matrix v6: 12 PASS / 28 GAP / 191 RUNTIME-VERIFY / 164 DEFERRED.
 Counts include overlapping obligations and do not measure percent completion.
 
 ## Commits, PRs and CI
@@ -11,8 +11,8 @@ Counts include overlapping obligations and do not measure percent completion.
   draft and unrelated files remain untouched. Do not checkout/reset/clean it.
 - S0/S1-A worktree `E:/workspace/Multi-Agent-worktrees/agentos-lite-closeout/agentos`,
   branch codex/lite-closeout, clean, head f82821c734ad95daf3580bb37ddad905ed1c4e10.
-  PR #143 OPEN. CI run 34684841210 / server job 103529934646 was IN_PROGRESS
-  at last direct check, not passed. Previous run 34683702991 at 8e4cc3ae was
+  PR #143 MERGED as50255d833ee40a498607397ae9e99264ca930ea2 after CI run34684841210
+  completed SUCCESS on the exact f82821c7 head. Previous run34683702991 at8e4cc3ae was
   completed/cancelled after the docs push; Server tests cancelled, later gates
   skipped. Preserve cancellation as such, never infer a pass. Pushing before
   the old run finished was a disclosed process deviation; no rerun occurred.
@@ -34,21 +34,29 @@ Counts include overlapping obligations and do not measure percent completion.
 
 `E:/workspace/Multi-Agent-worktrees/agentos-lite-s2-artifact/agentos`, branch
 codex/lite-s2-artifact, based on b61bc503 plus S2 source-audit and matrix mapping.
-No S2 implementation or migration changes yet. Read S2-artifact-source-audit.md
-and S1-workspace-candidate-contract.md before designing the exact 027 amendment.
-Register the source-specific causation contract before changing shared events.
-Actual test producer is RuntimeArtifactCollector called by ConversationService;
-it writes LEGACY artifacts. Canonical artifacts have a different provenance and
-must not inherit legacy Run identifiers. Successful process/tool wrappers are
-not necessarily review approval/test pass: conclusion evidence needs a narrow,
-explicit contract. Do not solve this by hand-POST fixtures or stage-name guesses.
+S2 product committed02a50947a82c692c61703f3d22f0b32c0b0a98ce after authorization
+e7ab1f68/62e8992a. See S2-artifact-evidence.md for exact implementation, local
+27/66/2 test sets,305+1skip migration tests,6 parser/4 component tests, and real
+subprocess/page/source/accept evidence. Full suites/build run once under Luna
+Russell01a09513-5c63-7e11-aa73-e14a284eea44. Product source frozen during run.
+Original Artifact draft remains untouched. Actual live model invocation and
+failure/recovery acceptance still open; GAP remains GAP. Do not duplicate
+completed local QA or infer model evidence from the seeded execution records.
+
+Latest user requests faster progress: focus on shipping bounded mapped slices;
+delegate tests/CI, no repeated broad audits/status polls. S2 PR body PR-S2.md.
+PR144 gate remains ahead of S2. Verify exact current heads and green before merge.
+New source-specific Workspace origins for approval/compaction/import still need
+their own authorization; Artifact origin cannot be repurposed generically.
 
 ## Delegation
 
 User authorized GPT-5.6 Luna effort=max after DeepSeek balance failure.
-CI delegate Fermat, agent 01a094d8-9ebc-7da3-9ea7-005c7eb9d7d2, has been resumed
-to watch both runs and return on a terminal result. It may read but cannot
-rerun/merge. Old Bernoulli watcher and completed reviewers/test delegates closed.
+CI delegate Fermat01a094d8-9ebc-7da3-9ea7-005c7eb9d7d2 watches144 to terminal.
+It may read but cannot rerun/merge. Migration delegate Epicurus and source
+reviewer Hooke closed; Collector follow-up was not delivered by Epicurus and
+parent implemented it. UI delegate Newton completed two-file source link and
+tests then closed. Russell owns full validation only, no source changes/reruns.
 Use bounded sidecar tasks, not repeated broad audits or duplicate watchers.
 
 Re-read actual GitHub state before merging. The repository reports no required

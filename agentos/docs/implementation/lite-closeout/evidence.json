@@ -265,5 +265,36 @@
     },
     "environment": "Read-only Windows source audit; original draft not edited",
     "limitation": "Exact producer/provenance/candidate/event gaps in S2-artifact-source-audit.md. Baseline SHA refers to committed production source; uncommitted draft findings are identified separately. Not runtime or completion evidence."
+  },
+  {
+    "id": "S2-LOCAL-27",
+    "baseline": "02a50947a82c692c61703f3d22f0b32c0b0a98ce",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ArtifactCompletionService.test.ts src/services/RuntimeArtifactCollector.test.ts src/migrations/__tests__/mf2-migration-027.test.ts ../../packages/shared/mf5-workspace-events.test.ts",
+    "environment": "Windows Node24.18.0 pnpm11.11.0",
+    "result": { "passed": 27, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-07-104", "LITE-07-108"],
+    "limitation": "Actual Node test subprocess with fixture provider observations; not live model invocation. See S2-artifact-evidence.md for first failures and open gates."
+  },
+  {
+    "id": "S2-BROWSER",
+    "baseline": "02a50947a82c692c61703f3d22f0b32c0b0a98ce",
+    "kind": "runtime-verification",
+    "command": "node external replay-qa.mts via tsx; node external browser.cjs (Playwright1.55.0/Chrome)",
+    "environment": "Isolated3300/3301; 1280x900 and440x900; temporary QA data",
+    "result": { "failed": 0, "consoleErrors": 0, "acceptedApiStatus": 200 },
+    "requirementIds": ["LITE-07-104"],
+    "limitation": "Real Workspace page/queue/source popup/accept and actual subprocess; execution seeded, no live model. Exact local artifact paths/IDs in S2-artifact-evidence.md. Not used to mark PASS."
+  },
+  {
+    "id": "S1A-CI-MERGE",
+    "baseline": "f82821c734ad95daf3580bb37ddad905ed1c4e10",
+    "kind": "github-actions",
+    "command": "gh pr view143; gh pr merge143 --merge --match-head-commit f82821c734ad95daf3580bb37ddad905ed1c4e10",
+    "url": "https://github.com/Zbyy0311/agentos/actions/runs/34684841210",
+    "result": { "failed": 0, "conclusion": "success" },
+    "requirementIds": ["LITE-07-107"],
+    "limitation": "PR143 merged as50255d833ee40a498607397ae9e99264ca930ea2 after exact-head successful checks. Prior cancelled run retained. Not final Lite main CI."
   }
 ]

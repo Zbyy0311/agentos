@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 5,
+  "matrixVersion": 6,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -3934,15 +3934,20 @@
         "apps/server/src/services/RuntimeArtifactService.ts",
         "apps/server/src/services/RuntimeArtifactCollector.ts",
         "apps/server/src/services/ConversationService.ts",
-        "apps/server/src/store/SqliteStore.ts"
+        "apps/server/src/store/SqliteStore.ts",
+        "apps/server/src/services/ArtifactCompletionService.ts",
+        "apps/server/src/services/CanonicalArtifactResultService.ts",
+        "apps/web/src/components/memory/MemoryReviewQueue.tsx"
       ],
       "tests": [
-        "apps/server/src/services/RuntimeArtifactService.test.ts"
+        "apps/server/src/services/RuntimeArtifactService.test.ts",
+        "apps/server/src/services/ArtifactCompletionService.test.ts",
+        "apps/server/src/services/RuntimeArtifactCollector.test.ts"
       ],
       "evidence": [
-        "S2-ARTIFACT-SOURCE"
+        "S2-ARTIFACT-SOURCE", "S2-LOCAL-27", "S2-BROWSER"
       ],
-      "finding": "主线仅合并授权；027与完成实现仍在原工作区未提交草稿。 已定位真实legacy测试Collector及canonical分离持久路径；完成记录/来源因果与真实调用仍需修复验收，见S2-artifact-source-audit.md。",
+      "finding": "保留基线反证：主线仅合并授权、原草稿无真实来源/事件。隔离提交02a50947已补显式退出证据、Collector及canonical结构化结果、027完成事实、事务候选/事件与审核来源链接；见S2-artifact-evidence.md。实际Node测试与页面审核已验证，但执行记录/Provider观察为夹具，真实模型调用、故障恢复及CI仍需验收，保持GAP。",
       "exit": "真实review/test→持久完成→候选+事件→Review Queue→接受→Entry；不以手工POST作为闭环。"
     },
     {
@@ -4024,9 +4029,9 @@
         "apps/server/src/store/WorkspaceEventWriter.test.ts"
       ],
       "evidence": [
-        "S2-ARTIFACT-SOURCE"
+        "S2-ARTIFACT-SOURCE", "S2-LOCAL-27"
       ],
-      "finding": "Workspace allowlist无memory.candidate_created；无法为审批、Artifact、压缩和导入新候选写同事务事件。 已定位真实legacy测试Collector及canonical分离持久路径；完成记录/来源因果与真实调用仍需修复验收，见S2-artifact-source-audit.md。",
+      "finding": "保留基线反证：Workspace allowlist无candidate_created。02a50947已为实际Artifact完成登记来源专属Workspace因果和事务校验，禁止借用其它origin；不伪造Run。审批/压缩/导入仍需各自真实来源登记，保持GAP。",
       "exit": "授权最小契约扩展；持久来源因果证明，未知或跨Workspace来源拒绝；回滚和重放验证。"
     },
     {
@@ -6660,6 +6665,13 @@
         "LITE-07-104",
         "LITE-07-108"
       ]
+    },
+    {
+      "version": 6,
+      "baseline": "02a50947a82c692c61703f3d22f0b32c0b0a98ce",
+      "authority": "Main-agent implementation and verification within approved S2 scope",
+      "reason": "Record bounded Artifact lifecycle implementation and actual subprocess/page evidence. Keep original source audit and all GAP states; live model invocation and full gates still open. No new requirements or deferrals.",
+      "requirementIds": ["LITE-07-104", "LITE-07-108"]
     }
   ]
 }
