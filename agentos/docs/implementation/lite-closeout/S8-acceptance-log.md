@@ -81,3 +81,55 @@ first-run failure stays recorded above; the corrected gate is re-run in Run 2.
   rather than being marked PASS or DEFERRED.
 - Windows retained the E2E temp root because a file handle was still open; the
   verifier reports this explicitly and it does not affect the gate results.
++## Run 2 — corrected gate, real server, after the `REAL_CLI_CANCEL` fix
+
+| Field | Value |
+|---|---|
+| Command | `pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-agentos-e2e.ps1` |
+| Log | `docs/implementation/lite-closeout/evidence/S8-run2-e2e.log` |
+| Exit | 1 (pre-recovery phase), 0 (recovery phase) |
+
+```
+REAL_DIRECT_CODEX: passed
+REAL_DIRECT_OPENCODE: passed
+REAL_MEMORY_INJECTION: passed
+REAL_MEMORY_CANDIDATE: passed
+REAL_CLI_FAILURE: passed
+REAL_CLI_CANCEL: passed        <- was the stale gate; now proves disconnect-safe + explicit cancel
+REAL_WAITING_USER: passed
+REAL_DIRECT_KIMI: failed       <- environment
+REAL_GROUP: failed             <- downstream of Kimi
+DETERMINISTIC_LIFECYCLE: passed
+RECOVERY: passed
+MEMORY_CANDIDATE: passed
+```
+
+### Kimi is confirmed to be an environment limit, not an AgentOS defect
+
+Direct CLI probe on this machine:
+
+```
+kimi version 0.36.1
+error: failed to run prompt: provider.auth_error: 403 You've reached your weekly (7-day) usage limit.
+  Your quota will reset when the current 7-day window ends. ...
+```
+
+The failure happens inside the Kimi CLI before any AgentOS code path runs, so
+`REAL_DIRECT_KIMI` and the three-agent `REAL_GROUP` (which needs every member to
+start) stay open as environment-blocked rather than being recorded as product
+defects or as PASS.
+
+### `REAL_CLI_CANCEL` now proves the frozen lifecycle
+
+The corrected gate asserts, in order: the SSE disconnect leaves the Run
+`running`; the public cancel endpoint answers `200 {cancelled:true}`; the Run then
+reaches `cancelled`. That is the behaviour LITE-00-004 requires and the behaviour
+M4-P5E introduced.
+
+### Independent verifier runs on the same revision
+
+| Verifier | Result | Notes |
+|---|---|---|
+| `scripts/verify-preference-memory.ps1` | running, no failing test observed | drives the real server test suite; assertions include idempotency replay, terminal outcomes and v2 validation |
+| `scripts/verify-provider-runtime.ps1` | not runnable standalone | requires `.agentos/latest-provider-runtime-backup.txt`, a prerequisite index produced by an earlier baseline step; recorded as an environment prerequisite, not a failure |
+| `scripts/verify-real-worktree-gate.mjs` | started, produced no verdict | needs its own sandbox/provider setup; not claimed as evidence |
