@@ -242,6 +242,16 @@ async function realExternalMatrix(workspaceId, profiles) {
     const conversation = await createConversation(workspaceId, lifecycleAgent, 'real CLI cancel');
     const result = await runDirect(workspaceId, conversation, '请保持运行至少二十秒后再回复。', { abortOnRunningCli: true });
     assert.equal(result.aborted, true);
+    // LITE-00-004 / M4-P5E cancellation gate: the SSE stream is a transport
+    // subscription. Disconnecting it must NOT cancel the owned execution, so
+    // the Run has to still be running after the client went away.
+    const afterDisconnect = await latestRun(workspaceId, conversation.id);
+    assert.equal(afterDisconnect.status, 'running', `disconnect cancelled the Run (status=${afterDisconnect.status})`);
+    // Explicit cancellation uses the public Run cancel path, which owns the
+    // proof-backed Stop authority for the process tree.
+    const cancelled = await jsonRequest(`/api/workspaces/${workspaceId}/conversations/${conversation.id}/runs/${result.run.id}/cancel`, { method: 'POST' });
+    assert.equal(cancelled.response.status, 200, JSON.stringify(cancelled.body));
+    assert.equal(cancelled.body.cancelled, true, JSON.stringify(cancelled.body));
     assert.equal((await waitForRunStatus(workspaceId, conversation.id, 'cancelled')).status, 'cancelled');
   }, failures);
 
