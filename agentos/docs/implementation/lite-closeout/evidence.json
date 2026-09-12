@@ -506,6 +506,75 @@
     "limitation": "Final S3 full run preserved. All four failures are ENOTEMPTY teardown leftovers; no S3 assertion failure. The run remains non-green and is not used as PASS evidence; exact-head CI is required."
   },
   {
+    "id": "S4-ADAPTERS",
+    "baseline": "c783e9280cd5d434479b482af40331acf8656907",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "packages/agent-core: pnpm test; apps/server: node --import tsx --test --test-concurrency=1 src/services/run-engine/providerExecutionChain.registry.test.ts src/routes/providerConfigs.test.ts src/services/run-engine/StageExecutionCoordinator.test.ts src/services/run-engine/RunEngineProviderDispatcher.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; rebased on merged main 948b8008",
+    "result": {
+      "passed": 252,
+      "failed": 0,
+      "skipped": 2,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-001",
+      "LITE-04-101"
+    ],
+    "limitation": "171 agent-core tests plus 81 focused server tests; the two skips are the env-gated real Provider gates. See S4-provider-evidence.md."
+  },
+  {
+    "id": "S4-REAL-GATES",
+    "baseline": "8cd7859a9edf2ae8bece6b1c812290fd7615910c",
+    "kind": "runtime-verification",
+    "command": "M4_P4_REAL_GATE=1 / M4_P4_REAL_CODEX_GATE=1 with local kimi.exe and codex.exe",
+    "environment": "Windows Node24.18.0; real canonical RunEngineProviderDispatcher gate",
+    "result": {
+      "kimiPassed": 1,
+      "codexPassed": 1,
+      "kimiDurationMs": 197019,
+      "codexDurationMs": 591435
+    },
+    "requirementIds": [
+      "LITE-04-001",
+      "LITE-04-101"
+    ],
+    "limitation": "Both real gates passed on the content-equivalent pre-rebase head. The rebased head re-run is blocked by external kimi.com weekly quota exhaustion (403), so final-head real invocation remains RUNTIME-VERIFY. OpenCode has no local executable and only unavailable evidence."
+  },
+  {
+    "id": "S4-PROVIDER-SOURCE",
+    "baseline": "48bb4321a6dea67f09b225f7748f03c53c1d45d6",
+    "kind": "source-audit",
+    "command": "Read createProviderExecutionChain, KimiCodeProviderAdapter, legacy Codex/OpenCode adapters, adapters/registry.ts, M4-current-state-audit and the dispatcher real gate; documented in S4-provider-production-audit.md",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-04-001",
+      "LITE-04-101"
+    ],
+    "result": {
+      "findings": 5
+    },
+    "environment": "Read-only source audit before S4 implementation; no runtime evidence",
+    "limitation": "Confirmed the production registry registered only Kimi; Codex/OpenCode were legacy-only with no canonical adapter or real invocation evidence. Not PASS evidence."
+  },
+  {
+    "id": "S4-CODEX-LUNA-GATE",
+    "baseline": "c783e9280cd5d434479b482af40331acf8656907",
+    "kind": "runtime-verification",
+    "command": "M4_P4_REAL_CODEX_GATE=1 AGENTOS_CODEX_MODEL=gpt-5.6-luna AGENTOS_CODEX_CLI=... node --import tsx --test --test-name-pattern=Codex-gate src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "environment": "Windows Node24.18.0; real codex.exe 0.153.4 through the canonical dispatcher",
+    "result": {
+      "failed": 0,
+      "codexPassed": 1,
+      "durationMs": 327381
+    },
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "limitation": "Real canonical Codex invocation passed with an explicit model. It does not prove the default local model path (kimi/k3[1m] via the local proxy) while that external quota is exhausted, and it is not OpenCode or Kimi evidence."
+  },
+  {
     "id": "S5-101-LOCAL",
     "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
     "kind": "local-tests",

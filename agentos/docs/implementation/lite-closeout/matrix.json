@@ -1251,7 +1251,10 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S4-PROVIDER-SOURCE",
+        "S4-ADAPTERS"
+      ],
       "finding": "三Provider已有CLI/解析能力，但当前生产composition root仅注册Kimi；Codex/OpenCode完整生产链缺口须定向补齐而非重写三者。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -2640,7 +2643,7 @@
         "S5-101-LOCAL",
         "S5-102-LOCAL"
       ],
-      "finding": "保留基线反证：原driver把历史交旧Runner且快照在回复后记录。现执行前冻结隔离快照、Provider输入引用该快照，Group每speaker经同一driver并受Workspace修改权拒绝门约束；D3关闭（无并行修改）。真实浏览器与跨会话双chat互斥仍缺，保持GAP。",
+      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。 [merged] 保留基线反证：原driver把历史交旧Runner且快照在回复后记录。现执行前冻结隔离快照、Provider输入引用该快照，Group每speaker经同一driver并受Workspace修改权拒绝门约束；D3关闭（无并行修改）。真实浏览器与跨会话双chat互斥仍缺，保持GAP。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -2702,7 +2705,7 @@
         "S5-101-LOCAL",
         "S5-102-LOCAL"
       ],
-      "finding": "保留基线反证。现每Turn在调用前写入自己的agent/turn快照，Provider收到该Turn冻结窗口，Turn行回指该快照，实现per-Agent隔离；跨会话双chat互斥仍待独立schema切片，保持GAP。",
+      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。 [merged] 保留基线反证。现每Turn在调用前写入自己的agent/turn快照，Provider收到该Turn冻结窗口，Turn行回指该快照，实现per-Agent隔离；跨会话双chat互斥仍待独立schema切片，保持GAP。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -3910,7 +3913,11 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S4-PROVIDER-SOURCE",
+        "S4-ADAPTERS",
+        "S4-REAL-GATES"
+      ],
       "finding": "Legacy CLI和parser不等于RunEngine生产适配；composition root只注册Kimi。",
       "exit": "逐Provider沿Adapter→Registry→Process→RunEngine→SSE/UI验证；复用现有正确能力，只补断点。"
     },
@@ -4018,15 +4025,16 @@
       "state": "PASS",
       "workPackage": "S6",
       "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts",
         "apps/server/src/services/summarizationCliProfiles.ts",
-        "apps/server/src/services/ConversationTurnDriver.ts",
         "apps/server/src/store/CompactionRepository.ts",
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
         "apps/server/src/services/ConversationCompactionService.test.ts",
         "apps/server/src/services/ConversationCompactionTrigger.test.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
@@ -4041,7 +4049,7 @@
         "S6-REAL-SUMMARY",
         "S6-TRIGGER-INTEGRATION"
       ],
-      "finding": "真实触发：Turn组装前评估阈值，publish在一次事务内写入有界摘要+review-required候选+workspace事件（correlation=memory-compaction:<taskId>）。真实Provider运行与真实HTTP Turn均验证；摘要可用不等于Memory审核，候选保持待审核。",
+      "finding": "无canonical compaction任务、摘要、策略或生产调用链。 [merged] 真实触发：Turn组装前评估阈值，publish在一次事务内写入有界摘要+review-required候选+workspace事件（correlation=memory-compaction:<taskId>）。真实Provider运行与真实HTTP Turn均验证；摘要可用不等于Memory审核，候选保持待审核。",
       "exit": "来源记录、完成摘要、候选与事件原子提交，review-required；摘要可用性不等于Memory审核。",
       "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
@@ -4148,12 +4156,14 @@
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts",
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/routes/conversationRuntime.ts",
         "apps/server/src/store/TurnContextSnapshotRepository.ts"
       ],
       "tests": [
         "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/BoundedGroupService.test.ts",
         "apps/server/src/services/GroupTurnDriver.test.ts",
         "apps/server/src/routes/conversationRuntime.test.ts"
       ],
@@ -4161,7 +4171,7 @@
         "S5-EXECUTION-SOURCE",
         "S5-101-LOCAL"
       ],
-      "finding": "保留基线反证：快照曾在recordReply创建且driver先调用Provider。现driver在调用前冻结并持久化有界窗口与选择契约，Turn关联该快照，快照失败则不调用Provider，真实HTTP路由已验证；但Direct chat生产Memory选择器仍为空，Scope预算选择未闭合，保持GAP。",
+      "finding": "快照在recordReply创建，driver已先调用Provider；history未使用该快照。 [merged] 保留基线反证：快照曾在recordReply创建且driver先调用Provider。现driver在调用前冻结并持久化有界窗口与选择契约，Turn关联该快照，快照失败则不调用Provider，真实HTTP路由已验证；但Direct chat生产Memory选择器仍为空，Scope预算选择未闭合，保持GAP。",
       "exit": "Direct/Group按实际调用前快照预算与Scope，provider收到冻结选中内容，事后记录引用原快照。"
     },
     {
@@ -4185,7 +4195,7 @@
         "S5-EXECUTION-SOURCE",
         "S5-102-LOCAL"
       ],
-      "finding": "保留基线反证：driver曾无显式admission。现chat按modifying分类，另一GRANTED MODIFYING主体持权时以稳定码CONVERSATION_WORKSPACE_MODIFYING_BUSY拒绝（unit+真实HTTP），并指向显式Run；READ_ONLY不阻塞，D3保持关闭。双chat互斥需独立admission subject schema切片，保持GAP。",
+      "finding": "单interaction串行不证明与其他Conversation/Run共享Workspace权限；driver无显式admission。 [merged] 保留基线反证：driver曾无显式admission。现chat按modifying分类，另一GRANTED MODIFYING主体持权时以稳定码CONVERSATION_WORKSPACE_MODIFYING_BUSY拒绝（unit+真实HTTP），并指向显式Run；READ_ONLY不阻塞，D3保持关闭。双chat互斥需独立admission subject schema切片，保持GAP。",
       "exit": "无隐式modifying authority，缺可靠只读证据显示不可用/要求显式Run；并发与拒绝路径测试。"
     },
     {
@@ -4215,11 +4225,11 @@
       "state": "PASS",
       "workPackage": "S6",
       "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts",
         "apps/server/src/services/summarizationCliProfiles.ts",
-        "apps/server/src/services/ConversationTurnDriver.ts",
         "apps/server/src/store/CompactionRepository.ts",
         "apps/server/src/routes/conversationRuntime.ts"
       ],
@@ -4238,7 +4248,7 @@
         "S6-REAL-SUMMARY",
         "S6-TRIGGER-INTEGRATION"
       ],
-      "finding": "lite-v1作为不可变版本行持久化（0.70/0.50/8/2048/120000/1+16384回退），每次压缩记录预算组成、上限来源与estimator版本（lite-v1-chars4）；真实运行与真实HTTP Inspector均读到同一策略，历史不被后续策略改写。",
+      "finding": "无持久策略或预算评估。 [merged] lite-v1作为不可变版本行持久化（0.70/0.50/8/2048/120000/1+16384回退），每次压缩记录预算组成、上限来源与estimator版本（lite-v1-chars4）；真实运行与真实HTTP Inspector均读到同一策略，历史不被后续策略改写。",
       "exit": "持久policyVersion及70%/50%/8/2048/120000/1；每次保存预算组成、上限来源、估算器版本；未来策略不重写历史。",
       "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
@@ -4251,6 +4261,7 @@
       "state": "PASS",
       "workPackage": "S6",
       "implementation": [
+        "apps/server/src/store/ConversationRepository.ts",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts",
@@ -4274,7 +4285,7 @@
         "S6-REAL-SUMMARY",
         "S6-TRIGGER-INTEGRATION"
       ],
-      "finding": "真实HTTP路径证明：只压缩有界旧前缀（10条中2条），原消息保留（status<>deleted计数不变），触发它的同一Turn即为采用者（snapshot budget记录compactionSummaryId与summarizedMessages），frozen history = 摘要+未压缩尾部，已被覆盖的消息不再重发。",
+      "finding": "无canonical summary/source range。 [merged] 真实HTTP路径证明：只压缩有界旧前缀（10条中2条），原消息保留（status<>deleted计数不变），触发它的同一Turn即为采用者（snapshot budget记录compactionSummaryId与summarizedMessages），frozen history = 摘要+未压缩尾部，已被覆盖的消息不再重发。",
       "exit": "保留原消息，摘要不可变；前序摘要+有界前缀分批；近期至少8条+当前输入，采用摘要+未压缩尾部。",
       "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
@@ -4287,6 +4298,7 @@
       "state": "PASS",
       "workPackage": "S6",
       "implementation": [
+        "packages/agent-core/src/conversationRunner.ts",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts",
@@ -4310,7 +4322,7 @@
         "S6-REAL-SUMMARY",
         "S6-TRIGGER-INTEGRATION"
       ],
-      "finding": "真实Codex CLI产生摘要（verify-compaction-real-summary: passed, model=gpt-5.6-luna, adapter=cli.codex@1.0.0）。身份与模型在触发时冻结并落库；缺失profile、身份漂移、空模型、缺CLI级只读沙箱、出现任何tool.*/approval事件、超时、非零退出均fail-closed。修复了“只读仅靠提示词”的真实缺陷。",
+      "finding": "无tool-free/write-denied摘要执行证据。 [merged] 真实Codex CLI产生摘要（verify-compaction-real-summary: passed, model=gpt-5.6-luna, adapter=cli.codex@1.0.0）。身份与模型在触发时冻结并落库；缺失profile、身份漂移、空模型、缺CLI级只读沙箱、出现任何tool.*/approval事件、超时、非零退出均fail-closed。修复了“只读仅靠提示词”的真实缺陷。",
       "exit": "冻结触发轮Provider，禁止静默切换；不可保证禁工具/禁写则不可调用，按预算失败分支处理。",
       "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
@@ -4323,6 +4335,7 @@
       "state": "PASS",
       "workPackage": "S6",
       "implementation": [
+        "apps/server/src/index.ts",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts",
@@ -4346,7 +4359,7 @@
         "S6-RECOVERY",
         "S6-TRIGGER-INTEGRATION"
       ],
-      "finding": "单Conversation唯一running（部分唯一索引）+租约+版本CAS+重试上限；崩溃/重启后的旧执行状态由持久租约判定：过期租约先转retry-pending再恢复，未过期租约不被抢占（两个独立测试），旧租约无法发布（publish要求lease_owner与版本同时匹配），自动重试上限1且策略timeoutMs=120000。真实HTTP轮次重复收敛为仅1个任务。",
+      "finding": "无压缩任务恢复状态。 [merged] 单Conversation唯一running（部分唯一索引）+租约+版本CAS+重试上限；崩溃/重启后的旧执行状态由持久租约判定：过期租约先转retry-pending再恢复，未过期租约不被抢占（两个独立测试），旧租约无法发布（publish要求lease_owner与版本同时匹配），自动重试上限1且策略timeoutMs=120000。真实HTTP轮次重复收敛为仅1个任务。",
       "exit": "并发单持有者；重启先判断旧执行，不猜测结束；旧租约不可发布；自动重试最多一次，超时120秒。",
       "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
@@ -4359,9 +4372,9 @@
       "state": "PASS",
       "workPackage": "S6",
       "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
-        "apps/server/src/services/ConversationTurnDriver.ts",
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
@@ -4374,7 +4387,7 @@
         "S6-LOCAL",
         "S6-RETRY"
       ],
-      "finding": "硬预算分支：预算内继续并进入retry-pending（有界，重试上限1）；摘要+尾部超硬预算时在Provider调用前以TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED失败、当前消息保留且不静默截断。显式重试接口 POST /conversations/:id/compactions/retry 复用同一评估：报告durable outcome(published/noop/retry-pending/failed)与blockedReason、任务状态、尝试次数与失败码，且不会伪造第二个任务。",
+      "finding": "无硬预算门禁。 [merged] 硬预算分支：预算内继续并进入retry-pending（有界，重试上限1）；摘要+尾部超硬预算时在Provider调用前以TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED失败、当前消息保留且不静默截断。显式重试接口 POST /conversations/:id/compactions/retry 复用同一评估：报告durable outcome(published/noop/retry-pending/failed)与blockedReason、任务状态、尝试次数与失败码，且不会伪造第二个任务。",
       "exit": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。",
       "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
@@ -4387,6 +4400,7 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
+        "apps/server/src/store/ConversationRepository.ts",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts",
@@ -4396,6 +4410,7 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
+        "apps/server/src/store/ConversationRepository.test.ts",
         "apps/server/src/services/ConversationCompactionService.test.ts",
         "apps/server/src/services/ConversationCompactionTrigger.test.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
@@ -4408,7 +4423,7 @@
       "evidence": [
         "S6-LOCAL"
       ],
-      "finding": "复用现有消息可见性与内容修订/哈希：来源锚点缺失时不再复用旧摘要作为前缀，改为按全文重算，历史快照不变；未新增编辑API或versioning。真实编辑场景（canonical message被编辑后摘要失效）仍待S8实测，保持GAP。",
+      "finding": "editMessage及cr_message_revisions已有；无压缩source校验。 [merged] 复用现有消息可见性与内容修订/哈希：来源锚点缺失时不再复用旧摘要作为前缀，改为按全文重算，历史快照不变；未新增编辑API或versioning。真实编辑场景（canonical message被编辑后摘要失效）仍待S8实测，保持GAP。",
       "exit": "不新增编辑API/UI/versioning；实际内容变化或不可见使旧摘要不能进入新context，历史快照不变。"
     },
     {
@@ -4420,6 +4435,7 @@
       "state": "PASS",
       "workPackage": "S6",
       "implementation": [
+        "packages/agent-core/src/conversationRunner.ts",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts",
@@ -4443,7 +4459,7 @@
         "S6-REAL-SUMMARY",
         "S6-TRIGGER-INTEGRATION"
       ],
-      "finding": "来源审计：生产代码中没有任何路径读取Provider原生压缩作为canonical证据；canonical摘要只能由CompactionRepository.publishWithinTransaction发布，Inspector只读AgentOS持久化的policy/budget/source/summary/snapshot。",
+      "finding": "新AgentOS压缩尚未实现，必须明确native诊断边界。 [merged] 来源审计：生产代码中没有任何路径读取Provider原生压缩作为canonical证据；canonical摘要只能由CompactionRepository.publishWithinTransaction发布，Inspector只读AgentOS持久化的policy/budget/source/summary/snapshot。",
       "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。",
       "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
@@ -4456,6 +4472,8 @@
       "state": "PASS",
       "workPackage": "S6",
       "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts",
+        "apps/web/src/components/chat/RuntimeInspectorView.tsx",
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts",
@@ -4465,6 +4483,7 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeInspector.test.ts",
         "apps/server/src/services/ConversationCompactionService.test.ts",
         "apps/server/src/services/ConversationCompactionTrigger.test.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
@@ -4479,7 +4498,7 @@
         "S6-REAL-SUMMARY",
         "S6-TRIGGER-INTEGRATION"
       ],
-      "finding": "Inspector同时回答“为何触发”（策略版本、触发/目标比例、预算组成与上限来源、来源范围与条数、estimator版本、尝试与失败码）与“被谁采用”（adoptions：summaryId→turnId→snapshotId，且与turn.context_snapshot_id一致），未采用的摘要明确报告为未采用。",
+      "finding": "无compaction projection。 [merged] Inspector同时回答“为何触发”（策略版本、触发/目标比例、预算组成与上限来源、来源范围与条数、estimator版本、尝试与失败码）与“被谁采用”（adoptions：summaryId→turnId→snapshotId，且与turn.context_snapshot_id一致），未采用的摘要明确报告为未采用。",
       "exit": "展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。",
       "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
