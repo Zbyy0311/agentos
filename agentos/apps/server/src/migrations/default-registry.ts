@@ -23,6 +23,7 @@ import { migration022 } from './migrations/022-cr4-message-projection-persistenc
 import { migration023 } from './migrations/023-cr5-bounded-group-persistence.js';
 import { migration024 } from './migrations/024-memory-snapshot-payloads.js';
 import { migration025 } from './migrations/025-mf5-workspace-event-stream.js';
+import { migration026 } from './migrations/026-mf2-approval-decision-persistence.js';
 import type { Migration } from './types.js';
 
 /**
@@ -55,6 +56,7 @@ import type { Migration } from './types.js';
  * 024: MF-4 Memory Context Snapshot frozen injected-payload persistence
  * 025: MF-5 Workspace Event stream (Run-less canonical Event history +
  *      per-Workspace sequence allocator column)
+ * 026: MF-2 approval-decision persistence (durable approval decision record)
  */
 export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   baselineMigration,
@@ -82,4 +84,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration023,
   migration024,
   migration025,
+  migration026,
 ];

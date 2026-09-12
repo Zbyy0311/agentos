@@ -28,7 +28,7 @@ type Db = InstanceType<typeof DatabaseSync>;
 
 const NOW = '2026-08-02T00:00:00.000Z';
 const MIGRATION_IDS = ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015'];
-const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021', '022', '023', '024', '025'];
+const FULL_MIGRATION_IDS = [...MIGRATION_IDS, '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026'];
 
 function freshDb(): Db {
   const db = new DatabaseSync(':memory:');
@@ -38,7 +38,7 @@ function freshDb(): Db {
 
 function registryBefore012(): MigrationRegistry {
   return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
-    migration => migration.id !== '012' && migration.id !== '013' && migration.id !== '014' && migration.id !== '015' && migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021' && migration.id !== '022' && migration.id !== '023' && migration.id !== '024' && migration.id !== '025',
+    migration => migration.id !== '012' && migration.id !== '013' && migration.id !== '014' && migration.id !== '015' && migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021' && migration.id !== '022' && migration.id !== '023' && migration.id !== '024' && migration.id !== '025' && migration.id !== '026',
   ));
 }
 
@@ -49,7 +49,7 @@ function registryBefore012(): MigrationRegistry {
  */
 function registryThrough015(): MigrationRegistry {
   return new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS.filter(
-    migration => migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021' && migration.id !== '022' && migration.id !== '023' && migration.id !== '024' && migration.id !== '025',
+    migration => migration.id !== '016' && migration.id !== '017' && migration.id !== '018' && migration.id !== '019' && migration.id !== '020' && migration.id !== '021' && migration.id !== '022' && migration.id !== '023' && migration.id !== '024' && migration.id !== '025' && migration.id !== '026',
   ));
 }
 
