@@ -95,9 +95,12 @@ FTS-similarity near-duplicate detection were closed by the MF-2R slice
 (PR #125), and the explicit user save trigger by the user-save slice
 (PR #136 + #137: forward `POST /memory/entries` creating the Entry and emitting
 `memory.entry_created` through the MF-5 Workspace stream in one transaction).
+The accepted-approval-decision trigger is closed by the approval-decision
+persistence slice (PR #139 authorization + #140 implementation): durable
+`approval_decisions` (migration 026) + the forward `POST /approval-decisions`
+route generating one review-required Candidate on acceptance.
 Still open, each needing a new durable seam before a candidate can
-be generated from it: accepted approval decision (`ApprovalRegistry` is
-in-memory), completed review/test Artifact (no such Artifact type), compaction
+be generated from it: completed review/test Artifact (no such Artifact type), compaction
 (no compaction implementation), and explicit import (Workspace import forces
 `memory: false`). These are separate authorized work, not this slice.
 
