@@ -21,6 +21,8 @@ export type { CodexProbeResult, ProbeCommand } from './adapters/capabilityProbe.
 export type { KimiProbeOptions } from './adapters/kimiAdapter.js';
 export { redactRuntimeText, summarizeToolInput } from './adapters/redaction.js';
 export { KimiCodeProviderAdapter } from './providers/kimiCodeAdapter.js';
+export { CodexProviderAdapter } from './providers/codexProviderAdapter.js';
+export { OpenCodeProviderAdapter } from './providers/opencodeProviderAdapter.js';
 export { ProviderRegistry } from './providers/registry.js';
 export { ProviderValidationService } from './providers/validation.js';
 export { ProviderRegistryError, normalizedProviderError, providerErrorStatus } from './providers/errors.js';
@@ -29,6 +31,12 @@ export {
   KIMICODE_ADAPTER_VERSION,
   KIMICODE_DEFAULT_EXECUTABLE,
   KIMICODE_PROVIDER_TYPE,
+  CODEX_ADAPTER_ID,
+  CODEX_ADAPTER_VERSION,
+  CODEX_DEFAULT_EXECUTABLE,
+  OPENCODE_ADAPTER_ID,
+  OPENCODE_ADAPTER_VERSION,
+  OPENCODE_DEFAULT_EXECUTABLE,
   LEGACY_KIMI_PROVIDER_TYPE,
   canonicalProviderType,
   PROVIDER_ERROR_CODES,

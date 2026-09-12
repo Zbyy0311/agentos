@@ -66,6 +66,18 @@ Use bounded sidecar tasks, not repeated broad audits or duplicate watchers.
 
 ## Current closeout progress after PR145
 
+## Progress after PR146 (S3 merge)
+
+- PR146 (S3 durable pre-spawn runtime authorization) merged as `948b8008`
+  after its exact-head CI run34694963069 completed SUCCESS. S3 rows stay GAP
+  pending live Provider/browser acceptance.
+- S4 branch codex/lite-s4-provider head d91b0dff registers canonical Codex and
+  OpenCode adapters beside Kimi, keeping rows GAP/RUNTIME-VERIFY. Real Kimi and
+  Codex gates passed on the pre-rebase head 8cd7859a (197s / 592s); the
+  rebased-head re-run is blocked by external kimi.com weekly quota exhaustion
+  (403), recorded in S4-provider-evidence.md. OpenCode has no local executable;
+  unavailable evidence only. Push + PR for S4 is next; no merge before green CI.
+
 - PR143 merged50255d83, PR144 merged30c9de3a, PR145 merged48bb4321. Main CI
   for48bb4321 completed success (run34691092265).
 - S3 branch codex/lite-s3-approval head d76cce34 has additive028 runtime

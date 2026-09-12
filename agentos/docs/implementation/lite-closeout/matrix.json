@@ -6772,6 +6772,16 @@
       ]
     },
     {
+      "version": 9,
+      "baseline": "c783e9280cd5d434479b482af40331acf8656907",
+      "authority": "Main-agent S4 implementation and verification within user-approved scope",
+      "reason": "Register canonical Codex/OpenCode adapters in the production chain with bounded evidence; keep GAP/RUNTIME-VERIFY because the final-head real gate is blocked by external quota and OpenCode has only unavailable evidence. No state changes.",
+      "requirementIds": [
+        "LITE-04-001",
+        "LITE-04-101"
+      ]
+    },
+    {
       "version": 10,
       "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
       "authority": "Main-agent S5 implementation within user-approved scope",
