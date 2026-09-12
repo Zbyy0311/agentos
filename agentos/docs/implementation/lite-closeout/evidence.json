@@ -338,5 +338,27 @@
     "result": { "failed": 1, "conclusion": "failure" },
     "requirementIds": ["LITE-07-104"],
     "limitation": "First PR145 CI preserved. It used the stale016 replay helper before 419b7a13; not a green claim and no automatic rerun."
+  },
+  {
+    "id": "S3-LOCAL-39",
+    "baseline": "ead3001b82251fe85e1b176ce5b2d55fbbaa3e16",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 src/routes/runtimeApprovals.test.ts src/services/run-engine/RunEngineProviderDispatcher.test.ts src/store/RuntimeApprovalRepository.test.ts src/migrations/__tests__/lite-migration-028.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; rebased on merged main 48bb4321",
+    "result": { "passed": 38, "failed": 0, "skipped": 1, "typecheckExitCode": 0 },
+    "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "limitation": "Durable pre-spawn gate, original-Run continuation/restart scan, replay, expiry, drift and rollback evidence. One real Kimi invocation remains environment-skipped; no live Provider/browser approval acceptance."
+  },
+  {
+    "id": "S3-APPROVAL-SOURCE",
+    "baseline": "48bb4321a6dea67f09b225f7748f03c53c1d45d6",
+    "kind": "source-audit",
+    "command": "Read routes/approvals.ts, routes/approvalDecisions.ts, LifecycleTransactionService, TaskRunRecoveryService, RunEngineProviderDispatcher and StageExecutionCoordinator; documented in S3-production-gap.md",
+    "cwd": "agentos",
+    "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "result": { "findings": 5 },
+    "environment": "Read-only source audit before implementation; no runtime evidence",
+    "limitation": "Confirmed in-memory approvals, independent unproven decision route, missing pre-spawn persistence, original-Run continuation and transaction composition. Not PASS evidence."
   }
 ]

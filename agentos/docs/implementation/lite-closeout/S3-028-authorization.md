@@ -3,9 +3,9 @@
 Requirements: LITE-08-005/006/007 and LITE-07-103. Supporting scope:
 LITE-07-108 remains open for no-Run triggers; this Run-bound approval path uses
 Runtime Event + Outbox and does not close it. Authority: user-approved tightened
-plan plus `S3-production-gap.md`. Base: S2 PR145 head `97b5b885`; local 016
-test correction `419b7a13`. 001–027 remain unchanged. Assign 028 only after
-checking the post-#145 main registry; do not renumber.
+plan plus `S3-production-gap.md`. Current implementation is rebased on merged
+main `48bb4321` (PR145); migration 028 follows merged 027. 001–027 remain
+unchanged. Do not renumber.
 
 ## Boundary and reuse
 
