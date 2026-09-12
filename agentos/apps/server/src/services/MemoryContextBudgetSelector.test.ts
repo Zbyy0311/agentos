@@ -130,15 +130,20 @@ test('MF4B-01 selection persists snapshot and assembles context', () => {
   } finally { fx.close(); }
 });
 
-// MF4B-02 — token budget truncates explicitly with an exclusion reason.
+// MF4B-02 — the token budget prices the injected text and truncates explicitly.
 test('MF4B-02 token budget truncates explicitly', () => {
   const fx = fixture();
   try {
-    addEntry(fx, { tokenEstimate: 20 });
-    addEntry(fx, { tokenEstimate: 20 });
-    const result = fx.selector.select(selectInput());
+    // Both rows carry a deliberately stale `tokenEstimate` of 1. The budget must
+    // price the text the context actually carries - `### alpha\nbody` is 14
+    // characters, so 4 tokens each - instead of trusting the stored estimate,
+    // which would have fitted both.
+    addEntry(fx, { title: 'alpha', content: 'body', tokenEstimate: 1 });
+    addEntry(fx, { title: 'alpha', content: 'body', tokenEstimate: 1 });
+    const result = fx.selector.select(selectInput({ budget: { ...BUDGET, maxTokens: 5 } }));
     assert.equal(result.snapshot.selected.length, 1);
-    assert.equal(result.snapshot.totalTokens, 20);
+    assert.equal(result.snapshot.selected[0].tokenCost, 4);
+    assert.equal(result.snapshot.totalTokens, 4);
     assert.equal(result.snapshot.truncated, true);
     assert.ok(result.snapshot.exclusions.some(e => e.reason === 'truncated'));
   } finally { fx.close(); }
@@ -230,6 +235,71 @@ test('MF4B-09 query hash is stable and opaque', () => {
   assert.notEqual(a, c);
   assert.match(a, /^[0-9a-f]{64}$/);
   assert.ok(!a.includes('alpha'));
+});
+
+// MF4B-11 — a per-Scope limit is reported as a Scope exclusion, not a category one.
+test('MF4B-11 per-scope limit reports scope-excluded', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { scope: 'task', tokenEstimate: 1 });
+    addEntry(fx, { scope: 'task', tokenEstimate: 1 });
+    const result = fx.selector.select(selectInput({
+      budget: { ...BUDGET, perScopeLimits: { task: 1 }, maxTokens: 100 },
+    }));
+    assert.equal(result.snapshot.selected.length, 1);
+    const reasons = result.snapshot.exclusions.map(entry => entry.reason);
+    assert.deepEqual(reasons, ['scope-excluded']);
+  } finally { fx.close(); }
+});
+
+// MF4B-12 — requireDiversity prefers a second category over a second same-category Entry.
+test('MF4B-12 diversity prefers an unrepresented category and explains the exclusion', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: 'top decision', category: 'decision', importance: 0.95, tokenEstimate: 1 });
+    addEntry(fx, { title: 'second decision', category: 'decision', importance: 0.9, tokenEstimate: 1 });
+    addEntry(fx, { title: 'only failure', category: 'failure', importance: 0.5, tokenEstimate: 1 });
+    const budget = { ...BUDGET, maxEntries: 2, maxTokens: 100, requireDiversity: true };
+    const diversified = fx.selector.select(selectInput({ budget }));
+    assert.deepEqual(
+      diversified.snapshot.selected.map(entry => entry.category),
+      ['decision', 'failure'],
+    );
+    // Ranks stay in retrieval order: the failure outranks nothing, it is simply
+    // the first Entry of a category the selection did not have yet.
+    assert.deepEqual(diversified.snapshot.selected.map(entry => entry.rank), [1, 3]);
+    assert.deepEqual(
+      diversified.snapshot.exclusions.map(entry => entry.reason),
+      ['diversity-limit'],
+    );
+
+    // The same candidates without diversity fill both slots in rank order, so
+    // the exclusion above is the diversity rule and not the budget.
+    const plain = fx.selector.select(selectInput({
+      snapshotId: SNAP + '9',
+      budget: { ...budget, requireDiversity: false },
+    }));
+    assert.deepEqual(plain.snapshot.selected.map(entry => entry.rank), [1, 2]);
+    assert.deepEqual(plain.snapshot.exclusions.map(entry => entry.reason), ['entry-budget']);
+  } finally { fx.close(); }
+});
+
+// MF4B-13 — diversity never wastes capacity: deferred Entries fill the rest.
+test('MF4B-13 diversity keeps capacity usable for deferred entries', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: 'decision one', category: 'decision', importance: 0.95, tokenEstimate: 1 });
+    addEntry(fx, { title: 'decision two', category: 'decision', importance: 0.9, tokenEstimate: 1 });
+    addEntry(fx, { title: 'failure one', category: 'failure', importance: 0.5, tokenEstimate: 1 });
+    const result = fx.selector.select(selectInput({
+      budget: { ...BUDGET, maxEntries: 3, maxTokens: 100, requireDiversity: true },
+    }));
+    // The deferred rank-2 Entry is still admitted by the fill pass, and the
+    // persisted selection stays in retrieval (rank) order.
+    assert.deepEqual(result.snapshot.selected.map(entry => entry.category), ['decision', 'decision', 'failure']);
+    assert.deepEqual(result.snapshot.selected.map(entry => entry.rank), [1, 2, 3]);
+    assert.equal(result.snapshot.exclusions.length, 0);
+  } finally { fx.close(); }
 });
 
 // MF4B-10 — applyBudget is pure and records every considered Entry.
