@@ -2,6 +2,10 @@
 
 Status: PARTIAL — merged slices do not yet constitute an end-to-end Memory Foundation closeout
 
+Final Lite acceptance is governed by [S0](../lite-closeout/README.md), not by
+historical slice labels. S1-A / PR #143 repairs terminal dedup provenance under
+`LITE-07-003/107`; those IDs remain open for the explicit-save and review paths.
+
 ## 1. Purpose
 
 This record tracks the Memory Foundation slices defined by

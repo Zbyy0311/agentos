@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 1,
+  "matrixVersion": 2,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1987,16 +1987,21 @@
       "section": "18. Acceptance Expectations",
       "line": 374,
       "requirement": "token, count, Scope, category, and diversity budgets;",
-      "state": "RUNTIME-VERIFY",
+      "state": "GAP",
       "workPackage": "S1",
       "implementation": [
-        "apps/server/src/services/MemoryContextResolver.ts"
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/services/MemoryRetrievalService.test.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
+      "evidence": [
+        "S1C-SOURCE"
+      ],
+      "finding": "applyBudget未读取requireDiversity；只累计Entry tokenEstimate而非实际heading+content；scope限制误报category-budget，truncated分支实际是整条排除。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -2103,16 +2108,21 @@
       "section": "18. Acceptance Expectations",
       "line": 380,
       "requirement": "visible FTS degraded mode;",
-      "state": "RUNTIME-VERIFY",
+      "state": "GAP",
       "workPackage": "S1",
       "implementation": [
-        "apps/server/src/services/MemoryContextResolver.ts"
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/services/MemoryRetrievalService.test.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
+      "evidence": [
+        "S1C-SOURCE"
+      ],
+      "finding": "selector.plan调用retrieve丢弃retrieveWithStatus.degraded；真实Context路径未保留降级说明。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -4007,17 +4017,21 @@
       "section": "§9–§11",
       "line": null,
       "requirement": "有效期、敏感度、FTS降级及预算策略符合规范",
-      "state": "RUNTIME-VERIFY",
+      "state": "GAP",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
         "apps/server/src/services/MemoryContextBudgetSelector.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryRetrievalService.test.ts"
+        "apps/server/src/services/MemoryRetrievalService.test.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有过滤/排名/预算；正文要求的完整validity/sensitivity/degraded传播待核对。",
+      "evidence": [
+        "S1C-SOURCE"
+      ],
+      "finding": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。",
       "exit": "固定时钟下验证有效期和敏感度，显式降级与真实快照理由，不重构无关排名。"
     },
     {
@@ -6568,6 +6582,32 @@
       "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
       "authority": "User-approved PLEASE IMPLEMENT tightened final plan; S0 scope freeze by main agent",
       "reason": "Freeze requirement identities and baseline; unproven product paths remain RUNTIME-VERIFY. Draft dedup findings refined from directly inspected source, not delegate completion claims."
+    },
+    {
+      "version": 2,
+      "baseline": "8e4cc3ae81bf2a92337662d329a2a10647aecfdb",
+      "reason": "Narrow existing S1 RUNTIME-VERIFY obligations to directly observed source gaps; no new IDs or PASS reopenings.",
+      "authority": "Main-agent source audit within user-approved S0 scope",
+      "classifications": [
+        {
+          "id": "LITE-07-007",
+          "from": "RUNTIME-VERIFY",
+          "to": "GAP",
+          "reason": "applyBudget未读取requireDiversity；只累计Entry tokenEstimate而非实际heading+content；scope限制误报category-budget，truncated分支实际是整条排除。"
+        },
+        {
+          "id": "LITE-07-013",
+          "from": "RUNTIME-VERIFY",
+          "to": "GAP",
+          "reason": "selector.plan调用retrieve丢弃retrieveWithStatus.degraded；真实Context路径未保留降级说明。"
+        },
+        {
+          "id": "LITE-07-109",
+          "from": "RUNTIME-VERIFY",
+          "to": "GAP",
+          "reason": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。"
+        }
+      ]
     }
   ]
 }

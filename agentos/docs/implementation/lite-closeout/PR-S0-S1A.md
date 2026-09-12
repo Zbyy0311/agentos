@@ -28,8 +28,15 @@ original checkout. The next Workspace candidate contract is design-only.
 - Source/Event/Outbox rollback; cross-Run causal rejection; replay and archive
   race covered with real SQLite collaborators.
 
-Full local Server test/build and this PR's exact-head CI results must be recorded
-before merge. No CI rerun or admin bypass is requested.
+Full local Server run (pre archive-race remediation): 2705 pass / 4 fail /
+3 skip (2712 total). All four failures are `ENOTEMPTY` at temporary-directory
+teardown in unchanged worktree route, Conversation compatibility and legacy
+import tests; the first failure evidence is preserved in S1-terminal-dedup.md.
+Do not count this local suite as PASS. Workspace build passed; the final
+archive-race remediation passed the 85-test targeted set and fresh typecheck.
+
+This PR's exact-head CI must pass before merge. No CI rerun or admin bypass
+is requested. First CI run: `34683702991` at `8e4cc3ae`.
 
 ## Scope gate meaning
 

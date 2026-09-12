@@ -90,5 +90,58 @@
     },
     "environment": "Windows; Node v24.18.0; S1-A new regression tests against unmodified product code",
     "limitation": "Six deterministic failures: five out-of-boundary exact convergences and one missing Run source; not a CI flake."
+  },
+  {
+    "id": "S1A-GREEN",
+    "baseline": "8e4cc3ae81bf2a92337662d329a2a10647aecfdb",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/services/MemoryRuntimeEventEmitter.test.ts src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-07-003",
+      "LITE-07-107"
+    ],
+    "result": {
+      "passed": 85,
+      "failed": 0,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0",
+    "limitation": "Terminal dedup slice only; explicit-save/review convergence remains open; source/Event/Outbox failures and archive race covered."
+  },
+  {
+    "id": "S1A-REGRESSION",
+    "baseline": "8e4cc3ae81bf2a92337662d329a2a10647aecfdb",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/routes/memoryRuntime.test.ts src/services/MemoryContextResolver.test.ts src/store/MemoryContextSnapshotRepository.test.ts",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-07-003",
+      "LITE-07-107"
+    ],
+    "result": {
+      "passed": 33,
+      "failed": 0,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0",
+    "limitation": "Affected baseline path regression only, not complete acceptance of all save or context behaviors."
+  },
+  {
+    "id": "S1C-SOURCE",
+    "baseline": "8e4cc3ae81bf2a92337662d329a2a10647aecfdb",
+    "kind": "source-audit",
+    "command": "Read MemoryRetrievalService.retrieveWithStatus, MemoryEntryRepository.listRetrievalCandidates, MemoryContextBudgetSelector.plan/applyBudget; rg validFrom|validUntil|expiresAt|sensitivity|requireDiversity|degraded in same sources",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-07-007",
+      "LITE-07-013",
+      "LITE-07-109"
+    ],
+    "result": {
+      "findings": 3
+    },
+    "environment": "Read-only source inspection",
+    "limitation": "Static counterexamples only; bounded next runtime tests in S1-retrieval-counterexamples.md; never PASS evidence."
   }
 ]

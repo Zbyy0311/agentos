@@ -1,5 +1,10 @@
 # Lite Fast Track — Progress Summary
 
+> Final Lite closeout uses [S0's frozen acceptance matrix](../lite-closeout/README.md)
+> as the only scope authority (baseline main `b3c3a982`, migrations 001–026).
+> The historical merged-slice labels below are not end-to-end Lite acceptance.
+> S1-A / PR #143 addresses only `LITE-07-003/107`; the full goal remains OPEN.
+
 Status: IN PROGRESS — merged slice evidence is recorded below. Controlled Group speaker orchestration (incl. the forward-UI walk wiring) is merged (PR #129/#130/#132). The one Fast-Track step still PARTIAL is Memory Foundation: the explicit user-save trigger (PR #136 + #137) and the accepted-approval-decision trigger (PR #139 + #140) are now wired, and the remaining MF-2 candidate-generation triggers — review/test artifact, compaction, explicit import — each need a new durable seam (new schema or feature) and therefore a new authorization before any implementation.
 
 ## 1. Purpose
