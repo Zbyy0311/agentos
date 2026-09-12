@@ -98,10 +98,14 @@ implements WorkspaceEventContextAuthorityV1 {
     const parentEventId = this.requireParentEvent(workspaceId, claimed.parentEventId);
     const authorityVersion = subject.kind === 'memory.candidate_review'
       ? this.proveCandidateReview(workspaceId, subject)
-      : this.proveConflictResolution(workspaceId, subject);
+      : subject.kind === 'memory.conflict_resolution'
+        ? this.proveConflictResolution(workspaceId, subject)
+        : this.proveEntrySave(workspaceId, subject);
     return {
       origin: subject.kind,
-      authorityId: subject.kind === 'memory.candidate_review' ? subject.candidateId : subject.conflictId,
+      authorityId: subject.kind === 'memory.candidate_review' ? subject.candidateId
+        : subject.kind === 'memory.conflict_resolution' ? subject.conflictId
+        : subject.entryId,
       authorityVersion,
       correlationId: derived.correlationId,
       causationId: derived.causationId,
@@ -141,6 +145,19 @@ implements WorkspaceEventContextAuthorityV1 {
         kind: 'memory.conflict_resolution',
         conflictId: origin.conflictId,
         conflictVersion: origin.conflictVersion,
+      };
+    }
+    if (origin.kind === 'memory.entry_save') {
+      if (!nonBlank(origin.entryId) || !isPositiveSafeInteger(origin.entryVersion)) {
+        throw new WorkspaceEventContextAuthorityError(
+          'INPUT_INVALID',
+          'memory.entry_save origin requires entryId and a positive integer entryVersion',
+        );
+      }
+      return {
+        kind: 'memory.entry_save',
+        entryId: origin.entryId,
+        entryVersion: origin.entryVersion,
       };
     }
     throw new WorkspaceEventContextAuthorityError(
@@ -224,6 +241,24 @@ implements WorkspaceEventContextAuthorityV1 {
       throw new WorkspaceEventContextAuthorityError(
         'ORIGIN_UNPROVEN',
         'Conflict resolution is not committed in this Workspace: ' + origin.conflictId,
+      );
+    }
+    return row.version;
+  }
+
+  private proveEntrySave(
+    workspaceId: string,
+    origin: Extract<WorkspaceEventOriginV1, { readonly kind: 'memory.entry_save' }>,
+  ): number {
+    const row = this.db.prepare(
+      'SELECT id, version FROM memory_entries WHERE workspace_id = ? AND id = ? AND version = ?',
+    ).get(workspaceId, origin.entryId, origin.entryVersion) as
+      | { readonly id: string; readonly version: number }
+      | undefined;
+    if (row === undefined) {
+      throw new WorkspaceEventContextAuthorityError(
+        'ORIGIN_UNPROVEN',
+        'Saved Memory Entry is not present in this Workspace: ' + origin.entryId,
       );
     }
     return row.version;

@@ -52,6 +52,18 @@ export type WorkspaceEventOriginV1 =
       readonly kind: 'memory.conflict_resolution';
       readonly conflictId: string;
       readonly conflictVersion: number;
+    }
+
+  /**
+   * A user explicitly saved a Memory Entry (MF-2 trigger "explicit user save").
+   * Added by the entry-save amendment
+   * (`MF5-workspace-event-entry-save-amendment.md`): proven against the
+   * `memory_entries` row this save created.
+   */
+  | {
+      readonly kind: 'memory.entry_save';
+      readonly entryId: string;
+      readonly entryVersion: number;
     };
 
 export type WorkspaceEventOriginKind = WorkspaceEventOriginV1['kind'];
@@ -120,6 +132,12 @@ export function deriveWorkspaceEventContext(origin: WorkspaceEventOriginV1): Wor
       causationId: origin.conflictId,
     };
   }
+  if (origin.kind === 'memory.entry_save') {
+    return {
+      correlationId: 'memory-entry:' + origin.entryId + ':v' + origin.entryVersion,
+      causationId: origin.entryId,
+    };
+  }
   throw new WorkspaceEventWriterError(
     'WORKSPACE_EVENT_ORIGIN_UNPROVEN',
     'unsupported Workspace Event origin',
@@ -159,6 +177,7 @@ function isPositiveSafeInteger(value: unknown): value is number {
 
 const CANDIDATE_REVIEW_ORIGIN = 'memory.candidate_review' as const;
 const CONFLICT_RESOLUTION_ORIGIN = 'memory.conflict_resolution' as const;
+const ENTRY_SAVE_ORIGIN = 'memory.entry_save' as const;
 
 /**
  * The ONE Workspace Event append path (authorization section 8.2).
@@ -342,6 +361,19 @@ export class WorkspaceEventWriter {
         conflictVersion: value.conflictVersion,
       };
     }
+    if (value.kind === ENTRY_SAVE_ORIGIN) {
+      if (!nonBlank(value.entryId) || !isPositiveSafeInteger(value.entryVersion)) {
+        throw new WorkspaceEventWriterError(
+          'WORKSPACE_EVENT_INPUT_INVALID',
+          'memory.entry_save origin requires entryId and a positive integer entryVersion',
+        );
+      }
+      return {
+        kind: ENTRY_SAVE_ORIGIN,
+        entryId: value.entryId,
+        entryVersion: value.entryVersion,
+      };
+    }
     throw new WorkspaceEventWriterError(
       'WORKSPACE_EVENT_ORIGIN_UNPROVEN',
       'unsupported Workspace Event origin: ' + String(value.kind),
@@ -449,6 +481,21 @@ export class WorkspaceEventWriter {
         throw new WorkspaceEventWriterError(
           'WORKSPACE_EVENT_ORIGIN_UNPROVEN',
           'Workspace Event origin is not a resolved Conflict in this Workspace',
+        );
+      }
+      return;
+    }
+    if (authorized.origin === ENTRY_SAVE_ORIGIN) {
+      const row = this.db.prepare(
+        'SELECT 1 AS present FROM memory_entries'
+          + ' WHERE workspace_id = ? AND id = ? AND version = ?',
+      ).get(workspaceId, authorized.authorityId, authorized.authorityVersion) as
+        | { readonly present: number }
+        | undefined;
+      if (row === undefined) {
+        throw new WorkspaceEventWriterError(
+          'WORKSPACE_EVENT_ORIGIN_UNPROVEN',
+          'Workspace Event origin is not a saved Memory Entry in this Workspace',
         );
       }
       return;

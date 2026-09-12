@@ -7,6 +7,10 @@ import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryCandidateRepository, type MemoryCandidateEdits } from '../store/MemoryCandidateRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
 import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
+import { createEntityId } from '../store/Identity.js';
+import { inTransaction } from '../store/Transaction.js';
+import { deriveWorkspaceEventContext } from '../store/WorkspaceEventWriter.js';
+import { hashMemoryText, normalizeMemoryText } from '../services/MemoryCandidateGenerationService.js';
 
 /**
  * MF-5 forward Memory API surface (Lite 11-API-Specification section 14).
@@ -20,20 +24,22 @@ import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
  *   GET  /memory-contexts/:memoryContextId       one frozen Context Snapshot
  *   POST /memory-conflicts/:conflictId/resolve   MF-2 transactional conflict resolution
  *   GET  /memory/candidates                      forward Candidate queue (MF-2 tables)
- *   POST /memory/candidates/:candidateId/review  version-guarded review (accept /
- *                                                edit-and-accept / reject /
- *                                                merge-with-existing)
- *
- * Boundary notes:
- * - Retrieval is a pure read: it never persists a Context Snapshot. Budget
- *   selection + snapshot freeze are bound to Run startup (PR #92); the frozen
- *   result is exposed through the two snapshot routes.
- * - Conflict resolution commits through the MF-2 repository in one
- *   transaction. Canonical Memory Event emission is Run-scoped
- *   (MemoryRuntimeEventEmitter requires a Run + L1C event context); a
- *   user-initiated resolution has no Run scope, so this route records the
- *   fact without emitting a canonical Event. That contract gap is recorded in
- *   MF-progress.md. The same applies to user-initiated Candidate review.
+*   POST /memory/candidates/:candidateId/review  version-guarded review (accept /
+*                                                edit-and-accept / reject /
+*                                                merge-with-existing)
+ *   POST /memory/entries                        MF-2 explicit user save: one
+ *                                                forward Entry + one
+ *                                                `memory.entry_created` Event
+*
+* Boundary notes:
+* - Retrieval is a pure read: it never persists a Context Snapshot. Budget
+*   selection + snapshot freeze are bound to Run startup (PR #92); the frozen
+*   result is exposed through the two snapshot routes.
+ * - Conflict resolution, Candidate review, and explicit user save each commit
+ *   their fact and their Workspace Events in ONE transaction through the MF-5
+ *   Workspace Event stream (PR #127/#128 + the entry-save amendment #136); a
+ *   user-initiated write has no Run scope, so it goes to the Workspace stream,
+ *   never to `runtime_events`, Outbox, or `operations`.
  * - Forward Candidate paths live under /memory/ because the literal Lite
  *   section-14 /memory-candidates paths are held by the COMPATIBILITY router.
  * - This router never spawns a Process or touches Provider credentials. Candidate
@@ -57,6 +63,10 @@ function fail(res: Response, error: unknown): void {
 
 function nonBlank(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
+}
+
+function isUnitInterval(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
 function optionalString(value: unknown): string | undefined {
@@ -218,6 +228,85 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
       return;
     }
     res.json({ snapshot });
+  });
+
+  // ---- Explicit user save (MF-2 trigger; entry-save amendment) --------------
+  // Creates a forward Memory Entry and emits `memory.entry_created` on the
+  // Workspace stream in the SAME transaction, so a user-initiated save is a
+  // committed Workspace-scoped Memory fact with its canonical Event.
+  router.post('/memory/entries', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const title = typeof body.title === 'string' ? body.title.trim() : '';
+    const content = typeof body.content === 'string' ? body.content : '';
+    if (title.length === 0 || content.length === 0) {
+      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
+      return;
+    }
+    const confidence = body.confidence === undefined ? 1 : body.confidence;
+    const importance = body.importance === undefined ? 0.5 : body.importance;
+    if (!isUnitInterval(confidence) || !isUnitInterval(importance)) {
+      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
+      return;
+    }
+    const scope = body.scope;
+    const category = body.category;
+    const now = new Date().toISOString();
+    const exactHash = hashMemoryText(content);
+    const normalizedHash = hashMemoryText(normalizeMemoryText(content));
+    try {
+      // Dedup convergence (MF2T-03): an exact or normalized near-duplicate save
+      // returns the existing Entry without a second row or a second Event.
+      const existingId =
+        candidates.findEntryByExactHash(workspace.id, exactHash) ??
+        candidates.findEntryByNormalizedHash(workspace.id, normalizedHash);
+      if (existingId !== undefined) {
+        const existing = entries.findById(workspace.id, existingId);
+        if (existing !== undefined) {
+          res.json({ entry: existing, converged: true });
+          return;
+        }
+      }
+
+      const db = store.getDatabase();
+      const entry = inTransaction(db, () => {
+        const created = entries.createEntryWithinTransaction({
+          id: createEntityId('memory'),
+          workspaceId: workspace.id,
+          scope: scope as never,
+          category: category as never,
+          authority: 'user-explicit',
+          confidence, importance, title, content,
+          ...(typeof body.summary === 'string' ? { summary: body.summary } : {}),
+          ...(Array.isArray(body.tags) ? { tags: (body.tags as unknown[]).filter((t): t is string => typeof t === 'string') } : {}),
+          status: 'active',
+          exactContentHash: exactHash,
+          normalizedTextHash: normalizedHash,
+          sources: Array.isArray(body.sources)
+            ? (body.sources as unknown[]).filter((s): s is { kind: never; id: string } =>
+                typeof s === 'object' && s !== null && typeof (s as Record<string, unknown>).id === 'string')
+            : [],
+          createdAt: now,
+        });
+        const origin = { kind: 'memory.entry_save', entryId: created.id, entryVersion: created.version } as const;
+        store.workspaceEventWriter().appendWithinTransaction({
+          type: 'memory.entry_created',
+          workspaceId: workspace.id,
+          timestamp: now,
+          origin,
+          context: deriveWorkspaceEventContext(origin),
+          payload: {
+            memoryEntryId: created.id, version: created.version,
+            scope: created.scope, category: created.category, authority: created.authority,
+          },
+        });
+        return created;
+      });
+      res.status(201).json({ entry, converged: false });
+    } catch (error) {
+      fail(res, error);
+    }
   });
 
   // ---- Conflict resolution (transactional write) ---------------------------
