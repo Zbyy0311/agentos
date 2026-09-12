@@ -69,3 +69,22 @@ ambiguous commands and invalid review results explicitly. Source navigation
 and actual runtime/provider invocation remain required for S2 PASS; fixtures
 that only POST a completion never close the trigger. This authorization itself
 does not mark any GAP or RUNTIME-VERIFY PASS.
+
+## Producer evidence amendment (before parser implementation)
+
+Direct-source audit found that normalized tool success can fall back to status
+or absence of an error (Codex without exit_code; Kimi tool result). It is not a
+test exit proof. Register an optional `tool.completed.commandResult` containing
+the complete bounded command and integer exitCode, only when the adapter has
+both explicitly in a real command-execution result with a stable call ID.
+Do not derive it from display previews, truncated/redacted commands, tools of
+unknown kind, or Provider process exit. Initially only Codex's explicit
+command_execution record provides this evidence; other existing observations
+remain ordinary reports unless they use the separate structured final-result
+contract. Retain existing success semantics for compatibility.
+
+Collector typed completion requires this evidence, matching success/exitCode,
+and the conservative direct-test grammar. Package-manager scripts and shell
+wrappers remain reports. No new Run, migration, or event-store type. This
+amendment closes the already mapped LITE-07-104 false-verdict counterexample;
+it does not claim real Provider acceptance or authorize a broad parser rewrite.
