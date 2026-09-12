@@ -506,62 +506,6 @@
     "limitation": "Final S3 full run preserved. All four failures are ENOTEMPTY teardown leftovers; no S3 assertion failure. The run remains non-green and is not used as PASS evidence; exact-head CI is required."
   },
   {
-    "id": "S5-101-LOCAL",
-    "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
-    "kind": "local-tests",
-    "cwd": "apps/server",
-    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationTurnDriver.test.ts src/services/GroupTurnDriver.test.ts src/routes/conversationRuntime.test.ts; pnpm exec tsc --noEmit",
-    "environment": "Windows Node24.18.0 pnpm11.11.0; S5 worktree on merged main 948b8008",
-    "result": {
-      "passed": 22,
-      "failed": 0,
-      "skipped": 0,
-      "typecheckExitCode": 0
-    },
-    "requirementIds": [
-      "LITE-09-101"
-    ],
-    "limitation": "The frozen bounded window, pre-invocation snapshot persistence, Turn linkage and fail-closed path are proven, including over real HTTP through the runtime route. Direct-chat Memory selection is still the empty selector; Scope-budgeted selection remains open, so the requirement stays GAP."
-  },
-  {
-    "id": "S5-EXECUTION-SOURCE",
-    "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
-    "kind": "source-audit",
-    "command": "Read ConversationTurnDriver, GroupTurnDriver, BoundedGroupService, TurnContextSnapshotRepository, ConversationStreamService and the runtime route; documented in S5-execution-authorization.md",
-    "cwd": "apps/server",
-    "requirementIds": [
-      "LITE-09-010",
-      "LITE-09-013",
-      "LITE-09-101",
-      "LITE-09-102"
-    ],
-    "result": {
-      "findings": 4
-    },
-    "environment": "Read-only source audit before S5 implementation",
-    "limitation": "Confirmed the direct driver handed unbounded history to the Provider, recorded the per-Agent snapshot only after the reply, and had no Workspace admission gate at all. Not PASS evidence."
-  },
-  {
-    "id": "S5-102-LOCAL",
-    "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
-    "kind": "local-tests",
-    "cwd": "apps/server",
-    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationTurnDriver.test.ts src/services/GroupTurnDriver.test.ts src/routes/conversationRuntime.test.ts; pnpm exec tsc --noEmit",
-    "environment": "Windows Node24.18.0 pnpm11.11.0",
-    "result": {
-      "passed": 25,
-      "failed": 0,
-      "skipped": 0,
-      "typecheckExitCode": 0
-    },
-    "requirementIds": [
-      "LITE-09-010",
-      "LITE-09-013",
-      "LITE-09-102"
-    ],
-    "limitation": "Chat refusal while another GRANTED MODIFYING subject holds the Workspace is proven at unit and real-HTTP level, with READ_ONLY holders not blocking. Two simultaneous chats are still not mutually serialized because chat has no admission subject row; that needs a separately authorized schema slice, so the rows stay GAP."
-  },
-  {
     "id": "S4-ADAPTERS",
     "baseline": "c783e9280cd5d434479b482af40331acf8656907",
     "kind": "local-tests",
@@ -629,5 +573,177 @@
       "LITE-04-101"
     ],
     "limitation": "Real canonical Codex invocation passed with an explicit model. It does not prove the default local model path (kimi/k3[1m] via the local proxy) while that external quota is exhausted, and it is not OpenCode or Kimi evidence."
+  },
+  {
+    "id": "S5-101-LOCAL",
+    "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationTurnDriver.test.ts src/services/GroupTurnDriver.test.ts src/routes/conversationRuntime.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; S5 worktree on merged main 948b8008",
+    "result": {
+      "passed": 22,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-101"
+    ],
+    "limitation": "The frozen bounded window, pre-invocation snapshot persistence, Turn linkage and fail-closed path are proven, including over real HTTP through the runtime route. Direct-chat Memory selection is still the empty selector; Scope-budgeted selection remains open, so the requirement stays GAP."
+  },
+  {
+    "id": "S5-EXECUTION-SOURCE",
+    "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+    "kind": "source-audit",
+    "command": "Read ConversationTurnDriver, GroupTurnDriver, BoundedGroupService, TurnContextSnapshotRepository, ConversationStreamService and the runtime route; documented in S5-execution-authorization.md",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-09-010",
+      "LITE-09-013",
+      "LITE-09-101",
+      "LITE-09-102"
+    ],
+    "result": {
+      "findings": 4
+    },
+    "environment": "Read-only source audit before S5 implementation",
+    "limitation": "Confirmed the direct driver handed unbounded history to the Provider, recorded the per-Agent snapshot only after the reply, and had no Workspace admission gate at all. Not PASS evidence."
+  },
+  {
+    "id": "S5-102-LOCAL",
+    "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationTurnDriver.test.ts src/services/GroupTurnDriver.test.ts src/routes/conversationRuntime.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0",
+    "result": {
+      "passed": 25,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-09-010",
+      "LITE-09-013",
+      "LITE-09-102"
+    ],
+    "limitation": "Chat refusal while another GRANTED MODIFYING subject holds the Workspace is proven at unit and real-HTTP level, with READ_ONLY holders not blocking. Two simultaneous chats are still not mutually serialized because chat has no admission subject row; that needs a separately authorized schema slice, so the rows stay GAP."
+  },
+  {
+    "id": "S6-REAL-SUMMARY",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
+    "kind": "local-tests",
+    "command": "node --import tsx ../../scripts/verify-compaction-real-summary.mjs",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0; real Codex CLI (gpt-5.6-luna) under --sandbox read-only in an isolated scratch directory",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-105",
+      "LITE-09-104",
+      "LITE-09-105",
+      "LITE-09-106",
+      "LITE-09-107",
+      "LITE-13-101",
+      "LITE-09-110"
+    ],
+    "limitation": "Proves the real Provider summary path, the frozen identity, the read-only enforcement and convergence over the same source. It does not exercise a server restart, the over-budget failure branch, or a message edit.",
+    "details": {
+      "outcome": "published",
+      "model": "gpt-5.6-luna",
+      "adapter": "cli.codex@1.0.0",
+      "firstRunMs": 25861,
+      "repeatMs": 1,
+      "summaryChars": 304,
+      "sourceMessages": 4,
+      "tasks": 1
+    }
+  },
+  {
+    "id": "S6-TRIGGER-INTEGRATION",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/routes/conversationRuntime.compaction.test.ts src/routes/conversationCompactionInspector.test.ts",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0; real HTTP through createConversationRuntimeRoutes with AGENTOS_FORCE_MOCK for the Provider call only",
+    "result": {
+      "passed": 2,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-105",
+      "LITE-09-104",
+      "LITE-09-105",
+      "LITE-09-106",
+      "LITE-09-107",
+      "LITE-13-101",
+      "LITE-09-110"
+    ],
+    "limitation": "The turn path is real (route, trigger, engine, store); the Provider output is the deterministic mock, so it proves wiring and application rather than Provider behaviour."
+  },
+  {
+    "id": "S6-LOCAL",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ProviderCompactionSummarizer.test.ts src/services/ConversationCompactionTrigger.test.ts src/services/ConversationCompactionService.test.ts src/services/CompactionContextApplication.test.ts src/store/CompactionRepository.test.ts src/routes/conversationCompactionInspector.test.ts src/routes/conversationRuntime.compaction.test.ts src/migrations/__tests__/lite-migration-029.test.ts; pnpm exec tsc --noEmit",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; S6 branch at the explicit-retry revision",
+    "result": {
+      "passed": 34,
+      "failed": 0,
+      "skipped": 0,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-07-105",
+      "LITE-09-104",
+      "LITE-09-105",
+      "LITE-09-106",
+      "LITE-09-107",
+      "LITE-09-108",
+      "LITE-09-109",
+      "LITE-09-110",
+      "LITE-13-101"
+    ],
+    "limitation": "Deterministic local evidence: engine, repository/migration, summarizer fail-closed branches, context application, Inspector read surface and the real-HTTP Turn integration. No server restart, no over-budget real run, no real message edit."
+  },
+  {
+    "id": "S6-RECOVERY",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationCompactionTrigger.test.ts",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0; durable SQLite lease rows, no wall-clock guessing",
+    "result": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
+    "limitation": "The crash is simulated by seeding a durable running row whose lease has already expired; no real process was killed mid-run."
+  },
+  {
+    "id": "S6-RETRY",
+    "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationCompactionTrigger.test.ts src/routes/conversationRuntime.compaction.test.ts",
+    "cwd": "apps/server",
+    "environment": "Windows Node24.18.0; real runtime router over real HTTP, deterministic Provider mock (8 trigger tests + 1 integration test)",
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-108"
+    ],
+    "limitation": "Proves the retry contract (durable outcome, blocked reason, no fabricated task) and the over-budget block; it does not force a real summary failure over a real Provider."
   }
 ]

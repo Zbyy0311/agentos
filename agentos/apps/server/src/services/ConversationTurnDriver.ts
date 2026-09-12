@@ -50,7 +50,11 @@ export interface ReplyWithTurnResult {
 export type ReplyStatus = ConversationRunResult['status'];
 
 export class ConversationTurnDriverError extends Error {
-  constructor(readonly code: 'TURN_DRIVER_AGENT_UNAVAILABLE' | 'TURN_DRIVER_STREAM_FAILED' | 'TURN_DRIVER_CONTEXT_SNAPSHOT_FAILED') {
+  constructor(readonly code:
+    | 'TURN_DRIVER_AGENT_UNAVAILABLE'
+    | 'TURN_DRIVER_STREAM_FAILED'
+    | 'TURN_DRIVER_CONTEXT_SNAPSHOT_FAILED'
+    | 'TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED') {
     super(`TURN_DRIVER_${code.replace('TURN_DRIVER_', '')}`);
     this.name = 'ConversationTurnDriverError';
   }
@@ -120,6 +124,84 @@ export interface ConversationTurnContextOptions {
   /** Per-Turn Memory budget frozen into the snapshot; null means uncapped. */
   readonly contextTokenBudget?: number | null;
   readonly workspaceAuthority?: ChatWorkspaceAuthorityPort;
+  /** S6: latest published compaction summary for this Conversation, when any. */
+  readonly compaction?: ConversationCompactionPort;
+  /** S6: hard application budget for summary + uncompressed tail. */
+  readonly compactionBudget?: CompactionApplicationBudget;
+  /** S6: automatic threshold check + durable compaction attempt before assembly. */
+  readonly compactionTrigger?: ConversationCompactionTriggerPort;
+}
+
+/**
+ * S6 / LITE-09-105: a published compaction summary replaces the Messages it
+ * already covers. The summary is immutable and the uncompressed tail stays
+ * exactly as it was; nothing is deleted or rewritten.
+ */
+export interface PublishedCompactionSummary {
+  readonly id: string;
+  readonly summary: string;
+  readonly sourceEndMessageId: string | null;
+}
+
+export interface ConversationCompactionPort {
+  latestPublished(workspaceId: string, conversationId: string): PublishedCompactionSummary | undefined;
+}
+
+/**
+ * S6 / LITE-09-106 + LITE-09-107: the automatic trigger runs before a new
+ * Turn assembles its context, so a published summary is used by exactly the
+ * Turn that caused it. The trigger owns its own durable attempt state and must
+ * not raise: the hard-budget check still decides whether the Provider call is
+ * allowed once the attempt is over.
+ */
+export interface ConversationCompactionTriggerPort {
+  ensureCompacted(input: {
+    readonly workspaceId: string;
+    readonly conversationId: string;
+    readonly agentId: string;
+  }): Promise<unknown>;
+}
+
+export interface CompactionApplicationBudget {
+  /** Hard application budget for summary + uncompressed tail. */
+  readonly hardBudgetTokens: number;
+  readonly estimateTokens?: (text: string) => number;
+}
+
+export type CompactionApplicationResult =
+  | { readonly kind: 'uncompacted'; readonly history: readonly ConversationMessage[] }
+  | { readonly kind: 'applied'; readonly history: readonly ConversationMessage[]; readonly summaryId: string; readonly summarizedMessages: number }
+  | { readonly kind: 'over-budget'; readonly summaryId: string; readonly estimatedTokens: number; readonly hardBudgetTokens: number };
+
+/**
+ * Applies a published summary to a new context. Only Messages the summary
+ * already covers are replaced; the remainder and their order are untouched.
+ */
+export function applyCompactionSummary(
+  history: readonly ConversationMessage[],
+  summary: PublishedCompactionSummary | undefined,
+  budget: CompactionApplicationBudget,
+): CompactionApplicationResult {
+  if (summary === undefined || summary.sourceEndMessageId === null) {
+    return { kind: 'uncompacted', history };
+  }
+  const endIndex = history.findIndex(message => message.id === summary.sourceEndMessageId);
+  if (endIndex < 0) return { kind: 'uncompacted', history };
+  const tail = history.slice(endIndex + 1);
+  const estimate = budget.estimateTokens ?? ((text: string) => Math.max(1, Math.ceil(text.length / 4)));
+  const estimatedTokens = estimate(summary.summary) + tail.reduce((total, message) => total + estimate(message.content), 0);
+  if (estimatedTokens > budget.hardBudgetTokens) {
+    return { kind: 'over-budget', summaryId: summary.id, estimatedTokens, hardBudgetTokens: budget.hardBudgetTokens };
+  }
+  const synthetic: ConversationMessage = {
+    id: 'compaction:' + summary.id,
+    conversationId: tail[0]?.conversationId ?? history[0]?.conversationId ?? '',
+    workspaceId: tail[0]?.workspaceId ?? history[0]?.workspaceId ?? '',
+    senderType: 'system',
+    content: summary.summary,
+    createdAt: tail[0]?.createdAt ?? history[0]?.createdAt ?? '',
+  };
+  return { kind: 'applied', history: [synthetic, ...tail], summaryId: summary.id, summarizedMessages: endIndex + 1 };
 }
 
 const EMPTY_SELECTION: TurnContextSelectionPort = {
@@ -180,10 +262,41 @@ export class ConversationTurnDriver {
     const agent = this.getAgent(input.workspaceId, input.agentId);
     if (agent === undefined) throw new ConversationTurnDriverError('TURN_DRIVER_AGENT_UNAVAILABLE');
 
+    // S6 / LITE-09-106: the versioned threshold is evaluated BEFORE this Turn's
+    // context is assembled, so a summary published here is the one this Turn
+    // actually uses. The attempt is durable and never truncates history.
+    if (this.context?.compactionTrigger !== undefined) {
+      await this.context.compactionTrigger.ensureCompacted({
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        agentId: input.agentId,
+      });
+    }
+
     const history = this.conversations.listMessages(input.workspaceId, input.conversationId)
       .filter(message => message.id !== input.sourceMessageId && message.status !== 'deleted')
       .map(toLegacyMessage);
-    const frozenHistory = history.slice(-MAX_FROZEN_HISTORY_MESSAGES);
+    // S6 / LITE-09-105: a published summary replaces the Messages it covers.
+    // Over-budget summary + tail must block the Provider call and preserve the
+    // input instead of silently truncating it.
+    let effectiveHistory: readonly ConversationMessage[] = history;
+    let appliedSummaryId: string | undefined;
+    let summarizedMessages = 0;
+    if (this.context?.compaction !== undefined) {
+      const summary = this.context.compaction.latestPublished(input.workspaceId, input.conversationId);
+      const applied = applyCompactionSummary(history, summary, this.context.compactionBudget ?? { hardBudgetTokens: Number.POSITIVE_INFINITY });
+      if (applied.kind === 'over-budget') {
+        // Fail closed BEFORE the reservation: no Turn is created, the Messages
+        // stay untouched, and the caller can retry explicitly.
+        throw new ConversationTurnDriverError('TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED');
+      }
+      if (applied.kind === 'applied') {
+        effectiveHistory = applied.history;
+        appliedSummaryId = applied.summaryId;
+        summarizedMessages = applied.summarizedMessages;
+      }
+    }
+    const frozenHistory = effectiveHistory.slice(-MAX_FROZEN_HISTORY_MESSAGES);
     // The snapshot id is chosen up front so the durable Turn can reference the
     // exact selection it will receive.
     const contextSnapshotId = this.context?.snapshots === undefined ? undefined : createEntityId('snapshot');
@@ -242,6 +355,7 @@ export class ConversationTurnDriver {
             frozenHistoryMessageIds: frozenHistory.map(message => message.id),
             totalConversationMessages: history.length,
             contextTokenBudget: this.context.contextTokenBudget ?? null,
+            ...(appliedSummaryId === undefined ? {} : { compactionSummaryId: appliedSummaryId, summarizedMessages }),
           }),
           selectedEntryIdsJson: JSON.stringify([...selection.selectedEntryIds]),
           totalTokens: selection.totalTokens,

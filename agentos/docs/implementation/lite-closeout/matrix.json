@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 11,
+  "matrixVersion": 15,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1251,7 +1251,10 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S4-PROVIDER-SOURCE",
+        "S4-ADAPTERS"
+      ],
       "finding": "三Provider已有CLI/解析能力，但当前生产composition root仅注册Kimi；Codex/OpenCode完整生产链缺口须定向补齐而非重写三者。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -2640,7 +2643,7 @@
         "S5-101-LOCAL",
         "S5-102-LOCAL"
       ],
-      "finding": "保留基线反证：原driver把历史交旧Runner且快照在回复后记录。现执行前冻结隔离快照、Provider输入引用该快照，Group每speaker经同一driver并受Workspace修改权拒绝门约束；D3关闭（无并行修改）。真实浏览器与跨会话双chat互斥仍缺，保持GAP。",
+      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。 [merged] 保留基线反证：原driver把历史交旧Runner且快照在回复后记录。现执行前冻结隔离快照、Provider输入引用该快照，Group每speaker经同一driver并受Workspace修改权拒绝门约束；D3关闭（无并行修改）。真实浏览器与跨会话双chat互斥仍缺，保持GAP。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -2702,7 +2705,7 @@
         "S5-101-LOCAL",
         "S5-102-LOCAL"
       ],
-      "finding": "保留基线反证。现每Turn在调用前写入自己的agent/turn快照，Provider收到该Turn冻结窗口，Turn行回指该快照，实现per-Agent隔离；跨会话双chat互斥仍待独立schema切片，保持GAP。",
+      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。 [merged] 保留基线反证。现每Turn在调用前写入自己的agent/turn快照，Provider收到该Turn冻结窗口，Turn行回指该快照，实现per-Agent隔离；跨会话双chat互斥仍待独立schema切片，保持GAP。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -3910,7 +3913,11 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S4-PROVIDER-SOURCE",
+        "S4-ADAPTERS",
+        "S4-REAL-GATES"
+      ],
       "finding": "Legacy CLI和parser不等于RunEngine生产适配；composition root只注册Kimi。",
       "exit": "逐Provider沿Adapter→Registry→Process→RunEngine→SSE/UI验证；复用现有正确能力，只补断点。"
     },
@@ -4015,17 +4022,36 @@
       "section": "§7; user-approved compaction",
       "line": null,
       "requirement": "Conversation compaction 来源触发",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/services/ConversationTurnDriver.ts"
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts",
+        "apps/server/src/services/summarizationCliProfiles.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "scripts/verify-compaction-real-summary.mjs"
       ],
-      "evidence": [],
-      "finding": "无canonical compaction任务、摘要、策略或生产调用链。",
-      "exit": "来源记录、完成摘要、候选与事件原子提交，review-required；摘要可用性不等于Memory审核。"
+      "evidence": [
+        "S6-LOCAL",
+        "S6-REAL-SUMMARY",
+        "S6-TRIGGER-INTEGRATION"
+      ],
+      "finding": "无canonical compaction任务、摘要、策略或生产调用链。 [merged] 真实触发：Turn组装前评估阈值，publish在一次事务内写入有界摘要+review-required候选+workspace事件（correlation=memory-compaction:<taskId>）。真实Provider运行与真实HTTP Turn均验证；摘要可用不等于Memory审核，候选保持待审核。",
+      "exit": "来源记录、完成摘要、候选与事件原子提交，review-required；摘要可用性不等于Memory审核。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-07-106",
@@ -4130,12 +4156,14 @@
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts",
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/routes/conversationRuntime.ts",
         "apps/server/src/store/TurnContextSnapshotRepository.ts"
       ],
       "tests": [
         "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/BoundedGroupService.test.ts",
         "apps/server/src/services/GroupTurnDriver.test.ts",
         "apps/server/src/routes/conversationRuntime.test.ts"
       ],
@@ -4143,7 +4171,7 @@
         "S5-EXECUTION-SOURCE",
         "S5-101-LOCAL"
       ],
-      "finding": "保留基线反证：快照曾在recordReply创建且driver先调用Provider。现driver在调用前冻结并持久化有界窗口与选择契约，Turn关联该快照，快照失败则不调用Provider，真实HTTP路由已验证；但Direct chat生产Memory选择器仍为空，Scope预算选择未闭合，保持GAP。",
+      "finding": "快照在recordReply创建，driver已先调用Provider；history未使用该快照。 [merged] 保留基线反证：快照曾在recordReply创建且driver先调用Provider。现driver在调用前冻结并持久化有界窗口与选择契约，Turn关联该快照，快照失败则不调用Provider，真实HTTP路由已验证；但Direct chat生产Memory选择器仍为空，Scope预算选择未闭合，保持GAP。",
       "exit": "Direct/Group按实际调用前快照预算与Scope，provider收到冻结选中内容，事后记录引用原快照。"
     },
     {
@@ -4167,7 +4195,7 @@
         "S5-EXECUTION-SOURCE",
         "S5-102-LOCAL"
       ],
-      "finding": "保留基线反证：driver曾无显式admission。现chat按modifying分类，另一GRANTED MODIFYING主体持权时以稳定码CONVERSATION_WORKSPACE_MODIFYING_BUSY拒绝（unit+真实HTTP），并指向显式Run；READ_ONLY不阻塞，D3保持关闭。双chat互斥需独立admission subject schema切片，保持GAP。",
+      "finding": "单interaction串行不证明与其他Conversation/Run共享Workspace权限；driver无显式admission。 [merged] 保留基线反证：driver曾无显式admission。现chat按modifying分类，另一GRANTED MODIFYING主体持权时以稳定码CONVERSATION_WORKSPACE_MODIFYING_BUSY拒绝（unit+真实HTTP），并指向显式Run；READ_ONLY不阻塞，D3保持关闭。双chat互斥需独立admission subject schema切片，保持GAP。",
       "exit": "无隐式modifying authority，缺可靠只读证据显示不可用/要求显式Run；并发与拒绝路径测试。"
     },
     {
@@ -4194,15 +4222,35 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "版本化lite-v1阈值和预算原因",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/services/ConversationTurnDriver.ts"
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts",
+        "apps/server/src/services/summarizationCliProfiles.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无持久策略或预算评估。",
-      "exit": "持久policyVersion及70%/50%/8/2048/120000/1；每次保存预算组成、上限来源、估算器版本；未来策略不重写历史。"
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "scripts/verify-compaction-real-summary.mjs"
+      ],
+      "evidence": [
+        "S6-LOCAL",
+        "S6-REAL-SUMMARY",
+        "S6-TRIGGER-INTEGRATION"
+      ],
+      "finding": "无持久策略或预算评估。 [merged] lite-v1作为不可变版本行持久化（0.70/0.50/8/2048/120000/1+16384回退），每次压缩记录预算组成、上限来源与estimator版本（lite-v1-chars4）；真实运行与真实HTTP Inspector均读到同一策略，历史不被后续策略改写。",
+      "exit": "持久policyVersion及70%/50%/8/2048/120000/1；每次保存预算组成、上限来源、估算器版本；未来策略不重写历史。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-105",
@@ -4210,15 +4258,36 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "有界摘要发布、原消息保留和实际context应用",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/store/ConversationRepository.ts"
+        "apps/server/src/store/ConversationRepository.ts",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts",
+        "apps/server/src/services/summarizationCliProfiles.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无canonical summary/source range。",
-      "exit": "保留原消息，摘要不可变；前序摘要+有界前缀分批；近期至少8条+当前输入，采用摘要+未压缩尾部。"
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "scripts/verify-compaction-real-summary.mjs"
+      ],
+      "evidence": [
+        "S6-LOCAL",
+        "S6-REAL-SUMMARY",
+        "S6-TRIGGER-INTEGRATION"
+      ],
+      "finding": "无canonical summary/source range。 [merged] 真实HTTP路径证明：只压缩有界旧前缀（10条中2条），原消息保留（status<>deleted计数不变），触发它的同一Turn即为采用者（snapshot budget记录compactionSummaryId与summarizedMessages），frozen history = 摘要+未压缩尾部，已被覆盖的消息不再重发。",
+      "exit": "保留原消息，摘要不可变；前序摘要+有界前缀分批；近期至少8条+当前输入，采用摘要+未压缩尾部。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-106",
@@ -4226,15 +4295,36 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "压缩执行安全与Provider identity冻结",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
-        "packages/agent-core/src/conversationRunner.ts"
+        "packages/agent-core/src/conversationRunner.ts",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts",
+        "apps/server/src/services/summarizationCliProfiles.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无tool-free/write-denied摘要执行证据。",
-      "exit": "冻结触发轮Provider，禁止静默切换；不可保证禁工具/禁写则不可调用，按预算失败分支处理。"
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "scripts/verify-compaction-real-summary.mjs"
+      ],
+      "evidence": [
+        "S6-LOCAL",
+        "S6-REAL-SUMMARY",
+        "S6-TRIGGER-INTEGRATION"
+      ],
+      "finding": "无tool-free/write-denied摘要执行证据。 [merged] 真实Codex CLI产生摘要（verify-compaction-real-summary: passed, model=gpt-5.6-luna, adapter=cli.codex@1.0.0）。身份与模型在触发时冻结并落库；缺失profile、身份漂移、空模型、缺CLI级只读沙箱、出现任何tool.*/approval事件、超时、非零退出均fail-closed。修复了“只读仅靠提示词”的真实缺陷。",
+      "exit": "冻结触发轮Provider，禁止静默切换；不可保证禁工具/禁写则不可调用，按预算失败分支处理。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-107",
@@ -4242,15 +4332,36 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "每Conversation单持有者、持久恢复、租约与重试",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/index.ts"
+        "apps/server/src/index.ts",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts",
+        "apps/server/src/services/summarizationCliProfiles.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无压缩任务恢复状态。",
-      "exit": "并发单持有者；重启先判断旧执行，不猜测结束；旧租约不可发布；自动重试最多一次，超时120秒。"
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "scripts/verify-compaction-real-summary.mjs"
+      ],
+      "evidence": [
+        "S6-LOCAL",
+        "S6-RECOVERY",
+        "S6-TRIGGER-INTEGRATION"
+      ],
+      "finding": "无压缩任务恢复状态。 [merged] 单Conversation唯一running（部分唯一索引）+租约+版本CAS+重试上限；崩溃/重启后的旧执行状态由持久租约判定：过期租约先转retry-pending再恢复，未过期租约不被抢占（两个独立测试），旧租约无法发布（publish要求lease_owner与版本同时匹配），自动重试上限1且策略timeoutMs=120000。真实HTTP轮次重复收敛为仅1个任务。",
+      "exit": "并发单持有者；重启先判断旧执行，不猜测结束；旧租约不可发布；自动重试最多一次，超时120秒。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-108",
@@ -4258,15 +4369,27 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "压缩失败的硬预算分支",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/services/ConversationTurnDriver.ts"
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无硬预算门禁。",
-      "exit": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。"
+      "tests": [
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts"
+      ],
+      "evidence": [
+        "S6-LOCAL",
+        "S6-RETRY"
+      ],
+      "finding": "无硬预算门禁。 [merged] 硬预算分支：预算内继续并进入retry-pending（有界，重试上限1）；摘要+尾部超硬预算时在Provider调用前以TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED失败、当前消息保留且不静默截断。显式重试接口 POST /conversations/:id/compactions/retry 复用同一评估：报告durable outcome(published/noop/retry-pending/failed)与blockedReason、任务状态、尝试次数与失败码，且不会伪造第二个任务。",
+      "exit": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-09-109",
@@ -4277,13 +4400,30 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/store/ConversationRepository.ts"
+        "apps/server/src/store/ConversationRepository.ts",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts",
+        "apps/server/src/services/summarizationCliProfiles.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/store/ConversationRepository.test.ts"
+        "apps/server/src/store/ConversationRepository.test.ts",
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "scripts/verify-compaction-real-summary.mjs"
       ],
-      "evidence": [],
-      "finding": "editMessage及cr_message_revisions已有；无压缩source校验。",
+      "evidence": [
+        "S6-LOCAL"
+      ],
+      "finding": "editMessage及cr_message_revisions已有；无压缩source校验。 [merged] 复用现有消息可见性与内容修订/哈希：来源锚点缺失时不再复用旧摘要作为前缀，改为按全文重算，历史快照不变；未新增编辑API或versioning。真实编辑场景（canonical message被编辑后摘要失效）仍待S8实测，保持GAP。",
       "exit": "不新增编辑API/UI/versioning；实际内容变化或不可见使旧摘要不能进入新context，历史快照不变。"
     },
     {
@@ -4292,15 +4432,36 @@
       "section": "user clarification; 01 §7",
       "line": null,
       "requirement": "Provider-native compaction不得作为canonical evidence",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
-        "packages/agent-core/src/conversationRunner.ts"
+        "packages/agent-core/src/conversationRunner.ts",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts",
+        "apps/server/src/services/summarizationCliProfiles.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "新AgentOS压缩尚未实现，必须明确native诊断边界。",
-      "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。"
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "scripts/verify-compaction-real-summary.mjs"
+      ],
+      "evidence": [
+        "S6-LOCAL",
+        "S6-REAL-SUMMARY",
+        "S6-TRIGGER-INTEGRATION"
+      ],
+      "finding": "新AgentOS压缩尚未实现，必须明确native诊断边界。 [merged] 来源审计：生产代码中没有任何路径读取Provider原生压缩作为canonical证据；canonical摘要只能由CompactionRepository.publishWithinTransaction发布，Inspector只读AgentOS持久化的policy/budget/source/summary/snapshot。",
+      "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-13-101",
@@ -4308,18 +4469,38 @@
       "section": "user-approved compaction; §10",
       "line": null,
       "requirement": "Inspector解释每次压缩为何触发及被谁采用",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts",
-        "apps/web/src/components/chat/RuntimeInspectorView.tsx"
+        "apps/web/src/components/chat/RuntimeInspectorView.tsx",
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts",
+        "apps/server/src/services/summarizationCliProfiles.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/routes/runtimeInspector.test.ts",
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/CompactionContextApplication.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts",
+        "apps/server/src/routes/conversationCompactionInspector.test.ts",
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "scripts/verify-compaction-real-summary.mjs"
       ],
-      "evidence": [],
-      "finding": "无compaction projection。",
-      "exit": "展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。"
+      "evidence": [
+        "S6-LOCAL",
+        "S6-REAL-SUMMARY",
+        "S6-TRIGGER-INTEGRATION"
+      ],
+      "finding": "无compaction projection。 [merged] Inspector同时回答“为何触发”（策略版本、触发/目标比例、预算组成与上限来源、来源范围与条数、estimator版本、尝试与失败码）与“被谁采用”（adoptions：summaryId→turnId→snapshotId，且与turn.context_snapshot_id一致），未采用的摘要明确报告为未采用。",
+      "exit": "展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。",
+      "evidenceBaseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002"
     },
     {
       "id": "LITE-12-101",
@@ -6799,6 +6980,280 @@
         "LITE-09-010",
         "LITE-09-013",
         "LITE-09-102"
+      ]
+    },
+    {
+      "version": 12,
+      "baseline": "00527516dd021fc9e304415a36daf8e73a5a85da",
+      "authority": "Main-agent S6 implementation and real-Provider verification within user-approved scope",
+      "reason": "Production-wire the automatic compaction trigger and a real Provider summary channel, evaluate the threshold over the effective tail, and let the Inspector name the adopting Turn; restart recovery, explicit retry and a real message-edit scenario remain GAP.",
+      "requirementIds": [
+        "LITE-07-105",
+        "LITE-09-104",
+        "LITE-09-105",
+        "LITE-09-106",
+        "LITE-09-107",
+        "LITE-09-108",
+        "LITE-09-109",
+        "LITE-09-110",
+        "LITE-13-101"
+      ]
+    },
+    {
+      "version": 13,
+      "baseline": "df0855c281e5307786b4b0fb5fcbdb484d890955",
+      "authority": "Main-agent S6 recovery slice within user-approved scope",
+      "reason": "Recover a crashed compaction attempt from its durable lease and prove it; LITE-09-107 moves to PASS.",
+      "requirementIds": [
+        "LITE-09-107"
+      ]
+    },
+    {
+      "version": 14,
+      "baseline": "4f9957c1703ff7c3c81540f09e84b5e4d4802002",
+      "authority": "Main-agent S6 explicit-retry slice within user-approved scope",
+      "reason": "Add the explicit conversation-level compaction retry that reports durable state and blocked reasons; LITE-09-108 moves to PASS.",
+      "requirementIds": [
+        "LITE-09-108"
+      ]
+    },
+    {
+      "version": 15,
+      "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
+      "authority": "Main-agent merge resolution (union of both branches)",
+      "reason": "merge origin-https/main into codex/lite-s6-compaction: union of the S6 promotions and the S5/S1 closeout revision",
+      "requirementIds": [
+        "LITE-00-001",
+        "LITE-00-002",
+        "LITE-00-003",
+        "LITE-00-004",
+        "LITE-00-005",
+        "LITE-00-006",
+        "LITE-00-007",
+        "LITE-00-008",
+        "LITE-00-009",
+        "LITE-00-010",
+        "LITE-00-011",
+        "LITE-00-012",
+        "LITE-00-013",
+        "LITE-01-001",
+        "LITE-01-002",
+        "LITE-01-003",
+        "LITE-01-004",
+        "LITE-01-005",
+        "LITE-01-006",
+        "LITE-01-007",
+        "LITE-01-008",
+        "LITE-01-009",
+        "LITE-01-010",
+        "LITE-01-011",
+        "LITE-01-012",
+        "LITE-01-013",
+        "LITE-01-014",
+        "LITE-01-015",
+        "LITE-02-001",
+        "LITE-02-002",
+        "LITE-02-003",
+        "LITE-02-004",
+        "LITE-02-005",
+        "LITE-02-006",
+        "LITE-02-007",
+        "LITE-02-008",
+        "LITE-02-009",
+        "LITE-02-010",
+        "LITE-02-011",
+        "LITE-02-012",
+        "LITE-02-013",
+        "LITE-02-014",
+        "LITE-02-015",
+        "LITE-02-016",
+        "LITE-02-017",
+        "LITE-03-001",
+        "LITE-03-002",
+        "LITE-03-003",
+        "LITE-03-004",
+        "LITE-03-005",
+        "LITE-03-006",
+        "LITE-03-007",
+        "LITE-03-008",
+        "LITE-03-009",
+        "LITE-03-010",
+        "LITE-03-011",
+        "LITE-03-012",
+        "LITE-03-013",
+        "LITE-03-014",
+        "LITE-03-015",
+        "LITE-03-016",
+        "LITE-03-017",
+        "LITE-03-018",
+        "LITE-03-019",
+        "LITE-04-001",
+        "LITE-04-002",
+        "LITE-04-003",
+        "LITE-04-004",
+        "LITE-04-005",
+        "LITE-04-006",
+        "LITE-04-007",
+        "LITE-04-008",
+        "LITE-04-009",
+        "LITE-04-010",
+        "LITE-04-011",
+        "LITE-04-012",
+        "LITE-05-001",
+        "LITE-05-002",
+        "LITE-05-003",
+        "LITE-05-004",
+        "LITE-05-005",
+        "LITE-05-006",
+        "LITE-05-007",
+        "LITE-05-008",
+        "LITE-05-009",
+        "LITE-05-010",
+        "LITE-05-011",
+        "LITE-05-012",
+        "LITE-06-001",
+        "LITE-06-002",
+        "LITE-06-003",
+        "LITE-06-004",
+        "LITE-06-005",
+        "LITE-06-006",
+        "LITE-06-007",
+        "LITE-06-008",
+        "LITE-06-009",
+        "LITE-06-010",
+        "LITE-06-011",
+        "LITE-07-001",
+        "LITE-07-002",
+        "LITE-07-003",
+        "LITE-07-004",
+        "LITE-07-005",
+        "LITE-07-006",
+        "LITE-07-007",
+        "LITE-07-008",
+        "LITE-07-009",
+        "LITE-07-010",
+        "LITE-07-011",
+        "LITE-07-012",
+        "LITE-07-013",
+        "LITE-07-014",
+        "LITE-08-001",
+        "LITE-08-002",
+        "LITE-08-003",
+        "LITE-08-004",
+        "LITE-08-005",
+        "LITE-08-006",
+        "LITE-08-007",
+        "LITE-08-008",
+        "LITE-08-009",
+        "LITE-08-010",
+        "LITE-08-011",
+        "LITE-08-012",
+        "LITE-08-013",
+        "LITE-08-014",
+        "LITE-08-015",
+        "LITE-09-001",
+        "LITE-09-002",
+        "LITE-09-003",
+        "LITE-09-004",
+        "LITE-09-005",
+        "LITE-09-006",
+        "LITE-09-007",
+        "LITE-09-008",
+        "LITE-09-009",
+        "LITE-09-010",
+        "LITE-09-011",
+        "LITE-09-012",
+        "LITE-09-013",
+        "LITE-09-014",
+        "LITE-09-015",
+        "LITE-09-016",
+        "LITE-09-017",
+        "LITE-09-018",
+        "LITE-10-001",
+        "LITE-10-002",
+        "LITE-10-003",
+        "LITE-10-004",
+        "LITE-10-005",
+        "LITE-10-006",
+        "LITE-10-007",
+        "LITE-10-008",
+        "LITE-10-009",
+        "LITE-10-010",
+        "LITE-10-011",
+        "LITE-10-012",
+        "LITE-10-013",
+        "LITE-10-014",
+        "LITE-10-015",
+        "LITE-10-016",
+        "LITE-10-017",
+        "LITE-11-001",
+        "LITE-11-002",
+        "LITE-11-003",
+        "LITE-11-004",
+        "LITE-11-005",
+        "LITE-11-006",
+        "LITE-11-007",
+        "LITE-11-008",
+        "LITE-11-009",
+        "LITE-11-010",
+        "LITE-11-011",
+        "LITE-11-012",
+        "LITE-11-013",
+        "LITE-12-001",
+        "LITE-12-002",
+        "LITE-12-003",
+        "LITE-12-004",
+        "LITE-12-005",
+        "LITE-12-006",
+        "LITE-12-007",
+        "LITE-12-008",
+        "LITE-12-009",
+        "LITE-12-010",
+        "LITE-12-011",
+        "LITE-12-012",
+        "LITE-12-013",
+        "LITE-12-014",
+        "LITE-12-015",
+        "LITE-12-016",
+        "LITE-13-001",
+        "LITE-13-002",
+        "LITE-13-003",
+        "LITE-13-004",
+        "LITE-13-005",
+        "LITE-13-006",
+        "LITE-13-007",
+        "LITE-13-008",
+        "LITE-13-009",
+        "LITE-13-010",
+        "LITE-13-011",
+        "LITE-13-012",
+        "LITE-13-013",
+        "LITE-13-014",
+        "LITE-13-015",
+        "LITE-04-101",
+        "LITE-07-101",
+        "LITE-07-102",
+        "LITE-07-103",
+        "LITE-07-104",
+        "LITE-07-105",
+        "LITE-07-106",
+        "LITE-07-107",
+        "LITE-07-108",
+        "LITE-07-109",
+        "LITE-09-101",
+        "LITE-09-102",
+        "LITE-09-103",
+        "LITE-09-104",
+        "LITE-09-105",
+        "LITE-09-106",
+        "LITE-09-107",
+        "LITE-09-108",
+        "LITE-09-109",
+        "LITE-09-110",
+        "LITE-13-101",
+        "LITE-12-101",
+        "LITE-13-102",
+        "LITE-01-101"
       ]
     }
   ]

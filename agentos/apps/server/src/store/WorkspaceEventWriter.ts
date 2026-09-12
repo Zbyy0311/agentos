@@ -17,6 +17,7 @@ import {
 import type { WorkspaceSequenceAllocator } from './WorkspaceSequenceAllocator.js';
 import { WorkspaceNotFoundError } from './WorkspaceSequenceAllocator.js';
 import { proveWorkspaceArtifactCompletion } from './ArtifactCompletionRepository.js';
+import { proveWorkspaceCompaction } from './CompactionRepository.js';
 
 export type WorkspaceEventWriterErrorCode =
   | 'WORKSPACE_EVENT_WRITER_NOT_BOUND'
@@ -45,6 +46,7 @@ export class WorkspaceEventWriterError extends Error {
  */
 export type WorkspaceEventOriginV1 =
   | { readonly kind: 'memory.artifact_completion'; readonly completionId: string }
+  | { readonly kind: 'memory.compaction'; readonly compactionId: string }
   | {
       readonly kind: 'memory.candidate_review';
       readonly candidateId: string;
@@ -124,6 +126,9 @@ export class WorkspaceEventContextAuthorityError extends Error {
 export function deriveWorkspaceEventContext(origin: WorkspaceEventOriginV1): WorkspaceEventContextV1 {
   if (origin.kind === 'memory.artifact_completion') {
     return { correlationId: 'artifact-completion:' + origin.completionId, causationId: origin.completionId };
+  }
+  if (origin.kind === 'memory.compaction') {
+    return { correlationId: 'memory-compaction:' + origin.compactionId, causationId: origin.compactionId };
   }
   if (origin.kind === 'memory.candidate_review') {
     return {
@@ -301,12 +306,15 @@ export class WorkspaceEventWriter {
     const authorized = this.authorize(input.workspaceId, origin, context);
     // Prove, then allocate, then insert: a refused append consumes nothing.
     this.assertAuthorityOriginProven(input.workspaceId, authorized);
-    if (input.type === 'memory.candidate_created' || origin.kind === 'memory.artifact_completion') {
+    if (input.type === 'memory.candidate_created' || origin.kind === 'memory.artifact_completion' || origin.kind === 'memory.compaction') {
       const proof = origin.kind === 'memory.artifact_completion'
-        ? proveWorkspaceArtifactCompletion(this.db, input.workspaceId, origin.completionId) : undefined;
+        ? proveWorkspaceArtifactCompletion(this.db, input.workspaceId, origin.completionId)
+        : origin.kind === 'memory.compaction'
+          ? proveWorkspaceCompaction(this.db, input.workspaceId, origin.compactionId)
+          : undefined;
       if (input.type !== 'memory.candidate_created' || proof === undefined ||
         Object.entries(proof).some(([key, value]) => input.payload[key] !== value)) {
-        throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN', 'Candidate creation requires its Artifact completion');
+        throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN', 'Candidate creation requires its durable source record');
       }
     }
     const sequence = this.allocate(input.workspaceId);
@@ -351,6 +359,10 @@ export class WorkspaceEventWriter {
     if (value.kind === 'memory.artifact_completion') {
       if (!nonBlank(value.completionId)) throw new WorkspaceEventWriterError('WORKSPACE_EVENT_INPUT_INVALID');
       return { kind: 'memory.artifact_completion', completionId: value.completionId };
+    }
+    if (value.kind === 'memory.compaction') {
+      if (!nonBlank(value.compactionId)) throw new WorkspaceEventWriterError('WORKSPACE_EVENT_INPUT_INVALID');
+      return { kind: 'memory.compaction', compactionId: value.compactionId };
     }
     if (value.kind === CANDIDATE_REVIEW_ORIGIN) {
       if (!nonBlank(value.candidateId) || !isPositiveSafeInteger(value.candidateVersion)) {
@@ -473,6 +485,12 @@ export class WorkspaceEventWriter {
   ): void {
     if (authorized.origin === 'memory.artifact_completion') {
       if (authorized.authorityVersion !== 1 || !proveWorkspaceArtifactCompletion(this.db, workspaceId, authorized.authorityId)) {
+        throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+      }
+      return;
+    }
+    if (authorized.origin === 'memory.compaction') {
+      if (authorized.authorityVersion !== 1 || !proveWorkspaceCompaction(this.db, workspaceId, authorized.authorityId)) {
         throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN');
       }
       return;
