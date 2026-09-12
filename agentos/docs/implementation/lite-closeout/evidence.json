@@ -360,5 +360,27 @@
     "result": { "findings": 5 },
     "environment": "Read-only source audit before implementation; no runtime evidence",
     "limitation": "Confirmed in-memory approvals, independent unproven decision route, missing pre-spawn persistence, original-Run continuation and transaction composition. Not PASS evidence."
+  },
+  {
+    "id": "S3-FULL-FIRST",
+    "baseline": "68bb1de6b0cb4965e4740c4d746247b91be419fd",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "pnpm --filter @agentos/server test",
+    "environment": "Windows Node24.18.0 pnpm11.11.0",
+    "result": { "passed": 2748, "failed": 6, "skipped": 3, "exitCode": 1 },
+    "requirementIds": ["LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "limitation": "First full S3 run preserved. Two failures were this slice's test fixtures (027 boundary comparison and route listener port); four separate ENOTEMPTY teardown failures. Not PASS evidence."
+  },
+  {
+    "id": "S3-FIXED-FOCUSED",
+    "baseline": "00d5901d9a8d096af16cca884ea948f98055c531",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 src/migrations/__tests__/mf2-migration-027.test.ts src/routes/runtimeApprovals.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0",
+    "result": { "passed": 8, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
+    "requirementIds": ["LITE-07-104", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "limitation": "Focused correction evidence after the first full S3 failure; corrected full Server suite and CI remain gates."
   }
 ]

@@ -64,6 +64,18 @@ parent implemented it. UI delegate Newton completed two-file source link and
 tests then closed. Russell owns full validation only, no source changes/reruns.
 Use bounded sidecar tasks, not repeated broad audits or duplicate watchers.
 
+## Current closeout progress after PR145
+
+- PR143 merged50255d83, PR144 merged30c9de3a, PR145 merged48bb4321. Main CI
+  for48bb4321 completed success (run34691092265).
+- S3 branch codex/lite-s3-approval has additive028 runtime approval persistence,
+  pre-spawn gate, original-Run continuation/rejection, route and evidence. First
+  full S3 run:2748 pass/6 fail/3 skip (two test-fixture defects plus4 ENOTEMPTY);
+  fixes committed00d5901d and focused tests8/0/0. Corrected full run is in
+  progress. S3 rows remain GAP pending full CI/live Provider/browser evidence.
+- S4 branch codex/lite-s4-provider has only production-chain audit commit
+  d7fe4c58. Do not implement before S4 audit/authorization.
+
 ## S3 continuation prepared
 
 Worktree E:/workspace/Multi-Agent-worktrees/agentos-lite-s3-approval/agentos,
