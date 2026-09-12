@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 8,
+  "matrixVersion": 9,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1251,7 +1251,7 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": [],
+      "evidence": ["S4-PROVIDER-SOURCE", "S4-ADAPTERS"],
       "finding": "三Provider已有CLI/解析能力，但当前生产composition root仅注册Kimi；Codex/OpenCode完整生产链缺口须定向补齐而非重写三者。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -3883,7 +3883,7 @@
       "tests": [
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
-      "evidence": [],
+      "evidence": ["S4-PROVIDER-SOURCE", "S4-ADAPTERS", "S4-REAL-GATES"],
       "finding": "Legacy CLI和parser不等于RunEngine生产适配；composition root只注册Kimi。",
       "exit": "逐Provider沿Adapter→Registry→Process→RunEngine→SSE/UI验证；复用现有正确能力，只补断点。"
     },
@@ -6711,6 +6711,13 @@
       "authority": "Main-agent remediation of independent S3 review findings within approved scope",
       "reason": "Fix spawn-right expiry, contradictory replay, recovery-required resume bypass, and environment-value drift; preserve the non-green full suite and four ENOTEMPTY teardown failures. No matrix state changes.",
       "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"]
+    },
+    {
+      "version": 9,
+      "baseline": "c783e9280cd5d434479b482af40331acf8656907",
+      "authority": "Main-agent S4 implementation and verification within user-approved scope",
+      "reason": "Register canonical Codex/OpenCode adapters in the production chain with bounded evidence; keep GAP/RUNTIME-VERIFY because the final-head real gate is blocked by external quota and OpenCode has only unavailable evidence. No state changes.",
+      "requirementIds": ["LITE-04-001", "LITE-04-101"]
     }
   ]
 }

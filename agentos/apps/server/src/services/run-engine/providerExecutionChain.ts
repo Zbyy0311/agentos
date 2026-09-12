@@ -10,7 +10,12 @@ import {
   NodeProcessProbePort,
 } from '@agentos/process-runtime';
 import type { ProcessProbePort } from '@agentos/process-runtime';
-import { KimiCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
+import {
+  CodexProviderAdapter,
+  KimiCodeProviderAdapter,
+  OpenCodeProviderAdapter,
+  ProviderRegistry,
+} from '@agentos/agent-core/providers';
 import type { SqliteStore } from '../../store/SqliteStore.js';
 
 import {
@@ -49,6 +54,7 @@ export interface ProviderExecutionChainOptions {
 
 export interface ProviderExecutionChain {
   readonly admissionAuthority: WorkspaceAdmissionAuthority;
+  readonly providerRegistry: ProviderRegistry;
   readonly engine: RunEngine;
   readonly coordinator: StageExecutionCoordinator;
   readonly dispatcher: RunEngineProviderDispatcher;
@@ -73,8 +79,11 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     atomicSeam: seam,
     driver,
   });
-  const adapter = new KimiCodeProviderAdapter({ probe });
-  const registry = new ProviderRegistry([adapter]);
+  const registry = new ProviderRegistry([
+    new KimiCodeProviderAdapter({ probe }),
+    new CodexProviderAdapter({ probe }),
+    new OpenCodeProviderAdapter({ probe }),
+  ]);
   let dispatcher!: RunEngineProviderDispatcher;
   const approvalGate = new RuntimeApprovalGate(store, {
     continueRun: async (workspaceId, runId) => { await dispatcher.driveSafely(workspaceId, runId); },
@@ -158,5 +167,5 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
   });
-  return { admissionAuthority, engine, coordinator, dispatcher, memoryContextResolver, approvalGate };
+  return { admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher, memoryContextResolver, approvalGate };
 }
