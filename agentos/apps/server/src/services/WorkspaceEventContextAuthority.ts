@@ -1,5 +1,6 @@
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { isValidEntityId } from '../store/Identity.js';
+import { proveWorkspaceArtifactCompletion } from '../store/ArtifactCompletionRepository.js';
 import type {
   AuthorizedWorkspaceEventContextV1,
   WorkspaceEventContextAuthorityV1,
@@ -96,14 +97,17 @@ implements WorkspaceEventContextAuthorityV1 {
       );
     }
     const parentEventId = this.requireParentEvent(workspaceId, claimed.parentEventId);
-    const authorityVersion = subject.kind === 'memory.candidate_review'
+    const authorityVersion = subject.kind === 'memory.artifact_completion'
+      ? this.proveArtifactCompletion(workspaceId, subject.completionId)
+      : subject.kind === 'memory.candidate_review'
       ? this.proveCandidateReview(workspaceId, subject)
       : subject.kind === 'memory.conflict_resolution'
         ? this.proveConflictResolution(workspaceId, subject)
         : this.proveEntrySave(workspaceId, subject);
     return {
       origin: subject.kind,
-      authorityId: subject.kind === 'memory.candidate_review' ? subject.candidateId
+      authorityId: subject.kind === 'memory.artifact_completion' ? subject.completionId
+        : subject.kind === 'memory.candidate_review' ? subject.candidateId
         : subject.kind === 'memory.conflict_resolution' ? subject.conflictId
         : subject.entryId,
       authorityVersion,
@@ -120,6 +124,10 @@ implements WorkspaceEventContextAuthorityV1 {
   private requireSubject(origin: unknown): WorkspaceEventOriginV1 {
     if (!isRecord(origin)) {
       throw new WorkspaceEventContextAuthorityError('INPUT_INVALID', 'origin is required');
+    }
+    if (origin.kind === 'memory.artifact_completion') {
+      if (!nonBlank(origin.completionId)) throw new WorkspaceEventContextAuthorityError('INPUT_INVALID');
+      return { kind: 'memory.artifact_completion', completionId: origin.completionId };
     }
     if (origin.kind === 'memory.candidate_review') {
       if (!nonBlank(origin.candidateId) || !isPositiveSafeInteger(origin.candidateVersion)) {
@@ -262,5 +270,12 @@ implements WorkspaceEventContextAuthorityV1 {
       );
     }
     return row.version;
+  }
+
+  private proveArtifactCompletion(workspaceId: string, completionId: string): number {
+    if (!proveWorkspaceArtifactCompletion(this.db, workspaceId, completionId)) {
+      throw new WorkspaceEventContextAuthorityError('ORIGIN_UNPROVEN');
+    }
+    return 1;
   }
 }

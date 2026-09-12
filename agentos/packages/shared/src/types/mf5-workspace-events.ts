@@ -27,6 +27,8 @@ import type {
  * introduces no new Runtime Event type.
  */
 export const WORKSPACE_EVENT_STREAM_TYPES = Object.freeze([
+  // S2-027: only the proven source-specific Artifact completion origin.
+  'memory.candidate_created',
   'memory.candidate_reviewed',
   'memory.conflict_opened',
   'memory.conflict_resolved',

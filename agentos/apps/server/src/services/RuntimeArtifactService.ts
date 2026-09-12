@@ -2,8 +2,12 @@ import { createHash, randomUUID } from 'node:crypto';
 import { existsSync, realpathSync } from 'node:fs';
 import { mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
-import type { RuntimeArtifact, RuntimeArtifactType } from '@agentos/shared';
+import type { RuntimeArtifact, RuntimeArtifactType, CanonicalRuntimeArtifactRecord } from '@agentos/shared';
 import { SqliteStore, type RuntimeArtifactRecord } from '../store/SqliteStore.js';
+import { inTransaction } from '../store/Transaction.js';
+import { ArtifactCompletionRepository, ArtifactCompletionRepositoryError,
+  type ArtifactCompletionConclusion } from '../store/ArtifactCompletionRepository.js';
+import { ArtifactCompletionService } from './ArtifactCompletionService.js';
 
 export type ArtifactContentSource =
   | { kind: 'text'; content: string }
@@ -22,6 +26,8 @@ export interface CreateRuntimeArtifactInput {
   originalPath?: string;
   mimeType?: string;
   source: ArtifactContentSource;
+  /** A typed final result from the real producer; optional for ordinary artifacts. */
+  completion?: { conclusion: ArtifactCompletionConclusion; sourceKey: string };
 }
 
 const MAX_ARTIFACTS_PER_RUN = 100;
@@ -33,6 +39,8 @@ const MAX_BYTES: Record<RuntimeArtifactType, number> = {
   image: 10 * 1024 * 1024,
   archive: 100 * 1024 * 1024,
   manifest: 1024 * 1024,
+  review: 1024 * 1024,
+  test: 1024 * 1024,
 };
 
 export class RuntimeArtifactService {
@@ -48,9 +56,6 @@ export class RuntimeArtifactService {
     if (!run || !execution || execution.runId !== input.runId || execution.agentId !== input.agentId) {
       throw new Error('Runtime artifact provenance is invalid');
     }
-    if (this.store.listRuntimeArtifacts(input.workspaceId, input.runId).length >= MAX_ARTIFACTS_PER_RUN) {
-      throw new Error('Runtime artifact limit reached for run');
-    }
     const title = input.title.trim();
     if (!title) throw new Error('Runtime artifact title is required');
     const originalPath = normalizeOriginalPath(input.originalPath, input.workspaceRoot);
@@ -61,6 +66,27 @@ export class RuntimeArtifactService {
     if (input.type === 'image' && bytes && !isSupportedRaster(bytes)) throw new Error('Unsupported image artifact format');
     const contentAvailable = Boolean(bytes) && sizeBytes <= MAX_BYTES[input.type];
     const createdAt = new Date().toISOString();
+    const findCompleted = (): RuntimeArtifact | undefined => {
+      if (!input.completion) return undefined;
+      const previous = new ArtifactCompletionRepository(this.store.getDatabase())
+        .findBySourceKey(input.workspaceId, input.completion.sourceKey);
+      if (previous) {
+        const existing = this.store.getRuntimeArtifactRecord(input.workspaceId, previous.artifactId)?.artifact;
+        if (!existing || existing.runId !== input.runId || existing.sourceExecutionId !== input.sourceExecutionId ||
+          existing.type !== input.type || previous.conclusion !== input.completion.conclusion ||
+          !bytes || existing.sha256 !== hash(bytes)) throw new ArtifactCompletionRepositoryError('CONFLICT');
+        return existing;
+      }
+      return undefined;
+    };
+    if (input.completion) {
+      const completed = findCompleted();
+      if (completed) return completed;
+      if (!contentAvailable || !bytes) throw new ArtifactCompletionRepositoryError('SOURCE_INVALID');
+    }
+    if (this.store.listRuntimeArtifacts(input.workspaceId, input.runId).length >= MAX_ARTIFACTS_PER_RUN) {
+      throw new Error('Runtime artifact limit reached for run');
+    }
     const artifactId = randomUUID();
     const summary = contentAvailable
       ? input.summary?.trim() || source.summary
@@ -84,6 +110,14 @@ export class RuntimeArtifactService {
 
     let storageKey: string | null = null;
     let storageDirectory: string | undefined;
+    const persist = (key: string | null): void => {
+      if (!input.completion) { this.store.createRuntimeArtifact(artifact, key); return; }
+      inTransaction(this.store.getDatabase(), () => {
+        this.store.createRuntimeArtifact(artifact, key);
+        new ArtifactCompletionService(this.store).completeWithinTransaction({ workspaceId: input.workspaceId,
+          artifactId, conclusion: input.completion!.conclusion, sourceKey: input.completion!.sourceKey, decidedAt: createdAt });
+      });
+    };
     if (contentAvailable && bytes) {
       storageKey = join(input.workspaceId, input.runId, artifactId, 'content').replaceAll(sep, '/');
       storageDirectory = join(this.artifactRoot, input.workspaceId, input.runId, artifactId);
@@ -92,19 +126,86 @@ export class RuntimeArtifactService {
       try {
         await writeFile(temporaryPath, bytes, { flag: 'wx' });
         await rename(temporaryPath, join(storageDirectory, 'content'));
-        this.store.createRuntimeArtifact(artifact, storageKey);
+        persist(storageKey);
       } catch (error) {
         await rm(storageDirectory, { recursive: true, force: true });
+        // Another completion may have committed while this file was written.
+        // Only exact same-producer evidence may converge after the losing insert.
+        const winner = findCompleted();
+        if (winner) return winner;
         throw error;
       }
     } else {
-      this.store.createRuntimeArtifact(artifact, null);
+      persist(null);
     }
     return artifact;
   }
 
-  getContentRecord(workspaceId: string, artifactId: string): { record: RuntimeArtifactRecord; path: string } | undefined {
-    const record = this.store.getRuntimeArtifactRecord(workspaceId, artifactId);
+  async createCanonicalCompleted(input: {
+    workspaceId: string; runId: string; stageId: string; stageAttempt: number; operationId: string; agentId: string;
+    type: 'review' | 'test'; conclusion: ArtifactCompletionConclusion; summary: string; sourceKey: string;
+  }): Promise<CanonicalRuntimeArtifactRecord> {
+    const db = this.store.getDatabase();
+    const bytes = Buffer.from(input.summary, 'utf8');
+    if (bytes.byteLength < 1 || bytes.byteLength > 8192) throw new ArtifactCompletionRepositoryError('INPUT_INVALID');
+    const lookup = (): CanonicalRuntimeArtifactRecord | undefined => {
+      const previous = new ArtifactCompletionRepository(db).findBySourceKey(input.workspaceId, input.sourceKey);
+      if (!previous) return undefined;
+      const artifact = this.store.getCanonicalRuntimeArtifactRecord(input.workspaceId, previous.artifactId);
+      if (!artifact || artifact.canonicalRunId !== input.runId || artifact.sourceStageId !== input.stageId ||
+          artifact.sourceOperationId !== input.operationId || artifact.agentId !== input.agentId ||
+          artifact.type !== input.type || previous.conclusion !== input.conclusion || artifact.sha256 !== hash(bytes)) {
+        throw new ArtifactCompletionRepositoryError('CONFLICT');
+      }
+      return artifact;
+    };
+    const existing = lookup();
+    if (existing) return existing;
+    const assertCurrentSource = (): void => {
+      if (!Number.isSafeInteger(input.stageAttempt) || input.stageAttempt < 1 ||
+        !db.prepare(`SELECT s.id FROM run_stages s JOIN runs r ON r.id = s.run_id
+          WHERE s.id = ? AND s.run_id = ? AND s.workspace_id = ? AND r.workspace_id = ?
+            AND s.attempt = ? AND s.status = 'running' AND r.status = 'running'`)
+          .get(input.stageId, input.runId, input.workspaceId, input.workspaceId, input.stageAttempt)) {
+        throw new ArtifactCompletionRepositoryError('SOURCE_INVALID');
+      }
+    };
+    assertCurrentSource();
+    const id = randomUUID();
+    // Canonical IDs have durable provenance checks below; generated directory
+    // name means a caller-provided Run/Workspace is never a filesystem path.
+    const storageKey = `canonical-results/${id}/content`;
+    const directory = join(this.artifactRoot, 'canonical-results', id);
+    await mkdir(directory, { recursive: true });
+    try {
+      await writeFile(join(directory, 'content'), bytes, { flag: 'wx' });
+      const now = new Date().toISOString();
+      inTransaction(db, () => {
+        // File I/O yielded: a cancel/retry may have invalidated this attempt.
+        assertCurrentSource();
+        this.store.createCanonicalRuntimeArtifact({ id, workspaceId: input.workspaceId, agentId: input.agentId,
+          type: input.type, title: `${input.type} result`, summary: input.conclusion,
+          sizeBytes: bytes.byteLength, sha256: hash(bytes), contentAvailable: true,
+          mimeType: 'text/plain', createdAt: now },
+        { kind: 'CANONICAL', canonicalRunId: input.runId, sourceStageId: input.stageId, sourceOperationId: input.operationId }, storageKey);
+        new ArtifactCompletionService(this.store).completeWithinTransaction({ workspaceId: input.workspaceId,
+          artifactId: id, sourceKey: input.sourceKey, conclusion: input.conclusion, decidedAt: now });
+      });
+      return this.store.getCanonicalRuntimeArtifactRecord(input.workspaceId, id)!;
+    } catch (error) {
+      await rm(directory, { recursive: true, force: true });
+      const winner = lookup();
+      if (winner) return winner;
+      throw error;
+    }
+  }
+
+  getContentRecord(workspaceId: string, artifactId: string): {
+    record: RuntimeArtifactRecord | { artifact: CanonicalRuntimeArtifactRecord; storageKey: string | null }; path: string;
+  } | undefined {
+    const legacy = this.store.getRuntimeArtifactRecord(workspaceId, artifactId);
+    const canonical = legacy ? undefined : this.store.getCanonicalRuntimeArtifactRecord(workspaceId, artifactId);
+    const record = legacy ?? (canonical ? { artifact: canonical, storageKey: canonical.storageKey } : undefined);
     if (!record || !record.artifact.contentAvailable || !record.storageKey) return record ? { record, path: '' } : undefined;
     const path = resolve(this.artifactRoot, record.storageKey);
     if (!isWithin(this.artifactRoot, path)) throw new Error('Artifact storage path escapes artifact root');

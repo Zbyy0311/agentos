@@ -38,6 +38,10 @@ export interface ForwardMemoryCandidateDto {
 
 export type ReviewOutcome = 'accept' | 'reject' | 'merge-with-existing';
 
+export function artifactContentUrl(apiRoot: string, workspaceId: string, artifactId: string): string {
+  return `${apiRoot}/api/workspaces/${encodeURIComponent(workspaceId)}/artifacts/${encodeURIComponent(artifactId)}/content`;
+}
+
 /** Pure body builder, unit-tested without a DOM. */
 export function buildReviewBody(candidate: ForwardMemoryCandidateDto, outcome: ReviewOutcome, mergedIntoEntryId?: string): Record<string, unknown> {
   return {
@@ -55,7 +59,7 @@ interface MemoryReviewQueueProps {
 }
 
 export function MemoryReviewQueue({ workspaceId, onClose }: MemoryReviewQueueProps) {
-  const { request } = useApi();
+  const { API_BASE, request } = useApi();
   const [candidates, setCandidates] = useState<ForwardMemoryCandidateDto[]>([]);
   const [mergeTargets, setMergeTargets] = useState<Record<string, string>>({});
   const [mergingId, setMergingId] = useState<string>();
@@ -109,7 +113,21 @@ export function MemoryReviewQueue({ workspaceId, onClose }: MemoryReviewQueuePro
                 </div>
                 {candidate.content.length > 0 && <p className="text-sm ui-text-soft">{candidate.content}</p>}
                 {candidate.sources.length > 0 && (
-                  <p className="mt-2 text-xs ui-dim">来源：{candidate.sources.map(source => `${source.kind}:${source.id}`).join('、')}</p>
+                  <p className="mt-2 text-xs ui-dim">
+                    来源：
+                    {candidate.sources.map((source, index) => {
+                      const label = `${source.kind}:${source.id}`;
+                      return (
+                        <span key={label}>
+                          {index > 0 && '、'}
+                          {source.kind === 'artifact' ? (
+                            <a href={artifactContentUrl(API_BASE, workspaceId, source.id)} target="_blank" rel="noreferrer"
+                              className="underline underline-offset-2 focus-visible:outline focus-visible:outline-2">{label}</a>
+                          ) : label}
+                        </span>
+                      );
+                    })}
+                  </p>
                 )}
                 {mergingId === candidate.id && (
                   <label className="mt-3 block text-xs ui-text-soft">

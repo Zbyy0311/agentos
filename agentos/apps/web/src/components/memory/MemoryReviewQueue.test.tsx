@@ -3,7 +3,7 @@ import { test } from 'node:test';
 import React from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 
-import { buildReviewBody } from './MemoryReviewQueue.js';
+import { artifactContentUrl, buildReviewBody } from './MemoryReviewQueue.js';
 import type { ForwardMemoryCandidateDto } from './MemoryReviewQueue.js';
 
 const CANDIDATE: ForwardMemoryCandidateDto = {
@@ -39,7 +39,14 @@ test('MRQ-02 merge carries a trimmed target and rejects are target-free', () => 
   assert.deepEqual(buildReviewBody(CANDIDATE, 'accept', 'mem_target'), { expectedVersion: 3, outcome: 'accept' });
 });
 
-test('MRQ-03 initial render is the empty review queue, not an error', async () => {
+test('MRQ-03 artifact source URL encodes the workspace and artifact IDs', () => {
+  assert.equal(
+    artifactContentUrl('https://api.example.test', 'workspace/a space', 'artifact/1?part=2'),
+    'https://api.example.test/api/workspaces/workspace%2Fa%20space/artifacts/artifact%2F1%3Fpart%3D2/content',
+  );
+});
+
+test('MRQ-04 initial render is the empty review queue, not an error', async () => {
   (globalThis as typeof globalThis & { React: typeof React }).React = React;
   const { MemoryReviewQueue } = await import('./MemoryReviewQueue.js');
   const markup = renderToStaticMarkup(<MemoryReviewQueue workspaceId="workspace-a" onClose={() => {}} />);

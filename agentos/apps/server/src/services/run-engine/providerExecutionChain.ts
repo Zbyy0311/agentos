@@ -31,6 +31,9 @@ import { MemoryRetrievalService } from '../MemoryRetrievalService.js';
 import { MemoryContextSnapshotRepository } from '../../store/MemoryContextSnapshotRepository.js';
 import { MemoryRuntimeEventEmitter } from '../MemoryRuntimeEventEmitter.js';
 import { DurableMemoryRuntimeEventContextAuthority } from '../MemoryRuntimeEventContextAuthority.js';
+import { CanonicalArtifactResultService } from '../CanonicalArtifactResultService.js';
+import { RuntimeArtifactService } from '../RuntimeArtifactService.js';
+import { dirname } from 'node:path';
 
 export interface ProviderExecutionChainOptions {
   readonly store: SqliteStore;
@@ -123,6 +126,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     emitter: memoryEventEmitter,
   });
   const dispatcher = new RunEngineProviderDispatcher({
+    artifactResults: new CanonicalArtifactResultService(new RuntimeArtifactService(store, dirname(dirname(options.artifactRoot)))),
     engine,
     coordinator,
     admissionGate: admissionAuthority,

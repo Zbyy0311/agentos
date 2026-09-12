@@ -2,7 +2,7 @@ import type {
   AuthorizedRuntimeEventContextV1,
   RuntimeEventContextAuthoritySourceV1,
 } from '@agentos/shared';
-import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
+import { inTransaction, isTransactionActive, type TransactionDatabase } from '../store/Transaction.js';
 import type { DurableRuntimeFactWriter } from '../store/RuntimeEventRepository.js';
 import {
   MemoryEntryRepository,
@@ -202,6 +202,34 @@ export class MemoryRuntimeEventEmitter {
         },
       };
     }, scope);
+  }
+
+  /** S2: emit only the Candidate bound to this actual canonical completion. */
+  emitPersistedCandidateWithinTransaction(input: {
+    workspaceId: string; runId: string; candidateId: string;
+    completionId: string; eventContext: RuntimeEventContextAuthoritySourceV1; timestamp: string;
+  }): void {
+    if (!isTransactionActive(this.db)) throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+    const scope = this.resolveScope(input);
+    this.assertAuthorityOriginProven(input.workspaceId, input.runId, scope.eventContext);
+    const record = this.candidates.findCandidateById(input.workspaceId, input.candidateId);
+    const source = this.db.prepare(`SELECT ac.id FROM artifact_completions ac
+      JOIN runtime_artifacts a ON a.id = ac.artifact_id
+      JOIN memory_candidate_sources s ON s.candidate_id = ac.candidate_id
+      WHERE ac.id = ? AND ac.workspace_id = ? AND ac.run_id = ? AND ac.candidate_id = ?
+        AND a.workspace_id = ac.workspace_id AND a.canonical_run_id = ac.run_id
+        AND a.provenance_kind = 'CANONICAL' AND a.artifact_type = ac.artifact_type
+        AND s.source_kind = 'artifact' AND s.source_id = ac.artifact_id`)
+      .get(input.completionId, input.workspaceId, input.runId, input.candidateId);
+    if (!source || !record || record.version !== 1 || record.authority !== 'agent-derived' ||
+      record.decision !== 'review-required' || record.mergedIntoEntryId !== null) {
+      throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+    }
+    this.writer.appendWithinTransaction({ type: 'memory.candidate_created',
+      workspaceId: input.workspaceId, runId: input.runId, timestamp: input.timestamp,
+      source: 'memory-engine', eventContext: scope.eventContext,
+      payload: { candidateId: record.id, scope: record.scope, category: record.category,
+        authority: record.authority, decision: record.decision } });
   }
 
   /** Record the review itself, plus only the Entry mutation that actually occurred. */

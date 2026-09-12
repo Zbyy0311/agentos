@@ -21,6 +21,7 @@ import type { LifecycleTransactionService } from '../LifecycleTransactionService
 import { RunEngine } from './RunEngine.js';
 import { StageExecutionCoordinator, type StageExecutionInput } from './StageExecutionCoordinator.js';
 import type { ResolveRunMemoryContextInput, ResolvedMemoryContext } from '../MemoryContextResolver.js';
+import { ARTIFACT_RESULT_INSTRUCTION, type CanonicalArtifactResultInput } from '../CanonicalArtifactResultService.js';
 
 export interface CanonicalRunAdmissionGate {
   authorizeCanonicalRun(input: {
@@ -76,6 +77,7 @@ export interface RunEngineProviderDispatcherOptions {
    */
   readonly memoryCandidateGenerator?: MemoryCandidateGenerationPort;
   readonly onCandidateGenerationError?: (error: unknown, runId: string) => void;
+  readonly artifactResults?: { capture(input: CanonicalArtifactResultInput): Promise<string[]> };
 }
 
 export interface MemoryCandidateGenerationPort {
@@ -156,6 +158,7 @@ export class RunEngineProviderDispatcher {
   private readonly onDispatchFailure: ((report: DispatchFailureReport) => void) | undefined;
   private readonly memoryCandidateGenerator: MemoryCandidateGenerationPort | undefined;
   private readonly onCandidateGenerationError: ((error: unknown, runId: string) => void) | undefined;
+  private readonly artifactResults: RunEngineProviderDispatcherOptions['artifactResults'];
 
   constructor(options: RunEngineProviderDispatcherOptions) {
     this.engine = options.engine;
@@ -173,6 +176,7 @@ export class RunEngineProviderDispatcher {
     this.onDispatchFailure = options.onDispatchFailure;
     this.memoryCandidateGenerator = options.memoryCandidateGenerator;
     this.onCandidateGenerationError = options.onCandidateGenerationError;
+    this.artifactResults = options.artifactResults;
   }
 
   async drive(workspaceId: string, runId: string): Promise<RunEngineProviderDriveResult> {
@@ -460,7 +464,7 @@ ${basePrompt}`;
       providerSnapshot: stageDefinition.provider,
       workspaceRoot: this.workspaceRootFor(workspaceId),
       worktreePath: this.worktreePathFor === undefined ? undefined : this.worktreePathFor(workspaceId, runId),
-      prompt,
+      prompt: this.artifactResults ? prompt + ARTIFACT_RESULT_INSTRUCTION : prompt,
       operationId: operation.id,
     };
     const outcome = await this.coordinator.execute(input);
@@ -479,6 +483,10 @@ ${basePrompt}`;
       return 'active';
     }
     if (outcome.kind === 'completed') {
+      const resultArtifacts = this.artifactResults ? await this.artifactResults.capture({ workspaceId, runId,
+        stageId: stage.id, stageAttempt: stage.attempt, operationId: operation.id,
+        agentId: stageDefinition.agent.agentId, output: outcome.output }) : [];
+      const artifactIds = [...outcome.artifactIds, ...resultArtifacts];
       const othersComplete = stages.every(
         candidate => candidate.id === stage.id || candidate.status === 'completed' || candidate.status === 'skipped',
       );
@@ -491,7 +499,7 @@ ${basePrompt}`;
           expectedStageVersion: freshStage.version,
           correlationId: operation.id,
           durationMs: outcome.durationMs,
-          artifactIds: [...outcome.artifactIds],
+          artifactIds,
           outputContractSatisfied: outcome.outputContractSatisfied,
         });
         this.generateTerminalMemoryCandidate(workspaceId, runId, operation);
@@ -505,7 +513,7 @@ ${basePrompt}`;
           to: 'completed',
           correlationId: operation.id,
           durationMs: outcome.durationMs,
-          artifactIds: [...outcome.artifactIds],
+          artifactIds,
           outputContractSatisfied: outcome.outputContractSatisfied,
         });
       }
