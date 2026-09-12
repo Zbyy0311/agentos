@@ -243,6 +243,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly artifactResults?: import('./RunEngineProviderDispatcher.js').RunEngineProviderDispatcherOptions['artifactResults'];
   readonly runtimeApproval?: boolean;
   readonly deferApprovalContinuation?: boolean;
+  readonly approvalNow?: { current: string };
 } = {}) {
   const db = migratedDb();
   seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
@@ -285,7 +286,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
       lifecycleTransactionService: () => lifecycle,
       runtimeEventOutboxWriter: () => factWriter,
     } as unknown as SqliteStore, {
-      now: () => NOW,
+      now: () => behavior.approvalNow?.current ?? NOW,
       continueRun: async (workspaceId, runId) => {
         if (deferApprovalContinuation) return;
         const continuation = dispatcher.driveSafely(workspaceId, runId);
@@ -465,6 +466,11 @@ describe('RunEngineProviderDispatcher E2E', () => {
         environment: {}, redactedEnvironmentKeys: [], secretRefs: [], stdinMode: 'none', promptDelivery: 'argument',
         structuredOutput: 'jsonl', cleanupFiles: [], shell: false, metadata: {},
       }), /RUNTIME_APPROVAL_STALE/);
+      assert.throws(() => gate.beforeLaunch(input, {
+        runtimeMode: 'cli', executable: KIMI_EXE, args: [], cwd: 'C:/ws',
+        environment: { PATH: 'changed-after-approval' }, redactedEnvironmentKeys: [], secretRefs: [],
+        stdinMode: 'none', promptDelivery: 'argument', structuredOutput: 'jsonl', cleanupFiles: [], shell: false, metadata: {},
+      }), /RUNTIME_APPROVAL_STALE/);
       assert.equal(driver.spawnCalls, 0);
 
       const rejected = gate.resolve({ workspaceId: WS, requestId: pending.id,
@@ -478,6 +484,58 @@ describe('RunEngineProviderDispatcher E2E', () => {
         expectedVersion: pending.version, decision: 'reject', decidedBy: 'operator' });
       assert.equal(replay.replayed, true);
       assert.equal(driver.spawnCalls, 0);
+    } finally { close(fx); }
+  });
+
+  it('LITE-08-006: an approved request rejects a contradictory replay without changing the result', async () => {
+    const driver = new FakeDriver(new FakeHandle([JSON.stringify({ type: 'assistant', content: 'approved' })]));
+    const fx = fixture(driver, false, { runtimeApproval: true });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      await Promise.all(fx.continuations);
+      assert.throws(() => gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'reject', decidedBy: 'operator' }), /RUNTIME_APPROVAL_CONFLICT/);
+      assert.equal(gate.list(WS).find(item => item.id === pending.id)?.status, 'approved');
+      assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM approval_decisions').get() as { count: number }).count, 1);
+    } finally { close(fx); }
+  });
+
+  it('LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect', async () => {
+    const clock = { current: NOW };
+    const driver = new FakeDriver(new FakeHandle([]));
+    const fx = fixture(driver, false, { runtimeApproval: true, approvalNow: clock });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      clock.current = '2026-08-15T00:10:00.000Z';
+      await Promise.all(fx.continuations);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'failed');
+      assert.equal(gate.list(WS).find(item => item.id === pending.id)?.consumedAt, null);
+    } finally { close(fx); }
+  });
+
+  it('LITE-08-005: startup resume never bypasses a Run already marked recovery-required', async () => {
+    const driver = new FakeDriver(new FakeHandle([]));
+    const fx = fixture(driver, false, { runtimeApproval: true, deferApprovalContinuation: true });
+    try {
+      const gate = fx.approvalGate!;
+      await fx.dispatcher.drive(WS, RUN);
+      const pending = gate.list(WS)[0]!;
+      gate.resolve({ workspaceId: WS, requestId: pending.id,
+        expectedVersion: pending.version, decision: 'approve_once', decidedBy: 'operator' });
+      fx.db.prepare('UPDATE runs SET recovery_required = 1 WHERE workspace_id = ? AND id = ?').run(WS, RUN);
+      fx.setApprovalContinuationDeferred(false);
+      assert.equal(await gate.resumeApprovedUnconsumed(), 0);
+      assert.equal(driver.spawnCalls, 0);
+      assert.equal(fx.runRepo.findById(WS, RUN)?.recoveryRequired, true);
     } finally { close(fx); }
   });
 

@@ -87,6 +87,7 @@ export interface StageExecutionApprovalGate {
     | { readonly kind: 'wait'; readonly requestId: string }
     | { readonly kind: 'deny'; readonly code: string; readonly message: string };
   afterLaunchAuthority(input: StageExecutionInput, requestId: string | undefined): void;
+  assertLaunchStillValid(input: StageExecutionInput, plan: ProviderLaunchPlan, requestId: string): void;
 }
 
 export type StageExecutionOutcome =
@@ -472,6 +473,9 @@ export class StageExecutionCoordinator {
         entry.stopOrigin ?? 'EXPLICIT_CANCEL',
       ),
       spawn: async () => {
+        if (approvalRequestId !== undefined) {
+          this.approvalGate?.assertLaunchStillValid(input, plan, approvalRequestId);
+        }
         const launch: ValidatedLaunch = {
           executable: plan.executable,
           args: [...plan.args],

@@ -86,13 +86,15 @@ ASK_USER at this first boundary.
    the existing dispatcher after commit. The dispatcher may continue a running
    original Run whose start Operation is already completed; it must not call
    the queued-start claim again. Before coordinator invocation it rechecks the
-   approved unconsumed request, snapshot, current attempt, expiry and Workspace
-   admission.
+  approved unconsumed request, snapshot, current attempt, expiry and Workspace
+  admission. The Coordinator revalidates the same approved request immediately
+  before consuming its spawn right; expiry after the first gate cannot spawn.
 6. The request is marked consumed only after the durable coordinator proves
    the actual Process was spawned or an existing authority attempt was joined.
    Startup scans approved unconsumed requests after recovery/admission
    reconciliation and re-drives their original Runs, so a crash between
-   decision commit and continuation cannot strand execution. A crash after
+   decision commit and continuation cannot strand execution. Runs marked
+   recovery-required are skipped; existing recovery owns them. A crash after
    spawn remains governed by existing Process recovery.
 
 ## Required proof

@@ -91,6 +91,14 @@ export class RuntimeApprovalGate {
     return this.createRequest(input, identity, now);
   }
 
+  /** Re-check immediately before consuming the one spawn right. */
+  assertLaunchStillValid(input: StageExecutionInput, plan: ProviderLaunchPlan, requestId: string): void {
+    const current = this.requests.findById(input.workspaceId, requestId);
+    if (!current) throw new RuntimeApprovalGateError('NOT_FOUND');
+    const result = this.beforeLaunch(input, plan);
+    if (result.kind !== 'allow' || result.requestId !== requestId) throw new RuntimeApprovalGateError('STALE');
+  }
+
   afterLaunchAuthority(input: StageExecutionInput, requestId: string | undefined): void {
     if (requestId === undefined) return;
     inTransaction(this.store.getDatabase(), () => {
@@ -138,7 +146,10 @@ export class RuntimeApprovalGate {
     } catch (error) {
       if (error instanceof RuntimeApprovalRepositoryError && error.code === 'CONFLICT') {
         const existing = this.requests.findById(input.workspaceId, input.requestId);
-        if (existing && existing.status !== 'pending') return { request: existing, replayed: true, candidateId: existing.candidateId };
+        if (existing && existing.status !== 'pending' && existing.resolution === input.decision) {
+          return { request: existing, replayed: true, candidateId: existing.candidateId };
+        }
+        if (existing && existing.status !== 'pending') throw new RuntimeApprovalGateError('CONFLICT');
       }
       throw error;
     }
@@ -150,8 +161,16 @@ export class RuntimeApprovalGate {
 
   async resumeApprovedUnconsumed(): Promise<number> {
     const records = this.requests.listApprovedUnconsumed();
-    for (const record of records) await this.options.continueRun?.(record.workspaceId, record.runId);
-    return records.length;
+    let resumed = 0;
+    for (const record of records) {
+      const run = this.store.runRepository().findById(record.workspaceId, record.runId);
+      // Recovery uncertainty owns the Run; do not bypass it or merely join an
+      // orphaned Process claim as if execution were being observed.
+      if (!run || run.recoveryRequired === true) continue;
+      await this.options.continueRun?.(record.workspaceId, record.runId);
+      resumed += 1;
+    }
+    return resumed;
   }
 
   private createRequest(input: StageExecutionInput, identity: ApprovalIdentity, requestedAt: string): ApprovalGateBeforeLaunchResult {
@@ -288,7 +307,9 @@ export class RuntimeApprovalGate {
     const agentHash = hashCanonicalJson(input.agentSnapshot);
     const providerHash = hashCanonicalJson(input.providerSnapshot);
     const launchHash = hashCanonicalJson({
-      executable: plan.executable, args: plan.args, cwd: plan.cwd, environmentKeys: Object.keys(plan.environment).sort(),
+      executable: plan.executable, args: plan.args, cwd: plan.cwd,
+      environmentKeys: Object.keys(plan.environment).sort(),
+      environmentValuesHash: hashCanonicalJson(plan.environment),
       redactedEnvironmentKeys: plan.redactedEnvironmentKeys, secretRefs: plan.secretRefs,
       stdinMode: plan.stdinMode, promptDelivery: plan.promptDelivery, promptHash: hashMemoryText(input.prompt),
     });
