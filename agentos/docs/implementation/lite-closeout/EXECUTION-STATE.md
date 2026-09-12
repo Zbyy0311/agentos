@@ -64,6 +64,16 @@ parent implemented it. UI delegate Newton completed two-file source link and
 tests then closed. Russell owns full validation only, no source changes/reruns.
 Use bounded sidecar tasks, not repeated broad audits or duplicate watchers.
 
+## S3 continuation prepared
+
+Worktree E:/workspace/Multi-Agent-worktrees/agentos-lite-s3-approval/agentos,
+branch codex/lite-s3-approval, based on S2 PR145 head97b5b885. S3-production-gap.md
+records precise reuse/entry/transaction constraints for LITE-08-005/006/007 and
+LITE-07-103/108. No S3 migration/product changes yet. Next: freeze exact028
+request/decision/continuation design, then implement. Reuse existing canonical
+lifecycle and restart evidence; do not treat legacy registry or hand-posted026
+decisions as execution authorization. S2 full tests continue in their own tree.
+
 Re-read actual GitHub state before merging. The repository reports no required
 branch checks configured; the user's all-CI-green rule is still binding. Only
 close the goal after the matrix is truly closed and final merged-main CI passes.
