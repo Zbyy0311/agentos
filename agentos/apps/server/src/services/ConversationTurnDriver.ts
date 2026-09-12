@@ -101,11 +101,25 @@ export interface TurnContextSnapshotPort {
   insert(input: TurnContextSnapshotWriteInput): { readonly id: string };
 }
 
+/**
+ * LITE-09-102: a chat Turn has no implicit modifying authority. Chat is
+ * classified as modifying unless the execution is proven read-only, and the
+ * sole Workspace modifying authority may already be held by another subject.
+ */
+export interface ChatWorkspaceAuthorityPort {
+  /** The subject currently holding the Workspace modifying authority, if any. */
+  findModifyingHolder(workspaceId: string): {
+    readonly subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN';
+    readonly subjectId: string;
+  } | undefined;
+}
+
 export interface ConversationTurnContextOptions {
   readonly selection?: TurnContextSelectionPort;
   readonly snapshots?: TurnContextSnapshotPort;
   /** Per-Turn Memory budget frozen into the snapshot; null means uncapped. */
   readonly contextTokenBudget?: number | null;
+  readonly workspaceAuthority?: ChatWorkspaceAuthorityPort;
 }
 
 const EMPTY_SELECTION: TurnContextSelectionPort = {
@@ -184,6 +198,23 @@ export class ConversationTurnDriver {
       ...(contextSnapshotId === undefined ? {} : { contextSnapshotId }),
       createdAt: input.createdAt,
     });
+
+    // LITE-09-102 / D2=A: refuse instead of granting implicit modifying
+    // authority. A chat reply never becomes a modifying Run, so when another
+    // subject holds the Workspace's single-writer authority the truthful
+    // outcome is a stable refusal that points at the explicit Run path.
+    if (this.context?.workspaceAuthority !== undefined) {
+      const holder = this.context.workspaceAuthority.findModifyingHolder(input.workspaceId);
+      if (holder !== undefined) {
+        return this.fail(
+          input,
+          reservation,
+          'CONVERSATION_WORKSPACE_MODIFYING_BUSY',
+          `Workspace modifying authority is held by ${holder.subjectKind} ${holder.subjectId}; chat has no implicit modifying authority. Wait for that work to finish, or start an explicit Run.`,
+          0,
+        );
+      }
+    }
 
     // LITE-09-101: freeze and PERSIST the bounded context before any Provider
     // work. A persistence failure finalizes the Turn as failed and must never

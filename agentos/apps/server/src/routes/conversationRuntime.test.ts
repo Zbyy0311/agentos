@@ -206,3 +206,35 @@ test('messages/stream sends, streams durable checkpoints, finalizes a reply, and
     delete process.env.AGENTOS_FORCE_MOCK;
   }
 });
+
+test('LITE-09-102 a busy Workspace refuses chat with a stable code instead of implicit modifying authority', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      const conversation = (created.json as { conversation: { id: string } }).conversation;
+      const db = store.getDatabase();
+      const now = new Date().toISOString();
+      const runId = 'run_' + 'd'.repeat(26);
+      db.prepare('INSERT INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .run('task_' + 'e'.repeat(24), 'workspace-a', 'holder', 'open', 'normal', 'test', now, now);
+      db.prepare('INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+        .run(runId, 'workspace-a', 'task_' + 'e'.repeat(24), runId, 'running', 'initial', 'v2_api', 'test', now, now);
+      db.prepare('INSERT INTO workspace_admissions (id, workspace_id, subject_kind, canonical_run_id, legacy_run_id, requested_mutation_class, effective_mutation_class, enforcement_evidence_json, request_order, state, queue_reason, release_reason, requested_at, granted_at, released_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, 1, ?, NULL, NULL, ?, ?, NULL, ?, ?, 1)')
+        .run('adm_' + 'f'.repeat(26), 'workspace-a', 'CANONICAL_RUN', runId, 'MODIFYING', 'MODIFYING', 'GRANTED', now, now, now, now);
+      const response = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'do the work' }),
+      });
+      assert.equal(response.status, 200);
+      const text = await response.text();
+      assert.ok(text.includes('event: turn.failed'));
+      assert.ok(text.includes('CONVERSATION_WORKSPACE_MODIFYING_BUSY'));
+      const snapshots = db.prepare('SELECT COUNT(*) AS n FROM cr_turn_context_snapshots WHERE conversation_id = ?')
+        .get(conversation.id) as { n: number };
+      assert.equal(snapshots.n, 0);
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});

@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 10,
+  "matrixVersion": 11,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -2631,10 +2631,16 @@
         "apps/server/src/services/BoundedGroupService.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
-      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-101-LOCAL",
+        "S5-102-LOCAL"
+      ],
+      "finding": "保留基线反证：原driver把历史交旧Runner且快照在回复后记录。现执行前冻结隔离快照、Provider输入引用该快照，Group每speaker经同一driver并受Workspace修改权拒绝门约束；D3关闭（无并行修改）。真实浏览器与跨会话双chat互斥仍缺，保持GAP。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -2687,10 +2693,16 @@
         "apps/server/src/services/BoundedGroupService.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
-      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-101-LOCAL",
+        "S5-102-LOCAL"
+      ],
+      "finding": "保留基线反证。现每Turn在调用前写入自己的agent/turn快照，Provider收到该Turn冻结窗口，Turn行回指该快照，实现per-Agent隔离；跨会话双chat互斥仍待独立schema切片，保持GAP。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -4147,10 +4159,15 @@
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "tests": [
-        "apps/server/src/services/GroupTurnDriver.test.ts"
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
-      "finding": "单interaction串行不证明与其他Conversation/Run共享Workspace权限；driver无显式admission。",
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-102-LOCAL"
+      ],
+      "finding": "保留基线反证：driver曾无显式admission。现chat按modifying分类，另一GRANTED MODIFYING主体持权时以稳定码CONVERSATION_WORKSPACE_MODIFYING_BUSY拒绝（unit+真实HTTP），并指向显式Run；READ_ONLY不阻塞，D3保持关闭。双chat互斥需独立admission subject schema切片，保持GAP。",
       "exit": "无隐式modifying authority，缺可靠只读证据显示不可用/要求显式Run；并发与拒绝路径测试。"
     },
     {
@@ -6761,6 +6778,17 @@
       "reason": "Record the pre-invocation frozen context snapshot slice for LITE-09-101; keep GAP because production Memory selection is still empty.",
       "requirementIds": [
         "LITE-09-101"
+      ]
+    },
+    {
+      "version": 11,
+      "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+      "authority": "Main-agent S5 implementation within user-approved scope",
+      "reason": "Record the chat modifying-authority refusal gate and per-Agent pre-invocation snapshots; keep GAP for cross-chat serialization, which needs a separate authorized schema slice.",
+      "requirementIds": [
+        "LITE-09-010",
+        "LITE-09-013",
+        "LITE-09-102"
       ]
     }
   ]

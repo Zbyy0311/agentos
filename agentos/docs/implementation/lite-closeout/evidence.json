@@ -426,5 +426,16 @@
     "result": { "findings": 4 },
     "environment": "Read-only source audit before S5 implementation",
     "limitation": "Confirmed the direct driver handed unbounded history to the Provider, recorded the per-Agent snapshot only after the reply, and had no Workspace admission gate at all. Not PASS evidence."
+  },
+  {
+    "id": "S5-102-LOCAL",
+    "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 src/services/ConversationTurnDriver.test.ts src/services/GroupTurnDriver.test.ts src/routes/conversationRuntime.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0",
+    "result": { "passed": 25, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
+    "requirementIds": ["LITE-09-010", "LITE-09-013", "LITE-09-102"],
+    "limitation": "Chat refusal while another GRANTED MODIFYING subject holds the Workspace is proven at unit and real-HTTP level, with READ_ONLY holders not blocking. Two simultaneous chats are still not mutually serialized because chat has no admission subject row; that needs a separately authorized schema slice, so the rows stay GAP."
   }
 ]

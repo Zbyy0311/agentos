@@ -325,3 +325,69 @@ test('LITE-09-101 TD-08 a context snapshot persistence failure fails the Turn wi
     assert.equal(fx.snapshots.findById(WS, result.turn.contextSnapshotId ?? ''), undefined);
   } finally { fx.close(); }
 });
+
+/** LITE-09-102: seed a Workspace admission row holding the modifying authority. */
+function seedModifyingHolder(db: SqliteDb, workspaceId: string, mutationClass: 'MODIFYING' | 'READ_ONLY'): void {
+  const runId = 'run_' + 'd'.repeat(26);
+  db.prepare(
+    'INSERT OR IGNORE INTO tasks (id, workspace_id, title, status, priority, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run('task_' + 'e'.repeat(24), workspaceId, 'holder', 'open', 'normal', 'test', NOW, NOW);
+  db.prepare(
+    'INSERT OR IGNORE INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+  ).run(runId, workspaceId, 'task_' + 'e'.repeat(24), runId, 'running', 'initial', 'v2_api', 'test', NOW, NOW);
+  db.prepare(
+    'INSERT INTO workspace_admissions (id, workspace_id, subject_kind, canonical_run_id, legacy_run_id, requested_mutation_class, effective_mutation_class, enforcement_evidence_json, request_order, state, queue_reason, release_reason, requested_at, granted_at, released_at, created_at, updated_at, version) VALUES (?, ?, ?, ?, NULL, ?, ?, NULL, 1, ?, NULL, NULL, ?, ?, NULL, ?, ?, 1)',
+  ).run('adm_' + 'f'.repeat(26), workspaceId, 'CANONICAL_RUN', runId, mutationClass, mutationClass, 'GRANTED', NOW, NOW, NOW, NOW);
+}
+
+function workspaceAuthorityFrom(db: SqliteDb) {
+  return {
+    findModifyingHolder: (workspaceId: string) => {
+      const row = db.prepare(
+        "SELECT subject_kind AS subjectKind, canonical_run_id AS canonicalRunId, legacy_run_id AS legacyRunId, id FROM workspace_admissions WHERE workspace_id = ? AND effective_mutation_class = 'MODIFYING' AND state = 'GRANTED' ORDER BY request_order, id LIMIT 1",
+      ).get(workspaceId) as { subjectKind: 'CANONICAL_RUN' | 'LEGACY_AGENT_RUN'; canonicalRunId: string | null; legacyRunId: string | null; id: string } | undefined;
+      if (row === undefined) return undefined;
+      return { subjectKind: row.subjectKind, subjectId: row.canonicalRunId ?? row.legacyRunId ?? row.id };
+    },
+  };
+}
+
+test('LITE-09-102 chat refuses while another subject holds the Workspace modifying authority', async () => {
+  let runnerCalled = false;
+  const fx = fixture(undefined, undefined, () => { runnerCalled = true; });
+  seedModifyingHolder(fx.db, WS, 'MODIFYING');
+  const driver = new ConversationTurnDriver(
+    fx.conversations,
+    fx.stream,
+    (_ws, agentId) => (agentId === 'agent_main' ? ({} as never) : undefined),
+    () => ({ run: async () => { runnerCalled = true; return makeResult('completed', 'should-not-run'); } }),
+    { workspaceAuthority: workspaceAuthorityFrom(fx.db) },
+  );
+  try {
+    const result = await driver.replyWithTurn(input());
+    assert.equal(runnerCalled, false);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.turn.status, 'failed');
+    assert.equal(result.turn.failureCode, 'CONVERSATION_WORKSPACE_MODIFYING_BUSY');
+    assert.match(result.turn.failureMessage ?? '', /explicit Run/);
+    assert.equal(result.message.status, 'failed');
+    assert.equal(result.checkpointCount, 0);
+  } finally { fx.close(); }
+});
+
+test('LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-only stays unavailable', async () => {
+  const fx = fixture(undefined, { workspaceAuthority: undefined });
+  seedModifyingHolder(fx.db, WS, 'READ_ONLY');
+  const driver = new ConversationTurnDriver(
+    fx.conversations,
+    fx.stream,
+    (_ws, agentId) => (agentId === 'agent_main' ? ({} as never) : undefined),
+    () => ({ run: async () => makeResult('completed', 'ok') }),
+    { workspaceAuthority: workspaceAuthorityFrom(fx.db) },
+  );
+  try {
+    const result = await driver.replyWithTurn(input());
+    assert.equal(result.status, 'completed');
+    assert.equal(result.checkpointCount, 0);
+  } finally { fx.close(); }
+});
