@@ -1,6 +1,6 @@
 # Lite Fast Track — Progress Summary
 
-Status: IN PROGRESS — merged slice evidence is recorded below. Controlled Group speaker orchestration (incl. the forward-UI walk wiring) is merged (PR #129/#130/#132). The one Fast-Track step still PARTIAL is Memory Foundation: its remaining item is the MF-2 candidate-generation triggers beyond the terminal-outcome trigger, which need new durable seams (approval decision, review/test artifact, compaction, import, user save) and therefore a new authorization before any implementation.
+Status: IN PROGRESS — merged slice evidence is recorded below. Controlled Group speaker orchestration (incl. the forward-UI walk wiring) is merged (PR #129/#130/#132). The one Fast-Track step still PARTIAL is Memory Foundation: the explicit user-save trigger is now wired (PR #136 + #137), and the remaining MF-2 candidate-generation triggers — accepted approval decision, review/test artifact, compaction, explicit import — each need a new durable seam (new schema or feature) and therefore a new authorization before any implementation.
 
 ## 1. Purpose
 
@@ -56,6 +56,7 @@ beyond the merged evidence it cites.
 | MF-5 Workspace Event stream (migration 025 + writer/authority/sequence, gates A5..A18) | 12/12 + 3/3 + 1/1 + 8/8 PASS; full Server 2673/2666/4/3 |
 | Controlled Group speaker orchestration (resolver + bounded walk) | 7/7 + 7/7 PASS; route 5/5; full Server 2689/2682/4/3 |
 | Controlled Group forward-UI walk wiring | web 170/170 PASS; `next build` clean |
+| MF-2 explicit user save (forward Entry + Workspace Event) | writer 14/14 + route 9/9 PASS; full Server 2684/2689/5/3 (4 known ENOTEMPTY teardowns + 1 environment-flaky L1E admission test) |
 
 The 2 server failures are pre-existing Windows `tar` environment issues in
 `WorktreeArtifactService`, unrelated to the Lite work. First runs were

@@ -53,6 +53,7 @@ legible without re-auditing the repository.
 | MF-5 Workspace Event writer/authority/sequence (gates A5..A18) | 12/12 PASS |
 | MF-5 Workspace Event sanctioned Workspace delete (gate A15) | 1/1 PASS |
 | MF-5 Workspace Event shared contracts | 8/8 PASS |
+| MF-2 explicit user save (PR #136 amendment + #137 impl) | writer 14/14 + route 9/9 PASS |
 | Full Server run (MF-5 Workspace Event stream head) | 2673 total, 2666 passed, 4 failed, 3 skipped |
 | Full Server run (MF-5 API head) | 2590 total, 2583 passed, 4 failed, 3 skipped |
 | Full Server run (MF-5 Candidate API head) | 2593 total, 2586 passed, 4 failed, 3 skipped |
@@ -91,9 +92,11 @@ open/resolve that never deletes.
 
 MF-2 remainder status: the terminal-outcome trigger, normalized-hash and
 FTS-similarity near-duplicate detection were closed by the MF-2R slice
-(PR #125). Still open, each needing a new durable seam before a candidate can
-be generated from it: user save (legacy `MemoryService.create` is
-non-transactional), accepted approval decision (`ApprovalRegistry` is
+(PR #125), and the explicit user save trigger by the user-save slice
+(PR #136 + #137: forward `POST /memory/entries` creating the Entry and emitting
+`memory.entry_created` through the MF-5 Workspace stream in one transaction).
+Still open, each needing a new durable seam before a candidate can
+be generated from it: accepted approval decision (`ApprovalRegistry` is
 in-memory), completed review/test Artifact (no such Artifact type), compaction
 (no compaction implementation), and explicit import (Workspace import forces
 `memory: false`). These are separate authorized work, not this slice.
