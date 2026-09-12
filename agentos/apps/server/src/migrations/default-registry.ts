@@ -27,6 +27,7 @@ import { migration026 } from './migrations/026-mf2-approval-decision-persistence
 import { migration027 } from './migrations/027-mf2-review-test-artifact.js';
 import { migration028 } from './migrations/028-lite-runtime-approval-requests.js';
 import { migration029 } from './migrations/029-s6-conversation-compaction.js';
+import { migration030 } from './migrations/030-s7-explicit-markdown-import.js';
 import type { Migration } from './types.js';
 
 /**
@@ -93,4 +94,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration027,
   migration028,
   migration029,
+  migration030,
 ];

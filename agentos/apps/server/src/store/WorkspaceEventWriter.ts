@@ -18,6 +18,7 @@ import type { WorkspaceSequenceAllocator } from './WorkspaceSequenceAllocator.js
 import { WorkspaceNotFoundError } from './WorkspaceSequenceAllocator.js';
 import { proveWorkspaceArtifactCompletion } from './ArtifactCompletionRepository.js';
 import { proveWorkspaceCompaction } from './CompactionRepository.js';
+import { proveWorkspaceImport } from '../services/MemoryImportService.js';
 
 export type WorkspaceEventWriterErrorCode =
   | 'WORKSPACE_EVENT_WRITER_NOT_BOUND'
@@ -47,6 +48,7 @@ export class WorkspaceEventWriterError extends Error {
 export type WorkspaceEventOriginV1 =
   | { readonly kind: 'memory.artifact_completion'; readonly completionId: string }
   | { readonly kind: 'memory.compaction'; readonly compactionId: string }
+  | { readonly kind: 'memory.import'; readonly importId: string }
   | {
       readonly kind: 'memory.candidate_review';
       readonly candidateId: string;
@@ -129,6 +131,9 @@ export function deriveWorkspaceEventContext(origin: WorkspaceEventOriginV1): Wor
   }
   if (origin.kind === 'memory.compaction') {
     return { correlationId: 'memory-compaction:' + origin.compactionId, causationId: origin.compactionId };
+  }
+  if (origin.kind === 'memory.import') {
+    return { correlationId: 'memory-import:' + origin.importId, causationId: origin.importId };
   }
   if (origin.kind === 'memory.candidate_review') {
     return {
@@ -306,11 +311,13 @@ export class WorkspaceEventWriter {
     const authorized = this.authorize(input.workspaceId, origin, context);
     // Prove, then allocate, then insert: a refused append consumes nothing.
     this.assertAuthorityOriginProven(input.workspaceId, authorized);
-    if (input.type === 'memory.candidate_created' || origin.kind === 'memory.artifact_completion' || origin.kind === 'memory.compaction') {
+    if (input.type === 'memory.candidate_created' || origin.kind === 'memory.artifact_completion' || origin.kind === 'memory.compaction' || origin.kind === 'memory.import') {
       const proof = origin.kind === 'memory.artifact_completion'
         ? proveWorkspaceArtifactCompletion(this.db, input.workspaceId, origin.completionId)
         : origin.kind === 'memory.compaction'
           ? proveWorkspaceCompaction(this.db, input.workspaceId, origin.compactionId)
+          : origin.kind === 'memory.import'
+            ? proveWorkspaceImport(this.db, input.workspaceId, origin.importId)
           : undefined;
       if (input.type !== 'memory.candidate_created' || proof === undefined ||
         Object.entries(proof).some(([key, value]) => input.payload[key] !== value)) {
@@ -363,6 +370,10 @@ export class WorkspaceEventWriter {
     if (value.kind === 'memory.compaction') {
       if (!nonBlank(value.compactionId)) throw new WorkspaceEventWriterError('WORKSPACE_EVENT_INPUT_INVALID');
       return { kind: 'memory.compaction', compactionId: value.compactionId };
+    }
+    if (value.kind === 'memory.import') {
+      if (!nonBlank(value.importId)) throw new WorkspaceEventWriterError('WORKSPACE_EVENT_INPUT_INVALID');
+      return { kind: 'memory.import', importId: value.importId };
     }
     if (value.kind === CANDIDATE_REVIEW_ORIGIN) {
       if (!nonBlank(value.candidateId) || !isPositiveSafeInteger(value.candidateVersion)) {
@@ -491,6 +502,12 @@ export class WorkspaceEventWriter {
     }
     if (authorized.origin === 'memory.compaction') {
       if (authorized.authorityVersion !== 1 || !proveWorkspaceCompaction(this.db, workspaceId, authorized.authorityId)) {
+        throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN');
+      }
+      return;
+    }
+    if (authorized.origin === 'memory.import') {
+      if (authorized.authorityVersion !== 1 || !proveWorkspaceImport(this.db, workspaceId, authorized.authorityId)) {
         throw new WorkspaceEventWriterError('WORKSPACE_EVENT_ORIGIN_UNPROVEN');
       }
       return;

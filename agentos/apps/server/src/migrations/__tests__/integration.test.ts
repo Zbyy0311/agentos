@@ -417,7 +417,7 @@ it('[M27-P5-T001] Fresh database applies the complete 001-014 registry exactly o
   try {
     new MigrationRunner(ctx.db, new MigrationRegistry(DEFAULT_REGISTRY_MIGRATIONS)).run();
     const records = ctx.db.prepare('SELECT migration_id FROM _schema_migrations ORDER BY migration_id').all() as Array<{ migration_id: string }>;
-    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029']);
+    assert.deepEqual(records.map(record => record.migration_id), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013', '014', '015', '016', '017', '018', '019', '020', '021', '022', '023', '024', '025', '026', '027', '028', '029', '030']);
     const compatibilityTables = ctx.db.prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('legacy_data_migrations', 'legacy_task_items') ORDER BY name").all() as Array<{ name: string }>;
     assert.deepEqual(compatibilityTables.map(table => table.name), ['legacy_data_migrations', 'legacy_task_items']);
   } finally {
