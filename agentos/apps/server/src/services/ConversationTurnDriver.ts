@@ -3,6 +3,9 @@ import type { ConversationExecutionEvent, ConversationRunResult } from '@agentos
 import type { AgentProfile, ConversationMessage } from '@agentos/shared';
 import type { AgentTurnRecord } from '../store/AgentTurnRepository.js';
 import type { ConversationRepository, MessageRecord } from '../store/ConversationRepository.js';
+import { createEntityId } from '../store/Identity.js';
+import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
+import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepository.js';
 import type { ConversationStreamService } from './ConversationStreamService.js';
 
 /**
@@ -47,10 +50,93 @@ export interface ReplyWithTurnResult {
 export type ReplyStatus = ConversationRunResult['status'];
 
 export class ConversationTurnDriverError extends Error {
-  constructor(readonly code: 'TURN_DRIVER_AGENT_UNAVAILABLE' | 'TURN_DRIVER_STREAM_FAILED') {
+  constructor(readonly code: 'TURN_DRIVER_AGENT_UNAVAILABLE' | 'TURN_DRIVER_STREAM_FAILED' | 'TURN_DRIVER_CONTEXT_SNAPSHOT_FAILED') {
     super(`TURN_DRIVER_${code.replace('TURN_DRIVER_', '')}`);
     this.name = 'ConversationTurnDriverError';
   }
+}
+
+/** LITE-09-101: bounded deterministic window frozen into every Turn snapshot. */
+export const MAX_FROZEN_HISTORY_MESSAGES = 12;
+/** Retrieval strategy version persisted with the frozen selection. */
+export const TURN_CONTEXT_STRATEGY_VERSION = 'cr-turn-context.v1';
+
+export interface TurnContextSelection {
+  readonly selectedEntryIds: readonly string[];
+  readonly totalTokens: number;
+  readonly truncated: boolean;
+  readonly retrievalStrategyVersion: string;
+}
+
+export interface TurnContextSelectionInput {
+  readonly workspaceId: string;
+  readonly conversationId: string;
+  readonly agentId: string;
+  readonly turnId: string;
+  readonly createdAt: string;
+  readonly contextTokenBudget: number | null;
+}
+
+/** Selection port; the composition root supplies the real Memory selector. */
+export interface TurnContextSelectionPort {
+  select(input: TurnContextSelectionInput): TurnContextSelection;
+}
+
+export interface TurnContextSnapshotWriteInput {
+  readonly id: string;
+  readonly workspaceId: string;
+  readonly conversationId: string;
+  readonly agentId: string;
+  readonly turnId: string;
+  readonly budgetJson: string;
+  readonly selectedEntryIdsJson: string;
+  readonly totalTokens: number;
+  readonly truncated: boolean;
+  readonly retrievalStrategyVersion: string;
+  readonly createdAt: string;
+}
+
+/** Durable write port; must persist before the Provider is invoked. */
+export interface TurnContextSnapshotPort {
+  insert(input: TurnContextSnapshotWriteInput): { readonly id: string };
+}
+
+export interface ConversationTurnContextOptions {
+  readonly selection?: TurnContextSelectionPort;
+  readonly snapshots?: TurnContextSnapshotPort;
+  /** Per-Turn Memory budget frozen into the snapshot; null means uncapped. */
+  readonly contextTokenBudget?: number | null;
+}
+
+const EMPTY_SELECTION: TurnContextSelectionPort = {
+  select: () => ({ selectedEntryIds: [], totalTokens: 0, truncated: false, retrievalStrategyVersion: TURN_CONTEXT_STRATEGY_VERSION }),
+};
+
+/**
+ * Production snapshot writer over the existing CR-5 store. It owns the
+ * transaction so the caller cannot forget to persist before invoking a Provider.
+ */
+export function createDurableTurnContextSnapshotPort(
+  store: { getDatabase(): TransactionDatabase },
+): TurnContextSnapshotPort {
+  return {
+    insert(input: TurnContextSnapshotWriteInput) {
+      const db = store.getDatabase();
+      return inTransaction(db, () => new TurnContextSnapshotRepository(db).insertWithinTransaction({
+        id: input.id,
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        agentId: input.agentId,
+        turnId: input.turnId,
+        budgetJson: input.budgetJson,
+        selectedEntryIdsJson: input.selectedEntryIdsJson,
+        totalTokens: input.totalTokens,
+        truncated: input.truncated,
+        retrievalStrategyVersion: input.retrievalStrategyVersion,
+        createdAt: input.createdAt,
+      }));
+    },
+  };
 }
 
 type RunnerFactory = (options: ConstructorParameters<typeof ConversationAgentRunner>[0]) => {
@@ -68,6 +154,7 @@ export class ConversationTurnDriver {
     private readonly stream: ConversationStreamService,
     private readonly getAgent: (workspaceId: string, agentId: string) => AgentProfile | undefined,
     private readonly runnerFactory?: RunnerFactory,
+    private readonly context?: ConversationTurnContextOptions,
   ) {}
 
   /**
@@ -78,6 +165,15 @@ export class ConversationTurnDriver {
   async replyWithTurn(input: ReplyWithTurnInput): Promise<ReplyWithTurnResult> {
     const agent = this.getAgent(input.workspaceId, input.agentId);
     if (agent === undefined) throw new ConversationTurnDriverError('TURN_DRIVER_AGENT_UNAVAILABLE');
+
+    const history = this.conversations.listMessages(input.workspaceId, input.conversationId)
+      .filter(message => message.id !== input.sourceMessageId && message.status !== 'deleted')
+      .map(toLegacyMessage);
+    const frozenHistory = history.slice(-MAX_FROZEN_HISTORY_MESSAGES);
+    // The snapshot id is chosen up front so the durable Turn can reference the
+    // exact selection it will receive.
+    const contextSnapshotId = this.context?.snapshots === undefined ? undefined : createEntityId('snapshot');
+
     const reservation = this.stream.beginAgentTurnStream({
       workspaceId: input.workspaceId,
       conversationId: input.conversationId,
@@ -85,12 +181,50 @@ export class ConversationTurnDriver {
       messageId: input.responseMessageId,
       agentId: input.agentId,
       sourceMessageId: input.sourceMessageId,
+      ...(contextSnapshotId === undefined ? {} : { contextSnapshotId }),
       createdAt: input.createdAt,
     });
 
-    const history = this.conversations.listMessages(input.workspaceId, input.conversationId)
-      .filter(message => message.id !== input.sourceMessageId && message.status !== 'deleted')
-      .map(toLegacyMessage);
+    // LITE-09-101: freeze and PERSIST the bounded context before any Provider
+    // work. A persistence failure finalizes the Turn as failed and must never
+    // fall back to unbounded history or invoke the Provider.
+    if (this.context?.snapshots !== undefined && contextSnapshotId !== undefined) {
+      try {
+        const selection = (this.context.selection ?? EMPTY_SELECTION).select({
+          workspaceId: input.workspaceId,
+          conversationId: input.conversationId,
+          agentId: input.agentId,
+          turnId: input.turnId,
+          createdAt: input.createdAt,
+          contextTokenBudget: this.context.contextTokenBudget ?? null,
+        });
+        this.context.snapshots.insert({
+          id: contextSnapshotId,
+          workspaceId: input.workspaceId,
+          conversationId: input.conversationId,
+          agentId: input.agentId,
+          turnId: input.turnId,
+          budgetJson: JSON.stringify({
+            agentId: input.agentId,
+            maxFrozenHistoryMessages: MAX_FROZEN_HISTORY_MESSAGES,
+            frozenHistoryMessages: frozenHistory.length,
+            frozenHistoryMessageIds: frozenHistory.map(message => message.id),
+            totalConversationMessages: history.length,
+            contextTokenBudget: this.context.contextTokenBudget ?? null,
+          }),
+          selectedEntryIdsJson: JSON.stringify([...selection.selectedEntryIds]),
+          totalTokens: selection.totalTokens,
+          truncated: selection.truncated,
+          retrievalStrategyVersion: selection.retrievalStrategyVersion,
+          createdAt: input.createdAt,
+        });
+      } catch (error) {
+        return this.fail(
+          input, reservation, 'CONTEXT_SNAPSHOT_FAILED',
+          error instanceof Error ? error.message : String(error), 0,
+        );
+      }
+    }
 
     let ordinal = 0;
     let checkpointCount = 0;
@@ -114,7 +248,7 @@ export class ConversationTurnDriver {
       workspaceRoot: input.workspaceRoot,
       executionId: input.turnId,
       message: input.content,
-      history,
+      history: frozenHistory,
       onEvent,
       ...(input.signal === undefined ? {} : { signal: input.signal }),
     };

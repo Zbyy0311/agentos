@@ -4,7 +4,7 @@ import { createEntityId } from '../store/Identity.js';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createSseWriter, startSseHeartbeat } from './sse.js';
-import { ConversationTurnDriver } from '../services/ConversationTurnDriver.js';
+import { ConversationTurnDriver, createDurableTurnContextSnapshotPort } from '../services/ConversationTurnDriver.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import {
   CONVERSATION_REPLY_MODES,
@@ -428,6 +428,7 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       conversations(),
       store.conversationStreamService(),
       (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
+      { snapshots: createDurableTurnContextSnapshotPort(store) },
     );
     try {
       const result = await driver.run(
@@ -519,6 +520,8 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       conversations(),
       store.conversationStreamService(),
       (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
+      undefined,
+      { snapshots: createDurableTurnContextSnapshotPort(store) },
     );
     try {
       const result = await driver.replyWithTurn({
