@@ -2,12 +2,12 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { createRequire } from 'node:module';
-import { mkdtempSync, rmSync } from 'node:fs';
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createM3RuntimeEventRegistry, type AgentSnapshotV1, type ProviderConfigurationSnapshotV1, type RunSnapshotPayloadV2, type WorkspaceReadOnlyEvidence } from '@agentos/shared';
 import { DurableProcessCoordinator, FileArtifactSink, type ExitEvidence, type NativeIdentity, type NativeProcessHandle, type NativeProcessStreams, type PlatformProcessDriver, type ProcessProbePort, type SurvivorVerification, type TreeTerminationResult } from '@agentos/process-runtime';
-import { KimiCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
+import { CodexProviderAdapter, KimiCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
 import { MigrationRegistry } from '../../migrations/registry.js';
 import { MigrationRunner } from '../../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../../migrations/default-registry.js';
@@ -53,6 +53,7 @@ const RUN = 'run_m4';
 const OP = 'op_' + 'A'.repeat(26);
 const KIMI_EXE = 'C:/kimi.exe';
 let REAL_EXECUTABLE = KIMI_EXE;
+let REAL_PROVIDER_TYPE: 'kimicode' | 'codex' = 'kimicode';
 
 const VERIFIED_EVIDENCE: WorkspaceReadOnlyEvidence = {
   status: 'verified',
@@ -81,8 +82,11 @@ function migratedDb(): Db {
 
 function providerSnapshot(cancelGracePeriodMs = 5000): ProviderConfigurationSnapshotV1 {
   return {
-    providerConfigId: 'pcfg_m4', name: 'Kimi Gate', providerType: 'kimicode', adapterId: 'builtin.kimicode',
-    runtimeMode: 'cli', executable: REAL_EXECUTABLE, argsTemplate: [], model: null, environmentProfileId: null, secretProfileId: null,
+    providerConfigId: 'pcfg_m4', name: 'Kimi Gate', providerType: REAL_PROVIDER_TYPE,
+    adapterId: REAL_PROVIDER_TYPE === 'codex' ? 'builtin.codex' : 'builtin.kimicode',
+    runtimeMode: 'cli', executable: REAL_EXECUTABLE, argsTemplate: [],
+    model: REAL_PROVIDER_TYPE === 'codex' ? (process.env.AGENTOS_CODEX_MODEL ?? null) : null,
+    environmentProfileId: null, secretProfileId: null,
     workingDirectoryMode: 'workspace', workspaceRelativeWorkingDirectory: null,
     capabilities: { sessionResume:false, structuredEvents:true, nativeApprovals:false, subagents:false, toolEvents:true, fileEvents:false, usageEvents:true, reasoningStream:false, interactiveInput:false, pause:false, cancellation:true, modelSelection:true, workspaceAwareness:true, nativeSandbox:false, outputContracts:false },
     timeoutPolicy: { discoveryTimeoutMs:10000, validationTimeoutMs:30000, startupTimeoutMs:60000, idleTimeoutMs:null, totalTimeoutMs:null, cancelGracePeriodMs, approvalTimeoutMs:null },
@@ -353,10 +357,25 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
 }
 
 function close(fx: ReturnType<typeof fixture>): void { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
-function realFixture() {
-  const executable = process.env.AGENTOS_KIMICODE_CLI;
-  if (!executable) throw new Error('AGENTOS_KIMICODE_CLI is required');
+function realFailureDetails(root: string, run: { failureCode?: string; failureMessage?: string }, failedStages: unknown): string {
+  const outputs: string[] = [];
+  const walk = (directory: string): void => {
+    for (const name of readdirSync(directory)) {
+      const path = join(directory, name);
+      if (statSync(path).isDirectory()) walk(path);
+      else if (statSync(path).size <= 64 * 1024) outputs.push(name + ': ' + readFileSync(path, 'utf8').slice(0, 2000));
+    }
+  };
+  const sink = join(root, 'sink');
+  try { walk(sink); } catch { /* no output sink */ }
+  return JSON.stringify({ failureCode: run.failureCode, failureMessage: run.failureMessage, failedStages, stderr: outputs });
+}
+
+function realFixture(provider: 'kimi' | 'codex' = 'kimi') {
+  const executable = provider === 'codex' ? process.env.AGENTOS_CODEX_CLI : process.env.AGENTOS_KIMICODE_CLI;
+  if (!executable) throw new Error((provider === 'codex' ? 'AGENTOS_CODEX_CLI' : 'AGENTOS_KIMICODE_CLI') + ' is required');
   REAL_EXECUTABLE = executable;
+  REAL_PROVIDER_TYPE = provider === 'codex' ? 'codex' : 'kimicode';
   const db = migratedDb();
   seedGraph(db);
   seedAdmission(db);
@@ -377,7 +396,10 @@ function realFixture() {
     artifactSink: new FileArtifactSink(join(root, 'sink')), atomicSeam: seam, driver,
   });
   const probe = new NodeProcessProbePort();
-  const adapter = new KimiCodeProviderAdapter({ probe, discover: async () => ({ found: true, selected: executable, candidates: [{ executable, source: 'configuration', confidence: 1 }], warnings: [] }) });
+  const discover = async () => ({ found: true, selected: executable, candidates: [{ executable, source: 'configuration' as const, confidence: 1 }], warnings: [] });
+  const adapter = provider === 'codex'
+    ? new CodexProviderAdapter({ probe, discover })
+    : new KimiCodeProviderAdapter({ probe, discover });
   const registry = new ProviderRegistry([adapter]);
   const coordinator = new StageExecutionCoordinator({
     registry, durableCoordinator, sessionRepository: sessionAdapter, driver, probe,
@@ -940,6 +962,24 @@ describe('RunEngineProviderDispatcher E2E', () => {
       if (run.status !== 'completed') {
         const failedStages = fx.runStageRepo.listByRun(WS, RUN).filter(stage => stage.status === 'failed');
         throw new Error('REAL_GATE_FAIL ' + JSON.stringify({ failureCode: run.failureCode, failureMessage: run.failureMessage, failedStages: failedStages.map(s => ({ key: s.workflowStageKey, code: s.failureCode, message: s.failureMessage })) }));
+      }
+      assert.equal(run.status, 'completed');
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.equal(outboxCount, eventCount);
+      assert.ok(eventCount > 0);
+    } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+  });
+  it('LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)', { skip: process.env.M4_P4_REAL_CODEX_GATE !== '1' }, async () => {
+    const fx = realFixture('codex');
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const run = fx.runRepo.findById(WS, RUN)!;
+      if (run.status !== 'completed') {
+        const failedStages = fx.runStageRepo.listByRun(WS, RUN).filter(stage => stage.status === 'failed');
+        throw new Error('REAL_CODEX_GATE_FAIL ' + realFailureDetails(fx.root, run, failedStages.map(s => ({ key: s.workflowStageKey, code: s.failureCode, message: s.failureMessage }))));
       }
       assert.equal(run.status, 'completed');
       assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
