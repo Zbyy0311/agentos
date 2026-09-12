@@ -14,6 +14,7 @@
 import type { AgentProfile } from '@agentos/shared';
 import type { SqliteStore } from '../store/SqliteStore.js';
 import { CompactionPolicyRepository, CompactionRepository } from '../store/CompactionRepository.js';
+import { inTransaction } from '../store/Transaction.js';
 import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepository.js';
 import {
   ConversationCompactionService,
@@ -39,12 +40,18 @@ export interface ConversationCompactionTriggerOptions {
   readonly engine: ConversationCompactionService;
   readonly getAgent: (workspaceId: string, agentId: string) => AgentProfile | undefined;
   readonly policyVersion?: string;
+  readonly now?: () => string;
   readonly onAttempt?: (observation: CompactionAttemptObservation) => void;
+  readonly onRecovery?: (observation: { readonly taskId: string; readonly expiredLeaseAt: string }) => void;
   readonly onError?: (code: string, error: unknown) => void;
 }
 
 export class ConversationCompactionTrigger implements ConversationCompactionTriggerPort {
   constructor(private readonly options: ConversationCompactionTriggerOptions) {}
+
+  private now(): string {
+    return (this.options.now ?? (() => new Date().toISOString()))();
+  }
 
   async ensureCompacted(input: {
     readonly workspaceId: string;
@@ -57,6 +64,30 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
       if (new CompactionPolicyRepository(db).findByVersion(policyVersion) === undefined) {
         this.options.onError?.('COMPACTION_POLICY_UNAVAILABLE', new Error(policyVersion));
         return;
+      }
+      // LITE-09-107: an attempt that never came back (crash, restart, killed
+      // process) leaves a durable `running` row with a lease. The persisted
+      // lease is the only evidence of whether it is still alive, so an EXPIRED
+      // lease is converted to `retry-pending` before anything else, and an
+      // unexpired lease is left untouched instead of being stolen.
+      const compactions = new CompactionRepository(db);
+      const active = compactions.findActive(input.workspaceId, input.conversationId);
+      if (active !== undefined && active.status === 'running') {
+        if (active.leaseExpiresAt === null || active.leaseExpiresAt > this.now()) return;
+        try {
+          const reclaimed = inTransaction(db, () => compactions.reclaimExpiredLeaseWithinTransaction({
+            workspaceId: input.workspaceId, id: active.id, expectedVersion: active.version,
+            failureCode: 'COMPACTION_LEASE_EXPIRED',
+            failureMessage: `previous attempt held its lease until ${active.leaseExpiresAt} and never completed`,
+            now: this.now(),
+          }));
+          this.options.onRecovery?.({ taskId: reclaimed.id, expiredLeaseAt: active.leaseExpiresAt });
+        } catch (error) {
+          // A concurrent authority may have finished or reclaimed the same
+          // attempt first; that is a converged outcome, not a new failure.
+          this.options.onError?.('COMPACTION_LEASE_RECLAIM_FAILED', error);
+          return;
+        }
       }
       const agent = this.options.getAgent(input.workspaceId, input.agentId);
       if (agent === undefined) {

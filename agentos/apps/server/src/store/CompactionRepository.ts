@@ -320,6 +320,32 @@ export class CompactionRepository {
     return this.requireById(input.workspaceId, input.id);
   }
 
+  /**
+   * running -> retry-pending, but ONLY when the durable lease has really
+   * expired. A crashed attempt must not block the Conversation forever, and a
+   * live attempt must never be stolen: the persisted lease is the only
+   * evidence, never elapsed wall-clock guessed by the caller.
+   */
+  reclaimExpiredLeaseWithinTransaction(input: {
+    workspaceId: string; id: string; expectedVersion: number; failureCode: string;
+    failureMessage: string; now: string;
+  }): CompactionTaskRecord {
+    assertTransaction(this.db);
+    if (!nonBlank(input.failureCode) || !nonBlank(input.failureMessage) || !isCanonicalUtcTimestamp(input.now)) {
+      throw new CompactionRepositoryError('INPUT_INVALID');
+    }
+    const changed = this.db.prepare(`UPDATE conversation_compactions
+      SET status = 'retry-pending', failure_code = ?, failure_message = ?, lease_owner = NULL,
+        lease_expires_at = NULL, updated_at = ?, version = version + 1
+      WHERE workspace_id = ? AND id = ? AND version = ? AND status = 'running'
+        AND lease_expires_at IS NOT NULL AND lease_expires_at <= ?`).run(
+      input.failureCode, input.failureMessage, input.now,
+      input.workspaceId, input.id, input.expectedVersion, input.now,
+    ) as { changes?: number | bigint };
+    if (Number(changed.changes ?? 0) !== 1) throw new CompactionRepositoryError('CONFLICT');
+    return this.requireById(input.workspaceId, input.id);
+  }
+
   private requireById(workspaceId: string, id: string): CompactionTaskRecord {
     const found = this.findById(workspaceId, id);
     if (!found) throw new CompactionRepositoryError('NOT_FOUND');

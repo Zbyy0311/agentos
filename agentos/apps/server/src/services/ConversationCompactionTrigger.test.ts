@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { ConversationCompactionService } from './ConversationCompactionService.js';
 import { ConversationCompactionTrigger } from './ConversationCompactionTrigger.js';
+import { CompactionRepository } from '../store/CompactionRepository.js';
+import { inTransaction } from '../store/Transaction.js';
 import type { AgentProfile } from '@agentos/shared';
 
 const WS = 'ws_s6_trigger';
@@ -132,6 +134,79 @@ test('S6 trigger freezes the Conversation model and the allowlisted adapter iden
   assert.equal(budget.outputReserveTokens, 2048);
   assert.ok(Number(budget.systemPromptTokens) > 0);
   assert.deepEqual(attempts, [{ outcome: 'published', policyVersion: 'lite-v1', taskId: 'cmp_task_1' }]);
+  fx.close();
+});
+
+/**
+ * S6 / LITE-09-107: a crash or restart leaves a durable `running` row. The
+ * trigger must decide from the PERSISTED lease, never from elapsed wall-clock
+ * guessed by the caller.
+ */
+function seedRunningAttempt(fx: ReturnType<typeof fixture>, leaseExpiresAt: string): string {
+  const db = fx.store.getDatabase();
+  const policy = db.prepare("SELECT id FROM conversation_compaction_policies WHERE policy_version = 'lite-v1'").get() as { id: string };
+  const repository = new CompactionRepository(db);
+  const created = inTransaction(db, () => repository.createTaskWithinTransaction({
+    id: 'snapshot_recovery_1', workspaceId: WS, conversationId: CONV, policyId: policy.id,
+    sourceStartMessageId: 'msg_001', sourceEndMessageId: 'msg_004', sourceMessageCount: 4,
+    sourceHash: 'a'.repeat(64), priorSummaryId: null,
+    budgetJson: JSON.stringify({ policyVersion: 'lite-v1' }),
+    providerConfigId: null, providerType: 'codex', adapterId: 'cli.codex', adapterVersion: '1.0.0',
+    model: 'gpt-5.6-luna', estimatorVersion: 'lite-v1-chars4', createdAt: NOW,
+  }));
+  inTransaction(db, () => repository.claimRunningWithinTransaction({
+    workspaceId: WS, id: created.id, expectedVersion: created.version,
+    leaseOwner: 'compaction-engine', leaseExpiresAt, now: NOW, attempt: 1,
+  }));
+  return created.id;
+}
+
+test('S6 trigger reclaims an EXPIRED running lease before attempting again', async () => {
+  const fx = fixture();
+  const expiredAt = '2026-09-12T15:00:00.000Z';
+  const taskId = seedRunningAttempt(fx, expiredAt);
+  const recoveries: Array<{ taskId: string; expiredLeaseAt: string }> = [];
+  const captured: { input?: Record<string, unknown> } = {};
+  const trigger = new ConversationCompactionTrigger({
+    store: fx.store,
+    engine: fakeEngine(captured, 'published'),
+    getAgent: () => agent({}),
+    now: () => NOW,
+    onRecovery: observation => recoveries.push(observation),
+  });
+  await trigger.ensureCompacted({ workspaceId: WS, conversationId: CONV, agentId: 'agent_codex' });
+  assert.deepEqual(recoveries, [{ taskId, expiredLeaseAt: expiredAt }]);
+  const stored = fx.store.getDatabase()
+    .prepare('SELECT status, failure_code FROM conversation_compactions WHERE id = ?')
+    .get(taskId) as { status: string; failure_code: string | null };
+  assert.equal(stored.status, 'retry-pending');
+  assert.equal(stored.failure_code, 'COMPACTION_LEASE_EXPIRED');
+  // The reclaimed attempt does not block the new one.
+  assert.ok(captured.input, 'the trigger must continue after reclaiming');
+  fx.close();
+});
+
+test('S6 trigger never steals a live lease', async () => {
+  const fx = fixture();
+  const liveUntil = '2026-09-12T17:00:00.000Z';
+  const taskId = seedRunningAttempt(fx, liveUntil);
+  const captured: { input?: Record<string, unknown> } = {};
+  const recoveries: unknown[] = [];
+  const trigger = new ConversationCompactionTrigger({
+    store: fx.store,
+    engine: fakeEngine(captured, 'published'),
+    getAgent: () => agent({}),
+    now: () => NOW,
+    onRecovery: observation => recoveries.push(observation),
+  });
+  await trigger.ensureCompacted({ workspaceId: WS, conversationId: CONV, agentId: 'agent_codex' });
+  assert.deepEqual(recoveries, []);
+  assert.equal(captured.input, undefined, 'a live attempt must not be duplicated');
+  const stored = fx.store.getDatabase()
+    .prepare('SELECT status, lease_owner FROM conversation_compactions WHERE id = ?')
+    .get(taskId) as { status: string; lease_owner: string | null };
+  assert.equal(stored.status, 'running');
+  assert.equal(stored.lease_owner, 'compaction-engine');
   fx.close();
 });
 
