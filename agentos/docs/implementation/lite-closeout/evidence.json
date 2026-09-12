@@ -143,5 +143,39 @@
     },
     "environment": "Read-only source inspection",
     "limitation": "Static counterexamples only; bounded next runtime tests in S1-retrieval-counterexamples.md; never PASS evidence."
+  },
+  {
+    "id": "S1D-SOURCE",
+    "baseline": "f82821c734ad95daf3580bb37ddad905ed1c4e10",
+    "kind": "source-audit",
+    "command": "git show f82821c7:agentos/apps/server/src/routes/memoryRuntime.ts; inspect explicit-save lookup before validator and missing boundary/source merge",
+    "cwd": "repository-root",
+    "requirementIds": [
+      "LITE-07-003",
+      "LITE-07-107"
+    ],
+    "result": {
+      "findings": 3
+    },
+    "environment": "Read-only source inspection",
+    "limitation": "Source counterevidence only; invalid input can converge, scope/status are not passed, new sources are discarded. Not PASS evidence."
+  },
+  {
+    "id": "S1D-GREEN",
+    "baseline": "b1598a71ca9d8c0c82fe87f1bf044dbaa96daa84",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 src/routes/memoryRuntime.test.ts src/store/MemoryEntryRepository.test.ts src/store/WorkspaceEventWriter.test.ts src/services/WorkspaceEventContextAuthority.test.ts",
+    "cwd": "apps/server",
+    "requirementIds": [
+      "LITE-07-003",
+      "LITE-07-107"
+    ],
+    "result": {
+      "passed": 46,
+      "failed": 0,
+      "skipped": 0
+    },
+    "environment": "Windows; Node v24.18.0; pnpm 11.11.0",
+    "limitation": "Explicit-save shape/boundary/exact provenance/transaction regression only. Near-duplicate review, source identity truthfulness, Global/security gates, multi-process concurrency and full Lite acceptance remain open."
   }
 ]

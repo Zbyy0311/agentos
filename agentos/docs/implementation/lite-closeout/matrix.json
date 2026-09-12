@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 2,
+  "matrixVersion": 3,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1912,15 +1912,21 @@
       "state": "GAP",
       "workPackage": "S1",
       "implementation": [
-        "apps/server/src/services/MemoryCandidateGenerationService.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.ts",
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryCandidateGenerationService.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+        "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S1A-RED"
+        "S1A-RED",
+        "S1A-GREEN",
+        "S1D-SOURCE",
+        "S1D-GREEN"
       ],
-      "finding": "精确/normalized hash查找仅限Workspace，未过滤status或Scope/owner；终态精确命中直接返回并丢弃新来源。见MemoryCandidateRepository.ts:617-637、MemoryCandidateGenerationService.ts:163-170。",
+      "finding": "精确/normalized hash查找仅限Workspace，未过滤status或Scope/owner；终态精确命中直接返回并丢弃新来源。见MemoryCandidateRepository.ts:617-637、MemoryCandidateGenerationService.ts:163-170。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
       "exit": "同Scope/owner精确重复原子汇聚来源和规范事件；重放零新增；不同owner不错误汇聚，近似重复保留审核。"
     },
     {
@@ -3981,15 +3987,20 @@
       "implementation": [
         "apps/server/src/store/MemoryCandidateRepository.ts",
         "apps/server/src/services/MemoryCandidateGenerationService.ts",
-        "apps/server/src/routes/memoryRuntime.ts"
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryCandidateGenerationService.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+        "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S1A-RED"
+        "S1A-RED",
+        "S1A-GREEN",
+        "S1D-SOURCE",
+        "S1D-GREEN"
       ],
-      "finding": "查重未隔离Scope/owner/category及active状态；终态精确命中缺来源合并与版本/Event/Outbox，显式save在完整校验前返回命中。",
+      "finding": "查重未隔离Scope/owner/category及active状态；终态精确命中缺来源合并与版本/Event/Outbox，显式save在完整校验前返回命中。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
       "exit": "补可证实重复分支：同owner来源合并并发收敛；不同owner不串线；近重复审核，来源保留。"
     },
     {
@@ -6607,6 +6618,16 @@
           "to": "GAP",
           "reason": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。"
         }
+      ]
+    },
+    {
+      "version": 3,
+      "baseline": "b1598a71ca9d8c0c82fe87f1bf044dbaa96daa84",
+      "authority": "Main-agent verification within frozen user-approved scope",
+      "reason": "Attach S1-D explicit-save evidence to existing requirements; preserve original counterevidence. No state changes or scope additions; remaining review/source obligations stay GAP.",
+      "requirementIds": [
+        "LITE-07-003",
+        "LITE-07-107"
       ]
     }
   ]
