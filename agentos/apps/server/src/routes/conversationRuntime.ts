@@ -272,7 +272,25 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
     const compactions = new CompactionRepository(store.getDatabase());
     const tasks = compactions.listForConversation(workspace.id, req.params.conversationId);
     const policyIds = [...new Set(tasks.map(task => task.policyId))];
+    // LITE-13-101 also has to answer WHO adopted a summary: a published summary
+    // only matters through the Turn and frozen context snapshot that used it.
+    // Both are read back from durable rows; nothing is inferred.
+    const adoptions = (store.getDatabase().prepare(
+      'SELECT id, turn_id, created_at, budget_json FROM cr_turn_context_snapshots WHERE conversation_id = ? ORDER BY created_at ASC, id ASC',
+    ).all(req.params.conversationId) as Array<{ id: string; turn_id: string | null; created_at: string; budget_json: string }>)
+      .flatMap(row => {
+        let summaryId: unknown;
+        try {
+          summaryId = (JSON.parse(row.budget_json) as { compactionSummaryId?: unknown }).compactionSummaryId;
+        } catch {
+          return [];
+        }
+        return typeof summaryId === 'string'
+          ? [{ snapshotId: row.id, turnId: row.turn_id, summaryId, createdAt: row.created_at }]
+          : [];
+      });
     res.json({
+      adoptions,
       tasks: tasks.map(task => ({
         id: task.id, status: task.status, policyId: task.policyId,
         sourceStartMessageId: task.sourceStartMessageId, sourceEndMessageId: task.sourceEndMessageId,

@@ -90,15 +90,29 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
         memoryContextTokens: snapshot?.totalTokens ?? 0,
         outputReserveTokens: COMPACTION_OUTPUT_RESERVE_TOKENS,
       };
+      // The threshold is evaluated over the EFFECTIVE context, not over the raw
+      // transcript: Messages an already-published summary covers must not be
+      // compressed a second time. Only the uncompressed tail is considered, and
+      // the previous summary is chained into the next one.
       const prior = new CompactionRepository(db).findLatestPublished(input.workspaceId, input.conversationId);
-      const priorSummary = prior === undefined || prior.summary === null
-        ? null
-        : { id: prior.id, summary: prior.summary };
+      let considered = messages;
+      let priorSummary: { readonly id: string; readonly summary: string } | null = null;
+      if (prior !== undefined && prior.summary !== null && prior.sourceEndMessageId !== null) {
+        const anchor = messages.findIndex(message => message.id === prior.sourceEndMessageId);
+        if (anchor >= 0) {
+          considered = messages.slice(anchor + 1);
+          priorSummary = { id: prior.id, summary: prior.summary };
+        }
+        // A missing anchor means the covered range can no longer be located, so
+        // the previous summary is not reused as a prefix: the attempt recomputes
+        // from the full transcript instead of silently compressing a range whose
+        // boundary is no longer provable.
+      }
       const result = await this.options.engine.compact({
         workspaceId: input.workspaceId,
         conversationId: input.conversationId,
         policyVersion,
-        messages,
+        messages: considered,
         budget,
         provider,
         priorSummary,
