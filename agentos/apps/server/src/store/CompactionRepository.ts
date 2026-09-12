@@ -326,3 +326,24 @@ export class CompactionRepository {
     return found;
   }
 }
+
+/**
+ * S6: independent durable source proof reused by the Workspace event authority
+ * and writer. A compaction candidate may only be published under the origin
+ * that proves the actual published compaction row and its real Candidate.
+ */
+export function proveWorkspaceCompaction(db: TransactionDatabase, workspaceId: string, compactionId: string): {
+  candidateId: string; scope: string; category: string; authority: string; decision: string;
+} | undefined {
+  return db.prepare(`SELECT c.id AS candidateId, c.scope, c.category, c.authority, c.decision
+    FROM conversation_compactions comp
+    JOIN memory_candidate_entries c ON c.id = comp.candidate_id
+    JOIN memory_candidate_sources s ON s.candidate_id = c.id
+    WHERE comp.workspace_id = ? AND comp.id = ? AND comp.status = 'published'
+      AND comp.summary IS NOT NULL AND comp.published_at IS NOT NULL
+      AND c.workspace_id = comp.workspace_id AND c.version = 1
+      AND c.decision = 'review-required' AND c.authority = 'agent-derived'
+      AND c.merged_into_entry_id IS NULL
+      AND s.source_kind = 'conversation' AND s.source_id = comp.conversation_id`)
+    .get(workspaceId, compactionId) as ReturnType<typeof proveWorkspaceCompaction>;
+}
