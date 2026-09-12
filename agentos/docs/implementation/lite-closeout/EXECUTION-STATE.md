@@ -64,6 +64,29 @@ parent implemented it. UI delegate Newton completed two-file source link and
 tests then closed. Russell owns full validation only, no source changes/reruns.
 Use bounded sidecar tasks, not repeated broad audits or duplicate watchers.
 
+## Current closeout progress after PR145
+
+- PR143 merged50255d83, PR144 merged30c9de3a, PR145 merged48bb4321. Main CI
+  for48bb4321 completed success (run34691092265).
+- S3 branch codex/lite-s3-approval head d76cce34 has additive028 runtime
+  approval persistence, pre-spawn gate, original-Run continuation/rejection,
+  route and evidence. Independent review P1/P2 findings were fixed. Final full
+  S3 run on the frozen source:2753 pass/4 fail/3 skip; all4 failures are
+  ENOTEMPTY teardown leftovers. S3 rows remain GAP pending exact-head CI and
+  live Provider/browser evidence. Push/PR is next; do not merge without green CI.
+- S4 branch codex/lite-s4-provider has only production-chain audit commit
+  d7fe4c58. Do not implement before S4 audit/authorization.
+
+## S3 continuation prepared
+
+Worktree E:/workspace/Multi-Agent-worktrees/agentos-lite-s3-approval/agentos,
+branch codex/lite-s3-approval, based on S2 PR145 head97b5b885. S3-production-gap.md
+records precise reuse/entry/transaction constraints for LITE-08-005/006/007 and
+LITE-07-103/108. No S3 migration/product changes yet. Next: freeze exact028
+request/decision/continuation design, then implement. Reuse existing canonical
+lifecycle and restart evidence; do not treat legacy registry or hand-posted026
+decisions as execution authorization. S2 full tests continue in their own tree.
+
 Re-read actual GitHub state before merging. The repository reports no required
 branch checks configured; the user's all-CI-green rule is still binding. Only
 close the goal after the matrix is truly closed and final merged-main CI passes.

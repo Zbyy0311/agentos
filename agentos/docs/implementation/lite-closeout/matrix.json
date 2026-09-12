@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 6,
+  "matrixVersion": 8,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -2230,13 +2230,20 @@
       "state": "GAP",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts"
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "apps/server/src/routes/runtimeApprovals.test.ts",
+        "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": [],
-      "finding": "实际approvals路由使用内存ApprovalRegistry；独立approval-decisions落库未证明与原Run授权链合一。",
+      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "finding": "S3已在真实协调器pre-spawn边界持久请求并使Run/Stage等待；批准后续跑原Run、重启扫描approved unconsumed、拒绝终止。实际Provider live调用与完整产品UI仍待验，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -2248,13 +2255,20 @@
       "state": "GAP",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts"
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "apps/server/src/routes/runtimeApprovals.test.ts",
+        "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": [],
-      "finding": "实际approvals路由使用内存ApprovalRegistry；独立approval-decisions落库未证明与原Run授权链合一。",
+      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "finding": "S3已验证版本CAS重放、路由重试收敛和Event失败整体回滚；真实并发HTTP竞争和live Provider证据仍需补齐，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -2266,13 +2280,20 @@
       "state": "GAP",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts"
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "apps/server/src/routes/runtimeApprovals.test.ts",
+        "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
-      "evidence": [],
-      "finding": "实际approvals路由使用内存ApprovalRegistry；独立approval-decisions落库未证明与原Run授权链合一。",
+      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "finding": "S3已验证持久过期、Launch Plan/Agent/Provider快照哈希漂移拒绝及一次性消费；跨进程时钟和live Provider验收仍缺，保持GAP。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -3912,14 +3933,18 @@
       "state": "GAP",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts",
-        "apps/server/src/routes/approvalDecisions.ts"
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/MemoryRuntimeEventEmitter.ts"
       ],
       "tests": [
-        "apps/server/src/routes/approvalDecisions.test.ts"
+        "apps/server/src/routes/runtimeApprovals.test.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.test.ts"
       ],
-      "evidence": [],
-      "finding": "新增独立落库入口未接实际内存审批Registry，重复请求新ID，无规范candidate_created事件。",
+      "evidence": ["S3-APPROVAL-SOURCE", "S3-LOCAL-39", "S3-REVIEW-FIX", "S3-FULL-FINAL"],
+      "finding": "保留基线反证：旧approval-decisions为独立入口。S3 ead3001b已在pre-spawn gate、028请求/026决定、approval.resolved Candidate Event和重放回滚上取得证据；真实Provider live调用及浏览器审批验收仍缺，保持GAP。",
       "exit": "真实审批→原Run行为→持久决定→唯一带来源候选+事件；deny不生成候选。"
     },
     {
@@ -6672,6 +6697,20 @@
       "authority": "Main-agent implementation and verification within approved S2 scope",
       "reason": "Record bounded Artifact lifecycle implementation and actual subprocess/page evidence. Keep original source audit and all GAP states; live model invocation and full gates still open. No new requirements or deferrals.",
       "requirementIds": ["LITE-07-104", "LITE-07-108"]
+    },
+    {
+      "version": 7,
+      "baseline": "ead3001b82251fe85e1b176ce5b2d55fbbaa3e16",
+      "authority": "Main-agent S3 implementation and verification within user-approved scope",
+      "reason": "Record bounded runtime approval persistence, pre-spawn gate, original-Run continuation and candidate evidence. Keep GAP states because live Provider/browser and full CI acceptance remain open.",
+      "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"]
+    },
+    {
+      "version": 8,
+      "baseline": "d76cce343b83fa428ed7d5c191a2ad581df69c90",
+      "authority": "Main-agent remediation of independent S3 review findings within approved scope",
+      "reason": "Fix spawn-right expiry, contradictory replay, recovery-required resume bypass, and environment-value drift; preserve the non-green full suite and four ENOTEMPTY teardown failures. No matrix state changes.",
+      "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"]
     }
   ]
 }

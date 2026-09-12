@@ -19,7 +19,9 @@ test('LITE-07-104/108: fresh and through026 upgrade apply identical additive 027
     for (const original of before) {
       assert.deepEqual(upgrade.prepare('SELECT type,name,sql FROM sqlite_master WHERE name = ?').get(original.name), original);
     }
-    for (const migration of DEFAULT_REGISTRY_MIGRATIONS) migration.apply({ db: fresh });
+    // Compare at the 027 boundary; later additive migrations are outside this
+    // historical upgrade proof.
+    for (const migration of DEFAULT_REGISTRY_MIGRATIONS.filter(m => m.id <= '027')) migration.apply({ db: fresh });
     assert.deepEqual(upgrade.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all(), fresh.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all());
     assert.equal(migration027Checksum, createHash('sha256').update(MF2_ARTIFACT_027_DDL_STATEMENTS.join('\n')).digest('hex').slice(0, 16));
     const fks = upgrade.prepare("PRAGMA foreign_key_list('artifact_completions')").all() as { table: string }[];

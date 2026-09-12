@@ -232,6 +232,42 @@ export class MemoryRuntimeEventEmitter {
         authority: record.authority, decision: record.decision } });
   }
 
+  /** S3: emit only a Candidate proven from the accepted durable approval request. */
+  emitPersistedApprovalCandidateWithinTransaction(input: {
+    workspaceId: string; runId: string; requestId: string; decisionId: string; candidateId: string;
+    resolvedEventId: string; eventContext: RuntimeEventContextAuthoritySourceV1; timestamp: string;
+  }): { readonly eventId: string; readonly outboxId: string } {
+    if (!isTransactionActive(this.db)) throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+    const scope = this.resolveScope(input);
+    this.assertAuthorityOriginProven(input.workspaceId, input.runId, scope.eventContext);
+    const record = this.candidates.findCandidateById(input.workspaceId, input.candidateId);
+    const source = this.db.prepare(`SELECT r.id FROM runtime_approval_requests r
+      JOIN approval_decisions d ON d.id = r.decision_record_id
+      JOIN memory_candidate_entries c ON c.id = ?
+      JOIN memory_candidate_sources runSource ON runSource.candidate_id = c.id
+      JOIN memory_candidate_sources eventSource ON eventSource.candidate_id = c.id
+      JOIN runtime_events resolved ON resolved.id = ?
+      WHERE r.id = ? AND r.workspace_id = ? AND r.run_id = ? AND r.status = 'approved'
+        AND r.decision_record_id = ? AND r.approval_resolved_event_id IS NULL
+        AND d.workspace_id = r.workspace_id AND d.run_id = r.run_id
+        AND d.approval_request_id = r.id AND d.decision = 'allow_once'
+        AND d.action_fingerprint = r.action_fingerprint AND d.risk_level = r.risk_level
+        AND c.workspace_id = r.workspace_id AND c.authority = 'user-explicit'
+        AND c.decision = 'review-required' AND c.merged_into_entry_id IS NULL
+        AND runSource.source_kind = 'run' AND runSource.source_id = r.run_id
+        AND eventSource.source_kind = 'event' AND eventSource.source_id = resolved.id
+        AND resolved.workspace_id = r.workspace_id AND resolved.run_id = r.run_id
+        AND resolved.approval_request_id = r.id AND resolved.type = 'approval.resolved'`)
+      .get(input.candidateId, input.resolvedEventId, input.requestId, input.workspaceId, input.runId, input.decisionId);
+    if (!source || !record || record.version !== 1) throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+    const fact = this.writer.appendWithinTransaction({ type: 'memory.candidate_created',
+      workspaceId: input.workspaceId, runId: input.runId, timestamp: input.timestamp,
+      source: 'memory-engine', eventContext: scope.eventContext,
+      payload: { candidateId: record.id, scope: record.scope, category: record.category,
+        authority: record.authority, decision: record.decision! } });
+    return { eventId: fact.event.id, outboxId: fact.outbox.id };
+  }
+
   /** Record the review itself, plus only the Entry mutation that actually occurred. */
   emitCandidateReviewed(
     input: ReviewMemoryCandidateInput & {

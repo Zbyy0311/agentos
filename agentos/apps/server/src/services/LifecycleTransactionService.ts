@@ -973,10 +973,17 @@ export class LifecycleTransactionService {
 
   requestApproval(input: RequestApprovalInput): CompositeLifecycleTransactionResult {
     this.validateRequestApprovalInput(input);
+    return this.dependencies.runInTransaction(() => this.requestApprovalWithinTransaction(input));
+  }
+
+  /** Caller owns BEGIN/COMMIT; used when a durable approval request must
+   * commit atomically with the canonical waiting transition and Event/Outbox. */
+  requestApprovalWithinTransaction(input: RequestApprovalInput): CompositeLifecycleTransactionResult {
+    this.validateRequestApprovalInput(input);
     const expectedRunVersion = this.expectedRunVersion(input);
     const expectedStageVersion = input.stageId === undefined ? undefined : this.expectedStageVersion(input);
 
-    return this.dependencies.runInTransaction(() => {
+    {
       const run = this.requireRun(input.workspaceId, input.runId);
       this.assertApprovalRequestAvailable(run.id, input.approvalRequestId);
       const stage = input.stageId === undefined
@@ -1030,15 +1037,21 @@ export class LifecycleTransactionService {
       );
       const outbox = this.insertOutbox(event, timestamp);
       return this.compositeResult(input.workspaceId, input.runId, [event], [outbox]);
-    });
+    }
   }
 
   resolveApprovalToRunning(input: ResolveApprovalToRunningInput): CompositeLifecycleTransactionResult {
     this.validateResolveApprovalInput(input, ['approve_once', 'approve_run', 'approve_workspace']);
+    return this.dependencies.runInTransaction(() => this.resolveApprovalToRunningWithinTransaction(input));
+  }
+
+  /** Caller owns BEGIN/COMMIT; preserves the existing approval-history binding. */
+  resolveApprovalToRunningWithinTransaction(input: ResolveApprovalToRunningInput): CompositeLifecycleTransactionResult {
+    this.validateResolveApprovalInput(input, ['approve_once', 'approve_run', 'approve_workspace']);
     const expectedRunVersion = this.expectedRunVersion(input);
     const expectedStageVersion = input.stageId === undefined ? undefined : this.expectedStageVersion(input);
 
-    return this.dependencies.runInTransaction(() => {
+    {
       const run = this.requireRun(input.workspaceId, input.runId);
       this.assertApprovalResolutionBinding(input, run.id);
       this.assertExpectedRunState(run, 'waiting_approval');
@@ -1091,16 +1104,23 @@ export class LifecycleTransactionService {
       );
       const outbox = this.insertOutbox(event, timestamp);
       return this.compositeResult(input.workspaceId, input.runId, [event], [outbox]);
-    });
+    }
   }
 
   resolveApprovalToFailure(input: ResolveApprovalToFailureInput): CompositeLifecycleTransactionResult {
     this.validateResolveApprovalInput(input, ['reject']);
     this.validateFailureInput(input);
+    return this.dependencies.runInTransaction(() => this.resolveApprovalToFailureWithinTransaction(input));
+  }
+
+  /** Caller owns BEGIN/COMMIT; reject and terminal lifecycle share one commit. */
+  resolveApprovalToFailureWithinTransaction(input: ResolveApprovalToFailureInput): CompositeLifecycleTransactionResult {
+    this.validateResolveApprovalInput(input, ['reject']);
+    this.validateFailureInput(input);
     const expectedRunVersion = this.expectedRunVersion(input);
     const expectedStageVersion = this.expectedStageVersion(input);
 
-    return this.dependencies.runInTransaction(() => {
+    {
       const run = this.requireRun(input.workspaceId, input.runId);
       this.assertApprovalResolutionBinding(input, run.id);
       this.assertExpectedRunState(run, 'waiting_approval');
@@ -1200,7 +1220,7 @@ export class LifecycleTransactionService {
       events.push(runEvent);
       outboxes.push(this.insertOutbox(runEvent, timestamp));
       return this.compositeResult(input.workspaceId, input.runId, events, outboxes);
-    });
+    }
   }
 
   resolveApprovalToCancellation(input: ResolveApprovalToCancellationInput): CompositeLifecycleTransactionResult {
@@ -1209,7 +1229,8 @@ export class LifecycleTransactionService {
     return this.dependencies.runInTransaction(() => this.resolveApprovalToCancellationWithinTransaction(input));
   }
 
-  private resolveApprovalToCancellationWithinTransaction(
+  /** Caller owns BEGIN/COMMIT; cancel and terminal lifecycle share one commit. */
+  resolveApprovalToCancellationWithinTransaction(
     input: ResolveApprovalToCancellationInput,
   ): CompositeLifecycleTransactionResult {
     const expectedRunVersion = this.expectedRunVersion(input);
