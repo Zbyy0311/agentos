@@ -49,6 +49,7 @@ import { createWorktreeRoutes } from './routes/worktrees.js';
 import { WorktreeManager } from './services/WorktreeManager.js';
 import { createStorageRoutes } from './routes/storage.js';
 import { createApprovalRoutes } from './routes/approvals.js';
+import { createApprovalDecisionRoutes } from './routes/approvalDecisions.js';
 import { createProviderConfigRoutes } from './routes/providerConfigs.js';
 import { createLocalCorsOptions, createLocalWriteGuard, resolveLocalApiSecurityConfig } from './localApiSecurity.js';
 import { acquireServerOwnership, type ServerOwnership } from './serverOwnership.js';
@@ -293,6 +294,7 @@ async function bootstrap(): Promise<void> {
     app.use('/api/workspaces/:workspaceId', createWorktreeRoutes(workspaceManager, worktreeManager, artifactService, store));
     app.use('/api/workspaces/:workspaceId', createStorageRoutes(workspaceManager, PROJECT_ROOT, store, artifactService));
     app.use('/api/workspaces/:workspaceId', createApprovalRoutes(store, workspaceManager));
+    app.use('/api/workspaces/:workspaceId', createApprovalDecisionRoutes(store, workspaceManager));
     app.use('/api/workspaces/:workspaceId', createProviderConfigRoutes(store, workspaceManager));
     app.use('/api', createPreferenceRoutes(store, workspaceManager, preferenceService));
     app.use('/api/workspaces/:workspaceId/tasks', createTaskRoutes(store, workspaceManager, {
