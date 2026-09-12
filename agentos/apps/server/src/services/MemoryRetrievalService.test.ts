@@ -45,7 +45,7 @@ interface Fx {
   close(): void;
 }
 
-function fixture(): Fx {
+function fixture(nowMs?: number): Fx {
   const root = mkdtempSync(join(tmpdir(), 'agentos-mf3-'));
   const path = join(root, 'agentos.sqlite');
   const db = new DatabaseSync(path);
@@ -59,7 +59,7 @@ function fixture(): Fx {
     'INSERT INTO workspaces (id, name, root_path, canonical_root_path, last_opened_at, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
   ).run(WS, WS, 'C:/tmp/ws_mf3', 'C:/tmp/ws_mf3', NOW, NOW, NOW);
   const repo = new MemoryEntryRepository(db as unknown as TransactionDatabase);
-  const service = new MemoryRetrievalService(repo);
+  const service = new MemoryRetrievalService(repo, () => nowMs ?? Date.now());
   return { db, repo, service, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
 }
 
@@ -293,5 +293,64 @@ test('MF3-15 no cross-workspace leakage', () => {
     fx.repo.createEntry(entry({ workspaceId: 'ws_other', scope: 'global', ownerTaskId: undefined } as Partial<CreateMemoryEntryInput>));
     const results = fx.service.retrieve({ context: CONTEXT });
     assert.equal(results.length, 0);
+  } finally { fx.close(); }
+});
+
+test('LITE-07-109: validity is inclusive at start and exclusive at end or expiry', () => {
+  const clock = Date.parse(NOW);
+  const before = new Date(clock - 1).toISOString();
+  const after = new Date(clock + 1).toISOString();
+  const fx = fixture(clock);
+  try {
+    const visible = [
+      fx.repo.createEntry(entry()),
+      fx.repo.createEntry(entry({ validFrom: NOW })),
+      fx.repo.createEntry(entry({ validUntil: after })),
+      fx.repo.createEntry(entry({ expiresAt: after })),
+      fx.repo.createEntry(entry({ validFrom: before, validUntil: after, expiresAt: after })),
+    ];
+    const hidden = [
+      fx.repo.createEntry(entry({ validFrom: after })),
+      fx.repo.createEntry(entry({ validUntil: NOW })),
+      fx.repo.createEntry(entry({ expiresAt: NOW })),
+      fx.repo.createEntry(entry({ validUntil: before })),
+      fx.repo.createEntry(entry({ expiresAt: before })),
+      fx.repo.createEntry(entry({ validFrom: before, validUntil: after, expiresAt: NOW })),
+    ];
+    const actual = fx.service.retrieve({ context: CONTEXT }).map(result => result.entry.id).sort();
+    assert.deepEqual(actual, visible.map(row => row.id).sort());
+    // Eligibility is a read-time decision, not mutation or deletion.
+    for (const row of hidden) assert.deepEqual(fx.repo.findById(WS, row.id), row);
+  } finally { fx.close(); }
+});
+
+test('LITE-07-109: malformed persisted dates fail closed and the clock is captured once', () => {
+  const fx = fixture();
+  try {
+    const good = fx.repo.createEntry(entry());
+    for (const fields of [
+      { validFrom: 'not-a-date' }, { validUntil: '' }, { expiresAt: 'invalid' },
+      { validFrom: '2099-01-01T00:00:00.000Z', validUntil: NOW },
+    ]) fx.repo.createEntry(entry(fields));
+    let calls = 0;
+    const service = new MemoryRetrievalService(fx.repo, () => { calls += 1; return Date.parse(NOW); });
+    assert.deepEqual(service.retrieve({ context: CONTEXT }).map(row => row.entry.id), [good.id]);
+    assert.equal(calls, 1);
+    assert.throws(() => new MemoryRetrievalService(fx.repo, () => NaN).retrieve({ context: CONTEXT }),
+      /MEMORY_RETRIEVAL_INPUT_INVALID/);
+  } finally { fx.close(); }
+});
+
+test('LITE-07-109: restricted pinned matches cannot consume a limit or leak through retrieval', () => {
+  const fx = fixture(Date.parse(NOW));
+  try {
+    const marker = 'restricted-fixture-value-no-real-secret';
+    const restricted = fx.repo.createEntry(entry({ sensitivity: 'restricted', pinned: true,
+      title: marker, content: marker, authority: 'user-explicit' }));
+    const good = fx.repo.createEntry(entry({ content: 'ordinary allowed content' }));
+    const result = fx.service.retrieveWithStatus({ context: CONTEXT, query: marker, limit: 1 });
+    assert.deepEqual(result.results.map(row => row.entry.id), [good.id]);
+    assert.equal(JSON.stringify(result).includes(marker), false);
+    assert.deepEqual(fx.repo.findById(WS, restricted.id), restricted);
   } finally { fx.close(); }
 });
