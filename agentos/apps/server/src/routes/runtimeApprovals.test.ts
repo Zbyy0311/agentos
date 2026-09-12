@@ -71,6 +71,12 @@ async function withServer(run: (fixture: RouteFixture) => Promise<void>): Promis
   app.use(express.json());
   app.use('/api/workspaces/:workspaceId', createRuntimeApprovalRoutes(store, workspaceManager, gate));
   const server = app.listen(0, '127.0.0.1');
+  await new Promise<void>((resolve, reject) => {
+    server.once('listening', resolve);
+    server.once('error', reject);
+  });
+  const address = server.address() as AddressInfo;
+  if (!address || typeof address.port !== 'number' || address.port <= 0) throw new Error('test server did not acquire a port');
   const fixture: RouteFixture = {
     root,
     store,
@@ -86,16 +92,11 @@ async function withServer(run: (fixture: RouteFixture) => Promise<void>): Promis
       this.now = now;
     },
     baseUrl(workspaceId = workspace.id): string {
-      const address = server.address() as AddressInfo;
       return `http://127.0.0.1:${address.port}/api/workspaces/${workspaceId}`;
     },
   };
 
   try {
-    await new Promise<void>((resolve, reject) => {
-      fixture.server.once('listening', resolve);
-      fixture.server.once('error', reject);
-    });
     await run(fixture);
   } finally {
     await new Promise<void>(resolve => fixture.server.close(() => resolve()));
