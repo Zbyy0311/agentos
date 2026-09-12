@@ -575,6 +575,48 @@
     "limitation": "Real canonical Codex invocation passed with an explicit model. It does not prove the default local model path (kimi/k3[1m] via the local proxy) while that external quota is exhausted, and it is not OpenCode or Kimi evidence."
   },
   {
+    "id": "S4-OPENCODE-REAL-GATE",
+    "baseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85",
+    "kind": "runtime-verification",
+    "cwd": "apps/server",
+    "command": "M4_P4_REAL_OPENCODE_GATE=1 AGENTOS_OPENCODE_CLI=E:/software/opencode/node_modules/opencode-ai/bin/opencode.exe AGENTOS_OPENCODE_MODEL=deepseek/deepseek-v4-flash node --import tsx --test --test-name-pattern='real OpenCode completes' src/services/run-engine/RunEngineProviderDispatcher.test.ts; the same file then ran the Kimi routed gate (M4_P4_REAL_KIMI_ROUTED_GATE=1 AGENTOS_KIMI_MODEL=opencodex/deepseek/deepseek-flash) and the Codex gate (M4_P4_REAL_CODEX_GATE=1 with the local .codex/.sandbox-bin/codex.exe)",
+    "environment": "Windows Node 24.18.0; canonical RunEngineProviderDispatcher gate against real CLIs (opencode 1.17.11, kimi.exe, codex.exe)",
+    "result": {
+      "opencodePassed": 1,
+      "opencodeDurationMs": 22301,
+      "kimiRoutedPassed": 1,
+      "kimiRoutedDurationMs": 22634,
+      "codexPassed": 1,
+      "codexDurationMs": 41671,
+      "failed": 0
+    },
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "limitation": "All three providers completed the canonical chain at this worktree head, not on merged main; final-head CI remains the closure gate. The OpenCode gate additionally asserts that the provider's assistant text reached the durable output sink, so an empty chain cannot pass. The Kimi pass still uses the explicitly routed opencodex/deepseek/deepseek-flash model because the default model is externally quota-blocked. Supersedes the S4-REAL-GATES note that OpenCode had only unavailable evidence."
+  },
+  {
+    "id": "S8-PROVIDER-CONTRACT-SUITE",
+    "baseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85",
+    "kind": "local-tests",
+    "cwd": ".",
+    "command": "packages/agent-core: pnpm exec vitest run; apps/server: node --import tsx --test src/services/run-engine/RunEngineProviderDispatcher.test.ts; apps/server: pnpm --filter @agentos/server exec tsc --noEmit",
+    "environment": "Windows Node 24.18.0 pnpm 11.11.0",
+    "result": {
+      "agentCoreFiles": 28,
+      "agentCorePassed": 171,
+      "agentCoreFailed": 0,
+      "dispatcherPassed": 31,
+      "dispatcherFailed": 0,
+      "dispatcherSkipped": 4,
+      "typecheckExitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-001"
+    ],
+    "limitation": "Contract coverage is named per adapter: discovery, validation, launch plan, parse, finalize, cancel and secret-free environment/redaction each have tests in kimiCodeAdapter.test.ts and codexProviderAdapter.test.ts, and the OpenCode adapter adds bounded-output redaction plus a no-native-spawn source assertion. The four dispatcher skips are the env-gated real Provider gates, covered separately by S4-OPENCODE-REAL-GATE."
+  },
+  {
     "id": "S8-VERIFY-BATCH-10",
     "baseline": "ad9a409d24125e5a6fee202468e728886bfe1f52",
     "kind": "local-tests",

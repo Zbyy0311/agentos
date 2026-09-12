@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 11,
+  "matrixVersion": 12,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1406,20 +1406,27 @@
       "section": "19. Acceptance Expectations",
       "line": 489,
       "requirement": "Adapter contract tests pass for discovery, validation, start, stream, cancel, finalize, redaction, and raw output;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S4",
       "implementation": [
-        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.ts"
       ],
       "tests": [
-        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.test.ts"
       ],
       "evidence": [
         "S4-PROVIDER-SOURCE",
-        "S4-ADAPTERS"
+        "S4-ADAPTERS",
+        "S8-PROVIDER-CONTRACT-SUITE"
       ],
-      "finding": "三Provider已有CLI/解析能力，但当前生产composition root仅注册Kimi；Codex/OpenCode完整生产链缺口须定向补齐而非重写三者。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "已修复：生产 composition root 现注册 Kimi/Codex/OpenCode 三个 canonical adapter；三个 adapter 的 discovery/validate/launch/parse/finalize/cancel/redaction 契约测试均具名存在并在同头全绿。",
+      "exit": "已完成：packages/agent-core 全量 28 文件 171 项通过，RunEngineProviderDispatcher 同头 31 通过 / 0 失败（4 项为环境门控真实 gate，另见 S4-OPENCODE-REAL-GATE），apps/server tsc --noEmit 退出码 0。",
+      "evidenceBaseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85"
     },
     {
       "id": "LITE-04-002",
@@ -4441,22 +4448,27 @@
       "section": "§14; §15.2",
       "line": null,
       "requirement": "Codex/Kimi/OpenCode 的实际生产链接入与真实调用",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S4",
       "implementation": [
         "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.ts",
         "packages/agent-core/src/config.ts"
       ],
       "tests": [
-        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts"
       ],
       "evidence": [
         "S4-PROVIDER-SOURCE",
         "S4-ADAPTERS",
-        "S4-REAL-GATES"
+        "S4-REAL-GATES",
+        "S4-CODEX-LUNA-GATE",
+        "S4-OPENCODE-REAL-GATE"
       ],
-      "finding": "Legacy CLI和parser不等于RunEngine生产适配；composition root只注册Kimi。",
-      "exit": "逐Provider沿Adapter→Registry→Process→RunEngine→SSE/UI验证；复用现有正确能力，只补断点。"
+      "finding": "已修复且已取证：composition root 现注册三个 adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）在同头被真实清除，而非删除条件。",
+      "exit": "已完成：三 Provider 各沿 Adapter→Registry→Process→RunEngine 取得真实调用证据（OpenCode 22301ms、Kimi routed 22634ms、Codex 41671ms，0 失败），OpenCode 另断言真实回复文本进入持久输出汇。残留限制：Kimi 默认模型受外部配额限制，仅以显式路由模型取证；最终以合并后主线 CI 收口。",
+      "evidenceBaseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85"
     },
     {
       "id": "LITE-07-101",
@@ -7526,6 +7538,16 @@
         "LITE-07-010",
         "LITE-09-009",
         "LITE-13-012"
+      ]
+    },
+    {
+      "version": 12,
+      "baseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85",
+      "authority": "Main-agent S8 acceptance within user-approved scope",
+      "reason": "Clear the canonical OpenCode gate: version admission (1.17.11), run-subcommand help probing, an argument-safe launch plan and Process Runtime cancellation replace the unconditional fail-closed refusals; all three providers then exercised the canonical chain for real at this head, so LITE-04-101 and LITE-04-001 leave GAP.",
+      "requirementIds": [
+        "LITE-04-001",
+        "LITE-04-101"
       ]
     }
   ]
