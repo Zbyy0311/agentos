@@ -54,6 +54,7 @@ test('S6 Inspector: compaction endpoint explains policy, budget composition, att
     const body = await response.json() as {
       tasks: Array<{ id: string; status: string; model: string | null; summary: string | null; attempts: number; budget: Record<string, unknown> }>;
       policies: Array<{ policyVersion: string; triggerRatio: number; minRecentMessages: number; fallbackApplicationBudgetTokens: number }>;
+      adoptions: Array<{ snapshotId: string; turnId: string | null; summaryId: string; createdAt: string }>;
     };
     assert.equal(body.tasks.length, 1);
     const task = body.tasks[0]!;
@@ -64,6 +65,8 @@ test('S6 Inspector: compaction endpoint explains policy, budget composition, att
     assert.equal(task.budget.applicationBudgetSource, 'provider');
     assert.equal(task.budget.historyBudgetTokens, 1500);
     assert.equal(body.policies.length, 1);
+    // LITE-13-101: a summary that no Turn adopted yet is reported as unadopted.
+    assert.deepEqual(body.adoptions, []);
     assert.deepEqual(
       { v: body.policies[0]!.policyVersion, t: body.policies[0]!.triggerRatio, r: body.policies[0]!.minRecentMessages, f: body.policies[0]!.fallbackApplicationBudgetTokens },
       { v: 'lite-v1', t: 0.7, r: 8, f: 16384 },
@@ -78,4 +81,3 @@ test('S6 Inspector: compaction endpoint explains policy, budget composition, att
     rmSync(root, { recursive: true, force: true });
   }
 });
-
