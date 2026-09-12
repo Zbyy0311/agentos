@@ -32,6 +32,7 @@ export const ENTITY_ID_PREFIXES = {
   extension: 'ext',
   idempotency: 'idem',
   operation: 'op',
+  import: 'imp',
 } as const;
 
 export type EntityIdKind = keyof typeof ENTITY_ID_PREFIXES;
