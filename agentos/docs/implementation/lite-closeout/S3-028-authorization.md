@@ -54,7 +54,10 @@ Add `runtime_approval_requests`; no backfill and no rewrite of 026/027:
   request cannot execute.
 
 `source_key` is a bounded hash of Workspace, Run, Stage, attempt and canonical
-action fingerprint; `request_round` is the next persisted round for that key.
+action fingerprint; `request_round` is the next persisted round for that key
+when a later Run/Stage attempt legitimately re-evaluates the action. Expiring
+a pending request does not silently move its waiting Run back to running; the
+existing Run must be cancelled/rejected or retried through the lifecycle.
 Caller text never becomes an unbounded key. Snapshot hash uses canonical JSON
 of the redacted snapshot. Unknown classification is modifying and therefore
 ASK_USER at this first boundary.
