@@ -109,6 +109,23 @@ test('S6 trigger fails closed for a CLI with no allowlisted summary profile', as
   fx.close();
 });
 
+test('S6 trigger reports a truthful blocked reason instead of a bare failure', async () => {
+  const fx = fixture();
+  const captured: { input?: Record<string, unknown> } = {};
+  const trigger = new ConversationCompactionTrigger({
+    store: fx.store,
+    engine: fakeEngine(captured),
+    getAgent: () => agent({ cliCommand: 'kimi', role: 'kimi' }),
+  });
+  const result = await trigger.ensureCompacted({ workspaceId: WS, conversationId: CONV, agentId: 'agent_codex' });
+  // An explicit retry needs the reason, which is durable policy/execution state
+  // rather than a server error.
+  assert.equal(result.outcome, 'blocked');
+  assert.equal(result.blockedReason, 'COMPACTION_SUMMARIZER_UNAVAILABLE');
+  assert.equal(result.policyVersion, 'lite-v1');
+  fx.close();
+});
+
 test('S6 trigger freezes the Conversation model and the allowlisted adapter identity', async () => {
   const fx = fixture();
   const attempts: Array<Record<string, unknown>> = [];

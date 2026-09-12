@@ -159,7 +159,7 @@ export interface ConversationCompactionTriggerPort {
     readonly workspaceId: string;
     readonly conversationId: string;
     readonly agentId: string;
-  }): Promise<void>;
+  }): Promise<unknown>;
 }
 
 export interface CompactionApplicationBudget {
