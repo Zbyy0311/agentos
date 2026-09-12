@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-12T16:42:36.863Z",
+  "generatedAt": "2026-09-12T16:45:08.031Z",
   "matrixVersion": 11,
   "summary": {
-    "batches": 11,
-    "passed": 11,
+    "batches": 26,
+    "passed": 26,
     "requirementsProvable": 0,
     "requirementsTotal": 0
   },
@@ -13,133 +13,313 @@
       "file": "apps/server/src/migrations/__tests__/m4-p2-migration-014.test.ts",
       "requirementIds": [],
       "status": "passed",
-      "durationMs": 1508,
+      "durationMs": 1513,
       "counts": {
         "passed": 20,
         "failed": 0,
         "skipped": 0
       },
-      "outputTail": "✔ output offsets are monotonic and finalized references reject further mutation (48.4985ms)\n✔ exactly-one primary Provider Session and one root Process claim per Stage attempt (46.2155ms)\n✔ invalid JSON, identifier formats and vocabulary CHECKs are rejected (52.3946ms)\n✔ root Process Session/Stage/attempt binding is enforced as a real DDL constraint (55.3598ms)\nℹ tests 20\nℹ suites 0\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1418.0614"
+      "outputTail": "✔ output offsets are monotonic and finalized references reject further mutation (53.2216ms)\n✔ exactly-one primary Provider Session and one root Process claim per Stage attempt (46.8525ms)\n✔ invalid JSON, identifier formats and vocabulary CHECKs are rejected (49.3537ms)\n✔ root Process Session/Stage/attempt binding is enforced as a real DDL constraint (58.147ms)\nℹ tests 20\nℹ suites 0\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1430.1809"
+    },
+    {
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 260,
+      "counts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ P2 Migration Registry contains exactly the registered migrations in contract order (1.1821ms)\n✔ P2 Migration Registry preserves the exact padded order when instantiated (5.4377ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 181.1728"
     },
     {
       "file": "apps/server/src/routes/canonicalRunStream.test.ts",
       "requirementIds": [],
       "status": "passed",
-      "durationMs": 2869,
+      "durationMs": 3092,
       "counts": {
         "passed": 16,
         "failed": 0,
         "skipped": 0
       },
-      "outputTail": "✔ P5C overflow closes the SSE transport without synthetic frames or durable writes (2.6096ms)\n✔ P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed (175.3228ms)\n✔ P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable) (162.3136ms)\n✔ P5C stream route does not shadow canonical Run, Events or Replay routes (172.0182ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2799.2722"
+      "outputTail": "✔ P5C overflow closes the SSE transport without synthetic frames or durable writes (2.7196ms)\n✔ P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed (178.8972ms)\n✔ P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable) (169.6328ms)\n✔ P5C stream route does not shadow canonical Run, Events or Replay routes (191.1809ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3014.8472"
+    },
+    {
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 3378,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event (157.095ms)\n✔ LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence (150.1358ms)\n✔ LITE-07-003: source write failure rolls back dedup before any Event is published (151.8709ms)\n✔ LITE-07-003: simultaneous exact saves converge to one source mutation and one Event (157.8241ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3305.597"
     },
     {
       "file": "apps/server/src/routes/runtimeInspector.test.ts",
       "requirementIds": [],
       "status": "passed",
-      "durationMs": 1166,
+      "durationMs": 1172,
       "counts": {
         "passed": 4,
         "failed": 0,
         "skipped": 0
       },
-      "outputTail": "✔ GET /runs/:runId/inspector names the effective mutation class and the read-only enforcement state (203.2302ms)\n✔ GET /runs/:runId/inspector returns the redacted projection for a canonical Run (149.9587ms)\n✔ GET /runs/:runId/inspector fails closed for an unknown Run and workspace (142.9932ms)\n✔ GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring) (150.4297ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1091.1709"
+      "outputTail": "✔ GET /runs/:runId/inspector names the effective mutation class and the read-only enforcement state (196.3177ms)\n✔ GET /runs/:runId/inspector returns the redacted projection for a canonical Run (150.6844ms)\n✔ GET /runs/:runId/inspector fails closed for an unknown Run and workspace (144.7099ms)\n✔ GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring) (161.974ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1089.5979"
     },
     {
-      "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
       "requirementIds": [],
       "status": "passed",
-      "durationMs": 6106,
-      "counts": {
-        "passed": 23,
-        "failed": 0,
-        "skipped": 0
-      },
-      "outputTail": "✔ P6D-C6 recovery Events all carry one Outbox and deliver without domain mutation (242.3135ms)\n✔ P6D-C7 RunStream observes recovery Events in strict sequence and recovery state remains committed after disconnect (175.4899ms)\n✔ P6D-D1 unknown future Event boundary fails both P6B and P6C recovery with zero mutation (186.4007ms)\n✔ P6D-D2 sequence gap boundary fails recovery closed without repair or row deletion (157.8415ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 6032.6608"
-    },
-    {
-      "file": "apps/server/src/services/RuntimeInspector.test.ts",
-      "requirementIds": [],
-      "status": "passed",
-      "durationMs": 2222,
-      "counts": {
-        "passed": 12,
-        "failed": 0,
-        "skipped": 0
-      },
-      "outputTail": "✔ INSP-08 memory context projection (144.74ms)\n✔ INSP-09 absent memory context is null (167.8555ms)\n✔ INSP-10 workspace isolation (181.9132ms)\n✔ INSP-11 stages are ordered (163.0277ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2145.587"
-    },
-    {
-      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
-      "requirementIds": [],
-      "status": "passed",
-      "durationMs": 2963,
-      "counts": {
-        "passed": 43,
-        "failed": 0,
-        "skipped": 0
-      },
-      "outputTail": "  ✔ L1D-I14 a failure after release and grant writes rolls the whole transaction back (39.7673ms)\n  ✔ L1D-I15 a new service instance recovers the same durable authority state (147.4379ms)\n  ✔ L1D-I16 canonical and legacy subjects share one FIFO and release authority (54.1277ms)\n✔ WorkspaceAdmissionAuthority integration contract (1382.1042ms)\nℹ tests 43\nℹ suites 3\nℹ pass 43\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2883.8298"
-    },
-    {
-      "file": "apps/server/src/store/SqliteStore.test.ts",
-      "requirementIds": [],
-      "status": "passed",
-      "durationMs": 9596,
-      "counts": {
-        "passed": 36,
-        "failed": 0,
-        "skipped": 0
-      },
-      "outputTail": "✔ deletes one conversation and all dependent records without affecting another conversation (188.1492ms)\n✔ removes all SQLite workspace data when the workspace is removed (170.9155ms)\n✔ persists and hydrates message attachments across store reopen (169.6104ms)\n✔ persists preference evidence, projections, applications, and scoped controls across reopen (171.6698ms)\nℹ tests 36\nℹ suites 0\nℹ pass 36\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 9504.3122"
-    },
-    {
-      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
-      "requirementIds": [],
-      "status": "passed",
-      "durationMs": 355,
+      "durationMs": 1577,
       "counts": {
         "passed": 7,
         "failed": 0,
         "skipped": 0
       },
-      "outputTail": "✔ INS-04 Events render in strict sequence with their own ids (2.8935ms)\n✔ INS-05 Memory Context is a section, and its absence is named, not hidden (5.8649ms)\n✔ INS-07 Memory Context explains selection and exclusion from the frozen Snapshot (2.7655ms)\n✔ INS-06 a section error is an alert, never a page failure (2.6538ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 265.7248"
+      "outputTail": "✔ CR6-A4 filters by kind, status, conversation, task, run, and time compose (178.3867ms)\n✔ CR6-A5 provider filter scopes Turns to their Provider configuration (172.6972ms)\n✔ CR6-A6 the limit is bounded and deterministic (193.8507ms)\n✔ CR6-A7 archive/restore is a read-only History concern and stays with CR-1 (201.7138ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1497.5492"
     },
     {
-      "file": "apps/web/src/liteScopeBoundary.test.ts",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
       "requirementIds": [],
       "status": "passed",
-      "durationMs": 259,
+      "durationMs": 3105,
       "counts": {
-        "passed": 3,
+        "passed": 17,
         "failed": 0,
         "skipped": 0
       },
-      "outputTail": "✔ LITE-12-016 the UI ships only the Lite route surface (1.645ms)\n✔ LITE-12-016 no web module implements a deferred product surface (5.2665ms)\n✔ LITE-12-016 the workspace shells expose no deferred product entry point (0.5052ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 184.6721"
+      "outputTail": "✔ CR5S-14 reply content is stored as a hash only, never as text (167.3968ms)\n✔ CR5S-15 the timeout budget ends the interaction (164.4028ms)\n✔ CR5S-16 unknown interaction and invalid input fail closed (141.1026ms)\n✔ CR5S-17 within-transaction composition rolls back atomically (129.8018ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3020.3044"
     },
     {
-      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
       "requirementIds": [],
       "status": "passed",
-      "durationMs": 11610,
+      "durationMs": 1386,
       "counts": {
-        "passed": 16,
+        "passed": 6,
         "failed": 0,
         "skipped": 0
       },
-      "outputTail": "RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-s8-acceptance/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  16 passed (16)\n   Start at  00:42:25\n   Duration  10.88s (transform 81ms, setup 0ms, import 358ms, tests 10.36s, environment 0ms)"
+      "outputTail": "✔ TD-03 a cancelled reply finalizes the Turn cancelled and the Message failed (162.937ms)\n✔ TD-04 an unknown Agent fails closed without reserving a stream (176.3303ms)\n✔ TD-05 waiting_user finalizes the Turn final with the question as content (193.0902ms)\n✔ TD-06 a runner crash finalizes failed instead of leaving an open stream (180.1407ms)\nℹ tests 6\nℹ suites 0\nℹ pass 6\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1312.2496"
     },
     {
-      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
       "requirementIds": [],
       "status": "passed",
-      "durationMs": 273,
+      "durationMs": 44398,
+      "counts": {
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ GitObservationCollector cleanup-unproven through the real adapter (HIGH-1) (926.2135ms)\n▶ GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1)\n  ✔ real NodeProcessDriver maps a missing git executable to not_found -> GIT_EXECUTABLE_UNAVAILABLE (715.764ms)\n✔ GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1) (715.8767ms)\nℹ tests 29\nℹ suites 7\nℹ pass 29\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 44313.1774"
+    },
+    {
+      "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 4338,
+      "counts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ HANDOFF-05 new evidence seam is safe inside a caller-owned transaction (36.8726ms)\n✔ HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible (36.432ms)\n✔ HANDOFF-07 evidence seam returns synchronously without an async transaction callback (36.0136ms)\n✔ P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state (37.9588ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 4271.0247"
+    },
+    {
+      "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 5684,
       "counts": {
         "passed": 23,
         "failed": 0,
         "skipped": 0
       },
-      "outputTail": "✔ L1A-R09 verified with missing boundaryId -> MODIFYING (0.0825ms)\n✔ L1A-R10 verified with missing qualificationId -> MODIFYING (0.0736ms)\n✔ L1A-R11 verified with empty/whitespace proof field -> MODIFYING (0.1358ms)\n✔ L1A-R12 verified evidence type requires all proof fields (0.0836ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 194.9476"
+      "outputTail": "✔ P6D-C6 recovery Events all carry one Outbox and deliver without domain mutation (237.2253ms)\n✔ P6D-C7 RunStream observes recovery Events in strict sequence and recovery state remains committed after disconnect (155.2095ms)\n✔ P6D-D1 unknown future Event boundary fails both P6B and P6C recovery with zero mutation (169.0121ms)\n✔ P6D-D2 sequence gap boundary fails recovery closed without repair or row deletion (144.1597ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5614.6132"
+    },
+    {
+      "file": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 2109,
+      "counts": {
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ LITE-07-003 LITE-07-107 terminal dedup ignores deleted (136.9072ms)\n✔ LITE-07-107 exact terminal dedup adds source once without changing accepted content (149.4714ms)\n✔ MF2R-G5 non-completed or unknown Run generates nothing (142.3123ms)\n✔ MF2R input validation fails closed (144.6715ms)\nℹ tests 13\nℹ suites 0\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2040.5402"
+    },
+    {
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 3618,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ MF4I-08 empty store still persists a snapshot (157.4872ms)\n✔ MF4I-09 default budget is frozen and valid (146.6718ms)\n✔ MF4I-10 workspace isolation (150.8777ms)\n✔ LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen (153.8248ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3548.7343"
+    },
+    {
+      "file": "apps/server/src/services/OutboxPublisher.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 767,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ M3 P6A P13/P14 start-stop is timer-deterministic, idempotent, and inactive before start (41.7346ms)\n✔ M3 P6A timer ticks reclaim leases that expire while the server remains alive before processing due work (47.1768ms)\n✔ M3 P6A F11 Outbox terminal mutation rolls back when dead-letter insertion fails (40.4801ms)\n✔ M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events (42.4837ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 699.6675"
+    },
+    {
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 1989,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ INSP-08 memory context projection (161.6649ms)\n✔ INSP-09 absent memory context is null (151.7399ms)\n✔ INSP-10 workspace isolation (147.4755ms)\n✔ INSP-11 stages are ordered (150.6192ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1920.6122"
+    },
+    {
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 2685,
+      "counts": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "  ✔ L1D-I14 a failure after release and grant writes rolls the whole transaction back (39.7728ms)\n  ✔ L1D-I15 a new service instance recovers the same durable authority state (141.6334ms)\n  ✔ L1D-I16 canonical and legacy subjects share one FIFO and release authority (43.2737ms)\n✔ WorkspaceAdmissionAuthority integration contract (1260.3514ms)\nℹ tests 43\nℹ suites 3\nℹ pass 43\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2617.0272"
+    },
+    {
+      "file": "apps/server/src/store/Identity.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 213,
+      "counts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "  ✔ operation kind exists with op prefix (0.0857ms)\n  ✔ createEntityId operation starts with op_ and validates (0.0991ms)\n  ✔ operation IDs remain distinct from all existing kinds (0.0777ms)\n✔ Identity — M3 P3A operation kind (0.3498ms)\nℹ tests 34\nℹ suites 4\nℹ pass 34\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 143.144"
+    },
+    {
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 8177,
+      "counts": {
+        "passed": 36,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ deletes one conversation and all dependent records without affecting another conversation (141.0622ms)\n✔ removes all SQLite workspace data when the workspace is removed (145.0427ms)\n✔ persists and hydrates message attachments across store reopen (146.8406ms)\n✔ persists preference evidence, projections, applications, and scoped controls across reopen (164.0047ms)\nℹ tests 36\nℹ suites 0\nℹ pass 36\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 8109.3636"
+    },
+    {
+      "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 299,
+      "counts": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ INS-04 Events render in strict sequence with their own ids (2.5272ms)\n✔ INS-05 Memory Context is a section, and its absence is named, not hidden (5.3494ms)\n✔ INS-07 Memory Context explains selection and exclusion from the frozen Snapshot (2.4495ms)\n✔ INS-06 a section error is an alert, never a page failure (2.5022ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 229.3257"
+    },
+    {
+      "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 319,
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse (3.5987ms)\n✔ SHELL-07 dark and light themes emit their own token values (7.2582ms)\n✔ SHELL-08 the Canvas keeps its minimum width (3.2872ms)\n✔ SHELL-09 an optional toolbar renders above the columns (3.2281ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 250.2368"
+    },
+    {
+      "file": "apps/web/src/liteScopeBoundary.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 244,
+      "counts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ LITE-12-016 the UI ships only the Lite route surface (1.7064ms)\n✔ LITE-12-016 no web module implements a deferred product surface (4.3504ms)\n✔ LITE-12-016 the workspace shells expose no deferred product entry point (0.694ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 174.5796"
+    },
+    {
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 1029,
+      "counts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-s8-acceptance/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  21 passed (21)\n   Start at  00:44:52\n   Duration  322ms (transform 126ms, setup 0ms, import 162ms, tests 16ms, environment 0ms)"
+    },
+    {
+      "file": "packages/process-runtime/src/node-driver.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 10681,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-s8-acceptance/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  16 passed (16)\n   Start at  00:44:53\n   Duration  10.00s (transform 76ms, setup 0ms, import 301ms, tests 9.56s, environment 0ms)"
+    },
+    {
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 3756,
+      "counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-s8-acceptance/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  10 passed (10)\n   Start at  00:45:04\n   Duration  3.07s (transform 60ms, setup 0ms, import 81ms, tests 2.85s, environment 0ms)"
+    },
+    {
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 217,
+      "counts": {
+        "passed": 23,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ L1A-R09 verified with missing boundaryId -> MODIFYING (0.0412ms)\n✔ L1A-R10 verified with missing qualificationId -> MODIFYING (0.0416ms)\n✔ L1A-R11 verified with empty/whitespace proof field -> MODIFYING (0.0717ms)\n✔ L1A-R12 verified evidence type requires all proof fields (0.0455ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 147.2134"
+    },
+    {
+      "file": "packages/shared/wf-template-instantiation.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 248,
+      "counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "outputTail": "✔ WFI-07 definition overrides (0.0866ms)\n✔ WFI-08 invalid input fails closed (0.1422ms)\n✔ WFI-09 deterministic and non-mutating (0.143ms)\n✔ WFI-10 every template compiles (0.1659ms)\nℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 180.2985"
     }
   ]
 }
