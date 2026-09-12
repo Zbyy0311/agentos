@@ -128,6 +128,8 @@ export interface ConversationTurnContextOptions {
   readonly compaction?: ConversationCompactionPort;
   /** S6: hard application budget for summary + uncompressed tail. */
   readonly compactionBudget?: CompactionApplicationBudget;
+  /** S6: automatic threshold check + durable compaction attempt before assembly. */
+  readonly compactionTrigger?: ConversationCompactionTriggerPort;
 }
 
 /**
@@ -143,6 +145,21 @@ export interface PublishedCompactionSummary {
 
 export interface ConversationCompactionPort {
   latestPublished(workspaceId: string, conversationId: string): PublishedCompactionSummary | undefined;
+}
+
+/**
+ * S6 / LITE-09-106 + LITE-09-107: the automatic trigger runs before a new
+ * Turn assembles its context, so a published summary is used by exactly the
+ * Turn that caused it. The trigger owns its own durable attempt state and must
+ * not raise: the hard-budget check still decides whether the Provider call is
+ * allowed once the attempt is over.
+ */
+export interface ConversationCompactionTriggerPort {
+  ensureCompacted(input: {
+    readonly workspaceId: string;
+    readonly conversationId: string;
+    readonly agentId: string;
+  }): Promise<void>;
 }
 
 export interface CompactionApplicationBudget {
@@ -244,6 +261,17 @@ export class ConversationTurnDriver {
   async replyWithTurn(input: ReplyWithTurnInput): Promise<ReplyWithTurnResult> {
     const agent = this.getAgent(input.workspaceId, input.agentId);
     if (agent === undefined) throw new ConversationTurnDriverError('TURN_DRIVER_AGENT_UNAVAILABLE');
+
+    // S6 / LITE-09-106: the versioned threshold is evaluated BEFORE this Turn's
+    // context is assembled, so a summary published here is the one this Turn
+    // actually uses. The attempt is durable and never truncates history.
+    if (this.context?.compactionTrigger !== undefined) {
+      await this.context.compactionTrigger.ensureCompacted({
+        workspaceId: input.workspaceId,
+        conversationId: input.conversationId,
+        agentId: input.agentId,
+      });
+    }
 
     const history = this.conversations.listMessages(input.workspaceId, input.conversationId)
       .filter(message => message.id !== input.sourceMessageId && message.status !== 'deleted')
