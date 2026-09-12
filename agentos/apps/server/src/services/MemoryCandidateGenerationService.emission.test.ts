@@ -22,10 +22,12 @@ import { RunRepository } from '../store/RunRepository.js';
 import { RunStageRepository } from '../store/RunStageRepository.js';
 import { TaskRepository } from '../store/TaskRepository.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { M3_013_LEGACY_WORKFLOW_V2_ID } from '../migrations/migrations/013-workflow-creation-metadata-v2.js';
 import {
   MemoryCandidateGenerationService,
   MemoryCandidateGenerationError,
+  hashMemoryText,
   type MemoryCandidateGenerationErrorCode,
 } from './MemoryCandidateGenerationService.js';
 import {
@@ -227,6 +229,100 @@ function assertGenerationError(error: unknown, code: MemoryCandidateGenerationEr
   assert.equal(error.code, code);
   return true;
 }
+
+function exactEntry(fx: Fixture) {
+  const content = [
+    '任务：修复登录页样式',
+    `结果：Run ${RUN} 完成（origin v2_api，reason initial）。`,
+    'Stage 结果：implement: completed (attempt 1, duration 60000ms)',
+  ].join('\n');
+  return new MemoryEntryRepository(fx.tx).createEntry({
+    id: 'mem_' + 'd'.repeat(26), workspaceId: WS, scope: 'task', ownerTaskId: TASK,
+    category: 'summary', authority: 'system-verified', confidence: 0.9, importance: 0.5,
+    title: 'accepted evidence', content, exactContentHash: hashMemoryText(content),
+    status: 'active', sources: [{ kind: 'task', id: TASK }], createdAt: NOW,
+  });
+}
+
+test('LITE-07-107 terminal source merge emits one dedup fact and Outbox, replay is a no-op', () => {
+  const fx = fixture();
+  try {
+    const entry = exactEntry(fx);
+    assert.equal(fx.service.generateForRunTerminal(terminalInput()).outcome, 'converged');
+    const stored = new MemoryEntryRepository(fx.tx).findById(WS, entry.id)!;
+    assert.equal(stored.version, 2);
+    assert.deepEqual(stored.sources, [{ kind: 'run', id: RUN }, { kind: 'task', id: TASK }]);
+    const events = fx.db.prepare('SELECT * FROM runtime_events ORDER BY sequence').all() as EventRow[];
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'memory.entry_deduplicated');
+    assert.equal(events[0].run_id, RUN);
+    assert.equal(events[0].causation_id, OP);
+    assert.equal(events[0].correlation_id, OP_CORRELATION);
+    assert.deepEqual(JSON.parse(events[0].payload_json), {
+      memoryEntryId: entry.id, version: 2, scope: 'task', category: 'summary', authority: 'system-verified',
+    });
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages WHERE event_id = ?', events[0].id), 1);
+    assert.equal(fx.service.generateForRunTerminal(terminalInput()).outcome, 'converged');
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runtime_events'), 1);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 1);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM memory_candidate_entries'), 0);
+    assert.deepEqual(new MemoryEntryRepository(fx.tx).findById(WS, entry.id), stored);
+  } finally { fx.close(); }
+});
+
+for (const table of ['memory_entry_sources', 'runtime_events', 'outbox_messages']) {
+  test(`LITE-07-107 ${table} failure rolls back terminal sources, version and event sequence`, () => {
+    const fx = fixture();
+    try {
+      const entry = exactEntry(fx);
+      fx.db.prepare(`CREATE TRIGGER fail_dedup BEFORE INSERT ON ${table} BEGIN SELECT RAISE(ABORT, 'injected dedup failure'); END`).run();
+      assert.throws(() => fx.service.generateForRunTerminal(terminalInput()),
+        (error: unknown) => assertGenerationError(error, 'GENERATION_FAILED'));
+      assert.deepEqual(new MemoryEntryRepository(fx.tx).findById(WS, entry.id), entry);
+      assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runtime_events'), 0);
+      assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 0);
+      assert.equal(nextEventSequence(fx.db, RUN), 1);
+      fx.db.prepare('DROP TRIGGER fail_dedup').run();
+      assert.equal(fx.service.generateForRunTerminal(terminalInput()).outcome, 'converged');
+      assert.equal(new MemoryEntryRepository(fx.tx).findById(WS, entry.id)!.version, 2);
+    } finally { fx.close(); }
+  });
+}
+
+test('LITE-07-107 archived exact match between lookup and transaction falls through to Candidate', () => {
+  const fx = fixture();
+  try {
+    const entry = exactEntry(fx);
+    const merge = fx.emitter.emitEntryDeduplicated.bind(fx.emitter);
+    fx.emitter.emitEntryDeduplicated = input => {
+      new MemoryEntryRepository(fx.tx).updateStatus({ workspaceId: WS, entryId: entry.id,
+        expectedVersion: 1, status: 'archived', updatedAt: NOW });
+      return merge(input);
+    };
+    const result = fx.service.generateForRunTerminal(terminalInput());
+    assert.equal(result.outcome, 'created');
+    assert.equal(result.duplicateOfEntryId, undefined);
+    assert.equal(result.candidate!.outcome, 'review-required');
+    const stored = new MemoryEntryRepository(fx.tx).findById(WS, entry.id)!;
+    assert.equal(stored.status, 'archived');
+    assert.equal(stored.version, 2);
+    assert.deepEqual(stored.sources, entry.sources);
+    assert.equal(candidateCreatedEvents(fx).length, 1);
+    assert.equal(count(fx.db, "SELECT COUNT(*) AS c FROM runtime_events WHERE type = 'memory.entry_deduplicated'"), 0);
+    assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM outbox_messages'), 1);
+  } finally { fx.close(); }
+});
+
+test('LITE-07-107 exact dedup rejects cross-Run authority without merging sources', () => {
+  const fx = fixture();
+  try {
+    const entry = exactEntry(fx);
+    assert.throws(() => fx.service.generateForRunTerminal(terminalInput({ eventContext: eventContext(OTHER_OP, OTHER_OP_CORRELATION) })),
+      (error: unknown) => assertGenerationError(error, 'GENERATION_FAILED'));
+    assert.deepEqual(new MemoryEntryRepository(fx.tx).findById(WS, entry.id), entry);
+    assert.equal(nextEventSequence(fx.db, RUN), 1);
+  } finally { fx.close(); }
+});
 
 // MF5C-1 — the wired happy path: one fact, one Event, one Outbox row, one transaction.
 test('MF5C-1 completed run persists the candidate with exactly one event and Outbox row bound to the operation', () => {

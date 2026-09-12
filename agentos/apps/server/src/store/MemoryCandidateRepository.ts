@@ -21,6 +21,7 @@ import {
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
 import { MemoryEntryRepository, MemoryEntryRepositoryError, type MemoryEntryRecord } from './MemoryEntryRepository.js';
+import type { MemoryEntryDedupScope } from './MemoryEntryRepository.js';
 import type {
   WorkspaceEventContextV1,
   WorkspaceEventOriginV1,
@@ -614,12 +615,9 @@ export class MemoryCandidateRepository {
   }
 
   /** Exact-duplicate lookup by content hash inside one Workspace. */
-  findEntryByExactHash(workspaceId: string, hash: string): string | undefined {
+  findEntryByExactHash(workspaceId: string, hash: string, boundary?: MemoryEntryDedupScope): string | undefined {
     if (!nonBlank(workspaceId) || !nonBlank(hash)) return undefined;
-    const row = this.db.prepare(
-      'SELECT id FROM memory_entries WHERE workspace_id = ? AND exact_content_hash = ? ORDER BY id ASC LIMIT 1',
-    ).get(workspaceId, hash) as { id: string } | undefined;
-    return row?.id;
+    return this.findEntryByHash(workspaceId, hash, 'exact_content_hash', boundary);
   }
 
   /**
@@ -627,11 +625,24 @@ export class MemoryCandidateRepository {
    * near-duplicate SIGNAL — the caller marks duplicate handling unresolved so
    * the promotion gate routes to review; it never converges silently.
    */
-  findEntryByNormalizedHash(workspaceId: string, hash: string): string | undefined {
+  findEntryByNormalizedHash(workspaceId: string, hash: string, boundary?: MemoryEntryDedupScope): string | undefined {
     if (!nonBlank(workspaceId) || !nonBlank(hash)) return undefined;
+    return this.findEntryByHash(workspaceId, hash, 'normalized_text_hash', boundary);
+  }
+
+  private findEntryByHash(workspaceId: string, hash: string,
+    column: 'exact_content_hash' | 'normalized_text_hash', boundary?: MemoryEntryDedupScope): string | undefined {
+    const params: unknown[] = [workspaceId, hash];
+    let filter = '';
+    if (boundary !== undefined) {
+      filter = " AND status = 'active' AND scope = ? AND category = ?"
+        + ' AND owner_agent_id IS ? AND owner_conversation_id IS ? AND owner_task_id IS ? AND owner_run_id IS ?';
+      params.push(boundary.scope, boundary.category, boundary.ownerAgentId ?? null,
+        boundary.ownerConversationId ?? null, boundary.ownerTaskId ?? null, boundary.ownerRunId ?? null);
+    }
     const row = this.db.prepare(
-      'SELECT id FROM memory_entries WHERE workspace_id = ? AND normalized_text_hash = ? ORDER BY id ASC LIMIT 1',
-    ).get(workspaceId, hash) as { id: string } | undefined;
+      `SELECT id FROM memory_entries WHERE workspace_id = ? AND ${column} = ?${filter} ORDER BY id ASC LIMIT 1`,
+    ).get(...params) as { id: string } | undefined;
     return row?.id;
   }
 

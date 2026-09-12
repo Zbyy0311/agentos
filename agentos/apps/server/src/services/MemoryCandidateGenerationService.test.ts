@@ -12,6 +12,7 @@ import { createFileBackupProvider } from '../migrations/backup.js';
 import type { MinimalDatabaseSync } from '../migrations/types.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import type { CreateMemoryEntryInput } from '../store/MemoryEntryRepository.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
 import { RunRepository } from '../store/RunRepository.js';
 import { RunStageRepository } from '../store/RunStageRepository.js';
@@ -205,6 +206,58 @@ test('MF2R-G4b FTS-similar near-duplicate forces review-required', () => {
     assert.equal(result.outcome, 'created');
     assert.equal(result.duplicateOfEntryId, 'mem_' + 'f'.repeat(26));
     assert.equal(result.candidate!.outcome, 'review-required');
+  } finally { fx.close(); }
+});
+
+for (const [label, overrides] of [
+  ['another task', { ownerTaskId: 'task_other' }],
+  ['workspace scope', { scope: 'workspace', ownerTaskId: undefined }],
+  ['another category', { category: 'decision' }],
+  ['archived', { status: 'archived' }],
+  ['deleted', { status: 'deleted' }],
+] as const) {
+  test(`LITE-07-003 LITE-07-107 terminal dedup ignores ${label}`, () => {
+    const fx = fixture();
+    try {
+      fx.db.prepare('INSERT INTO tasks (id, workspace_id, title, status, created_by, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)')
+        .run('task_other', WS, 'other', 'open', 'test', NOW, NOW);
+      fx.entries.createEntry(Object.assign({
+        id: 'mem_dedup_boundary', workspaceId: WS, scope: 'task', ownerTaskId: TASK,
+        category: 'summary', authority: 'system-verified', confidence: 0.9,
+        importance: 0.5, title: '执行结果：修复登录页样式', content: generatedContent(), status: 'active',
+        exactContentHash: hashMemoryText(generatedContent()),
+        normalizedTextHash: hashMemoryText(normalizeMemoryText(generatedContent())),
+        sources: [{ kind: 'run', id: RUN }], createdAt: NOW,
+      }, overrides) as CreateMemoryEntryInput);
+      const result = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+      assert.equal(result.outcome, 'created');
+      assert.equal(result.duplicateOfEntryId, undefined);
+      assert.equal(result.candidate!.outcome, 'review-required');
+      assert.equal(fx.entries.findById(WS, 'mem_dedup_boundary')!.version, 1);
+    } finally { fx.close(); }
+  });
+}
+
+test('LITE-07-107 exact terminal dedup adds source once without changing accepted content', () => {
+  const fx = fixture();
+  try {
+    const entry = fx.entries.createEntry({
+      id: 'mem_dedup_source', workspaceId: WS, scope: 'task', ownerTaskId: TASK,
+      category: 'summary', authority: 'system-verified', confidence: 0.9,
+      importance: 0.5, title: 'accepted', content: generatedContent(), status: 'active',
+      exactContentHash: hashMemoryText(generatedContent()),
+      sources: [{ kind: 'task', id: TASK }], createdAt: NOW,
+    });
+    const input = { workspaceId: WS, runId: RUN, createdAt: '2026-09-12T01:00:00.000Z' };
+    assert.equal(fx.service.generateForRunTerminal(input).outcome, 'converged');
+    const merged = fx.entries.findById(WS, entry.id)!;
+    assert.deepEqual(merged.sources, [{ kind: 'run', id: RUN }, { kind: 'task', id: TASK }]);
+    assert.equal(merged.version, 2);
+    assert.equal(merged.updatedAt, input.createdAt);
+    assert.equal(merged.content, entry.content);
+    assert.equal(merged.authority, entry.authority);
+    assert.equal(fx.service.generateForRunTerminal(input).outcome, 'converged');
+    assert.deepEqual(fx.entries.findById(WS, entry.id), merged);
   } finally { fx.close(); }
 });
 

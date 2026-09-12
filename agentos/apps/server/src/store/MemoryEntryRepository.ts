@@ -90,6 +90,18 @@ export interface ListMemoryRetrievalCandidatesInput {
   readonly statuses: readonly MemoryEntryStatus[];
 }
 
+/** LITE-07-003/107: deduplication cannot cross an Entry's ownership boundary. */
+export type MemoryEntryDedupScope = Pick<CreateMemoryEntryInput,
+  'scope' | 'category' | 'ownerAgentId' | 'ownerConversationId' | 'ownerTaskId' | 'ownerRunId'>;
+
+export interface MergeExactMemorySourcesInput extends MemoryEntryDedupScope {
+  readonly workspaceId: string;
+  readonly entryId: string;
+  readonly exactContentHash: string;
+  readonly sources: readonly MemoryEntrySourceInput[];
+  readonly updatedAt: string;
+}
+
 export interface MemoryEntryRecord {
   readonly id: string;
   readonly workspaceId: string;
@@ -343,6 +355,40 @@ export class MemoryEntryRepository {
   /** Soft delete (status = 'deleted'); never a hard row removal. */
   softDelete(workspaceId: string, entryId: string, expectedVersion: number, updatedAt: string): MemoryEntryRecord {
     return this.updateStatus({ workspaceId, entryId, expectedVersion, status: 'deleted', updatedAt });
+  }
+
+  /** Caller owns the transaction and the corresponding canonical Event. */
+  mergeExactSourcesWithinTransaction(input: MergeExactMemorySourcesInput): { record: MemoryEntryRecord; changed: boolean } | undefined {
+    if (!nonBlank(input.exactContentHash) || !nonBlank(input.updatedAt)
+      || !Array.isArray(input.sources) || input.sources.length === 0
+      || input.sources.some(source => !isSourceKind(source.kind) || !nonBlank(source.id))) {
+      throw new MemoryEntryRepositoryError('INPUT_INVALID');
+    }
+    const current = this.findById(input.workspaceId, input.entryId);
+    if (current === undefined || current.status !== 'active' || current.exactContentHash !== input.exactContentHash
+      || current.scope !== input.scope || current.category !== input.category
+      || current.ownerAgentId !== (input.ownerAgentId ?? null)
+      || current.ownerConversationId !== (input.ownerConversationId ?? null)
+      || current.ownerTaskId !== (input.ownerTaskId ?? null)
+      || current.ownerRunId !== (input.ownerRunId ?? null)) {
+      // The pre-transaction match became ineligible: no writes, caller may
+      // continue generating the review Candidate. Persistence failures still throw.
+      return undefined;
+    }
+    let added = 0;
+    for (const source of input.sources) {
+      const result = this.db.prepare(
+        'INSERT OR IGNORE INTO memory_entry_sources (memory_entry_id, source_kind, source_id) VALUES (?, ?, ?)',
+      ).run(current.id, source.kind, source.id) as { changes: number | bigint };
+      added += Number(result.changes);
+    }
+    if (added > 0) {
+      const update = this.db.prepare(
+        'UPDATE memory_entries SET version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ? AND version = ?',
+      ).run(input.updatedAt, input.workspaceId, current.id, current.version) as { changes: number | bigint };
+      if (Number(update.changes) !== 1) throw new MemoryEntryRepositoryError('ENTRY_NOT_UPDATABLE');
+    }
+    return { record: this.requireEntry(input.workspaceId, current.id), changed: added > 0 };
   }
 
   private validateCreateInput(input: CreateMemoryEntryInput): CreateMemoryEntryInput {

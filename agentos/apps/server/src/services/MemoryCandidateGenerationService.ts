@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 
 import type { RuntimeEventContextAuthoritySourceV1 } from '@agentos/shared';
-import type { TransactionDatabase } from '../store/Transaction.js';
+import { inTransaction, type TransactionDatabase } from '../store/Transaction.js';
+import { MemoryEntryRepository, type MemoryEntryDedupScope } from '../store/MemoryEntryRepository.js';
 import {
   MemoryCandidateRepository,
   type CreateMemoryCandidateInput,
@@ -37,8 +38,8 @@ import type { MemoryRuntimeEventEmitter } from './MemoryRuntimeEventEmitter.js';
  * MF-5 production wiring: when an `emitter` is supplied the Candidate and its
  * canonical `memory.candidate_created` Event + Outbox row commit in ONE
  * transaction, bound to the caller's authorized causal context (the persisted
- * `run.start` Operation). The convergence paths stay pure reads and emit
- * nothing, so a replay never appends a second Event for the same Candidate.
+ * `run.start` Operation). Exact convergence preserves missing sources with an
+ * Entry deduplication Event; a same-source replay emits nothing.
  */
 
 export function normalizeMemoryText(text: string): string {
@@ -160,13 +161,26 @@ export class MemoryCandidateGenerationService {
 
     const exactHash = hashMemoryText(content);
     const normalizedHash = hashMemoryText(normalizeMemoryText(content));
-    const exactHit = this.candidates.findEntryByExactHash(input.workspaceId, exactHash);
+    const boundary: MemoryEntryDedupScope = { scope: 'task', ownerTaskId: run.taskId, category: 'summary' };
+    const exactHit = this.candidates.findEntryByExactHash(input.workspaceId, exactHash, boundary);
     if (exactHit !== undefined) {
-      // Dedup order step 1: exact duplicate converges; no new Candidate.
-      return { outcome: 'converged', duplicateOfEntryId: exactHit };
+      // LITE-07-107: preserve actual provenance without creating another Entry.
+      const merge = { ...boundary, workspaceId: input.workspaceId, entryId: exactHit,
+        exactContentHash: exactHash, sources: [{ kind: 'run' as const, id: input.runId }], updatedAt: input.createdAt };
+      try {
+        const result = this.emitter === undefined
+          ? inTransaction(this.db, () => new MemoryEntryRepository(this.db).mergeExactSourcesWithinTransaction(merge))
+          : this.emitter.emitEntryDeduplicated({ ...merge, runId: input.runId,
+            eventContext: input.eventContext as RuntimeEventContextAuthoritySourceV1, timestamp: input.createdAt });
+        if (result !== undefined) return { outcome: 'converged', duplicateOfEntryId: exactHit };
+      } catch {
+        throw new MemoryCandidateGenerationError('GENERATION_FAILED');
+      }
+      // A concurrent archive/removal invalidated the match. Continue with a
+      // review Candidate instead of losing this meaningful transition.
     }
-    const normalizedHit = this.candidates.findEntryByNormalizedHash(input.workspaceId, normalizedHash);
-    const ftsHit = normalizedHit === undefined ? this.findFtsNearDuplicate(input.workspaceId, title, summary) : undefined;
+    const normalizedHit = this.candidates.findEntryByNormalizedHash(input.workspaceId, normalizedHash, boundary);
+    const ftsHit = normalizedHit === undefined ? this.findFtsNearDuplicate(input.workspaceId, run.taskId, title) : undefined;
     const duplicateOf = normalizedHit ?? ftsHit;
 
     const candidateInput: CreateMemoryCandidateInput = {
@@ -225,7 +239,7 @@ export class MemoryCandidateGenerationService {
    * silent merge). Degraded FTS (unavailable/error) yields no signal;
    * structured hashes remain authoritative.
    */
-  private findFtsNearDuplicate(workspaceId: string, title: string, _summary: string): string | undefined {
+  private findFtsNearDuplicate(workspaceId: string, taskId: string, title: string): string | undefined {
     const ftsQuery = toSafeFtsQuery(title);
     if (ftsQuery === null) return undefined;
     try {
@@ -234,9 +248,12 @@ export class MemoryCandidateGenerationService {
           + ' FROM memory_entries_fts'
           + ' INNER JOIN memory_entries ON memory_entries.id = memory_entries_fts.memory_entry_id'
           + ' WHERE memory_entries.workspace_id = ?'
+          + " AND memory_entries.status = 'active' AND memory_entries.scope = 'task' AND memory_entries.category = 'summary'"
+          + ' AND memory_entries.owner_task_id = ? AND memory_entries.owner_agent_id IS NULL'
+          + ' AND memory_entries.owner_conversation_id IS NULL AND memory_entries.owner_run_id IS NULL'
           + ' AND memory_entries_fts MATCH ?'
           + ' ORDER BY bm25(memory_entries_fts) ASC, id ASC LIMIT 1',
-      ).get(workspaceId, ftsQuery) as { id: string } | undefined;
+      ).get(workspaceId, taskId, ftsQuery) as { id: string } | undefined;
       return row?.id;
     } catch {
       return undefined;

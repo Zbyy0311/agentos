@@ -9,6 +9,7 @@ import {
   type CreateMemoryEntryInput,
   type MemoryEntryRecord,
   type UpdateMemoryEntryStatusInput,
+  type MergeExactMemorySourcesInput,
 } from '../store/MemoryEntryRepository.js';
 import {
   MemoryCandidateRepository,
@@ -129,6 +130,32 @@ export class MemoryRuntimeEventEmitter {
       const record = this.entries.createEntryWithinTransaction(input);
       return { record, payload: entryPayload(record), type: 'memory.entry_created' };
     }, scope);
+  }
+
+  /** LITE-07-107: source convergence and Event/Outbox share one rollback boundary. */
+  emitEntryDeduplicated(input: MergeExactMemorySourcesInput & {
+    readonly runId: string;
+    readonly eventContext: RuntimeEventContextAuthoritySourceV1;
+    readonly timestamp?: string;
+  }): { readonly record: MemoryEntryRecord; readonly changed: boolean } | undefined {
+    const scope = this.resolveScope(input);
+    try {
+      return inTransaction(this.db, () => {
+        this.assertAuthorityOriginProven(input.workspaceId, scope.runId, scope.eventContext);
+        const result = this.entries.mergeExactSourcesWithinTransaction(input);
+        if (result?.changed) {
+          this.writer.appendWithinTransaction({
+            type: 'memory.entry_deduplicated', workspaceId: input.workspaceId,
+            runId: scope.runId, timestamp: scope.timestamp, source: 'memory-engine',
+            eventContext: scope.eventContext, payload: entryPayload(result.record),
+          });
+        }
+        return result;
+      });
+    } catch (error) {
+      if (error instanceof MemoryRuntimeEventEmissionError) throw error;
+      throw new MemoryRuntimeEventEmissionError('EMISSION_FAILED');
+    }
   }
 
   /** Update Entry status and emit the matching lifecycle Event in one transaction. */
