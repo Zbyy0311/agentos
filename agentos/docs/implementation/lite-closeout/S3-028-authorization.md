@@ -10,8 +10,9 @@ checking the post-#145 main registry; do not renumber.
 ## Boundary and reuse
 
 The first AgentOS-owned enforcement boundary is provider-backed canonical Stage
-execution in `RunEngineProviderDispatcher`, before `StageExecutionCoordinator`
-is invoked. A stage whose frozen Agent/Provider snapshots permit Workspace
+execution inside `StageExecutionCoordinator`, after Adapter validation and
+`buildLaunchPlan` but before Session/Process reservation or spawn. A stage whose
+frozen Agent/Provider snapshots permit Workspace
 mutation is ASK_USER; read-only is allowed only after the existing Workspace
 admission gate proves enforced read-only. No Policy DSL, grants engine, UI
 editor, RBAC, simulation, or Provider approval authority is added.
@@ -28,14 +29,16 @@ expiry, and consumption state that 026 deliberately does not own.
 
 Add `runtime_approval_requests`; no backfill and no rewrite of 026/027:
 
-- immutable identity: `id`, `workspace_id`, `run_id`, `stage_id`,
-  `stage_attempt`, `operation_id`, `source_key`, `request_round`;
+- immutable identity: `id`, `workspace_id`, `run_id`, `run_snapshot_id`,
+  `stage_id`, `stage_attempt`, `operation_id`, `source_key`, `request_round`;
 - immutable redacted action: category/risk/title/description, bounded
   `request_snapshot_json`, `snapshot_hash`, `action_fingerprint`,
-  `policy_version`, `requested_at`, `expires_at`;
+  Agent/Provider snapshot hashes, actual Launch Plan hash, `policy_version`,
+  `requested_at`, `expires_at`;
 - decision state: `status` pending/approved/rejected/cancelled,
   `resolution`, nullable `decision_record_id`, `decided_by`, `decided_at`,
-  nullable `consumed_at`, optimistic `version`, timestamps;
+  lifecycle/Candidate/Event link IDs, nullable `consumed_at`, optimistic
+  `version`, timestamps;
 - FKs prove same-Workspace Run, optional same-Run Stage, original `run.start`
   Operation, and 026 decision record. The request stores IDs and redacted
   normalized facts only; never secret values, raw output, env values, or full

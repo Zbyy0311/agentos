@@ -12,6 +12,7 @@ export const LITE_APPROVAL_028_DDL_STATEMENTS = Object.freeze([
     id TEXT NOT NULL PRIMARY KEY CHECK (length(id) > 0),
     workspace_id TEXT NOT NULL,
     run_id TEXT NOT NULL,
+    run_snapshot_id TEXT NOT NULL,
     stage_id TEXT,
     stage_attempt INTEGER NOT NULL CHECK (stage_attempt >= 1),
     operation_id TEXT NOT NULL,
@@ -22,12 +23,19 @@ export const LITE_APPROVAL_028_DDL_STATEMENTS = Object.freeze([
     title TEXT NOT NULL CHECK (length(title) BETWEEN 1 AND 200),
     description TEXT NOT NULL CHECK (length(description) BETWEEN 1 AND 2000),
     action_fingerprint TEXT NOT NULL CHECK (length(action_fingerprint) = 64),
+    agent_snapshot_hash TEXT NOT NULL CHECK (length(agent_snapshot_hash) = 64),
+    provider_snapshot_hash TEXT NOT NULL CHECK (length(provider_snapshot_hash) = 64),
+    launch_plan_hash TEXT NOT NULL CHECK (length(launch_plan_hash) = 64),
     request_snapshot_json TEXT NOT NULL CHECK (json_valid(request_snapshot_json) AND length(request_snapshot_json) <= 16384),
     snapshot_hash TEXT NOT NULL CHECK (length(snapshot_hash) = 64),
     policy_version TEXT NOT NULL CHECK (length(policy_version) > 0),
     status TEXT NOT NULL CHECK (status IN ('pending','approved','rejected','cancelled','expired')),
     resolution TEXT CHECK (resolution IS NULL OR resolution IN ('approve_once','approve_run','approve_workspace','reject','cancel_run')),
     decision_record_id TEXT,
+    approval_required_event_id TEXT,
+    approval_resolved_event_id TEXT,
+    candidate_id TEXT,
+    candidate_event_id TEXT,
     decided_by TEXT,
     requested_at TEXT NOT NULL,
     expires_at TEXT NOT NULL,
@@ -48,9 +56,14 @@ export const LITE_APPROVAL_028_DDL_STATEMENTS = Object.freeze([
     UNIQUE (workspace_id, source_key, request_round),
     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,
     FOREIGN KEY (run_id, workspace_id) REFERENCES runs(id, workspace_id) ON DELETE CASCADE,
+    FOREIGN KEY (run_snapshot_id, run_id) REFERENCES run_snapshots(id, run_id) ON DELETE CASCADE,
     FOREIGN KEY (stage_id, run_id) REFERENCES run_stages(id, run_id) ON DELETE CASCADE,
     FOREIGN KEY (operation_id) REFERENCES operations(id) ON DELETE CASCADE,
-    FOREIGN KEY (decision_record_id) REFERENCES approval_decisions(id) ON DELETE RESTRICT
+    FOREIGN KEY (decision_record_id) REFERENCES approval_decisions(id) ON DELETE RESTRICT,
+    FOREIGN KEY (approval_required_event_id) REFERENCES runtime_events(id) ON DELETE RESTRICT,
+    FOREIGN KEY (approval_resolved_event_id) REFERENCES runtime_events(id) ON DELETE RESTRICT,
+    FOREIGN KEY (candidate_id) REFERENCES memory_candidate_entries(id) ON DELETE RESTRICT,
+    FOREIGN KEY (candidate_event_id) REFERENCES runtime_events(id) ON DELETE RESTRICT
   )`,
   `CREATE UNIQUE INDEX runtime_approval_requests_one_pending
     ON runtime_approval_requests (workspace_id, run_id)
@@ -70,11 +83,14 @@ export const LITE_APPROVAL_028_DDL_STATEMENTS = Object.freeze([
         AND (NEW.stage_id IS NULL OR (s.id IS NOT NULL AND s.attempt = NEW.stage_attempt))
     )
     BEGIN SELECT RAISE(ABORT, 'RUNTIME_APPROVAL_SOURCE_INVALID'); END`,
-  `CREATE TRIGGER runtime_approval_requests_validate_decision BEFORE UPDATE OF status, resolution, decision_record_id, decided_by, decided_at, consumed_at, version, updated_at ON runtime_approval_requests
+  `CREATE TRIGGER runtime_approval_requests_validate_decision BEFORE UPDATE OF status, resolution, decision_record_id, decided_by, decided_at, consumed_at, candidate_id, candidate_event_id, version, updated_at ON runtime_approval_requests
     WHEN NEW.decision_record_id IS NOT NULL AND NOT EXISTS (
       SELECT 1 FROM approval_decisions d
       WHERE d.id = NEW.decision_record_id AND d.workspace_id = NEW.workspace_id
         AND d.run_id = NEW.run_id AND d.approval_request_id = NEW.id
+        AND d.action_fingerprint = NEW.action_fingerprint AND d.risk_level = NEW.risk_level
+        AND ((NEW.resolution = 'approve_once' AND d.decision = 'allow_once')
+          OR (NEW.resolution IN ('reject','cancel_run') AND d.decision = 'deny'))
     )
     BEGIN SELECT RAISE(ABORT, 'RUNTIME_APPROVAL_DECISION_INVALID'); END`,
   `CREATE TRIGGER runtime_approval_requests_identity_immutable BEFORE UPDATE ON runtime_approval_requests
@@ -82,9 +98,13 @@ export const LITE_APPROVAL_028_DDL_STATEMENTS = Object.freeze([
       OR NEW.run_id IS NOT OLD.run_id OR NEW.stage_id IS NOT OLD.stage_id
       OR NEW.stage_attempt IS NOT OLD.stage_attempt OR NEW.operation_id IS NOT OLD.operation_id
       OR NEW.source_key IS NOT OLD.source_key OR NEW.request_round IS NOT OLD.request_round
+      OR NEW.run_snapshot_id IS NOT OLD.run_snapshot_id
       OR NEW.category IS NOT OLD.category OR NEW.risk_level IS NOT OLD.risk_level
       OR NEW.title IS NOT OLD.title OR NEW.description IS NOT OLD.description
       OR NEW.action_fingerprint IS NOT OLD.action_fingerprint
+      OR NEW.agent_snapshot_hash IS NOT OLD.agent_snapshot_hash
+      OR NEW.provider_snapshot_hash IS NOT OLD.provider_snapshot_hash
+      OR NEW.launch_plan_hash IS NOT OLD.launch_plan_hash
       OR NEW.request_snapshot_json IS NOT OLD.request_snapshot_json
       OR NEW.snapshot_hash IS NOT OLD.snapshot_hash OR NEW.policy_version IS NOT OLD.policy_version
       OR NEW.requested_at IS NOT OLD.requested_at OR NEW.expires_at IS NOT OLD.expires_at

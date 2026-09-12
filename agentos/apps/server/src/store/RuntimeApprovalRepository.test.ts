@@ -35,10 +35,11 @@ function fixture() {
 
 function input(round = 1) {
   return {
-    id: `approval_${round}`, workspaceId: WS, runId: 'run', stageId: 'stage', stageAttempt: 1,
+    id: `approval_${round}`, workspaceId: WS, runId: 'run', runSnapshotId: 'snapshot', stageId: 'stage', stageAttempt: 1,
     operationId: 'operation', sourceKey: 'source', requestRound: round, category: 'command', riskLevel: 'high' as const,
     title: 'Approve provider execution', description: 'Provider may modify the Workspace',
-    actionFingerprint: 'a'.repeat(64), requestSnapshotJson: JSON.stringify({ schemaVersion: 1, executable: 'kimi.exe' }),
+    actionFingerprint: 'a'.repeat(64), agentSnapshotHash: 'c'.repeat(64), providerSnapshotHash: 'd'.repeat(64),
+    launchPlanHash: 'e'.repeat(64), requestSnapshotJson: JSON.stringify({ schemaVersion: 1, executable: 'kimi.exe' }),
     snapshotHash: 'b'.repeat(64), policyVersion: 'lite-v1', requestedAt: NOW,
     expiresAt: '2026-09-12T10:35:00.000Z', createdAt: NOW, updatedAt: NOW,
   };

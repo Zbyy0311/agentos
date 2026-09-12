@@ -191,7 +191,12 @@ export class RunEngineProviderDispatcher {
     }
     const claim = this.engine.tick({ workspaceId, runId });
     if (claim.outcome !== 'claimed') {
-      return { outcome: 'noop', reason: claim.reason };
+      const current = this.runRepository.findById(workspaceId, runId);
+      if (claim.reason !== 'run-not-queued' || current?.status !== 'running') {
+        return { outcome: 'noop', reason: claim.reason };
+      }
+      // Approval continuation: the original run.start authorization is already
+      // completed; continue that Run instead of claiming or creating another.
     }
     for (let step = 0; step < this.maxDispatchSteps; step += 1) {
       const run = this.requireRun(workspaceId, runId);
@@ -205,6 +210,7 @@ export class RunEngineProviderDispatcher {
           // nothing further to progress now.
           break;
         }
+        if (stageOutcome === 'waiting-approval') break;
         if (stageOutcome === 'stopped') break;
         continue;
       }
@@ -430,7 +436,7 @@ export class RunEngineProviderDispatcher {
     runId: string,
     stage: RunStage,
     stages: readonly RunStage[],
-  ): Promise<'progressed' | 'active' | 'stopped'> {
+  ): Promise<'progressed' | 'active' | 'stopped' | 'waiting-approval'> {
     const snapshot = this.runSnapshotRepository.findByRunId(workspaceId, runId);
     if (snapshot === undefined || snapshot.payload.schemaVersion !== 2) {
       throw new Error('RUN_ENGINE_SNAPSHOT_INVALID: provider execution requires a V2 snapshot');
@@ -517,6 +523,8 @@ ${basePrompt}`;
           outputContractSatisfied: outcome.outputContractSatisfied,
         });
       }
+    } else if (outcome.kind === 'waiting-approval') {
+      return 'waiting-approval';
     } else {
       await this.lifecycleTransactionService.transitionStage({
         workspaceId,

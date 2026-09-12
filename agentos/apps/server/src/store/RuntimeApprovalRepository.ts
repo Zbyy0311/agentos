@@ -8,6 +8,7 @@ export interface RuntimeApprovalRequestRecord {
   readonly id: string;
   readonly workspaceId: string;
   readonly runId: string;
+  readonly runSnapshotId: string;
   readonly stageId: string | null;
   readonly stageAttempt: number;
   readonly operationId: string;
@@ -18,12 +19,19 @@ export interface RuntimeApprovalRequestRecord {
   readonly title: string;
   readonly description: string;
   readonly actionFingerprint: string;
+  readonly agentSnapshotHash: string;
+  readonly providerSnapshotHash: string;
+  readonly launchPlanHash: string;
   readonly requestSnapshotJson: string;
   readonly snapshotHash: string;
   readonly policyVersion: string;
   readonly status: RuntimeApprovalStatus;
   readonly resolution: RuntimeApprovalResolution | null;
   readonly decisionRecordId: string | null;
+  readonly approvalRequiredEventId: string | null;
+  readonly approvalResolvedEventId: string | null;
+  readonly candidateId: string | null;
+  readonly candidateEventId: string | null;
   readonly decidedBy: string | null;
   readonly requestedAt: string;
   readonly expiresAt: string;
@@ -41,6 +49,10 @@ export class RuntimeApprovalRepositoryError extends Error {
   }
 }
 
+type CreateRuntimeApprovalInput = Omit<RuntimeApprovalRequestRecord,
+  'status' | 'resolution' | 'decisionRecordId' | 'approvalRequiredEventId' | 'approvalResolvedEventId'
+  | 'candidateId' | 'candidateEventId' | 'decidedBy' | 'decidedAt' | 'consumedAt' | 'version'>;
+
 const HASH = /^[a-f0-9]{64}$/;
 const CATEGORIES = new Set(['command', 'file-delete', 'git-push', 'network', 'package-install', 'secret-access', 'merge', 'custom']);
 const RISKS = new Set(['low', 'medium', 'high', 'critical']);
@@ -49,18 +61,20 @@ const RESOLUTIONS = new Set(['approve_once', 'approve_run', 'approve_workspace',
 export class RuntimeApprovalRepository {
   constructor(private readonly db: TransactionDatabase) {}
 
-  createWithinTransaction(input: Omit<RuntimeApprovalRequestRecord, 'status' | 'resolution' | 'decisionRecordId' | 'decidedBy' | 'decidedAt' | 'consumedAt' | 'version'>): RuntimeApprovalRequestRecord {
+  createWithinTransaction(input: CreateRuntimeApprovalInput): RuntimeApprovalRequestRecord {
     this.assertTransaction();
     this.assertIdentity(input);
     try {
       this.db.prepare(`INSERT INTO runtime_approval_requests (
-        id, workspace_id, run_id, stage_id, stage_attempt, operation_id, source_key, request_round,
-        category, risk_level, title, description, action_fingerprint, request_snapshot_json, snapshot_hash,
+        id, workspace_id, run_id, run_snapshot_id, stage_id, stage_attempt, operation_id, source_key, request_round,
+        category, risk_level, title, description, action_fingerprint, agent_snapshot_hash, provider_snapshot_hash,
+        launch_plan_hash, request_snapshot_json, snapshot_hash,
         policy_version, status, requested_at, expires_at, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(
-        input.id, input.workspaceId, input.runId, input.stageId, input.stageAttempt, input.operationId,
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)`).run(
+        input.id, input.workspaceId, input.runId, input.runSnapshotId, input.stageId, input.stageAttempt, input.operationId,
         input.sourceKey, input.requestRound, input.category, input.riskLevel, input.title, input.description,
-        input.actionFingerprint, input.requestSnapshotJson, input.snapshotHash, input.policyVersion,
+        input.actionFingerprint, input.agentSnapshotHash, input.providerSnapshotHash, input.launchPlanHash,
+        input.requestSnapshotJson, input.snapshotHash, input.policyVersion,
         input.requestedAt, input.expiresAt, input.createdAt, input.updatedAt,
       );
     } catch (error) {
@@ -90,6 +104,32 @@ export class RuntimeApprovalRepository {
   listApprovedUnconsumed(): RuntimeApprovalRequestRecord[] {
     return this.db.prepare(`SELECT ${COLUMNS} FROM runtime_approval_requests
       WHERE status = 'approved' AND consumed_at IS NULL ORDER BY decided_at, id`).all() as unknown as RuntimeApprovalRequestRecord[];
+  }
+
+  linkRequiredEventWithinTransaction(input: { workspaceId: string; id: string; expectedVersion: number; eventId: string; now: string }): RuntimeApprovalRequestRecord {
+    this.assertDecisionInput(input);
+    const changed = this.db.prepare(`UPDATE runtime_approval_requests SET approval_required_event_id = ?, updated_at = ?, version = version + 1
+      WHERE workspace_id = ? AND id = ? AND version = ? AND approval_required_event_id IS NULL AND status = 'pending'`)
+      .run(input.eventId, input.now, input.workspaceId, input.id, input.expectedVersion) as { changes?: number | bigint };
+    if (Number(changed.changes ?? 0) !== 1) throw new RuntimeApprovalRepositoryError('CONFLICT');
+    return this.requireById(input.workspaceId, input.id);
+  }
+
+  linkResolutionEvidenceWithinTransaction(input: {
+    workspaceId: string; id: string; expectedVersion: number; now: string;
+    approvalResolvedEventId: string; candidateId?: string; candidateEventId?: string;
+  }): RuntimeApprovalRequestRecord {
+    this.assertDecisionInput(input);
+    const current = this.requireById(input.workspaceId, input.id);
+    if (current.version !== input.expectedVersion || current.status === 'pending') throw new RuntimeApprovalRepositoryError('CONFLICT');
+    const changed = this.db.prepare(`UPDATE runtime_approval_requests SET
+      approval_resolved_event_id = ?, candidate_id = ?, candidate_event_id = ?, updated_at = ?, version = version + 1
+      WHERE workspace_id = ? AND id = ? AND version = ? AND approval_resolved_event_id IS NULL`).run(
+      input.approvalResolvedEventId, input.candidateId ?? null, input.candidateEventId ?? null,
+      input.now, input.workspaceId, input.id, input.expectedVersion,
+    ) as { changes?: number | bigint };
+    if (Number(changed.changes ?? 0) !== 1) throw new RuntimeApprovalRepositoryError('CONFLICT');
+    return this.requireById(input.workspaceId, input.id);
   }
 
   markExpiredWithinTransaction(input: { workspaceId: string; id: string; expectedVersion: number; now: string }): RuntimeApprovalRequestRecord {
@@ -163,7 +203,7 @@ export class RuntimeApprovalRepository {
     }
   }
 
-  private assertIdentity(input: Omit<RuntimeApprovalRequestRecord, 'status' | 'resolution' | 'decisionRecordId' | 'decidedBy' | 'decidedAt' | 'consumedAt' | 'version'>): void {
+  private assertIdentity(input: CreateRuntimeApprovalInput): void {
     const strings = [input.id, input.workspaceId, input.runId, input.operationId, input.sourceKey,
       input.title, input.description, input.policyVersion];
     if (strings.some(value => typeof value !== 'string' || value.trim().length === 0) ||
@@ -172,7 +212,8 @@ export class RuntimeApprovalRepository {
       !Number.isSafeInteger(input.requestRound) || input.requestRound < 1 ||
       !CATEGORIES.has(input.category) || !RISKS.has(input.riskLevel) ||
       input.title.length > 200 || input.description.length > 2000 || input.sourceKey.length > 256 ||
-      !HASH.test(input.actionFingerprint) || !HASH.test(input.snapshotHash) ||
+      !HASH.test(input.actionFingerprint) || !HASH.test(input.agentSnapshotHash) ||
+      !HASH.test(input.providerSnapshotHash) || !HASH.test(input.launchPlanHash) || !HASH.test(input.snapshotHash) ||
       Buffer.byteLength(input.requestSnapshotJson, 'utf8') > 16384 ||
       ![input.requestedAt, input.expiresAt, input.createdAt, input.updatedAt].every(isCanonicalUtcTimestamp) ||
       input.expiresAt <= input.requestedAt) {
@@ -187,11 +228,14 @@ export class RuntimeApprovalRepository {
   }
 }
 
-const COLUMNS = `id, workspace_id AS workspaceId, run_id AS runId, stage_id AS stageId,
+const COLUMNS = `id, workspace_id AS workspaceId, run_id AS runId, run_snapshot_id AS runSnapshotId, stage_id AS stageId,
   stage_attempt AS stageAttempt, operation_id AS operationId, source_key AS sourceKey,
   request_round AS requestRound, category, risk_level AS riskLevel, title, description,
   action_fingerprint AS actionFingerprint, request_snapshot_json AS requestSnapshotJson,
-  snapshot_hash AS snapshotHash, policy_version AS policyVersion, status, resolution,
-  decision_record_id AS decisionRecordId, decided_by AS decidedBy, requested_at AS requestedAt,
+  agent_snapshot_hash AS agentSnapshotHash, provider_snapshot_hash AS providerSnapshotHash,
+  launch_plan_hash AS launchPlanHash, snapshot_hash AS snapshotHash, policy_version AS policyVersion, status, resolution,
+  decision_record_id AS decisionRecordId, approval_required_event_id AS approvalRequiredEventId,
+  approval_resolved_event_id AS approvalResolvedEventId, candidate_id AS candidateId,
+  candidate_event_id AS candidateEventId, decided_by AS decidedBy, requested_at AS requestedAt,
   expires_at AS expiresAt, decided_at AS decidedAt, consumed_at AS consumedAt,
   created_at AS createdAt, updated_at AS updatedAt, version`;
