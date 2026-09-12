@@ -1,6 +1,6 @@
 ## Requirements / bounded exit
 
-LITE-08-005/006/007 and LITE-07-103, S0 matrix v7. Implements durable
+LITE-08-005/006/007 and LITE-07-103, S0 matrix v8. Implements durable
 ASK_USER request state at the canonical Provider Stage pre-spawn boundary,
 original Run continuation/rejection, replay/expiry/drift protection, restart
 continuation of approved unconsumed requests, and the accepted-decision
@@ -21,13 +21,19 @@ and full CI complete.
 
 ## Evidence / merge gates
 
-Post-rebase exact head: 39 targeted tests = 38 pass,0 fail,1 env-gated Kimi
-skip; server typecheck passes. Earlier integrated affected run: 101 tests =
-100 pass,0 fail,1 same skip. See S3-LOCAL-39 and S3-028-authorization.md.
+Post-review exact head d76cce34: 13 targeted review-fix tests pass and server
+typecheck passes. Final full Server run: 2753 pass,4 fail,3 skip; all four
+failures are ENOTEMPTY teardown leftovers, not S3 assertions. Earlier evidence
+is preserved in S3-LOCAL-39, S3-FULL-FIRST, S3-FIXED-FOCUSED, S3-REVIEW-FIX,
+and S3-FULL-FINAL.
 Proven: pending creates no Session/Process/spawn; approval resumes original
 Run/Operation and consumes once; reject terminates without Candidate; snapshot
 or launch drift cannot execute; expired decisions persist expired; candidate
-Event failure rolls back the whole decision.
+Event failure rolls back the whole decision. Independent review findings were
+fixed before PR: expiry is revalidated immediately before consuming spawn
+right, contradictory approve/reject is 409, recovery-required Runs are not
+auto-resumed, and environment values contribute to the Launch fingerprint
+without being persisted.
 
 CI must be green on the exact head before merge. First route fixture failures
 were test-only invalid snapshots/operation terminal timestamps and are retained

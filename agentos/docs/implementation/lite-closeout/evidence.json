@@ -382,5 +382,27 @@
     "result": { "passed": 8, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
     "requirementIds": ["LITE-07-104", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
     "limitation": "Focused correction evidence after the first full S3 failure; corrected full Server suite and CI remain gates."
+  },
+  {
+    "id": "S3-REVIEW-FIX",
+    "baseline": "d76cce343b83fa428ed7d5c191a2ad581df69c90",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-name-pattern='LITE-08|LITE-07-103' src/services/run-engine/RunEngineProviderDispatcher.test.ts src/routes/runtimeApprovals.test.ts; pnpm exec tsc --noEmit",
+    "environment": "Windows Node24.18.0 pnpm11.11.0",
+    "result": { "passed": 13, "failed": 0, "skipped": 0, "typecheckExitCode": 0 },
+    "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "limitation": "Independent review P1/P2 fixes: spawn-right expiry revalidation, contradictory replay conflict, recovery-required resume exclusion, and environment-value drift hash. Not full-suite or live Provider evidence."
+  },
+  {
+    "id": "S3-FULL-FINAL",
+    "baseline": "d76cce343b83fa428ed7d5c191a2ad581df69c90",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "pnpm --filter @agentos/server test",
+    "environment": "Windows Node24.18.0 pnpm11.11.0; source frozen during run",
+    "result": { "passed": 2753, "failed": 4, "skipped": 3, "exitCode": 1 },
+    "requirementIds": ["LITE-07-103", "LITE-08-005", "LITE-08-006", "LITE-08-007"],
+    "limitation": "Final S3 full run preserved. All four failures are ENOTEMPTY teardown leftovers; no S3 assertion failure. The run remains non-green and is not used as PASS evidence; exact-head CI is required."
   }
 ]
