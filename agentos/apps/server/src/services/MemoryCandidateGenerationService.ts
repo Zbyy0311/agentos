@@ -64,7 +64,10 @@ export type TerminalGenerationOutcome =
   | 'existing'
   | 'converged'
   | 'run-not-found'
-  | 'not-completed';
+  | 'not-terminal';
+
+/** LITE-07-102: every terminal Run outcome produces one bounded fact. */
+const TERMINAL_RUN_STATUSES = ['completed', 'failed', 'cancelled'] as const;
 
 export interface GenerateForRunTerminalInput {
   readonly workspaceId: string;
@@ -131,7 +134,12 @@ export class MemoryCandidateGenerationService {
     }
     const run = this.runs.findById(input.workspaceId, input.runId);
     if (run === undefined) return { outcome: 'run-not-found' };
-    if (run.status !== 'completed') return { outcome: 'not-completed' };
+    // LITE-07-102: a failed or cancelled Run is a terminal outcome too, and its
+    // bounded fact is the memory that prevents repeating the same failure.
+    if (!(TERMINAL_RUN_STATUSES as readonly string[]).includes(run.status)) {
+      return { outcome: 'not-terminal' };
+    }
+    const completed = run.status === 'completed';
     // Fail closed: an emitter-wired generator must never create a Candidate
     // whose canonical Event cannot be authorized.
     if (this.emitter !== undefined && input.eventContext === undefined) {
@@ -151,17 +159,40 @@ export class MemoryCandidateGenerationService {
       return `${stage.workflowStageKey}: ${stage.status} (attempt ${stage.attempt}, duration ${duration})`;
     });
     const taskTitle = task?.title ?? run.taskId;
-    const title = truncate(`执行结果：${taskTitle}`, 200);
-    const summary = truncate(`Run ${input.runId} 已完成，共 ${stageList.length} 个 Stage。`, 1000);
+    // Bounded, record-only facts: status, failure code/message and stage
+    // outcomes. Never raw Provider output or hidden reasoning.
+    const statusLabel = completed ? '完成' : run.status === 'cancelled' ? '已取消' : '失败';
+    // The completed title stays byte-identical to the pre-LITE-07-102 shape: its
+    // exact text feeds the FTS near-duplicate signal (MF2R-G4b), so only a
+    // non-success outcome adds the status marker that distinguishes it.
+    const title = truncate(completed ? `执行结果：${taskTitle}` : `执行结果：${taskTitle}（${statusLabel}）`, 200);
+    const summary = truncate(
+      completed
+        ? `Run ${input.runId} 已完成，共 ${stageList.length} 个 Stage。`
+        : `Run ${input.runId} ${statusLabel}，共 ${stageList.length} 个 Stage。`,
+      1000,
+    );
     const content = truncate([
       `任务：${taskTitle}`,
-      `结果：Run ${input.runId} 完成（origin ${run.origin}，reason ${run.reason}）。`,
+      completed
+        ? `结果：Run ${input.runId} 完成（origin ${run.origin}，reason ${run.reason}）。`
+        : `结果：Run ${input.runId} ${statusLabel}（origin ${run.origin}，reason ${run.reason}，status ${run.status}）。`,
+      completed || run.failureCode === undefined || run.failureCode === null
+        ? ''
+        : `失败代码：${truncate(String(run.failureCode), 120)}`,
+      completed || !run.failureMessage
+        ? ''
+        : `失败说明：${truncate(String(run.failureMessage), 400)}`,
       stageLines.length > 0 ? `Stage 结果：${stageLines.join('; ')}` : '',
     ].filter(Boolean).join('\n'), 12000);
 
     const exactHash = hashMemoryText(content);
     const normalizedHash = hashMemoryText(normalizeMemoryText(content));
-    const boundary: MemoryEntryDedupScope = { scope: 'task', ownerTaskId: run.taskId, category: 'summary' };
+    // A non-success outcome is Failure Experience, not a success summary, so it
+    // deduplicates inside its own category instead of colliding with the
+    // completion summary of the same Task.
+    const category = completed ? 'summary' : 'failure';
+    const boundary: MemoryEntryDedupScope = { scope: 'task', ownerTaskId: run.taskId, category };
     const exactHit = this.candidates.findEntryByExactHash(input.workspaceId, exactHash, boundary);
     if (exactHit !== undefined) {
       // LITE-07-107: preserve actual provenance without creating another Entry.
@@ -188,9 +219,9 @@ export class MemoryCandidateGenerationService {
         workspaceId: input.workspaceId,
         scope: 'task',
         ownerTaskId: run.taskId,
-        category: 'summary',
+        category,
         authority: 'agent-derived',
-        confidence: 0.6,
+        confidence: completed ? 0.6 : 0.5,
         importance: 0.5,
         title,
         summary,

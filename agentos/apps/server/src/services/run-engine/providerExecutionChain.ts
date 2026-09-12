@@ -60,6 +60,8 @@ export interface ProviderExecutionChain {
   readonly dispatcher: RunEngineProviderDispatcher;
   readonly memoryContextResolver: MemoryContextResolver;
   readonly approvalGate: RuntimeApprovalGate;
+  /** LITE-07-102: shared by the dispatch trigger and the startup sweep. */
+  readonly terminalCandidateGenerator: MemoryCandidateGenerationService;
 }
 
 export function createProviderExecutionChain(options: ProviderExecutionChainOptions): ProviderExecutionChain {
@@ -141,6 +143,16 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     ),
     emitter: memoryEventEmitter,
   });
+  // LITE-07-102: ONE generator instance serves both the dispatch-time trigger
+  // and the startup sweep, so a Run can never receive two different facts for
+  // the same terminal outcome.
+  const terminalCandidateGenerator = new MemoryCandidateGenerationService({
+    store,
+    runs: store.runRepository(),
+    stages: store.runStageRepository(),
+    tasks: store.taskRepository(),
+    emitter: memoryEventEmitter,
+  });
   dispatcher = new RunEngineProviderDispatcher({
     artifactResults: new CanonicalArtifactResultService(new RuntimeArtifactService(store, dirname(dirname(options.artifactRoot)))),
     engine,
@@ -149,13 +161,7 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     memoryContextResolver,
     // MF-2R terminal-outcome trigger: bounded Evidence Bundle candidate after
     // the terminal commit; failures surface on stderr and never affect the Run.
-    memoryCandidateGenerator: new MemoryCandidateGenerationService({
-      store,
-      runs: store.runRepository(),
-      stages: store.runStageRepository(),
-      tasks: store.taskRepository(),
-      emitter: memoryEventEmitter,
-    }),
+    memoryCandidateGenerator: terminalCandidateGenerator,
     onCandidateGenerationError: (error, runId) => {
       console.error(`MEMORY_CANDIDATE_GENERATION_FAILED run=${runId}:`, error);
     },
@@ -167,5 +173,8 @@ export function createProviderExecutionChain(options: ProviderExecutionChainOpti
     workspaceRootFor: options.workspaceRootFor,
     worktreePathFor: options.worktreePathFor,
   });
-  return { admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher, memoryContextResolver, approvalGate };
+  return {
+    admissionAuthority, providerRegistry: registry, engine, coordinator, dispatcher,
+    memoryContextResolver, approvalGate, terminalCandidateGenerator,
+  };
 }

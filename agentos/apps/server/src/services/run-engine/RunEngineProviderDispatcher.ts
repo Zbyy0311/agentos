@@ -217,6 +217,10 @@ export class RunEngineProviderDispatcher {
       const result = this.engine.dispatch({ workspaceId, runId });
       if (result.outcome === 'noop') break;
     }
+    // LITE-07-102: a non-success terminal outcome reached during this drive
+    // still owes its bounded fact. The completion branch fires for a successful
+    // Run only, and this call is idempotent either way.
+    this.generateCandidateForNonSuccessTerminalRun(workspaceId, runId);
     return { outcome: 'claimed-and-progressed' };
   }
 
@@ -321,6 +325,9 @@ export class RunEngineProviderDispatcher {
           problem,
           phase: 'dispatch',
         });
+        // LITE-07-102: the fold above made the Run terminal; its bounded fact is
+        // still owed.
+        this.generateCandidateForNonSuccessTerminalRun(workspaceId, runId);
         report('post-claim');
         return;
       }
@@ -367,6 +374,7 @@ export class RunEngineProviderDispatcher {
             correlationId: runId,
           });
         }
+        this.generateCandidateForNonSuccessTerminalRun(workspaceId, runId);
         report('post-claim');
         return;
       }
@@ -553,6 +561,24 @@ ${basePrompt}`;
    * MF-2R: fire the terminal-outcome candidate trigger after the terminal
    * commit. A generation failure is reported and never mutates the Run.
    */
+  /**
+   * LITE-07-102: fire the trigger for a Run that reached a NON-success terminal
+   * status (`failed` or `cancelled`). It reads the Run back from durable state,
+   * so it is a no-op while the Run is still live, and it uses the same start
+   * Operation authority the completion path uses. The startup sweep is the
+   * restart backstop for a cancellation that lands with no later dispatch.
+   */
+  private generateCandidateForNonSuccessTerminalRun(workspaceId: string, runId: string): void {
+    if (this.memoryCandidateGenerator === undefined) return;
+    const run = this.runRepository.findById(workspaceId, runId);
+    if (run === undefined || !isTerminalRun(run.status) || run.status === 'completed') return;
+    const operation = this.operationService
+      .listByRun(workspaceId, runId)
+      .find(candidate => candidate.type === 'run.start');
+    if (operation === undefined) return;
+    this.generateTerminalMemoryCandidate(workspaceId, runId, operation);
+  }
+
   private generateTerminalMemoryCandidate(workspaceId: string, runId: string, operation: ApiOperation): void {
     if (this.memoryCandidateGenerator === undefined) return;
     try {
