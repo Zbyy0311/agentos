@@ -11,8 +11,14 @@ import {
 } from '../services/ConversationTurnDriver.js';
 import { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
 import {
+  ConversationCompactionService,
   createConversationCompactionPort,
 } from '../services/ConversationCompactionService.js';
+import { ConversationCompactionTrigger } from '../services/ConversationCompactionTrigger.js';
+import { ProviderCompactionSummarizer } from '../services/ProviderCompactionSummarizer.js';
+import { SUMMARIZATION_CLI_PROFILES } from '../services/summarizationCliProfiles.js';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { CompactionPolicyRepository, CompactionRepository } from '../store/CompactionRepository.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import {
@@ -97,6 +103,29 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
   // is known, which is what the compaction policy records today.
   const compactionPort = createConversationCompactionPort(store);
   const compactionBudget = { hardBudgetTokens: 16384 };
+
+  // S6 / LITE-09-106 + LITE-09-107: the automatic trigger. One engine per
+  // router and one summary execution channel: only an allowlisted CLI profile
+  // may produce a summary, and it runs in an isolated scratch directory that
+  // is outside every Workspace. Without an allowlisted profile the attempt
+  // fails closed and the durable task records the failure code.
+  const compactionEngine = new ConversationCompactionService({
+    store,
+    summarizer: new ProviderCompactionSummarizer({
+      scratchRoot: join(tmpdir(), 'agentos-compaction-scratch'),
+      profiles: SUMMARIZATION_CLI_PROFILES,
+    }),
+  });
+  const compactionTrigger = new ConversationCompactionTrigger({
+    store,
+    engine: compactionEngine,
+    getAgent: (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(profile => profile.id === agentId),
+    onAttempt: attempt => console.log(
+      `COMPACTION_ATTEMPT outcome=${attempt.outcome} policy=${attempt.policyVersion}`
+      + (attempt.taskId === undefined ? '' : ` task=${attempt.taskId}`),
+    ),
+    onError: (code, error) => console.error(`COMPACTION_TRIGGER_ERROR code=${code}`, error),
+  });
 
   // ---- Conversations ------------------------------------------------------
 
@@ -509,6 +538,7 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
         workspaceAuthority: chatWorkspaceAuthority,
         compaction: compactionPort,
         compactionBudget,
+        compactionTrigger,
       },
     );
     try {
@@ -607,6 +637,7 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
         workspaceAuthority: chatWorkspaceAuthority,
         compaction: compactionPort,
         compactionBudget,
+        compactionTrigger,
       },
     );
     try {
