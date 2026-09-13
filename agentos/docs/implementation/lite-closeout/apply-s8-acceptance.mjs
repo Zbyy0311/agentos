@@ -11,7 +11,15 @@
  * Two groups are promoted explicitly from the real-server acceptance run:
  * the disconnect-safe lifecycle rows and the recovery-classification row.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const passFreezePath = resolve(dirname(fileURLToPath(import.meta.url)), 'pass-freeze.json');
+if (existsSync(passFreezePath)) {
+  throw new Error('S8 closeout writes are disabled while pass-freeze.json exists: ' + passFreezePath);
+}
+
 const baseline = process.argv[2];
 const version = Number(process.argv[3]);
 if (!baseline || !Number.isSafeInteger(version)) throw new Error('usage: node apply-s8-acceptance.mjs <baseline> <version>');

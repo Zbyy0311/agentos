@@ -6,7 +6,15 @@
  * same run touches but does not fully prove keep their state and merely get the
  * evidence attached, so a later slice can finish them.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const passFreezePath = resolve(dirname(fileURLToPath(import.meta.url)), 'pass-freeze.json');
+if (existsSync(passFreezePath)) {
+  throw new Error('S8 closeout writes are disabled while pass-freeze.json exists: ' + passFreezePath);
+}
+
 const matrixPath = 'docs/implementation/lite-closeout/matrix.json';
 const evidencePath = 'docs/implementation/lite-closeout/evidence.json';
 const baseline = process.argv[2];
