@@ -27,10 +27,22 @@ test('S0 rejects PASS without evidence and evidence with a failed test', () => {
   const changed = matrix();
   const row = changed.requirements.find(item => item.state === 'RUNTIME-VERIFY');
   row.state = 'PASS';
+  // The case under test is "no evidence at all", so the row's existing pointers are
+  // cleared explicitly. Relying on the chosen row happening to carry no evidence only
+  // held while the matrix still had many RUNTIME-VERIFY rows; this keeps the case
+  // testing the rule rather than the matrix's current composition.
+  row.evidence = [];
   assert.throws(() => validateScope(changed, evidence, lock, root), /PASS without evidence/);
-  row.evidence = [evidence[0].id];
+
+  // Now give it one well-formed local-tests proof and make exactly that proof fail, so
+  // the assertion isolates the failed-result rule rather than whatever entry happens to
+  // come first in evidence.json.
+  const proof = evidence.find(item => item.kind === 'local-tests'
+    && item.result?.failed === 0 && Number.isSafeInteger(item.result?.passed) && item.result.passed > 0);
+  row.evidence = [proof.id];
+  row.evidenceBaseline = proof.baseline;
   const failed = structuredClone(evidence);
-  failed[0].result.failed = 1;
+  failed.find(item => item.id === proof.id).result.failed = 1;
   assert.throws(() => validateScope(changed, failed, lock, root), /failed evidence used for PASS/);
 });
 
