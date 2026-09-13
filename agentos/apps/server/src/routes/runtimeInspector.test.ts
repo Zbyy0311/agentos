@@ -42,6 +42,45 @@ async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<
   }
 }
 
+/**
+ * LITE-08-004 / LITE-13-002: when read-only could not be proven the Run is
+ * MODIFYING, and the Inspector has to say so instead of leaving the field
+ * unknown. A Run with no admission row stays explicitly `unknown`, which is a
+ * different statement from `unavailable`.
+ */
+test('GET /runs/:runId/inspector names the effective mutation class and the read-only enforcement state', async () => {
+  await withServer(async (baseUrl, store) => {
+    const task = store.taskRepository().insert({ workspaceId: 'workspace-a', title: 'T', createdBy: 'user' });
+    const run = store.runRepository().insert({ workspaceId: 'workspace-a', taskId: task.id, origin: 'v2_api', createdBy: 'user' });
+
+    // No admission row yet: the classification is genuinely unknown.
+    const before = await fetch(`${baseUrl}/runs/${run.id}/inspector`).then(r => r.json()) as {
+      projection: { overview: { mutationClass: string | null; readOnlyEnforcement: string } };
+    };
+    assert.equal(before.projection.overview.mutationClass, null);
+    assert.equal(before.projection.overview.readOnlyEnforcement, 'unknown');
+
+    // A read-only request whose enforcement could not be proven is persisted as
+    // MODIFYING; the Inspector must report that durable fact rather than imply
+    // that enforcement was available.
+    const now = '2026-09-12T20:00:00.000Z';
+    store.getDatabase().prepare(`INSERT INTO workspace_admissions (
+      id, workspace_id, subject_kind, canonical_run_id, legacy_run_id,
+      requested_mutation_class, effective_mutation_class, enforcement_evidence_json,
+      request_order, state, queue_reason, release_reason, requested_at, granted_at,
+      released_at, created_at, updated_at, version
+    ) VALUES (?, ?, 'CANONICAL_RUN', ?, NULL, 'READ_ONLY', 'MODIFYING', NULL, 1, 'GRANTED', NULL, NULL, ?, ?, NULL, ?, ?, 1)`)
+      .run('adm_inspector_1', 'workspace-a', run.id, now, now, now, now);
+
+    const after = await fetch(`${baseUrl}/runs/${run.id}/inspector`).then(r => r.json()) as {
+      projection: { overview: { mutationClass: string | null; requestedMutationClass: string | null; readOnlyEnforcement: string } };
+    };
+    assert.equal(after.projection.overview.mutationClass, 'MODIFYING');
+    assert.equal(after.projection.overview.requestedMutationClass, 'READ_ONLY');
+    assert.equal(after.projection.overview.readOnlyEnforcement, 'unavailable');
+  });
+});
+
 test('GET /runs/:runId/inspector returns the redacted projection for a canonical Run', async () => {
   await withServer(async (baseUrl, store) => {
     const task = store.taskRepository().insert({ workspaceId: 'workspace-a', title: 'T', createdBy: 'user' });

@@ -79,6 +79,105 @@ function count(db: SqliteDb, sql: string, ...params: unknown[]): number {
 }
 
 // INSP-01 — overview projects canonical Run state.
++// INSP-12 — LITE-13-002: Run, Stage, Provider, Process and duration are distinct.
+test('INSP-12 Run, Stage, Provider, Process and duration stay distinct', () => {
+  const fx = fixture();
+  try {
+    // A Stage, the Provider Session that owns its attempt, and the Process that
+    // session spawned: three different durable records with three different ids.
+    const snapshot = new RunSnapshotRepository(fx.tx).insert({
+      workspaceId: WS,
+      runId: RUN,
+      workflowDefinitionId: M3_013_UNBOUND_WORKFLOW_V2_ID,
+      payload: {
+        schemaVersion: 2,
+        capturedAt: NOW,
+        run: { workspaceId: WS, taskId: TASK, origin: 'v2_api', reason: 'initial', parentRunId: null, rootRunId: RUN },
+        workflow: {
+          definitionId: M3_013_UNBOUND_WORKFLOW_V2_ID,
+          definitionKey: M3_013_UNBOUND_WORKFLOW_KEY,
+          definitionVersion: 2,
+          name: M3_013_UNBOUND_WORKFLOW_NAME,
+          definitionHash: M3_013_UNBOUND_DEFINITION_HASH,
+          worktreeMode: 'disabled',
+          stages: [],
+        },
+        security: { redactionApplied: false },
+      } as never,
+    });
+    fx.db.prepare(
+      "INSERT INTO run_stages (id, workspace_id, run_id, run_snapshot_id, workflow_stage_key, name, sequence, attempt, status, created_at, updated_at, version) VALUES ('stage_insp', ?, ?, ?, 'build', 'build', 1, 1, 'running', ?, ?, 1)",
+    ).run(WS, RUN, snapshot.id, NOW, NOW);
+    // Provider Sessions reference their Provider Configuration and Agent Profile,
+    // so those parents are seeded the same way production creates them.
+    fx.db.prepare(`INSERT INTO provider_configurations (
+      id, workspace_id, name, provider_type, adapter_id, runtime_mode, executable,
+      capabilities_json, timeout_policy_json, approval_mode, output_mode, enabled, version, created_at, updated_at
+    ) VALUES ('pcfg_insp', ?, 'Inspector Codex', 'codex', 'builtin.codex', 'cli', 'codex.exe',
+      '{}', '{}', 'disabled', 'structured', 1, 1, ?, ?)`)
+      .run(WS, NOW, NOW);
+    fx.db.prepare(`INSERT INTO agent_profiles (
+      workspace_id, id, name, agent_role, role_title, system_prompt, permissions_json,
+      enabled, cli_command, cli_args_json, created_at, updated_at
+    ) VALUES (?, 'agent_codex', 'Codex', 'codex', 'Manager', 'prompt', '[]', 1, 'codex', '[]', ?, ?)`)
+      .run(WS, NOW, NOW);
+    fx.db.prepare(`INSERT INTO provider_sessions (
+      id, workspace_id, task_id, run_id, stage_id, stage_attempt, authority_role, agent_id,
+      provider_config_id, provider_config_version, provider_type, adapter_id, adapter_version,
+      config_schema_version, runtime_mode, status, started_at, claim_epoch, capabilities_json, created_at, updated_at, version
+    ) VALUES (?, ?, ?, ?, 'stage_insp', 1, 'primary-provider', 'agent_codex',
+      'pcfg_insp', 1, 'codex', 'builtin.codex', '1.0.0', 1, 'cli', 'active', ?, 1, '{}', ?, ?, 1)`)
+      .run('psess_' + 'A'.repeat(26), WS, TASK, RUN, NOW, NOW, NOW);
+    fx.db.prepare(`INSERT INTO runtime_processes (
+      id, workspace_id, task_id, run_id, stage_id, stage_attempt, provider_session_id,
+      claim_epoch, process_type, platform, status, cwd_resolved, executable_resolved,
+      args_redacted_json, shell, detached, stdin_mode, stdout_mode, stderr_mode,
+      native_pid, native_started_at, started_at, timeout_policy_json, security_profile_ref, created_at, updated_at, version
+    ) VALUES (?, ?, ?, ?, 'stage_insp', 1, ?, 1, 'provider', 'win32', 'running',
+      'C:/tmp/ws_insp', 'codex.exe', '[]', 0, 0, 'closed', 'capture', 'capture',
+      5123, ?, ?, '{}', 'default', ?, ?, 1)`)
+      .run('proc_' + 'B'.repeat(26), WS, TASK, RUN, 'psess_' + 'A'.repeat(26), NOW, NOW, NOW, NOW);
+
+    const projection = fx.inspector.inspect({ workspaceId: WS, runId: RUN });
+
+    // Run, Stage and Task are three different identifiers.
+    assert.equal(projection.overview.runId, RUN);
+    assert.equal(projection.overview.taskId, TASK);
+    assert.notEqual(projection.overview.runId, projection.overview.taskId);
+    assert.equal(projection.stages.length, 1);
+    assert.equal(projection.stages[0]!.stageId, 'stage_insp');
+
+    // Provider is its own record, distinct from both the Process and the Stage.
+    assert.equal(projection.providerSessions.length, 1);
+    const session = projection.providerSessions[0]!;
+    assert.equal(session.sessionId, 'psess_' + 'A'.repeat(26));
+    assert.equal(session.stageId, 'stage_insp');
+    assert.equal(session.adapterId, 'builtin.codex');
+    assert.equal(session.adapterVersion, '1.0.0');
+    assert.notEqual(session.sessionId, session.stageId);
+
+    // Process names the Provider Session it belongs to, and its own id differs.
+    assert.equal(projection.processes.length, 1);
+    const process = projection.processes[0]!;
+    assert.equal(process.processId, 'proc_' + 'B'.repeat(26));
+    assert.equal(process.providerSessionId, session.sessionId);
+    assert.notEqual(process.processId, process.providerSessionId);
+    // The native PID is evidence-only and is not an AgentOS identity at all.
+    assert.equal(process.nativePidEvidenceOnly, 5123);
+    assert.notEqual(String(process.nativePidEvidenceOnly), process.processId);
+    assert.notEqual(String(process.nativePidEvidenceOnly), process.providerSessionId);
+
+    // Duration is derived from the Run's own timestamps, not from a Process.
+    const started = '2026-09-09T00:00:00.000Z';
+    const completed = '2026-09-09T00:00:02.500Z';
+    fx.db.prepare('UPDATE runs SET started_at = ?, completed_at = ? WHERE id = ?').run(started, completed, RUN);
+    const timed = fx.inspector.inspect({ workspaceId: WS, runId: RUN });
+    assert.equal(timed.overview.durationMs, 2500);
+    assert.equal(timed.overview.startedAt, started);
+    assert.equal(timed.overview.completedAt, completed);
+  } finally { fx.close(); }
+});
+
 test('INSP-01 overview projects canonical run state', () => {
   const fx = fixture();
   try {

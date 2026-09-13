@@ -37,6 +37,13 @@ export const OPENCODE_ADAPTER_ID = 'builtin.opencode' as const;
 export const OPENCODE_ADAPTER_VERSION = '1.0.0' as const;
 export const OPENCODE_DEFAULT_EXECUTABLE = 'opencode' as const;
 
+/**
+ * The exact CLI build this adapter is qualified against. The real LITE-04-101
+ * gate exercised this build end to end; any other build is refused until it is
+ * separately qualified, so a silent CLI upgrade cannot change launch semantics.
+ */
+export const OPENCODE_SUPPORTED_CLI_VERSION = '1.17.11' as const;
+
 /** The parser never retains more than this many characters of assistant text. */
 export const OPENCODE_PLAIN_TEXT_MAX_CHARACTERS = 64 * 1024;
 
@@ -64,7 +71,7 @@ const OPENCODE_CAPABILITIES: ProviderCapabilities = {
   reasoningStream: false,
   interactiveInput: false,
   pause: false,
-  cancellation: false,
+  cancellation: true,
   modelSelection: true,
   workspaceAwareness: true,
   nativeSandbox: false,
@@ -151,12 +158,17 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
   }
 
   normalizeConfiguration(configuration: ProviderConfigurationInput): ProviderConfigurationInput {
-    return {
+    const normalized: ProviderConfigurationInput = {
       ...configuration,
       ...(configuration.argsTemplate === undefined ? {} : { argsTemplate: [...configuration.argsTemplate] }),
       capabilities: { ...configuration.capabilities },
       timeoutPolicy: { ...configuration.timeoutPolicy },
     };
+    // The production snapshot projection carries no adapter version, so the
+    // configured identity is resolved the same way the other canonical adapters
+    // resolve it. Without this the OpenCode path was unreachable in production.
+    const frozenIdentity = resolveFrozenProviderIdentity(normalized);
+    return frozenIdentity === undefined ? normalized : { ...normalized, adapterVersion: frozenIdentity.adapterVersion };
   }
 
   async discover(input: ProviderDiscoveryInput): Promise<ProviderDiscoveryResult> {
@@ -208,7 +220,7 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
     const warnings: ProviderValidationWarning[] = [];
     const errors: ProviderValidationError[] = [];
 
-    if (input.forceRefresh) this.validatedExecutables.delete(validationKey(configuration));
+    this.validatedExecutables.delete(validationKey(configuration));
 
     if (!configuration.enabled || configuration.archivedAt) {
       errors.push({
@@ -234,7 +246,12 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
         retryable: false,
       });
     }
-    if (configuration.adapterVersion !== OPENCODE_ADAPTER_VERSION) {
+    // Mirror the other canonical adapters: check the resolved frozen identity,
+    // not the raw field, because production never populates the raw field.
+    const frozenIdentity = resolveFrozenProviderIdentity(configuration);
+    if (frozenIdentity === undefined
+      || frozenIdentity.adapterId !== this.manifest.id
+      || frozenIdentity.adapterVersion !== this.manifest.version) {
       errors.push({
         code: 'PROVIDER_VERSION_UNSUPPORTED',
         phase: 'validation',
@@ -312,12 +329,6 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
 
     const probe = input.probe ?? this.probe;
     warnings.push({ code: 'PROVIDER_AUTH_UNKNOWN', message: AUTH_UNKNOWN_WARNING });
-    const unsupportedCancellation: ProviderValidationError = {
-      code: 'PROVIDER_CAPABILITY_UNAVAILABLE',
-      phase: 'validation',
-      message: 'OpenCode cancellation protocol is not verified',
-      retryable: false,
-    };
 
     if (!probe) {
       errors.push({
@@ -332,7 +343,6 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
         message: 'OpenCode safe launch flags cannot be verified without a Process Runtime probe',
         retryable: false,
       });
-      errors.push(unsupportedCancellation);
       return validationResult({
         configuration,
         checkedAt,
@@ -356,7 +366,7 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
       });
       helpResult = await probe.probe({
         executable: discovered.selected,
-        args: ['--help'],
+        args: ['run', '--help'],
         ...(input.workspaceRoot ? { cwd: input.workspaceRoot } : {}),
         environment: probeEnvironment,
         timeoutMs: configuration.timeoutPolicy.validationTimeoutMs,
@@ -368,7 +378,6 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
         message: 'OpenCode validation probe failed',
         retryable: false,
       });
-      errors.push(unsupportedCancellation);
       return validationResult({
         configuration,
         checkedAt,
@@ -395,13 +404,12 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
         message: 'OpenCode CLI version could not be verified',
         retryable: false,
       });
-    } else {
-      // A version string is evidence of observation only. The official CLI
-      // page does not establish an adapter-supported CLI version range.
+    } else if (cliVersion !== OPENCODE_SUPPORTED_CLI_VERSION) {
+      // Admit only the version exercised by the real LITE-04-101 gate.
       errors.push({
         code: 'PROVIDER_VERSION_UNSUPPORTED',
         phase: 'validation',
-        message: 'OpenCode CLI compatibility range is not established',
+        message: `OpenCode CLI ${cliVersion} is unsupported; this adapter is qualified against ${OPENCODE_SUPPORTED_CLI_VERSION}`,
         retryable: false,
       });
     }
@@ -422,7 +430,6 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
         retryable: false,
       });
     }
-    errors.push(unsupportedCancellation);
 
     const result = validationResult({
       configuration,
@@ -563,13 +570,22 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
     return { status: 'completed', events: input.parsedEvents, output };
   }
 
-  async cancel(_input: ProviderCancelInput): Promise<ProviderCancelResult> {
-    // The generic Process Runtime stop port is not evidence of an OpenCode
-    // cancellation protocol. Do not call it or report accepted cancellation.
-    return {
-      accepted: false,
-      error: normalizedProviderError('PROVIDER_CANCEL_FAILED', 'cancel', 'OpenCode cancellation is not verified'),
-    };
+  async cancel(input: ProviderCancelInput): Promise<ProviderCancelResult> {
+    // Acceptance requests an owned process stop; terminal completion remains
+    // the Process Runtime's responsibility, including escalation and reaping.
+    if (!input.stopTicketAccepted) {
+      return { accepted: false, error: normalizedProviderError('PROVIDER_CANCEL_FAILED', 'cancel', 'Process stop ticket was not accepted') };
+    }
+    try {
+      const result = await input.processPort.requestGraceful({
+        processId: input.processId, sessionId: input.sessionId, reason: input.reason,
+      });
+      return result.accepted
+        ? { accepted: true }
+        : { accepted: false, error: normalizedProviderError('PROVIDER_CANCEL_FAILED', 'cancel', 'OpenCode process stop was not accepted') };
+    } catch {
+      return { accepted: false, error: normalizedProviderError('PROVIDER_CANCEL_FAILED', 'cancel', 'OpenCode process stop failed') };
+    }
   }
 
   normalizeError(error: unknown, context: { readonly phase?: ProviderErrorPhase } = {}): ProviderNormalizedError {
@@ -647,7 +663,7 @@ function buildOpenCodeArgs(configuration: ProviderConfigurationInput, cwd: strin
     if (model.length > MAX_MODEL_CHARACTERS || model.includes('\u0000')) throw new Error('PROVIDER_CONFIG_INVALID');
     args.push('--model', model);
   }
-  args.push(prompt);
+  args.push('--', prompt);
   return args;
 }
 

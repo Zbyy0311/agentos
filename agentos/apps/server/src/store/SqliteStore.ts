@@ -753,6 +753,7 @@ export class SqliteStore implements Store {
       runSnapshotRepository: this.runSnapshotRepo,
       runtimeEventRepository: this.runtimeEventRepo,
       memoryContextSnapshots: new MemoryContextSnapshotRepository(this.database as any),
+      workspaceAdmissions: this.workspaceAdmissionRepo,
     });
   }
 

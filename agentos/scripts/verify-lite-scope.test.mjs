@@ -36,7 +36,14 @@ test('S0 rejects PASS without evidence and evidence with a failed test', () => {
 
 test('S0 rejects work outside the locked scope without an authorized amendment', () => {
   const changed = matrix();
-  changed.requirements.push({ ...changed.requirements[0], id: 'LITE-00-800', line: null });
+  // The synthetic row must be neutral on every earlier rule so this case
+  // actually exercises the scope lock. Cloning the first row verbatim only
+  // worked while that row was RUNTIME-VERIFY: once it is legitimately PASS, the
+  // PASS-evidence mapping check (evidence must be mapped to THIS requirement)
+  // fires first and the lock assertion is never reached.
+  changed.requirements.push({
+    ...changed.requirements[0], id: 'LITE-00-800', line: null, state: 'GAP', evidence: [],
+  });
   assert.throws(() => validateScope(changed, evidence, lock, root), /unapproved scope addition|scope lock must cover/);
 });
 

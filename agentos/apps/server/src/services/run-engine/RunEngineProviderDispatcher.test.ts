@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createM3RuntimeEventRegistry, type AgentSnapshotV1, type ProviderConfigurationSnapshotV1, type RunSnapshotPayloadV2, type WorkspaceReadOnlyEvidence } from '@agentos/shared';
 import { DurableProcessCoordinator, FileArtifactSink, type ExitEvidence, type NativeIdentity, type NativeProcessHandle, type NativeProcessStreams, type PlatformProcessDriver, type ProcessProbePort, type SurvivorVerification, type TreeTerminationResult } from '@agentos/process-runtime';
-import { CodexProviderAdapter, KimiCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
+import { CodexProviderAdapter, KimiCodeProviderAdapter, OpenCodeProviderAdapter, ProviderRegistry } from '@agentos/agent-core/providers';
 import { MigrationRegistry } from '../../migrations/registry.js';
 import { MigrationRunner } from '../../migrations/MigrationRunner.js';
 import { DEFAULT_REGISTRY_MIGRATIONS } from '../../migrations/default-registry.js';
@@ -53,7 +53,53 @@ const RUN = 'run_m4';
 const OP = 'op_' + 'A'.repeat(26);
 const KIMI_EXE = 'C:/kimi.exe';
 let REAL_EXECUTABLE = KIMI_EXE;
-let REAL_PROVIDER_TYPE: 'kimicode' | 'codex' = 'kimicode';
+let REAL_PROVIDER_TYPE: 'kimicode' | 'codex' | 'opencode' = 'kimicode';
+
+/**
+ * The real gates read their provider from the environment. The model is
+ * env-driven for every provider so a gate can name the exact model it ran
+ * against instead of silently using whatever the machine defaults to.
+ */
+const REAL_GATE_MODEL_ENV: Record<'kimicode' | 'codex' | 'opencode', string> = {
+  kimicode: 'AGENTOS_KIMI_MODEL',
+  codex: 'AGENTOS_CODEX_MODEL',
+  opencode: 'AGENTOS_OPENCODE_MODEL',
+};
+const REAL_GATE_ADAPTER_IDS: Record<'kimicode' | 'codex' | 'opencode', string> = {
+  kimicode: 'builtin.kimicode',
+  codex: 'builtin.codex',
+  opencode: 'builtin.opencode',
+};
+const REAL_GATE_ADAPTER_VERSIONS: Record<'kimicode' | 'codex' | 'opencode', string> = {
+  kimicode: '1.0.0',
+  codex: '1.0.0',
+  opencode: '1.0.0',
+};
+
+const DEFAULT_STAGE_PROMPT = 'Execute the requested task.';
+
+/**
+ * Real provider gates must be deterministic. A vague instruction made the
+ * OpenCode run wander the filesystem, hit an auto-rejected external-directory
+ * permission, and exit 0 without ever emitting a final assistant message, so
+ * the canonical chain correctly reported PROVIDER_OUTPUT_INVALID. The gate asks
+ * for an exact reply so it measures the AgentOS chain rather than how a
+ * particular model improvises around an underspecified task.
+ */
+const REAL_GATE_PROMPT = 'Reply with exactly: AGENTOS_PROVIDER_GATE_OK';
+
+/**
+ * The OpenCode adapter only truthfully advertises what the repository has
+ * verified about that CLI, so a real OpenCode gate has to use the configuration
+ * it admits: parsed-text output, model selection, and cancellation through the
+ * owned Process Runtime stop port (the same mechanism Codex and Kimi use).
+ */
+const OPENCODE_ADMITTED_CAPABILITIES = {
+  sessionResume: false, structuredEvents: false, nativeApprovals: false, subagents: false,
+  toolEvents: false, fileEvents: false, usageEvents: false, reasoningStream: false,
+  interactiveInput: false, pause: false, cancellation: true, modelSelection: true,
+  workspaceAwareness: true, nativeSandbox: false, outputContracts: false,
+} as const;
 
 const VERIFIED_EVIDENCE: WorkspaceReadOnlyEvidence = {
   status: 'verified',
@@ -83,25 +129,29 @@ function migratedDb(): Db {
 function providerSnapshot(cancelGracePeriodMs = 5000): ProviderConfigurationSnapshotV1 {
   return {
     providerConfigId: 'pcfg_m4', name: 'Kimi Gate', providerType: REAL_PROVIDER_TYPE,
-    adapterId: REAL_PROVIDER_TYPE === 'codex' ? 'builtin.codex' : 'builtin.kimicode',
+    adapterId: REAL_GATE_ADAPTER_IDS[REAL_PROVIDER_TYPE],
     runtimeMode: 'cli', executable: REAL_EXECUTABLE, argsTemplate: [],
-    model: REAL_PROVIDER_TYPE === 'codex' ? (process.env.AGENTOS_CODEX_MODEL ?? null) : null,
+    model: process.env[REAL_GATE_MODEL_ENV[REAL_PROVIDER_TYPE]] ?? null,
     environmentProfileId: null, secretProfileId: null,
     workingDirectoryMode: 'workspace', workspaceRelativeWorkingDirectory: null,
-    capabilities: { sessionResume:false, structuredEvents:true, nativeApprovals:false, subagents:false, toolEvents:true, fileEvents:false, usageEvents:true, reasoningStream:false, interactiveInput:false, pause:false, cancellation:true, modelSelection:true, workspaceAwareness:true, nativeSandbox:false, outputContracts:false },
+    capabilities: REAL_PROVIDER_TYPE === 'opencode'
+      ? OPENCODE_ADMITTED_CAPABILITIES
+      : { sessionResume:false, structuredEvents:true, nativeApprovals:false, subagents:false, toolEvents:true, fileEvents:false, usageEvents:true, reasoningStream:false, interactiveInput:false, pause:false, cancellation:true, modelSelection:true, workspaceAwareness:true, nativeSandbox:false, outputContracts:false },
     timeoutPolicy: { discoveryTimeoutMs:10000, validationTimeoutMs:30000, startupTimeoutMs:60000, idleTimeoutMs:null, totalTimeoutMs:null, cancelGracePeriodMs, approvalTimeoutMs:null },
-    approvalMode: 'disabled', outputMode: 'structured', enabled: true, version: 1,
+    approvalMode: 'disabled',
+    outputMode: REAL_PROVIDER_TYPE === 'opencode' ? 'parsed-text' : 'structured',
+    enabled: true, version: 1,
   };
 }
 
-function agentSnapshot(): AgentSnapshotV1 {
-  return { agentId: 'agent_m4', name: 'Agent', role: 'codex', roleTitle: 'Executor', systemPrompt: 'Execute the requested task.', permissions: ['read','write'], providerConfigId: 'pcfg_m4', enabled: true, version: 1 };
+function agentSnapshot(systemPrompt = DEFAULT_STAGE_PROMPT): AgentSnapshotV1 {
+  return { agentId: 'agent_m4', name: 'Agent', role: 'codex', roleTitle: 'Executor', systemPrompt, permissions: ['read','write'], providerConfigId: 'pcfg_m4', enabled: true, version: 1 };
 }
 
-function snapshotPayload(cancelGracePeriodMs = 5000): RunSnapshotPayloadV2 {
+function snapshotPayload(cancelGracePeriodMs = 5000, systemPrompt = DEFAULT_STAGE_PROMPT): RunSnapshotPayloadV2 {
   const stages = STAGE_KEYS.map((key, index) => ({
     workflowStageKey: key, name: key, sequence: index + 1,
-    agent: agentSnapshot(), provider: providerSnapshot(cancelGracePeriodMs),
+    agent: agentSnapshot(systemPrompt), provider: providerSnapshot(cancelGracePeriodMs),
     dependsOn: index === 0 ? [] : [STAGE_KEYS[index - 1]],
   }));
   return {
@@ -125,8 +175,8 @@ function seed(db: Db): void {
   db.prepare(`INSERT INTO operations (id, type, status, workspace_id, aggregate_type, aggregate_id, run_id, correlation_id, created_at, updated_at, version) VALUES (?, 'run.start', 'queued', ?, 'run', ?, ?, ?, ?, ?, 1)`).run(OP, WS, RUN, RUN, OP, NOW, NOW);
 }
 
-function seedGraph(db: Db, cancelGracePeriodMs = 5000): void {
-  const payload = snapshotPayload(cancelGracePeriodMs);
+function seedGraph(db: Db, cancelGracePeriodMs = 5000, systemPrompt = DEFAULT_STAGE_PROMPT): void {
+  const payload = snapshotPayload(cancelGracePeriodMs, systemPrompt);
   const snapshot = new RunSnapshotRepository(db).insert({
     workspaceId: WS,
     runId: RUN,
@@ -249,6 +299,10 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly deferApprovalContinuation?: boolean;
   readonly approvalNow?: { current: string };
 } = {}) {
+  // The fake fixture always means the deterministic fake provider, so it states
+  // that identity itself instead of inheriting whatever a real gate left behind.
+  REAL_EXECUTABLE = KIMI_EXE;
+  REAL_PROVIDER_TYPE = 'kimicode';
   const db = migratedDb();
   seedGraph(db, behavior.cancelGracePeriodMs ?? 5000);
   seedAdmission(db, {
@@ -357,27 +411,44 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
 }
 
 function close(fx: ReturnType<typeof fixture>): void { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
-function realFailureDetails(root: string, run: { failureCode?: string; failureMessage?: string }, failedStages: unknown): string {
+/** Captured provider output from the durable artifact sink, for real gates. */
+function readSinkOutput(root: string, perFileLimit = 4000): string {
   const outputs: string[] = [];
   const walk = (directory: string): void => {
     for (const name of readdirSync(directory)) {
       const path = join(directory, name);
       if (statSync(path).isDirectory()) walk(path);
-      else if (statSync(path).size <= 64 * 1024) outputs.push(name + ': ' + readFileSync(path, 'utf8').slice(0, 2000));
+      else if (statSync(path).size <= 64 * 1024) outputs.push(name + ': ' + readFileSync(path, 'utf8').slice(0, perFileLimit));
     }
   };
-  const sink = join(root, 'sink');
-  try { walk(sink); } catch { /* no output sink */ }
-  return JSON.stringify({ failureCode: run.failureCode, failureMessage: run.failureMessage, failedStages, stderr: outputs });
+  try { walk(join(root, 'sink')); } catch { /* no output sink */ }
+  return outputs.join('\n');
 }
 
-function realFixture(provider: 'kimi' | 'codex' = 'kimi') {
-  const executable = provider === 'codex' ? process.env.AGENTOS_CODEX_CLI : process.env.AGENTOS_KIMICODE_CLI;
-  if (!executable) throw new Error((provider === 'codex' ? 'AGENTOS_CODEX_CLI' : 'AGENTOS_KIMICODE_CLI') + ' is required');
+function realFailureDetails(root: string, run: { failureCode?: string; failureMessage?: string }, failedStages: unknown): string {
+  return JSON.stringify({
+    failureCode: run.failureCode,
+    failureMessage: run.failureMessage,
+    failedStages,
+    stderr: readSinkOutput(root, 2000),
+  });
+}
+
+function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi') {
+  const executableEnv = provider === 'codex'
+    ? 'AGENTOS_CODEX_CLI'
+    : provider === 'opencode' ? 'AGENTOS_OPENCODE_CLI' : 'AGENTOS_KIMICODE_CLI';
+  const executable = process.env[executableEnv];
+  if (!executable) throw new Error(executableEnv + ' is required');
+  // These two module-level values drive the provider snapshot, so a gate must
+  // hand the previous values back when it finishes; otherwise the next test
+  // builds its snapshot for the previous gate's provider.
+  const previousExecutable = REAL_EXECUTABLE;
+  const previousProviderType = REAL_PROVIDER_TYPE;
   REAL_EXECUTABLE = executable;
-  REAL_PROVIDER_TYPE = provider === 'codex' ? 'codex' : 'kimicode';
+  REAL_PROVIDER_TYPE = provider === 'codex' ? 'codex' : provider === 'opencode' ? 'opencode' : 'kimicode';
   const db = migratedDb();
-  seedGraph(db);
+  seedGraph(db, 5000, REAL_GATE_PROMPT);
   seedAdmission(db);
   const root = mkdtempSync(join(tmpdir(), 'agentos-m4-p4-real-'));
   const events = new RuntimeEventRepository(db, createM3RuntimeEventRegistry());
@@ -399,7 +470,9 @@ function realFixture(provider: 'kimi' | 'codex' = 'kimi') {
   const discover = async () => ({ found: true, selected: executable, candidates: [{ executable, source: 'configuration' as const, confidence: 1 }], warnings: [] });
   const adapter = provider === 'codex'
     ? new CodexProviderAdapter({ probe, discover })
-    : new KimiCodeProviderAdapter({ probe, discover });
+    : provider === 'opencode'
+      ? new OpenCodeProviderAdapter({ probe, discover })
+      : new KimiCodeProviderAdapter({ probe, discover });
   const registry = new ProviderRegistry([adapter]);
   const coordinator = new StageExecutionCoordinator({
     registry, durableCoordinator, sessionRepository: sessionAdapter, driver, probe,
@@ -426,7 +499,11 @@ function realFixture(provider: 'kimi' | 'codex' = 'kimi') {
     worktreePathFor: () => root,
     admissionGate: new WorkspaceAdmissionAuthority({ store: { getDatabase: () => db } }),
   });
-  return { db, root, runRepo, runStageRepo, driver, dispatcher };
+  const restore = () => {
+    REAL_EXECUTABLE = previousExecutable;
+    REAL_PROVIDER_TYPE = previousProviderType;
+  };
+  return { db, root, runRepo, runStageRepo, driver, dispatcher, restore };
 }
 
 describe('RunEngineProviderDispatcher E2E', () => {
@@ -988,6 +1065,67 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.equal(outboxCount, eventCount);
       assert.ok(eventCount > 0);
     } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+  });
+  it('LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated)', { skip: process.env.M4_P4_REAL_KIMI_ROUTED_GATE !== '1' }, async () => {
+    // The account backing the default Kimi model can be quota-blocked, so this
+    // gate names the model explicitly (for example the local opencodex route) and
+    // proves the same canonical chain through the real kimi CLI with it.
+    const fx = realFixture('kimi');
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const run = fx.runRepo.findById(WS, RUN)!;
+      if (run.status !== 'completed') {
+        const failedStages = fx.runStageRepo.listByRun(WS, RUN).filter(stage => stage.status === 'failed');
+        throw new Error('REAL_KIMI_ROUTED_GATE_FAIL ' + JSON.stringify({ model: process.env.AGENTOS_KIMI_MODEL ?? null, failureCode: run.failureCode, failureMessage: run.failureMessage, failedStages: failedStages.map(s => ({ key: s.workflowStageKey, code: s.failureCode, message: s.failureMessage })) }));
+      }
+      assert.equal(run.status, 'completed');
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.equal(outboxCount, eventCount);
+      assert.ok(eventCount > 0);
+    } finally { fx.db.close(); rmSync(fx.root, { recursive: true, force: true }); }
+  });
+  it('LITE-04-101: real OpenCode completes the canonical production chain (env-gated)', { skip: process.env.M4_P4_REAL_OPENCODE_GATE !== '1' }, async () => {
+    // The canonical OpenCode adapter is deliberately fail-closed: it refuses the
+    // RunEngine chain until three facts are established against the real CLI.
+    // This gate records that refusal as an executable contract instead of
+    // leaving it as prose, and it is the exact condition LITE-04-101 must clear:
+    //   1. an adapter-supported OpenCode CLI version range,
+    //   2. verified non-interactive safe launch flags,
+    //   3. a verified cancellation protocol.
+    // The real OpenCode binary IS present on this machine (1.17.11, at an
+    // absolute path rather than on PATH), and it is exercised for real through
+    // the Conversation path; this gate covers the canonical RunEngine chain.
+    const fx = realFixture('opencode');
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      const run = fx.runRepo.findById(WS, RUN)!;
+      assert.equal(run.status, 'completed', `OpenCode failed: ${run.failureCode}`);
+      assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));
+      const processes = fx.db.prepare('SELECT * FROM runtime_processes WHERE run_id = ?').all(RUN);
+      assert.equal(processes.length, STAGE_KEYS.length);
+      const eventCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM runtime_events WHERE run_id = ?').get(RUN) as { c: number }).c;
+      const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
+      assert.ok(eventCount > 0);
+      assert.equal(outboxCount, eventCount);
+      // The real provider's assistant text must reach AgentOS's durable output
+      // store; an empty sink would mean the chain completed on nothing.
+      const sinkOutput = readSinkOutput(fx.root);
+      assert.ok(
+        sinkOutput.includes('AGENTOS_PROVIDER_GATE_OK'),
+        `real OpenCode assistant output was not captured: ${sinkOutput.slice(0, 1500)}`,
+      );
+    } finally {
+      fx.restore();
+      fx.db.close();
+      if (process.env.M4_P4_KEEP_ROOT === '1') {
+        process.stderr.write(`LITE-04-101 kept root: ${fx.root}\n`);
+      } else {
+        rmSync(fx.root, { recursive: true, force: true });
+      }
+    }
   });
   it('legacy-originated runs flow through the same authority to completion (legacy projection parity)', async () => {
     ORIGIN = 'legacy_pipeline';
