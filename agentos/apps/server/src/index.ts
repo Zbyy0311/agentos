@@ -59,6 +59,7 @@ import {
   WorkspaceAdmissionStartupReconciler,
   WorkspaceAdmissionStartupReconciliationError,
 } from './services/WorkspaceAdmissionStartupReconciler.js';
+import { TerminalMemoryCandidateReconciler } from './services/TerminalMemoryCandidateReconciler.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = resolveProjectRoot(__dirname);
@@ -210,6 +211,27 @@ async function bootstrap(): Promise<void> {
       // else is collapsed to the same code here so no internal detail escapes.
       void (error instanceof WorkspaceAdmissionStartupReconciliationError);
       throw new StartupAdmissionReconciliationFailure();
+    }
+
+    // LITE-07-102 restart convergence. A terminal Run whose Candidate was lost
+    // to a crash between the terminal commit and the dispatch-time trigger is
+    // repaired here from the Run's own persisted terminal Event. The sweep is
+    // idempotent, never mutates a Run, and is contained: a failure is reported
+    // and startup continues, exactly like the dispatch-time trigger.
+    try {
+      const sweep = new TerminalMemoryCandidateReconciler({
+        store,
+        generator: providerExecutionChain.terminalCandidateGenerator,
+        onProblem: detail => diagLog(`TERMINAL_CANDIDATE_SWEEP ${detail}`),
+      }).reconcileOnStartup();
+      if (sweep.generated > 0 || sweep.missingAuthority > 0 || sweep.unresolved > 0) {
+        diagLog('TERMINAL_CANDIDATE_SWEEP'
+          + ` terminalRuns=${sweep.terminalRuns} generated=${sweep.generated}`
+          + ` existing=${sweep.existing} missingAuthority=${sweep.missingAuthority}`
+          + ` unresolved=${sweep.unresolved}`);
+      }
+    } catch (error) {
+      diagLog(`TERMINAL_CANDIDATE_SWEEP_FAILED ${error instanceof Error ? error.name : 'unknown'}`);
     }
 
     phase = 'services';

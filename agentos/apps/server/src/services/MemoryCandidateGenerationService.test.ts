@@ -44,7 +44,10 @@ const WS = 'ws_mf2rg';
 const TASK = 'task_mf2rg';
 const RUN = 'run_mf2rg';
 
-function fixture(runStatus = 'completed'): {
+function fixture(
+  runStatus = 'completed',
+  failure: { readonly code?: string; readonly message?: string } = {},
+): {
   db: SqliteDb;
   service: MemoryCandidateGenerationService;
   candidates: MemoryCandidateRepository;
@@ -68,8 +71,8 @@ function fixture(runStatus = 'completed'): {
     'INSERT INTO tasks (id, workspace_id, title, status, created_by, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, 1)',
   ).run(TASK, WS, '修复登录页样式', 'open', 'test', NOW, NOW);
   db.prepare(
-    'INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, created_by, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
-  ).run(RUN, WS, TASK, RUN, runStatus, 'initial', 'v2_api', 'test', NOW, NOW);
+    'INSERT INTO runs (id, workspace_id, task_id, root_run_id, status, reason, origin, failure_code, failure_message, created_by, created_at, updated_at, version) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)',
+  ).run(RUN, WS, TASK, RUN, runStatus, 'initial', 'v2_api', failure.code ?? null, failure.message ?? null, 'test', NOW, NOW);
   // run_stages references run_snapshots(id, run_id); the snapshot row is pure
   // fixture plumbing here, so a raw insert is enough (no repo validation path
   // is under test).
@@ -261,13 +264,57 @@ test('LITE-07-107 exact terminal dedup adds source once without changing accepte
   } finally { fx.close(); }
 });
 
-test('MF2R-G5 non-completed or unknown Run generates nothing', () => {
+test('MF2R-G5 non-terminal or unknown Run generates nothing', () => {
   const running = fixture('running');
   try {
-    assert.equal(running.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW }).outcome, 'not-completed');
+    assert.equal(running.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW }).outcome, 'not-terminal');
     assert.equal(running.candidates.listCandidates(WS).length, 0);
     assert.equal(running.service.generateForRunTerminal({ workspaceId: WS, runId: 'run_missing', createdAt: NOW }).outcome, 'run-not-found');
   } finally { running.close(); }
+});
+
+// LITE-07-102: a failed Run is a terminal outcome and its factual fingerprint
+// is exactly the memory that stops the same failure being repeated. The bundle
+// stays record-only: status, failure code/message and stage outcomes.
+test('MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run', () => {
+  const fx = fixture('failed', { code: 'PROVIDER_SESSION_FAILED', message: 'provider exited with code 1' });
+  try {
+    const first = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+    assert.equal(first.outcome, 'created');
+    const candidate = first.candidate!;
+    assert.equal(candidate.id, `mcand_terminal_${RUN}`);
+    assert.equal(candidate.outcome, 'review-required');
+    assert.equal(candidate.category, 'failure');
+    assert.equal(candidate.authority, 'agent-derived');
+    assert.equal(candidate.scope, 'task');
+    assert.deepEqual(candidate.sources, [{ kind: 'run', id: RUN }]);
+    assert.ok(candidate.title.includes('失败'));
+    assert.ok(candidate.content.includes('PROVIDER_SESSION_FAILED'));
+    assert.ok(candidate.content.includes('provider exited with code 1'));
+    assert.ok(candidate.content.includes('implement: running'));
+    assert.ok(!candidate.content.includes('raw-provider'));
+
+    // Replay converges on the same row instead of writing a second fact.
+    const replay = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+    assert.equal(replay.outcome, 'existing');
+    assert.equal(replay.candidate!.id, candidate.id);
+    assert.equal(fx.candidates.listCandidates(WS).length, 1);
+  } finally { fx.close(); }
+});
+
+// LITE-07-102: cancellation is terminal too, and it carries no failure code.
+test('MF2R-G7 cancelled Run generates one bounded failure Candidate without a failure code', () => {
+  const fx = fixture('cancelled');
+  try {
+    const result = fx.service.generateForRunTerminal({ workspaceId: WS, runId: RUN, createdAt: NOW });
+    assert.equal(result.outcome, 'created');
+    const candidate = result.candidate!;
+    assert.equal(candidate.category, 'failure');
+    assert.ok(candidate.title.includes('已取消'));
+    assert.ok(candidate.content.includes('status cancelled'));
+    assert.ok(!candidate.content.includes('失败代码'));
+    assert.equal(fx.candidates.listCandidates(WS).length, 1);
+  } finally { fx.close(); }
 });
 
 test('MF2R input validation fails closed', () => {

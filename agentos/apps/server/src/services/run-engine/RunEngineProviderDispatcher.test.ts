@@ -1031,6 +1031,26 @@ describe('RunEngineProviderDispatcher E2E', () => {
     } finally { close(fx); }
   });
 
+  it('LITE-07-102: a contained post-claim failure still fires one terminal trigger for the failed Run', async () => {
+    const calls: Array<{ workspaceId: string; runId: string }> = [];
+    const fx = fixture(new FakeDriver(new FakeHandle([])), false, {
+      executeThrow: new Error('RUN_ENGINE_DISPATCH_STALLED: simulated coordinator throw'),
+      memoryCandidateGenerator: {
+        generateForRunTerminal: (input: { workspaceId: string; runId: string }) => { calls.push(input); },
+      },
+    });
+    try {
+      await assert.doesNotReject(fx.dispatcher.driveSafely(WS, RUN));
+      const run = fx.runRepo.findById(WS, RUN)!;
+      // The containment fold is what makes this Run terminal; the trigger must
+      // follow it, and must stay a single call because the fold is idempotent.
+      assert.equal(run.status, 'failed', `unexpected run status: ${run.status}`);
+      assert.equal(calls.length, 1, 'exactly one terminal-outcome trigger for the failed Run');
+      assert.equal(calls[0]!.workspaceId, WS);
+      assert.equal(calls[0]!.runId, RUN);
+    } finally { close(fx); }
+  });
+
   it('driveSafely contains a pre-claim failure into a canonical operation failure (no strand, no throw)', async () => {
     // Force the engine tick/claim path to throw before the claim CAS by using
     // an auth-failure probe that makes the pre-claim validation fail.
