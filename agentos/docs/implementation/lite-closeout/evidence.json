@@ -629,5 +629,60 @@
       "LITE-04-101"
     ],
     "limitation": "Real canonical Codex invocation passed with an explicit model. It does not prove the default local model path (kimi/k3[1m] via the local proxy) while that external quota is exhausted, and it is not OpenCode or Kimi evidence."
+  },
+  {
+    "id": "S9-PROMOTION-DEDUP",
+    "baseline": "9e3397f4d5fbdb48c80232c0bead3e0a87367f19",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test apps/server/src/services/MemoryCandidateGenerationService.test.ts apps/server/src/services/MemoryCandidateGenerationService.emission.test.ts",
+    "environment": "Windows Node 24.18.0; merged main after the S1 slices",
+    "result": {
+      "tests": 27,
+      "passed": 27,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-003",
+      "LITE-07-107"
+    ],
+    "limitation": "Covers convergence and the audit trail on the terminal-outcome path: exact-content convergence adds the missing source once without rewriting the accepted Entry and stays a no-op on replay, near-duplicate detection (normalized hash and FTS) forces review-required instead of a silent merge, dedup is isolated by Scope/owner/category and by active status (another task, workspace scope, another category, archived and deleted all fail to converge), the dedup fact and its Outbox row commit together, and an archived match falling through to a Candidate is covered. Concurrency is exercised as the same-source replay and the lookup-versus-transaction window; it is not a multi-process stress test."
+  },
+  {
+    "id": "S9-PROMOTION-BUDGET",
+    "baseline": "9e3397f4d5fbdb48c80232c0bead3e0a87367f19",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test apps/server/src/services/MemoryContextBudgetSelector.test.ts",
+    "environment": "Windows Node 24.18.0; merged main after the S1 slices",
+    "result": {
+      "tests": 13,
+      "passed": 13,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-007"
+    ],
+    "limitation": "Covers all five budget dimensions on the persisted-selection path: the token budget prices the text that is actually injected (MF4B-02 deliberately carries a stale tokenEstimate to prove the stored estimate is not trusted), the entry budget caps the count, per-category and per-Scope limits exclude with their own reason codes, and requireDiversity prefers an unrepresented category, explains the exclusion as diversity-limit, and still fills the remaining capacity from deferred entries. Threshold, truncation and reproducibility behaviour are covered alongside. It does not cover the FTS-degradation half of the neighbouring row LITE-07-013, which remains open."
+  },
+  {
+    "id": "S9-PROMOTION-TERMINAL",
+    "baseline": "9e3397f4d5fbdb48c80232c0bead3e0a87367f19",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test apps/server/src/services/MemoryCandidateGenerationService.test.ts apps/server/src/services/TerminalMemoryCandidateReconciler.test.ts",
+    "environment": "Windows Node 24.18.0; merged main after the S1 slices",
+    "result": {
+      "tests": 20,
+      "passed": 20,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-102"
+    ],
+    "limitation": "Covers every terminal Run outcome and the restart window: a completed Run produces the bounded review-required summary, a failed Run and a cancelled Run each produce a bounded failure fact carrying the failure code and message but never raw provider output, a still-running Run produces nothing, one deterministic id per Run keeps a replay convergent, and the startup sweep repairs a terminal Run whose Candidate was lost to a crash using the Run own persisted terminal Event as causation (a terminal Run with no such Event is reported and skipped, a throwing generator is contained, and the sweep is bounded per Workspace). Stage-level terminal status alone is deliberately not a trigger. Explicit-cancellation acceptance lands in the operation layer rather than the dispatcher, so that path is covered by the sweep rather than in-process."
   }
 ]

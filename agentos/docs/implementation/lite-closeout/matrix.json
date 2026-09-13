@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 11,
+  "matrixVersion": 12,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -1909,7 +1909,7 @@
       "section": "18. Acceptance Expectations",
       "line": 370,
       "requirement": "exact and near-duplicate convergence;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryCandidateGenerationService.ts",
@@ -1918,16 +1918,14 @@
       ],
       "tests": [
         "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
-        "apps/server/src/routes/memoryRuntime.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.emission.test.ts"
       ],
       "evidence": [
-        "S1A-RED",
-        "S1A-GREEN",
-        "S1D-SOURCE",
-        "S1D-GREEN"
+        "S9-PROMOTION-DEDUP"
       ],
-      "finding": "精确/normalized hash查找仅限Workspace，未过滤status或Scope/owner；终态精确命中直接返回并丢弃新来源。见MemoryCandidateRepository.ts:617-637、MemoryCandidateGenerationService.ts:163-170。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
-      "exit": "同Scope/owner精确重复原子汇聚来源和规范事件；重放零新增；不同owner不错误汇聚，近似重复保留审核。"
+      "finding": "已闭合：同 Scope/owner/category 且处于 active 的精确重复会原子汇聚缺失来源与规范事件（去重事实与 Outbox 同事务），重放零新增；另一 task、workspace scope、另一 category、archived 与 deleted 均不错误汇聚；近似重复（normalized hash 与 FTS）一律 review-required 而不静默合并。此前的 GAP 反证（S1A-RED 的失败运行与 S1D-SOURCE 的源码审计）按门禁规则不得作为 PASS 依据，已不再列入 evidence，保留为历史记录。",
+      "exit": "已完成（证据 S9-PROMOTION-DEDUP）：27 项断言在本基线全绿、0 失败、0 跳过；并发维度以同源重放与查找-事务窗口覆盖，未做多进程压力测试。",
+      "evidenceBaseline": "9e3397f4d5fbdb48c80232c0bead3e0a87367f19"
     },
     {
       "id": "LITE-07-004",
@@ -1993,7 +1991,7 @@
       "section": "18. Acceptance Expectations",
       "line": 374,
       "requirement": "token, count, Scope, category, and diversity budgets;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
@@ -2001,14 +1999,15 @@
         "apps/server/src/services/MemoryContextBudgetSelector.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryRetrievalService.test.ts",
-        "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
+        "apps/server/src/services/MemoryContextBudgetSelector.test.ts",
+        "apps/server/src/services/MemoryRetrievalService.test.ts"
       ],
       "evidence": [
-        "S1C-SOURCE"
+        "S9-PROMOTION-BUDGET"
       ],
-      "finding": "applyBudget未读取requireDiversity；只累计Entry tokenEstimate而非实际heading+content；scope限制误报category-budget，truncated分支实际是整条排除。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "已闭合：五个预算维度都被真实执行断言——token 预算按实际注入文本计价（不再信任存储的 tokenEstimate）、条目数上限、分类上限、Scope 上限各自给出正确的排除原因码，requireDiversity 优先未被代表的分类、以 diversity-limit 解释排除，并用被推迟条目填满剩余容量。此前的 S1C-SOURCE 为无执行结果的源码审计，不得作为 PASS 依据，已不再列入 evidence。",
+      "exit": "已完成（证据 S9-PROMOTION-BUDGET）：13 项断言在本基线全绿、0 失败、0 跳过。相邻条 LITE-07-013（FTS 降级可见性）仍独立开放。",
+      "evidenceBaseline": "9e3397f4d5fbdb48c80232c0bead3e0a87367f19"
     },
     {
       "id": "LITE-07-008",
@@ -3938,18 +3937,22 @@
       "section": "§7; §14",
       "line": null,
       "requirement": "Task/Run/Stage terminal outcome 触发及故障后收敛",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
         "apps/server/src/services/MemoryCandidateGenerationService.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryCandidateGenerationService.emission.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+        "apps/server/src/services/TerminalMemoryCandidateReconciler.test.ts"
       ],
-      "evidence": [],
-      "finding": "仅成功最终Run路径触发；非成功终态、独立Stage和终态提交到候选生成之间的崩溃窗口未覆盖。",
-      "exit": "有界规范终态按来源幂等生成，重启不遗漏；失败不得修改已终态Run或启动执行；不保存raw输出。"
+      "evidence": [
+        "S9-PROMOTION-TERMINAL"
+      ],
+      "finding": "已闭合：终态覆盖 completed/failed/cancelled 三种；非成功终态生成有界失败事实（仅状态、失败码与消息、Stage 结果，绝不含原始模型输出），未终结 Run 不生成，每 Run 一个确定 id 使重放收敛；崩溃窗口由启动扫描用该 Run 自己持久化的终态 Runtime Event 作为因果修复，无该事件时报出并跳过而不伪造，生成器抛错被隔离且扫描按 Workspace 有界。",
+      "exit": "已完成（证据 S9-PROMOTION-TERMINAL）：20 项断言在本基线全绿、0 失败、0 跳过；显式取消的进程内验收位于 operation 层，由启动扫描覆盖并在证据 limitation 中说明。",
+      "evidenceBaseline": "9e3397f4d5fbdb48c80232c0bead3e0a87367f19"
     },
     {
       "id": "LITE-07-103",
@@ -4051,7 +4054,7 @@
       "section": "§8",
       "line": null,
       "requirement": "按Scope/owner及稳定来源去重，保留审计证据",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/store/MemoryCandidateRepository.ts",
@@ -4061,16 +4064,14 @@
       ],
       "tests": [
         "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
-        "apps/server/src/routes/memoryRuntime.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.emission.test.ts"
       ],
       "evidence": [
-        "S1A-RED",
-        "S1A-GREEN",
-        "S1D-SOURCE",
-        "S1D-GREEN"
+        "S9-PROMOTION-DEDUP"
       ],
-      "finding": "查重未隔离Scope/owner/category及active状态；终态精确命中缺来源合并与版本/Event/Outbox，显式save在完整校验前返回命中。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
-      "exit": "补可证实重复分支：同owner来源合并并发收敛；不同owner不串线；近重复审核，来源保留。"
+      "finding": "已闭合：按 Scope/owner/category 与稳定来源去重，同源来源合并保留审计证据（去重事实+Outbox 同事务、重放零新增），跨 Run 的授权被拒绝且不合并来源，归档命中在查找与事务之间发生时回退为待审核 Candidate 而不是丢失事实。",
+      "exit": "已完成（证据 S9-PROMOTION-DEDUP）：27 项断言在本基线全绿、0 失败、0 跳过；来源保留与拒绝分支均有具名断言。",
+      "evidenceBaseline": "9e3397f4d5fbdb48c80232c0bead3e0a87367f19"
     },
     {
       "id": "LITE-07-108",
@@ -6799,6 +6800,18 @@
         "LITE-09-010",
         "LITE-09-013",
         "LITE-09-102"
+      ]
+    },
+    {
+      "version": 12,
+      "baseline": "9e3397f4d5fbdb48c80232c0bead3e0a87367f19",
+      "authority": "Main-agent S9 promotion within the user-approved tightened plan",
+      "reason": "Promote LITE-07-003, LITE-07-007, LITE-07-102 and LITE-07-107: their implementation is already on this revision, so each is closed with executed evidence at this baseline and a pointer to the files that assert it, replacing counter-evidence pointers that a PASS row may not cite.",
+      "requirementIds": [
+        "LITE-07-003",
+        "LITE-07-107",
+        "LITE-07-007",
+        "LITE-07-102"
       ]
     }
   ]
