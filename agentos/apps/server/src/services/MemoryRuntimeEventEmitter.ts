@@ -82,7 +82,6 @@ interface RunScope {
   readonly runId: string;
   readonly eventContext: AuthorizedRuntimeEventContextV1;
   readonly taskId?: string;
-  readonly stageId?: string;
   readonly timestamp: string;
 }
 
@@ -386,10 +385,16 @@ export class MemoryRuntimeEventEmitter {
     const authorized = this.authority.authorize(input.eventContext);
     const timestamp = input.timestamp ?? this.now().toISOString();
     if (!nonBlank(timestamp)) throw new MemoryRuntimeEventEmissionError('INPUT_INVALID');
+    // The caller's `stageId` is deliberately NOT part of the event scope. Every
+    // MF-5 memory Event definition sets `forbidsStageId`, so the Runtime Event
+    // registry rejects any envelope that carries one. The Stage association is
+    // persisted where it belongs instead: `memory_context_snapshots.stage_id`,
+    // reachable from the Event payload's `memoryContextId`. Forwarding it here
+    // made every stage-scoped emission fail closed, which is exactly what the
+    // real-Provider gate hit.
     return {
       runId: input.runId,
       eventContext: authorized,
-      stageId: input.stageId,
       timestamp,
     };
   }
@@ -414,7 +419,6 @@ export class MemoryRuntimeEventEmitter {
           workspaceId,
           runId: scope.runId,
           ...(scope.taskId === undefined ? {} : { taskId: scope.taskId }),
-          ...(scope.stageId === undefined ? {} : { stageId: scope.stageId }),
           timestamp: scope.timestamp,
           source: 'memory-engine',
           eventContext: scope.eventContext,
