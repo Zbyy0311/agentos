@@ -69,6 +69,26 @@ function nonBlank(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+/**
+ * LITE-07-007: the exact text an Entry contributes to the assembled context.
+ * The budget must price this text, not a stored estimate of the content alone,
+ * otherwise the heading is injected for free and `totalTokens` understates the
+ * context a Run received.
+ */
+export function injectedEntryText(entry: { readonly title: string; readonly content: string }): string {
+  return `### ${entry.title}\n${entry.content}`;
+}
+
+/**
+ * Cost of one injected Entry, using the repository-wide chars/4 estimator that
+ * the candidate-to-Entry promotion path already uses for `tokenEstimate`.
+ */
+export function estimateInjectedTokens(
+  entry: { readonly title: string; readonly content: string },
+): number {
+  return Math.max(1, Math.ceil(injectedEntryText(entry).length / 4));
+}
+
 /** Stable hash of the retrieval query; the query text itself is never stored. */
 export function hashRetrievalQuery(input: RetrieveMemoryInput): string {
   const canonical = JSON.stringify({
@@ -106,7 +126,7 @@ export class MemoryContextBudgetSelector {
     const { selected, exclusions, totalTokens, truncated } = applyBudget(ranked, input.budget);
 
     const contextText = selected
-      .map(item => `### ${item.entry.title}\n${item.entry.content}`)
+      .map(item => injectedEntryText(item.entry))
       .join('\n\n');
     return {
       contextText,
@@ -169,57 +189,120 @@ export function applyBudget(
   ranked: readonly RetrievedMemoryEntry[],
   budget: MemoryBudgetPolicyV1,
 ): BudgetOutcome {
-  const selected: SelectedWithEntry[] = [];
-  const exclusions: MemoryExclusionExplanationV1[] = [];
   const scopeCounts = new Map<string, number>();
   const categoryCounts = new Map<string, number>();
   let tokens = 0;
   let truncations = 0;
   let truncated = false;
+  let selectedCount = 0;
 
   const bump = (map: Map<string, number>, key: string): void => {
     map.set(key, (map.get(key) ?? 0) + 1);
   };
 
-  for (const item of ranked) {
-    const entry = item.entry;
-    if (entry.confidence < budget.minConfidence) {
-      exclusions.push({ memoryId: entry.id, reason: 'below-confidence' });
-      continue;
-    }
-    if (entry.importance < budget.minImportance) {
-      exclusions.push({ memoryId: entry.id, reason: 'below-importance' });
-      continue;
-    }
-    if (selected.length >= budget.maxEntries) {
-      exclusions.push({ memoryId: entry.id, reason: 'entry-budget' });
-      continue;
-    }
+  /** Capacity and threshold gates. Diversity is deliberately not consulted here. */
+  const gate = (entry: RetrievedMemoryEntry['entry']): MemoryExclusionReasonCode | undefined => {
+    if (entry.confidence < budget.minConfidence) return 'below-confidence';
+    if (entry.importance < budget.minImportance) return 'below-importance';
+    if (selectedCount >= budget.maxEntries) return 'entry-budget';
     const scopeLimit = budget.perScopeLimits[entry.scope];
     if (scopeLimit !== undefined && (scopeCounts.get(entry.scope) ?? 0) >= scopeLimit) {
-      exclusions.push({ memoryId: entry.id, reason: 'category-budget' });
-      continue;
+      // A per-Scope limit is not a category limit; the frozen vocabulary has no
+      // scope-budget code, and 'scope-excluded' is the truthful member.
+      return 'scope-excluded';
     }
     const categoryLimit = budget.perCategoryLimits[entry.category];
     if (categoryLimit !== undefined && (categoryCounts.get(entry.category) ?? 0) >= categoryLimit) {
-      exclusions.push({ memoryId: entry.id, reason: 'category-budget' });
-      continue;
+      return 'category-budget';
     }
-    if (tokens + entry.tokenEstimate > budget.maxTokens) {
+    if (tokens + estimateInjectedTokens(entry) > budget.maxTokens) {
       // Truncation is explicit and bounded; never silent.
       if (truncations < budget.maxTruncation) {
         truncations += 1;
         truncated = true;
-        exclusions.push({ memoryId: entry.id, reason: 'truncated' });
-      } else {
-        exclusions.push({ memoryId: entry.id, reason: 'token-budget' });
+        return 'truncated';
       }
-      continue;
+      return 'token-budget';
     }
+    return undefined;
+  };
 
-    tokens += entry.tokenEstimate;
+  const accept = (entry: RetrievedMemoryEntry['entry']): void => {
+    tokens += estimateInjectedTokens(entry);
+    selectedCount += 1;
     bump(scopeCounts, entry.scope);
     bump(categoryCounts, entry.category);
+  };
+
+  const decisions = new Map<string, MemoryExclusionReasonCode | undefined>();
+
+  if (!budget.requireDiversity) {
+    for (const item of ranked) {
+      const reason = gate(item.entry);
+      decisions.set(item.entry.id, reason);
+      if (reason === undefined) accept(item.entry);
+    }
+  } else {
+    // LITE-07-007 diversity: the result set must not be monopolized by one
+    // category. The first pass admits at most one Entry per category in rank
+    // order, but only while another category is still available further down
+    // the ranking; the second pass then fills the remaining capacity from the
+    // deferred Entries in rank order. Capacity is never wasted, and only the
+    // preference changes.
+    const represented = new Set<string>();
+    const deferred: RetrievedMemoryEntry[] = [];
+    /** Is there still an Entrant from a category the selection does not have? */
+    const availableElsewhere = (offset: number, category: string): boolean => {
+      for (let index = offset; index < ranked.length; index += 1) {
+        const other = ranked[index]!.entry.category;
+        if (other !== category && !represented.has(other)) return true;
+      }
+      return false;
+    };
+
+    for (let index = 0; index < ranked.length; index += 1) {
+      const item = ranked[index]!;
+      const entry = item.entry;
+      if (represented.has(entry.category) && availableElsewhere(index + 1, entry.category)) {
+        deferred.push(item);
+        continue;
+      }
+      const reason = gate(entry);
+      decisions.set(entry.id, reason);
+      if (reason === undefined) {
+        accept(entry);
+        represented.add(entry.category);
+      }
+    }
+    for (const item of deferred) {
+      const reason = gate(item.entry);
+      if (reason === undefined) {
+        decisions.set(item.entry.id, undefined);
+        accept(item.entry);
+        represented.add(item.entry.category);
+        continue;
+      }
+      // The Entry fitted when the diversity pass deferred it; the budget only
+      // ran out because another category was preferred, so the diversity rule
+      // is the cause. Threshold gates stay attributed to the threshold.
+      decisions.set(
+        item.entry.id,
+        reason === 'below-confidence' || reason === 'below-importance' ? reason : 'diversity-limit',
+      );
+    }
+  }
+
+  // Record in rank order: selected Entries with reasons, the rest with the
+  // exclusion reason that actually decided them.
+  const selected: SelectedWithEntry[] = [];
+  const exclusions: MemoryExclusionExplanationV1[] = [];
+  for (const item of ranked) {
+    const entry = item.entry;
+    const reason = decisions.get(entry.id);
+    if (reason !== undefined) {
+      exclusions.push({ memoryId: entry.id, reason });
+      continue;
+    }
     const reasons: MemorySelectionReasonCode[] = [...item.reasons];
     if (entry.pinned) reasons.push('pin');
     selected.push({
@@ -234,7 +317,7 @@ export function applyBudget(
         authority: entry.authority,
         confidence: entry.confidence,
         importance: entry.importance,
-        tokenCost: entry.tokenEstimate,
+        tokenCost: estimateInjectedTokens(entry),
         reasons,
         sourceRefs: entry.sources,
       },

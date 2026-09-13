@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 13,
+  "matrixVersion": 14,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -75,7 +75,8 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/store/SqliteStore.test.ts"
+        "apps/server/src/store/SqliteStore.test.ts",
+        "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -154,7 +155,8 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/services/OutboxPublisher.test.ts"
+        "apps/server/src/services/OutboxPublisher.test.ts",
+        "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -215,7 +217,8 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -254,7 +257,8 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/services/MemoryContextResolver.test.ts",
+        "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -275,7 +279,8 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/services/GitObservationCollector.integration.test.ts"
+        "apps/server/src/services/GitObservationCollector.integration.test.ts",
+        "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -296,7 +301,8 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+        "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -318,7 +324,8 @@
       ],
       "tests": [
         "apps/server/src/services/BoundedGroupService.test.ts",
-        "packages/shared/wf-template-instantiation.test.ts"
+        "packages/shared/wf-template-instantiation.test.ts",
+        "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -507,7 +514,8 @@
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "apps/server/src/store/Identity.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -612,7 +620,8 @@
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "apps/server/src/store/Identity.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -847,7 +856,8 @@
         "apps/server/src/services/LifecycleTransactionService.ts"
       ],
       "tests": [
-        "apps/server/src/routes/canonicalRunStream.test.ts"
+        "apps/server/src/routes/canonicalRunStream.test.ts",
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -1179,7 +1189,8 @@
         "apps/server/src/store/RuntimeEventRepository.ts"
       ],
       "tests": [
-        "apps/server/src/routes/canonicalRunStream.test.ts"
+        "apps/server/src/routes/canonicalRunStream.test.ts",
+        "apps/server/src/services/OutboxPublisher.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -1480,7 +1491,8 @@
         "apps/server/src/services/run-engine/providerExecutionChain.ts"
       ],
       "tests": [
-        "apps/server/src/store/SqliteStore.test.ts"
+        "apps/server/src/store/SqliteStore.test.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -1501,7 +1513,8 @@
         "apps/server/src/services/run-engine/providerExecutionChain.ts"
       ],
       "tests": [
-        "apps/server/src/routes/canonicalRunStream.test.ts"
+        "apps/server/src/routes/canonicalRunStream.test.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -2350,7 +2363,8 @@
         "apps/server/src/services/MemoryContextResolver.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryCandidateGenerationService.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+        "apps/server/src/services/MemoryContextResolver.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -2966,7 +2980,8 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/store/SqliteStore.test.ts"
+        "apps/server/src/store/SqliteStore.test.ts",
+        "apps/server/src/services/ConversationTurnDriver.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -2989,9 +3004,15 @@
         "apps/server/src/services/BoundedGroupService.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-101-LOCAL",
+        "S5-102-LOCAL"
+      ],
       "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
@@ -3051,9 +3072,15 @@
         "apps/server/src/services/BoundedGroupService.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-101-LOCAL",
+        "S5-102-LOCAL"
+      ],
       "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
@@ -4368,7 +4395,8 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "packages/shared/p6-l1a-admission.test.ts"
+        "packages/shared/p6-l1a-admission.test.ts",
+        "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
@@ -4455,7 +4483,8 @@
         "packages/agent-core/src/config.ts"
       ],
       "tests": [
-        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
       "evidence": [
         "S4-PROVIDER-SOURCE",
@@ -4686,13 +4715,21 @@
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts",
-        "apps/server/src/services/BoundedGroupService.ts"
+        "apps/server/src/services/BoundedGroupService.ts",
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts",
+        "apps/server/src/store/TurnContextSnapshotRepository.ts"
       ],
       "tests": [
         "apps/server/src/services/ConversationTurnDriver.test.ts",
-        "apps/server/src/services/BoundedGroupService.test.ts"
+        "apps/server/src/services/BoundedGroupService.test.ts",
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-101-LOCAL"
+      ],
       "finding": "快照在recordReply创建，driver已先调用Provider；history未使用该快照。",
       "exit": "Direct/Group按实际调用前快照预算与Scope，provider收到冻结选中内容，事后记录引用原快照。"
     },
@@ -4709,9 +4746,14 @@
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "tests": [
-        "apps/server/src/services/GroupTurnDriver.test.ts"
+        "apps/server/src/services/GroupTurnDriver.test.ts",
+        "apps/server/src/services/ConversationTurnDriver.test.ts",
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S5-EXECUTION-SOURCE",
+        "S5-102-LOCAL"
+      ],
       "finding": "单interaction串行不证明与其他Conversation/Run共享Workspace权限；driver无显式admission。",
       "exit": "无隐式modifying authority，缺可靠只读证据显示不可用/要求显式Run；并发与拒绝路径测试。"
     },
@@ -7513,6 +7555,15 @@
       ]
     },
     {
+      "version": 10,
+      "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+      "authority": "Main-agent S5 implementation within user-approved scope",
+      "reason": "Record the pre-invocation frozen context snapshot slice for LITE-09-101; keep GAP because production Memory selection is still empty.",
+      "requirementIds": [
+        "LITE-09-101"
+      ]
+    },
+    {
       "version": 11,
       "baseline": "7de73abec2bb4e60a85e2de718d931f24cf62937",
       "authority": "Main-agent S8 acceptance within user-approved scope",
@@ -7538,6 +7589,17 @@
       ]
     },
     {
+      "version": 11,
+      "baseline": "948b8008491413395d7d2abf2331d449b0c2433f",
+      "authority": "Main-agent S5 implementation within user-approved scope",
+      "reason": "Record the chat modifying-authority refusal gate and per-Agent pre-invocation snapshots; keep GAP for cross-chat serialization, which needs a separate authorized schema slice.",
+      "requirementIds": [
+        "LITE-09-010",
+        "LITE-09-013",
+        "LITE-09-102"
+      ]
+    },
+    {
       "version": 12,
       "baseline": "62a2535d8887b45080fb5d2ab4565d5dd98b4f85",
       "authority": "Main-agent S8 acceptance within user-approved scope",
@@ -7555,6 +7617,245 @@
       "requirementIds": [
         "LITE-04-001",
         "LITE-04-101"
+      ]
+    },
+    {
+      "version": 14,
+      "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
+      "authority": "Main-agent merge resolution (union of both branches)",
+      "reason": "merge origin-https/main (S5/S1 slices) into codex/lite-s8-acceptance: union of the S8 promotions and the merged-main closeout revision",
+      "requirementIds": [
+        "LITE-00-001",
+        "LITE-00-002",
+        "LITE-00-003",
+        "LITE-00-004",
+        "LITE-00-005",
+        "LITE-00-006",
+        "LITE-00-007",
+        "LITE-00-008",
+        "LITE-00-009",
+        "LITE-00-010",
+        "LITE-00-011",
+        "LITE-00-012",
+        "LITE-00-013",
+        "LITE-01-001",
+        "LITE-01-002",
+        "LITE-01-003",
+        "LITE-01-004",
+        "LITE-01-005",
+        "LITE-01-006",
+        "LITE-01-007",
+        "LITE-01-008",
+        "LITE-01-009",
+        "LITE-01-010",
+        "LITE-01-011",
+        "LITE-01-012",
+        "LITE-01-013",
+        "LITE-01-014",
+        "LITE-01-015",
+        "LITE-02-001",
+        "LITE-02-002",
+        "LITE-02-003",
+        "LITE-02-004",
+        "LITE-02-005",
+        "LITE-02-006",
+        "LITE-02-007",
+        "LITE-02-008",
+        "LITE-02-009",
+        "LITE-02-010",
+        "LITE-02-011",
+        "LITE-02-012",
+        "LITE-02-013",
+        "LITE-02-014",
+        "LITE-02-015",
+        "LITE-02-016",
+        "LITE-02-017",
+        "LITE-03-001",
+        "LITE-03-002",
+        "LITE-03-003",
+        "LITE-03-004",
+        "LITE-03-005",
+        "LITE-03-006",
+        "LITE-03-007",
+        "LITE-03-008",
+        "LITE-03-009",
+        "LITE-03-010",
+        "LITE-03-011",
+        "LITE-03-012",
+        "LITE-03-013",
+        "LITE-03-014",
+        "LITE-03-015",
+        "LITE-03-016",
+        "LITE-03-017",
+        "LITE-03-018",
+        "LITE-03-019",
+        "LITE-04-001",
+        "LITE-04-002",
+        "LITE-04-003",
+        "LITE-04-004",
+        "LITE-04-005",
+        "LITE-04-006",
+        "LITE-04-007",
+        "LITE-04-008",
+        "LITE-04-009",
+        "LITE-04-010",
+        "LITE-04-011",
+        "LITE-04-012",
+        "LITE-05-001",
+        "LITE-05-002",
+        "LITE-05-003",
+        "LITE-05-004",
+        "LITE-05-005",
+        "LITE-05-006",
+        "LITE-05-007",
+        "LITE-05-008",
+        "LITE-05-009",
+        "LITE-05-010",
+        "LITE-05-011",
+        "LITE-05-012",
+        "LITE-06-001",
+        "LITE-06-002",
+        "LITE-06-003",
+        "LITE-06-004",
+        "LITE-06-005",
+        "LITE-06-006",
+        "LITE-06-007",
+        "LITE-06-008",
+        "LITE-06-009",
+        "LITE-06-010",
+        "LITE-06-011",
+        "LITE-07-001",
+        "LITE-07-002",
+        "LITE-07-003",
+        "LITE-07-004",
+        "LITE-07-005",
+        "LITE-07-006",
+        "LITE-07-007",
+        "LITE-07-008",
+        "LITE-07-009",
+        "LITE-07-010",
+        "LITE-07-011",
+        "LITE-07-012",
+        "LITE-07-013",
+        "LITE-07-014",
+        "LITE-08-001",
+        "LITE-08-002",
+        "LITE-08-003",
+        "LITE-08-004",
+        "LITE-08-005",
+        "LITE-08-006",
+        "LITE-08-007",
+        "LITE-08-008",
+        "LITE-08-009",
+        "LITE-08-010",
+        "LITE-08-011",
+        "LITE-08-012",
+        "LITE-08-013",
+        "LITE-08-014",
+        "LITE-08-015",
+        "LITE-09-001",
+        "LITE-09-002",
+        "LITE-09-003",
+        "LITE-09-004",
+        "LITE-09-005",
+        "LITE-09-006",
+        "LITE-09-007",
+        "LITE-09-008",
+        "LITE-09-009",
+        "LITE-09-010",
+        "LITE-09-011",
+        "LITE-09-012",
+        "LITE-09-013",
+        "LITE-09-014",
+        "LITE-09-015",
+        "LITE-09-016",
+        "LITE-09-017",
+        "LITE-09-018",
+        "LITE-10-001",
+        "LITE-10-002",
+        "LITE-10-003",
+        "LITE-10-004",
+        "LITE-10-005",
+        "LITE-10-006",
+        "LITE-10-007",
+        "LITE-10-008",
+        "LITE-10-009",
+        "LITE-10-010",
+        "LITE-10-011",
+        "LITE-10-012",
+        "LITE-10-013",
+        "LITE-10-014",
+        "LITE-10-015",
+        "LITE-10-016",
+        "LITE-10-017",
+        "LITE-11-001",
+        "LITE-11-002",
+        "LITE-11-003",
+        "LITE-11-004",
+        "LITE-11-005",
+        "LITE-11-006",
+        "LITE-11-007",
+        "LITE-11-008",
+        "LITE-11-009",
+        "LITE-11-010",
+        "LITE-11-011",
+        "LITE-11-012",
+        "LITE-11-013",
+        "LITE-12-001",
+        "LITE-12-002",
+        "LITE-12-003",
+        "LITE-12-004",
+        "LITE-12-005",
+        "LITE-12-006",
+        "LITE-12-007",
+        "LITE-12-008",
+        "LITE-12-009",
+        "LITE-12-010",
+        "LITE-12-011",
+        "LITE-12-012",
+        "LITE-12-013",
+        "LITE-12-014",
+        "LITE-12-015",
+        "LITE-12-016",
+        "LITE-13-001",
+        "LITE-13-002",
+        "LITE-13-003",
+        "LITE-13-004",
+        "LITE-13-005",
+        "LITE-13-006",
+        "LITE-13-007",
+        "LITE-13-008",
+        "LITE-13-009",
+        "LITE-13-010",
+        "LITE-13-011",
+        "LITE-13-012",
+        "LITE-13-013",
+        "LITE-13-014",
+        "LITE-13-015",
+        "LITE-04-101",
+        "LITE-07-101",
+        "LITE-07-102",
+        "LITE-07-103",
+        "LITE-07-104",
+        "LITE-07-105",
+        "LITE-07-106",
+        "LITE-07-107",
+        "LITE-07-108",
+        "LITE-07-109",
+        "LITE-09-101",
+        "LITE-09-102",
+        "LITE-09-103",
+        "LITE-09-104",
+        "LITE-09-105",
+        "LITE-09-106",
+        "LITE-09-107",
+        "LITE-09-108",
+        "LITE-09-109",
+        "LITE-09-110",
+        "LITE-13-101",
+        "LITE-12-101",
+        "LITE-13-102",
+        "LITE-01-101"
       ]
     }
   ]

@@ -158,8 +158,35 @@ test('bounded group respond: the runtime selects speakers, streams the walk, and
       assert.deepEqual(read.replies.map(reply => reply.agentId), ['codex', 'kimi']);
 
       const db = store.getDatabase();
-      const snapshots = db.prepare('SELECT COUNT(*) AS n FROM cr_turn_context_snapshots').get() as { n: number | bigint };
-      assert.equal(Number(snapshots.n), 2);
+      // Two snapshot rows exist per speaker Turn, and they are different
+      // records with different owners:
+      //   - CR-5 records the per-Agent Memory selection with the reply
+      //     (interaction-scoped),
+      //   - LITE-09-101 freezes the bounded conversation history BEFORE the
+      //     Provider call (Turn-scoped, no interaction).
+      // Assert the contract of each rather than a bare total, so a missing
+      // freeze cannot hide behind the CR-5 row.
+      const rows = db.prepare('SELECT turn_id, interaction_id, budget_json FROM cr_turn_context_snapshots').all() as Array<{
+        turn_id: string | null; interaction_id: string | null; budget_json: string;
+      }>;
+      assert.equal(rows.length, 4);
+      const byTurn = new Map<string, typeof rows>();
+      for (const row of rows) {
+        assert.ok(row.turn_id);
+        byTurn.set(row.turn_id!, [...(byTurn.get(row.turn_id!) ?? []), row]);
+      }
+      assert.equal(byTurn.size, 2);
+      for (const turnRows of byTurn.values()) {
+        const frozen = turnRows.filter(row => row.interaction_id === null);
+        const replyScoped = turnRows.filter(row => row.interaction_id !== null);
+        assert.equal(frozen.length, 1, 'each speaker Turn freezes exactly one bounded context');
+        assert.equal(replyScoped.length, 1, 'each recorded reply keeps its CR-5 Memory snapshot');
+        const budget = JSON.parse(frozen[0]!.budget_json) as {
+          maxFrozenHistoryMessages: number; frozenHistoryMessageIds: string[];
+        };
+        assert.ok(budget.maxFrozenHistoryMessages > 0);
+        assert.ok(Array.isArray(budget.frozenHistoryMessageIds));
+      }
       const wsEvents = db.prepare('SELECT COUNT(*) AS n FROM workspace_events').get() as { n: number | bigint };
       assert.equal(Number(wsEvents.n), 0);
     });
