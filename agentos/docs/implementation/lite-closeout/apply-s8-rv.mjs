@@ -5,7 +5,15 @@
  * against a per-file clean run (0 fail / 0 skip), and one real product gap
  * (the Inspector had no Provider surface) was fixed rather than asserted away.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const passFreezePath = resolve(dirname(fileURLToPath(import.meta.url)), 'pass-freeze.json');
+if (existsSync(passFreezePath)) {
+  throw new Error('S8 closeout writes are disabled while pass-freeze.json exists: ' + passFreezePath);
+}
+
 const baseline = process.argv[2];
 const version = Number(process.argv[3]);
 if (!baseline || !Number.isSafeInteger(version)) throw new Error('usage: node apply-s8-rv.mjs <baseline> <version>');

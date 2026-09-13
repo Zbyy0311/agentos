@@ -51,37 +51,45 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
       - name: Server tests
-        run: pnpm --filter @agentos/server test
+        run: node scripts/capture-lite-verification.mjs server-tests -- pwsh -NoProfile -Command 'pnpm --filter @agentos/server test; exit $LASTEXITCODE'
 
       - name: Lite scope and evidence gates
         run: |
-          node --test scripts/verify-lite-scope.test.mjs
+          node scripts/capture-lite-verification.mjs lite-regressions -- node --test --test-reporter=tap scripts/verify-lite-scope.test.mjs scripts/verify-lite-acceptance.test.mjs scripts/run-lite-verification-batches.test.mjs scripts/capture-lite-verification.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          node scripts/verify-lite-scope.mjs
+          node scripts/capture-lite-verification.mjs lite-scope -- node scripts/verify-lite-scope.mjs
 
       - name: Shared M3 contract harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/m3-runtime.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-m3 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/m3-runtime.test.ts
 
       - name: Shared P6-L1C-M1 contract harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/p6-l1c-git-observation-contract.test.ts ../../packages/shared/p6-l1c-porcelain-v2.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-p6 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/p6-l1c-git-observation-contract.test.ts ../../packages/shared/p6-l1c-porcelain-v2.test.ts
 
       - name: Shared MF-0 memory contract harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/mf0-memory-contracts.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-mf0 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf0-memory-contracts.test.ts
 
       - name: Shared MF-5 memory event harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/mf5-memory-events.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-mf5-memory apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf5-memory-events.test.ts
 
       - name: Shared MF-5 Workspace event harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/mf5-workspace-events.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-mf5-workspace apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/mf5-workspace-events.test.ts
 
       - name: Shared CR-0 conversation contract harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/cr0-conversation-contracts.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-cr0 apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/cr0-conversation-contracts.test.ts
 
       - name: Shared workflow template harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/wf-templates.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-wf-templates apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/wf-templates.test.ts
 
       - name: Shared workflow template instantiation harness
-        run: pnpm --filter @agentos/server exec node --import tsx --test ../../packages/shared/wf-template-instantiation.test.ts
+        run: node scripts/capture-lite-verification.mjs shared-wf-instantiation apps/server -- node --import tsx --test --test-reporter=tap ../../packages/shared/wf-template-instantiation.test.ts
 
       - name: Workspace build
-        run: pnpm build
+        run: node scripts/capture-lite-verification.mjs workspace-build -- pwsh -NoProfile -Command 'pnpm build; exit $LASTEXITCODE'
+
+      - name: Preserve raw verification receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raw-verification-${{ github.sha }}
+          path: agentos/logs/pass-audit/
+          if-no-files-found: error

@@ -1,3 +1,5 @@
+> Current authority (2026-09-13): PASS promotion is frozen. Matrix v15: 0 PASS / 26 GAP / 205 RUNTIME-VERIFY / 164 DEFERRED. See [PASS-EVIDENCE-AUDIT.md](PASS-EVIDENCE-AUDIT.md). Earlier counts below are historical.
+
 # Active execution handoff — 2026-09-12
 
 The Lite goal is ACTIVE, not complete. S0 remains the sole scope authority.

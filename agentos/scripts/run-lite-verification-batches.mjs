@@ -4,45 +4,129 @@
  * The S0 matrix records, for each RUNTIME-VERIFY requirement, the test file that
  * is expected to carry its clause-level evidence. This runner turns that into
  * executed evidence: it groups those requirements by their test file, runs each
- * file in the package that owns it, and reports per requirement whether the file
- * passed with zero skipped tests.
+ * file in the package that owns it, and records a process receipt for the batch.
  *
- * A requirement is only reported as provable when its own batch passed with
- * `failed === 0 && skipped === 0 && passed > 0`; anything else stays open with
- * the raw numbers attached, so a flaky or environment-dependent file cannot
- * quietly promote a requirement.
+ * A file-level pass is deliberately not an assertion-level proof. This runner
+ * does not inspect source text or invent a requirement-to-assertion mapping, so
+ * requirementsProvable remains zero unless a future runner records verified,
+ * per-assertion coverage explicitly.
  *
  * Usage:
  *   node scripts/run-lite-verification-batches.mjs [--only <id,id>] [--json <out>]
- *     [--timeoutMs <n>] [--list]
+ *     [--timeoutMs <n>] [--files <json>] [--list]
  */
+import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
-import { spawnSync } from 'node:child_process';
+import { spawnSync, execFileSync } from 'node:child_process';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const arg = (name, fallback) => {
-  const index = process.argv.indexOf('--' + name);
+const digest = value => createHash('sha256').update(value).digest('hex');
+
+function readArg(argv, name, fallback) {
+  const index = argv.indexOf('--' + name);
   if (index < 0) return fallback;
-  const value = process.argv[index + 1];
+  const value = argv[index + 1];
   return value === undefined || value.startsWith('--') ? true : value;
-};
-const only = typeof arg('only', undefined) === 'string' ? String(arg('only')).split(',').map(s => s.trim()) : undefined;
-// --files <json> runs an explicit reviewed file list instead of deriving it from
-// the matrix. It exists so a set of files promoted in an earlier revision can be
-// re-executed at the current revision and carry a single, honest baseline.
-const filesArg = typeof arg('files', undefined) === 'string' ? String(arg('files')) : undefined;
-const listOnly = arg('list', false) === true;
-const timeoutMs = Number(arg('timeoutMs', 900_000));
-const outPath = typeof arg('json', undefined) === 'string' ? String(arg('json')) : 'docs/implementation/lite-closeout/verification-batches.json';
+}
 
-const matrix = JSON.parse(readFileSync(join(repoRoot, 'docs/implementation/lite-closeout/matrix.json'), 'utf8'));
-const isTestFile = value => /\.test\.(ts|tsx|ps1|mjs)$/.test(value) && !value.includes('progress');
+function countFromSingleLine(lines, label) {
+  const expression = new RegExp('^\\s*(?:#|\\u2139)?\\s*' + label + '\\s+(\\d+)\\s*$', 'i');
+  const values = [];
+  for (const line of lines) {
+    const match = expression.exec(line);
+    if (match !== null) values.push(Number(match[1]));
+  }
+  return values.length === 1 ? values[0] : null;
+}
 
-function runnerFor(file) {
-  if (file.startsWith('apps/server/')) return { cwd: 'apps/server', cmd: ['node', '--import', 'tsx', '--test', '--test-concurrency=1', file.slice('apps/server/'.length)] };
-  if (file.startsWith('apps/web/')) return { cwd: 'apps/web', cmd: ['node', '--import', 'tsx', '--test', file.slice('apps/web/'.length)] };
+function countFromVitestLine(line, label) {
+  const matches = [...line.matchAll(new RegExp('(\\d+)\\s+' + label + '\\b', 'gi'))];
+  return matches.length === 1 ? Number(matches[0][1]) : null;
+}
+
+/**
+ * Parse counts only when the output contains an unambiguous summary.
+ * Missing fields stay null; they are never treated as zero.
+ */
+export function parseCounts(output) {
+  const lines = String(output).split(/\r?\n/);
+  const nodeCounts = {
+    passed: countFromSingleLine(lines, 'pass'),
+    failed: countFromSingleLine(lines, 'fail'),
+    skipped: countFromSingleLine(lines, 'skipped'),
+  };
+  if (Object.values(nodeCounts).some(value => value !== null)) return nodeCounts;
+
+  const vitestLines = lines.filter(line => /^\s*Tests\b/i.test(line));
+  if (vitestLines.length !== 1) return undefined;
+  const vitestLine = vitestLines[0];
+  return {
+    passed: countFromVitestLine(vitestLine, 'passed'),
+    failed: countFromVitestLine(vitestLine, 'failed'),
+    skipped: countFromVitestLine(vitestLine, 'skipped'),
+  };
+}
+
+export function serializeSpawnError(error) {
+  if (error === undefined || error === null) return null;
+  const serialized = {
+    name: error.name ?? null,
+    message: error.message ?? String(error),
+  };
+  for (const key of Object.keys(error)) serialized[key] = error[key];
+  return serialized;
+}
+
+function hasCompleteCounts(counts) {
+  return counts !== undefined
+    && counts !== null
+    && ['passed', 'failed', 'skipped'].every(key => Number.isSafeInteger(counts[key]));
+}
+
+function isCleanCounts(counts) {
+  return hasCompleteCounts(counts)
+    && counts.passed > 0
+    && counts.failed === 0
+    && counts.skipped === 0;
+}
+
+/** Classify a spawned batch only after considering the raw process receipt. */
+export function classifyRun({ rawStatus, error, signal, counts }) {
+  if (error?.code === 'ETIMEDOUT') return 'timeout';
+  if (error !== undefined && error !== null) return 'spawn-error';
+  if (signal !== undefined && signal !== null) return 'signaled';
+  if (rawStatus !== 0) return 'not-clean';
+  if (!hasCompleteCounts(counts)) return 'unparsed';
+  return isCleanCounts(counts) ? 'passed' : 'not-clean';
+}
+
+/**
+ * A batch result cannot promote a requirement merely because its source file
+ * passed. Only a separately verified assertion receipt could change this in a
+ * future schema; this runner emits no such receipt.
+ */
+export function summarizeResults(results) {
+  return {
+    batches: results.length,
+    passed: results.filter(result => result.status === 'passed').length,
+    failed: results.filter(result => result.status !== 'passed').length,
+    requirementsProvable: 0,
+    requirementsTotal: results.reduce((total, result) => total + result.requirementIds.length, 0),
+  };
+}
+
+export function runnerFor(file) {
+  if (file.startsWith('apps/server/')) {
+    return {
+      cwd: 'apps/server',
+      cmd: ['node', '--import', 'tsx', '--test', '--test-concurrency=1', file.slice('apps/server/'.length)],
+    };
+  }
+  if (file.startsWith('apps/web/')) {
+    return { cwd: 'apps/web', cmd: ['node', '--import', 'tsx', '--test', file.slice('apps/web/'.length)] };
+  }
   const pkg = /^(packages\/[^/]+)\//.exec(file);
   // A package may be a pure type/contract package with no local test tooling
   // (packages/shared). Its tests still run through the workspace root's tsx from
@@ -65,108 +149,165 @@ function runnerFor(file) {
   return undefined;
 }
 
-/** Parse both node:test (`# pass 12` / `ℹ pass 12`) and vitest (`Tests  12 passed`) summaries. */
-function parseCounts(output) {
-  const readNode = label => {
-    const match = new RegExp('(?:^|\\n)\\s*(?:#|\u2139)?\\s*' + label + '\\s+(\\d+)').exec(output);
-    return match === null ? undefined : Number(match[1]);
+function sourceSha256(file) {
+  const absolute = resolve(repoRoot, file);
+  return existsSync(absolute) ? digest(readFileSync(absolute)) : null;
+}
+
+function emptyReceipt() {
+  return { rawStatus: null, error: null, signal: null, counts: null };
+}
+
+function resultWithNoProcess(batch, status) {
+  const raw = emptyReceipt();
+  return {
+    file: batch.file,
+    requirementIds: batch.ids,
+    status,
+    sourceSha256: sourceSha256(batch.file),
+    rawLogSha256: null,
+    ...raw,
+    raw,
+    assertionCoverage: [],
   };
-  const passed = readNode('pass');
-  const failed = readNode('fail');
-  const skipped = readNode('skipped');
-  if (passed !== undefined && failed !== undefined) return { passed, failed, skipped: skipped ?? 0 };
-  // vitest prints `      Tests  21 passed (21)` with separate failed/skipped
-  // lines when applicable.
-  const vitestPassed = /Tests\s+(\d+)\s+passed/.exec(output);
-  if (vitestPassed !== null) {
-    const vitestFailed = /Tests\s+.*?(\d+)\s+failed/.exec(output);
-    const vitestSkipped = /Tests\s+.*?(\d+)\s+skipped/.exec(output);
-    return {
-      passed: Number(vitestPassed[1]),
-      failed: Number(vitestFailed?.[1] ?? 0),
-      skipped: Number(vitestSkipped?.[1] ?? 0),
-    };
-  }
-  return undefined;
 }
 
-const batches = new Map();
-if (filesArg !== undefined) {
-  const requested = JSON.parse(readFileSync(resolve(repoRoot, filesArg), 'utf8'));
-  if (!Array.isArray(requested) || requested.length === 0) throw new Error('file list must be a non-empty array');
-  for (const file of requested) batches.set(file, { file, ids: [] });
-}
-for (const row of filesArg === undefined ? matrix.requirements : []) {
-  if (row.state !== 'RUNTIME-VERIFY') continue;
-  if (only !== undefined && !only.includes(row.id)) continue;
-  for (const file of (row.tests ?? []).filter(isTestFile)) {
-    const batch = batches.get(file) ?? { file, ids: [] };
-    batch.ids.push(row.id);
-    batches.set(file, batch);
-  }
+function outputTail(output) {
+  return output.trimEnd().split(/\r?\n/).slice(-12).join('\n');
 }
 
-const ordered = [...batches.values()].sort((a, b) => a.file.localeCompare(b.file));
-if (listOnly) {
-  for (const batch of ordered) console.log(batch.file + '  rows=' + batch.ids.length + '  runner=' + (runnerFor(batch.file) === undefined ? 'UNSUPPORTED' : 'ok'));
-  console.log('batches=' + ordered.length + ' rows=' + ordered.reduce((n, b) => n + b.ids.length, 0));
-  process.exit(0);
-}
-
-const results = [];
-for (const batch of ordered) {
-  const runner = runnerFor(batch.file);
-  if (runner === undefined) {
-    results.push({ file: batch.file, requirementIds: batch.ids, status: 'unsupported' });
-    console.log('UNSUPPORTED  ' + batch.file);
-    continue;
-  }
-  if (!existsSync(join(repoRoot, batch.file))) {
-    results.push({ file: batch.file, requirementIds: batch.ids, status: 'missing-file' });
-    console.log('MISSING      ' + batch.file);
-    continue;
-  }
-  const startedAt = Date.now();
-  const run = spawnSync(runner.cmd[0], runner.cmd.slice(1), {
-    cwd: join(repoRoot, runner.cwd),
-    encoding: 'utf8',
-    timeout: timeoutMs,
-    maxBuffer: 64 * 1024 * 1024,
-    shell: process.platform === 'win32',
-  });
-  const output = (run.stdout ?? '') + '\n' + (run.stderr ?? '');
+export function createRunResult(batch, run, output, durationMs = 0) {
   const counts = parseCounts(output);
-  const durationMs = Date.now() - startedAt;
-  const status = counts === undefined
-    ? 'unparsed'
-    : counts.passed > 0 && counts.failed === 0 && counts.skipped === 0
-      ? 'passed'
-      : 'not-clean';
-  results.push({
-    file: batch.file, requirementIds: batch.ids, status, durationMs,
-    ...(counts === undefined ? {} : { counts }),
-    outputTail: output.trim().split('\n').slice(-12).join('\n'),
-  });
-  console.log(
-    status.padEnd(12) + batch.file + '  rows=' + batch.ids.length + '  '
-    + (counts === undefined ? 'unparsed' : counts.passed + ' pass / ' + counts.failed + ' fail / ' + counts.skipped + ' skip')
-    + '  ' + durationMs + 'ms',
-  );
+  const rawStatus = run.status ?? null;
+  const error = serializeSpawnError(run.error);
+  const signal = run.signal ?? null;
+  const raw = { status: rawStatus, error, signal, counts: counts ?? null };
+  return {
+    file: batch.file,
+    requirementIds: batch.ids,
+    status: classifyRun({ rawStatus, error: run.error, signal, counts }),
+    durationMs,
+    sourceSha256: sourceSha256(batch.file),
+    rawLogSha256: digest(output),
+    rawOutput: output,
+    rawStatus,
+    error,
+    signal,
+    counts: counts ?? null,
+    raw,
+    assertionCoverage: [],
+    outputTail: outputTail(output),
+  };
 }
 
-const report = {
-  schemaVersion: 1,
-  generatedAt: new Date().toISOString(),
-  matrixVersion: matrix.matrixVersion,
-  summary: {
-    batches: results.length,
-    passed: results.filter(r => r.status === 'passed').length,
-    requirementsProvable: results.filter(r => r.status === 'passed').reduce((n, r) => n + r.requirementIds.length, 0),
-    requirementsTotal: results.reduce((n, r) => n + r.requirementIds.length, 0),
-  },
-  results,
-};
-writeFileSync(join(repoRoot, outPath), JSON.stringify(report, null, 2) + '\n');
-console.log('report=' + outPath);
-console.log('batches=' + report.summary.batches + ' passed=' + report.summary.passed
-  + ' provableRequirements=' + report.summary.requirementsProvable + '/' + report.summary.requirementsTotal);
+export function main(argv = process.argv.slice(2)) {
+  const baseline = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  const trackedStatus = execFileSync('git', ['status', '--porcelain', '--untracked-files=no'], { cwd: repoRoot, encoding: 'utf8' }).trim();
+  const onlyValue = readArg(argv, 'only', undefined);
+  const only = typeof onlyValue === 'string' ? onlyValue.split(',').map(value => value.trim()) : undefined;
+  const filesValue = readArg(argv, 'files', undefined);
+  const filesArg = typeof filesValue === 'string' ? filesValue : undefined;
+  const listOnly = readArg(argv, 'list', false) === true;
+  const timeoutValue = Number(readArg(argv, 'timeoutMs', 900_000));
+  if (!Number.isFinite(timeoutValue) || timeoutValue <= 0) throw new Error('--timeoutMs must be a positive number');
+  const outValue = readArg(argv, 'json', undefined);
+  const outPath = typeof outValue === 'string'
+    ? outValue
+    : 'docs/implementation/lite-closeout/verification-batches.json';
+
+  const matrix = JSON.parse(readFileSync(join(repoRoot, 'docs/implementation/lite-closeout/matrix.json'), 'utf8'));
+  const isTestFile = value => /\.test\.(ts|tsx|ps1|mjs)$/.test(value) && !value.includes('progress');
+  const batches = new Map();
+  if (filesArg !== undefined) {
+    const requested = JSON.parse(readFileSync(resolve(repoRoot, filesArg), 'utf8'));
+    if (!Array.isArray(requested) || requested.length === 0 || requested.some(file => typeof file !== 'string')) {
+      throw new Error('file list must be a non-empty array of paths');
+    }
+    for (const file of requested) batches.set(file, { file, ids: [] });
+  }
+  for (const row of filesArg === undefined ? matrix.requirements : []) {
+    if (row.state !== 'RUNTIME-VERIFY') continue;
+    if (only !== undefined && !only.includes(row.id)) continue;
+    for (const file of (row.tests ?? []).filter(isTestFile)) {
+      const batch = batches.get(file) ?? { file, ids: [] };
+      batch.ids.push(row.id);
+      batches.set(file, batch);
+    }
+  }
+
+  const ordered = [...batches.values()].sort((a, b) => a.file.localeCompare(b.file));
+  if (listOnly) {
+    for (const batch of ordered) {
+      console.log(batch.file + '  rows=' + batch.ids.length + '  runner='
+        + (runnerFor(batch.file) === undefined ? 'UNSUPPORTED' : 'ok'));
+    }
+    console.log('batches=' + ordered.length + ' rows=' + ordered.reduce((total, batch) => total + batch.ids.length, 0));
+    return 0;
+  }
+
+  const results = [];
+  for (const batch of ordered) {
+    const runner = runnerFor(batch.file);
+    if (runner === undefined) {
+      const result = resultWithNoProcess(batch, 'unsupported');
+      results.push(result);
+      console.log('UNSUPPORTED  ' + batch.file);
+      continue;
+    }
+    if (!existsSync(resolve(repoRoot, batch.file))) {
+      const result = resultWithNoProcess(batch, 'missing-file');
+      results.push(result);
+      console.log('MISSING      ' + batch.file);
+      continue;
+    }
+
+    const startedAt = Date.now();
+    const run = spawnSync(runner.cmd[0], runner.cmd.slice(1), {
+      cwd: join(repoRoot, runner.cwd),
+      encoding: 'utf8',
+      timeout: timeoutValue,
+      maxBuffer: 64 * 1024 * 1024,
+      shell: process.platform === 'win32',
+    });
+    const stdout = run.stdout ?? '';
+    const stderr = run.stderr ?? '';
+    const output = stdout + '\n' + stderr;
+    const durationMs = Date.now() - startedAt;
+    const result = createRunResult(batch, run, output, durationMs);
+    result.baseline = baseline;
+    result.command = { executable: runner.cmd[0], args: runner.cmd.slice(1), shell: process.platform === 'win32' };
+    result.cwd = runner.cwd;
+    result.stdout = stdout;
+    result.stderr = stderr;
+    results.push(result);
+    console.log(
+      result.status.padEnd(12) + batch.file + '  rows=' + batch.ids.length + '  '
+      + (result.counts === null
+        ? 'unparsed'
+        : result.counts.passed + ' pass / ' + result.counts.failed + ' fail / ' + result.counts.skipped + ' skip')
+      + '  exit=' + String(result.rawStatus)
+      + (result.signal === null ? '' : ' signal=' + result.signal)
+      + '  ' + durationMs + 'ms',
+    );
+  }
+
+  const report = {
+    schemaVersion: 1,
+    baseline,
+    trackedStatus,
+    generatedAt: new Date().toISOString(),
+    matrixVersion: matrix.matrixVersion,
+    summary: summarizeResults(results),
+    results,
+  };
+  writeFileSync(resolve(repoRoot, outPath), JSON.stringify(report, null, 2) + '\n');
+  console.log('report=' + outPath);
+  console.log('batches=' + report.summary.batches + ' passed=' + report.summary.passed
+    + ' failed=' + report.summary.failed
+    + ' provableRequirements=' + report.summary.requirementsProvable + '/' + report.summary.requirementsTotal);
+  return report.summary.failed === 0 ? 0 : 1;
+}
+
+if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))) {
+  process.exitCode = main();
+}

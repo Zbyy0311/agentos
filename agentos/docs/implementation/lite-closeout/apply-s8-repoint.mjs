@@ -7,7 +7,15 @@
  * named file with the file whose own test names and assertions match the clause,
  * and records the executed counts for the replacement.
  */
-import { readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const passFreezePath = resolve(dirname(fileURLToPath(import.meta.url)), 'pass-freeze.json');
+if (existsSync(passFreezePath)) {
+  throw new Error('S8 closeout writes are disabled while pass-freeze.json exists: ' + passFreezePath);
+}
+
 const baseline = process.argv[2];
 const version = Number(process.argv[3]);
 const evidenceId = 'S8-E2E-RUN2';
