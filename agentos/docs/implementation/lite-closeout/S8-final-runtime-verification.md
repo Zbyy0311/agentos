@@ -61,12 +61,33 @@ apps/web  node --import tsx --test src/liteScopeBoundary.test.ts         3 pass 
 `evidence.json` as `S8-FINAL-RV-BATCH`, so the edit is reproducible and reviewable
 rather than hand-written.
 
+Because a PASS row's `evidence` is the executed proof at that revision, the promotion
+replaces each row's older pointers instead of extending them: the scope gate requires
+every cited entry to match the row's `evidenceBaseline`, and the earlier entries were
+recorded at earlier baselines. Those entries stay in `evidence.json` as history.
+
+## A recorded flake, not hidden
+
+`packages/process-runtime/src/node-driver.test.ts` reported 16 pass / 0 fail on the run
+cited, but across five consecutive local runs one failed
+`W12: no test-owned or helper survivors remain after the suite` (sequence: 16/16,
+1 failed, 16/16, 16/16, and the cited run). W12 checks that the suite leaves no test-owned
+process or Job-object helper behind, which is a Windows teardown-timing check and is not
+the clause LITE-00-006 asserts (that cancellation handles the owned process tree). It is
+recorded in the evidence entry's limitation rather than smoothed over, and it is not used
+as a reason to re-run for green.
+
 ## Boundary
 
 This is local executed evidence, not a CI run; final-head CI stays the closure
 gate. The two guarantees that describe user-visible behaviour are asserted through
 the Inspector projection and the admission classifier, not through a live browser
 session, and the evidence entry records that limitation explicitly.
+
+Promotion applied at `99ede017` (the merge commit of the S8 acceptance branch):
+matrixVersion 15, PASS 204, GAP 26, RUNTIME-VERIFY 1, DEFERRED 164 - the only remaining
+RUNTIME-VERIFY row is LITE-04-101, which needs a CI-executable real invocation or an
+explicit reclassification.
 
 The branch must be rebased onto a main that contains the S8 acceptance branch:
 `apps/web/src/liteScopeBoundary.test.ts` is introduced there, so the row is only

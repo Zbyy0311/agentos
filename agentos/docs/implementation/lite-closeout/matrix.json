@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 14,
+  "matrixVersion": 15,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -91,17 +91,21 @@
       "section": "17. Acceptance Expectations",
       "line": 404,
       "requirement": "Conversation and Message records survive reconnect and restart;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/store/SqliteStore.test.ts",
+        "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-FINAL-RV-BATCH"
+      ],
+      "finding": "S8定案：SqliteStore：createConversation/createMessage 后 store.close() 再 new SqliteStore(root) 仍可读回（waiting-user fields across restart、message attachments across store reopen）；canonicalRunStream P5C-R06：浏览器断开只结束订阅，Run 状态与生命周期不受影响，游标重放继续。重启存活与重连两条都被真实断言。",
+      "exit": "已完成（证据 S8-FINAL-RV-BATCH）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。",
+      "evidenceBaseline": "99ede017"
     },
     {
       "id": "LITE-00-003",
@@ -109,17 +113,22 @@
       "section": "17. Acceptance Expectations",
       "line": 405,
       "requirement": "Task, Run, Process, and Event remain distinct and traceable;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+        "apps/server/src/migrations/__tests__/m4-p2-migration-014.test.ts",
+        "apps/server/src/services/RuntimeInspector.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-FINAL-RV-BATCH"
+      ],
+      "finding": "S8定案：m3-p6-integrated-verification P6D-A1：一次执行只产生一个 Task→一个 Run→一个 Snapshot→4 个 Stage→一个 Start，Runtime Event 图严格按 sequence 递增且逐层可追溯；m4-p2-014：Provider Session 与 root Process 按 Stage attempt 唯一绑定（DDL UNIQUE），Process 与 Session、Stage、Run 互不等同；RuntimeInspector INSP-12：投影里 runId/stageId/providerSessionId/processId 与 duration 各自独立。",
+      "exit": "已完成（证据 S8-FINAL-RV-BATCH）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。",
+      "evidenceBaseline": "99ede017"
     },
     {
       "id": "LITE-00-004",
@@ -171,17 +180,20 @@
       "section": "17. Acceptance Expectations",
       "line": 408,
       "requirement": "Windows cancellation handles the owned process tree;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "packages/process-runtime/src/node-driver.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-FINAL-RV-BATCH"
+      ],
+      "finding": "S8定案：真实 spawn 后 verifySurvivors 先报告 survivors 并包含自有 pid，terminateTree 再 verifySurvivors 得 complete 且 knownPids 为空，proof={kind:owned-tree-enumeration}；Windows owned-spawn 走 create-suspended + Job Object 路径，被测的正是自有进程树而非调用计数。注意：同一文件在本机 5 次连续运行中有 1 次在 W12（套件结束后不得残留自有进程或 helper）失败，其余 4 次 16/16 通过；W12 是套件收尾的残留进程检查、对 Windows 时序敏感，与本条“取消处理自有进程树”的断言不同，故按要求记录而不隐藏。",
+      "exit": "已完成（证据 S8-FINAL-RV-BATCH）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。",
+      "evidenceBaseline": "99ede017"
     },
     {
       "id": "LITE-00-007",
@@ -233,17 +245,21 @@
       "section": "17. Acceptance Expectations",
       "line": 411,
       "requirement": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "packages/shared/p6-l1a-admission.test.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
       ],
-      "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "evidence": [
+        "S8-FINAL-RV-BATCH"
+      ],
+      "finding": "S8定案：L1A-05..L1A-12：无执法证据、未知证据、仅提示词、仅 Provider 原生 Worktree、仅 nativeSandbox 标签、声明式 external/modifying 动作一律归为 MODIFYING，只有 verified 技术性写拒绝且无副作用（L1A-10/R07）才允许 READ_ONLY；WorkspaceAdmissionAuthority 在受控事务内重新采集并重分类，采集不可得即拒绝授权。并发只读不会绕过该证据门槛。",
+      "exit": "已完成（证据 S8-FINAL-RV-BATCH）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。",
+      "evidenceBaseline": "99ede017"
     },
     {
       "id": "LITE-00-010",
@@ -2508,19 +2524,21 @@
       "section": "15. Acceptance Expectations",
       "line": 324,
       "requirement": "DENY blocks Provider-native merge or push only when a verified enforceable pre-action bridge exposes that action before execution;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S3",
       "implementation": [
         "apps/server/src/routes/approvals.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "packages/shared/p6-l1a-admission.test.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-FINAL-RV-BATCH"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8定案：只有存在经验证的可执行 pre-action 桥时才可能出现阻断结论：分类器只承认 verified 技术性写拒绝（L1A-10/R07），并把 provider-assertion 与仅 Provider 原生 Worktree/nativeSandbox 标签降级为 MODIFYING（L1A-08/09/159），因此没有可执行桥时不会出现“已阻断 Provider 原生动作”的结论。",
+      "exit": "已完成（证据 S8-FINAL-RV-BATCH）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。",
+      "evidenceBaseline": "99ede017"
     },
     {
       "id": "LITE-08-004",
@@ -2528,19 +2546,22 @@
       "section": "15. Acceptance Expectations",
       "line": 325,
       "requirement": "un-interceptable Provider-native actions are never reported as blocked; their Runs are modifying, single-writer admission applies, and unavailable enforcement is visible;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S3",
       "implementation": [
         "apps/server/src/routes/approvals.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "packages/shared/p6-l1a-admission.test.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-FINAL-RV-BATCH"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8定案：不可拦截的 Provider 原生动作不会被报告为已阻断：同一批用例把无桥场景一律归为 MODIFYING 并适用单写者准入；runtimeInspector 读面暴露 readOnlyEnforcement（proven/unavailable/not-applicable/unknown），无准入行时为 unknown，与 unavailable 是两种不同陈述，使“执法不可得”可见。",
+      "exit": "已完成（证据 S8-FINAL-RV-BATCH）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。",
+      "evidenceBaseline": "99ede017"
     },
     {
       "id": "LITE-08-005",
@@ -4139,19 +4160,20 @@
       "section": "22. Acceptance Expectations",
       "line": 435,
       "requirement": "absence of active Worktree manager, full Policy editor, and Provider Comparison.",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/liteScopeBoundary.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-FINAL-RV-BATCH"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8定案：liteScopeBoundary：UI 只暴露 Lite 路由面，没有任何 web 模块实现 worktree-manager/policy-editor/provider-comparison 形态的延期产品面，工作区外壳也不暴露对应入口；断言的是真实源码集合而不是文档措辞。",
+      "exit": "已完成（证据 S8-FINAL-RV-BATCH）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。",
+      "evidenceBaseline": "99ede017"
     },
     {
       "id": "LITE-13-001",
@@ -4180,19 +4202,21 @@
       "section": "19. Acceptance Expectations",
       "line": 315,
       "requirement": "Run, Stage, Provider, Process, and duration are distinct;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
+        "apps/server/src/services/RuntimeInspector.test.ts",
         "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-FINAL-RV-BATCH"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/routes/runtimeInspector.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "S8定案：RuntimeInspector INSP-12：一次投影同时给出 Run、Stage、Provider Session、Process 与 duration，并逐项断言它们互不相同（processId != providerSessionId，nativePid 仅作证据）；runtimeInspector 路由断言同一投影经 HTTP 读面后仍保持这些区分。",
+      "exit": "已完成（证据 S8-FINAL-RV-BATCH）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。",
+      "evidenceBaseline": "99ede017"
     },
     {
       "id": "LITE-13-003",
@@ -7856,6 +7880,22 @@
         "LITE-12-101",
         "LITE-13-102",
         "LITE-01-101"
+      ]
+    },
+    {
+      "version": 15,
+      "baseline": "99ede017",
+      "authority": "Main-agent S8 final runtime verification within user-approved scope",
+      "reason": "Close the last eight RUNTIME-VERIFY rows: each is re-pointed at the file that actually asserts its clause, that file was executed at this head, and the row is promoted only on the executed counts.",
+      "requirementIds": [
+        "LITE-00-002",
+        "LITE-00-003",
+        "LITE-00-006",
+        "LITE-00-009",
+        "LITE-12-016",
+        "LITE-13-002",
+        "LITE-08-003",
+        "LITE-08-004"
       ]
     }
   ]

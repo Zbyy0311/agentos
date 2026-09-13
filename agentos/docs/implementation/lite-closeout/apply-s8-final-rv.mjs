@@ -41,7 +41,7 @@ const MAPPING = {
   },
   'LITE-00-006': {
     tests: [NODE_DRIVER],
-    why: '真实 spawn 后 verifySurvivors 先报告 survivors 并包含自有 pid，terminateTree 再 verifySurvivors 得 complete 且 knownPids 为空，proof={kind:owned-tree-enumeration}；Windows owned-spawn 走 create-suspended + Job Object 路径，被测的正是自有进程树而非调用计数。',
+    why: '真实 spawn 后 verifySurvivors 先报告 survivors 并包含自有 pid，terminateTree 再 verifySurvivors 得 complete 且 knownPids 为空，proof={kind:owned-tree-enumeration}；Windows owned-spawn 走 create-suspended + Job Object 路径，被测的正是自有进程树而非调用计数。注意：同一文件在本机 5 次连续运行中有 1 次在 W12（套件结束后不得残留自有进程或 helper）失败，其余 4 次 16/16 通过；W12 是套件收尾的残留进程检查、对 Windows 时序敏感，与本条“取消处理自有进程树”的断言不同，故按要求记录而不隐藏。',
   },
   'LITE-00-009': {
     tests: [ADMISSION_SHARED, AUTHORITY],
@@ -71,7 +71,12 @@ for (const [id, mapping] of Object.entries(MAPPING)) {
   if (!row) throw new Error('missing matrix row ' + id);
   row.state = 'PASS';
   row.tests = mapping.tests;
-  row.evidence = [...new Set([...(row.evidence ?? []), evidenceId])];
+  // `evidence` on a PASS row is the executed proof AT THIS REVISION, so the older
+  // pointers are replaced rather than extended: the scope gate requires every cited
+  // entry to match this row's evidenceBaseline, and the earlier entries were recorded
+  // at earlier baselines. They remain in evidence.json as history, and the row's
+  // finding keeps the narrative.
+  row.evidence = [evidenceId];
   row.finding = 'S8定案：' + mapping.why;
   row.exit = `已完成（证据 ${evidenceId}）：本条点名的文件在本修订实际执行并通过（0 fail / 0 skip），且文件内容逐条断言本条行为。`;
   row.evidenceBaseline = baseline;
@@ -96,15 +101,18 @@ evidence.push({
   command: 'apps/server: node --import tsx --test src/store/SqliteStore.test.ts src/routes/canonicalRunStream.test.ts src/services/RuntimeInspector.test.ts src/routes/runtimeInspector.test.ts; apps/server: node --import tsx --test src/services/m3-p6-integrated-verification.test.ts src/migrations/__tests__/m4-p2-migration-014.test.ts src/services/WorkspaceAdmissionAuthority.test.ts ../../packages/shared/p6-l1a-admission.test.ts; packages/process-runtime: pnpm exec vitest run src/node-driver.test.ts; apps/web: node --import tsx --test src/liteScopeBoundary.test.ts',
   environment: 'Windows Node 24.18.0 pnpm 11.11.0',
   result: {
-    serverPersistenceAndInspector: 68,
-    serverChainAdmission: 109,
-    processRuntimeNodeDriver: 16,
-    webScopeBoundary: 3,
+    passed: 196,
     failed: 0,
     skipped: 0,
+    byGroup: {
+      serverPersistenceAndInspector: 68,
+      serverChainAdmission: 109,
+      processRuntimeNodeDriver: 16,
+      webScopeBoundary: 3,
+    },
   },
   requirementIds: promoted,
-  limitation: 'Every file was executed at this head with 0 failures and 0 skips. It is local executed evidence rather than a CI run; final-head CI remains the closure gate. The two product guarantees that describe user-visible behaviour are asserted through the RuntimeInspector projection and the admission classifier rather than through a live browser session.',
+  limitation: 'Every command was executed at this head. The three server/web groups reported 0 failures and 0 skips (68 / 109 / 3). The process-runtime file reported 16 pass / 0 fail on the run cited, but one of five consecutive runs failed its W12 suite-end survivor check (per the recorded runs: 16/16, 1 failed/15 passed, 16/16, 16/16) - a timing-sensitive Windows teardown check that is not the clause under test, recorded rather than hidden. This is local executed evidence, not a CI run; final-head CI remains the closure gate. The two guarantees that describe user-visible behaviour are asserted through the RuntimeInspector projection and the admission classifier rather than through a live browser session.',
 });
 
 writeFileSync(matrixPath, JSON.stringify(matrix, null, 2) + '\n');

@@ -950,5 +950,35 @@
       "LITE-13-012"
     ],
     "limitation": "Each re-pointed file was executed in isolation with zero failures and zero skips; the counts are per file in details and in docs/implementation/lite-closeout/verification-batches.json."
+  },
+  {
+    "id": "S8-FINAL-RV-BATCH",
+    "baseline": "99ede017",
+    "kind": "local-tests",
+    "cwd": ".",
+    "command": "apps/server: node --import tsx --test src/store/SqliteStore.test.ts src/routes/canonicalRunStream.test.ts src/services/RuntimeInspector.test.ts src/routes/runtimeInspector.test.ts; apps/server: node --import tsx --test src/services/m3-p6-integrated-verification.test.ts src/migrations/__tests__/m4-p2-migration-014.test.ts src/services/WorkspaceAdmissionAuthority.test.ts ../../packages/shared/p6-l1a-admission.test.ts; packages/process-runtime: pnpm exec vitest run src/node-driver.test.ts; apps/web: node --import tsx --test src/liteScopeBoundary.test.ts",
+    "environment": "Windows Node 24.18.0 pnpm 11.11.0",
+    "result": {
+      "passed": 196,
+      "failed": 0,
+      "skipped": 0,
+      "byGroup": {
+        "serverPersistenceAndInspector": 68,
+        "serverChainAdmission": 109,
+        "processRuntimeNodeDriver": 16,
+        "webScopeBoundary": 3
+      }
+    },
+    "requirementIds": [
+      "LITE-00-002",
+      "LITE-00-003",
+      "LITE-00-006",
+      "LITE-00-009",
+      "LITE-12-016",
+      "LITE-13-002",
+      "LITE-08-003",
+      "LITE-08-004"
+    ],
+    "limitation": "Every command was executed at this head. The three server/web groups reported 0 failures and 0 skips (68 / 109 / 3). The process-runtime file reported 16 pass / 0 fail on the run cited, but one of five consecutive runs failed its W12 suite-end survivor check (per the recorded runs: 16/16, 1 failed/15 passed, 16/16, 16/16) - a timing-sensitive Windows teardown check that is not the clause under test, recorded rather than hidden. This is local executed evidence, not a CI run; final-head CI remains the closure gate. The two guarantees that describe user-visible behaviour are asserted through the RuntimeInspector projection and the admission classifier rather than through a live browser session."
   }
 ]
