@@ -146,3 +146,77 @@ result mapped to that exact requirement.
   `C:\Users\Administrator\AppData\Local\Temp\agentos-m4-p4-real-78aQMu`.
 - Several `agentos-live-artifact-*` temp roots remain from failed live-gate runs;
   the script only cleans its root on success and prints `keepRoot` on failure.
+- A stray directory tree was created by a mistyped patch path and its recursive
+  removal was blocked by policy. It contains no files, only the empty path
+  `E:\workspace\Multi-Agent-worktrees\agentos-lite-s2-artifact-gate\agentos\apps\...`.
+
+## 10. Update after the network returned
+
+Everything below happened after section 1 was written; it supersedes the earlier
+statements where they differ.
+
+### Merged
+
+`origin-https/main` = **`9e3397f4`** (Merge PR #153). PRs #147, #148, #151, #152 and
+#153 are all in. #153's own CI passed and merged cleanly.
+
+### #150 is resolved and pushed, waiting on CI
+
+`c50619ed` merged main into `codex/lite-s8-acceptance` and resolved the single
+`matrix.json` conflict with the union rule (evidence.json auto-merged). Post-merge
+check: `matrixVersion` 14, PASS 196, RUNTIME-VERIFY 9, GAP 26, DEFERRED 164; the
+gate's PASS rules report 0 violations across all 196 PASS rows; both gate commands
+exit 0.
+
+### #149 was CLASSIFIED as an environment flake and re-run
+
+Its first CI run after the merge failed `R47 a held client connection cannot block
+release on loopback or named pipe ownership` with `SERVER_OWNERSHIP_UNAVAILABLE`.
+Evidence for the classification, not the test name:
+
+- R47 passed on this branch's previous head (run 34708666237, PASS);
+- the merge's only product change was main's own `MemoryContextBudgetSelector.ts`,
+  already CI-green on main via #152;
+- R47 exercises `acquireLoopbackServerOwnership`, which binds candidate ports drawn
+  from 49152-65535, and the runner's `dynamicport` in that same run was
+  49152 + 16384, i.e. the candidate pool sits inside the ephemeral range;
+- it failed in 765 ms (fast fail: every candidate rejected) while the neighbouring
+  ownership tests R25/R26/R27 passed in the same run, and the failure is a
+  fail-closed acquisition with no product assertion violated.
+
+`gh run rerun --failed` was issued once for run 34711361587; the re-run was still
+pending at handoff. This is the one environment re-run the plan allows, and it
+should not be repeated to chase green.
+
+### New PRs opened
+
+| PR | Branch | What it is |
+|---|---|---|
+| #154 | `codex/lite-mf4-stage-event` | the memory Event envelope production defect fix |
+| #155 | `codex/lite-s2-artifact-gate` | the LITE-07-104 live gate (stacked on #150 and #154) |
+
+### LITE-07-104 now has real invocation evidence
+
+PR #155 adds `apps/server/src/services/run-engine/CanonicalArtifactResult.liveGate.test.ts`,
+env-gated on `M4_P4_REAL_ARTIFACT_GATE=1`. It drives the production composition root
+with a real OpenCode CLI and asserts the plan's fixed chain from real review work to
+an accepted Memory Entry, including that every completion's `source_key` starts with
+`canonical-result:` (which is what proves the completion came from the canonical
+result seam rather than a directly posted `POST /artifact-completions`).
+
+Ran green here: 1 pass / 0 fail in 65.0 s against opencode 1.17.11 with
+`deepseek/deepseek-v4-flash`; skips cleanly without the env var, so CI is unaffected;
+server typecheck clean. Details in
+`docs/implementation/lite-closeout/S2-live-artifact-evidence.md` on that branch.
+
+This means section 6's row for LITE-07-104 is now "promote once #155 merges", not
+"needs implementation".
+
+### Still to do
+
+1. Let #149's re-run, #150, #154 and #155 finish CI; merge in that order.
+2. Rebase `codex/lite-s8-verification` (f4a54282) onto the new main, run
+   `node docs/implementation/lite-closeout/apply-s8-final-rv.mjs <main-sha>`, open its PR.
+3. Rebase `codex/lite-s7-import` onto main (its S6 base is now merged), open its PR.
+4. One closeout PR promoting the section 3 rows plus LITE-07-104 with the #155 evidence.
+5. Only then start section 6's remaining rows.
