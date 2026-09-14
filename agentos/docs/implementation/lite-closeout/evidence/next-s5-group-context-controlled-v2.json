@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "format": "controlled-harness",
-  "baseline": "68a876586cdbcc60ee63fa3d19e48d87506c9309",
+  "baseline": "fea30fe7e7d1eaef79321e7b70785b9e83d6f703",
   "command": {
     "executable": "node",
     "args": [
@@ -28,7 +28,7 @@
     },
     {
       "path": "docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/receipts/receipts.json",
-      "sha256": "c24c754149c6c8fb85cb8ecb15c734bf1cd355447d6e095833d7b8011d71a64b"
+      "sha256": "628afa08791c05a7f3500fba9e09c96b10f74b94ffbae1b8493b93e68f4ea37f"
     },
     {
       "path": "docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/stderr.txt",
