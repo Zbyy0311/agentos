@@ -1,0 +1,77 @@
+✔ bounded group interaction: create, reply, budget status, stop (309.1278ms)
+✔ budget exhaustion and loop guard return the stable reason via HTTP (208.764ms)
+✔ create interaction fails closed for an invalid budget or missing conversation (195.7203ms)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at GroupTurnDriver.run (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\GroupTurnDriver.ts:208:35)
+    at <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:618:35)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at next (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:284:15
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:365:14)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: kimi
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at GroupTurnDriver.run (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\GroupTurnDriver.ts:208:35)
+    at async <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:618:22)
+✔ bounded group respond: the runtime selects speakers, streams the walk, and records replies (244.0666ms)
+✔ bounded group respond: validation and lifecycle failures fail closed (317.3368ms)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at GroupTurnDriver.run (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\GroupTurnDriver.ts:208:35)
+    at <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:618:35)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at next (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:149:13)
+    at Route.dispatch (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\route.js:119:3)
+    at Layer.handle [as handle_request] (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\layer.js:95:5)
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:284:15
+    at param (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\node_modules\.pnpm\express@4.22.2\node_modules\express\lib\router\index.js:365:14)
+COMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: kimi
+    at ConversationCompactionTrigger.ensureCompacted (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationCompactionTrigger.ts:116:69)
+    at ConversationTurnDriver.replyWithTurn (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\ConversationTurnDriver.ts:332:44)
+    at GroupTurnDriver.run (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\services\GroupTurnDriver.ts:208:35)
+    at async <anonymous> (E:\workspace\Multi-Agent-worktrees\agentos-lite-s5-evidence\agentos\apps\server\src\routes\conversationRuntime.ts:618:22)
+✔ LITE-09-013 each group speaker freezes only its own Agent-scoped Memory (251.2725ms)
+✔ CR5S-01 a valid budget creates an active interaction; an invalid budget fails closed (154.0432ms)
+✔ CR5S-02 recording replies increments counters transactionally (153.3482ms)
+✔ CR5S-03 reaching the total cap exhausts the interaction with a stable reason (152.7454ms)
+✔ CR5S-04 a reply beyond the total cap is blocked and not recorded (153.2383ms)
+✔ CR5S-05 a per-Agent budget breach ends the interaction (148.6336ms)
+✔ CR5S-06 a distinct-Agent budget breach ends the interaction (154.4121ms)
+✔ CR5S-07 Stop blocks new replies and never cancels a Run (148.2358ms)
+✔ CR5S-08 a same-Agent cycle terminates the interaction with loop-guard (166.7916ms)
+✔ CR5S-09 repeated content terminates the interaction with loop-guard (170.4233ms)
+✔ CR5S-10 hops beyond the configured limit terminate the interaction (181.5999ms)
+✔ CR5S-11 a repeated mention with no new information terminates the interaction (173.3337ms)
+✔ CR5S-12 every recorded reply stores a distinct Turn-scoped per-Agent context snapshot (169.6987ms)
+✔ CR5S-13 per-Agent snapshots are isolated for the same interaction (171.0496ms)
+✔ CR5S-14 reply content is stored as a hash only, never as text (192.9562ms)
+✔ CR5S-15 the timeout budget ends the interaction (167.5301ms)
+✔ CR5S-16 unknown interaction and invalid input fail closed (141.9291ms)
+✔ CR5S-17 within-transaction composition rolls back atomically (143.0904ms)
+✔ CG-S1: eligibility excludes muted, removed, never, and human members with stable reasons (1.0185ms)
+✔ CG-S1: a non-group or archived Conversation never yields speakers (0.1791ms)
+✔ CG-S2: sequential order is membership order; mentions always win and are reported (0.2231ms)
+✔ CG-S2: manual mode follows the caller order and reports the rest (0.1181ms)
+✔ CG-S3: orchestrated mode resolves the template order deterministically (0.7755ms)
+✔ CG-S4: the plan ends with the same stable budget reason recordReply would return (0.1823ms)
+✔ CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class (0.0935ms)
+✔ CG-walk: the resolved plan executes strictly in order and records one reply per speaker (1417.1409ms)
+✔ CG-S5: a stop between speakers ends the walk before the next Provider call (218.8035ms)
+✔ CG-S6: a repeated-content reply still trips the loop guard and ends the walk (196.3932ms)
+✔ CG-S7: a failed Provider Turn adds no reply and does not move the interaction (193.0871ms)
+✔ CG-S4 (driver): budget exhaustion ends the walk at the stable reason with no extra Provider call (193.7871ms)
+✔ CG-walk input validation: wrong kind, unknown interaction, and a stopped interaction fail closed (185.2387ms)
+✔ CG-S2/S3 at the driver: manual and orchestrated orders drive the walk (410.6872ms)
+ℹ tests 37
+ℹ suites 0
+ℹ pass 37
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 8254.1397
