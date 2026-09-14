@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:03:04.774Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 4,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过（主批次 verification-batches.json，或本批为此单独执行的 covering-batches*.json）。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-01-004",
+      "clause": "Task supports zero or many Runs;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/TaskRunService.test.ts",
+      "coveringAssertion": "TaskRunService atomically rolls back a Run and a newly created Legacy Task when capture fails",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/TaskRunService.test.ts",
+          "name": "[M27-P4-T005] Bridge retry and failure stay isolated from P3 compatibility rows and Registry evidence"
+        }
+      ],
+      "rationale": "两句都有直接断言：零 Run —— 快照服务失败时断言 listByTask(task.id).length === 0（Task 存在而 Run 数为 0）；多 Run —— 同一 Task 下断言 listByTask 返回两条 Run（initial/completed 与 retry/failed）。",
+      "line": 274,
+      "currentPointer": "apps/server/src/store/Identity.test.ts（内容为 ULID 身份测试，不覆盖本条）",
+      "receipt": "covering-batches.json（92 passed / 0 fail / exit 0）"
+    },
+    {
+      "id": "LITE-01-006",
+      "clause": "Run and Process can be queried independently;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-04 process PID is evidence-only",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct"
+        }
+      ],
+      "rationale": "断言体：对已插入 runtime_processes 的 Run 做 inspect，断言 projection.processes.length===1 且带独立 processId 与 nativePidEvidenceOnly。配合 INSP-12 的身份区分断言，证明 Run 与 Process 作为两个独立投影实体可分别查询。",
+      "limits": "这是投影层证据（Inspector 端口），不是「两个独立 repository 查询 API」的直接断言；若要求更严格的 repository 级独立性，需要补一条针对 RunRepository/ProcessRepository 分别查询的断言。",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-06-006",
+      "clause": "non-Git Workspaces report `not-git` without silent fallback;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "coveringAssertion": "non-Git directory yields the exact C-locale NOT_GIT snapshot",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+          "name": "a truncated discovery diagnostic on a non-Git directory fails closed as UNAVAILABLE, never NOT_GIT"
+        }
+      ],
+      "rationale": "断言体：非 Git 目录得到**精确的托管 C-locale NOT_GIT 快照**（不是静默回退到别的状态）；第二条进一步断言诊断被截断时**失败为 UNAVAILABLE 而非 NOT_GIT**，即不允许用不完整证据冒充 not-git。两句直接覆盖「如实报告 not-git、无静默回退」。",
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（属准入子系统，不覆盖 Git 观测）"
+    },
+    {
+      "id": "LITE-06-007",
+      "clause": "diff Artifacts are immutable and checksummed;",
+      "verdict": "accepted",
+      "coveringFile": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+      "coveringAssertion": "L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability",
+      "rationale": "断言体：规范 diff Artifact 的提交门为 canCommitCanonicalDiffArtifactV1({contentAvailable:true, immutableFinalContentExists:false}) === false（内容可用但不可变终态不存在时不允许提交），并断言崩溃策略 failureBeforeCommit/crashBeforeDatabaseCommit/crashAfterDatabaseCommit 三态，最后一条为 'database_never_points_to_missing_final_content'。即 diff Artifact 必须落在不可变终态、且 DB 永不指向缺失内容。",
+      "line": 581,
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）",
+      "receipt": "covering-batches-3.json（26 passed / 0 fail / exit 0）",
+      "limits": "断言覆盖「不可变终态门禁与崩溃顺序」；未看到对 diff 内容做校验和（hash）字段的断言，若规范要求校验和字段本身，需要补一条。"
+    },
+    {
+      "id": "LITE-06-008",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts",
+      "coveringAssertion": "WorkflowDefinitionRepository selects and exposes exact V2 metadata",
+      "rationale": "断言体：对历史（legacy key）工作流定义调用 findLatestAvailableByKey 后断言 payload.schemaVersion===2 且 **payload.worktreeMode==='preferred'** —— 即历史记录的 worktree 字段仍可被正常读出并保真。",
+      "limits": "覆盖「历史 worktree 字段可读」；条款并列的「Events remain readable」在本断言中未直接体现，若需要应补一条历史 Event 读取断言。",
+      "line": 168,
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）",
+      "receipt": "covering-batches-3.json（5 passed / 0 fail / exit 0）"
+    },
+    {
+      "id": "LITE-06-010",
+      "clause": "no automatic or destructive Git command is executed by observation;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "candidateAssertion": "gitSnapshot reports stable state/code facts without cwd or raw diagnostics",
+      "rationale": "该文件的 36 条断言覆盖只读命令的结果、边界与清理（含 owned-tree cleanup、取消与超时），但**没有一条断言「观测路径不会执行破坏性 Git 命令」**（例如不存在 reset/checkout/clean/push 之类的白名单断言）。按缺口记录：需要一条对允许命令集合的白名单断言。",
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-06-011",
+      "clause": "Git observation wording never implies AgentOS-owned Git workflow.",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "candidateAssertion": "truncated stderr diagnostics never prove NOT_GIT and no raw diagnostic reaches the public snapshot",
+      "rationale": "断言体保证的是「原始诊断不外泄」，不覆盖「措辞不得暗示 AgentOS 拥有 Git 工作流」这一类**文案/接口措辞**约束；全仓检索未找到措辞层面的断言。按缺口记录。",
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）"
+    }
+  ],
+  "summary": {
+    "judged": 7,
+    "accepted": 5,
+    "rejected": 2,
+    "cumulativeJudged": 33,
+    "cumulativeAccepted": 20,
+    "cumulativeRejected": 13,
+    "remaining": 73
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
+
