@@ -30,12 +30,16 @@ export function RunInspectorPanel(props: {
   );
 }
 
+export function buildRunInspectorUrl(apiBase: string, workspaceId: string, runId: string): string {
+  return `${apiBase}/api/workspaces/${encodeURIComponent(workspaceId)}/runtime/runs/${encodeURIComponent(runId)}/inspector`;
+}
+
 function InspectorRequest(props: { workspaceId: string; runId: string; apiBase: string; theme: UiTheme }) {
   const [projection, setProjection] = useState<InspectorProjectionDto | null>(null);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => {
     const controller = new AbortController();
-    const url = `${props.apiBase}/api/workspaces/${encodeURIComponent(props.workspaceId)}/runs/${encodeURIComponent(props.runId)}/inspector`;
+    const url = buildRunInspectorUrl(props.apiBase, props.workspaceId, props.runId);
     void fetch(url, { signal: controller.signal }).then(async response => {
       if (!response.ok) throw new Error(`Inspector unavailable (${response.status})`);
       const body = await response.json() as { projection: InspectorProjectionDto };
