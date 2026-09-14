@@ -1856,15 +1856,19 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S8",
       "implementation": [
-        "packages/process-runtime/src/platform-recovery-verifier.ts"
+        "packages/process-runtime/src/platform-recovery-verifier.ts",
+        "packages/process-runtime/src/timeouts.ts",
+        "packages/process-runtime/src/manager.ts"
       ],
       "tests": [
-        "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts"
+        "packages/process-runtime/src/manager.test.ts",
+        "packages/process-runtime/src/races.test.ts",
+        "packages/process-runtime/src/timeouts.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 三项并列中两项有具名断言，第三项「approval 等待不消耗 idle 预算」在全仓检索（approval.*inactiv / idle.*approval / waiting_approval.*timeout / approvalTimeoutMs 的使用断言）中未见专门断言。按复合条款口径记驳回：需补一条「Run 处于 waiting_approval 期间 idle 预算不被消耗」的断言。 (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 三项并列中两项有具名断言，第三项「approval 等待不消耗 idle 预算」在全仓检索（approval.*inactiv / idle.*approval / waiting_approval.*timeout / approvalTimeoutMs 的使用断言）中未见专门断言。按复合条款口径记驳回：需补一条「Run 处于 waiting_approval 期间 idle 预算不被消耗」的断言。 (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订已校正指针（LITE-05-009）：本条原指向 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts，该文件验证的是 Windows 进程出生身份，与 timeout / approval 等待排除 / 终态竞争三个子项均无关，属错误指针。经逐项核对，三项均已有真实覆盖：（1）timeout：manager.test.ts 覆盖 startup 期限（超时后 outcome=timeout、terminationReason=PROCESS_STARTUP_TIMEOUT）、idle 期限在活动后重置（notifyActivity 后重新计时，最终 PROCESS_IDLE_TIMEOUT）与 total 期限；（2）approval-wait exclusion：manager.test.ts 的 idle deadline pauses during an approved wait 用例进入 waiting 后推进 10 秒仍存活，退出等待后推进 199ms 仍 running、再推进 1ms 才触发 PROCESS_IDLE_TIMEOUT，即等待期间不消耗 idle 预算且剩余预算被保留；此前 triage 以 approval.*inactiv 等关键词检索未命中该标题（标题用词为 approved wait），因此漏判为缺口；（3）race-safe terminal transitions：manager.test.ts 的 keeps the terminal result immutable against late stops, starts and exits 与 races.test.ts 的 cancel commits first; the held start joins the terminal result，覆盖迟到操作不得改写已提交终态。本地实跑这两个文件 35/35 通过。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
