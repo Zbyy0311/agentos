@@ -2741,15 +2741,18 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts"
+        "apps/server/src/routes/approvals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/routes/runtimeApprovals.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeApprovals.test.ts",
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `disconnect does not decide` / `disconnect.*approval` 无命中；未找到「浏览器断开不构成审批决定」的断言（断线相关的两条断言是 Run 存活与执行继续，属 00-004/02-009/13-014，不是「不代替决定」）。按缺口记录。 (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `disconnect does not decide` / `disconnect.*approval` 无命中；未找到「浏览器断开不构成审批决定」的断言（断线相关的两条断言是 Run 存活与执行继续，属 00-004/02-009/13-014，不是「不代替决定」）。按缺口记录。 (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订已补断言（LITE-08-012）：条款位于 Policy 验收段，因此主语是审批：浏览器断开不得以任何方向解决一个待决请求。新增用例断言三点，正是中间那点在前后两点衬托下才有意义——断开之前 Run 确实停在 waiting_approval、请求为 pending、审批决定行为 0；随后浏览器以两种形态断开（读取中途 abort，以及读取完成后被放弃），两者都不得作出决定：审批决定行仍为 0、请求仍为 pending、Run 仍为 waiting_approval；最后只有显式决定端点才解决它，且同时推动请求与 Run（决定行变为恰好 1、请求变为 approved、Run 恢复 running）。若只断言前两点，一个「从不解决任何事」的实现也会通过。断言同时记录该路由既有的状态码语义：首次决定返回 201，重放返回 200。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
