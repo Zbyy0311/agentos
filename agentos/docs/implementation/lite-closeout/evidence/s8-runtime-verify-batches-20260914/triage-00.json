@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T13:54:40.498Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "每一行都读出候选断言的**源码断言体**（不只是断言名），确认它实际断言的内容是否覆盖条款语义。",
+    "接受（accepted）要求：断言体直接断言条款所述行为，且该断言在基线收据中为 passed、所在文件 raw exit 0。",
+    "驳回（rejected）要求：记录该断言实际断言的内容，说明为何与条款语义不符（多为关键词巧合）。",
+    "本文件只记录判读结论；不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-00-004",
+      "clause": "a Run survives browser disconnect;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "coveringAssertion": "P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues",
+      "assertionOutcome": "passed",
+      "rationale": "断言体：建立 stream 订阅→读取帧→controller.abort()→断言 runLifecycleCounts 与断线前完全相等→随后 transitionToStarting 并断言 run.status==='starting'。这正是「Run 在浏览器断线后存活并可继续生命周期」。",
+      "currentPointer": "（未记录可运行测试文件）"
+    },
+    {
+      "id": "LITE-01-008",
+      "clause": "one Workspace cannot admit two modifying Runs;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+      "coveringAssertion": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+      "assertionOutcome": "passed",
+      "rationale": "断言体：插入一条 GRANTED admission 后，插入第二条 GRANTED 断言 throws /UNIQUE constraint failed/。直接覆盖「一个 Workspace 不能同时接纳两个 modifying Run」。",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（内容为 ULID 身份测试，不覆盖本条）"
+    },
+    {
+      "id": "LITE-01-010",
+      "clause": "prompt-only or user-forced capability claims never create read-only eligibility;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "coveringAssertion": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+      "assertionOutcome": "passed",
+      "rationale": "断言体：replyMode='parallel-read-only' 时断言每个 speaker declaredReadOnly===true 且 effectiveMutationClass==='modifying'，sequential 时 declaredReadOnly===false。直接覆盖「仅声明不足以获得只读资格」。",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-01-005",
+      "clause": "retry creates a new Run lineage;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/TaskRunService.test.ts",
+      "coveringAssertion": "P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation",
+      "assertionOutcome": "passed",
+      "rationale": "断言体：创建 parent run → running → failed → retryRunOperationForV2 返回 201 且 replayed=false，随后断言产生 queued Child。Child 即新 Run 谱系。",
+      "currentPointer": "apps/server/src/store/Identity.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-00-007",
+      "clause": "recovery classifies uncertainty without guessing completion;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+      "coveringAssertion": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+      "assertionOutcome": "passed",
+      "rationale": "断言体：进程身份 mismatch 时 disposition==='uncertainty-marked'，断言 run.status 仍为 'running'（『mismatch must not resume or terminal-fail』）且 recoveryRequired===true。直接覆盖「不确定即标记不确定、不猜测完成」。",
+      "currentPointer": "（未记录可运行测试文件）"
+    },
+    {
+      "id": "LITE-00-006",
+      "clause": "Windows cancellation handles the owned process tree;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once",
+      "assertionOutcome": "passed",
+      "rationale": "断言体：真实协调器下启动进程→创建 run.cancel Operation→cancelRun，覆盖 owned Process cleanup 与调度器取消的组合。与「取消处理自有进程树」一致。",
+      "note": "该文件含 4 条 env-gated 真实 Provider 断言按环境跳过；本条命中断言自身 passed。"
+    },
+    {
+      "id": "LITE-00-011",
+      "clause": "Git changes are observable without AgentOS owning Git workflow execution;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/m3-p3e-integrated-verification.test.ts",
+      "candidateAssertion": "P3E-I01 HTTP start acceptance drives real engine execution to terminal with HTTP operation read and immutable replay",
+      "rationale": "断言体只覆盖 HTTP run.start 接受与执行到终态，与 Git 可观测性无关（关键词 'execution'/'acceptance' 是巧合）。本条需重新寻找覆盖 Git observation 的断言。"
+    },
+    {
+      "id": "LITE-00-002",
+      "clause": "Conversation and Message records survive reconnect and restart;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/migrations/__tests__/cr5-migration-023.test.ts",
+      "candidateAssertion": "CR5-A6 reply rows require a real Message and are cascaded with the Conversation",
+      "rationale": "断言体覆盖的是 reply 行的外键与级联删除，与「记录在重连/重启后存活」无关。需另找覆盖持久化后重开/重连的断言。"
+    },
+    {
+      "id": "LITE-00-010",
+      "clause": "Memory selection is reproducible and explainable;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/routes/conversationRuntime.test.ts",
+      "candidateAssertion": "LITE-09-101 messages/stream freezes a non-empty Memory selection for the reply",
+      "rationale": "断言体覆盖「冻结非空选择的注入」，不覆盖「可复现」（同输入同结果）与「可解释」（选择/排除理由）。同行点名的 MemoryContextResolver.test.ts 有意料中的冻结/幂等断言，但不含 explainability 断言；本条需重新定位或按缺口记录。"
+    },
+    {
+      "id": "LITE-01-015",
+      "clause": "archived or compatibility records do not disappear destructively;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/migrations/__tests__/m2-7-legacy-task-roundtrip.test.ts",
+      "candidateAssertion": "[M27-P3-T016] tasks apply writes only compatibility rows, synthesizes no canonical records, reruns as no-op, and maps backup failure and quarantine to stable exit codes",
+      "rationale": "断言体覆盖 legacy 导入只写兼容行、可重跑为 no-op 与退出码；与「归档/兼容记录不被破坏性移除」不是同一命题。需另找断言。"
+    }
+  ],
+  "summary": {
+    "judged": 10,
+    "accepted": 6,
+    "rejected": 4,
+    "remaining": 96
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false,
+    "note": "accepted 表示「找到了源码级覆盖该条款的已执行断言」，是改指与后续验收的输入；本文件本身不修改矩阵。"
+  }
+}
+

@@ -138,15 +138,21 @@ for (const result of batches.results) {
   }
 }
 
-function verdictFor(result, file, matched, assertions) {
-  if (file === undefined) return 'insufficient-evidence';
-  if (result === undefined) return 'insufficient-evidence';
-  if (['failed', 'timeout', 'spawn-error', 'signaled'].includes(result.status)) return 'failed';
+/**
+ * A row's verdict follows the assertion that actually covers it, not the whole file's tally:
+ * an unrelated env-gated skip elsewhere in the same file does not make a passing assertion
+ * unproven. What must hold is that the file's process exited 0 (so nothing failed to build or
+ * crash), the matched assertion itself passed, and the coverage was found in a file the runner
+ * actually executed. The file's own counts are still recorded on the row for a reader to see.
+ */
+function verdictFor(result, file, coverage, assertions) {
+  if (file === undefined || result === undefined) return 'insufficient-evidence';
+  if (['timeout', 'spawn-error', 'signaled'].includes(result.status)) return 'failed';
   if (['unsupported', 'missing-file'].includes(result.status)) return 'insufficient-evidence';
-  if (assertions.length === 0) return 'insufficient-evidence';
-  if (matched.length === 0) return 'insufficient-evidence';
-  if (matched.some(item => item.outcome === 'failed')) return 'failed';
-  if (result.status !== 'passed') return 'insufficient-evidence';
+  if (assertions.length === 0 || coverage.length === 0) return 'insufficient-evidence';
+  if (coverage.some(item => item.outcome === 'failed')) return 'failed';
+  if (result.rawStatus !== 0) return 'failed';
+  if (coverage.some(item => item.outcome !== 'passed')) return 'insufficient-evidence';
   return 'candidate-supported';
 }
 
