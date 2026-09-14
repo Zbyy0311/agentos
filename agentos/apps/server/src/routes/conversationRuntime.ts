@@ -20,6 +20,9 @@ import { SUMMARIZATION_CLI_PROFILES } from '../services/summarizationCliProfiles
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { CompactionPolicyRepository, CompactionRepository } from '../store/CompactionRepository.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
+import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
+import { createChatMemorySelectionPort } from '../services/ChatMemorySelectionPort.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import {
   CONVERSATION_REPLY_MODES,
@@ -78,6 +81,17 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
   };
 
   const conversations = () => store.conversationRepository();
+
+  /**
+   * LITE-09-101: the production Memory selector for chat. Without it the driver
+   * falls back to the empty selector, so a chat Turn persisted a frozen but empty
+   * selection and no Memory ever reached the Provider. This reuses the same MF-3
+   * retrieval and MF-4 budget the Run path uses, scoped to this Agent/Conversation.
+   */
+  const chatMemorySelection = createChatMemorySelectionPort({
+    retrieval: new MemoryRetrievalService(new MemoryEntryRepository(store.getDatabase())),
+    onProblem: detail => console.warn('[AgentOS ChatMemory] ' + detail),
+  });
 
   /**
    * LITE-09-102 / D2=A: chat has no implicit modifying authority. The forward
@@ -597,6 +611,7 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
         compaction: compactionPort,
         compactionBudget,
         compactionTrigger,
+        selection: chatMemorySelection,
       },
     );
     try {
@@ -696,6 +711,7 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
         compaction: compactionPort,
         compactionBudget,
         compactionTrigger,
+        selection: chatMemorySelection,
       },
     );
     try {

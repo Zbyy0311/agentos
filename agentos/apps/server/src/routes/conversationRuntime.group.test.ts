@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { SqliteStore } from '../store/SqliteStore.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createConversationRuntimeRoutes } from './conversationRuntime.js';
 
@@ -233,4 +234,64 @@ test('bounded group respond: validation and lifecycle failures fail closed', asy
     );
     assert.equal(onDirect.status, 400);
   });
+});
+
+// LITE-09-013: per-Agent contexts remain isolated. Each speaker Turn freezes its OWN
+// selection, so an `agent`-scoped Memory Entry reaches only the Agent that owns it. The
+// existing walk test asserts one frozen snapshot per speaker; this asserts they are
+// actually different contexts rather than the same one recorded twice.
+test('LITE-09-013 each group speaker freezes only its own Agent-scoped Memory', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const entries = new MemoryEntryRepository(store.getDatabase() as never);
+      const codexOnly = 'mem_' + 'a'.repeat(26);
+      const kimiOnly = 'mem_' + 'b'.repeat(26);
+      const shared = 'mem_' + 'c'.repeat(26);
+      const base = {
+        workspaceId: 'workspace-a', authority: 'system-verified' as const, confidence: 0.9, importance: 0.7,
+        tags: [], status: 'active' as const, sources: [{ kind: 'task' as const, id: 'task_origin' }],
+        createdAt: '2026-07-12T00:00:00.000Z',
+      };
+      entries.createEntry({ ...base, id: codexOnly, scope: 'agent', ownerAgentId: 'codex', category: 'preference',
+        title: 'codex only', summary: 'codex private', content: 'codex private preference' } as never);
+      entries.createEntry({ ...base, id: kimiOnly, scope: 'agent', ownerAgentId: 'kimi', category: 'preference',
+        title: 'kimi only', summary: 'kimi private', content: 'kimi private preference' } as never);
+      entries.createEntry({ ...base, id: shared, scope: 'workspace', category: 'constraint',
+        title: 'shared', summary: 'shared constraint', content: 'shared workspace constraint' } as never);
+
+      const { conversationId, messageId } = await seedConversation(baseUrl);
+      const created = await postJson(`${baseUrl}/conversations/${conversationId}/interactions`, {
+        budget: { maxAgentsPerTurn: 4, maxRepliesPerAgent: 2, maxTotalReplies: 6, maxAgentHops: 4 },
+      });
+      assert.equal(created.status, 201);
+      const interaction = (created.json as { interaction: { id: string } }).interaction;
+      const response = await fetch(
+        `${baseUrl}/conversations/${conversationId}/interactions/${interaction.id}/respond`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ sourceMessageId: messageId }) },
+      );
+      assert.equal(response.status, 200);
+      await response.text();
+
+      const frozen = store.getDatabase().prepare(
+        "SELECT agent_id AS agentId, selected_entry_ids_json AS ids FROM cr_turn_context_snapshots WHERE conversation_id = ? AND interaction_id IS NULL ORDER BY agent_id",
+      ).all(conversationId) as Array<{ agentId: string; ids: string }>;
+      assert.equal(frozen.length, 2, 'each speaker Turn froze exactly one bounded context');
+      const byAgent = new Map(frozen.map(row => [row.agentId, JSON.parse(row.ids) as string[]]));
+      assert.deepEqual([...byAgent.keys()].sort(), ['codex', 'kimi']);
+
+      // The isolation itself: an Agent-scoped Entry reaches only its owner.
+      assert.ok(byAgent.get('codex')!.includes(codexOnly), 'codex must receive its own Agent-scoped Entry');
+      assert.ok(!byAgent.get('codex')!.includes(kimiOnly), 'codex must NOT receive kimi\'s private Entry');
+      assert.ok(byAgent.get('kimi')!.includes(kimiOnly), 'kimi must receive its own Agent-scoped Entry');
+      assert.ok(!byAgent.get('kimi')!.includes(codexOnly), 'kimi must NOT receive codex\'s private Entry');
+      // Both still reach the Workspace-scoped Entry, so the isolation is about owner, not reach.
+      assert.ok(byAgent.get('codex')!.includes(shared));
+      assert.ok(byAgent.get('kimi')!.includes(shared));
+      // And the two frozen selections are genuinely different records.
+      assert.notDeepEqual(byAgent.get('codex'), byAgent.get('kimi'));
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
 });

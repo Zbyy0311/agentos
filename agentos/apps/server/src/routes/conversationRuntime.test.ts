@@ -6,6 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { SqliteStore } from '../store/SqliteStore.js';
+import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createConversationRuntimeRoutes } from './conversationRuntime.js';
 
@@ -201,6 +202,52 @@ test('messages/stream sends, streams durable checkpoints, finalizes a reply, and
         .prepare('SELECT context_snapshot_id AS snapshotId FROM cr_agent_turns WHERE conversation_id = ?')
         .all(conversation.id) as Array<{ snapshotId: string | null }>;
       assert.ok(turnRows.some(row => row.snapshotId !== null));
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});
+
+// LITE-09-101: the production wiring must actually SELECT Memory, not just freeze an
+// empty selection. The route now supplies the real chat selector, so a Workspace Entry
+// has to appear in the frozen snapshot with its token cost.
+test('LITE-09-101 messages/stream freezes a non-empty Memory selection for the reply', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const entries = new MemoryEntryRepository(store.getDatabase() as never);
+      const entryId = 'mem_' + 'd'.repeat(26);
+      entries.createEntry({
+        id: entryId, workspaceId: 'workspace-a', scope: 'workspace', category: 'constraint',
+        authority: 'system-verified', confidence: 0.9, importance: 0.8,
+        title: '发布约束', summary: '端口必须显式校验', content: '端口必须显式校验，否则拒绝发布。',
+        tags: [], status: 'active', sources: [{ kind: 'task', id: 'task_origin' }],
+        createdAt: '2026-07-12T00:00:00.000Z',
+      } as never);
+
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      const conversation = (created.json as { conversation: { id: string } }).conversation;
+      const response = await fetch(`${baseUrl}/conversations/${conversation.id}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: 'plan the release' }),
+      });
+      assert.equal(response.status, 200);
+      await response.text();
+
+      const snapshots = store.getDatabase()
+        .prepare('SELECT selected_entry_ids_json AS ids, total_tokens AS tokens, truncated, retrieval_strategy_version AS version, turn_id AS turnId FROM cr_turn_context_snapshots WHERE conversation_id = ?')
+        .all(conversation.id) as Array<{ ids: string; tokens: number; truncated: number; version: string; turnId: string | null }>;
+      assert.equal(snapshots.length, 1);
+      const frozen = snapshots[0]!;
+      assert.deepEqual(JSON.parse(frozen.ids), [entryId], 'the reachable Entry must be selected');
+      assert.ok(frozen.tokens > 0, 'the frozen selection carries its real token cost');
+      assert.equal(frozen.version, 'chat-memory.v1');
+      assert.ok(frozen.turnId !== null, 'the snapshot belongs to the reply Turn');
+      const turn = store.getDatabase()
+        .prepare('SELECT context_snapshot_id AS snapshotId FROM cr_agent_turns WHERE id = ?')
+        .get(frozen.turnId) as { snapshotId: string | null } | undefined;
+      assert.ok(turn?.snapshotId !== null && turn?.snapshotId !== undefined,
+        'the reply Turn references the snapshot it received');
     });
   } finally {
     delete process.env.AGENTOS_FORCE_MOCK;

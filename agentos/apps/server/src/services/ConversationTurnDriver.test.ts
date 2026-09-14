@@ -54,7 +54,10 @@ function makeResult(status: ConversationRunResult['status'], content: string): C
 function fixture(
   emit?: (onEvent: (e: { status: string; activity: string; content?: string }) => void) => ConversationRunResult,
   context?: ConversationTurnContextOptions,
-  beforeRunner?: (history: readonly ConversationMessage[]) => void,
+  beforeRunner?: (
+    history: readonly ConversationMessage[],
+    options: { readonly memoryContext?: string },
+  ) => void,
 ) {
   const root = mkdtempSync(join(tmpdir(), 'agentos-turndriver-'));
   const db = new DatabaseSync(join(root, 'agentos.sqlite'));
@@ -80,7 +83,7 @@ function fixture(
     (_ws, agentId) => (agentId === 'agent_main' ? ({} as never) : undefined),
     (options) => ({
       run: async () => {
-        beforeRunner?.(options.history);
+        beforeRunner?.(options.history, options);
         if (emit === undefined) return makeResult('completed', '');
         const onEvent = (e: { status: string; activity: string; content?: string }) => options.onEvent?.(e as never);
         return emit(onEvent);
@@ -470,5 +473,65 @@ test('LITE-09-109 TD-12 an unchanged source still adopts the summary and records
     assert.equal(budget.rejectedCompactionSummaryId, undefined);
     assert.ok(runnerHistory.some(message => message.content === 'FRESH SUMMARY'), 'the Provider receives the summary');
     assert.ok(!runnerHistory.some(message => message.id === 'msg_k1'), 'covered Messages are not re-sent');
+  } finally { fx.close(); }
+});
+
+// LITE-09-101 TD-09: the selection's text must reach the Provider unchanged, and the
+// ids persisted in the snapshot must be the same selection. This closes the half that
+// was missing while the composition root supplied no selector: the freeze was real but
+// empty, so nothing was ever injected.
+test('LITE-09-101 TD-09 injects exactly the frozen selection into the Provider call', async () => {
+  const request = input();
+  const frozenContextText = '### 上线约束\n端口必须显式校验\n\n### 已知失败\n上次部署因缺端口校验失败';
+  let runnerOptions: { readonly memoryContext?: string } | undefined;
+  const fx = fixture(undefined, {
+    snapshots: createDurableTurnContextSnapshotPort({ getDatabase: () => fx.db as unknown as TransactionDatabase }),
+    selection: {
+      select: () => ({
+        selectedEntryIds: ['mem_frozen_1', 'mem_frozen_2'],
+        totalTokens: 21,
+        truncated: false,
+        retrievalStrategyVersion: 'chat-memory.v1',
+        contextText: frozenContextText,
+      }),
+    },
+    contextTokenBudget: 4000,
+  }, (_history, options) => { runnerOptions = options; });
+  try {
+    const result = await fx.driver.replyWithTurn(request);
+    assert.equal(result.status, 'completed');
+    assert.equal(runnerOptions?.memoryContext, frozenContextText,
+      'the Provider must receive the frozen selection text');
+    assert.ok(result.turn.contextSnapshotId);
+    const snapshot = fx.snapshots.findById(WS, result.turn.contextSnapshotId!);
+    assert.ok(snapshot);
+    assert.deepEqual(JSON.parse(snapshot.selectedEntryIdsJson), ['mem_frozen_1', 'mem_frozen_2'],
+      'the snapshot records the ids of exactly the injected selection');
+    assert.equal(snapshot.retrievalStrategyVersion, 'chat-memory.v1');
+    assert.equal(snapshot.totalTokens, 21);
+    assert.equal(snapshot.truncated, false);
+  } finally { fx.close(); }
+});
+
+// LITE-09-101 TD-10: an empty selection injects nothing at all - no empty section is
+// added to the prompt, and the snapshot still records the (empty) frozen selection.
+test('LITE-09-101 TD-10 an empty selection injects no context block', async () => {
+  const request = input();
+  let runnerOptions: { readonly memoryContext?: string } | undefined;
+  const fx = fixture(undefined, {
+    snapshots: createDurableTurnContextSnapshotPort({ getDatabase: () => fx.db as unknown as TransactionDatabase }),
+    selection: {
+      select: () => ({
+        selectedEntryIds: [], totalTokens: 0, truncated: false,
+        retrievalStrategyVersion: 'chat-memory.v1',
+      }),
+    },
+  }, (_history, options) => { runnerOptions = options; });
+  try {
+    const result = await fx.driver.replyWithTurn(request);
+    assert.equal(result.status, 'completed');
+    assert.equal(runnerOptions?.memoryContext, undefined, 'no selection means no injected context');
+    const snapshot = fx.snapshots.findById(WS, result.turn.contextSnapshotId!);
+    assert.deepEqual(JSON.parse(snapshot!.selectedEntryIdsJson), []);
   } finally { fx.close(); }
 });
