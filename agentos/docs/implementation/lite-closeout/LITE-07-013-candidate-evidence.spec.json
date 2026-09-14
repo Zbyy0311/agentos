@@ -1,0 +1,43 @@
+{
+  "packageName": "LITE-07-013-candidate-evidence",
+  "title": "S1 FTS 降级可见性候选证据包（LITE-07-013）",
+  "modelScopeStatement": "本包不调用任何 Provider 模型：证据绑定 AgentOS 自身的检索、快照与事件契约。",
+  "routeModels": {
+    "retrieval": "生产 MemoryRetrievalService（FTS 可用/不可用两种查询）",
+    "persistence": "生产 emitter（快照 + canonical Event + Outbox 同事务）"
+  },
+  "testNote": "受影响测试（4 个文件：MemoryContextBudgetSelector / MemoryRetrievalService / lite-migration-031 / MemoryContextSnapshotRepository，`node --import tsx --test --test-concurrency=1`，在 `apps/server` 下执行）raw exit = 0，Node summary 为 `44 pass / 0 fail / 0 skipped`；普通 scope verifier 未加 `--require-closed`，raw exit = 0，stdout 原文为 `{\"matrixVersion\":15,\"status\":\"frozen\",\"PASS\":0,\"GAP\":26,\"RUNTIME-VERIFY\":205,\"DEFERRED\":164}`。",
+  "knownLimitations": [
+    "两次解析的差异只在查询：`***` 会被 toSafeFtsQuery 中和为无可用 token，因此检索服务如实报告 degraded；FTS5 表整体不可用（另一种降级来源）未在本包重放。",
+    "`api_operation` 之外的 origin 不在本包：这里用持久 Operation 行证明 privileged origin（与 Run 路径一致）。",
+    "本包证明降级标志在 Run Context Snapshot 上可见、可读回、且不改变选中集合；它不证明 UI 展示（Inspector/前端渲染不在本行范围）。"
+  ],
+  "requirements": {
+    "LITE-07-013": {
+      "text": "visible FTS degraded mode",
+      "section": "S1-C1 / MF-5 degraded",
+      "sourceFile": "apps/server/src/services/MemoryContextBudgetSelector.ts",
+      "sourceLine": 128,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/store/MemoryContextSnapshotRepository.ts",
+          "sourceLine": 48,
+          "note": "快照持久化 retrieval_degraded 并在读回时还原"
+        },
+        {
+          "sourceFile": "apps/server/src/migrations/migrations/031-mf5-retrieval-degraded.ts",
+          "sourceLine": 16,
+          "note": "031 增量加列，默认 0"
+        },
+        {
+          "sourceFile": "apps/server/src/services/MemoryRetrievalService.ts",
+          "sourceLine": 61,
+          "note": "degraded 语义：提供了查询但 FTS 排名未应用"
+        }
+      ],
+      "why": "两次真实的 Run 上下文解析都走生产 resolver + 生产 emitter（快照、canonical `memory.context_created` 事件与 Outbox 同事务提交）：带真实查询的一次快照 `retrievalDegraded=false`、持久列为 0；查询被中和（无可用 FTS token）的一次 `retrievalDegraded=true`、持久列为 1；两次的选中集合完全相同（降级只改排名来源，不改结构化选择），且注入文本仍等于该快照自身持久化的文本。生产读回路径（findById）还原出的标志与写入一致（true/false），两次解析共产生 2 条 canonical 事件且 Outbox 行数与事件数相等。列本身是 NOT NULL DEFAULT 0 的 INTEGER，因此 031 之前的快照行读作非降级。",
+      "limits": "证明降级模式在真实 Run 上下文路径上可见、可读回、且不影响注入内容；FTS5 整体不可用的分支与 UI 展示不在本包。"
+    }
+  }
+}
+

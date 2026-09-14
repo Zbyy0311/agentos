@@ -1,0 +1,44 @@
+{
+  "packageName": "LITE-07-003-candidate-evidence",
+  "title": "S1 精确/近似重复收敛候选证据包（LITE-07-003）",
+  "modelScopeStatement": "本包不调用任何 Provider 模型：证据绑定 AgentOS 自身的去重边界、合并事务、审核门槛与来源证明。",
+  "routeModels": {
+    "dedup": "生产 MemoryCandidateGenerationService（无模型）",
+    "review": "生产 MemoryCandidateRepository.reviewCandidate（含 Workspace Event 写入）"
+  },
+  "testNote": "受影响测试（3 个文件：MemoryCandidateGenerationService / .emission / MemoryCandidateRepository，`node --import tsx --test --test-concurrency=1`，在 `apps/server` 下执行）raw exit = 0，Node summary 为 `51 pass / 0 fail / 0 skipped`；普通 scope verifier 未加 `--require-closed`，raw exit = 0，stdout 原文为 `{\"matrixVersion\":15,\"status\":\"frozen\",\"PASS\":0,\"GAP\":26,\"RUNTIME-VERIFY\":205,\"DEFERRED\":164}`。",
+  "knownLimitations": [
+    "精确命中分支的**进入方式**：Memory 里已存在同内容事实（由另一条来源写入，本包用生产 `MemoryEntryRepository.createEntry` 构造，即 S1-D 显式保存的形态），而承载它的 Candidate 行已不存在——本包删除那一行以复现该状态（与 LITE-07-102 崩溃窗口同一手法，已明示）。被验证的是生成器与合并事务的决策，不是那次删除本身。",
+    "近似重复用「同一内容仅空白差异」构造 normalized-hash 命中，用「同标题不同正文」构造 FTS 命中；两种构造都在独立的 task/owner 边界内，避免与其它断言互相污染。",
+    "来源真实性的最强守卫来自数据库外键与特权 origin 证明；本包据此断言「不存在的 Entry 无法被写成来源」「没有持久行的特权 origin 被拒」，没有额外实现新的来源校验。",
+    "审核分支只覆盖 accept（产生 Entry 并保留来源）；reject 分支由既有测试覆盖，本包未重放。"
+  ],
+  "requirements": {
+    "LITE-07-003": {
+      "text": "exact and near-duplicate convergence",
+      "section": "S1-A / S1-D 去重",
+      "sourceFile": "apps/server/src/services/MemoryCandidateGenerationService.ts",
+      "sourceLine": 189,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/services/MemoryCandidateGenerationService.ts",
+          "sourceLine": 196,
+          "note": "精确命中 → mergeExactSourcesWithinTransaction / emitEntryDeduplicated"
+        },
+        {
+          "sourceFile": "apps/server/src/store/MemoryEntryRepository.ts",
+          "sourceLine": 361,
+          "note": "合并在同一事务内校验 scope/owner/category/状态与精确哈希"
+        },
+        {
+          "sourceFile": "apps/server/src/services/MemoryRuntimeEventEmitter.ts",
+          "sourceLine": 135,
+          "note": "合并变更才写 canonical memory.entry_deduplicated"
+        }
+      ],
+      "why": "**同 Scope/owner 精确重复**：Memory 中已有同内容事实（task/subject/边界一致、来源是 task）时，生成器返回 `converged` 并指向该 Entry；同一事务把 Run 来源合并进去（来源数 +1、Entry version 1→2、内容与 authority 不变），并写入恰好一条 canonical `memory.entry_deduplicated`（payload 指向该 Entry）；候选与 Entry 数量都不增加。**重放零新增**：再执行一次同样评估仍为 `converged`，候选/Entry/来源/事件四类计数全部为 0 增量，version 不再变化。**不同 owner 不错误汇聚**：另一 task 边界里存在完全同内容的事实，并不阻止本 Run 产生自己的候选（`created`、`duplicateOfEntryId=null`、候选 +1），另一个 owner 的事实不变。**近似重复保留审核**：normalized-hash 命中与 FTS 命中都被记为 `created` + `duplicateOfEntryId` 指向已有 Entry + 候选 `review-required`（`decision=review-required`、`authority=agent-derived`、未自动并入 Entry），既有事实原样保留；经生产审核路径 accept 后才产生 Entry（scope=task、category=summary、内容长度与候选一致、来源随候选带入）。**来源真实性**：把来源指向不存在的 Entry 被数据库拒绝（0 条孤儿来源），没有持久行的特权 origin 被拒（`ORIGIN_UNPROVEN`），且边界不匹配时合并被拒（拒绝后来源保持原样）。",
+      "limits": "覆盖精确重复的收敛与来源合并、重放零新增、跨 owner 不汇聚、normalized/FTS 近似重复的审核门槛与审核后提升、以及来源与 origin 的拒绝路径；reject 分支与 FTS5 实体表不可用的组合不在本包。"
+    }
+  }
+}
+
