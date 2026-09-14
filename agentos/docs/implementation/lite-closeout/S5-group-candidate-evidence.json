@@ -1,0 +1,652 @@
+{
+  "schemaVersion": 1,
+  "evidencePackage": "S5-group-execution-candidate-evidence",
+  "generatedAt": "2026-09-14T13:19:32.294Z",
+  "baselineSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+  "testCodeSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+  "routeModels": {
+    "groupWalk": "recording runner（不调用 CLI）",
+    "speakerTurn": "生产 ConversationTurnDriver"
+  },
+  "modelScopeStatement": "本包不调用任何 Provider 模型：它驱动生产 GroupTurnDriver + BoundedGroupService（recording runner 记录每个 speaker Turn 的上下文），证明的是含提及解析、串行化、D3 关闭与准入的边界，不是模型输出。",
+  "finalRun": {
+    "command": "node --import tsx ../../scripts/verify-lite-s5-group-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s5-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s5-group-candidate-evidence-20260914",
+    "rawExitCode": 0,
+    "allRawLogs": [
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/receipts.json",
+        "sha256": "26dda0fcf18f054ef0923cef5cf7457a4033363addfec1e64da217fb5b13cfe1",
+        "bytes": 11188
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/stdout.txt",
+        "sha256": "a18866c0a19798b5e6102d7f0321db95d7ca9fcd99327e78979c8d976eef7f24",
+        "bytes": 67
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/exit.txt",
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+        "bytes": 3
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/scope-verifier.stdout.txt",
+        "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+        "bytes": 93
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/scope-verifier.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+        "sha256": "d25a483cb17b6e2dedf5b41000055e1e970e2e3250329474c4fc689334134696",
+        "bytes": 8419
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "phases": {
+      "plan": {
+        "interactionId": "conv_01M2G14AX49VN0ZJRGJPTQFY2K",
+        "speakers": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "replies": [
+          {
+            "agentId": "agent_reviewer",
+            "hopOrder": 0
+          },
+          {
+            "agentId": "agent_lead",
+            "hopOrder": 1
+          }
+        ]
+      },
+      "members": {
+        "interactionId": "conv_01M2G14B01XWSQD7TJ356YTT52",
+        "speakers": 3
+      },
+      "d3off": {
+        "interactionId": "conv_01M2G14B1X54HDJC8N1HKC30HJ",
+        "speakers": 2
+      },
+      "contention": {
+        "interactionId": "conv_01M2G14B3EXFERA9RM20MPJ6F5"
+      },
+      "turnFailures": [
+        {
+          "conversationId": "conv_bbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "status": "failed",
+          "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY",
+          "failureMessage": "Workspace modifying authority is held by CANONICAL_RUN run_group_competitor; chat has no implicit modifying authority. Wait for that work to finish, or start an explicit Run."
+        }
+      ]
+    },
+    "counts": {
+      "total": 7,
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "requirements": [
+    {
+      "id": "LITE-09-010",
+      "specification": {
+        "text": "mention, @all, sequential, and parallel-read-only behavior follows admission and Policy",
+        "section": "S5 群聊执行边界",
+        "sourceFile": "apps/server/src/services/GroupSpeakerResolver.ts",
+        "sourceLine": 149,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/services/GroupTurnDriver.ts",
+            "sourceLine": 21,
+            "note": "D1=B 模板声明顺序、D2=A 合并回复流、D3 关闭（无 parallel-read-only）"
+          },
+          {
+            "sourceFile": "apps/server/src/services/GroupSpeakerResolver.ts",
+            "sourceLine": 256,
+            "note": "declaredReadOnly 记录声明，effectiveMutationClass 仍为 modifying"
+          },
+          {
+            "sourceFile": "apps/server/src/services/GroupTurnDriver.ts",
+            "sourceLine": 222,
+            "note": "speaker Turn 未 final 即结束走 provider-failed，且不写回复、不动预算"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S5",
+        "document": "09-Conversation-Runtime.md",
+        "section": "18. Acceptance Expectations",
+        "requirement": "mention, @all, sequential, and parallel-read-only behavior follows admission and Policy;",
+        "exitCriteria": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。",
+        "recordedGap": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
+        "productionEntryPoints": [
+          "apps/server/src/services/GroupTurnDriver.ts",
+          "apps/server/src/services/ConversationTurnDriver.ts",
+          "apps/server/src/services/BoundedGroupService.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "apps/server/src/services/GroupTurnDriver.test.ts",
+          "apps/server/src/routes/conversationRuntime.test.ts"
+        ],
+        "evidence": [
+          "S5-EXECUTION-SOURCE",
+          "S5-101-LOCAL",
+          "S5-102-LOCAL"
+        ]
+      },
+      "baselineSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+      "command": "node --import tsx ../../scripts/verify-lite-s5-group-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s5-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s5-group-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/receipts.json",
+          "sha256": "26dda0fcf18f054ef0923cef5cf7457a4033363addfec1e64da217fb5b13cfe1",
+          "bytes": 11188
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/stdout.txt",
+          "sha256": "a18866c0a19798b5e6102d7f0321db95d7ca9fcd99327e78979c8d976eef7f24",
+          "bytes": 67
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "d25a483cb17b6e2dedf5b41000055e1e970e2e3250329474c4fc689334134696",
+          "bytes": 8419
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S5G-MENTION-01",
+          "assertionId": "S5G-MENTION-01",
+          "requirementId": "LITE-09-010",
+          "phase": "plan",
+          "step": "a mention selects exactly the mentioned Agents, in mention order, and reports the rest as skipped",
+          "actual": {
+            "speakers": [
+              {
+                "agentId": "agent_reviewer",
+                "source": "mention"
+              },
+              {
+                "agentId": "agent_lead",
+                "source": "mention"
+              }
+            ],
+            "skipped": [
+              {
+                "agentId": null,
+                "reason": "member-not-active"
+              },
+              {
+                "agentId": "agent_worker",
+                "reason": "not-selected-manually"
+              }
+            ],
+            "repliesRecorded": [
+              {
+                "agentId": "agent_reviewer",
+                "status": "final",
+                "hasReply": true
+              },
+              {
+                "agentId": "agent_lead",
+                "status": "final",
+                "hasReply": true
+              }
+            ]
+          },
+          "expected": {
+            "speakers": [
+              {
+                "agentId": "agent_reviewer",
+                "source": "mention"
+              },
+              {
+                "agentId": "agent_lead",
+                "source": "mention"
+              }
+            ],
+            "skipped": [
+              {
+                "agentId": null,
+                "reason": "member-not-active"
+              },
+              {
+                "agentId": "agent_worker",
+                "reason": "not-selected-manually"
+              }
+            ],
+            "repliesRecorded": [
+              {
+                "agentId": "agent_reviewer",
+                "status": "final",
+                "hasReply": true
+              },
+              {
+                "agentId": "agent_lead",
+                "status": "final",
+                "hasReply": true
+              }
+            ]
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-MENTION-02",
+          "assertionId": "S5G-MENTION-02",
+          "requirementId": "LITE-09-010",
+          "phase": "plan",
+          "step": "the durable replies carry the serialized speaker order and the hop chain",
+          "actual": {
+            "replyAgents": [
+              "agent_reviewer",
+              "agent_lead"
+            ],
+            "hopOrders": [
+              0,
+              1
+            ],
+            "hopChain": [
+              null,
+              "agent_reviewer"
+            ],
+            "agentsSawTheirOwnSnapshot": [
+              {
+                "agentId": "agent_reviewer",
+                "sawSharedConversationEntry": true,
+                "contextIsFrozenEntry": true
+              },
+              {
+                "agentId": "agent_lead",
+                "sawSharedConversationEntry": true,
+                "contextIsFrozenEntry": true
+              }
+            ],
+            "replySnapshotTags": [
+              {
+                "agentId": "agent_reviewer",
+                "taggedWithInteraction": true,
+                "idsIsArray": true
+              },
+              {
+                "agentId": "agent_lead",
+                "taggedWithInteraction": true,
+                "idsIsArray": true
+              }
+            ],
+            "endedBy": "completed",
+            "maxConcurrent": 1
+          },
+          "expected": {
+            "replyAgents": [
+              "agent_reviewer",
+              "agent_lead"
+            ],
+            "hopOrders": [
+              0,
+              1
+            ],
+            "hopChain": [
+              null,
+              "agent_reviewer"
+            ],
+            "agentsSawTheirOwnSnapshot": [
+              {
+                "agentId": "agent_reviewer",
+                "sawSharedConversationEntry": true,
+                "contextIsFrozenEntry": true
+              },
+              {
+                "agentId": "agent_lead",
+                "sawSharedConversationEntry": true,
+                "contextIsFrozenEntry": true
+              }
+            ],
+            "replySnapshotTags": [
+              {
+                "agentId": "agent_reviewer",
+                "taggedWithInteraction": true,
+                "idsIsArray": true
+              },
+              {
+                "agentId": "agent_lead",
+                "taggedWithInteraction": true,
+                "idsIsArray": true
+              }
+            ],
+            "endedBy": "completed",
+            "maxConcurrent": 1
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-MENTION-03",
+          "assertionId": "S5G-MENTION-03",
+          "requirementId": "LITE-09-010",
+          "phase": "plan",
+          "step": "without a mention only the always-mode member speaks and the mention-only members are reported as not-mentioned",
+          "actual": {
+            "speakers": [
+              {
+                "agentId": "agent_worker",
+                "source": "mode"
+              }
+            ],
+            "skipped": [
+              {
+                "agentId": "agent_lead",
+                "reason": "not-mentioned"
+              },
+              {
+                "agentId": "agent_reviewer",
+                "reason": "not-mentioned"
+              },
+              {
+                "agentId": null,
+                "reason": "member-not-active"
+              }
+            ],
+            "replies": [
+              "agent_worker"
+            ]
+          },
+          "expected": {
+            "speakers": [
+              {
+                "agentId": "agent_worker",
+                "source": "mode"
+              }
+            ],
+            "skipped": [
+              {
+                "agentId": "agent_lead",
+                "reason": "not-mentioned"
+              },
+              {
+                "agentId": "agent_reviewer",
+                "reason": "not-mentioned"
+              },
+              {
+                "agentId": null,
+                "reason": "member-not-active"
+              }
+            ],
+            "replies": [
+              "agent_worker"
+            ]
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-ALL-01",
+          "assertionId": "S5G-ALL-01",
+          "requirementId": "LITE-09-010",
+          "phase": "members",
+          "step": "the full member set speaks in the delivered order and the walk is serialized end to end",
+          "actual": {
+            "speakerOrder": [
+              "agent_lead",
+              "agent_worker",
+              "agent_reviewer"
+            ],
+            "declaredReadOnly": [
+              false
+            ],
+            "effectiveMutationClass": [
+              "modifying"
+            ],
+            "repliesRecorded": [
+              "agent_lead",
+              "agent_worker",
+              "agent_reviewer"
+            ],
+            "budgetAfter": {
+              "repliesUsed": 3,
+              "repliesRemaining": 0,
+              "hopsUsed": 2,
+              "hopsRemaining": 2,
+              "distinctAgents": 3,
+              "agentsRemaining": 0
+            },
+            "maxConcurrent": 1,
+            "endedBy": "budget-total-replies"
+          },
+          "expected": {
+            "speakerOrder": [
+              "agent_lead",
+              "agent_worker",
+              "agent_reviewer"
+            ],
+            "declaredReadOnly": [
+              false
+            ],
+            "effectiveMutationClass": [
+              "modifying"
+            ],
+            "repliesRecorded": [
+              "agent_lead",
+              "agent_worker",
+              "agent_reviewer"
+            ],
+            "budgetAfter": {
+              "repliesUsed": 3,
+              "repliesRemaining": 0,
+              "hopsUsed": 2,
+              "hopsRemaining": 2,
+              "distinctAgents": 3,
+              "agentsRemaining": 0
+            },
+            "maxConcurrent": 1,
+            "endedBy": "budget-total-replies"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-D3OFF-01",
+          "assertionId": "S5G-D3OFF-01",
+          "requirementId": "LITE-09-010",
+          "phase": "d3off",
+          "step": "a parallel-read-only request is recorded as declared but still classified modifying and stays serialized (D3 off)",
+          "actual": {
+            "declaredReadOnly": [
+              true
+            ],
+            "effectiveMutationClass": [
+              "modifying"
+            ],
+            "turnsStarted": 2,
+            "repliesRecorded": 2,
+            "maxConcurrent": 1,
+            "endedBy": "budget-total-replies"
+          },
+          "expected": {
+            "declaredReadOnly": [
+              true
+            ],
+            "effectiveMutationClass": [
+              "modifying"
+            ],
+            "turnsStarted": 2,
+            "repliesRecorded": 2,
+            "maxConcurrent": 1,
+            "endedBy": "budget-total-replies"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-CONTENTION-01",
+          "assertionId": "S5G-CONTENTION-01",
+          "requirementId": "LITE-09-010",
+          "phase": "contention",
+          "step": "a foreign modifying holder stops the walk before any reply is recorded, with the refusal named on the Turn",
+          "actual": {
+            "providerCalls": 0,
+            "repliesRecorded": 0,
+            "endedBy": "provider-failed",
+            "interactionStatus": {
+              "status": "active",
+              "stopReason": null
+            },
+            "budgetUnmoved": {
+              "repliesUsed": 0,
+              "repliesRemaining": 2,
+              "hopsUsed": 0,
+              "hopsRemaining": 2,
+              "distinctAgents": 0,
+              "agentsRemaining": 2
+            },
+            "turnStatuses": [
+              {
+                "status": "failed",
+                "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY"
+              }
+            ],
+            "refusalNamesTheHolder": true,
+            "replayBudgetLimited": 2
+          },
+          "expected": {
+            "providerCalls": 0,
+            "repliesRecorded": 0,
+            "endedBy": "provider-failed",
+            "interactionStatus": {
+              "status": "active",
+              "stopReason": null
+            },
+            "budgetUnmoved": {
+              "repliesUsed": 0,
+              "repliesRemaining": 2,
+              "hopsUsed": 0,
+              "hopsRemaining": 2,
+              "distinctAgents": 0,
+              "agentsRemaining": 2
+            },
+            "turnStatuses": [
+              {
+                "status": "failed",
+                "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY"
+              }
+            ],
+            "refusalNamesTheHolder": true,
+            "replayBudgetLimited": 2
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-CONTENTION-02",
+          "assertionId": "S5G-CONTENTION-02",
+          "requirementId": "LITE-09-010",
+          "phase": "contention",
+          "step": "once the holder is released the same interaction completes, so the stop was about authority only",
+          "actual": {
+            "repliesRecorded": 2,
+            "endedBy": "budget-total-replies",
+            "replyAgents": [
+              "agent_lead",
+              "agent_worker"
+            ]
+          },
+          "expected": {
+            "repliesRecorded": 2,
+            "endedBy": "budget-total-replies",
+            "replyAgents": [
+              "agent_lead",
+              "agent_worker"
+            ]
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "七个断言的组合覆盖该行的四个行为面。**提及**：带提及的走只让被提及的 Agent 发言且按提及顺序（source=mention），未被提及的 always 成员以 not-selected-manually 记录；不带提及的走只有 always 成员发言，mentioned 模式成员以 not-mentioned 记录（两个方向的同一门槛），持久回复的 hopOrder/hopFromAgentId 形成串行链。**@all**：全体成员作为提及列表传入时三人全部发言、顺序等于传入顺序，walk 结束时 budgetStatus 显示 repliesUsed=3/repliesRemaining=0（终止原因 budget-total-replies）。**串行化**：三次走查中 runner 观测到的最大并发恒为 1，且每个 speaker 的 Turn 快照与群聊快照分别带 conversation/interaction 归属。**parallel-read-only（D3 关闭）**：会话声明 parallel-read-only 时，plan 记录的 declaredReadOnly 全为 true，而 effectiveMutationClass 仍为 modifying、走查仍串行、最多 2 条回复即被预算终止——即声明不被当作执行许可。**准入**：存在外来 MODIFYING 持有者时，首个 speaker 的 Turn 在 Provider 调用之前以 CONVERSATION_WORKSPACE_MODIFYING_BUSY 失败（providerCalls=0、回复 0 条、interaction 仍 active、预算未动），释放后同一 interaction 正常完成两条回复。",
+      "adjacentBehaviorNotProven": "本行证明的是「提及/@all 展开/串行/D3 关闭/准入拒绝」在生产 driver 上的行为与持久结果；跨会话与 Run 的真实并发竞争、以及群聊的 loop-guard 终止分支不在本包。",
+      "verdict": "candidate-supported"
+    }
+  ],
+  "matrixProtection": {
+    "passFreezeEdited": false,
+    "passPromotionExecuted": false,
+    "requireClosedExecuted": false,
+    "protectedFiles": [
+      {
+        "path": "docs/implementation/lite-closeout/matrix.json",
+        "worktreeSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "baselineSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-freeze.json",
+        "worktreeSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "baselineSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-evidence-audit.json",
+        "worktreeSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "baselineSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "matchesBaseline": true
+      }
+    ],
+    "workingTreeDelta": [
+      "?? agentos/docs/implementation/lite-closeout/S5-group-candidate-evidence.spec.json",
+      "?? agentos/docs/implementation/lite-closeout/evidence/s5-group-candidate-evidence-20260914/",
+      "?? agentos/scripts/verify-lite-s5-group-candidate-evidence.mjs"
+    ],
+    "verdictVocabulary": [
+      "candidate-supported",
+      "insufficient-evidence",
+      "failed"
+    ]
+  }
+}
