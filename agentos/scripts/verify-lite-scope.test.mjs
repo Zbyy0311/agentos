@@ -8,8 +8,11 @@ import {
   validateFinalClosure,
   validateDeferralAmendments,
   hashDeferralAmendments,
+  validatePassPromotionAuthority,
+  validatePassPromotions,
   validatePassEvidence,
   validatePassFreeze,
+  validateFrozenScopeStates,
   validateScope,
 } from './verify-lite-scope.mjs';
 
@@ -143,8 +146,8 @@ test('freeze rejects old PASS re-upgrade and GAP or DEFERRED closure', () => {
     row.state = before === 'DEFERRED' ? 'GAP' : 'PASS';
     if (before === 'DEFERRED') row.workPackage = 'S8';
     assert.throws(() => validateScope(changed, evidence, lock, root, frozen), before === 'PASS'
-      ? /PASS state is frozen|allowed PASS/
-      : new RegExp(`original ${before} state changed`));
+      ? /PASS state is frozen|allowed PASS|individually authorized promotion/
+      : new RegExp(`original ${before} state changed|individually authorized promotion`));
   }
 });
 
@@ -181,6 +184,7 @@ test('final closure checks the real HEAD before CI or Provider evidence', () => 
   changed.requirements = changed.requirements.map(row => (
     row.state === 'GAP' || row.state === 'RUNTIME-VERIFY' ? { ...row, state: 'DEFERRED', workPackage: null } : row
   ));
+  changed.finalImplementationSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   changed.finalMainSha = '0'.repeat(40);
   assert.throws(() => validateFinalClosure(changed, [], root), /real current HEAD/);
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim().length, 40);
@@ -209,4 +213,85 @@ test('specification, deferral, and permanent scope-lock drift remain rejected', 
   const changedLock = structuredClone(lock);
   changedLock[0].initialState = 'DEFERRED';
   assert.throws(() => validateScope(matrix(), evidence, changedLock, root), /permanent scope lock changed/);
+});
+
+function promotionFixture() {
+  const currentMatrix = matrix();
+  const row = currentMatrix.requirements.find(item => item.id === 'LITE-07-003');
+  row.state = 'PASS';
+  const authority = json('pass-promotion-authority.json');
+  const promotion = {
+    promotionId: 'PROMOTION-LITE-07-003',
+    requirementId: 'LITE-07-003',
+    from: 'GAP',
+    to: 'PASS',
+    baselineSha: currentMatrix.promotionBaselineSha,
+    implementation: ['apps/server/src/routes/runs.ts'],
+    evidenceIds: ['PROMO-EVIDENCE-LITE-07-003'],
+    command: 'node --import tsx --test --test-reporter=tap src/routes/runs.test.ts',
+    cwd: 'apps/server',
+    rawExitCode: 0,
+    counts: { passed: 1, failed: 0, skipped: 0 },
+    assertions: [{
+      id: 'PROMO-ASSERT-LITE-07-003',
+      file: 'apps/server/src/routes/runs.test.ts',
+      name: 'returns run list and aggregated details with workspace isolation and capped limit',
+      line: 44,
+      expression: "assert.deepEqual(list.runs.map(run => run.id), ['run-a']);",
+      clause: 'The production route returns the run details for the requested workspace and run.',
+      whyDirect: 'This assertion exercises the route through HTTP and checks the exact scoped response, rather than merely loading the test file.',
+      outcome: 'passed',
+    }],
+    rationale: 'The direct route assertion is mapped to the production implementation and a raw TAP receipt for this one requirement.',
+  };
+  const ledger = {
+    schemaVersion: 1,
+    authorityId: authority.authorityId,
+    authorityHash: authority.hashAnchor,
+    matrixVersion: currentMatrix.matrixVersion,
+    baselineSha: currentMatrix.promotionBaselineSha,
+    promotions: [promotion],
+  };
+  return { currentMatrix, row, authority, ledger, promotion };
+}
+
+test('controlled promotion authorizes one directly evidenced row and no other row', () => {
+  const { currentMatrix, authority, ledger, promotion } = promotionFixture();
+  const promotions = validatePassPromotions(currentMatrix, freeze(), authority, ledger, root, validateDeferralAmendments(deferralAmendments()));
+  assert.deepEqual([...promotions.byId.keys()], [promotion.requirementId]);
+  assert.doesNotThrow(() => validateFrozenScopeStates(currentMatrix, freeze(), validateDeferralAmendments(deferralAmendments()), promotions.byId));
+});
+
+test('controlled promotion requires direct assertion fields, not a file-level claim', () => {
+  const { currentMatrix, authority, ledger } = promotionFixture();
+  ledger.promotions[0].assertions = [];
+  assert.throws(() => validatePassPromotions(currentMatrix, freeze(), authority, ledger, root, validateDeferralAmendments(deferralAmendments())), /assertions are required/);
+});
+
+test('controlled promotion requires the one final implementation baseline', () => {
+  const { currentMatrix, authority, ledger } = promotionFixture();
+  ledger.baselineSha = '0'.repeat(40);
+  assert.throws(() => validatePassPromotions(currentMatrix, freeze(), authority, ledger, root, validateDeferralAmendments(deferralAmendments())), /baseline is not the authorized final implementation SHA/);
+});
+
+test('controlled promotion cannot bulk-close a row without its own record', () => {
+  const { currentMatrix, authority, ledger } = promotionFixture();
+  ledger.promotions = [];
+  assert.throws(() => validatePassPromotions(currentMatrix, freeze(), authority, ledger, root, validateDeferralAmendments(deferralAmendments())), /no individually authorized promotion/);
+});
+
+test('controlled promotion never changes an explicitly deferred row', () => {
+  const { currentMatrix, authority, ledger } = promotionFixture();
+  const row = currentMatrix.requirements.find(item => item.id === 'LITE-04-101');
+  row.state = 'PASS';
+  ledger.promotions[0].requirementId = row.id;
+  ledger.promotions[0].promotionId = `PROMOTION-${row.id}`;
+  ledger.promotions[0].from = 'RUNTIME-VERIFY';
+  assert.throws(() => validatePassPromotions(currentMatrix, freeze(), authority, ledger, root, validateDeferralAmendments(deferralAmendments())), /DEFERRED row is immutable/);
+});
+
+test('promotion authority remains hash-anchored outside the mutable ledger', () => {
+  const authority = json('pass-promotion-authority.json');
+  authority.constraints[0] = 'tampered';
+  assert.throws(() => validatePassPromotionAuthority(authority), /authority identity changed/);
 });

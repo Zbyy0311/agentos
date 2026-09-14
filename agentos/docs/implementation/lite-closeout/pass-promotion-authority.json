@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "authorityId": "lite-pass-promotion-20260915",
+  "grantedAt": "2026-09-15",
+  "grantedBy": "user",
+  "purpose": "Release the PASS freeze only for individually evidenced GAP or RUNTIME-VERIFY rows after the in-flight Lite changes have converged on one main implementation baseline.",
+  "matrixVersion": 17,
+  "allowedTransitions": [
+    {
+      "from": "GAP",
+      "to": "PASS"
+    },
+    {
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS"
+    }
+  ],
+  "constraints": [
+    "Every promotion names exactly one requirement ID and its own evidence.",
+    "The evidence records the final implementation main SHA, production implementation paths, direct assertion mapping, literal command, raw exit code, and raw pass/fail/skip counts.",
+    "A green test file, keyword match, source symbol, or old finding is not direct evidence.",
+    "PASS promotions are evaluated only after all current in-flight Lite PRs are merged into one main baseline.",
+    "DEFERRED rows and the existing pass-freeze.json remain unchanged by this authority.",
+    "New requirements, changed exit conditions, bulk promotion, and standard lowering are outside this authority."
+  ],
+  "deferredPolicy": "Existing DEFERRED decisions, including LITE-04-101, do not change.",
+  "reopenCondition": "Reopen an individual row only with new concrete counterevidence or when its recorded evidence is invalidated by a relevant production change.",
+  "hashAnchor": "b8a3f061b5d8f1688c57e5abefd6c4f03b800d0ee8d0d9de92329d69b4655714"
+}

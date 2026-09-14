@@ -29,6 +29,12 @@ export const PASS_FREEZE_HASH_ANCHOR = '66ffb04af96000c074482bb3ad3f01405197290a
 // row into DEFERRED, so this anchor is never a promotion path.
 export const DEFERRAL_AMENDMENT_HASH_ANCHOR = 'dd0c0dde61d23c1307516eb2f6a299d306136b73a5c2a044f7f702a523a3a5df';
 const DEFERRAL_AMENDMENT_FILE = 'deferral-amendments.json';
+// PASS promotion is a separate, additive authority. The original pass-freeze file
+// remains immutable; this anchor only recognizes the user's explicit, controlled
+// per-row release of that freeze and cannot authorize a scope addition or a deferral.
+export const PASS_PROMOTION_AUTHORITY_HASH_ANCHOR = 'b8a3f061b5d8f1688c57e5abefd6c4f03b800d0ee8d0d9de92329d69b4655714';
+const PASS_PROMOTION_AUTHORITY_FILE = 'pass-promotion-authority.json';
+const PASS_PROMOTIONS_FILE = 'pass-promotions.json';
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const object = (value, label) => assert.ok(isObject(value), `${label} must be an object`);
@@ -170,7 +176,193 @@ function loadDeferralAmendments(repositoryRoot) {
   return validateDeferralAmendments(readJson(existingPath(repositoryRoot, path, 'deferral amendment file')));
 }
 
-export function validateFrozenScopeStates(matrix, freeze, deferralAmendments = new Map()) {
+function promotionAuthorityPayload(authority) {
+  return {
+    schemaVersion: authority.schemaVersion,
+    authorityId: authority.authorityId,
+    grantedAt: authority.grantedAt,
+    grantedBy: authority.grantedBy,
+    purpose: authority.purpose,
+    matrixVersion: authority.matrixVersion,
+    allowedTransitions: authority.allowedTransitions,
+    constraints: authority.constraints,
+    deferredPolicy: authority.deferredPolicy,
+    reopenCondition: authority.reopenCondition,
+  };
+}
+
+export function hashPassPromotionAuthority(authority) {
+  return digest(JSON.stringify(promotionAuthorityPayload(authority)));
+}
+
+export function validatePassPromotionAuthority(authority) {
+  object(authority, 'pass-promotion-authority');
+  for (const key of Object.keys(authority)) {
+    assert.ok([
+      'schemaVersion', 'authorityId', 'grantedAt', 'grantedBy', 'purpose', 'matrixVersion',
+      'allowedTransitions', 'constraints', 'deferredPolicy', 'reopenCondition', 'hashAnchor',
+    ].includes(key), `pass-promotion-authority has unknown field ${key}`);
+  }
+  assert.equal(authority.schemaVersion, 1, 'invalid pass-promotion-authority schemaVersion');
+  for (const field of ['authorityId', 'grantedAt', 'grantedBy', 'purpose', 'deferredPolicy', 'reopenCondition']) {
+    assert.equal(typeof authority[field], 'string', `pass-promotion-authority requires ${field}`);
+    assert.ok(authority[field].trim().length > 0, `pass-promotion-authority requires ${field}`);
+  }
+  assert.equal(authority.authorityId, 'lite-pass-promotion-20260915', 'pass-promotion authority identity changed');
+  assert.equal(authority.matrixVersion, 17, 'pass-promotion authority matrix version changed');
+  assert.ok(Array.isArray(authority.allowedTransitions), 'pass-promotion-authority transitions must be an array');
+  assert.deepEqual(authority.allowedTransitions, [
+    { from: 'GAP', to: 'PASS' },
+    { from: 'RUNTIME-VERIFY', to: 'PASS' },
+  ], 'pass-promotion authority transitions changed');
+  assert.ok(Array.isArray(authority.constraints) && authority.constraints.length > 0,
+    'pass-promotion-authority constraints are required');
+  for (const constraint of authority.constraints) {
+    assert.equal(typeof constraint, 'string', 'pass-promotion authority constraint must be text');
+    assert.ok(constraint.trim().length > 0, 'pass-promotion authority constraint must not be empty');
+  }
+  const anchor = hashPassPromotionAuthority(authority);
+  assert.equal(anchor, PASS_PROMOTION_AUTHORITY_HASH_ANCHOR, 'pass-promotion authority identity changed');
+  if (Object.hasOwn(authority, 'hashAnchor')) assert.equal(authority.hashAnchor, anchor, 'pass-promotion authority hash mismatch');
+  return { ...authority, hashAnchor: anchor };
+}
+
+function loadPassPromotionAuthority(repositoryRoot, matrix) {
+  assert.equal(typeof matrix.passPromotionAuthority, 'string', 'matrix.passPromotionAuthority is required');
+  const path = resolve(repositoryRoot, 'docs/implementation/lite-closeout', matrix.passPromotionAuthority);
+  return validatePassPromotionAuthority(readJson(existingPath(repositoryRoot, path, 'pass-promotion authority file')));
+}
+
+function promotionKeys(promotion) {
+  return Object.keys(promotion).sort();
+}
+
+export function validatePassPromotions(matrix, freeze, authority, ledger, repositoryRoot = root, deferralAmendments = new Map()) {
+  const validatedAuthority = validatePassPromotionAuthority(authority);
+  object(ledger, 'pass-promotions');
+  for (const key of Object.keys(ledger)) {
+    assert.ok(['schemaVersion', 'authorityId', 'authorityHash', 'matrixVersion', 'baselineSha', 'promotions'].includes(key),
+      `pass-promotions has unknown field ${key}`);
+  }
+  assert.equal(ledger.schemaVersion, 1, 'invalid pass-promotions schemaVersion');
+  assert.equal(ledger.authorityId, validatedAuthority.authorityId, 'pass-promotions authority mismatch');
+  assert.equal(ledger.authorityHash, validatedAuthority.hashAnchor, 'pass-promotions authority hash mismatch');
+  assert.equal(ledger.matrixVersion, matrix.matrixVersion, 'pass-promotions matrix version mismatch');
+  assertSha(ledger.baselineSha, sha40, 'pass-promotions baselineSha');
+  assert.equal(ledger.baselineSha, matrix.promotionBaselineSha, 'pass-promotions baseline is not the authorized final implementation SHA');
+  assert.ok(Array.isArray(ledger.promotions), 'pass-promotions promotions must be an array');
+  const freezeInfo = validatePassFreeze(freeze);
+  const rows = new Map(matrix.requirements.map(row => [row.id, row]));
+  const byId = new Map();
+  for (const promotion of ledger.promotions) {
+    object(promotion, 'pass promotion');
+    assert.deepEqual(promotionKeys(promotion), [
+      'assertions', 'baselineSha', 'command', 'counts', 'cwd', 'evidenceIds', 'from', 'implementation',
+      'promotionId', 'rationale', 'rawExitCode', 'requirementId', 'to',
+    ], `pass promotion schema changed: ${promotion.requirementId ?? '<unknown>'}`);
+    assert.match(promotion.requirementId, requirementId, `invalid pass promotion id ${promotion.requirementId}`);
+    assert.equal(promotion.promotionId, `PROMOTION-${promotion.requirementId}`, `pass promotion identity mismatch: ${promotion.requirementId}`);
+    assert.ok(!byId.has(promotion.requirementId), `duplicate pass promotion ${promotion.requirementId}`);
+    const row = rows.get(promotion.requirementId);
+    assert.ok(row, `pass promotion references unknown requirement: ${promotion.requirementId}`);
+    assert.equal(row.state, 'PASS', `pass promotion row is not PASS: ${promotion.requirementId}`);
+    assert.ok(!deferralAmendments.has(promotion.requirementId),
+      `DEFERRED row is immutable under pass-promotion authority: ${promotion.requirementId}`);
+    assert.ok(promotion.from === 'GAP' || promotion.from === 'RUNTIME-VERIFY', `invalid pass promotion from: ${promotion.requirementId}`);
+    assert.equal(promotion.to, 'PASS', `pass promotion target must be PASS: ${promotion.requirementId}`);
+    const frozenState = freezeInfo.byId.get(promotion.requirementId);
+    assert.ok(frozenState !== undefined, `pass promotion is outside frozen scope: ${promotion.requirementId}`);
+    // Old PASS rows were withdrawn to RUNTIME-VERIFY before this authority was
+    // granted. They may only be restored through that explicit intermediate state.
+    const expectedFrom = frozenState === 'PASS' ? 'RUNTIME-VERIFY' : frozenState;
+    assert.equal(promotion.from, expectedFrom, `pass promotion transition is not the recorded row transition: ${promotion.requirementId}`);
+    assert.equal(promotion.baselineSha, ledger.baselineSha, `pass promotion baseline mismatch: ${promotion.requirementId}`);
+    assert.equal(typeof promotion.command, 'string', `pass promotion command is required: ${promotion.requirementId}`);
+    assert.ok(promotion.command.trim().length > 0 && !/<[^>]+>/.test(promotion.command), `pass promotion command is not literal: ${promotion.requirementId}`);
+    assert.equal(typeof promotion.cwd, 'string', `pass promotion cwd is required: ${promotion.requirementId}`);
+    assert.equal(promotion.rawExitCode, 0, `pass promotion raw exit must be zero: ${promotion.requirementId}`);
+    object(promotion.counts, `pass promotion counts ${promotion.requirementId}`);
+    for (const key of ['passed', 'failed', 'skipped']) {
+      assert.ok(Number.isSafeInteger(promotion.counts[key]) && promotion.counts[key] >= 0,
+        `pass promotion count ${key} is required: ${promotion.requirementId}`);
+    }
+    assert.ok(promotion.counts.passed > 0, `pass promotion has no passing assertions: ${promotion.requirementId}`);
+    assert.equal(promotion.counts.failed, 0, `pass promotion has failures: ${promotion.requirementId}`);
+    assert.equal(promotion.counts.skipped, 0, `pass promotion has skipped assertions: ${promotion.requirementId}`);
+    assert.ok(Array.isArray(promotion.implementation) && promotion.implementation.length > 0,
+      `pass promotion implementation is required: ${promotion.requirementId}`);
+    for (const file of promotion.implementation) existingPath(repositoryRoot, file, `pass promotion implementation ${promotion.requirementId}`);
+    assert.ok(Array.isArray(promotion.evidenceIds) && promotion.evidenceIds.length > 0,
+      `pass promotion evidenceIds are required: ${promotion.requirementId}`);
+    unique(promotion.evidenceIds, `pass promotion evidenceIds ${promotion.requirementId}`);
+    assert.ok(Array.isArray(promotion.assertions) && promotion.assertions.length > 0,
+      `pass promotion assertions are required: ${promotion.requirementId}`);
+    unique(promotion.assertions.map(assertion => assertion.id), `pass promotion assertion ids ${promotion.requirementId}`);
+    for (const assertion of promotion.assertions) {
+      object(assertion, `pass promotion assertion ${promotion.requirementId}`);
+      assert.deepEqual(Object.keys(assertion).sort(), ['clause', 'expression', 'file', 'id', 'line', 'name', 'outcome', 'whyDirect'],
+        `pass promotion assertion schema changed: ${promotion.requirementId}`);
+      for (const field of ['id', 'clause', 'expression', 'file', 'name', 'whyDirect']) {
+        assert.equal(typeof assertion[field], 'string', `pass promotion assertion ${field} is required: ${promotion.requirementId}`);
+        assert.ok(assertion[field].trim().length > 0, `pass promotion assertion ${field} is empty: ${promotion.requirementId}`);
+      }
+      assert.ok(Number.isSafeInteger(assertion.line) && assertion.line > 0, `pass promotion assertion line is required: ${promotion.requirementId}`);
+      assert.equal(assertion.outcome, 'passed', `pass promotion assertion outcome is not passed: ${promotion.requirementId}`);
+      existingPath(repositoryRoot, assertion.file, `pass promotion assertion source ${promotion.requirementId}`);
+      const source = readFileSync(existingPath(repositoryRoot, assertion.file, `pass promotion assertion source ${promotion.requirementId}`), 'utf8');
+      assert.ok(/\b(?:assert|expect)\b/.test(assertion.expression), `pass promotion assertion expression is not an assertion: ${promotion.requirementId}`);
+      assert.ok(source.split(/\r?\n/)[assertion.line - 1]?.includes(assertion.expression),
+        `pass promotion assertion expression is not at the stated source line: ${promotion.requirementId}`);
+      assert.ok(source.includes(assertion.name), `pass promotion assertion test name is absent: ${promotion.requirementId}`);
+    }
+    assert.equal(typeof promotion.rationale, 'string', `pass promotion rationale is required: ${promotion.requirementId}`);
+    assert.ok(promotion.rationale.trim().length > 0, `pass promotion rationale is empty: ${promotion.requirementId}`);
+    byId.set(promotion.requirementId, promotion);
+  }
+  for (const row of matrix.requirements) {
+    if (row.state === 'PASS' && !freezeInfo.allowedPassIds.has(row.id)) {
+      assert.ok(byId.has(row.id), `PASS row has no individually authorized promotion: ${row.id}`);
+    }
+  }
+  return { authority: validatedAuthority, byId };
+}
+
+export function validatePassPromotionEvidence(row, promotion, evidenceMap, matrix, repositoryRoot = root) {
+  assert.equal(row.state, 'PASS', `promotion evidence row is not PASS: ${row.id}`);
+  assert.deepEqual(
+    [...new Set(row.evidence)].sort(),
+    [...new Set(promotion.evidenceIds)].sort(),
+    `promotion evidence does not exactly match the row evidence: ${row.id}`,
+  );
+  const rawReceipts = [];
+  for (const evidenceId of promotion.evidenceIds) {
+    const proof = evidenceMap.get(evidenceId);
+    assert.ok(proof, `promotion evidence is not present in evidence.json: ${row.id}:${evidenceId}`);
+    rawReceipts.push(validatePassEvidence(row, proof, matrix, repositoryRoot));
+  }
+  for (const assertion of promotion.assertions) {
+    const matched = rawReceipts.some(raw => raw.assertionCoverage.some(candidate => (
+      candidate.id === assertion.id
+      && candidate.requirementId === row.id
+      && candidate.file === assertion.file
+      && candidate.name === assertion.name
+      && candidate.line === assertion.line
+      && candidate.expression === assertion.expression
+      && candidate.outcome === assertion.outcome
+    )));
+    assert.ok(matched, `promotion assertion has no matching raw evidence: ${row.id}:${assertion.id}`);
+  }
+}
+
+function loadPassPromotions(repositoryRoot, matrix, freeze, deferralAmendments) {
+  if (matrix.passPromotions === undefined) return new Map();
+  assert.equal(typeof matrix.passPromotions, 'string', 'matrix.passPromotions is required');
+  const path = resolve(repositoryRoot, 'docs/implementation/lite-closeout', matrix.passPromotions);
+  const authority = loadPassPromotionAuthority(repositoryRoot, matrix);
+  return validatePassPromotions(matrix, freeze, authority, readJson(existingPath(repositoryRoot, path, 'pass-promotions file')), repositoryRoot, deferralAmendments).byId;
+}
+
+export function validateFrozenScopeStates(matrix, freeze, deferralAmendments = new Map(), passPromotions = new Map()) {
   const { byId, allowedPassIds } = validatePassFreeze(freeze);
   const current = new Map(matrix.requirements.map(row => [row.id, row]));
   for (const id of byId.keys()) assert.ok(current.has(id), `removed frozen requirement ${id}`);
@@ -181,14 +373,15 @@ export function validateFrozenScopeStates(matrix, freeze, deferralAmendments = n
     } else if (before === 'PASS') {
       assert.ok(row.state === 'RUNTIME-VERIFY' || row.state === 'PASS',
         `frozen PASS may only be withdrawn to RUNTIME-VERIFY: ${row.id}`);
-      if (row.state === 'PASS') assert.ok(allowedPassIds.has(row.id), `PASS state is frozen and not allowed: ${row.id}`);
+      if (row.state === 'PASS') assert.ok(allowedPassIds.has(row.id) || passPromotions.has(row.id), `PASS state is frozen and not allowed: ${row.id}`);
     } else {
       // A user-authorized deferral amendment may move a row from the state the freeze
       // recorded into DEFERRED, and only into DEFERRED: validateDeferralAmendments has
       // already refused every other target, so this cannot become a promotion path.
       const amendment = deferralAmendments.get(row.id);
       const authorizedDeferral = row.state === 'DEFERRED' && amendment !== undefined && amendment.from === before;
-      assert.ok(authorizedDeferral || row.state === before,
+      const authorizedPromotion = row.state === 'PASS' && passPromotions.has(row.id);
+      assert.ok(authorizedDeferral || authorizedPromotion || row.state === before,
         `original ${before} state changed: ${row.id}`);
     }
   }
@@ -259,6 +452,160 @@ function validateRaw(proof, expectedBaseline, repositoryRoot, label) {
   return raw;
 }
 
+/**
+ * Candidate harnesses emit structured actual/expected receipts rather than TAP.
+ * They are accepted only through this stricter, explicit format: the receipt must
+ * be a preserved file from the literal command, every source receipt must pass,
+ * and every mapped assertion must point at the exact source invocation that
+ * produced it. This is not a file-level or keyword-based promotion path.
+ */
+function validateControlledHarnessRaw(proof, expectedBaseline, repositoryRoot, label) {
+  const raw = loadRaw(proof, repositoryRoot, label);
+  object(raw, `${label} raw receipt`);
+  assert.equal(raw.schemaVersion, 1, `${label} raw receipt schemaVersion`);
+  assert.equal(raw.format, 'controlled-harness', `${label} raw receipt format`);
+  assertSha(raw.baseline, sha40, `${label} raw baseline`);
+  assert.equal(raw.baseline, expectedBaseline, `${label} raw baseline mismatch`);
+  object(raw.command, `${label} raw command`);
+  assert.equal(typeof raw.command.executable, 'string', `${label} raw executable is required`);
+  assert.ok(raw.command.executable && Array.isArray(raw.command.args), `${label} raw command is incomplete`);
+  assert.ok(raw.command.args.every(argument => typeof argument === 'string'), `${label} raw command args are invalid`);
+  assert.ok(!/<[^>]+>/.test(JSON.stringify(raw.command)), `${label} raw command is not literal`);
+  assert.equal(typeof raw.cwd, 'string', `${label} raw cwd is required`);
+  assert.equal(resolve(existingPath(repositoryRoot, raw.cwd, `${label} raw cwd`)),
+    resolve(existingPath(repositoryRoot, proof.cwd, `${label} cwd`)), `${label} cwd mismatch`);
+  assert.equal(raw.trackedCheckoutUnchanged, true, `${label} checkout changed during invocation`);
+  assert.equal(raw.rawExitCode, 0, `${label} raw exit code must be zero`);
+  assert.equal(raw.signal, null, `${label} invocation ended by signal`);
+  assert.equal(raw.error, null, `${label} invocation reported a spawn error`);
+  assert.ok(Array.isArray(raw.logs) && raw.logs.length > 0, `${label} requires original raw logs`);
+  for (const log of raw.logs) {
+    object(log, `${label} raw log`);
+    assertSha(log.sha256, sha64, `${label} raw log sha256`);
+    const logPath = existingPath(repositoryRoot, log.path, `${label} raw log`);
+    assert.equal(fileDigest(logPath), log.sha256, `${label} raw log checksum mismatch`);
+  }
+  assert.equal(typeof raw.sourceReceipt, 'string', `${label} source receipt is required`);
+  const sourcePath = existingPath(repositoryRoot, raw.sourceReceipt, `${label} source receipt`);
+  assert.ok(raw.logs.some(log => resolve(repositoryRoot, log.path) === sourcePath), `${label} source receipt is not preserved in raw logs`);
+  const source = readJson(sourcePath);
+  object(source, `${label} source receipt`);
+  assert.equal(source.schemaVersion, 1, `${label} source receipt schemaVersion`);
+  assert.ok(Array.isArray(source.receipts), `${label} source receipts are required`);
+  object(source.counts, `${label} source counts`);
+  object(raw.counts, `${label} raw counts`);
+  for (const key of ['passed', 'failed', 'skipped']) {
+    assert.ok(Number.isSafeInteger(source.counts[key]) && source.counts[key] >= 0, `${label} source count ${key} is required`);
+    assert.equal(raw.counts[key], source.counts[key], `${label} raw/source count mismatch for ${key}`);
+  }
+  assert.equal(source.counts.total, source.counts.passed + source.counts.failed + source.counts.skipped,
+    `${label} source total count mismatch`);
+  assert.equal(raw.counts.total, source.counts.total, `${label} raw total count mismatch`);
+  assert.ok(raw.counts.passed > 0, `${label} raw pass count is zero`);
+  assert.equal(raw.counts.failed, 0, `${label} raw fail count is nonzero`);
+  assert.equal(raw.counts.skipped, 0, `${label} raw skip count is nonzero`);
+  assert.ok(Array.isArray(raw.assertionCoverage) && raw.assertionCoverage.length === source.receipts.length,
+    `${label} controlled assertion mapping must cover every source receipt`);
+  const bySourceId = new Map();
+  for (const receipt of source.receipts) {
+    object(receipt, `${label} source assertion`);
+    assert.equal(receipt.outcome, 'passed', `${label} source assertion outcome is not passed`);
+    assert.deepEqual(receipt.actual, receipt.expected, `${label} source assertion actual/expected mismatch: ${receipt.id}`);
+    assert.ok(typeof receipt.id === 'string' && receipt.id, `${label} source assertion id is required`);
+    assert.ok(!bySourceId.has(receipt.id), `${label} duplicate source assertion id: ${receipt.id}`);
+    bySourceId.set(receipt.id, receipt);
+  }
+  const mappedIds = new Set();
+  for (const assertion of raw.assertionCoverage) {
+    object(assertion, `${label} controlled assertion mapping`);
+    for (const key of ['id', 'requirementId', 'file', 'name', 'expression']) {
+      assert.equal(typeof assertion[key], 'string', `${label} controlled assertion ${key} is required`);
+      assert.ok(assertion[key].trim().length > 0, `${label} controlled assertion ${key} is empty`);
+    }
+    assert.ok(Number.isSafeInteger(assertion.line) && assertion.line > 0, `${label} controlled assertion line is required`);
+    assert.equal(assertion.outcome, 'passed', `${label} controlled assertion outcome is not passed`);
+    assert.ok(!mappedIds.has(assertion.id), `${label} duplicate controlled assertion mapping: ${assertion.id}`);
+    mappedIds.add(assertion.id);
+    const receipt = bySourceId.get(assertion.id);
+    assert.ok(receipt, `${label} controlled assertion is absent from source receipt: ${assertion.id}`);
+    assert.equal(assertion.requirementId, receipt.requirementId, `${label} controlled assertion requirement mismatch: ${assertion.id}`);
+    assert.deepEqual(assertion.actual, receipt.actual, `${label} controlled assertion actual mismatch: ${assertion.id}`);
+    assert.deepEqual(assertion.expected, receipt.expected, `${label} controlled assertion expected mismatch: ${assertion.id}`);
+    const sourceFile = existingPath(repositoryRoot, assertion.file, `${label} controlled assertion source`);
+    const sourceText = readFileSync(sourceFile, 'utf8');
+    assert.ok(sourceText.split(/\r?\n/)[assertion.line - 1]?.includes(assertion.expression),
+      `${label} controlled assertion expression is not at the stated source line: ${assertion.id}`);
+    assert.ok(sourceText.includes(assertion.name), `${label} controlled assertion name is absent: ${assertion.id}`);
+    assert.ok(JSON.stringify(source).includes(assertion.id), `${label} source receipt does not preserve assertion id: ${assertion.id}`);
+  }
+  return raw;
+}
+
+/**
+ * Vitest does not emit node:test's # pass/#fail summary. Keep its original
+ * verbose output, but require the equivalent summary and an executed named
+ * check for every mapped requirement.
+ */
+export function validateVitestRaw(proof, expectedBaseline, repositoryRoot, label) {
+  const raw = loadRaw(proof, repositoryRoot, label);
+  object(raw, `${label} raw receipt`);
+  assert.equal(raw.schemaVersion, 1, `${label} raw receipt schemaVersion`);
+  assert.equal(raw.format, 'vitest', `${label} raw receipt format`);
+  assertSha(raw.baseline, sha40, `${label} raw baseline`);
+  assert.equal(raw.baseline, expectedBaseline, `${label} raw baseline mismatch`);
+  object(raw.command, `${label} raw command`);
+  assert.equal(typeof raw.command.executable, 'string', `${label} raw executable is required`);
+  assert.ok(raw.command.executable && Array.isArray(raw.command.args), `${label} raw command is incomplete`);
+  assert.ok(raw.command.args.every(argument => typeof argument === 'string'), `${label} raw command args are invalid`);
+  assert.ok(!/<[^>]+>/.test(JSON.stringify(raw.command)), `${label} raw command is not literal`);
+  assert.equal(typeof raw.cwd, 'string', `${label} raw cwd is required`);
+  assert.equal(resolve(existingPath(repositoryRoot, raw.cwd, `${label} raw cwd`)),
+    resolve(existingPath(repositoryRoot, proof.cwd, `${label} cwd`)), `${label} cwd mismatch`);
+  assert.equal(raw.trackedCheckoutUnchanged, true, `${label} checkout changed during invocation`);
+  assert.equal(raw.rawExitCode, 0, `${label} raw exit code must be zero`);
+  assert.equal(raw.signal, null, `${label} invocation ended by signal`);
+  assert.equal(raw.error, null, `${label} invocation reported a spawn error`);
+  assert.ok(Array.isArray(raw.logs) && raw.logs.length > 0, `${label} requires original raw logs`);
+  for (const log of raw.logs) {
+    object(log, `${label} raw log`);
+    assertSha(log.sha256, sha64, `${label} raw log sha256`);
+    const logPath = existingPath(repositoryRoot, log.path, `${label} raw log`);
+    assert.equal(fileDigest(logPath), log.sha256, `${label} raw log checksum mismatch`);
+  }
+  const originalOutput = raw.logs.map(log => readFileSync(existingPath(repositoryRoot, log.path, `${label} raw log`), 'utf8')).join('\n');
+  const testSummary = [...originalOutput.matchAll(/^\s*Tests\s+(.+)$/gm)];
+  assert.equal(testSummary.length, 1, `${label} Vitest Tests summary is missing or ambiguous`);
+  const summary = testSummary[0][1];
+  const count = phrase => {
+    const match = summary.match(new RegExp(`(\\d+)\\s+${phrase}\\b`));
+    return match ? Number(match[1]) : 0;
+  };
+  const counts = { passed: count('passed'), failed: count('failed'), skipped: count('skipped') };
+  assert.ok(counts.passed > 0, `${label} Vitest pass count is zero`);
+  assert.equal(counts.failed, 0, `${label} Vitest fail count is nonzero`);
+  assert.equal(counts.skipped, 0, `${label} Vitest skip count is nonzero`);
+  object(raw.counts, `${label} raw counts`);
+  for (const key of ['passed', 'failed', 'skipped']) assert.equal(raw.counts[key], counts[key], `${label} raw count ${key} disagrees with Vitest`);
+  assert.ok(Array.isArray(raw.assertionCoverage) && raw.assertionCoverage.length > 0,
+    `${label} assertion mapping is required`);
+  const lines = originalOutput.split(/\r?\n/);
+  for (const assertion of raw.assertionCoverage) {
+    object(assertion, `${label} assertion mapping`);
+    for (const key of ['id', 'requirementId', 'file', 'name', 'expression']) {
+      assert.ok(typeof assertion[key] === 'string' && assertion[key], `${label} assertion ${key} is required`);
+    }
+    assert.ok(Number.isSafeInteger(assertion.line) && assertion.line > 0, `${label} assertion line is required`);
+    assert.equal(assertion.outcome, 'passed', `${label} assertion outcome is not passed`);
+    const source = readFileSync(existingPath(repositoryRoot, assertion.file, `${label} assertion source`), 'utf8');
+    assert.ok(source.split(/\r?\n/)[assertion.line - 1]?.includes(assertion.expression),
+      `${label} assertion expression is not at the stated source line`);
+    assert.ok(source.includes(assertion.name), `${label} assertion test name is absent from source`);
+    assert.ok(lines.some(line => /^\s*✓\s+/.test(line) && line.includes(assertion.name)),
+      `${label} assertion test has no executed passing Vitest result`);
+  }
+  return raw;
+}
+
 function validateResult(proof, raw, label) {
   object(proof.result, `${label} result`);
   for (const key of ['passed', 'failed', 'skipped']) {
@@ -280,8 +627,12 @@ export function validatePassEvidence(row, proof, matrix, repositoryRoot = root) 
   assert.equal(typeof proof.limitation, 'string', `PASS evidence limitation is required: ${proof.id ?? '<unknown>'}`);
   assert.ok(Array.isArray(proof.requirementIds) && proof.requirementIds.includes(row.id), `evidence is not mapped to requirement: ${row.id}`);
   if (proof.kind === 'github-actions') assert.ok(proof.url, `unverified PASS evidence: ${proof.id}`);
-  assert.ok(['local-tests', 'github-actions', 'runtime-verification'].includes(proof.kind), `unsupported PASS evidence kind: ${proof.kind}`);
-  const raw = validateRaw(proof, proof.baseline, repositoryRoot, `PASS evidence ${proof.id}`);
+  assert.ok(['local-tests', 'github-actions', 'runtime-verification', 'controlled-harness', 'vitest'].includes(proof.kind), `unsupported PASS evidence kind: ${proof.kind}`);
+  const raw = proof.kind === 'controlled-harness'
+    ? validateControlledHarnessRaw(proof, proof.baseline, repositoryRoot, `PASS evidence ${proof.id}`)
+    : proof.kind === 'vitest'
+      ? validateVitestRaw(proof, proof.baseline, repositoryRoot, `PASS evidence ${proof.id}`)
+      : validateRaw(proof, proof.baseline, repositoryRoot, `PASS evidence ${proof.id}`);
   validateResult(proof, raw, `PASS evidence ${proof.id}`);
   assert.ok(raw.assertionCoverage.some(assertion => assertion.requirementId === row.id), `assertion mapping is not exact: ${row.id}`);
   return raw;
@@ -303,9 +654,26 @@ function evidenceById(evidence) {
 export function validateFinalClosure(matrix, evidence, repositoryRoot = root) {
   assert.equal(matrix.requirements.filter(row => row.state === 'GAP' || row.state === 'RUNTIME-VERIFY').length, 0,
     'required Lite acceptance remains open');
+  assertSha(matrix.finalImplementationSha, sha40, 'finalImplementationSha');
   assertSha(matrix.finalMainSha, sha40, 'finalMainSha');
   const actualHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
   assert.equal(matrix.finalMainSha, actualHead, 'finalMainSha is not the real current HEAD');
+  if (matrix.finalImplementationSha !== matrix.finalMainSha) {
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', matrix.finalImplementationSha, matrix.finalMainSha], {
+        cwd: repositoryRoot, stdio: 'ignore',
+      });
+    } catch {
+      assert.fail('finalImplementationSha is not an ancestor of finalMainSha');
+    }
+    const changedFiles = execFileSync('git', ['diff', '--name-only', `${matrix.finalImplementationSha}..${matrix.finalMainSha}`], {
+      cwd: repositoryRoot, encoding: 'utf8',
+    }).split(/\r?\n/).map(file => file.trim()).filter(Boolean);
+    for (const file of changedFiles) {
+      assert.match(file, /^docs\/implementation\/lite-closeout\//,
+        `non-closeout production change after finalImplementationSha: ${file}`);
+    }
+  }
   const byId = evidenceById(evidence);
   const ci = byId.get(matrix.finalCiEvidence);
   assert.ok(ci?.kind === 'github-actions' && ci.baseline === matrix.finalMainSha && ci.url, 'final main CI evidence is not verified');
@@ -405,12 +773,17 @@ export function validateScope(matrix, evidence, lock, repositoryRoot = root, pas
     }
   }
   const freeze = passFreeze ?? loadFreeze(matrix, repositoryRoot);
-  validateFrozenScopeStates(matrix, freeze, deferralAmendments);
+  const passPromotions = loadPassPromotions(repositoryRoot, matrix, freeze, deferralAmendments);
+  validateFrozenScopeStates(matrix, freeze, deferralAmendments, passPromotions);
   for (const row of matrix.requirements) {
     if (row.state !== 'PASS') continue;
-    assert.ok(freeze.allowedPassIds.includes(row.id), `PASS state is frozen and not allowed: ${row.id}`);
+    assert.ok(freeze.allowedPassIds.includes(row.id) || passPromotions.has(row.id), `PASS state is frozen and not allowed: ${row.id}`);
     assert.ok(row.evidence.length > 0, `PASS without evidence ${row.id}`);
-    for (const id of row.evidence) validatePassEvidence(row, evidenceMap.get(id), matrix, repositoryRoot);
+    if (passPromotions.has(row.id)) {
+      validatePassPromotionEvidence(row, passPromotions.get(row.id), evidenceMap, matrix, repositoryRoot);
+    } else {
+      for (const id of row.evidence) validatePassEvidence(row, evidenceMap.get(id), matrix, repositoryRoot);
+    }
   }
   return Object.fromEntries([...states].map(state => [state, matrix.requirements.filter(row => row.state === state).length]));
 }

@@ -647,7 +647,8 @@ try {
     { adoptions: body.adoptions,
       turnPointsAtAdoptedSnapshot: turnRow?.snapshotId === inspectorTurn.snapshotId,
       adoptedSummaryIsThePublishedRow: body.adoptions.every(item => item.summaryId === publishedRow.id) },
-    { adoptions: [{ snapshotId: inspectorTurn.snapshotId, turnId: inspectorTurn.turnId, summaryId: publishedRow.id, createdAt: NOW }],
+    { adoptions: [{ snapshotId: inspectorTurn.snapshotId, turnId: inspectorTurn.turnId, summaryId: publishedRow.id,
+      summarizedMessages: 4, createdAt: NOW }],
       turnPointsAtAdoptedSnapshot: true, adoptedSummaryIsThePublishedRow: true });
   const failure = await (await fetch(base + '/conversations/' + CONV_GUARD + '/compactions')).json();
   // A Conversation nobody compacted yet: the surface must report nothing rather than
