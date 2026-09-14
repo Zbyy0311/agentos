@@ -36,6 +36,12 @@ export interface ConversationAgentRunnerOptions {
   executionId: string;
   message: string;
   history: ConversationMessage[];
+  /**
+   * LITE-09-101: the frozen Memory selection this Turn was authorized to send.
+   * The caller persists the exact selection before invoking the Provider and passes
+   * the same text here, so the reply can be traced back to its snapshot.
+   */
+  memoryContext?: string;
   attachments?: AgentImageAttachment[];
   signal?: AbortSignal;
   onEvent?: (event: ConversationExecutionEvent) => void;
@@ -51,9 +57,14 @@ export class ConversationAgentRunner {
   async run(): Promise<ConversationRunResult> {
     const startedAt = new Date().toISOString();
     this.emit('preparing_context', '正在准备会话上下文');
-    const prompt = buildConversationPrompt(this.options.agent, this.options.history, this.options.runtimePolicy?.promptPrefix
-      ? `${this.options.runtimePolicy.promptPrefix}\n\n${this.options.message}`
-      : this.options.message);
+    const prompt = buildConversationPrompt(
+      this.options.agent,
+      this.options.history,
+      this.options.runtimePolicy?.promptPrefix
+        ? `${this.options.runtimePolicy.promptPrefix}\n\n${this.options.message}`
+        : this.options.message,
+      this.options.memoryContext,
+    );
     this.emit('running_cli', '正在调用 Agent CLI');
 
     let streamedContent = '';
@@ -183,6 +194,7 @@ function buildConversationPrompt(
   agent: AgentProfile,
   history: ConversationMessage[],
   message: string,
+  memoryContext?: string,
 ): string {
   const priorMessages = history.slice(-12).map(item => {
     const sender = item.senderType === 'user' ? '用户' : item.senderType === 'agent' ? agent.name : '系统';
@@ -195,6 +207,9 @@ function buildConversationPrompt(
     '',
     '请依据你的职责和权限完成用户请求。仅输出用户可见的结论、执行进度和必要证据；不要输出私有思维链。',
     '如果缺少完成任务所必需的用户信息，停止执行并输出唯一的等待标记：<!-- agentos-waiting-user: {"question":"需要用户补充的信息"} -->。不要在普通成功结果中输出该标记。',
+    memoryContext && memoryContext.trim()
+      ? `## 相关记忆（本轮冻结选择，来源可追溯）\n${memoryContext}`
+      : '',
     priorMessages ? `## 最近会话\n${priorMessages}` : '',
     '## 当前用户消息',
     message,

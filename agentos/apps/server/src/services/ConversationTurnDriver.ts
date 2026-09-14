@@ -71,6 +71,12 @@ export interface TurnContextSelection {
   readonly totalTokens: number;
   readonly truncated: boolean;
   readonly retrievalStrategyVersion: string;
+  /**
+   * LITE-09-101: the exact text the Provider must receive for this selection.
+   * The driver persists the ids and passes this text to the runner, so what was
+   * frozen and what was injected cannot diverge.
+   */
+  readonly contextText?: string;
 }
 
 export interface TurnContextSelectionInput {
@@ -397,6 +403,7 @@ export class ConversationTurnDriver {
     // LITE-09-101: freeze and PERSIST the bounded context before any Provider
     // work. A persistence failure finalizes the Turn as failed and must never
     // fall back to unbounded history or invoke the Provider.
+    let memoryContext: string | undefined;
     if (this.context?.snapshots !== undefined && contextSnapshotId !== undefined) {
       try {
         const selection = (this.context.selection ?? EMPTY_SELECTION).select({
@@ -434,6 +441,11 @@ export class ConversationTurnDriver {
           retrievalStrategyVersion: selection.retrievalStrategyVersion,
           createdAt: input.createdAt,
         });
+        // LITE-09-101: the injection is the SAME selection that was just persisted -
+        // read once and reused, so the frozen ids and the injected text cannot diverge.
+        if (selection.contextText !== undefined && selection.contextText.trim().length > 0) {
+          memoryContext = selection.contextText;
+        }
       } catch (error) {
         return this.fail(
           input, reservation, 'CONTEXT_SNAPSHOT_FAILED',
@@ -465,6 +477,9 @@ export class ConversationTurnDriver {
       executionId: input.turnId,
       message: input.content,
       history: frozenHistory,
+      // LITE-09-101: inject exactly the frozen selection whose ids the snapshot above
+      // recorded. An empty or whitespace-only selection adds nothing to the prompt.
+      ...(memoryContext === undefined ? {} : { memoryContext }),
       onEvent,
       ...(input.signal === undefined ? {} : { signal: input.signal }),
     };

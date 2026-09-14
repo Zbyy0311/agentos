@@ -22,6 +22,37 @@ afterEach(() => {
 });
 
 describe('ConversationAgentRunner', () => {
+  // LITE-09-101: the frozen Memory selection must reach the prompt the Provider sees.
+  it('places the frozen memory selection in the prompt and omits an empty one', async () => {
+    const prompts: string[] = [];
+    vi.spyOn(CLIExecutor, 'execute').mockImplementation(async (_config, prompt) => {
+      prompts.push(prompt);
+      return {
+        stage: 'codex_manager', agentName: 'Codex', stdout: 'ok', stderr: '', exitCode: 0,
+        timestamp: '2026-07-12T00:00:00.000Z', duration: 1, mode: 'real',
+      };
+    });
+    const agent: AgentProfile = {
+      id: 'codex', workspaceId: 'workspace-1', name: 'Codex', role: 'codex', roleTitle: '架构师',
+      systemPrompt: '完成任务。', permissions: ['read', 'write'], enabled: true, cliCommand: 'codex', cliArgs: [],
+      createdAt: '2026-07-12T00:00:00.000Z', updatedAt: '2026-07-12T00:00:00.000Z',
+    };
+
+    await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-memory-context', message: '继续做', history: [],
+      memoryContext: '### 上线约束\n端口必须显式校验',
+    }).run();
+    expect(prompts[0]).toContain('## 相关记忆');
+    expect(prompts[0]).toContain('端口必须显式校验');
+    // The block sits before the conversation sections and the current message.
+    expect(prompts[0]!.indexOf('## 相关记忆')).toBeLessThan(prompts[0]!.indexOf('## 当前用户消息'));
+
+    await new ConversationAgentRunner({
+      agent, workspaceRoot, executionId: 'execution-memory-context-empty', message: '继续做', history: [],
+    }).run();
+    expect(prompts[1]).not.toContain('## 相关记忆');
+  });
+
   it('forwards each non-empty CLI output chunk as a streaming response event', async () => {
     process.env.AGENTOS_FORCE_MOCK = 'false';
     vi.spyOn(CLIExecutor, 'execute').mockImplementation(async (_config, _prompt, context) => {
