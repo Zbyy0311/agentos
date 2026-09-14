@@ -1,0 +1,894 @@
+{
+  "schemaVersion": 1,
+  "evidencePackage": "S7-candidate-evidence",
+  "generatedAt": "2026-09-14T12:52:14.672Z",
+  "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+  "testCodeSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+  "routeModels": {
+    "import": "none (deterministic parser and service path)"
+  },
+  "modelScopeStatement": "导入路径不调用任何 Provider 模型：证据绑定的是 AgentOS 自身的解析、幂等、事务与事件契约，因此不存在路由模型口径问题。",
+  "finalRun": {
+    "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s7-candidate-evidence-20260914",
+    "rawExitCode": 0,
+    "allRawLogs": [
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/receipts.json",
+        "sha256": "3cf389215a59a92a573ceb5945c6826615329b5e3a79d814a0e30dea46178dce",
+        "bytes": 13299
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/stdout.txt",
+        "sha256": "1c1e722533d9b8981a9fcc71ace18b4478f23a4f14f4cd982d3c650a6a908475",
+        "bytes": 63
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/exit.txt",
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+        "bytes": 3
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/scope-verifier.stdout.txt",
+        "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+        "bytes": 93
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/scope-verifier.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+        "sha256": "a9dbd826f83e92a24155d9b0daee00be08882db63c3310584d9a72fb5f945347",
+        "bytes": 1151
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "phases": {
+      "service": {
+        "importRecords": 10,
+        "sourceHash": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+        "revisedSourceHash": "a584a8c032515201e113b4f956c6d8dd266b3e71ab8f9eda06d92b0711968592"
+      },
+      "http": {
+        "importRecordsListed": 212
+      }
+    },
+    "counts": {
+      "total": 12,
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "requirements": [
+    {
+      "id": "LITE-07-106",
+      "specification": {
+        "text": "显式Markdown导入为Candidates",
+        "section": "§7; user-approved import",
+        "sourceFile": "docs/implementation/lite-closeout/S7-import-authorization.md",
+        "sourceLine": 1,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/Runtime-Specification lite/07-Memory-Runtime.md",
+            "sourceLine": 174,
+            "note": "canonical Memory 来源之一：显式导入"
+          },
+          {
+            "sourceFile": "apps/server/src/services/MemoryImportService.ts",
+            "sourceLine": 19,
+            "note": "实现常量：解析器版本、1 MiB 上限、分段与片段预算"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S7",
+        "document": "07-Memory-Runtime.md",
+        "section": "§7; §17",
+        "requirement": "显式Markdown导入为Candidates",
+        "exitCriteria": "用户选择UTF-8 Markdown<=1MiB→预览→确认→有界分段候选/来源/事件；幂等、源文件保持。",
+        "recordedGap": "Workspace import强制memory:false；没有forward Memory import入口。",
+        "productionEntryPoints": [
+          "apps/server/src/managers/WorkspaceManager.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/LegacyTaskItemImportService.test.ts"
+        ],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s7-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/receipts.json",
+          "sha256": "3cf389215a59a92a573ceb5945c6826615329b5e3a79d814a0e30dea46178dce",
+          "bytes": 13299
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/stdout.txt",
+          "sha256": "1c1e722533d9b8981a9fcc71ace18b4478f23a4f14f4cd982d3c650a6a908475",
+          "bytes": 63
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "a9dbd826f83e92a24155d9b0daee00be08882db63c3310584d9a72fb5f945347",
+          "bytes": 1151
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S7E-PREVIEW-01",
+          "assertionId": "S7E-PREVIEW-01",
+          "requirementId": "LITE-07-106",
+          "phase": "file",
+          "step": "the production preview segments the real file without persisting anything",
+          "actual": {
+            "parserVersion": "lite-v1-markdown-heading",
+            "byteSize": 11626,
+            "fileBytes": 11626,
+            "sourceHashMatchesFileBytes": true,
+            "fragmentCount": 5,
+            "fragmentTitles": [
+              "handbook.md",
+              "Alpha",
+              "Beta",
+              "Beta (part 2)",
+              "Gamma"
+            ],
+            "skipped": 0,
+            "rowsWritten": {
+              "candidates": 0,
+              "records": 0,
+              "events": 0,
+              "entries": 0,
+              "runs": 0
+            }
+          },
+          "expected": {
+            "parserVersion": "lite-v1-markdown-heading",
+            "byteSize": 11626,
+            "fileBytes": 11626,
+            "sourceHashMatchesFileBytes": true,
+            "fragmentCount": 5,
+            "fragmentTitles": [
+              "handbook.md",
+              "Alpha",
+              "Beta",
+              "Beta (part 2)",
+              "Gamma"
+            ],
+            "skipped": 0,
+            "rowsWritten": {
+              "candidates": 0,
+              "records": 0,
+              "events": 0,
+              "entries": 0,
+              "runs": 0
+            }
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-PREVIEW-02",
+          "assertionId": "S7E-PREVIEW-02",
+          "requirementId": "LITE-07-106",
+          "phase": "file",
+          "step": "an oversized section is split further so every fragment stays bounded",
+          "actual": {
+            "sectionCharacters": 12000,
+            "limit": 8000,
+            "fragmentLengths": [
+              35,
+              549,
+              8000,
+              2999,
+              11
+            ],
+            "allWithinLimit": true,
+            "partTitles": [
+              "Beta (part 2)"
+            ],
+            "betaPartsReassemble": true
+          },
+          "expected": {
+            "sectionCharacters": 12000,
+            "limit": 8000,
+            "fragmentLengths": [
+              35,
+              549,
+              8000,
+              2999,
+              11
+            ],
+            "allWithinLimit": true,
+            "partTitles": [
+              "Beta (part 2)"
+            ],
+            "betaPartsReassemble": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-PREVIEW-03",
+          "assertionId": "S7E-PREVIEW-03",
+          "requirementId": "LITE-07-106",
+          "phase": "file",
+          "step": "each fragment is content-addressed and the user file is left untouched",
+          "actual": {
+            "fragmentHashesMatch": true,
+            "hashOnDiskBefore": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+            "hashOnDiskAfter": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+            "fileUnchanged": true,
+            "fileBytesOnDisk": 11626
+          },
+          "expected": {
+            "fragmentHashesMatch": true,
+            "hashOnDiskBefore": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+            "hashOnDiskAfter": "6a5b09bc07c13f0974e35bec1854bd7d017087e784c41b17f8fb3bd35512ad2f",
+            "fileUnchanged": true,
+            "fileBytesOnDisk": 11626
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-CONFIRM-01",
+          "assertionId": "S7E-CONFIRM-01",
+          "requirementId": "LITE-07-106",
+          "phase": "service",
+          "step": "a confirmed import writes review-required Candidates, durable records and canonical Events",
+          "actual": {
+            "imported": 5,
+            "converged": 0,
+            "skipped": 0,
+            "recordCount": 5,
+            "parserVersion": "lite-v1-markdown-heading",
+            "sourceHashMatchesPreview": true,
+            "fragmentHashesMatchPreview": true,
+            "fragmentIndexes": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "candidateIdsMatchRecords": true,
+            "scopes": [
+              "workspace"
+            ],
+            "categories": [
+              "knowledge"
+            ],
+            "authorities": [
+              "imported-verified"
+            ],
+            "decisions": [
+              "review-required"
+            ],
+            "owners": [
+              null
+            ],
+            "candidateCount": 5
+          },
+          "expected": {
+            "imported": 5,
+            "converged": 0,
+            "skipped": 0,
+            "recordCount": 5,
+            "parserVersion": "lite-v1-markdown-heading",
+            "sourceHashMatchesPreview": true,
+            "fragmentHashesMatchPreview": true,
+            "fragmentIndexes": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "candidateIdsMatchRecords": true,
+            "scopes": [
+              "workspace"
+            ],
+            "categories": [
+              "knowledge"
+            ],
+            "authorities": [
+              "imported-verified"
+            ],
+            "decisions": [
+              "review-required"
+            ],
+            "owners": [
+              null
+            ],
+            "candidateCount": 5
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-REFUSAL-01",
+          "assertionId": "S7E-REFUSAL-01",
+          "requirementId": "LITE-07-106",
+          "phase": "refusals",
+          "step": "the size, encoding, emptiness and input rules are executed, not assumed",
+          "actual": {
+            "tooLarge": "IMPORT_TOO_LARGE",
+            "atLimit": null,
+            "notUtf8": "IMPORT_NOT_UTF8",
+            "notUtf8IsImportError": true,
+            "empty": "IMPORT_EMPTY",
+            "blankName": "IMPORT_INPUT_INVALID",
+            "maxBytes": 1048576,
+            "rowsWrittenByRefusals": {
+              "candidates": 0,
+              "records": 0,
+              "events": 0
+            }
+          },
+          "expected": {
+            "tooLarge": "IMPORT_TOO_LARGE",
+            "atLimit": null,
+            "notUtf8": "IMPORT_NOT_UTF8",
+            "notUtf8IsImportError": true,
+            "empty": "IMPORT_EMPTY",
+            "blankName": "IMPORT_INPUT_INVALID",
+            "maxBytes": 1048576,
+            "rowsWrittenByRefusals": {
+              "candidates": 0,
+              "records": 0,
+              "events": 0
+            }
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-REFUSAL-02",
+          "assertionId": "S7E-REFUSAL-02",
+          "requirementId": "LITE-07-106",
+          "phase": "refusals",
+          "step": "the fragment budget bounds one import instead of unbounded Candidate writes",
+          "actual": {
+            "sections": 205,
+            "fragmentCount": 200,
+            "maxFragments": 200,
+            "skipped": 5,
+            "skipReasons": [
+              "fragment-limit"
+            ],
+            "confirmedImported": 200,
+            "confirmedSkipped": 5
+          },
+          "expected": {
+            "sections": 205,
+            "fragmentCount": 200,
+            "maxFragments": 200,
+            "skipped": 5,
+            "skipReasons": [
+              "fragment-limit"
+            ],
+            "confirmedImported": 200,
+            "confirmedSkipped": 5
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-HTTP-01",
+          "assertionId": "S7E-HTTP-01",
+          "requirementId": "LITE-07-106",
+          "phase": "http",
+          "step": "the mounted router previews, confirms and converges over real HTTP",
+          "actual": {
+            "previewStatus": 200,
+            "previewFragments": 2,
+            "previewParser": "lite-v1-markdown-heading",
+            "confirmStatus": 201,
+            "confirmImported": 2,
+            "repeatStatus": 200,
+            "repeatImported": 0,
+            "repeatConverged": 2,
+            "listedStatus": true,
+            "listedIds": 2,
+            "tooLargeStatus": 413,
+            "tooLargeError": "IMPORT_TOO_LARGE",
+            "missingFieldStatus": 400,
+            "missingFieldError": "IMPORT_INPUT_INVALID",
+            "unknownWorkspaceStatus": 404
+          },
+          "expected": {
+            "previewStatus": 200,
+            "previewFragments": 2,
+            "previewParser": "lite-v1-markdown-heading",
+            "confirmStatus": 201,
+            "confirmImported": 2,
+            "repeatStatus": 200,
+            "repeatImported": 0,
+            "repeatConverged": 2,
+            "listedStatus": true,
+            "listedIds": 2,
+            "tooLargeStatus": 413,
+            "tooLargeError": "IMPORT_TOO_LARGE",
+            "missingFieldStatus": 400,
+            "missingFieldError": "IMPORT_INPUT_INVALID",
+            "unknownWorkspaceStatus": 404
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "Everything is executed over a real UTF-8 Markdown file on disk. The production parser segments by heading with the versioned parser id, splits an oversized section further so every fragment stays inside the bound and the parts reassemble to the authored body, content-addresses each fragment, and leaves the user file byte-identical. Confirm then writes, in one transaction, one review-required / workspace-scoped / imported-verified Candidate per fragment plus its durable import record (source hash, fragment index, fragment hash, parser version, byte size, candidate id) and the canonical Event. The refusals are executed too: over 1 MiB is refused while exactly at the limit is accepted, invalid UTF-8 and an empty file are refused with their own codes, a blank file name is refused, and none of them write a row. The mounted router reproduces the whole path over HTTP (200 preview, 201 confirm, 200 converge, 413 for oversized, 400 for a missing field, 404 for an unknown Workspace), and the 200-fragment budget bounds one import instead of unbounded Candidate writes.",
+      "adjacentBehaviorNotProven": "The import proves the file, parser, record, Candidate and Event path for the fragments it created, with the reported skip reasons. It does not prove a UI file picker, and it does not re-verify the downstream review decision (a separate S3 row). Non-UTF-8 is only reachable through the service because an HTTP JSON body cannot carry invalid UTF-8; that refusal is asserted on the service and cited as such.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-07-107",
+      "specification": {
+        "text": "按Scope/owner及稳定来源去重，保留审计证据",
+        "section": "补可证实重复分支",
+        "sourceFile": "docs/implementation/lite-closeout/S7-import-authorization.md",
+        "sourceLine": 1,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/services/MemoryImportService.ts",
+            "sourceLine": 161,
+            "note": "幂等键：workspace + source hash + fragment + parser version"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S1",
+        "document": "07-Memory-Runtime.md",
+        "section": "§8",
+        "requirement": "按Scope/owner及稳定来源去重，保留审计证据",
+        "exitCriteria": "补可证实重复分支：同owner来源合并并发收敛；不同owner不串线；近重复审核，来源保留。",
+        "recordedGap": "查重未隔离Scope/owner/category及active状态；终态精确命中缺来源合并与版本/Event/Outbox，显式save在完整校验前返回命中。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
+        "productionEntryPoints": [
+          "apps/server/src/store/MemoryCandidateRepository.ts",
+          "apps/server/src/services/MemoryCandidateGenerationService.ts",
+          "apps/server/src/routes/memoryRuntime.ts",
+          "apps/server/src/store/MemoryEntryRepository.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+          "apps/server/src/routes/memoryRuntime.test.ts"
+        ],
+        "evidence": [
+          "S1A-RED",
+          "S1A-GREEN",
+          "S1D-SOURCE",
+          "S1D-GREEN"
+        ]
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s7-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/receipts.json",
+          "sha256": "3cf389215a59a92a573ceb5945c6826615329b5e3a79d814a0e30dea46178dce",
+          "bytes": 13299
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/stdout.txt",
+          "sha256": "1c1e722533d9b8981a9fcc71ace18b4478f23a4f14f4cd982d3c650a6a908475",
+          "bytes": 63
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "a9dbd826f83e92a24155d9b0daee00be08882db63c3310584d9a72fb5f945347",
+          "bytes": 1151
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S7E-IDEMPOTENT-01",
+          "assertionId": "S7E-IDEMPOTENT-01",
+          "requirementId": "LITE-07-107",
+          "phase": "service",
+          "step": "a repeated import of the same bytes converges and writes nothing new",
+          "actual": {
+            "imported": 0,
+            "converged": 5,
+            "sameCandidates": true,
+            "rows": {
+              "candidates": 0,
+              "records": 0,
+              "events": 0
+            }
+          },
+          "expected": {
+            "imported": 0,
+            "converged": 5,
+            "sameCandidates": true,
+            "rows": {
+              "candidates": 0,
+              "records": 0,
+              "events": 0
+            }
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-IDEMPOTENT-02",
+          "assertionId": "S7E-IDEMPOTENT-02",
+          "requirementId": "LITE-07-107",
+          "phase": "service",
+          "step": "a changed source becomes a traceable new version instead of overwriting the audit trail",
+          "actual": {
+            "sourceHashChanged": true,
+            "imported": 5,
+            "converged": 0,
+            "importedIndexes": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "recordsAfter": 10,
+            "distinctSourceVersions": 2,
+            "oldVersionFragmentKept": true,
+            "oldAndNewFractionDiffer": true,
+            "oldAndNewCandidatesDiffer": true,
+            "scopesUnchanged": [
+              "workspace"
+            ],
+            "fragmentReuseAcrossVersions": "not-part-of-the-contract"
+          },
+          "expected": {
+            "sourceHashChanged": true,
+            "imported": 5,
+            "converged": 0,
+            "importedIndexes": [
+              0,
+              1,
+              2,
+              3,
+              4
+            ],
+            "recordsAfter": 10,
+            "distinctSourceVersions": 2,
+            "oldVersionFragmentKept": true,
+            "oldAndNewFractionDiffer": true,
+            "oldAndNewCandidatesDiffer": true,
+            "scopesUnchanged": [
+              "workspace"
+            ],
+            "fragmentReuseAcrossVersions": "not-part-of-the-contract"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-OWNER-01",
+          "assertionId": "S7E-OWNER-01",
+          "requirementId": "LITE-07-107",
+          "phase": "owner",
+          "step": "the same bytes in another Workspace are a new import, not a cross-owner convergence",
+          "actual": {
+            "imported": 5,
+            "converged": 0,
+            "records": 5,
+            "candidates": 5,
+            "events": 5,
+            "sameSourceHashAsFirstWorkspace": true,
+            "firstWorkspaceRecordsUnchanged": 10
+          },
+          "expected": {
+            "imported": 5,
+            "converged": 0,
+            "records": 5,
+            "candidates": 5,
+            "events": 5,
+            "sameSourceHashAsFirstWorkspace": true,
+            "firstWorkspaceRecordsUnchanged": 10
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The idempotency key is the owning Workspace plus the source hash, fragment index and parser version, and it is exercised in both directions: re-importing the same bytes in the same Workspace converts every fragment to a converged candidate (referencing the SAME candidate ids) and adds zero candidate, record or event rows; importing the same bytes under a different owner creates a genuine new import with its own records, candidates and events, and leaves the first Workspace untouched. A changed file becomes a second recorded source version: both versions keep their own fragment hash and candidate id for the same fragment index, and the new candidates stay workspace-scoped.",
+      "adjacentBehaviorNotProven": "Covers owner-scoped, stable-source idempotency for the import trigger, which is what the import contract defines. It records, without claiming, that a changed file is a new source version and therefore records its fragments again: fragment reuse across file versions is not part of the frozen contract, and the review gate is what keeps a re-imported fragment out of long-term Memory. Candidate-level exact/near-duplicate convergence across the other triggers is covered by the S1 evidence packs.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-07-108",
+      "specification": {
+        "text": "无Run触发器也有规范candidate_created与可验证因果",
+        "section": "授权最小契约扩展",
+        "sourceFile": "docs/implementation/lite-closeout/S7-import-authorization.md",
+        "sourceLine": 1,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/store/WorkspaceEventWriter.ts",
+            "sourceLine": 314,
+            "note": "candidate_created 必须由持久来源记录证明 origin"
+          },
+          {
+            "sourceFile": "apps/server/src/services/MemoryImportService.ts",
+            "sourceLine": 188,
+            "note": "origin = memory.import:<recordId>，因果 = 该记录"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S1",
+        "document": "07-Memory-Runtime.md",
+        "section": "§15; §4",
+        "requirement": "无Run触发器也有规范candidate_created与可验证因果",
+        "exitCriteria": "授权最小契约扩展；持久来源因果证明，未知或跨Workspace来源拒绝；回滚和重放验证。",
+        "recordedGap": "保留基线反证：Workspace allowlist无candidate_created。02a50947已为实际Artifact完成登记来源专属Workspace因果和事务校验，禁止借用其它origin；不伪造Run。审批/压缩/导入仍需各自真实来源登记，保持GAP。",
+        "productionEntryPoints": [
+          "packages/shared/src/types/mf5-workspace-events.ts",
+          "apps/server/src/services/WorkspaceEventContextAuthority.ts"
+        ],
+        "tests": [
+          "apps/server/src/store/WorkspaceEventWriter.test.ts"
+        ],
+        "evidence": [
+          "S2-ARTIFACT-SOURCE",
+          "S2-LOCAL-27"
+        ]
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s7-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/receipts.json",
+          "sha256": "3cf389215a59a92a573ceb5945c6826615329b5e3a79d814a0e30dea46178dce",
+          "bytes": 13299
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/stdout.txt",
+          "sha256": "1c1e722533d9b8981a9fcc71ace18b4478f23a4f14f4cd982d3c650a6a908475",
+          "bytes": 63
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "a9dbd826f83e92a24155d9b0daee00be08882db63c3310584d9a72fb5f945347",
+          "bytes": 1151
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S7E-CONFIRM-02",
+          "assertionId": "S7E-CONFIRM-02",
+          "requirementId": "LITE-07-108",
+          "phase": "service",
+          "step": "the non-Run origin registers its own canonical causal Event without inventing a Run",
+          "actual": {
+            "eventTypes": [
+              "memory.candidate_created"
+            ],
+            "eventCount": 5,
+            "correlationNamesItsOwnRecord": true,
+            "causationMatchesRecordIds": true,
+            "importIds": [
+              "imp_01M2FZJ6GC6ENX5KV7Z3D69JK7",
+              "imp_01M2FZJ6GE25DRM4PM3VPECFV6",
+              "imp_01M2FZJ6GE25DRM4PM3VPECFV9",
+              "imp_01M2FZJ6GFQF5R1BDFNG6J7NQZ",
+              "imp_01M2FZJ6GFQF5R1BDFNG6J7NR2"
+            ],
+            "payloadCandidateMatches": true,
+            "runsFabricated": 0
+          },
+          "expected": {
+            "eventTypes": [
+              "memory.candidate_created"
+            ],
+            "eventCount": 5,
+            "correlationNamesItsOwnRecord": true,
+            "causationMatchesRecordIds": true,
+            "importIds": [
+              "imp_01M2FZJ6GC6ENX5KV7Z3D69JK7",
+              "imp_01M2FZJ6GE25DRM4PM3VPECFV6",
+              "imp_01M2FZJ6GE25DRM4PM3VPECFV9",
+              "imp_01M2FZJ6GFQF5R1BDFNG6J7NQZ",
+              "imp_01M2FZJ6GFQF5R1BDFNG6J7NR2"
+            ],
+            "payloadCandidateMatches": true,
+            "runsFabricated": 0
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-CONFIRM-03",
+          "assertionId": "S7E-CONFIRM-03",
+          "requirementId": "LITE-07-108",
+          "phase": "service",
+          "step": "the origin is proved against the durable record, and a borrowed origin is refused",
+          "actual": {
+            "proof": {
+              "candidateId": true,
+              "scope": "workspace",
+              "category": "knowledge",
+              "authority": "imported-verified",
+              "decision": "review-required"
+            },
+            "provesOnlyOwnRecord": true,
+            "unknownRecordProved": false,
+            "borrowedOriginRefusal": "WORKSPACE_EVENT_ORIGIN_UNPROVEN",
+            "eventsAfterRefusal": 5
+          },
+          "expected": {
+            "proof": {
+              "candidateId": true,
+              "scope": "workspace",
+              "category": "knowledge",
+              "authority": "imported-verified",
+              "decision": "review-required"
+            },
+            "provesOnlyOwnRecord": true,
+            "unknownRecordProved": false,
+            "borrowedOriginRefusal": "WORKSPACE_EVENT_ORIGIN_UNPROVEN",
+            "eventsAfterRefusal": 5
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The import registers its own origin (memory.import pointing at the durable import record) and emits exactly one canonical memory.candidate_created per fragment, each correlating and causally naming its own record, with a payload that matches that record's candidate, and zero fabricated Runs in the database. The origin is proved against the durable row: the positive proof returns the record's candidate/scope/category/authority/decision, an unknown record proves nothing, and a well-formed payload with a BORROWED origin (a candidate created by an import, presented as a compaction) is refused with WORKSPACE_EVENT_ORIGIN_UNPROVEN without adding an Event.",
+      "adjacentBehaviorNotProven": "This pack executes the import origin. The compaction origin is executed in the S6 pack, and the approval / Artifact-completion origins are evidenced by their own merged slices; the rule is shared (one prover per kind), but every kind is not re-run here.",
+      "verdict": "candidate-supported"
+    }
+  ],
+  "matrixProtection": {
+    "passFreezeEdited": false,
+    "passPromotionExecuted": false,
+    "requireClosedExecuted": false,
+    "protectedFiles": [
+      {
+        "path": "docs/implementation/lite-closeout/matrix.json",
+        "worktreeSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "baselineSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-freeze.json",
+        "worktreeSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "baselineSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-evidence-audit.json",
+        "worktreeSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "baselineSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "matchesBaseline": true
+      }
+    ],
+    "workingTreeDelta": [
+      "?? agentos/docs/implementation/lite-closeout/evidence/s7-candidate-evidence-20260914/",
+      "?? agentos/scripts/assemble-lite-s7-candidate-evidence.mjs",
+      "?? agentos/scripts/verify-lite-s7-candidate-evidence.mjs"
+    ],
+    "verdictVocabulary": [
+      "candidate-supported",
+      "insufficient-evidence",
+      "failed"
+    ]
+  }
+}
