@@ -1,0 +1,994 @@
+{
+  "schemaVersion": 1,
+  "format": "controlled-harness",
+  "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-s6-candidate-evidence.mjs",
+      "--out",
+      "E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s6/execution.json",
+      "sha256": "46e386ce84df9dab205d4f3edf9a6155a356a0c8259be5ec42556c1bb84d3cc2"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s6/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s6/receipts.json/receipts.json",
+      "sha256": "552ab536502c507dd2a1a3cd783475d514c2c0a3c6cda7ae97ae9df7d17f7a02"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s6/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s6/stdout.txt",
+      "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253"
+    }
+  ],
+  "sourceReceipt": "docs/implementation/lite-closeout/evidence/final-m0-clean/s6/receipts.json/receipts.json",
+  "counts": {
+    "total": 39,
+    "passed": 39,
+    "failed": 0,
+    "skipped": 0
+  },
+  "assertionCoverage": [
+    {
+      "id": "S6E-REAL-01",
+      "requirementId": "LITE-07-105",
+      "actual": "published",
+      "expected": "published",
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a real Provider compaction publishes a durable task",
+      "expression": "expect('LITE-07-105', 'S6E-REAL-01', 'a real Provider compaction publishes a durable task', real.outcome, 'published');",
+      "line": 171,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-02",
+      "requirementId": "LITE-09-106",
+      "actual": {
+        "summaryNonEmpty": true
+      },
+      "expected": {
+        "summaryNonEmpty": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the summary was produced by a real Provider process",
+      "expression": "expect('LITE-09-106', 'S6E-REAL-02', 'the summary was produced by a real Provider process',",
+      "line": 174,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-03",
+      "requirementId": "LITE-09-106",
+      "actual": {
+        "adapterId": "cli.codex",
+        "adapterVersion": "1.0.0",
+        "providerType": "codex",
+        "model": "gpt-5.6-luna"
+      },
+      "expected": {
+        "adapterId": "cli.codex",
+        "adapterVersion": "1.0.0",
+        "providerType": "codex",
+        "model": "gpt-5.6-luna"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the frozen Provider identity is recorded on the task",
+      "expression": "expect('LITE-09-106', 'S6E-REAL-03', 'the frozen Provider identity is recorded on the task',",
+      "line": 177,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-04",
+      "requirementId": "LITE-09-106",
+      "actual": {
+        "readOnly": true,
+        "skipGitRepoCheck": true
+      },
+      "expected": {
+        "readOnly": true,
+        "skipGitRepoCheck": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the summary ran under the allowlisted read-only CLI profile",
+      "expression": "expect('LITE-09-106', 'S6E-REAL-04', 'the summary ran under the allowlisted read-only CLI profile',",
+      "line": 180,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-05",
+      "requirementId": "LITE-09-105",
+      "actual": {
+        "lengthOk": true,
+        "summaryHashMatches": true
+      },
+      "expected": {
+        "lengthOk": true,
+        "summaryHashMatches": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the published summary is non-empty and inside the recorded budget",
+      "expression": "expect('LITE-09-105', 'S6E-REAL-05', 'the published summary is non-empty and inside the recorded budget',",
+      "line": 186,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-06",
+      "requirementId": "LITE-09-105",
+      "actual": {
+        "sourceMessageCount": 4,
+        "hasStart": true,
+        "hasEnd": true,
+        "hasSourceHash": true
+      },
+      "expected": {
+        "sourceMessageCount": 4,
+        "hasStart": true,
+        "hasEnd": true,
+        "hasSourceHash": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the source range it covered is recorded",
+      "expression": "expect('LITE-09-105', 'S6E-REAL-06', 'the source range it covered is recorded',",
+      "line": 190,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-07",
+      "requirementId": "LITE-07-105",
+      "actual": {
+        "decision": "review-required",
+        "outcome": "review-required",
+        "authority": "agent-derived",
+        "scope": "conversation"
+      },
+      "expected": {
+        "decision": "review-required",
+        "outcome": "review-required",
+        "authority": "agent-derived",
+        "scope": "conversation"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "publishing records a review-required agent-derived Candidate",
+      "expression": "expect('LITE-07-105', 'S6E-REAL-07', 'publishing records a review-required agent-derived Candidate',",
+      "line": 198,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-08",
+      "requirementId": "LITE-07-105",
+      "actual": {
+        "type": "memory.candidate_created",
+        "causationId": "snapshot_01M2GMM0GQM9YR9JXY8J1AQ2J1",
+        "payloadCandidateMatches": true
+      },
+      "expected": {
+        "type": "memory.candidate_created",
+        "causationId": "snapshot_01M2GMM0GQM9YR9JXY8J1AQ2J1",
+        "payloadCandidateMatches": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the fact and its canonical Workspace Event are one causal record",
+      "expression": "expect('LITE-07-105', 'S6E-REAL-08', 'the fact and its canonical Workspace Event are one causal record',",
+      "line": 204,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-09",
+      "requirementId": "LITE-07-105",
+      "actual": {
+        "outcome": "published",
+        "sameTask": true,
+        "tasks": 1
+      },
+      "expected": {
+        "outcome": "published",
+        "sameTask": true,
+        "tasks": 1
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a repeat over the same source converges without a second fact",
+      "expression": "expect('LITE-07-105', 'S6E-REAL-09', 'a repeat over the same source converges without a second fact',",
+      "line": 214,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-10",
+      "requirementId": "LITE-09-104",
+      "actual": {
+        "policyVersion": "lite-v1",
+        "triggerRatio": 0.7,
+        "targetRatio": 0.5,
+        "minRecentMessages": 8,
+        "summaryMaxTokens": 2048,
+        "timeoutMs": 120000,
+        "maxAutomaticRetries": 1
+      },
+      "expected": {
+        "policyVersion": "lite-v1",
+        "triggerRatio": 0.7,
+        "targetRatio": 0.5,
+        "minRecentMessages": 8,
+        "summaryMaxTokens": 2048,
+        "timeoutMs": 120000,
+        "maxAutomaticRetries": 1
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the lite-v1 policy records the versioned thresholds",
+      "expression": "expect('LITE-09-104', 'S6E-REAL-10', 'the lite-v1 policy records the versioned thresholds',",
+      "line": 219,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-11",
+      "requirementId": "LITE-09-104",
+      "actual": {
+        "policyVersion": "lite-v1",
+        "estimatorVersion": "lite-v1-chars4",
+        "providerContextTokens": 12000,
+        "outputReserveTokens": 2048,
+        "applicationBudgetSource": "provider",
+        "triggerRatio": 0.7,
+        "targetRatio": 0.5,
+        "retainedRecentMessages": 8,
+        "taskEstimatorVersion": "lite-v1-chars4"
+      },
+      "expected": {
+        "policyVersion": "lite-v1",
+        "estimatorVersion": "lite-v1-chars4",
+        "providerContextTokens": 12000,
+        "outputReserveTokens": 2048,
+        "applicationBudgetSource": "provider",
+        "triggerRatio": 0.7,
+        "targetRatio": 0.5,
+        "retainedRecentMessages": 8,
+        "taskEstimatorVersion": "lite-v1-chars4"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the task records the budget composition and estimator that produced it",
+      "expression": "expect('LITE-09-104', 'S6E-REAL-11', 'the task records the budget composition and estimator that produced it',",
+      "line": 226,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-12",
+      "requirementId": "LITE-09-110",
+      "actual": {
+        "persistedSummaries": 1,
+        "matchesTask": true,
+        "nativeRows": 0
+      },
+      "expected": {
+        "persistedSummaries": 1,
+        "matchesTask": true,
+        "nativeRows": 0
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "only the AgentOS-persisted summary is canonical",
+      "expression": "expect('LITE-09-110', 'S6E-REAL-12', 'only the AgentOS-persisted summary is canonical',",
+      "line": 241,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-13",
+      "requirementId": "LITE-09-105",
+      "actual": {
+        "rowsBefore": 12,
+        "rowsAfter": 12,
+        "digestUnchanged": true,
+        "distinctStatuses": [
+          "final"
+        ]
+      },
+      "expected": {
+        "rowsBefore": 12,
+        "rowsAfter": 12,
+        "digestUnchanged": true,
+        "distinctStatuses": [
+          "final"
+        ]
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the Messages the summary covered survive the published compaction unchanged",
+      "expression": "expect('LITE-09-105', 'S6E-REAL-13', 'the Messages the summary covered survive the published compaction unchanged',",
+      "line": 247,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-14",
+      "requirementId": "LITE-09-106",
+      "actual": {
+        "args": [
+          "exec",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check"
+        ],
+        "sandboxReadOnly": true,
+        "bypassFlagsPresent": [],
+        "approvalDecisions": 0,
+        "nonCandidateEvents": 0
+      },
+      "expected": {
+        "args": [
+          "exec",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check"
+        ],
+        "sandboxReadOnly": true,
+        "bypassFlagsPresent": [],
+        "approvalDecisions": 0,
+        "nonCandidateEvents": 0
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the summary run is read-only sandboxed with no approval or tool bypass",
+      "expression": "expect('LITE-09-106', 'S6E-REAL-14', 'the summary run is read-only sandboxed with no approval or tool bypass',",
+      "line": 255,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-15",
+      "requirementId": "LITE-07-105",
+      "actual": {
+        "memoryEntries": 0,
+        "candidateDecision": "review-required",
+        "candidateOutcome": "review-required"
+      },
+      "expected": {
+        "memoryEntries": 0,
+        "candidateDecision": "review-required",
+        "candidateOutcome": "review-required"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "publishing a summary does not create a Memory Entry: availability is not approval",
+      "expression": "expect('LITE-07-105', 'S6E-REAL-15', 'publishing a summary does not create a Memory Entry: availability is not approval',",
+      "line": 263,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-16",
+      "requirementId": "LITE-09-105",
+      "actual": {
+        "totalMessages": 12,
+        "sourceMessageCount": 4,
+        "retainedMessages": 8,
+        "minRecentMessages": 8,
+        "sourceStartIsOldest": true,
+        "sourceEndIsLastCoveredMessage": true
+      },
+      "expected": {
+        "totalMessages": 12,
+        "sourceMessageCount": 4,
+        "retainedMessages": 8,
+        "minRecentMessages": 8,
+        "sourceStartIsOldest": true,
+        "sourceEndIsLastCoveredMessage": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "only the bounded old prefix is compacted: the recent window stays uncompressed",
+      "expression": "expect('LITE-09-105', 'S6E-REAL-16', 'only the bounded old prefix is compacted: the recent window stays uncompressed',",
+      "line": 268,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-01",
+      "requirementId": "LITE-09-105",
+      "actual": {
+        "outcome": "retry-pending",
+        "failureCode": "COMPACTION_SUMMARY_INVALID",
+        "attempts": 1,
+        "summarizerCalls": 1,
+        "published": false,
+        "candidates": 0
+      },
+      "expected": {
+        "outcome": "retry-pending",
+        "failureCode": "COMPACTION_SUMMARY_INVALID",
+        "attempts": 1,
+        "summarizerCalls": 1,
+        "published": false,
+        "candidates": 0
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "an oversized summary is refused, never published",
+      "expression": "expect('LITE-09-105', 'S6E-GUARD-01', 'an oversized summary is refused, never published',",
+      "line": 289,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-02",
+      "requirementId": "LITE-09-107",
+      "actual": {
+        "unwrapped": "CREATE UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = 'running'",
+        "isUnique": true,
+        "scopedToRunning": true
+      },
+      "expected": {
+        "unwrapped": "CREATE UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = 'running'",
+        "isUnique": true,
+        "scopedToRunning": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the schema carries a one-running-holder index per Conversation",
+      "expression": "expect('LITE-09-107', 'S6E-GUARD-02', 'the schema carries a one-running-holder index per Conversation',",
+      "line": 300,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-03",
+      "requirementId": "LITE-09-107",
+      "actual": {
+        "refused": true,
+        "refusalIsStable": true
+      },
+      "expected": {
+        "refused": true,
+        "refusalIsStable": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a second running holder for the same Conversation is refused by the store",
+      "expression": "expect('LITE-09-107', 'S6E-GUARD-03', 'a second running holder for the same Conversation is refused by the store',",
+      "line": 336,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-05",
+      "requirementId": "LITE-09-107",
+      "actual": {
+        "running": 1
+      },
+      "expected": {
+        "running": 1
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "exactly one running holder remains after the refusal",
+      "expression": "expect('LITE-09-107', 'S6E-GUARD-05', 'exactly one running holder remains after the refusal',",
+      "line": 341,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-04",
+      "requirementId": "LITE-09-107",
+      "actual": {
+        "outcome": "failed",
+        "sameTask": true,
+        "attempts": 2,
+        "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+        "summarizerCalls": 2,
+        "published": false,
+        "running": 0
+      },
+      "expected": {
+        "outcome": "failed",
+        "sameTask": true,
+        "attempts": 2,
+        "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+        "summarizerCalls": 2,
+        "published": false,
+        "running": 0
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the automatic evaluation resumes the same attempt and stops at the bounded retry budget",
+      "expression": "expect('LITE-09-107', 'S6E-GUARD-04', 'the automatic evaluation resumes the same attempt and stops at the bounded retry budget',",
+      "line": 351,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-07",
+      "requirementId": "LITE-09-107",
+      "actual": {
+        "outcome": "failed",
+        "sameTask": true,
+        "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+        "summarizerCalls": 2,
+        "guardTaskRows": 1
+      },
+      "expected": {
+        "outcome": "failed",
+        "sameTask": true,
+        "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+        "summarizerCalls": 2,
+        "guardTaskRows": 1
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a spent automatic chain is never re-scheduled: no new attempt row and no new Provider call",
+      "expression": "expect('LITE-09-107', 'S6E-GUARD-07', 'a spent automatic chain is never re-scheduled: no new attempt row and no new Provider call',",
+      "line": 363,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-08",
+      "requirementId": "LITE-09-108",
+      "actual": {
+        "outcome": "retry-pending",
+        "startsNewAttempt": true,
+        "attempts": 1,
+        "summarizerCalls": 3,
+        "guardTaskRows": 2,
+        "published": false
+      },
+      "expected": {
+        "outcome": "retry-pending",
+        "startsNewAttempt": true,
+        "attempts": 1,
+        "summarizerCalls": 3,
+        "guardTaskRows": 2,
+        "published": false
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the explicit retry spends its own attempt instead of being blocked by the spent chain",
+      "expression": "expect('LITE-09-108', 'S6E-GUARD-08', 'the explicit retry spends its own attempt instead of being blocked by the spent chain',",
+      "line": 373,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-06",
+      "requirementId": "LITE-07-105",
+      "actual": {
+        "guardCandidates": 0,
+        "guardPublished": false,
+        "guardTasksWithSummary": 0,
+        "compactionEvents": 1
+      },
+      "expected": {
+        "guardCandidates": 0,
+        "guardPublished": false,
+        "guardTasksWithSummary": 0,
+        "compactionEvents": 1
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a refused summary leaves no Candidate, no published row and no canonical Event behind",
+      "expression": "expect('LITE-07-105', 'S6E-GUARD-06', 'a refused summary leaves no Candidate, no published row and no canonical Event behind',",
+      "line": 379,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-BUDGET-01",
+      "requirementId": "LITE-09-108",
+      "actual": {
+        "kind": "over-budget"
+      },
+      "expected": {
+        "kind": "over-budget"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "summary plus tail beyond the hard budget is refused",
+      "expression": "expect('LITE-09-108', 'S6E-BUDGET-01', 'summary plus tail beyond the hard budget is refused',",
+      "line": 405,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-BUDGET-02",
+      "requirementId": "LITE-09-108",
+      "actual": {
+        "historyLength": 3,
+        "contents": [
+          1,
+          1,
+          400
+        ]
+      },
+      "expected": {
+        "historyLength": 3,
+        "contents": [
+          1,
+          1,
+          400
+        ]
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the refusal never truncates or drops the messages",
+      "expression": "expect('LITE-09-108', 'S6E-BUDGET-02', 'the refusal never truncates or drops the messages',",
+      "line": 407,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-BUDGET-03",
+      "requirementId": "LITE-09-108",
+      "actual": {
+        "kind": "applied",
+        "summarizedMessages": 2
+      },
+      "expected": {
+        "kind": "applied",
+        "summarizedMessages": 2
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the same history inside the budget applies the summary",
+      "expression": "expect('LITE-09-108', 'S6E-BUDGET-03', 'the same history inside the budget applies the summary',",
+      "line": 411,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-STALE-01",
+      "requirementId": "LITE-09-109",
+      "actual": {
+        "kind": "stale-source",
+        "reason": "source-content-changed"
+      },
+      "expected": {
+        "kind": "stale-source",
+        "reason": "source-content-changed"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a summary whose covered Message was edited is refused",
+      "expression": "expect('LITE-09-109', 'S6E-STALE-01', 'a summary whose covered Message was edited is refused',",
+      "line": 421,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-01",
+      "requirementId": "LITE-09-104",
+      "actual": {
+        "refusedWithCode": true,
+        "storedMaxTokens": 2048
+      },
+      "expected": {
+        "refusedWithCode": true,
+        "storedMaxTokens": 2048
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a versioned policy row cannot be rewritten, so an old budget keeps its interpretation",
+      "expression": "expect('LITE-09-104', 'S6E-DB-01', 'a versioned policy row cannot be rewritten, so an old budget keeps its interpretation',",
+      "line": 444,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-02",
+      "requirementId": "LITE-09-105",
+      "actual": {
+        "refusedWithCode": true,
+        "summaryHashUnchanged": true
+      },
+      "expected": {
+        "refusedWithCode": true,
+        "summaryHashUnchanged": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a published summary cannot be rewritten after it became canonical",
+      "expression": "expect('LITE-09-105', 'S6E-DB-02', 'a published summary cannot be rewritten after it became canonical',",
+      "line": 450,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-03",
+      "requirementId": "LITE-09-106",
+      "actual": {
+        "refusedWithCode": true,
+        "storedModel": "gpt-5.6-luna"
+      },
+      "expected": {
+        "refusedWithCode": true,
+        "storedModel": "gpt-5.6-luna"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the frozen Provider identity cannot be rewritten after the summary was published",
+      "expression": "expect('LITE-09-106', 'S6E-DB-03', 'the frozen Provider identity cannot be rewritten after the summary was published',",
+      "line": 456,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-04",
+      "requirementId": "LITE-07-105",
+      "actual": {
+        "indexIsUnique": true,
+        "scopedToPublished": true,
+        "refusedByUnique": true,
+        "publishedRowsInConversation": 1
+      },
+      "expected": {
+        "indexIsUnique": true,
+        "scopedToPublished": true,
+        "refusedByUnique": true,
+        "publishedRowsInConversation": 1
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "one published summary per Conversation source: a second publish of the same source is refused",
+      "expression": "expect('LITE-07-105', 'S6E-DB-04', 'one published summary per Conversation source: a second publish of the same source is refused',",
+      "line": 480,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-05",
+      "requirementId": "LITE-09-107",
+      "actual": {
+        "refused": true,
+        "stableCode": true,
+        "rowStillRunning": "running"
+      },
+      "expected": {
+        "refused": true,
+        "stableCode": true,
+        "rowStillRunning": "running"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "a publish from a lease that no longer holds the attempt is refused",
+      "expression": "expect('LITE-09-107', 'S6E-DB-05', 'a publish from a lease that no longer holds the attempt is refused',",
+      "line": 496,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-TURNGATE-01",
+      "requirementId": "LITE-09-108",
+      "actual": {
+        "error": {
+          "type": "ConversationTurnDriverError",
+          "code": "TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED"
+        },
+        "runnerCalls": 0,
+        "messagesAdded": 0,
+        "turnsAdded": 0,
+        "digestsUnchanged": true
+      },
+      "expected": {
+        "error": {
+          "type": "ConversationTurnDriverError",
+          "code": "TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED"
+        },
+        "runnerCalls": 0,
+        "messagesAdded": 0,
+        "turnsAdded": 0,
+        "digestsUnchanged": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "an over-budget summary and tail block the Provider call before any reservation",
+      "expression": "expect('LITE-09-108', 'S6E-TURNGATE-01', 'an over-budget summary and tail block the Provider call before any reservation',",
+      "line": 547,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-TURNGATE-02",
+      "requirementId": "LITE-09-105",
+      "actual": {
+        "status": "completed",
+        "runnerCalls": 1,
+        "summaryEntryIdPresent": true,
+        "summaryTextInContext": true,
+        "coveredIdsStillInContext": [],
+        "tailIdsStillInContext": [
+          "msg_004",
+          "msg_005",
+          "msg_006",
+          "msg_007"
+        ]
+      },
+      "expected": {
+        "status": "completed",
+        "runnerCalls": 1,
+        "summaryEntryIdPresent": true,
+        "summaryTextInContext": true,
+        "coveredIdsStillInContext": [],
+        "tailIdsStillInContext": [
+          "msg_004",
+          "msg_005",
+          "msg_006",
+          "msg_007"
+        ]
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the real published summary reaches the Provider context and replaces exactly the covered Messages",
+      "expression": "expect('LITE-09-105', 'S6E-TURNGATE-02', 'the real published summary reaches the Provider context and replaces exactly the covered Messages',",
+      "line": 580,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-INSPECTOR-01",
+      "requirementId": "LITE-13-101",
+      "actual": {
+        "status": 200,
+        "taskCount": 1,
+        "tasksMatchDurableRows": true,
+        "taskStatus": "published",
+        "taskModel": "gpt-5.6-luna",
+        "adapterId": "cli.codex",
+        "adapterVersion": "1.0.0",
+        "estimatorVersion": "lite-v1-chars4",
+        "attempts": 1,
+        "failureCode": null,
+        "hasSummaryHash": true,
+        "candidateMatches": true,
+        "summaryMatchesDurableRow": true,
+        "sourceRange": {
+          "start": "msg_000",
+          "end": "msg_003",
+          "count": 4
+        },
+        "recordedTriggerAboveThreshold": true,
+        "budgetKeys": [
+          "applicationBudgetSource",
+          "appliedApplicationBudgetTokens",
+          "estimatorVersion",
+          "historyBudgetTokens",
+          "historyTokens",
+          "memoryContextTokens",
+          "outputReserveTokens",
+          "policyVersion",
+          "providerContextTokens",
+          "retainedRecentMessages",
+          "sourceMessageCount",
+          "systemPromptTokens",
+          "targetRatio",
+          "triggerRatio"
+        ]
+      },
+      "expected": {
+        "status": 200,
+        "taskCount": 1,
+        "tasksMatchDurableRows": true,
+        "taskStatus": "published",
+        "taskModel": "gpt-5.6-luna",
+        "adapterId": "cli.codex",
+        "adapterVersion": "1.0.0",
+        "estimatorVersion": "lite-v1-chars4",
+        "attempts": 1,
+        "failureCode": null,
+        "hasSummaryHash": true,
+        "candidateMatches": true,
+        "summaryMatchesDurableRow": true,
+        "sourceRange": {
+          "start": "msg_000",
+          "end": "msg_003",
+          "count": 4
+        },
+        "recordedTriggerAboveThreshold": true,
+        "budgetKeys": [
+          "applicationBudgetSource",
+          "appliedApplicationBudgetTokens",
+          "estimatorVersion",
+          "historyBudgetTokens",
+          "historyTokens",
+          "memoryContextTokens",
+          "outputReserveTokens",
+          "policyVersion",
+          "providerContextTokens",
+          "retainedRecentMessages",
+          "sourceMessageCount",
+          "systemPromptTokens",
+          "targetRatio",
+          "triggerRatio"
+        ]
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the read surface explains why this compaction happened, to whom and under which policy",
+      "expression": "expect('LITE-13-101', 'S6E-INSPECTOR-01', 'the read surface explains why this compaction happened, to whom and under which policy',",
+      "line": 617,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-INSPECTOR-02",
+      "requirementId": "LITE-13-101",
+      "actual": {
+        "policies": [
+          {
+            "policyVersion": "lite-v1",
+            "triggerRatio": 0.7,
+            "targetRatio": 0.5,
+            "minRecentMessages": 8,
+            "summaryMaxTokens": 2048,
+            "timeoutMs": 120000,
+            "maxAutomaticRetries": 1,
+            "fallbackApplicationBudgetTokens": 16384
+          }
+        ],
+        "estimatorVersion": "lite-v1-chars4"
+      },
+      "expected": {
+        "policies": [
+          {
+            "policyVersion": "lite-v1",
+            "triggerRatio": 0.7,
+            "targetRatio": 0.5,
+            "minRecentMessages": 8,
+            "summaryMaxTokens": 2048,
+            "timeoutMs": 120000,
+            "maxAutomaticRetries": 1,
+            "fallbackApplicationBudgetTokens": 16384
+          }
+        ],
+        "estimatorVersion": "lite-v1-chars4"
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the effective policy version and its parameters are readable, not implied",
+      "expression": "expect('LITE-13-101', 'S6E-INSPECTOR-02', 'the effective policy version and its parameters are readable, not implied',",
+      "line": 636,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-INSPECTOR-03",
+      "requirementId": "LITE-13-101",
+      "actual": {
+        "adoptions": [
+          {
+            "snapshotId": "snapshot_01M2GMNVQPY4X35VST97854K7W",
+            "turnId": "turn_cccccccccccccccccccc",
+            "summaryId": "snapshot_01M2GMM0GQM9YR9JXY8J1AQ2J1",
+            "summarizedMessages": 4,
+            "createdAt": "2026-09-14T18:59:37.045Z"
+          }
+        ],
+        "turnPointsAtAdoptedSnapshot": true,
+        "adoptedSummaryIsThePublishedRow": true
+      },
+      "expected": {
+        "adoptions": [
+          {
+            "snapshotId": "snapshot_01M2GMNVQPY4X35VST97854K7W",
+            "turnId": "turn_cccccccccccccccccccc",
+            "summaryId": "snapshot_01M2GMM0GQM9YR9JXY8J1AQ2J1",
+            "summarizedMessages": 4,
+            "createdAt": "2026-09-14T18:59:37.045Z"
+          }
+        ],
+        "turnPointsAtAdoptedSnapshot": true,
+        "adoptedSummaryIsThePublishedRow": true
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "the surface names the Turn and frozen snapshot that actually adopted the summary",
+      "expression": "expect('LITE-13-101', 'S6E-INSPECTOR-03', 'the surface names the Turn and frozen snapshot that actually adopted the summary',",
+      "line": 646,
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-INSPECTOR-04",
+      "requirementId": "LITE-13-101",
+      "actual": {
+        "guardTasks": [
+          {
+            "status": "failed",
+            "attempts": 2,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED"
+          },
+          {
+            "status": "retry-pending",
+            "attempts": 1,
+            "failureCode": "COMPACTION_SUMMARY_INVALID"
+          }
+        ],
+        "guardAdoptions": 0,
+        "emptyTasks": 0,
+        "emptyPolicies": 0,
+        "emptyAdoptions": 0
+      },
+      "expected": {
+        "guardTasks": [
+          {
+            "status": "failed",
+            "attempts": 2,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED"
+          },
+          {
+            "status": "retry-pending",
+            "attempts": 1,
+            "failureCode": "COMPACTION_SUMMARY_INVALID"
+          }
+        ],
+        "guardAdoptions": 0,
+        "emptyTasks": 0,
+        "emptyPolicies": 0,
+        "emptyAdoptions": 0
+      },
+      "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+      "name": "failure and retry state are visible, and a Conversation without compactions reports none",
+      "expression": "expect('LITE-13-101', 'S6E-INSPECTOR-04', 'failure and retry state are visible, and a Conversation without compactions reports none',",
+      "line": 660,
+      "outcome": "passed"
+    }
+  ]
+}

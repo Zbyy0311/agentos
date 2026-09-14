@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T18:59:36.826Z",
+  "phases": {
+    "exact": {
+      "acceptedEntryId": "mem_07003_exact",
+      "terminalContentBytes": 69,
+      "counts": {
+        "candidates": 0,
+        "entries": 1,
+        "entrySources": 2,
+        "dedupEvents": 1,
+        "candidateEvents": 1
+      }
+    },
+    "owner": {
+      "otherEntryId": "mem_07003_other_owner",
+      "ownerRunId": "run_owner_07003"
+    },
+    "near": {
+      "nearCandidateId": "mcand_terminal_run_near_07003",
+      "normalizedEntryId": "mem_07003_normalized",
+      "ftsEntryId": "mem_07003_fts",
+      "ftsCandidateId": "mcand_terminal_run_fts_07003",
+      "ftsRunId": "run_fts_07003",
+      "reviewTargetBytes": 70
+    },
+    "proof": {
+      "unknownSourceOutcome": "ERR_SQLITE_ERROR",
+      "fabricatedOrigin": "ORIGIN_UNPROVEN"
+    },
+    "summary": {
+      "counts": {
+        "candidates": 3,
+        "entries": 5,
+        "entrySources": 6,
+        "dedupEvents": 1,
+        "candidateEvents": 7
+      },
+      "candidates": [
+        {
+          "id": "mcand_terminal_run_owner_07003",
+          "outcome": "review-required",
+          "category": "summary"
+        },
+        {
+          "id": "mcand_terminal_run_near_07003",
+          "outcome": "review-required",
+          "category": "summary"
+        },
+        {
+          "id": "mcand_terminal_run_fts_07003",
+          "outcome": "accept",
+          "category": "summary"
+        }
+      ]
+    }
+  },
+  "counts": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S003-EXACT-01",
+      "requirementId": "LITE-07-003",
+      "phase": "exact",
+      "step": "an exact duplicate converges on the accepted Entry and merges the new source atomically",
+      "actual": {
+        "outcome": "converged",
+        "duplicateOfEntryIdMatches": true,
+        "entrySources": [
+          "run:run_lite07003",
+          "task:task_lite07003"
+        ],
+        "entryVersion": 2,
+        "contentUnchanged": true,
+        "candidatesAdded": 0,
+        "entriesAdded": 0,
+        "entrySourcesAdded": 1,
+        "dedupEventsAdded": 1,
+        "dedupEventNameTheEntry": true
+      },
+      "expected": {
+        "outcome": "converged",
+        "duplicateOfEntryIdMatches": true,
+        "entrySources": [
+          "run:run_lite07003",
+          "task:task_lite07003"
+        ],
+        "entryVersion": 2,
+        "contentUnchanged": true,
+        "candidatesAdded": 0,
+        "entriesAdded": 0,
+        "entrySourcesAdded": 1,
+        "dedupEventsAdded": 1,
+        "dedupEventNameTheEntry": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-EXACT-02",
+      "requirementId": "LITE-07-003",
+      "phase": "exact",
+      "step": "a replay of the same evaluation writes nothing further",
+      "actual": {
+        "outcome": "converged",
+        "duplicateOfEntryIdMatches": true,
+        "candidatesAdded": 0,
+        "entriesAdded": 0,
+        "sourcesAdded": 0,
+        "dedupEventsAdded": 0,
+        "entryVersion": 2
+      },
+      "expected": {
+        "outcome": "converged",
+        "duplicateOfEntryIdMatches": true,
+        "candidatesAdded": 0,
+        "entriesAdded": 0,
+        "sourcesAdded": 0,
+        "dedupEventsAdded": 0,
+        "entryVersion": 2
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-OWNER-01",
+      "requirementId": "LITE-07-003",
+      "phase": "owner",
+      "step": "identical content under a different owner does not converge",
+      "actual": {
+        "outcome": "created",
+        "duplicateOfEntryId": null,
+        "newCandidateId": "mcand_terminal_run_owner_07003",
+        "newCandidateCategory": "summary",
+        "otherOwnerEntryUnchanged": [
+          "task:task_other_07003"
+        ],
+        "otherOwnerEntryContentUnchanged": true,
+        "candidatesAdded": 1
+      },
+      "expected": {
+        "outcome": "created",
+        "duplicateOfEntryId": null,
+        "newCandidateId": "mcand_terminal_run_owner_07003",
+        "newCandidateCategory": "summary",
+        "otherOwnerEntryUnchanged": [
+          "task:task_other_07003"
+        ],
+        "otherOwnerEntryContentUnchanged": true,
+        "candidatesAdded": 1
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-NEAR-01",
+      "requirementId": "LITE-07-003",
+      "phase": "near",
+      "step": "a normalized-hash near-duplicate is recorded as a review-required fact, never auto-accepted",
+      "actual": {
+        "outcome": "created",
+        "duplicateOfEntryId": "mem_07003_normalized",
+        "candidateOutcome": "review-required",
+        "candidateDecision": "review-required",
+        "candidateAuthority": "agent-derived",
+        "promotedIntoEntry": null,
+        "nearEntryStillIntact": true,
+        "entriesAfter": 3
+      },
+      "expected": {
+        "outcome": "created",
+        "duplicateOfEntryId": "mem_07003_normalized",
+        "candidateOutcome": "review-required",
+        "candidateDecision": "review-required",
+        "candidateAuthority": "agent-derived",
+        "promotedIntoEntry": null,
+        "nearEntryStillIntact": true,
+        "entriesAfter": 3
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-NEAR-02",
+      "requirementId": "LITE-07-003",
+      "phase": "near",
+      "step": "an FTS-similar near-duplicate is likewise held for review",
+      "actual": {
+        "outcome": "created",
+        "duplicateOfEntryId": "mem_07003_fts",
+        "candidateOutcome": "review-required",
+        "promotedIntoEntry": null
+      },
+      "expected": {
+        "outcome": "created",
+        "duplicateOfEntryId": "mem_07003_fts",
+        "candidateOutcome": "review-required",
+        "promotedIntoEntry": null
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-REVIEW-01",
+      "requirementId": "LITE-07-003",
+      "phase": "review",
+      "step": "accepting a near-duplicate after review creates the Entry and keeps its sources",
+      "actual": {
+        "outcomeAfterReview": "accept",
+        "mergedIntoEntry": true,
+        "entryScope": "task",
+        "entryCategory": "summary",
+        "entryContentBytes": 70,
+        "entrySources": [
+          "run:run_fts_07003"
+        ]
+      },
+      "expected": {
+        "outcomeAfterReview": "accept",
+        "mergedIntoEntry": true,
+        "entryScope": "task",
+        "entryCategory": "summary",
+        "entryContentBytes": 70,
+        "entrySources": [
+          "run:run_fts_07003"
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-PROOF-01",
+      "requirementId": "LITE-07-003",
+      "phase": "proof",
+      "step": "a source that names no real Entry is refused by the schema instead of being believed",
+      "actual": {
+        "insertionRefused": true,
+        "refusalCode": "ERR_SQLITE_ERROR",
+        "orphanSources": 0
+      },
+      "expected": {
+        "insertionRefused": true,
+        "refusalCode": "ERR_SQLITE_ERROR",
+        "orphanSources": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-PROOF-02",
+      "requirementId": "LITE-07-003",
+      "phase": "proof",
+      "step": "a privileged origin without a durable row is refused instead of fabricating causation",
+      "actual": {
+        "refusalCode": "ORIGIN_UNPROVEN"
+      },
+      "expected": {
+        "refusalCode": "ORIGIN_UNPROVEN"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S003-PROOF-03",
+      "requirementId": "LITE-07-003",
+      "phase": "proof",
+      "step": "the merge refuses when the boundary does not match the stored Entry",
+      "actual": {
+        "mergeOutcome": "refused",
+        "entrySourcesAfter": [
+          "run:run_lite07003",
+          "task:task_lite07003"
+        ]
+      },
+      "expected": {
+        "mergeOutcome": "refused",
+        "entrySourcesAfter": [
+          "run:run_lite07003",
+          "task:task_lite07003"
+        ]
+      },
+      "outcome": "passed"
+    }
+  ]
+}

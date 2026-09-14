@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 1,
+  "format": "controlled-harness",
+  "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+      "--out",
+      "E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s5-execution\\receipts.json"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s5-execution/execution.json",
+      "sha256": "d943e0c6541864652f050f16224e0dd35928a93fadc57c7a6b635368ae2368e2"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s5-execution/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s5-execution/receipts.json/receipts.json",
+      "sha256": "881d376338f941599601cfb99000bd6fe7a3f22794532b4c6841ce3410c86cdf"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s5-execution/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-m0-clean/s5-execution/stdout.txt",
+      "sha256": "a94808df3569a28c94b5fd2d60dbfea85c878e878c923df4426bea8ebbd7dd03"
+    }
+  ],
+  "sourceReceipt": "docs/implementation/lite-closeout/evidence/final-m0-clean/s5-execution/receipts.json/receipts.json",
+  "counts": {
+    "total": 6,
+    "passed": 6,
+    "failed": 0,
+    "skipped": 0
+  },
+  "assertionCoverage": [
+    {
+      "id": "S5E-DIRECT-01",
+      "requirementId": "LITE-09-101",
+      "actual": {
+        "runnerSawSnapshot": true,
+        "selectedIds": [
+          "mem_s5_02",
+          "mem_s5_01"
+        ],
+        "totalTokens": 23,
+        "strategyVersion": "chat-memory.v1",
+        "turnStatus": "final",
+        "messageStatus": "final",
+        "turnReferencesThatSnapshot": true,
+        "expectsWorkspaceEntry": true,
+        "expectsAgentEntry": true
+      },
+      "expected": {
+        "runnerSawSnapshot": true,
+        "selectedIds": [
+          "mem_s5_02",
+          "mem_s5_01"
+        ],
+        "totalTokens": 23,
+        "strategyVersion": "chat-memory.v1",
+        "turnStatus": "final",
+        "messageStatus": "final",
+        "turnReferencesThatSnapshot": true,
+        "expectsWorkspaceEntry": true,
+        "expectsAgentEntry": true
+      },
+      "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+      "name": "the frozen selection is persisted before the Provider call and names the real Memory entries",
+      "expression": "expect('LITE-09-101', 'S5E-DIRECT-01', 'the frozen selection is persisted before the Provider call and names the real Memory entries',",
+      "line": 158,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-DIRECT-02",
+      "requirementId": "LITE-09-101",
+      "actual": {
+        "memoryContextMatchesSnapshotEntries": true,
+        "injectedEntryCount": 2,
+        "contextMentionsWorkspaceEntry": true,
+        "contextMentionsAgentEntry": true,
+        "taskScopedEntrySelected": false,
+        "contextMentionsTaskEntry": false,
+        "otherAgentEntrySelected": false
+      },
+      "expected": {
+        "memoryContextMatchesSnapshotEntries": true,
+        "injectedEntryCount": 2,
+        "contextMentionsWorkspaceEntry": true,
+        "contextMentionsAgentEntry": true,
+        "taskScopedEntrySelected": false,
+        "contextMentionsTaskEntry": false,
+        "otherAgentEntrySelected": false
+      },
+      "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+      "name": "the Provider receives exactly the frozen selection text and the out-of-scope entry never enters it",
+      "expression": "expect('LITE-09-101', 'S5E-DIRECT-02', 'the Provider receives exactly the frozen selection text and the out-of-scope entry never enters it',",
+      "line": 169,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-ISOLATION-01",
+      "requirementId": "LITE-09-013",
+      "actual": {
+        "turnsObserved": 1,
+        "selectedIds": [
+          "mem_s5_03",
+          "mem_s5_01"
+        ],
+        "seesOwnAgentEntry": true,
+        "seesOtherAgentEntry": false,
+        "seesWorkspaceEntry": true,
+        "contextMentionsOwnEntry": true,
+        "contextMentionsOtherAgentEntry": false,
+        "distinctSnapshots": true,
+        "turnStatus": "final"
+      },
+      "expected": {
+        "turnsObserved": 1,
+        "selectedIds": [
+          "mem_s5_03",
+          "mem_s5_01"
+        ],
+        "seesOwnAgentEntry": true,
+        "seesOtherAgentEntry": false,
+        "seesWorkspaceEntry": true,
+        "contextMentionsOwnEntry": true,
+        "contextMentionsOtherAgentEntry": false,
+        "distinctSnapshots": true,
+        "turnStatus": "final"
+      },
+      "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+      "name": "each Agent receives only its own reachable Memory and its own frozen snapshot",
+      "expression": "expect('LITE-09-013', 'S5E-ISOLATION-01', 'each Agent receives only its own reachable Memory and its own frozen snapshot',",
+      "line": 196,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-ISOLATION-02",
+      "requirementId": "LITE-09-013",
+      "actual": {
+        "turnAPointsAtItsOwnSnapshot": true,
+        "snapshotsForTheConversation": 2,
+        "snapshotAgents": [
+          {
+            "agentId": "agent_a",
+            "turnId": "turn_aaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "agentId": "agent_b",
+            "turnId": "turn_bbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      "expected": {
+        "turnAPointsAtItsOwnSnapshot": true,
+        "snapshotsForTheConversation": 2,
+        "snapshotAgents": [
+          {
+            "agentId": "agent_a",
+            "turnId": "turn_aaaaaaaaaaaaaaaaaaaa"
+          },
+          {
+            "agentId": "agent_b",
+            "turnId": "turn_bbbbbbbbbbbbbbbbbbbb"
+          }
+        ]
+      },
+      "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+      "name": "the earlier Agent keeps its own snapshot and history unchanged",
+      "expression": "expect('LITE-09-013', 'S5E-ISOLATION-02', 'the earlier Agent keeps its own snapshot and history unchanged',",
+      "line": 210,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-AUTHORITY-01",
+      "requirementId": "LITE-09-102",
+      "actual": {
+        "providerCalls": 0,
+        "turnStatus": "failed",
+        "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY",
+        "messageStatus": "failed",
+        "snapshotCreatedForThatTurn": 0,
+        "refusalNamesTheHolder": true,
+        "runtimeEvents": 0
+      },
+      "expected": {
+        "providerCalls": 0,
+        "turnStatus": "failed",
+        "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY",
+        "messageStatus": "failed",
+        "snapshotCreatedForThatTurn": 0,
+        "refusalNamesTheHolder": true,
+        "runtimeEvents": 0
+      },
+      "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+      "name": "a chat Turn refuses instead of running beside another modifying holder, before any Provider call",
+      "expression": "expect('LITE-09-102', 'S5E-AUTHORITY-01', 'a chat Turn refuses instead of running beside another modifying holder, before any Provider call',",
+      "line": 228,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5E-AUTHORITY-02",
+      "requirementId": "LITE-09-102",
+      "actual": {
+        "providerCalls": 1,
+        "status": "final"
+      },
+      "expected": {
+        "providerCalls": 1,
+        "status": "final"
+      },
+      "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+      "name": "the same Turn runs once the modifying holder is released, so the refusal is about authority only",
+      "expression": "expect('LITE-09-102', 'S5E-AUTHORITY-02', 'the same Turn runs once the modifying holder is released, so the refusal is about authority only',",
+      "line": 242,
+      "outcome": "passed"
+    }
+  ]
+}

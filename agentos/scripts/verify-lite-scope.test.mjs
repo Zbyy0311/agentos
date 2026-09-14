@@ -122,12 +122,13 @@ function passFixture() {
   return { currentMatrix, row, proof };
 }
 
-test('scope accepts the frozen matrix with zero PASS rows', () => {
+test('scope accepts the frozen matrix with individually authorized PASS rows', () => {
   const result = validateScope(matrix(), evidence, lock, root);
-  assert.equal(result.PASS, 0);
-  assert.equal(result.GAP, 26);
+  assert.equal(result.PASS, 14);
+  assert.equal(result.GAP, 12);
   // 204 / 165 rather than 205 / 164: the user-authorized LITE-04-101 deferral moves
-  // exactly one row, and this suite is where that shift has to stay visible.
+  // exactly one row, and the controlled v18 promotions close fourteen independently
+  // evidenced rows without changing the permanent scope.
   assert.equal(result['RUNTIME-VERIFY'], 204);
   assert.equal(result.DEFERRED, 165);
 });
@@ -142,7 +143,9 @@ test('freeze rejects old PASS re-upgrade and GAP or DEFERRED closure', () => {
   for (const before of ['PASS', 'GAP', 'DEFERRED']) {
     const changed = matrix();
     const frozen = freeze();
-    const row = changed.requirements.find(item => frozen.rows.find(original => original.id === item.id)?.state === before);
+    const authorizedPromotions = new Set(json('pass-promotions.json').promotions.map(item => item.requirementId));
+    const row = changed.requirements.find(item => frozen.rows.find(original => original.id === item.id)?.state === before
+      && (before !== 'GAP' || !authorizedPromotions.has(item.id)));
     row.state = before === 'DEFERRED' ? 'GAP' : 'PASS';
     if (before === 'DEFERRED') row.workPackage = 'S8';
     assert.throws(() => validateScope(changed, evidence, lock, root, frozen), before === 'PASS'
@@ -218,6 +221,11 @@ test('specification, deferral, and permanent scope-lock drift remain rejected', 
 function promotionFixture() {
   const currentMatrix = matrix();
   const row = currentMatrix.requirements.find(item => item.id === 'LITE-07-003');
+  const frozen = freeze();
+  const frozenById = new Map(frozen.rows.map(item => [item.id, item.state]));
+  for (const item of currentMatrix.requirements) {
+    if (item.state === 'PASS') item.state = frozenById.get(item.id);
+  }
   row.state = 'PASS';
   const authority = json('pass-promotion-authority.json');
   const promotion = {

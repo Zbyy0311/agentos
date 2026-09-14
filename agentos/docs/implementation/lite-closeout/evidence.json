@@ -1046,5 +1046,138 @@
     },
     "environment": "Local Windows receipts captured 2026-09-14 from the pinned clean SHA 0df73d75; GitHub-hosted CI provides none of the three Provider CLIs and no controlled credentials",
     "limitation": "These are local real-invocation receipts, not CI-reproducible evidence, so they do NOT satisfy exit condition item 1 and this record must never be used to grant a PASS. Three receipts are preserved: Codex about 190169ms, Kimi-routed about 27631ms and OpenCode about 29917ms, each raw exit 0 with 0 skipped, under docs/implementation/lite-closeout/evidence/gates-20260914/. The receipt baseline stays 0df73d75, and the verification that the relevant Provider, Run Engine and Process Runtime production chain has zero modified files from that baseline to this revision is recorded as supplementary credibility for the deferral only. No production credentials were injected into a hosted runner and no acceptance standard was lowered. LITE-04-101 is DEFERRED under deferral-amendments.json, which is anchored outside itself and may only authorize RUNTIME-VERIFY to DEFERRED."
+  },
+  {
+    "id": "S9-M0-07003-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-07-003-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-003\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/07-003.json",
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-003"
+    ],
+    "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
+    "limitation": "The receipt directly exercises the production Memory candidate generation, deduplication, review and source-authority paths; it is not a Provider invocation."
+  },
+  {
+    "id": "S9-M0-0713-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-07-013-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-013\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/07-013.json",
+    "result": {
+      "passed": 3,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-013"
+    ],
+    "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
+    "limitation": "The receipt covers the production Run context and snapshot read path, including the degraded flag; it does not claim search-engine availability beyond the exercised fallback."
+  },
+  {
+    "id": "S9-M0-07102-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-07-102-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-102\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/07-102.json",
+    "result": {
+      "passed": 7,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-102"
+    ],
+    "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
+    "limitation": "The receipt exercises non-success terminal generation, bounded content, replay convergence and startup repair without starting a Provider process."
+  },
+  {
+    "id": "S9-M0-S1-BUDGET-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s1-budget\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/s1-budget.json",
+    "result": {
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-007",
+      "LITE-07-109"
+    ],
+    "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
+    "limitation": "The receipt directly checks actual injected-text pricing, count/Scope/category/diversity/truncation budgets, fixed-time eligibility and the degraded retrieval result."
+  },
+  {
+    "id": "S9-M0-S5-AUTHORITY-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s5-execution\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/s5-execution.json",
+    "result": {
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-102"
+    ],
+    "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
+    "limitation": "The receipt uses a recording runner to prove the production authorization boundary and provider-call ordering; it does not claim model output quality or real CLI availability."
+  },
+  {
+    "id": "S9-M0-S6-COMPACTION-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/s6.json",
+    "result": {
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-105",
+      "LITE-09-104",
+      "LITE-09-105",
+      "LITE-09-106",
+      "LITE-09-108",
+      "LITE-09-109",
+      "LITE-09-110"
+    ],
+    "environment": "Windows; Node v24.18.0; final implementation baseline f51a6e1d; AGENTOS_COMPACTION_MODEL=gpt-5.6-luna; real Codex summarization process plus deterministic guards",
+    "limitation": "The real Provider receipt is local-machine evidence and is not the hosted-CI three-provider gate for LITE-04-101; deterministic phases cover retry, budget, edit/source staleness and native-compaction exclusion."
+  },
+  {
+    "id": "S9-M0-S7-IMPORT-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s7\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/s7.json",
+    "result": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-106"
+    ],
+    "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
+    "limitation": "The receipt exercises the mounted HTTP preview/confirm path and durable import records; browser rendering is outside this row's import contract."
   }
 ]
