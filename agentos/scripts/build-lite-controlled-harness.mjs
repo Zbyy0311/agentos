@@ -9,6 +9,7 @@
  *
  * Usage:
  *   node scripts/build-lite-controlled-harness.mjs \
+ *     --run-dir docs/.../captured-run \
  *     --source-receipt docs/.../receipts.json \
  *     --source-file scripts/verify-lite-s6-candidate-evidence.mjs \
  *     --baseline <40-char-sha> \
@@ -19,7 +20,7 @@
  */
 import { createHash } from 'node:crypto';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, relative, resolve } from 'node:path';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 
@@ -83,6 +84,8 @@ function sourceAssertion(sourceText, receipt) {
   };
 }
 
+const runDirectoryInput = required('--run-dir');
+const runDirectory = repoPath(runDirectoryInput, 'run directory');
 const sourceReceiptInput = required('--source-receipt');
 const sourceReceiptPath = repoPath(sourceReceiptInput, 'source receipt');
 const sourceFileInput = required('--source-file');
@@ -93,6 +96,11 @@ const cwdPath = repoPath(cwdInput, 'cwd');
 const executable = required('--executable');
 const argsJson = required('--args-json');
 const outputPath = resolve(repositoryRoot, required('--out'));
+
+const sourceRelativeToRun = relative(runDirectory, sourceReceiptPath);
+if (sourceRelativeToRun === '..' || sourceRelativeToRun.startsWith(`..${sep}`) || isAbsolute(sourceRelativeToRun)) {
+  throw new Error('source receipt must be inside the run directory');
+}
 
 if (!/^[0-9a-f]{40}$/.test(baseline)) throw new Error('baseline must be a 40-character SHA');
 const args = JSON.parse(argsJson);
@@ -120,7 +128,6 @@ for (const receipt of source.receipts) {
 // The source receipt is only a structured assertion payload. The invocation
 // facts must come from the capture utility's execution record in the same log
 // directory, not from the arguments passed to this assembler.
-const runDirectory = dirname(sourceReceiptPath);
 const executionPath = repoPath(resolve(runDirectory, 'execution.json'), 'execution record');
 const execution = JSON.parse(readFileSync(executionPath, 'utf8'));
 if (execution.schemaVersion !== 1) throw new Error('execution record schemaVersion must be 1');
@@ -135,7 +142,7 @@ if (execution.trackedCheckoutUnchanged !== true) throw new Error('execution chan
 
 const sourceText = readFileSync(sourceFilePath, 'utf8');
 const assertionCoverage = source.receipts.map(receipt => sourceAssertion(sourceText, receipt));
-const logPaths = filesUnder(dirname(sourceReceiptPath));
+const logPaths = filesUnder(runDirectory);
 if (!logPaths.includes(sourceReceiptPath)) throw new Error('source receipt is not in its log directory');
 
 const raw = {
