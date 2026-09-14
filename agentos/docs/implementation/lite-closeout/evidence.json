@@ -1293,5 +1293,23 @@
     ],
     "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
     "limitation": "The receipt starts with a real local node:test subprocess and proves the production Collector/HTTP/review chain; it does not claim a live model Provider invocation, which is outside the Artifact lifecycle clause."
+  },
+  {
+    "id": "S9-M0-S7-ORIGIN-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s7\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/s7.json",
+    "result": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-108"
+    ],
+    "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
+    "limitation": "The receipt directly proves import-origin Workspace Event causality and refusal of an unproven borrowed origin; it does not claim unrelated Memory trigger or browser acceptance behavior."
   }
 ]

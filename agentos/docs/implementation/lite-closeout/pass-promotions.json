@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "authorityId": "lite-pass-promotion-20260915",
   "authorityHash": "b8a3f061b5d8f1688c57e5abefd6c4f03b800d0ee8d0d9de92329d69b4655714",
-  "matrixVersion": 18,
+  "matrixVersion": 19,
   "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
   "promotions": [
     {
@@ -1641,6 +1641,53 @@
         }
       ],
       "rationale": "This individual promotion is based on the real test subprocess -> Collector -> durable ArtifactCompletion -> candidate_created Workspace Event -> review queue -> acceptance -> Memory Entry path. The 15 pass / 0 fail / 0 skip raw TAP receipt includes direct assertions for each transition and source/content link; the standalone completion POST is only an idempotency/conflict check after the real Collector-produced completion."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-108",
+      "requirementId": "LITE-07-108",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "packages/shared/src/types/mf5-workspace-events.ts",
+        "apps/server/src/services/WorkspaceEventContextAuthority.ts",
+        "apps/server/src/services/MemoryImportService.ts",
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S7-ORIGIN-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s7\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S7E-CONFIRM-02",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "the non-Run origin registers its own canonical causal Event without inventing a Run",
+          "line": 200,
+          "expression": "expect('LITE-07-108', 'S7E-CONFIRM-02', 'the non-Run origin registers its own canonical causal Event without inventing a Run',",
+          "clause": "A non-Run import origin must emit its own candidate_created causal Event and must not fabricate a Run.",
+          "whyDirect": "The controlled harness executes the production import path, reads the persisted Event and candidate identifiers, and directly asserts that the Event names its own import record, carries matching causation, and fabricates zero Runs.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-CONFIRM-03",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "the origin is proved against the durable record, and a borrowed origin is refused",
+          "line": 214,
+          "expression": "expect('LITE-07-108', 'S7E-CONFIRM-03', 'the origin is proved against the durable record, and a borrowed origin is refused',",
+          "clause": "The durable source/Scope/decision must be verifiable for the owning import, while an unknown or borrowed origin is refused.",
+          "whyDirect": "The harness compares the Candidate's persisted source and authority against its own import record, proves no unknown record, and directly observes the canonical WORKSPACE_EVENT_ORIGIN_UNPROVEN refusal without adding an Event.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This is one controlled, individually authorized promotion. Its 12 pass / 0 fail / 0 skip receipt contains exact assertions for the import-origin candidate_created Event, no fabricated Run, durable source causality, and refusal of a borrowed origin; it does not infer this result from the broader S7 suite."
     }
   ]
 }

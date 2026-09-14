@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 18,
+  "matrixVersion": 19,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -4705,7 +4705,7 @@
       "section": "§15; §4",
       "line": null,
       "requirement": "无Run触发器也有规范candidate_created与可验证因果",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "packages/shared/src/types/mf5-workspace-events.ts",
@@ -4715,10 +4715,10 @@
         "apps/server/src/store/WorkspaceEventWriter.test.ts"
       ],
       "evidence": [
-        "S2-ARTIFACT-SOURCE",
-        "S2-LOCAL-27"
+        "S9-M0-S7-ORIGIN-CONTROLLED"
       ],
-      "finding": "保留基线反证：Workspace allowlist无candidate_created。02a50947已为实际Artifact完成登记来源专属Workspace因果和事务校验，禁止借用其它origin；不伪造Run。审批/压缩/导入仍需各自真实来源登记，保持GAP。",
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "finding": "S7受控收据直接证明导入来源登记其自身candidate_created因果事件、未伪造Run，并拒绝未知或借用来源；12/12断言通过。该证据只覆盖本条的导入来源契约。",
       "exit": "授权最小契约扩展；持久来源因果证明，未知或跨Workspace来源拒绝；回滚和重放验证。"
     },
     {
@@ -8478,6 +8478,15 @@
       "reason": "LITE-07-104 is promoted from GAP to PASS from the real test subprocess and Collector/HTTP/review receipt: completion, candidate queue, Workspace Event, review acceptance, Entry source and content are each directly asserted.",
       "requirementIds": [
         "LITE-07-104"
+      ]
+    },
+    {
+      "version": 19,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-108 is promoted from GAP to PASS from the dedicated S7 origin receipt: S7E-CONFIRM-02 directly asserts the import's own candidate_created causal Event without inventing a Run, and S7E-CONFIRM-03 directly proves the durable source plus refusal of a borrowed origin.",
+      "requirementIds": [
+        "LITE-07-108"
       ]
     }
   ],
