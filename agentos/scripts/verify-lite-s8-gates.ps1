@@ -115,19 +115,20 @@ try {
     }
   }
 
-  # Preserve a failure observed in any occurrence. The only expected
-  # multi-phase exception is RECOVERY's pre-recovery not_run followed by its
-  # recovery passed result; it still must finish with passed.
+  # Preserve a failure observed in any occurrence. A gate that a phase does not
+  # execute prints not_run; that is tolerated only when the same gate passed in
+  # the phase that owns it, so no gate can be treated as passed without a real
+  # passed verdict.
   foreach ($gate in $occurrences.Keys) {
     $values = @($occurrences[$gate])
     if ($values -contains 'failed') {
       $problems.Add("raw gate failure observed: $gate = failed")
     }
-    $allowRecoveryNotRun = ($gate -eq 'RECOVERY' -and $values.Count -gt 1 -and $values[$values.Count - 1] -eq 'passed' -and (@($values | Where-Object { $_ -notin @('not_run', 'passed') }).Count -eq 0))
+    $passedOccurrence = $values -contains 'passed'
     foreach ($value in $values) {
       if ($value -in @('skipped', 'manual', 'planned')) {
         $problems.Add("non-executed gate result cannot prove PASS: $gate = $value")
-      } elseif ($value -eq 'not_run' -and -not $allowRecoveryNotRun) {
+      } elseif ($value -eq 'not_run' -and -not $passedOccurrence) {
         $problems.Add("non-executed gate result cannot prove PASS: $gate = not_run")
       }
     }

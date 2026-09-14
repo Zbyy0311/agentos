@@ -7,7 +7,16 @@ import { join } from 'node:path';
 const baseUrl = (process.env.AGENTOS_E2E_BASE_URL ?? 'http://127.0.0.1:3200').replace(/\/$/, '');
 const projectRoot = process.env.AGENTOS_PROJECT_ROOT;
 const phase = process.env.AGENTOS_E2E_PHASE ?? 'pre-recovery';
-const gates = { REAL_EXTERNAL_AGENT: false, DETERMINISTIC_LIFECYCLE: false, RECOVERY: phase === 'recovery' ? false : null, MEMORY_CANDIDATE: false };
+// A phase only executes its own gates. Gates that this phase does not run are
+// null so they print as not_run; reporting them as failed made every log look
+// like a raw gate failure even when the harness exited 0.
+const isRecoveryPhase = phase === 'recovery';
+const gates = {
+  REAL_EXTERNAL_AGENT: isRecoveryPhase ? null : false,
+  DETERMINISTIC_LIFECYCLE: isRecoveryPhase ? null : false,
+  RECOVERY: isRecoveryPhase ? false : null,
+  MEMORY_CANDIDATE: isRecoveryPhase ? null : false,
+};
 
 async function jsonRequest(path, options = {}) {
   const response = await fetch(`${baseUrl}${path}`, {
