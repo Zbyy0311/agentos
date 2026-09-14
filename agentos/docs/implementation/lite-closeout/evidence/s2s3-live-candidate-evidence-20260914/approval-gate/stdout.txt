@@ -1,0 +1,10 @@
+LITE-08-005/006/007 kept root: C:\Users\ADMINI~1\AppData\Local\Temp\agentos-live-approval-CGrnbn
+✔ LITE-08-005/006/007 + LITE-07-103 a real Provider runs only after a persisted approval decision (21501.2214ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 21821.8068

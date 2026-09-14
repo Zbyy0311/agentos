@@ -1,0 +1,2054 @@
+{
+  "schemaVersion": 1,
+  "evidencePackage": "S6-candidate-evidence",
+  "generatedAt": "2026-09-14T12:45:38.493Z",
+  "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+  "testCodeSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+  "routeModels": {
+    "compaction": "gpt-5.6-luna"
+  },
+  "modelScopeStatement": "此证据验证的是指定路由模型（compaction = gpt-5.6-luna）下的 AgentOS Provider/Runtime canonical chain，不证明机器默认模型或额度受限模型可用。",
+  "finalRun": {
+    "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+    "rawExitCode": 0,
+    "allRawLogs": [
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+        "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+        "bytes": 24852
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+        "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+        "bytes": 82
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+        "bytes": 3
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+        "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+        "bytes": 93
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+        "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+        "bytes": 4820
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+        "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+        "bytes": 337
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+        "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+        "bytes": 2
+      }
+    ],
+    "phases": {
+      "real": {
+        "outcome": "published",
+        "elapsedMs": 60417
+      },
+      "guard": {
+        "claimRefusalMessage": "COMPACTION_CONFLICT",
+        "guardSummarizerCalls": 3,
+        "guardTaskStatuses": [
+          "failed",
+          "retry-pending"
+        ],
+        "guardPublished": false
+      }
+    },
+    "counts": {
+      "total": 39,
+      "passed": 39,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "requirements": [
+    {
+      "id": "LITE-09-104",
+      "specification": {
+        "text": "版本化lite-v1阈值和预算原因",
+        "section": "user-approved automatic compaction",
+        "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+        "sourceLine": 17,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 13,
+            "note": "lite-v1 默认值是实现策略而非规范常量"
+          },
+          {
+            "sourceFile": "docs/implementation/lite-closeout/compaction-policy-lite-v1.json",
+            "sourceLine": 1,
+            "note": "策略参数与 estimator 版本的冻结记录"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "09-Conversation-Runtime.md",
+        "section": "user-approved automatic compaction",
+        "requirement": "版本化lite-v1阈值和预算原因",
+        "exitCriteria": "持久policyVersion及70%/50%/8/2048/120000/1；每次保存预算组成、上限来源、估算器版本；未来策略不重写历史。",
+        "recordedGap": "无持久策略或预算评估。",
+        "productionEntryPoints": [
+          "apps/server/src/services/ConversationTurnDriver.ts"
+        ],
+        "tests": [],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 3,
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-REAL-10",
+          "assertionId": "S6E-REAL-10",
+          "requirementId": "LITE-09-104",
+          "phase": "real",
+          "step": "the lite-v1 policy records the versioned thresholds",
+          "actual": {
+            "policyVersion": "lite-v1",
+            "triggerRatio": 0.7,
+            "targetRatio": 0.5,
+            "minRecentMessages": 8,
+            "summaryMaxTokens": 2048,
+            "timeoutMs": 120000,
+            "maxAutomaticRetries": 1
+          },
+          "expected": {
+            "policyVersion": "lite-v1",
+            "triggerRatio": 0.7,
+            "targetRatio": 0.5,
+            "minRecentMessages": 8,
+            "summaryMaxTokens": 2048,
+            "timeoutMs": 120000,
+            "maxAutomaticRetries": 1
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-11",
+          "assertionId": "S6E-REAL-11",
+          "requirementId": "LITE-09-104",
+          "phase": "real",
+          "step": "the task records the budget composition and estimator that produced it",
+          "actual": {
+            "policyVersion": "lite-v1",
+            "estimatorVersion": "lite-v1-chars4",
+            "providerContextTokens": 12000,
+            "outputReserveTokens": 2048,
+            "applicationBudgetSource": "provider",
+            "triggerRatio": 0.7,
+            "targetRatio": 0.5,
+            "retainedRecentMessages": 8,
+            "taskEstimatorVersion": "lite-v1-chars4"
+          },
+          "expected": {
+            "policyVersion": "lite-v1",
+            "estimatorVersion": "lite-v1-chars4",
+            "providerContextTokens": 12000,
+            "outputReserveTokens": 2048,
+            "applicationBudgetSource": "provider",
+            "triggerRatio": 0.7,
+            "targetRatio": 0.5,
+            "retainedRecentMessages": 8,
+            "taskEstimatorVersion": "lite-v1-chars4"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-DB-01",
+          "assertionId": "S6E-DB-01",
+          "requirementId": "LITE-09-104",
+          "phase": "durable",
+          "step": "a versioned policy row cannot be rewritten, so an old budget keeps its interpretation",
+          "actual": {
+            "refusedWithCode": true,
+            "storedMaxTokens": 2048
+          },
+          "expected": {
+            "refusedWithCode": true,
+            "storedMaxTokens": 2048
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "Assertions read the production policy registry for lite-v1 (triggerRatio 0.70 / targetRatio 0.50 / minRecentMessages 8 / summaryMaxTokens 2048 / timeoutMs 120000 / maxAutomaticRetries 1) and then read back the real published task row, proving the effective policy version, the estimator version (lite-v1-chars4), the budget composition (providerContextTokens / outputReserveTokens / applicationBudgetSource), the trigger and target ratios and the retained window are all persisted with the summary, so a historical compaction stays explainable after the policy evolves.",
+      "adjacentBehaviorNotProven": "Covers one real publish record, the threshold read for lite-v1, and the executed refusal of an in-place policy rewrite (COMPACTION_POLICY_IMMUTABLE, stored max tokens unchanged). It does not exercise a later policy version migration path, and it does not cover the 16384-token fallback application budget because the real task resolved applicationBudgetSource=provider.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-09-105",
+      "specification": {
+        "text": "有界摘要发布、原消息保留和实际context应用",
+        "section": "user-approved automatic compaction",
+        "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+        "sourceLine": 20,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 24,
+            "note": "有效上下文为 prior summary + uncompressed tail"
+          },
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 40,
+            "note": "Messages 永不静默截断"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "09-Conversation-Runtime.md",
+        "section": "user-approved automatic compaction",
+        "requirement": "有界摘要发布、原消息保留和实际context应用",
+        "exitCriteria": "保留原消息，摘要不可变；前序摘要+有界前缀分批；近期至少8条+当前输入，采用摘要+未压缩尾部。",
+        "recordedGap": "无canonical summary/source range。",
+        "productionEntryPoints": [
+          "apps/server/src/store/ConversationRepository.ts"
+        ],
+        "tests": [],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-REAL-05",
+          "assertionId": "S6E-REAL-05",
+          "requirementId": "LITE-09-105",
+          "phase": "real",
+          "step": "the published summary is non-empty and inside the recorded budget",
+          "actual": {
+            "lengthOk": true,
+            "summaryHashMatches": true
+          },
+          "expected": {
+            "lengthOk": true,
+            "summaryHashMatches": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-06",
+          "assertionId": "S6E-REAL-06",
+          "requirementId": "LITE-09-105",
+          "phase": "real",
+          "step": "the source range it covered is recorded",
+          "actual": {
+            "sourceMessageCount": 4,
+            "hasStart": true,
+            "hasEnd": true,
+            "hasSourceHash": true
+          },
+          "expected": {
+            "sourceMessageCount": 4,
+            "hasStart": true,
+            "hasEnd": true,
+            "hasSourceHash": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-13",
+          "assertionId": "S6E-REAL-13",
+          "requirementId": "LITE-09-105",
+          "phase": "real",
+          "step": "the Messages the summary covered survive the published compaction unchanged",
+          "actual": {
+            "rowsBefore": 12,
+            "rowsAfter": 12,
+            "digestUnchanged": true,
+            "distinctStatuses": [
+              "final"
+            ]
+          },
+          "expected": {
+            "rowsBefore": 12,
+            "rowsAfter": 12,
+            "digestUnchanged": true,
+            "distinctStatuses": [
+              "final"
+            ]
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-16",
+          "assertionId": "S6E-REAL-16",
+          "requirementId": "LITE-09-105",
+          "phase": "real",
+          "step": "only the bounded old prefix is compacted: the recent window stays uncompressed",
+          "actual": {
+            "totalMessages": 12,
+            "sourceMessageCount": 4,
+            "retainedMessages": 8,
+            "minRecentMessages": 8,
+            "sourceStartIsOldest": true,
+            "sourceEndIsLastCoveredMessage": true
+          },
+          "expected": {
+            "totalMessages": 12,
+            "sourceMessageCount": 4,
+            "retainedMessages": 8,
+            "minRecentMessages": 8,
+            "sourceStartIsOldest": true,
+            "sourceEndIsLastCoveredMessage": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-01",
+          "assertionId": "S6E-GUARD-01",
+          "requirementId": "LITE-09-105",
+          "phase": "guard",
+          "step": "an oversized summary is refused, never published",
+          "actual": {
+            "outcome": "retry-pending",
+            "failureCode": "COMPACTION_SUMMARY_INVALID",
+            "attempts": 1,
+            "summarizerCalls": 1,
+            "published": false,
+            "candidates": 0
+          },
+          "expected": {
+            "outcome": "retry-pending",
+            "failureCode": "COMPACTION_SUMMARY_INVALID",
+            "attempts": 1,
+            "summarizerCalls": 1,
+            "published": false,
+            "candidates": 0
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-DB-02",
+          "assertionId": "S6E-DB-02",
+          "requirementId": "LITE-09-105",
+          "phase": "durable",
+          "step": "a published summary cannot be rewritten after it became canonical",
+          "actual": {
+            "refusedWithCode": true,
+            "summaryHashUnchanged": true
+          },
+          "expected": {
+            "refusedWithCode": true,
+            "summaryHashUnchanged": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-TURNGATE-02",
+          "assertionId": "S6E-TURNGATE-02",
+          "requirementId": "LITE-09-105",
+          "phase": "turngate",
+          "step": "the real published summary reaches the Provider context and replaces exactly the covered Messages",
+          "actual": {
+            "status": "completed",
+            "runnerCalls": 1,
+            "summaryEntryIdPresent": true,
+            "summaryTextInContext": true,
+            "coveredIdsStillInContext": [],
+            "tailIdsStillInContext": [
+              "msg_004",
+              "msg_005",
+              "msg_006",
+              "msg_007"
+            ]
+          },
+          "expected": {
+            "status": "completed",
+            "runnerCalls": 1,
+            "summaryEntryIdPresent": true,
+            "summaryTextInContext": true,
+            "coveredIdsStillInContext": [],
+            "tailIdsStillInContext": [
+              "msg_004",
+              "msg_005",
+              "msg_006",
+              "msg_007"
+            ]
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The publish path proves the summary is non-empty, inside the recorded summaryMaxTokens budget, hash-identical to its stored content, and carries the source range (start/end Message id, count, 64-char source hash). The same run compares real cr_messages rows before and after the publish and shows all 12 covered Messages are byte-identical and still status=final, i.e. the originals are neither deleted nor rewritten. Context application is covered by the production applyCompactionSummary: inside the budget it applies and reports summarizedMessages, over the hard budget it refuses.",
+      "adjacentBehaviorNotProven": "The original-Message comparison covers the 12 Messages of this Conversation; multi-batch prefix compaction and cross-Conversation batches are not replayed here. Context application is asserted through the production Turn driver with a recording Runner (the summary entry and the untouched tail are what the Provider receives), not through a live Provider conversation; the summary is additionally shown to be unrewritable once published, and no UI rendering is proven.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-09-106",
+      "specification": {
+        "text": "压缩执行安全与Provider identity冻结",
+        "section": "user-approved automatic compaction",
+        "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+        "sourceLine": 25,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 28,
+            "note": "无法排除工具/写入时按失败处理，而不是放宽沙箱"
+          },
+          {
+            "sourceFile": "apps/server/src/services/summarizationCliProfiles.ts",
+            "sourceLine": 39,
+            "note": "codex 是唯一 allowlist profile，其余 Provider fail-closed"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "09-Conversation-Runtime.md",
+        "section": "user-approved automatic compaction",
+        "requirement": "压缩执行安全与Provider identity冻结",
+        "exitCriteria": "冻结触发轮Provider，禁止静默切换；不可保证禁工具/禁写则不可调用，按预算失败分支处理。",
+        "recordedGap": "无tool-free/write-denied摘要执行证据。",
+        "productionEntryPoints": [
+          "packages/agent-core/src/conversationRunner.ts"
+        ],
+        "tests": [],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-REAL-02",
+          "assertionId": "S6E-REAL-02",
+          "requirementId": "LITE-09-106",
+          "phase": "real",
+          "step": "the summary was produced by a real Provider process",
+          "actual": {
+            "summaryNonEmpty": true
+          },
+          "expected": {
+            "summaryNonEmpty": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-03",
+          "assertionId": "S6E-REAL-03",
+          "requirementId": "LITE-09-106",
+          "phase": "real",
+          "step": "the frozen Provider identity is recorded on the task",
+          "actual": {
+            "adapterId": "cli.codex",
+            "adapterVersion": "1.0.0",
+            "providerType": "codex",
+            "model": "gpt-5.6-luna"
+          },
+          "expected": {
+            "adapterId": "cli.codex",
+            "adapterVersion": "1.0.0",
+            "providerType": "codex",
+            "model": "gpt-5.6-luna"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-04",
+          "assertionId": "S6E-REAL-04",
+          "requirementId": "LITE-09-106",
+          "phase": "real",
+          "step": "the summary ran under the allowlisted read-only CLI profile",
+          "actual": {
+            "readOnly": true,
+            "skipGitRepoCheck": true
+          },
+          "expected": {
+            "readOnly": true,
+            "skipGitRepoCheck": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-14",
+          "assertionId": "S6E-REAL-14",
+          "requirementId": "LITE-09-106",
+          "phase": "real",
+          "step": "the summary run is read-only sandboxed with no approval or tool bypass",
+          "actual": {
+            "args": [
+              "exec",
+              "--sandbox",
+              "read-only",
+              "--skip-git-repo-check"
+            ],
+            "sandboxReadOnly": true,
+            "bypassFlagsPresent": [],
+            "approvalDecisions": 0,
+            "nonCandidateEvents": 0
+          },
+          "expected": {
+            "args": [
+              "exec",
+              "--sandbox",
+              "read-only",
+              "--skip-git-repo-check"
+            ],
+            "sandboxReadOnly": true,
+            "bypassFlagsPresent": [],
+            "approvalDecisions": 0,
+            "nonCandidateEvents": 0
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-DB-03",
+          "assertionId": "S6E-DB-03",
+          "requirementId": "LITE-09-106",
+          "phase": "durable",
+          "step": "the frozen Provider identity cannot be rewritten after the summary was published",
+          "actual": {
+            "refusedWithCode": true,
+            "storedModel": "gpt-5.6-luna"
+          },
+          "expected": {
+            "refusedWithCode": true,
+            "storedModel": "gpt-5.6-luna"
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The summary is produced by a real Codex CLI process started by the production summarizer, not by a stub. The published task row freezes adapterId cli.codex@1.0.0, providerType codex and the routed model, and the executed profile is asserted to be read-only sandboxed: --sandbox read-only present, no --dangerously-bypass-approvals-and-sandbox, no --full-auto, no workspace-write and no danger-full-access, zero approval_decisions rows written, and no Workspace Event other than the single memory.candidate_created of the real task.",
+      "adjacentBehaviorNotProven": "The safety assertions cover the real execution, the argument-level composition of the single allowlisted profile (codex), and the executed refusal to edit the frozen provider identity after publication. kimi and opencode have no allowlist profile and fail closed; no real summary was produced through them, so their refusal path is not re-verified here.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-09-107",
+      "specification": {
+        "text": "每Conversation单持有者、持久恢复、租约与重试",
+        "section": "user-approved automatic compaction",
+        "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+        "sourceLine": 29,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 32,
+            "note": "自动重试在 maxAutomaticRetries 处停止"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "09-Conversation-Runtime.md",
+        "section": "user-approved automatic compaction",
+        "requirement": "每Conversation单持有者、持久恢复、租约与重试",
+        "exitCriteria": "并发单持有者；重启先判断旧执行，不猜测结束；旧租约不可发布；自动重试最多一次，超时120秒。",
+        "recordedGap": "无压缩任务恢复状态。",
+        "productionEntryPoints": [
+          "apps/server/src/index.ts"
+        ],
+        "tests": [],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-GUARD-02",
+          "assertionId": "S6E-GUARD-02",
+          "requirementId": "LITE-09-107",
+          "phase": "guard",
+          "step": "the schema carries a one-running-holder index per Conversation",
+          "actual": {
+            "unwrapped": "CREATE UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = 'running'",
+            "isUnique": true,
+            "scopedToRunning": true
+          },
+          "expected": {
+            "unwrapped": "CREATE UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = 'running'",
+            "isUnique": true,
+            "scopedToRunning": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-03",
+          "assertionId": "S6E-GUARD-03",
+          "requirementId": "LITE-09-107",
+          "phase": "guard",
+          "step": "a second running holder for the same Conversation is refused by the store",
+          "actual": {
+            "refused": true,
+            "refusalIsStable": true
+          },
+          "expected": {
+            "refused": true,
+            "refusalIsStable": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-05",
+          "assertionId": "S6E-GUARD-05",
+          "requirementId": "LITE-09-107",
+          "phase": "guard",
+          "step": "exactly one running holder remains after the refusal",
+          "actual": {
+            "running": 1
+          },
+          "expected": {
+            "running": 1
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-04",
+          "assertionId": "S6E-GUARD-04",
+          "requirementId": "LITE-09-107",
+          "phase": "guard",
+          "step": "the automatic evaluation resumes the same attempt and stops at the bounded retry budget",
+          "actual": {
+            "outcome": "failed",
+            "sameTask": true,
+            "attempts": 2,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+            "summarizerCalls": 2,
+            "published": false,
+            "running": 0
+          },
+          "expected": {
+            "outcome": "failed",
+            "sameTask": true,
+            "attempts": 2,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+            "summarizerCalls": 2,
+            "published": false,
+            "running": 0
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-07",
+          "assertionId": "S6E-GUARD-07",
+          "requirementId": "LITE-09-107",
+          "phase": "guard",
+          "step": "a spent automatic chain is never re-scheduled: no new attempt row and no new Provider call",
+          "actual": {
+            "outcome": "failed",
+            "sameTask": true,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+            "summarizerCalls": 2,
+            "guardTaskRows": 1
+          },
+          "expected": {
+            "outcome": "failed",
+            "sameTask": true,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+            "summarizerCalls": 2,
+            "guardTaskRows": 1
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-DB-05",
+          "assertionId": "S6E-DB-05",
+          "requirementId": "LITE-09-107",
+          "phase": "durable",
+          "step": "a publish from a lease that no longer holds the attempt is refused",
+          "actual": {
+            "refused": true,
+            "stableCode": true,
+            "rowStillRunning": "running"
+          },
+          "expected": {
+            "refused": true,
+            "stableCode": true,
+            "rowStillRunning": "running"
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The schema-level invariant is read from sqlite_master (UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = running), and the executed check claims a second running holder for the same Conversation while the first still holds it: the store refuses with the stable code COMPACTION_CONFLICT (no raw SQLite text leaks) and exactly one running row remains afterwards. The retry bound is executed as well: the first failing attempt records retry-pending with attempts=1 and one summarizer call, the second automatic evaluation resumes that same row, spends the single allowed automatic retry (attempts=2, second summarizer call) and records COMPACTION_RETRIES_EXHAUSTED, and the third automatic evaluation makes no Provider call at all and adds no row. Only the explicit retry starts a fresh attempt.",
+      "adjacentBehaviorNotProven": "Covers the single-holder, refusal, stale-lease and bounded-retry branches (a publish from a lease that no longer holds the attempt is refused with the stable conflict code and the row stays running). Restart classification and the expired-lease reclaim are covered by the migration/unit tests of the same slice, not replayed against a real Provider in this harness. A Provider/model change during a pending chain starts a new attempt instead of continuing the frozen identity; that branch is covered by the identity comparison in the service and is not exercised here.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-09-108",
+      "specification": {
+        "text": "压缩失败的硬预算分支",
+        "section": "user-approved automatic compaction",
+        "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+        "sourceLine": 37,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 40,
+            "note": "超限时保留输入并提供显式重试"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "09-Conversation-Runtime.md",
+        "section": "user-approved automatic compaction",
+        "requirement": "压缩失败的硬预算分支",
+        "exitCriteria": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。",
+        "recordedGap": "无硬预算门禁。",
+        "productionEntryPoints": [
+          "apps/server/src/services/ConversationTurnDriver.ts"
+        ],
+        "tests": [],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 5,
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-GUARD-08",
+          "assertionId": "S6E-GUARD-08",
+          "requirementId": "LITE-09-108",
+          "phase": "guard",
+          "step": "the explicit retry spends its own attempt instead of being blocked by the spent chain",
+          "actual": {
+            "outcome": "retry-pending",
+            "startsNewAttempt": true,
+            "attempts": 1,
+            "summarizerCalls": 3,
+            "guardTaskRows": 2,
+            "published": false
+          },
+          "expected": {
+            "outcome": "retry-pending",
+            "startsNewAttempt": true,
+            "attempts": 1,
+            "summarizerCalls": 3,
+            "guardTaskRows": 2,
+            "published": false
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-BUDGET-01",
+          "assertionId": "S6E-BUDGET-01",
+          "requirementId": "LITE-09-108",
+          "phase": "budget",
+          "step": "summary plus tail beyond the hard budget is refused",
+          "actual": {
+            "kind": "over-budget"
+          },
+          "expected": {
+            "kind": "over-budget"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-BUDGET-02",
+          "assertionId": "S6E-BUDGET-02",
+          "requirementId": "LITE-09-108",
+          "phase": "budget",
+          "step": "the refusal never truncates or drops the messages",
+          "actual": {
+            "historyLength": 3,
+            "contents": [
+              1,
+              1,
+              400
+            ]
+          },
+          "expected": {
+            "historyLength": 3,
+            "contents": [
+              1,
+              1,
+              400
+            ]
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-BUDGET-03",
+          "assertionId": "S6E-BUDGET-03",
+          "requirementId": "LITE-09-108",
+          "phase": "budget",
+          "step": "the same history inside the budget applies the summary",
+          "actual": {
+            "kind": "applied",
+            "summarizedMessages": 2
+          },
+          "expected": {
+            "kind": "applied",
+            "summarizedMessages": 2
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-TURNGATE-01",
+          "assertionId": "S6E-TURNGATE-01",
+          "requirementId": "LITE-09-108",
+          "phase": "turngate",
+          "step": "an over-budget summary and tail block the Provider call before any reservation",
+          "actual": {
+            "error": {
+              "type": "ConversationTurnDriverError",
+              "code": "TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED"
+            },
+            "runnerCalls": 0,
+            "messagesAdded": 0,
+            "turnsAdded": 0,
+            "digestsUnchanged": true
+          },
+          "expected": {
+            "error": {
+              "type": "ConversationTurnDriverError",
+              "code": "TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED"
+            },
+            "runnerCalls": 0,
+            "messagesAdded": 0,
+            "turnsAdded": 0,
+            "digestsUnchanged": true
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "On the production apply function, when prior summary plus the uncompressed tail exceeds the hard budget the result is over-budget and the input history is unchanged in length and in per-message content length (nothing truncated or dropped); the same history inside the budget applies the summary and reports summarizedMessages=2. The production Turn driver then refuses the same way end to end: TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED before any reservation, zero Runner calls, zero Messages and zero Turns added, every Message digest unchanged. The explicit retry the failure branch promises is executed too: after the bounded automatic chain is spent, the retry with resume=explicit starts its own attempt (new row, attempts=1) instead of being blocked by the spent chain.",
+      "adjacentBehaviorNotProven": "The over-budget branch is asserted on the production function and through the production Turn driver rather than as a live Provider conversation, and the explicit retry is asserted on the production engine/service path as the retry endpoint calls it (the endpoint itself adds no logic beyond passing the mode). The within-budget \"continue plus retry-pending\" Turn behaviour is covered by the ConversationTurnDriver unit tests.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-13-101",
+      "specification": {
+        "text": "Inspector解释每次压缩为何触发及被谁采用",
+        "section": "Inspector 压缩读面",
+        "sourceFile": "apps/server/src/routes/conversationRuntime.ts",
+        "sourceLine": 269,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 17,
+            "note": "每次压缩持久化策略版本、实际参数与预算组成"
+          },
+          {
+            "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+            "sourceLine": 416,
+            "note": "采用摘要的 Turn 在冻结快照里记录 compactionSummaryId 与 summarizedMessages"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "13-Runtime-Inspector.md",
+        "section": "user-approved compaction; §10",
+        "requirement": "Inspector解释每次压缩为何触发及被谁采用",
+        "exitCriteria": "展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。",
+        "recordedGap": "无compaction projection。",
+        "productionEntryPoints": [
+          "apps/server/src/services/RuntimeInspector.ts",
+          "apps/web/src/components/chat/RuntimeInspectorView.tsx"
+        ],
+        "tests": [
+          "apps/server/src/routes/runtimeInspector.test.ts"
+        ],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-INSPECTOR-01",
+          "assertionId": "S6E-INSPECTOR-01",
+          "requirementId": "LITE-13-101",
+          "phase": "inspector",
+          "step": "the read surface explains why this compaction happened, to whom and under which policy",
+          "actual": {
+            "status": 200,
+            "taskCount": 1,
+            "tasksMatchDurableRows": true,
+            "taskStatus": "published",
+            "taskModel": "gpt-5.6-luna",
+            "adapterId": "cli.codex",
+            "adapterVersion": "1.0.0",
+            "estimatorVersion": "lite-v1-chars4",
+            "attempts": 1,
+            "failureCode": null,
+            "hasSummaryHash": true,
+            "candidateMatches": true,
+            "summaryMatchesDurableRow": true,
+            "sourceRange": {
+              "start": "msg_000",
+              "end": "msg_003",
+              "count": 4
+            },
+            "recordedTriggerAboveThreshold": true,
+            "budgetKeys": [
+              "applicationBudgetSource",
+              "appliedApplicationBudgetTokens",
+              "estimatorVersion",
+              "historyBudgetTokens",
+              "historyTokens",
+              "memoryContextTokens",
+              "outputReserveTokens",
+              "policyVersion",
+              "providerContextTokens",
+              "retainedRecentMessages",
+              "sourceMessageCount",
+              "systemPromptTokens",
+              "targetRatio",
+              "triggerRatio"
+            ]
+          },
+          "expected": {
+            "status": 200,
+            "taskCount": 1,
+            "tasksMatchDurableRows": true,
+            "taskStatus": "published",
+            "taskModel": "gpt-5.6-luna",
+            "adapterId": "cli.codex",
+            "adapterVersion": "1.0.0",
+            "estimatorVersion": "lite-v1-chars4",
+            "attempts": 1,
+            "failureCode": null,
+            "hasSummaryHash": true,
+            "candidateMatches": true,
+            "summaryMatchesDurableRow": true,
+            "sourceRange": {
+              "start": "msg_000",
+              "end": "msg_003",
+              "count": 4
+            },
+            "recordedTriggerAboveThreshold": true,
+            "budgetKeys": [
+              "applicationBudgetSource",
+              "appliedApplicationBudgetTokens",
+              "estimatorVersion",
+              "historyBudgetTokens",
+              "historyTokens",
+              "memoryContextTokens",
+              "outputReserveTokens",
+              "policyVersion",
+              "providerContextTokens",
+              "retainedRecentMessages",
+              "sourceMessageCount",
+              "systemPromptTokens",
+              "targetRatio",
+              "triggerRatio"
+            ]
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-INSPECTOR-02",
+          "assertionId": "S6E-INSPECTOR-02",
+          "requirementId": "LITE-13-101",
+          "phase": "inspector",
+          "step": "the effective policy version and its parameters are readable, not implied",
+          "actual": {
+            "policies": [
+              {
+                "policyVersion": "lite-v1",
+                "triggerRatio": 0.7,
+                "targetRatio": 0.5,
+                "minRecentMessages": 8,
+                "summaryMaxTokens": 2048,
+                "timeoutMs": 120000,
+                "maxAutomaticRetries": 1,
+                "fallbackApplicationBudgetTokens": 16384
+              }
+            ],
+            "estimatorVersion": "lite-v1-chars4"
+          },
+          "expected": {
+            "policies": [
+              {
+                "policyVersion": "lite-v1",
+                "triggerRatio": 0.7,
+                "targetRatio": 0.5,
+                "minRecentMessages": 8,
+                "summaryMaxTokens": 2048,
+                "timeoutMs": 120000,
+                "maxAutomaticRetries": 1,
+                "fallbackApplicationBudgetTokens": 16384
+              }
+            ],
+            "estimatorVersion": "lite-v1-chars4"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-INSPECTOR-03",
+          "assertionId": "S6E-INSPECTOR-03",
+          "requirementId": "LITE-13-101",
+          "phase": "inspector",
+          "step": "the surface names the Turn and frozen snapshot that actually adopted the summary",
+          "actual": {
+            "adoptions": [
+              {
+                "snapshotId": "snapshot_01M2FZ5RF398WPA1NPBJX42SEX",
+                "turnId": "turn_cccccccccccccccccccc",
+                "summaryId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
+                "createdAt": "2026-09-14T12:43:49.484Z"
+              }
+            ],
+            "turnPointsAtAdoptedSnapshot": true,
+            "adoptedSummaryIsThePublishedRow": true
+          },
+          "expected": {
+            "adoptions": [
+              {
+                "snapshotId": "snapshot_01M2FZ5RF398WPA1NPBJX42SEX",
+                "turnId": "turn_cccccccccccccccccccc",
+                "summaryId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
+                "createdAt": "2026-09-14T12:43:49.484Z"
+              }
+            ],
+            "turnPointsAtAdoptedSnapshot": true,
+            "adoptedSummaryIsThePublishedRow": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-INSPECTOR-04",
+          "assertionId": "S6E-INSPECTOR-04",
+          "requirementId": "LITE-13-101",
+          "phase": "inspector",
+          "step": "failure and retry state are visible, and a Conversation without compactions reports none",
+          "actual": {
+            "guardTasks": [
+              {
+                "status": "failed",
+                "attempts": 2,
+                "failureCode": "COMPACTION_RETRIES_EXHAUSTED"
+              },
+              {
+                "status": "retry-pending",
+                "attempts": 1,
+                "failureCode": "COMPACTION_SUMMARY_INVALID"
+              }
+            ],
+            "guardAdoptions": 0,
+            "emptyTasks": 0,
+            "emptyPolicies": 0,
+            "emptyAdoptions": 0
+          },
+          "expected": {
+            "guardTasks": [
+              {
+                "status": "failed",
+                "attempts": 2,
+                "failureCode": "COMPACTION_RETRIES_EXHAUSTED"
+              },
+              {
+                "status": "retry-pending",
+                "attempts": 1,
+                "failureCode": "COMPACTION_SUMMARY_INVALID"
+              }
+            ],
+            "guardAdoptions": 0,
+            "emptyTasks": 0,
+            "emptyPolicies": 0,
+            "emptyAdoptions": 0
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The production router is mounted and reached over real HTTP. The read surface answers all four questions from durable rows: why it triggered (the recorded historyTokens is above triggerRatio x historyBudgetTokens), under which policy (lite-v1 with all six parameters plus the fallback application budget and the estimator version), who adopted it (the adoption names the snapshot and the real Turn whose durable row points at that same snapshot, and the adopted summaryId is the published row), and what happened on failure (the refused Conversation shows attempts plus COMPACTION_SUMMARY_INVALID and COMPACTION_RETRIES_EXHAUSTED). A Conversation with no compaction reports empty tasks, policies and adoptions instead of borrowing another Conversation's state.",
+      "adjacentBehaviorNotProven": "It proves the read surface for the states this harness produced. It does not render the UI, and it does not exercise a compaction whose source range was rejected as stale (that state is durable and readable through the same projection, but is not asserted here).",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-09-109",
+      "specification": {
+        "text": "仅复用现有Message修订/可见性校验摘要来源",
+        "section": "user clarification; existing edits",
+        "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+        "sourceLine": 42,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 45,
+            "note": "历史已发布摘要与快照不被重写"
+          },
+          {
+            "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+            "sourceLine": 1,
+            "note": "来源校验复用既有 Message 修订与可见性，不新增编辑能力"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "09-Conversation-Runtime.md",
+        "section": "user clarification; existing edits",
+        "requirement": "仅复用现有Message修订/可见性校验摘要来源",
+        "exitCriteria": "不新增编辑API/UI/versioning；实际内容变化或不可见使旧摘要不能进入新context，历史快照不变。",
+        "recordedGap": "editMessage及cr_message_revisions已有；无压缩source校验。",
+        "productionEntryPoints": [
+          "apps/server/src/store/ConversationRepository.ts"
+        ],
+        "tests": [
+          "apps/server/src/store/ConversationRepository.test.ts"
+        ],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-STALE-01",
+          "assertionId": "S6E-STALE-01",
+          "requirementId": "LITE-09-109",
+          "phase": "stale",
+          "step": "a summary whose covered Message was edited is refused",
+          "actual": {
+            "kind": "stale-source",
+            "reason": "source-content-changed"
+          },
+          "expected": {
+            "kind": "stale-source",
+            "reason": "source-content-changed"
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "After a covered Message is edited, the production apply function refuses to reuse the old summary and reports kind=stale-source with reason=source-content-changed instead of building a new context from a summary whose source no longer matches. The slice adds no edit API, no edit UI and no Message Versioning: this branch only reuses the existing revision semantics.",
+      "adjacentBehaviorNotProven": "Covers the content-changed invalidation path. The visibility (soft-deleted / no-longer-in-context) branch is covered by the existing unit tests and is not replayed against a real Provider here.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-09-110",
+      "specification": {
+        "text": "Provider-native compaction不得作为canonical evidence",
+        "section": "user clarification; 01 §7",
+        "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+        "sourceLine": 11,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/Runtime-Specification lite/03-Event-Model.md",
+            "sourceLine": 478,
+            "note": "Compaction 可用 Artifact 与序列区间替换高流量流细节"
+          },
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 12,
+            "note": "永不把 Provider native compaction 当作 canonical evidence"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "09-Conversation-Runtime.md",
+        "section": "user clarification; 01 §7",
+        "requirement": "Provider-native compaction不得作为canonical evidence",
+        "exitCriteria": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。",
+        "recordedGap": "新AgentOS压缩尚未实现，必须明确native诊断边界。",
+        "productionEntryPoints": [
+          "packages/agent-core/src/conversationRunner.ts"
+        ],
+        "tests": [],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 1,
+        "passed": 1,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-REAL-12",
+          "assertionId": "S6E-REAL-12",
+          "requirementId": "LITE-09-110",
+          "phase": "real",
+          "step": "only the AgentOS-persisted summary is canonical",
+          "actual": {
+            "persistedSummaries": 1,
+            "matchesTask": true,
+            "nativeRows": 0
+          },
+          "expected": {
+            "persistedSummaries": 1,
+            "matchesTask": true,
+            "nativeRows": 0
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The canonical store is asserted to hold exactly one compaction summary row with a non-null summary, identical to the summary on the published task, and zero rows whose provider_type is native: AgentOS trusts only the Summary, source range, policy, budget and snapshot it persisted itself, and no Provider-internal compaction can appear as a canonical record.",
+      "adjacentBehaviorNotProven": "This is a disproving assertion over AgentOS authoritative storage (native row count 0 plus a single AgentOS-persisted summary). It does not inspect whether a Provider process compacted its own context internally.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-07-105",
+      "specification": {
+        "text": "Conversation compaction 来源触发",
+        "section": "§7; user-approved compaction",
+        "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+        "sourceLine": 33,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/Runtime-Specification lite/07-Memory-Runtime.md",
+            "sourceLine": 174,
+            "note": "Conversation compaction 是规范的 canonical Memory 来源之一"
+          },
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 36,
+            "note": "Candidate 永不自动接受"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "07-Memory-Runtime.md",
+        "section": "§7; user-approved compaction",
+        "requirement": "Conversation compaction 来源触发",
+        "exitCriteria": "来源记录、完成摘要、候选与事件原子提交，review-required；摘要可用性不等于Memory审核。",
+        "recordedGap": "无canonical compaction任务、摘要、策略或生产调用链。",
+        "productionEntryPoints": [
+          "apps/server/src/services/ConversationTurnDriver.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/ConversationTurnDriver.test.ts"
+        ],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-REAL-01",
+          "assertionId": "S6E-REAL-01",
+          "requirementId": "LITE-07-105",
+          "phase": "real",
+          "step": "a real Provider compaction publishes a durable task",
+          "actual": "published",
+          "expected": "published",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-07",
+          "assertionId": "S6E-REAL-07",
+          "requirementId": "LITE-07-105",
+          "phase": "real",
+          "step": "publishing records a review-required agent-derived Candidate",
+          "actual": {
+            "decision": "review-required",
+            "outcome": "review-required",
+            "authority": "agent-derived",
+            "scope": "conversation"
+          },
+          "expected": {
+            "decision": "review-required",
+            "outcome": "review-required",
+            "authority": "agent-derived",
+            "scope": "conversation"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-08",
+          "assertionId": "S6E-REAL-08",
+          "requirementId": "LITE-07-105",
+          "phase": "real",
+          "step": "the fact and its canonical Workspace Event are one causal record",
+          "actual": {
+            "type": "memory.candidate_created",
+            "causationId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
+            "payloadCandidateMatches": true
+          },
+          "expected": {
+            "type": "memory.candidate_created",
+            "causationId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
+            "payloadCandidateMatches": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-09",
+          "assertionId": "S6E-REAL-09",
+          "requirementId": "LITE-07-105",
+          "phase": "real",
+          "step": "a repeat over the same source converges without a second fact",
+          "actual": {
+            "outcome": "published",
+            "sameTask": true,
+            "tasks": 1
+          },
+          "expected": {
+            "outcome": "published",
+            "sameTask": true,
+            "tasks": 1
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-15",
+          "assertionId": "S6E-REAL-15",
+          "requirementId": "LITE-07-105",
+          "phase": "real",
+          "step": "publishing a summary does not create a Memory Entry: availability is not approval",
+          "actual": {
+            "memoryEntries": 0,
+            "candidateDecision": "review-required",
+            "candidateOutcome": "review-required"
+          },
+          "expected": {
+            "memoryEntries": 0,
+            "candidateDecision": "review-required",
+            "candidateOutcome": "review-required"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-06",
+          "assertionId": "S6E-GUARD-06",
+          "requirementId": "LITE-07-105",
+          "phase": "guard",
+          "step": "a refused summary leaves no Candidate, no published row and no canonical Event behind",
+          "actual": {
+            "guardCandidates": 0,
+            "guardPublished": false,
+            "guardTasksWithSummary": 0,
+            "compactionEvents": 1
+          },
+          "expected": {
+            "guardCandidates": 0,
+            "guardPublished": false,
+            "guardTasksWithSummary": 0,
+            "compactionEvents": 1
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-DB-04",
+          "assertionId": "S6E-DB-04",
+          "requirementId": "LITE-07-105",
+          "phase": "durable",
+          "step": "one published summary per Conversation source: a second publish of the same source is refused",
+          "actual": {
+            "indexIsUnique": true,
+            "scopedToPublished": true,
+            "refusedByUnique": true,
+            "publishedRowsInConversation": 1
+          },
+          "expected": {
+            "indexIsUnique": true,
+            "scopedToPublished": true,
+            "refusedByUnique": true,
+            "publishedRowsInConversation": 1
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The evidence walks the production trigger itself: a real Provider summary, a durable published task, a review-required / agent-derived / conversation-scoped Memory Candidate keyed to that task, and the canonical memory.candidate_created Workspace Event whose causation_id is the task id and whose payload names that Candidate. Re-evaluating the same source converges to the same task with a single fact row, and the refused-summary path leaves zero Candidate, no published row and no second Event behind.",
+      "adjacentBehaviorNotProven": "Proves Candidate creation, its causal Event, and that availability is not approval (the published Candidate stays review-required and zero Memory Entries exist afterwards). It does not prove the later human review decision (a separate S3 row) and does not prove the Candidate became long-term Memory. Recorded adjacent behaviour: a repeated evaluation of a failed attempt leaves two retry-pending task rows, while the bounded quantities (running holder 0, published facts 0) remain correct.",
+      "verdict": "candidate-supported"
+    }
+  ],
+  "matrixProtection": {
+    "passFreezeEdited": false,
+    "passPromotionExecuted": false,
+    "requireClosedExecuted": false,
+    "protectedFiles": [
+      {
+        "path": "docs/implementation/lite-closeout/matrix.json",
+        "worktreeSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "baselineSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-freeze.json",
+        "worktreeSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "baselineSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-evidence-audit.json",
+        "worktreeSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "baselineSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "matchesBaseline": true
+      }
+    ],
+    "workingTreeDelta": [
+      " M agentos/apps/server/src/routes/conversationRuntime.ts",
+      " M agentos/apps/server/src/services/ConversationCompactionService.test.ts",
+      " M agentos/apps/server/src/services/ConversationCompactionService.ts",
+      " M agentos/apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      " M agentos/apps/server/src/services/ConversationCompactionTrigger.ts",
+      " M agentos/apps/server/src/store/CompactionRepository.ts",
+      " M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+      " M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+      " M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+      " M agentos/scripts/assemble-lite-s6-candidate-evidence.mjs",
+      " M agentos/scripts/verify-lite-s6-candidate-evidence.mjs"
+    ],
+    "verdictVocabulary": [
+      "candidate-supported",
+      "insufficient-evidence",
+      "failed"
+    ]
+  }
+}

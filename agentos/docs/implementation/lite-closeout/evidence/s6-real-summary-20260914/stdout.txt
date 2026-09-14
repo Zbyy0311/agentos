@@ -1,0 +1,4 @@
+REAL_COMPACTION_SUMMARY: passed
+  model=gpt-5.6-luna adapter=cli.codex@1.0.0 firstRunMs=51348 repeatMs=0
+  summaryChars=242 sourceMessages=4 policy=lite-v1
+  summaryHead="The entire exchange repeatedly states one invariant: “The runtime keeps Tasks, Runs and Processes distinct.” No concrete task, question, implementation request,"

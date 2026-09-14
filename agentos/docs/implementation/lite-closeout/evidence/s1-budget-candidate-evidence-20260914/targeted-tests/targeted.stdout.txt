@@ -1,0 +1,39 @@
+✔ MF4B-01 selection persists snapshot and assembles context (155.0883ms)
+✔ MF4B-02 token budget truncates explicitly (153.8145ms)
+✔ MF4B-03 entry budget excludes beyond cap (157.2281ms)
+✔ MF4B-04 confidence and importance thresholds exclude (158.2173ms)
+✔ MF4B-05 per-category limit excludes (141.687ms)
+✔ MF4B-06 selection is reproducible (156.28ms)
+✔ MF4B-07 later entry edits do not change a snapshot (143.9285ms)
+✔ MF4B-08 invalid input fails closed (144.0375ms)
+✔ MF4B-09 query hash is stable and opaque (0.4128ms)
+✔ MF4B-11 per-scope limit reports scope-excluded (152.066ms)
+✔ MF4B-12 diversity prefers an unrepresented category and explains the exclusion (169.6665ms)
+✔ MF4B-13 diversity keeps capacity usable for deferred entries (161.0641ms)
+✔ MF4B-10 applyBudget records every considered entry (0.2195ms)
+✔ MF3-01 reach resolution is owner-bounded (1.0238ms)
+✔ MF3-02 retrieval is scope-bounded (152.0997ms)
+✔ MF3-03 non-retrievable statuses excluded (140.6646ms)
+✔ MF3-04 ranking is deterministic and order-independent (0.2333ms)
+✔ MF3-05 pin dominates and is explained (0.1355ms)
+✔ MF3-06 conflict penalty and FTS reason (0.1079ms)
+✔ MF3-07 equal scores break by id ascending (0.1073ms)
+✔ MF3-08 recency is driven by the supplied clock (0.0842ms)
+✔ MF3-09 category and tag filters (142.1893ms)
+✔ MF3-10 FTS relevance affects ranking, structured filters remain authoritative (136.6766ms)
+✔ MF3-11 hostile FTS query is neutralized (129.3158ms)
+✔ MF3-12 limit caps results (145.8824ms)
+✔ MF3-13 invalid input fails closed (128.7179ms)
+✔ MF3-14 ranking weights are frozen (0.1043ms)
+✔ MF3-15 no cross-workspace leakage (149.1088ms)
+✔ LITE-07-109: validity is inclusive at start and exclusive at end or expiry (183.9335ms)
+✔ LITE-07-109: malformed persisted dates fail closed and the clock is captured once (166.7112ms)
+✔ LITE-07-109: restricted pinned matches cannot consume a limit or leak through retrieval (155.7651ms)
+ℹ tests 31
+ℹ suites 0
+ℹ pass 31
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 3854.9631

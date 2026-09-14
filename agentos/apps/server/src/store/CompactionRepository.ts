@@ -231,6 +231,21 @@ export class CompactionRepository {
       ORDER BY created_at ASC, id ASC LIMIT 1`).get(workspaceId, conversationId) as CompactionTaskRecord | undefined;
   }
 
+  /**
+   * LITE-09-107: the durable row of the most recent FINISHED attempt for one source.
+   * An automatic evaluation reads it to decide whether the bounded retry chain for
+   * that source is already spent: the bound is a property of the source, so it cannot
+   * be reset by simply evaluating again.
+   */
+  findLatestFinishedForSource(workspaceId: string, conversationId: string, sourceHash: string): CompactionTaskRecord | undefined {
+    return this.db.prepare(`SELECT ${TASK_COLUMNS} FROM conversation_compactions
+      WHERE workspace_id = ? AND conversation_id = ? AND source_hash = ?
+        AND status IN ('published','failed','retry-pending')
+      ORDER BY created_at DESC, id DESC LIMIT 1`).get(
+      workspaceId, conversationId, sourceHash,
+    ) as CompactionTaskRecord | undefined;
+  }
+
   /** pending -> running under a version CAS with a durable lease. */
   claimRunningWithinTransaction(input: {
     workspaceId: string; id: string; expectedVersion: number; leaseOwner: string;
