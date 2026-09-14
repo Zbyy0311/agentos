@@ -27,6 +27,8 @@ export interface ReplyWithTurnInput {
   readonly workspaceId: string;
   readonly workspaceRoot: string;
   readonly conversationId: string;
+  /** CR-5: link a Group speaker Turn's snapshot to its interaction. */
+  readonly interactionId?: string;
   readonly agentId: string;
   /** The triggering user Message this reply answers. */
   readonly sourceMessageId: string;
@@ -97,6 +99,7 @@ export interface TurnContextSnapshotWriteInput {
   readonly id: string;
   readonly workspaceId: string;
   readonly conversationId: string;
+  readonly interactionId?: string;
   readonly agentId: string;
   readonly turnId: string;
   readonly budgetJson: string;
@@ -285,6 +288,7 @@ export function createDurableTurnContextSnapshotPort(
         id: input.id,
         workspaceId: input.workspaceId,
         conversationId: input.conversationId,
+        ...(input.interactionId === undefined ? {} : { interactionId: input.interactionId }),
         agentId: input.agentId,
         turnId: input.turnId,
         budgetJson: input.budgetJson,
@@ -418,6 +422,7 @@ export class ConversationTurnDriver {
           id: contextSnapshotId,
           workspaceId: input.workspaceId,
           conversationId: input.conversationId,
+          ...(input.interactionId === undefined ? {} : { interactionId: input.interactionId }),
           agentId: input.agentId,
           turnId: input.turnId,
           budgetJson: JSON.stringify({
