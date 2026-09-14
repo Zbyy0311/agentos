@@ -184,6 +184,7 @@ test('final closure checks the real HEAD before CI or Provider evidence', () => 
   changed.requirements = changed.requirements.map(row => (
     row.state === 'GAP' || row.state === 'RUNTIME-VERIFY' ? { ...row, state: 'DEFERRED', workPackage: null } : row
   ));
+  changed.finalImplementationSha = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim();
   changed.finalMainSha = '0'.repeat(40);
   assert.throws(() => validateFinalClosure(changed, [], root), /real current HEAD/);
   assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).trim().length, 40);

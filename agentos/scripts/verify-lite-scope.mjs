@@ -654,9 +654,26 @@ function evidenceById(evidence) {
 export function validateFinalClosure(matrix, evidence, repositoryRoot = root) {
   assert.equal(matrix.requirements.filter(row => row.state === 'GAP' || row.state === 'RUNTIME-VERIFY').length, 0,
     'required Lite acceptance remains open');
+  assertSha(matrix.finalImplementationSha, sha40, 'finalImplementationSha');
   assertSha(matrix.finalMainSha, sha40, 'finalMainSha');
   const actualHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
   assert.equal(matrix.finalMainSha, actualHead, 'finalMainSha is not the real current HEAD');
+  if (matrix.finalImplementationSha !== matrix.finalMainSha) {
+    try {
+      execFileSync('git', ['merge-base', '--is-ancestor', matrix.finalImplementationSha, matrix.finalMainSha], {
+        cwd: repositoryRoot, stdio: 'ignore',
+      });
+    } catch {
+      assert.fail('finalImplementationSha is not an ancestor of finalMainSha');
+    }
+    const changedFiles = execFileSync('git', ['diff', '--name-only', `${matrix.finalImplementationSha}..${matrix.finalMainSha}`], {
+      cwd: repositoryRoot, encoding: 'utf8',
+    }).split(/\r?\n/).map(file => file.trim()).filter(Boolean);
+    for (const file of changedFiles) {
+      assert.match(file, /^docs\/implementation\/lite-closeout\//,
+        `non-closeout production change after finalImplementationSha: ${file}`);
+    }
+  }
   const byId = evidenceById(evidence);
   const ci = byId.get(matrix.finalCiEvidence);
   assert.ok(ci?.kind === 'github-actions' && ci.baseline === matrix.finalMainSha && ci.url, 'final main CI evidence is not verified');
