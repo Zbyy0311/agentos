@@ -2,8 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import express from 'express';
 import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
@@ -202,6 +204,154 @@ test('messages/stream sends, streams durable checkpoints, finalizes a reply, and
         .prepare('SELECT context_snapshot_id AS snapshotId FROM cr_agent_turns WHERE conversation_id = ?')
         .all(conversation.id) as Array<{ snapshotId: string | null }>;
       assert.ok(turnRows.some(row => row.snapshotId !== null));
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});
+
+/**
+ * LITE-11-001 / LITE-09-001 / LITE-02-001: posting a Message starts a
+ * conversation Turn and nothing else. A Message-only Turn must create no Task
+ * and no Run, and therefore no modifying Run either - durable work only begins
+ * through the explicit create-task / start-run bridge, which the next test in
+ * this file exercises. Without this assertion the "no Task and no Run" half of
+ * those rows was only implied by the bridge test's happy path.
+ */
+/**
+ * LITE-00-002: Conversation and Message records survive reconnect and restart.
+ *
+ * The recorded gap was that no assertion covered survival across a real restart -
+ * the previous candidate only checked foreign keys and cascade deletes. This creates
+ * a Conversation and Messages, closes the store, reopens the SAME on-disk database in
+ * a NEW store instance (a genuine restart of process state, not a re-read of a live
+ * connection), and then asserts every record is still there with its content, order
+ * and status intact. Reading them back over HTTP is the reconnect half of the clause.
+ */
+test('LITE-00-002 Conversation and Message records survive a restart and a reconnect', async () => {
+  const root = createProjectRoot();
+  const databasePath = join(root, '.agentos', 'agentos.sqlite');
+  let firstStore: SqliteStore | undefined;
+  let secondStore: SqliteStore | undefined;
+  let firstServer: Server | undefined;
+  let secondServer: Server | undefined;
+  const listen = async (store: SqliteStore): Promise<{ server: Server; baseUrl: string }> => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
+    const server = app.listen(0);
+    await new Promise<void>(resolve => server.once('listening', resolve));
+    const address = server.address() as AddressInfo;
+    return { server, baseUrl: `http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runtime` };
+  };
+  const closeServer = async (server: Server | undefined): Promise<void> => {
+    if (server === undefined) return;
+    await new Promise<void>(resolve => server.close(() => resolve()));
+  };
+
+  try {
+    // First lifetime: create the Conversation and its Messages through the real API.
+    firstStore = new SqliteStore(root);
+    const first = await listen(firstStore);
+    firstServer = first.server;
+    const created = await postJson(`${first.baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+    assert.equal(created.status, 201);
+    const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
+    const postedIds: string[] = [];
+    for (const content of ['first durable message', 'second durable message', 'third durable message']) {
+      const posted = await postJson(`${first.baseUrl}/conversations/${conversationId}/messages`, { content });
+      assert.equal(posted.status, 201);
+      postedIds.push((posted.json as { message: { id: string } }).message.id);
+    }
+    const before = await fetch(`${first.baseUrl}/conversations/${conversationId}/messages`)
+      .then(r => r.json()) as { messages: Array<{ id: string; content: string; status: string }> };
+    assert.equal(before.messages.length, 3);
+
+    // Restart: close the server AND the store, then open the same on-disk database in
+    // a brand new store instance. Nothing is carried over in memory.
+    await closeServer(firstServer);
+    firstServer = undefined;
+    firstStore.close();
+    firstStore = undefined;
+    assert.ok(existsSync(databasePath), 'the restart reopens a real on-disk database');
+
+    secondStore = new SqliteStore(root);
+    const second = await listen(secondStore);
+    secondServer = second.server;
+
+    // Reconnect: a client that reconnects reads the same records back.
+    assert.equal((await fetch(`${second.baseUrl}/conversations/${conversationId}`)).status, 200,
+      'the Conversation survives a restart');
+    const after = await fetch(`${second.baseUrl}/conversations/${conversationId}/messages`)
+      .then(r => r.json()) as { messages: Array<{ id: string; content: string; status: string }> };
+    assert.equal(after.messages.length, 3, 'every Message survives a restart');
+    assert.deepEqual(after.messages.map(message => message.id), before.messages.map(message => message.id),
+      'the Message order is stable across a restart');
+    for (const [index, message] of after.messages.entries()) {
+      assert.equal(message.id, postedIds[index], 'the restored Message is the record that was created');
+      assert.equal(message.content, before.messages[index]!.content, 'the Message content is intact');
+      assert.equal(message.status, before.messages[index]!.status, 'the Message status is intact');
+    }
+    const listed = await fetch(`${second.baseUrl}/conversations`).then(r => r.json()) as {
+      conversations: Array<{ id: string }>;
+    };
+    assert.ok(listed.conversations.some(conversation => conversation.id === conversationId),
+      'the restarted store still lists the Conversation');
+  } finally {
+    await closeServer(firstServer);
+    await closeServer(secondServer);
+    firstStore?.close();
+    secondStore?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      assert.equal(created.status, 201);
+      const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
+      const db = store.getDatabase();
+      const countRows = (table: string): number =>
+        Number((db.prepare('SELECT COUNT(*) AS n FROM ' + table).get() as { n: number | bigint }).n);
+
+      // 1. Posting the Message itself is not durable work.
+      const posted = await postJson(`${baseUrl}/conversations/${conversationId}/messages`, { content: '只回答一句话。' });
+      assert.equal(posted.status, 201);
+      assert.equal(countRows('tasks'), 0, 'LITE-11-001: posting a Message creates no Task');
+      assert.equal(countRows('runs'), 0, 'LITE-11-001: posting a Message creates no Run');
+
+      // 2. The reply Turn runs and still creates neither, while the reply does land.
+      const stream = await fetch(`${baseUrl}/conversations/${conversationId}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '再回答一句话。' }),
+      });
+      assert.equal(stream.status, 200);
+      const events = await stream.text();
+      assert.ok(events.includes('event: turn.final') || events.includes('event: turn.failed'));
+      assert.equal(countRows('tasks'), 0, 'LITE-09-001: a Message-only Turn creates no Task');
+      assert.equal(countRows('runs'), 0, 'LITE-09-001: a Message-only Turn creates no Run');
+      // LITE-02-001: "no Run" is what makes "no MODIFYING Run" true; the admission
+      // ledger must therefore hold no canonical-Run admission for this conversation's work.
+      const admissions = db
+        .prepare("SELECT COUNT(*) AS n FROM workspace_admissions WHERE subject_kind = 'CANONICAL_RUN'")
+        .get() as { n: number | bigint };
+      assert.equal(Number(admissions.n), 0, 'LITE-02-001: no modifying Run authority is taken by a Message-only Turn');
+
+      // The conversation really did progress: the reply exists as final.
+      const messages = await fetch(`${baseUrl}/conversations/${conversationId}/messages`).then(r => r.json()) as {
+        messages: Array<{ senderType: string; status: string }>;
+      };
+      assert.ok(messages.messages.some(message => message.senderType === 'agent' && message.status === 'final'));
+
+      // 3. Durable work starts only when explicitly requested through the bridge.
+      const postedMessageId = (posted.json as { message: { id: string } }).message.id;
+      const bridged = await postJson(`${baseUrl}/messages/${postedMessageId}/start-run`, {});
+      assert.equal(bridged.status, 201);
+      assert.equal(countRows('tasks'), 1, 'the explicit start-run entry is what creates the Task');
+      assert.equal(countRows('runs'), 1, 'the explicit start-run entry is what creates the Run');
     });
   } finally {
     delete process.env.AGENTOS_FORCE_MOCK;

@@ -1,0 +1,18 @@
+✔ acceptance preserves raw nonzero exit, receipt logs, and SHA instead of normalizing to pass (678.898ms)
+✔ manual and skipped scenarios cannot produce a passing acceptance verdict (290.0952ms)
+✔ a clean raw zero execution is the only acceptance control that passes (615.6639ms)
+✔ strict S8 wrapper rejects external failure and reports raw log SHA (704.1178ms)
+✔ strict S8 wrapper preserves an earlier failure and never uses a later pass to normalize it (444.0988ms)
+✔ strict S8 wrapper rejects a green-looking log when raw exit is missing or nonzero (853.3553ms)
+✔ strict S8 wrapper accepts only a complete raw zero gate log (437.421ms)
+✔ strict S8 wrapper tolerates not_run only for gates that passed in their owning phase (443.4924ms)
+✔ strict S8 wrapper still rejects a gate that only ever reports not_run (458.8848ms)
+✔ zero exit with skipped or unparsed tests never proves acceptance (1192.6704ms)
+ℹ tests 10
+ℹ suites 0
+ℹ pass 10
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 6123.8068

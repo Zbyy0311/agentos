@@ -251,3 +251,64 @@ test('rejects an empty or oversized summary', async () => {
     );
   });
 });
+
+/**
+ * LITE-09-110: the provider-native compaction boundary.
+ *
+ * Codex, Kimi and OpenCode all compact their own context. That is provider
+ * internals; AgentOS accepts only the summary it persisted itself, together with
+ * its own source range, policy, budget and snapshot. A CLI announcement must
+ * therefore never become the canonical summary text, and output consisting only
+ * of such announcements must fail closed instead of being published.
+ */
+test('LITE-09-110 strips provider-native compaction notices from the canonical summary', async () => {
+  await withScratch(async root => {
+    const execute = makeExecute(async () => makeLog([
+      'Compacting conversation history to fit the context window.',
+      'The runtime keeps Tasks, Runs and Processes distinct.',
+      '[info] context compacted: 120 messages summarized by the CLI',
+    ].join('\n')));
+    const result = await makeSummarizer(root, execute, makeProfile()).summarize(makeRequest({ summaryMaxTokens: 64 }));
+    assert.equal(result.summary, 'The runtime keeps Tasks, Runs and Processes distinct.');
+    assert.equal(/compact/i.test(result.summary), false,
+      'no provider-native compaction notice may survive into the canonical summary');
+  });
+});
+
+test('LITE-09-110 fails closed when the CLI produced only native compaction notices', async () => {
+  await withScratch(async root => {
+    const execute = makeExecute(async () => makeLog('Auto-compacting context before continuing.\ncontext has been compacted'));
+    await expectCompactionError(
+      () => makeSummarizer(root, execute, makeProfile()).summarize(makeRequest()),
+      'COMPACTION_SUMMARY_INVALID',
+      /only 2 provider-native compaction notice\(s\)/,
+    );
+  });
+});
+
+test('LITE-09-110 does not swallow ordinary prose that merely mentions compaction', async () => {
+  await withScratch(async root => {
+    const prose = 'We decided that conversation compaction is a runtime concern, not a provider one.';
+    const execute = makeExecute(async () => makeLog(prose));
+    const result = await makeSummarizer(root, execute, makeProfile()).summarize(makeRequest({ summaryMaxTokens: 64 }));
+    assert.equal(result.summary, prose);
+  });
+});
+
+test('LITE-09-110 rejects a run whose provider reports compacting its own context', async () => {
+  await withScratch(async root => {
+    // The CLI says it compacted mid-run, so its output may describe a narrower
+    // range than the frozen source we handed it. Fail closed instead of
+    // publishing that as the canonical summary of our source range.
+    const execute = makeExecute(async (_config, _prompt, context) => {
+      context.onRuntimeEvent?.({ type: 'diagnostic', level: 'warning', code: 'cli.compaction',
+        message: 'Auto-compacting the conversation before continuing' });
+      return makeLog('a summary that may cover less than the frozen source range');
+    });
+    await expectCompactionError(
+      () => makeSummarizer(root, execute, makeProfile()).summarize(makeRequest()),
+      'COMPACTION_SUMMARY_FAILED',
+      /runtime event rejected: provider\.native_compaction/,
+    );
+  });
+});

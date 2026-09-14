@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 16,
+  "matrixVersion": 17,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -97,10 +97,11 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.test.ts",
         "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖的是 reply 行的外键与级联删除，与「记录在重连/重启后存活」无关。需另找覆盖持久化后重开/重连的断言。 (triage triage-00.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖的是 reply 行的外键与级联删除，与「记录在重连/重启后存活」无关。需另找覆盖持久化后重开/重连的断言。 (triage triage-00.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 同修订已补断言（LITE-00-002）：新增用例经真实 API 创建 Conversation 与三条 Message，随后关闭服务器与 store，用全新的 store 实例重新打开同一个磁盘数据库（真实重启，而非复用存活的连接），再经 HTTP 读回：Conversation 仍可获取（200）、三条 Message 全部存在、顺序稳定、id 与创建时一致、内容与状态逐一不变，且重启后的 store 仍列出该 Conversation。这同时覆盖条款的两半：重启后记录存活，以及客户端重连后读到相同记录。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -273,16 +274,18 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S8",
       "implementation": [
-        "apps/server/src/index.ts"
+        "apps/server/src/index.ts",
+        "apps/server/src/routes/git.ts",
+        "apps/server/src/services/GitObservationCollector.ts"
       ],
       "tests": [
         "apps/server/src/services/GitObservationCollector.integration.test.ts",
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/routes/git.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体只覆盖 HTTP run.start 接受与执行到终态，与 Git 可观测性无关（关键词 'execution'/'acceptance' 是巧合）。本条需重新寻找覆盖 Git observation 的断言。 (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-011. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。以只读收集器持久化Git观察快照（base/final commit SHA）并在终止时枚举自有进程树；不创建Git写操作或工作流。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体只覆盖 HTTP run.start 接受与执行到终态，与 Git 可观测性无关（关键词 'execution'/'acceptance' 是巧合）。本条需重新寻找覆盖 Git observation 的断言。 (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-011. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。以只读收集器持久化Git观察快照（base/final commit SHA）并在终止时枚举自有进程树；不创建Git写操作或工作流。 同修订已补齐两半（LITE-00-011）：前半「Git 变更可观测」由 apps/server/src/services/GitObservationCollector.integration.test.ts 覆盖（29 条断言、0 跳过，本地实跑 29/29 通过）：干净已提交仓库的 canonical root/HEAD 与完整 clean 状态、tracked dirty 文件的状态项与非空 diff、untracked 文件、带 NUL 前路径的分段重命名、嵌套工作区隔离（A 的状态与 diff 不含脏的兄弟工作区 B）、非 Git 目录的精确 C-locale NOT_GIT 快照、未出生仓库（GIT、null commits、clean 状态、diff not_applicable），以及 junction 路径先解析且绝不报告词法仓库（fail closed）。后半「AgentOS 不拥有 Git 工作流执行」由 apps/server/src/routes/git.test.ts 的 LITE-06-011 用例覆盖：Git 面三条路由（status/diff/log）各自只读取并只回一个同名观测字段，POST/PUT/PATCH/DELETE 一律不被路由（404），且该面实际发出的每条 git 命令都是只读查询。原 finding 指向的 docs/implementation/milestones/Lite-FastTrack-progress.md 是进度记录而非测试，已从 tests 指针移除。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
@@ -658,6 +661,7 @@
         "apps/server/src/services/LifecycleTransactionService.ts"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.test.ts",
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
@@ -1525,15 +1529,19 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S4",
       "implementation": [
-        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.ts"
       ],
       "tests": [
+        "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-10",
+        "S4-RETRYABILITY-CONTRACT"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖「稳定分类码」这一半（另有 'fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence' 等），但没有任何断言覆盖条款后半句 retryability（可重试性）。条款为两部分，缺一不可。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖「稳定分类码」这一半（另有 'fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence' 等），但没有任何断言覆盖条款后半句 retryability（可重试性）。条款为两部分，缺一不可。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 缺口已在本修订闭合：新增 packages/agent-core/src/providers/providerErrorRetryability.test.ts，对三个生产适配器断言同一张可重试性表（network/rate-limit 可重试；auth/quota/model 不可重试），并断言可重试性总是显式布尔值、且再归一化幂等。该测试当场抓出两个真实不一致：KimiCode 的 normalizeError 从不使用已存在的 isProviderNormalizedError 守卫，二次归一化会把任意已归一化错误降级为 PROVIDER_INTERNAL_ERROR 并丢失可重试性；OpenCode 的守卫保留了 code 却重建错误时未传 retryable，使可重试的传输失败在第二次归一化后变成不可重试。两者已修，跨适配器契约一致。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1546,15 +1554,20 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S4",
       "implementation": [
-        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.ts"
       ],
       "tests": [
+        "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-10",
+        "S4-CAPABILITY-DECLARATION"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件的断言集中在版本冻结、启动计划、环境语义与鉴权分类；没有任何断言把「能力声明」与「被测试行为」对齐（例如声明 sessionResume 就必须有对应行为断言）。需另找或按缺口记录。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件的断言集中在版本冻结、启动计划、环境语义与鉴权分类；没有任何断言把「能力声明」与「被测试行为」对齐（例如声明 sessionResume 就必须有对应行为断言）。需另找或按缺口记录。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 缺口已在本修订闭合：新增 packages/agent-core/src/providers/capabilityDeclaration.test.ts，对三个生产适配器双向断言能力声明——每个规范键都必须是显式布尔（缺键读作 undefined，既非 true 也非精确 false），声明为 true 的能力必须在其真实输出中可观测（structuredEvents 用真实 parse 夹具的事件类型、toolEvents 用 tool.* 事件、usageEvents 用 usage 事件），声明为 false 的能力必须不可观测，且冻结声明在多次构造间稳定、交出的对象被改写也不影响适配器默认值。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1567,15 +1580,19 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S4",
       "implementation": [
-        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
       ],
       "tests": [
-        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "packages/shared/p6-l1a-admission.test.ts",
+        "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 条款属于准入/只读资格（admission）子系统，而该文件是 Provider 适配器测试。真正的候选在 WorkspaceAdmissionAuthority.test.ts（L1D-I17/I18 关于 GRANTED READ_ONLY 与零副作用）或 p6-l1b-migration-016.test.ts。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 条款属于准入/只读资格（admission）子系统，而该文件是 Provider 适配器测试。真正的候选在 WorkspaceAdmissionAuthority.test.ts（L1D-I17/I18 关于 GRANTED READ_ONLY 与零副作用）或 p6-l1b-migration-016.test.ts。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订已补断言（LITE-04-008）：本条原指名的文件是 Provider 适配器测试，与准入子系统无关。真实覆盖分三层：契约层 packages/shared/p6-l1a-admission.test.ts（L1A-05..12 与 L1A-R07..R12）证明 prompt-only、provider-assertion、native-worktree、sandbox-label、unknown、unavailable 均不得算作技术性写拒绝，且 verified 必须同时具备 source、boundaryId、qualificationId，缺任一即为 MODIFYING，其中 qualificationId 正是已测试的证明；权威层 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 的 L1D-U03/U16/U20 证明分类结果而非请求类别才是有效权威；本次新增用例把两个方向连在同一处：写拒绝为技术性且已测试（三字段齐备）时两个并发读者都被准入并都判为 READ_ONLY，而同一请求形状在缺 qualificationId（未测试）时塌缩为单写者，另一条排队且无法获得 dispatch 授权。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1841,15 +1858,19 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S8",
       "implementation": [
-        "packages/process-runtime/src/platform-recovery-verifier.ts"
+        "packages/process-runtime/src/platform-recovery-verifier.ts",
+        "packages/process-runtime/src/timeouts.ts",
+        "packages/process-runtime/src/manager.ts"
       ],
       "tests": [
-        "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts"
+        "packages/process-runtime/src/manager.test.ts",
+        "packages/process-runtime/src/races.test.ts",
+        "packages/process-runtime/src/timeouts.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 三项并列中两项有具名断言，第三项「approval 等待不消耗 idle 预算」在全仓检索（approval.*inactiv / idle.*approval / waiting_approval.*timeout / approvalTimeoutMs 的使用断言）中未见专门断言。按复合条款口径记驳回：需补一条「Run 处于 waiting_approval 期间 idle 预算不被消耗」的断言。 (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 三项并列中两项有具名断言，第三项「approval 等待不消耗 idle 预算」在全仓检索（approval.*inactiv / idle.*approval / waiting_approval.*timeout / approvalTimeoutMs 的使用断言）中未见专门断言。按复合条款口径记驳回：需补一条「Run 处于 waiting_approval 期间 idle 预算不被消耗」的断言。 (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订已校正指针（LITE-05-009）：本条原指向 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts，该文件验证的是 Windows 进程出生身份，与 timeout / approval 等待排除 / 终态竞争三个子项均无关，属错误指针。经逐项核对，三项均已有真实覆盖：（1）timeout：manager.test.ts 覆盖 startup 期限（超时后 outcome=timeout、terminationReason=PROCESS_STARTUP_TIMEOUT）、idle 期限在活动后重置（notifyActivity 后重新计时，最终 PROCESS_IDLE_TIMEOUT）与 total 期限；（2）approval-wait exclusion：manager.test.ts 的 idle deadline pauses during an approved wait 用例进入 waiting 后推进 10 秒仍存活，退出等待后推进 199ms 仍 running、再推进 1ms 才触发 PROCESS_IDLE_TIMEOUT，即等待期间不消耗 idle 预算且剩余预算被保留；此前 triage 以 approval.*inactiv 等关键词检索未命中该标题（标题用词为 approved wait），因此漏判为缺口；（3）race-safe terminal transitions：manager.test.ts 的 keeps the terminal result immutable against late stops, starts and exits 与 races.test.ts 的 cancel commits first; the held start joins the terminal result，覆盖迟到操作不得改写已提交终态。本地实跑这两个文件 35/35 通过。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2135,15 +2156,17 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S8",
       "implementation": [
+        "apps/server/src/routes/git.ts",
         "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
       ],
       "tests": [
+        "apps/server/src/routes/git.test.ts",
         "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体保证的是「原始诊断不外泄」，不覆盖「措辞不得暗示 AgentOS 拥有 Git 工作流」这一类**文案/接口措辞**约束；全仓检索未找到措辞层面的断言。按缺口记录。 (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体保证的是「原始诊断不外泄」，不覆盖「措辞不得暗示 AgentOS 拥有 Git 工作流」这一类**文案/接口措辞**约束；全仓检索未找到措辞层面的断言。按缺口记录。 (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 缺口已在本修订闭合：apps/server/src/routes/git.test.ts 的 LITE-06-011 用例断言 Git 面三条路由（status/diff/log）都只读取、各自只回一个同名观测字段，POST/PUT/PATCH/DELETE 一律不被路由（404），且该面实际发出的每条 git 命令都是只读查询，因此措辞与能力都不暗示 AgentOS 拥有 Git 工作流。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2718,15 +2741,18 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S3",
       "implementation": [
-        "apps/server/src/routes/approvals.ts"
+        "apps/server/src/routes/approvals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/routes/runtimeApprovals.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeApprovals.test.ts",
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `disconnect does not decide` / `disconnect.*approval` 无命中；未找到「浏览器断开不构成审批决定」的断言（断线相关的两条断言是 Run 存活与执行继续，属 00-004/02-009/13-014，不是「不代替决定」）。按缺口记录。 (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `disconnect does not decide` / `disconnect.*approval` 无命中；未找到「浏览器断开不构成审批决定」的断言（断线相关的两条断言是 Run 存活与执行继续，属 00-004/02-009/13-014，不是「不代替决定」）。按缺口记录。 (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订已补断言（LITE-08-012）：条款位于 Policy 验收段，因此主语是审批：浏览器断开不得以任何方向解决一个待决请求。新增用例断言三点，正是中间那点在前后两点衬托下才有意义——断开之前 Run 确实停在 waiting_approval、请求为 pending、审批决定行为 0；随后浏览器以两种形态断开（读取中途 abort，以及读取完成后被放弃），两者都不得作出决定：审批决定行仍为 0、请求仍为 pending、Run 仍为 waiting_approval；最后只有显式决定端点才解决它，且同时推动请求与 Run（决定行变为恰好 1、请求变为 approved、Run 恢复 running）。若只断言前两点，一个「从不解决任何事」的实现也会通过。断言同时记录该路由既有的状态码语义：首次决定返回 201，重放返回 200。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2806,6 +2832,7 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.test.ts",
         "apps/server/src/services/ConversationTurnDriver.test.ts"
       ],
       "evidence": [
@@ -3553,6 +3580,7 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.test.ts",
         "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [
@@ -3780,15 +3808,18 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S8",
       "implementation": [
-        "apps/server/src/index.ts"
+        "apps/server/src/index.ts",
+        "apps/server/src/routes/artifacts.ts",
+        "apps/server/src/store/SqliteStore.ts"
       ],
       "tests": [
+        "apps/server/src/routes/artifacts.test.ts",
         "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件唯一的断言覆盖 content 服务（200、nosniff、CSP、metadata-only 409）与跨 Workspace 404，**没有任何断言检查 DTO 字段中不含存储路径**（例如 job 目录、绝对路径或内部文件名）。按缺口记录：需要一条对 Artifact DTO 字段集合/敏感字段的断言。 (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订反证（未闭合的一半）：canonical 面已正确脱敏——canonicalRunEvents.test.ts:214 与 RunReplayService.test.ts:125 都断言序列化结果不含 originalPath，routes/artifacts.ts 的 content 端点只回内容不回收路径；但工作区级运行详情端点 GET /api/workspaces/:workspaceId/runs/:runId（routes/runs.ts:17 → SqliteStore.listRuntimeArtifacts → SqliteStore.ts:3359 toRuntimeArtifact 的 originalPath 分支）仍把 runtime_artifacts.original_path 这一本地绝对路径放进响应，Web 端 ArtifactShelf.tsx:46 还在渲染它。规范§15要求 Storage URI 与本地绝对路径不得成为响应契约，故本条仍缺该端点的不泄漏证据。修复会同时改动该 compat 路由的 DTO 与 ArtifactShelf 的展示，属于产品行为变更，按收尾计划“发现即记录、不扩范围”登记为标准反证，等待明确授权后再改。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3951,12 +3982,13 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
+        "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
         "apps/web/src/components/layout/WorkbenchShell.test.tsx"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `async state` / `loading.*error.*empty` / `four states` 无命中；布局断言不覆盖「加载/错误/空/成功」等异步状态完备性。按缺口记录。 (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `async state` / `loading.*error.*empty` / `four states` 无命中；布局断言不覆盖「加载/错误/空/成功」等异步状态完备性。按缺口记录。 (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订已补断言（LITE-12-007）：新增组件测试对会话运行视图断言四种状态齐备：空态具名显示（No messages in …）且仍提供可发起对话的合成器；错误态以 role=\"alert\" 暴露并逐字显示错误文本，且不抹掉界面身份；进行中态可区分于空闲态（发送中禁用发送控件，而可发送的空闲态不禁用），且真实流相位（connected）下渲染独立的 streaming 块、显示已到达的持久游标并以 aria-live=\"polite\" 播报；内容态渲染消息文本且不再显示空态，同时保留合成器。另有组合用例遍历六种状态组合，要求每种都能渲染而不抛错——抛错的状态等于不可达状态。写这条断言时先被我自己的假设纠正两次：相位枚举中并不存在 streaming（真实值是 connected/resyncing/reconnecting），且 sending 仅在合成器有内容时可观察（无内容时两种状态都禁用，这本就是正确行为），断言已按实测与规范枚举改写。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4350,12 +4382,14 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/routes/runtimeInspector.test.ts",
+        "apps/server/src/routes/runLifecycle.test.ts",
+        "apps/server/src/routes/operations.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 四段中 API 与 Runtime 有具名断言，Policy 段与「committed Event」段没有（未找到断言 cancel/retry 产生并持久化对应规范事件的用例）。按复合条款口径记驳回。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 四段中 API 与 Runtime 有具名断言，Policy 段与「committed Event」段没有（未找到断言 cancel/retry 产生并持久化对应规范事件的用例）。按复合条款口径记驳回。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 缺口已在本修订闭合：Retry 侧由 apps/server/src/routes/runLifecycle.test.ts 的 P3C1-RY13 覆盖四段——API（canonical POST /runs/:runId/retry 接受）、Policy（运行中的 Parent 被 409 拒绝、到达终态失败后才可重试、过期 expectedVersion 被 409 拒绝）、Runtime（子 Run 以 parentRunId/rootRunId/reason=retry 持久创建）、committed Event（接受结果提交为子 Run 的 run.created，且恰好一条 run.retry Operation）；Cancel 侧早已由 apps/server/src/routes/operations.test.ts 断言 committed Event 顺序为 approval.required → approval.resolved → run.cancelled。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4472,8 +4506,8 @@
       "section": "§14; §15.2",
       "line": null,
       "requirement": "Codex/Kimi/OpenCode 的实际生产链接入与真实调用",
-      "state": "RUNTIME-VERIFY",
-      "workPackage": "S4",
+      "state": "DEFERRED",
+      "workPackage": null,
       "implementation": [
         "apps/server/src/services/run-engine/providerExecutionChain.ts",
         "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
@@ -4489,9 +4523,10 @@
         "S4-ADAPTERS",
         "S4-REAL-GATES",
         "S4-CODEX-LUNA-GATE",
-        "S4-OPENCODE-REAL-GATE"
+        "S4-OPENCODE-REAL-GATE",
+        "S4-04-101-DEFERRAL"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件 33 条断言覆盖的是调度器/协调器/生命周期组合，其**真实 Provider 调用**部分是 env-gated 且本机跳过（文件 raw exit 0 但 4 skip）。真实调用证据不在本文件，而在 evidence/gates-20260914/ 的三个 Provider gate 收据（codex / kimi-routed / opencode，各自 exit 0）。本行应指向那些收据，而不是这个测试文件。 (triage triage-01.json). Historical finding: 实现缺口已修复：composition root 现注册三个 canonical adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）已在同头被真实清除，而非删除条件。但本条要求的是「实际生产链接入与真实调用」，其证据必须是可被 CI 复算的运行记录，而本机三个 CLI 在 GitHub runner 上均不存在，故本地真实调用属机器相关证据，不足以支撑 PASS。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件 33 条断言覆盖的是调度器/协调器/生命周期组合，其**真实 Provider 调用**部分是 env-gated 且本机跳过（文件 raw exit 0 但 4 skip）。真实调用证据不在本文件，而在 evidence/gates-20260914/ 的三个 Provider gate 收据（codex / kimi-routed / opencode，各自 exit 0）。本行应指向那些收据，而不是这个测试文件。 (triage triage-01.json). Historical finding: 实现缺口已修复：composition root 现注册三个 canonical adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）已在同头被真实清除，而非删除条件。但本条要求的是「实际生产链接入与真实调用」，其证据必须是可被 CI 复算的运行记录，而本机三个 CLI 在 GitHub runner 上均不存在，故本地真实调用属机器相关证据，不足以支撑 PASS。 [2026-09-14 user-authorized deferral] 按用户批准，本条依退出条件第 2 项正式从 RUNTIME-VERIFY 改判为 DEFERRED；退出条件原文未修改、未放宽。当前没有已知的真实 Provider 生产链失败：三个真实调用收据 Codex 约 190s、Kimi-routed 约 27.6s、OpenCode 约 29.9s 均 raw exit 0 且 0 skip，保存于 evidence/gates-20260914/（codex / kimi-routed / opencode）。延期原因是环境能力而非产品缺陷：GitHub 托管 CI runner 不具备 codex / kimi / opencode 三个 CLI，也不具备受控凭据，因此无法产生退出条件第 1 项要求的 CI 可复算真实调用证据。明确拒绝的替代做法：向托管 Runner 注入生产凭据，或用模拟、桩、按名称匹配冒充真实调用，以人为降低验收标准来闭合本条。收据基线 0df73d75 保留；从该基线到当前修订，相关生产执行链零改动（packages/process-runtime 无改动，packages/agent-core 与 apps/server/src/services/run-engine 各自仅新增一个测试文件）。该结论只作为延期的补充可信度依据，不使本地收据变成 CI 可复算证据，因此不得据此改判 PASS。重新打开条件：只有在具备受控 self-hosted runner，或 CI 已合法提供三个 Provider CLI 与受控凭据时，才重新打开本条并尝试改判 PASS。授权与证据：deferral-amendments.json（独立哈希锚定，仅授权 RUNTIME-VERIFY 到 DEFERRED）、evidence.json 的 S4-04-101-DEFERRAL，以及脚本新增的授权延期校验与自测。",
       "exit": "待闭合：需要一份 CI 可复算的真实调用证据（runner 内可用的 Provider CLI，或由 CI 触发的真实调用闸门），或将该条按用户批准的整体延期正式改判 DEFERRED。在此之前保持 RUNTIME-VERIFY，不按名称或本地结果提升。"
     },
     {
@@ -4883,11 +4918,17 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "packages/agent-core/src/conversationRunner.ts"
+        "packages/agent-core/src/conversationRunner.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "新AgentOS压缩尚未实现，必须明确native诊断边界。",
+      "tests": [
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/ConversationCompactionService.test.ts"
+      ],
+      "evidence": [
+        "S6-NATIVE-COMPACTION-BOUNDARY"
+      ],
+      "finding": "基线反证：CLI输出被原文当作canonical摘要（readSummary使用log.stdout||log.stderr），且ConversationRunner在无流式内容时同样回退到原始stdout/stderr，因此Provider自身压缩通知可成为AgentOS摘要并生成候选。已修：stripNativeCompactionNotices在摘要文本层移除native压缩通知行，仅剩通知时按COMPACTION_SUMMARY_INVALID失败关闭（不发布、不建候选、不发事件）；运行时事件层中diagnostic/status一旦报告native压缩即以provider.native_compaction拒绝整次运行，因为被压缩的上下文可能窄于冻结来源范围。测试：ProviderCompactionSummarizer.test.ts 三个文本层用例+一个运行时事件用例；ConversationCompactionService.test.ts 端到端证明native-only输出不产生摘要、候选或Workspace Event。仍缺：三个Provider真实CLI若将来新增native压缩事件类型需按此边界登记；PASS提升在冻结期内禁止，故保持GAP。",
       "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。"
     },
     {
@@ -8177,6 +8218,15 @@
         "LITE-08-004",
         "LITE-08-012",
         "LITE-09-001"
+      ]
+    },
+    {
+      "version": 17,
+      "baseline": "bbce19ad0c03aa0cfa6ea51c8365efb98cdef6d4",
+      "authority": "User instruction 2026-09-14: 批准 LITE-04-101 按退出条件第 2 项正式改判为 DEFERRED。",
+      "reason": "User-authorized deferral: LITE-04-101 moves from RUNTIME-VERIFY to DEFERRED under the existing exit condition item 2. The exit condition is unchanged; the local real-Provider receipts are recorded as supplementary credibility only and are not treated as CI-reproducible evidence, so no PASS is granted.",
+      "requirementIds": [
+        "LITE-04-101"
       ]
     }
   ],

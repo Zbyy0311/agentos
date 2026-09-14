@@ -950,8 +950,7 @@
       "LITE-13-012"
     ],
     "limitation": "Each re-pointed file was executed in isolation with zero failures and zero skips; the counts are per file in details and in docs/implementation/lite-closeout/verification-batches.json."
-  }
-  ,
+  },
   {
     "id": "S6-COMPACTION-INSPECTOR-SOURCE",
     "baseline": "07c1773ad108c066262753492ba2767bb3fc62d8",
@@ -966,5 +965,86 @@
     },
     "environment": "Read-only source audit on main 07c1773a before implementation; no runtime evidence",
     "limitation": "Confirmed the Run-scoped Inspector carries no compaction projection at all (RuntimeInspector.ts / routes/runtimeInspector.ts / apps/web/src return no match for compaction), while the Conversation-scoped compactions route already existed. Also established the two durable Run->Conversation relations this slice relies on: cr_agent_turns.run_id plus cr_messages.run_id written by ConversationBridgeService.startRunFromMessage, and tasks.source_conversation_id written by createTaskFromMessage. Not PASS evidence; the row stays GAP under the PASS freeze."
+  },
+  {
+    "id": "S6-NATIVE-COMPACTION-BOUNDARY",
+    "baseline": "07c1773ad108c066262753492ba2767bb3fc62d8",
+    "kind": "source-audit",
+    "command": "Read apps/server/src/services/ProviderCompactionSummarizer.ts readSummary/executeSummary and packages/agent-core/src/conversationRunner.ts:98 (const content = streamedContent || log.stdout || log.stderr); rg -n -i compact packages/agent-core/src/adapters",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-09-110"
+    ],
+    "result": {
+      "findings": 2
+    },
+    "environment": "Read-only source audit on main 07c1773a before implementation; no runtime evidence",
+    "limitation": "Finding 1: readSummary adopted the raw CLI stdout or stderr as the canonical summary, so a provider announcing its own compaction could have that announcement persisted as an AgentOS summary and turned into a review Candidate. Finding 2: on the conversation channel the runner falls back to log.stdout || log.stderr whenever no streamed content was emitted, so the same provider text can also become an assistant Message. No adapter currently emits a compaction event type (the registry only produces diagnostic events for unknown or invalid lines), which is why the boundary is structural and had to be enforced explicitly. Not PASS evidence; the row stays GAP under the PASS freeze."
+  },
+  {
+    "id": "S8-ARTIFACT-DTO-PATH-LEAK",
+    "baseline": "07c1773ad108c066262753492ba2767bb3fc62d8",
+    "kind": "source-audit",
+    "command": "rg -n --no-messages \"originalPath\" apps packages; rg -n -A 22 \"toRuntimeArtifact\" apps/server/src/store/SqliteStore.ts; rg -n --no-messages \"listRuntimeArtifacts\" apps/server/src/routes/runs.ts",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-11-012"
+    ],
+    "result": {
+      "failed": 1
+    },
+    "environment": "Read-only source audit on main 07c1773a; no runtime evidence",
+    "limitation": "The canonical Artifact surfaces are properly redacted: canonicalRunEvents.test.ts:214 and RunReplayService.test.ts:125 both assert the serialized payload does not contain the local path, and routes/artifacts.ts serves content without returning a path. The workspace-scoped run details response is not: GET /api/workspaces/:workspaceId/runs/:runId (routes/runs.ts:17) returns listRuntimeArtifacts, whose mapper at SqliteStore.ts:3359 still emits the runtime_artifacts.original_path field, and apps/web/src/components/runs/ArtifactShelf.tsx:46 renders it. Specification section 15 requires that a storage URI and a local absolute path never become response contracts. Fixing it changes a compat route DTO and shelf rendering, so it is recorded as counterevidence rather than fixed inside this closeout without explicit authorization. Not PASS evidence."
+  },
+  {
+    "id": "S4-RETRYABILITY-CONTRACT",
+    "baseline": "85685a96",
+    "kind": "counterevidence-found",
+    "command": "node -e \"<add cross-adapter retryability contract test>\"; cd packages/agent-core; npx vitest run src/providers/providerErrorRetryability.test.ts; npx vitest run",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-04-006"
+    ],
+    "result": {
+      "failed": 2,
+      "passed": 3
+    },
+    "environment": "Local Windows, Node 24.18.0, vitest 4.1.9; the first run of the new contract test failed 1 of 3 cases and named both defects before they were fixed",
+    "limitation": "The new cross-adapter contract test asserts one retryability table for Codex, KimiCode and OpenCode (network and rate-limit retryable; auth, quota and model not retryable), that retryability is always an explicit boolean, and that re-normalization is idempotent. It found two real inconsistencies: KimiCode normalizeError never consulted its own existing isProviderNormalizedError guard, so a second pass degraded any normalized error to PROVIDER_INTERNAL_ERROR and dropped retryability; OpenCode guard preserved the code but rebuilt the error without retryable, flipping a retryable transport failure to non-retryable. Both are fixed and the whole agent-core suite passes (29 files / 175 tests). Not PASS evidence on its own: the row keeps RUNTIME-VERIFY under the freeze."
+  },
+  {
+    "id": "S4-CAPABILITY-DECLARATION",
+    "baseline": "85685a96",
+    "kind": "behavior-observation",
+    "command": "cd packages/agent-core; npx vitest run src/providers/capabilityDeclaration.test.ts; npx vitest run",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-04-007"
+    ],
+    "result": {
+      "passed": 4,
+      "failed": 0
+    },
+    "environment": "Local Windows, Node 24.18.0, vitest 4.1.9; full agent-core suite 30 files / 179 tests pass",
+    "limitation": "Probes read the adapters own real fixtures and launch behavior instead of restating their capability constants, so the assertion is about behavior rather than about the declaration. OpenCode parses plain text, so its structuredEvents/toolEvents/usageEvents declarations are asserted in the negative direction. Kimi reports usage on stream flush, so the probe reads parseChunk plus finishParse; a parseChunk-only probe initially misreported the Kimi usage declaration as false, which is a probe defect and was corrected rather than treated as a product finding. Not PASS evidence on its own: the row keeps RUNTIME-VERIFY under the freeze."
+  },
+  {
+    "id": "S4-04-101-DEFERRAL",
+    "baseline": "0df73d7544f8c1d98feba83bbcca9e34ec28d91b",
+    "kind": "deferral-authorization",
+    "command": "git diff --stat 0df73d75 HEAD -- packages/process-runtime packages/agent-core apps/server/src/services/run-engine; git diff --diff-filter=M --name-only 0df73d75 HEAD -- packages/agent-core/src apps/server/src/services/run-engine; node scripts/verify-lite-scope.mjs",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "result": {
+      "productionChainModifiedFiles": 0,
+      "addedTestFilesInChain": 2,
+      "receipts": 3,
+      "receiptsExitCode": 0,
+      "receiptsSkipped": 0
+    },
+    "environment": "Local Windows receipts captured 2026-09-14 from the pinned clean SHA 0df73d75; GitHub-hosted CI provides none of the three Provider CLIs and no controlled credentials",
+    "limitation": "These are local real-invocation receipts, not CI-reproducible evidence, so they do NOT satisfy exit condition item 1 and this record must never be used to grant a PASS. Three receipts are preserved: Codex about 190169ms, Kimi-routed about 27631ms and OpenCode about 29917ms, each raw exit 0 with 0 skipped, under docs/implementation/lite-closeout/evidence/gates-20260914/. The receipt baseline stays 0df73d75, and the verification that the relevant Provider, Run Engine and Process Runtime production chain has zero modified files from that baseline to this revision is recorded as supplementary credibility for the deferral only. No production credentials were injected into a hosted runner and no acceptance standard was lowered. LITE-04-101 is DEFERRED under deferral-amendments.json, which is anchored outside itself and may only authorize RUNTIME-VERIFY to DEFERRED."
   }
 ]

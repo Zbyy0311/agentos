@@ -8,6 +8,7 @@ import { CompactionRepository } from '../store/CompactionRepository.js';
 import { ConversationCompactionService, COMPACTION_ESTIMATOR_VERSION } from './ConversationCompactionService.js';
 import { MemoryCandidateRepository } from '../store/MemoryCandidateRepository.js';
 import { inTransaction } from '../store/Transaction.js';
+import { ProviderCompactionSummarizer } from './ProviderCompactionSummarizer.js';
 
 const WS = 'ws_s6';
 const CONV = 'conv_' + 'c'.repeat(26);
@@ -200,4 +201,54 @@ test('S6: without a summary execution channel the task fails closed', async () =
     assert.equal(result.task?.failureCode, 'COMPACTION_SUMMARIZER_UNAVAILABLE');
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS n FROM memory_candidate_entries').get() as { n: number }).n, 0);
   } finally { fx.close(); }
+});
+
+/**
+ * LITE-09-110 end to end through the real summarizer: a CLI whose only usable
+ * output is its own compaction notice must leave the Conversation without a
+ * published summary, without a review Candidate and without a canonical event.
+ * Provider-native compaction therefore cannot become AgentOS canonical evidence.
+ */
+test('LITE-09-110 a native-only CLI compaction notice publishes no summary, candidate or event', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'agentos-s6-native-'));
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const db = store.getDatabase();
+    db.prepare('INSERT INTO workspaces (id,name,root_path,canonical_root_path,last_opened_at,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
+      .run(WS, WS, root, root, NOW, NOW, NOW);
+    db.prepare('INSERT INTO cr_conversations (id, workspace_id, kind, status, title, created_at, updated_at, version) VALUES (?, ?, \'direct\', \'active\', \'c\', ?, ?, 1)')
+      .run(CONV, WS, NOW, NOW);
+    const summarizer = new ProviderCompactionSummarizer({
+      scratchRoot: join(root, 'scratch'),
+      profiles: { codex: {
+        adapterId: 'builtin.codex', adapterVersion: '1.0.0', command: 'fake-cli',
+        cliArgs: ['exec', '--sandbox', 'read-only'], role: 'codex_manager',
+        promptTemplate: () => 'Summarize.',
+      } },
+      execute: (async () => ({
+        stage: 'codex_manager', agentName: 'compaction-summarizer',
+        stdout: 'Auto-compacting the conversation history.\ncontext has been compacted',
+        stderr: '', exitCode: 0, timestamp: NOW, duration: 1, mode: 'real',
+      })) as never,
+      now: () => new Date(NOW),
+    });
+    const service = new ConversationCompactionService({ store, summarizer, now: () => NOW });
+    const result = await service.compact({
+      workspaceId: WS, conversationId: CONV, policyVersion: 'lite-v1',
+      messages: messages(20, 400), budget: BUDGET,
+      provider: { providerConfigId: 'pcfg', providerType: 'codex', adapterId: 'builtin.codex', adapterVersion: '1.0.0', model: 'gpt-5.6-luna' },
+    });
+    assert.notEqual(result.outcome, 'published', 'a native-only notice must never publish');
+    assert.equal(result.task?.summary, null);
+    assert.equal(result.task?.candidateId, null);
+    assert.match(String(result.task?.failureMessage), /only 2 provider-native compaction notice/);
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM memory_candidate_entries').get() as { n: number }).n, 0,
+      'no review Candidate may be created from provider internals');
+    assert.equal((db.prepare('SELECT COUNT(*) AS n FROM workspace_events').get() as { n: number }).n, 0,
+      'no canonical Workspace Event may be emitted for a native-only notice');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
 });

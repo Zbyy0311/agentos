@@ -425,3 +425,58 @@ test('LITE-08-007: an expired pending request returns 410 without writing a deci
     assert.equal(expired?.version, request.version + 1);
   });
 });
+
+/**
+ * LITE-08-012: browser disconnect does not decide.
+ *
+ * The clause sits in the Policy acceptance section, so it is about an approval: a
+ * browser that disconnects must not resolve a pending request in either direction.
+ * Three points are asserted in order, which is what makes the middle one meaningful -
+ * the Run is genuinely waiting before, genuinely waiting after the disconnect, and only
+ * the explicit decision moves it.
+ */
+test('LITE-08-012: a browser disconnect decides nothing; only the explicit decision does', async () => {
+  await withServer(async fixture => {
+    const request = createPending(fixture);
+    const db = fixture.store.getDatabase();
+    const runStatus = (): string => (db
+      .prepare('SELECT status FROM runs WHERE workspace_id = ? AND id = ?')
+      .get(fixture.workspaceId, RUN_ID) as { status: string }).status;
+
+    // 1. The request really is pending and the Run really is parked on it.
+    assert.equal(request.status, 'pending');
+    assert.equal(runStatus(), 'waiting_approval', 'the Run waits for a decision');
+    assert.equal(rowCount(fixture, 'approval_decisions'), 0);
+
+    // 2. A browser disconnects. Two shapes are exercised: a read aborted mid-flight,
+    //    and a read that completes and is then abandoned. Neither may decide.
+    const controller = new AbortController();
+    const aborted = fetch(`${fixture.baseUrl()}/runtime-approvals/${request.id}`, { signal: controller.signal });
+    controller.abort();
+    await aborted.catch(() => undefined);
+    const abandoned = await getJson(`${fixture.baseUrl()}/runtime-approvals`);
+    assert.equal(abandoned.status, 200);
+    const droppedList = await getJson(`${fixture.baseUrl()}/runtime-approvals/${request.id}`);
+    assert.equal(droppedList.status, 200);
+
+    assert.equal(rowCount(fixture, 'approval_decisions'), 0,
+      'a disconnect writes no approval decision');
+    assert.equal(fixture.gate.list(fixture.workspaceId)[0]?.status, 'pending',
+      'the request is still pending after the disconnect');
+    assert.equal(runStatus(), 'waiting_approval',
+      'the Run is still waiting for a decision after the disconnect');
+
+    // 3. Only the explicit decision resolves it, and it moves both the request and the
+    //    Run. Without this third point the assertion above could pass on a system that
+    //    simply never resolves anything.
+    const resolved = await resolveJson(`${fixture.baseUrl()}/runtime-approvals/${request.id}/resolve`, {
+      expectedVersion: request.version, decision: 'approve_once', decidedBy: 'test-user',
+    });
+    // 201 is the first-decision status this route already returns; a replay answers 200.
+    assert.equal(resolved.status, 201, JSON.stringify(resolved.body));
+    assert.equal(rowCount(fixture, 'approval_decisions'), 1,
+      'exactly one decision row is written, by the explicit decision');
+    assert.equal(fixture.gate.list(fixture.workspaceId)[0]?.status, 'approved');
+    assert.equal(runStatus(), 'running', 'the approved Run resumes');
+  });
+});
