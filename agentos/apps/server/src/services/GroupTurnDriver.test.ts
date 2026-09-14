@@ -27,6 +27,7 @@ import { TurnContextSnapshotRepository } from '../store/TurnContextSnapshotRepos
 import { createEntityId } from '../store/Identity.js';
 import { BoundedGroupService } from './BoundedGroupService.js';
 import { ConversationStreamService } from './ConversationStreamService.js';
+import type { ConversationTurnContextOptions } from './ConversationTurnDriver.js';
 import { GroupTurnDriver, GroupTurnDriverError } from './GroupTurnDriver.js';
 
 interface SqliteStatement {
@@ -70,7 +71,11 @@ interface WalkLogEntry {
   readonly callIndex: number;
 }
 
-function fixture(behaviors: readonly SpeakerBehavior[], replyMode: ConversationReplyMode = 'sequential') {
+function fixture(
+  behaviors: readonly SpeakerBehavior[],
+  replyMode: ConversationReplyMode = 'sequential',
+  turnContext?: ConversationTurnContextOptions,
+) {
   const root = mkdtempSync(join(tmpdir(), 'agentos-cgwalk-'));
   const db = new DatabaseSync(join(root, 'agentos.sqlite'));
   db.exec('PRAGMA foreign_keys = ON');
@@ -108,11 +113,22 @@ function fixture(behaviors: readonly SpeakerBehavior[], replyMode: ConversationR
 
   let callIndex = 0;
   const walkLog: WalkLogEntry[] = [];
+  const executionOrder: string[] = [];
+  const providerInputs: Array<{ readonly executionId?: string; readonly memoryContext?: string }> = [];
   const deltas: Array<{ agentId: string; delta: string }> = [];
   const runnerFactory = (options: unknown) => {
-    const runnerOptions = options as { onEvent?: (event: { status: string; activity: string; content?: string }) => void };
+    const runnerOptions = options as {
+      executionId?: string;
+      memoryContext?: string;
+      onEvent?: (event: { status: string; activity: string; content?: string }) => void;
+    };
     const myIndex = callIndex;
     callIndex += 1;
+    executionOrder.push('provider:' + String(myIndex));
+    providerInputs.push({
+      ...(runnerOptions.executionId === undefined ? {} : { executionId: runnerOptions.executionId }),
+      ...(runnerOptions.memoryContext === undefined ? {} : { memoryContext: runnerOptions.memoryContext }),
+    });
     const behavior = behaviors[myIndex] ?? { result: makeResult('completed', 'unexpected extra speaker') };
     return {
       run: async () => {
@@ -127,14 +143,26 @@ function fixture(behaviors: readonly SpeakerBehavior[], replyMode: ConversationR
     };
   };
 
+  const resolvedTurnContext = turnContext === undefined ? undefined : {
+    ...turnContext,
+    snapshots: turnContext.snapshots ?? {
+      insert: (input: Parameters<NonNullable<ConversationTurnContextOptions['snapshots']>['insert']>[0]) => {
+        executionOrder.push('snapshot:' + input.agentId);
+        return snapshots.insertWithinTransaction(input);
+      },
+    },
+  };
+
   const driver = new GroupTurnDriver(
     boundedGroups, interactions, conversations, stream,
     (_workspaceId, agentId) => (AGENTS as readonly string[]).includes(agentId) ? ({} as never) : undefined,
+    resolvedTurnContext,
   );
 
   const counts = (table: string) => Number((db.prepare('SELECT COUNT(*) AS n FROM ' + table).get() as { n: number | bigint }).n);
   return {
     db, boundedGroups, interactions, driver, walkLog, deltas, counts, runnerFactory,
+    executionOrder, providerInputs,
     close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } },
   };
 }
@@ -200,6 +228,61 @@ test('CG-walk: the resolved plan executes strictly in order and records one repl
     fx.close();
   }
 });
+
+test('LITE-09-013/101 Group Provider receives each Agent frozen context and the reply cites that snapshot', async () => {
+  const fx = fixture(COMPLETE, 'manual', {
+    contextTokenBudget: 64,
+    selection: {
+      select: ({ agentId }) => ({
+        selectedEntryIds: ['entry_' + agentId],
+        totalTokens: 4,
+        truncated: false,
+        retrievalStrategyVersion: 'chat-memory.v1',
+        contextText: 'frozen context for ' + agentId,
+      }),
+    },
+  });
+  try {
+    const interaction = fx.boundedGroups.createInteraction({
+      workspaceId: WS, conversationId: CONV, budget: BUDGET, createdAt: NOW,
+    });
+    const result = await fx.driver.run(
+      {
+        workspaceId: WS, workspaceRoot: 'C:/tmp/ws_cgw', conversationId: CONV,
+        interactionId: interaction.id, sourceMessageId: USER_MSG, createdAt: NOW,
+        namedAgentIds: [AGENTS[0], AGENTS[1]],
+      },
+      { runnerFactory: fx.runnerFactory as never },
+    );
+
+    assert.equal(result.endedBy, 'completed');
+    assert.deepEqual(fx.providerInputs.map(input => input.memoryContext), [
+      'frozen context for agent_a', 'frozen context for agent_b',
+    ]);
+    // The durable snapshot is created before each runner is constructed.
+    assert.equal(fx.executionOrder[0], 'snapshot:agent_a');
+    assert.match(fx.executionOrder[1]!, /^provider:/);
+    assert.equal(fx.executionOrder[2], 'snapshot:agent_b');
+    assert.match(fx.executionOrder[3]!, /^provider:/);
+
+    const snapshots = new TurnContextSnapshotRepository(fx.db as unknown as TransactionDatabase);
+    const replies = fx.interactions.listReplies(interaction.id);
+    assert.deepEqual(replies.map(reply => reply.agentId), [AGENTS[0], AGENTS[1]]);
+    for (const reply of replies) {
+      assert.ok(reply.contextSnapshotId, 'a recorded Group reply must cite its used snapshot');
+      const snapshot = snapshots.findById(WS, reply.contextSnapshotId!);
+      assert.ok(snapshot);
+      assert.equal(snapshot.interactionId, interaction.id);
+      assert.equal(snapshot.turnId, reply.turnId);
+      assert.equal(snapshot.agentId, reply.agentId);
+      assert.deepEqual(JSON.parse(snapshot.selectedEntryIdsJson), ['entry_' + reply.agentId]);
+    }
+    assert.equal(fx.counts('cr_turn_context_snapshots'), 2, 'the interaction reuses the two Provider snapshots');
+  } finally {
+    fx.close();
+  }
+});
+
 test('CG-S5: a stop between speakers ends the walk before the next Provider call', async () => {
   const fx = fixture(COMPLETE);
   try {

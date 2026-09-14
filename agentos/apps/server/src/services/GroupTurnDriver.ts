@@ -209,6 +209,7 @@ export class GroupTurnDriver {
         workspaceId: input.workspaceId,
         workspaceRoot: input.workspaceRoot,
         conversationId: input.conversationId,
+        interactionId: input.interactionId,
         agentId: speaker.agentId,
         sourceMessageId: input.sourceMessageId,
         content: source.content,
@@ -240,6 +241,7 @@ export class GroupTurnDriver {
           content: result.content,
           ...(previousAgentId === undefined ? {} : { hopFromAgentId: previousAgentId }),
           turnId,
+          ...(result.turn.contextSnapshotId === null ? {} : { contextSnapshotId: result.turn.contextSnapshotId }),
           createdAt: input.createdAt,
         });
         replyId = recorded.reply.id;

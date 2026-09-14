@@ -67,6 +67,8 @@ export interface RecordGroupReplyInput {
   readonly agentId: string;
   readonly messageId: string;
   readonly turnId?: string;
+  /** The snapshot actually used by the Provider Turn, when one was persisted. */
+  readonly contextSnapshotId?: string;
   readonly content: string;
   readonly mentionTargets?: readonly string[];
   readonly hopFromAgentId?: string;
@@ -227,34 +229,52 @@ export class BoundedGroupService {
       return this.terminate(interaction, 'budget-timeout', undefined, input.createdAt);
     }
 
-    // Per-Agent isolated context resolution, persisted BEFORE the reply is recorded.
-    const selection = this.selector.select({
-      workspaceId: input.workspaceId,
-      conversationId: interaction.conversationId,
-      interactionId: interaction.id,
-      agentId: input.agentId,
-      createdAt: input.createdAt,
-      ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
-      ...(interaction.contextTokenBudget === null ? {} : { contextTokenBudget: interaction.contextTokenBudget }),
-    });
-    const contextSnapshot = this.snapshots.insertWithinTransaction({
-      id: createEntityId('snapshot'),
-      workspaceId: input.workspaceId,
-      conversationId: interaction.conversationId,
-      interactionId: interaction.id,
-      agentId: input.agentId,
-      budgetJson: JSON.stringify({
-        maxTotalReplies: interaction.maxTotalReplies,
-        maxRepliesPerAgent: interaction.maxRepliesPerAgent,
-        contextTokenBudget: interaction.contextTokenBudget,
-      }),
-      selectedEntryIdsJson: JSON.stringify(selection.selectedEntryIds),
-      totalTokens: selection.totalTokens,
-      truncated: selection.truncated,
-      retrievalStrategyVersion: RETRIEVAL_STRATEGY_VERSION,
-      createdAt: input.createdAt,
-      ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
-    });
+    // Per-Agent isolated context resolution is normally persisted by the
+    // ConversationTurnDriver before the Provider. Reuse that exact snapshot for
+    // a Group reply so the interaction row cannot point at a second, after-the-
+    // fact selection. Direct recordReply callers retain the original selector
+    // path for the persistence-only CR-5 API.
+    let contextSnapshot: TurnContextSnapshotRecord;
+    if (input.contextSnapshotId !== undefined) {
+      const supplied = this.snapshots.findById(input.workspaceId, input.contextSnapshotId);
+      if (supplied === undefined
+        || supplied.conversationId !== interaction.conversationId
+        || supplied.interactionId !== interaction.id
+        || supplied.agentId !== input.agentId
+        || input.turnId === undefined
+        || supplied.turnId !== input.turnId) {
+        throw new BoundedGroupError('GROUP_PERSISTENCE_FAILED');
+      }
+      contextSnapshot = supplied;
+    } else {
+      const selection = this.selector.select({
+        workspaceId: input.workspaceId,
+        conversationId: interaction.conversationId,
+        interactionId: interaction.id,
+        agentId: input.agentId,
+        createdAt: input.createdAt,
+        ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
+        ...(interaction.contextTokenBudget === null ? {} : { contextTokenBudget: interaction.contextTokenBudget }),
+      });
+      contextSnapshot = this.snapshots.insertWithinTransaction({
+        id: createEntityId('snapshot'),
+        workspaceId: input.workspaceId,
+        conversationId: interaction.conversationId,
+        interactionId: interaction.id,
+        agentId: input.agentId,
+        budgetJson: JSON.stringify({
+          maxTotalReplies: interaction.maxTotalReplies,
+          maxRepliesPerAgent: interaction.maxRepliesPerAgent,
+          contextTokenBudget: interaction.contextTokenBudget,
+        }),
+        selectedEntryIdsJson: JSON.stringify(selection.selectedEntryIds),
+        totalTokens: selection.totalTokens,
+        truncated: selection.truncated,
+        retrievalStrategyVersion: RETRIEVAL_STRATEGY_VERSION,
+        createdAt: input.createdAt,
+        ...(input.turnId === undefined ? {} : { turnId: input.turnId }),
+      });
+    }
 
     const hopOrder = priorReplies.length === 0 ? 0 : Math.max(...priorReplies.map(reply => reply.hopOrder)) + hopIncrement;
     const reply = this.interactions.appendReplyWithinTransaction({

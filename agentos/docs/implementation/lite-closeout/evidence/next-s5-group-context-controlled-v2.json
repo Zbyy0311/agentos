@@ -1,0 +1,534 @@
+{
+  "schemaVersion": 1,
+  "format": "controlled-harness",
+  "baseline": "fea30fe7e7d1eaef79321e7b70785b9e83d6f703",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "--out",
+      "../../docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/receipts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/execution.json",
+      "sha256": "cb60fd3d6e986b87aef838b2e757a1f64264c637b9701fc02b2e8070e08ee44c"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/receipts/receipts.json",
+      "sha256": "628afa08791c05a7f3500fba9e09c96b10f74b94ffbae1b8493b93e68f4ea37f"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/stdout.txt",
+      "sha256": "6e457f949a6e8c05c4449e7f06cabc6d89c9393936cdacf03bd8816fccc24da6"
+    }
+  ],
+  "sourceReceipt": "docs/implementation/lite-closeout/evidence/next-s5-group-context-capture-v2/receipts/receipts.json",
+  "counts": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "assertionCoverage": [
+    {
+      "id": "S5G-MENTION-01",
+      "requirementId": "LITE-09-010",
+      "actual": {
+        "speakers": [
+          {
+            "agentId": "agent_reviewer",
+            "source": "mention"
+          },
+          {
+            "agentId": "agent_lead",
+            "source": "mention"
+          }
+        ],
+        "skipped": [
+          {
+            "agentId": null,
+            "reason": "member-not-active"
+          },
+          {
+            "agentId": "agent_worker",
+            "reason": "not-selected-manually"
+          }
+        ],
+        "repliesRecorded": [
+          {
+            "agentId": "agent_reviewer",
+            "status": "final",
+            "hasReply": true
+          },
+          {
+            "agentId": "agent_lead",
+            "status": "final",
+            "hasReply": true
+          }
+        ]
+      },
+      "expected": {
+        "speakers": [
+          {
+            "agentId": "agent_reviewer",
+            "source": "mention"
+          },
+          {
+            "agentId": "agent_lead",
+            "source": "mention"
+          }
+        ],
+        "skipped": [
+          {
+            "agentId": null,
+            "reason": "member-not-active"
+          },
+          {
+            "agentId": "agent_worker",
+            "reason": "not-selected-manually"
+          }
+        ],
+        "repliesRecorded": [
+          {
+            "agentId": "agent_reviewer",
+            "status": "final",
+            "hasReply": true
+          },
+          {
+            "agentId": "agent_lead",
+            "status": "final",
+            "hasReply": true
+          }
+        ]
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "a mention selects exactly the mentioned Agents, in mention order, and reports the rest as skipped",
+      "expression": "expect('LITE-09-010', 'S5G-MENTION-01', 'a mention selects exactly the mentioned Agents, in mention order, and reports the rest as skipped',",
+      "line": 162,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-MENTION-02",
+      "requirementId": "LITE-09-010",
+      "actual": {
+        "replyAgents": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "hopOrders": [
+          0,
+          1
+        ],
+        "hopChain": [
+          null,
+          "agent_reviewer"
+        ],
+        "agentsSawTheirOwnSnapshot": [
+          {
+            "agentId": "agent_reviewer",
+            "sawSharedConversationEntry": true,
+            "contextIsFrozenEntry": true
+          },
+          {
+            "agentId": "agent_lead",
+            "sawSharedConversationEntry": true,
+            "contextIsFrozenEntry": true
+          }
+        ],
+        "replySnapshotTags": [
+          {
+            "agentId": "agent_reviewer",
+            "taggedWithInteraction": true,
+            "turnMatchesReply": true,
+            "idsIsArray": true
+          },
+          {
+            "agentId": "agent_lead",
+            "taggedWithInteraction": true,
+            "turnMatchesReply": true,
+            "idsIsArray": true
+          }
+        ],
+        "endedBy": "completed",
+        "maxConcurrent": 1
+      },
+      "expected": {
+        "replyAgents": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "hopOrders": [
+          0,
+          1
+        ],
+        "hopChain": [
+          null,
+          "agent_reviewer"
+        ],
+        "agentsSawTheirOwnSnapshot": [
+          {
+            "agentId": "agent_reviewer",
+            "sawSharedConversationEntry": true,
+            "contextIsFrozenEntry": true
+          },
+          {
+            "agentId": "agent_lead",
+            "sawSharedConversationEntry": true,
+            "contextIsFrozenEntry": true
+          }
+        ],
+        "replySnapshotTags": [
+          {
+            "agentId": "agent_reviewer",
+            "taggedWithInteraction": true,
+            "turnMatchesReply": true,
+            "idsIsArray": true
+          },
+          {
+            "agentId": "agent_lead",
+            "taggedWithInteraction": true,
+            "turnMatchesReply": true,
+            "idsIsArray": true
+          }
+        ],
+        "endedBy": "completed",
+        "maxConcurrent": 1
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "the durable replies carry the serialized speaker order and the hop chain",
+      "expression": "expect('LITE-09-010', 'S5G-MENTION-02', 'the durable replies carry the serialized speaker order and the hop chain',",
+      "line": 171,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-CONTEXT-01",
+      "requirementId": "LITE-09-101",
+      "actual": {
+        "speakers": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "snapshotPersistedBeforeProvider": true,
+        "sharedContextInjected": true,
+        "providerSelectionMatchesSnapshot": true
+      },
+      "expected": {
+        "speakers": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "snapshotPersistedBeforeProvider": true,
+        "sharedContextInjected": true,
+        "providerSelectionMatchesSnapshot": true
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "every group speaker sees a durable context snapshot before its Provider call and receives the frozen shared context",
+      "expression": "expect('LITE-09-101', 'S5G-CONTEXT-01', 'every group speaker sees a durable context snapshot before its Provider call and receives the frozen shared context',",
+      "line": 201,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-CONTEXT-ISOLATION-01",
+      "requirementId": "LITE-09-013",
+      "actual": {
+        "isolation": [
+          {
+            "agentId": "agent_reviewer",
+            "seesOwn": true,
+            "seesOther": false,
+            "selectedOwn": true,
+            "selectedOther": false
+          },
+          {
+            "agentId": "agent_lead",
+            "seesOwn": true,
+            "seesOther": false,
+            "selectedOwn": true,
+            "selectedOther": false
+          }
+        ]
+      },
+      "expected": {
+        "isolation": [
+          {
+            "agentId": "agent_reviewer",
+            "seesOwn": true,
+            "seesOther": false,
+            "selectedOwn": true,
+            "selectedOther": false
+          },
+          {
+            "agentId": "agent_lead",
+            "seesOwn": true,
+            "seesOther": false,
+            "selectedOwn": true,
+            "selectedOther": false
+          }
+        ]
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "group speakers receive their own Agent-scoped context without seeing another Agent private rule",
+      "expression": "expect('LITE-09-013', 'S5G-CONTEXT-ISOLATION-01', 'group speakers receive their own Agent-scoped context without seeing another Agent private rule',",
+      "line": 209,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-MENTION-03",
+      "requirementId": "LITE-09-010",
+      "actual": {
+        "speakers": [
+          {
+            "agentId": "agent_worker",
+            "source": "mode"
+          }
+        ],
+        "skipped": [
+          {
+            "agentId": "agent_lead",
+            "reason": "not-mentioned"
+          },
+          {
+            "agentId": "agent_reviewer",
+            "reason": "not-mentioned"
+          },
+          {
+            "agentId": null,
+            "reason": "member-not-active"
+          }
+        ],
+        "replies": [
+          "agent_worker"
+        ]
+      },
+      "expected": {
+        "speakers": [
+          {
+            "agentId": "agent_worker",
+            "source": "mode"
+          }
+        ],
+        "skipped": [
+          {
+            "agentId": "agent_lead",
+            "reason": "not-mentioned"
+          },
+          {
+            "agentId": "agent_reviewer",
+            "reason": "not-mentioned"
+          },
+          {
+            "agentId": null,
+            "reason": "member-not-active"
+          }
+        ],
+        "replies": [
+          "agent_worker"
+        ]
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "without a mention only the always-mode member speaks and the mention-only members are reported as not-mentioned",
+      "expression": "expect('LITE-09-010', 'S5G-MENTION-03', 'without a mention only the always-mode member speaks and the mention-only members are reported as not-mentioned',",
+      "line": 231,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-ALL-01",
+      "requirementId": "LITE-09-010",
+      "actual": {
+        "speakerOrder": [
+          "agent_lead",
+          "agent_worker",
+          "agent_reviewer"
+        ],
+        "declaredReadOnly": [
+          false
+        ],
+        "effectiveMutationClass": [
+          "modifying"
+        ],
+        "repliesRecorded": [
+          "agent_lead",
+          "agent_worker",
+          "agent_reviewer"
+        ],
+        "budgetAfter": {
+          "repliesUsed": 3,
+          "repliesRemaining": 0,
+          "hopsUsed": 2,
+          "hopsRemaining": 2,
+          "distinctAgents": 3,
+          "agentsRemaining": 0
+        },
+        "maxConcurrent": 1,
+        "endedBy": "budget-total-replies"
+      },
+      "expected": {
+        "speakerOrder": [
+          "agent_lead",
+          "agent_worker",
+          "agent_reviewer"
+        ],
+        "declaredReadOnly": [
+          false
+        ],
+        "effectiveMutationClass": [
+          "modifying"
+        ],
+        "repliesRecorded": [
+          "agent_lead",
+          "agent_worker",
+          "agent_reviewer"
+        ],
+        "budgetAfter": {
+          "repliesUsed": 3,
+          "repliesRemaining": 0,
+          "hopsUsed": 2,
+          "hopsRemaining": 2,
+          "distinctAgents": 3,
+          "agentsRemaining": 0
+        },
+        "maxConcurrent": 1,
+        "endedBy": "budget-total-replies"
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "the full member set speaks in the delivered order and the walk is serialized end to end",
+      "expression": "expect('LITE-09-010', 'S5G-ALL-01', 'the full member set speaks in the delivered order and the walk is serialized end to end',",
+      "line": 265,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-D3OFF-01",
+      "requirementId": "LITE-09-010",
+      "actual": {
+        "declaredReadOnly": [
+          true
+        ],
+        "effectiveMutationClass": [
+          "modifying"
+        ],
+        "turnsStarted": 2,
+        "repliesRecorded": 2,
+        "maxConcurrent": 1,
+        "endedBy": "budget-total-replies"
+      },
+      "expected": {
+        "declaredReadOnly": [
+          true
+        ],
+        "effectiveMutationClass": [
+          "modifying"
+        ],
+        "turnsStarted": 2,
+        "repliesRecorded": 2,
+        "maxConcurrent": 1,
+        "endedBy": "budget-total-replies"
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "a parallel-read-only request is recorded as declared but still classified modifying and stays serialized (D3 off)",
+      "expression": "expect('LITE-09-010', 'S5G-D3OFF-01', 'a parallel-read-only request is recorded as declared but still classified modifying and stays serialized (D3 off)',",
+      "line": 299,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-CONTENTION-01",
+      "requirementId": "LITE-09-010",
+      "actual": {
+        "providerCalls": 0,
+        "repliesRecorded": 0,
+        "endedBy": "provider-failed",
+        "interactionStatus": {
+          "status": "active",
+          "stopReason": null
+        },
+        "budgetUnmoved": {
+          "repliesUsed": 0,
+          "repliesRemaining": 2,
+          "hopsUsed": 0,
+          "hopsRemaining": 2,
+          "distinctAgents": 0,
+          "agentsRemaining": 2
+        },
+        "turnStatuses": [
+          {
+            "status": "failed",
+            "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY"
+          }
+        ],
+        "refusalNamesTheHolder": true,
+        "replayBudgetLimited": 2
+      },
+      "expected": {
+        "providerCalls": 0,
+        "repliesRecorded": 0,
+        "endedBy": "provider-failed",
+        "interactionStatus": {
+          "status": "active",
+          "stopReason": null
+        },
+        "budgetUnmoved": {
+          "repliesUsed": 0,
+          "repliesRemaining": 2,
+          "hopsUsed": 0,
+          "hopsRemaining": 2,
+          "distinctAgents": 0,
+          "agentsRemaining": 2
+        },
+        "turnStatuses": [
+          {
+            "status": "failed",
+            "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY"
+          }
+        ],
+        "refusalNamesTheHolder": true,
+        "replayBudgetLimited": 2
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "a foreign modifying holder stops the walk before any reply is recorded, with the refusal named on the Turn",
+      "expression": "expect('LITE-09-010', 'S5G-CONTENTION-01', 'a foreign modifying holder stops the walk before any reply is recorded, with the refusal named on the Turn',",
+      "line": 332,
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-CONTENTION-02",
+      "requirementId": "LITE-09-010",
+      "actual": {
+        "repliesRecorded": 2,
+        "endedBy": "budget-total-replies",
+        "replyAgents": [
+          "agent_lead",
+          "agent_worker"
+        ]
+      },
+      "expected": {
+        "repliesRecorded": 2,
+        "endedBy": "budget-total-replies",
+        "replyAgents": [
+          "agent_lead",
+          "agent_worker"
+        ]
+      },
+      "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+      "name": "once the holder is released the same interaction completes, so the stop was about authority only",
+      "expression": "expect('LITE-09-010', 'S5G-CONTENTION-02', 'once the holder is released the same interaction completes, so the stop was about authority only',",
+      "line": 348,
+      "outcome": "passed"
+    }
+  ]
+}

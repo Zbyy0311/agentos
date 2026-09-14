@@ -176,11 +176,16 @@ expect('LITE-09-010', 'S5G-MENTION-02', 'the durable replies carry the serialize
       sawSharedConversationEntry: (observation.selectedIds ?? []).includes('mem_group_shared'),
       contextIsFrozenEntry: (observation.memoryContext ?? '').includes('the group shares this bounded context'),
     })),
-    // The group service also freezes a per-Agent snapshot with the reply, tagged with the
-    // interaction it belongs to (the Turn's own CR-5 snapshot is conversation-scoped).
+    // The reply must reference the same execution snapshot that the Provider Turn used;
+    // a second after-the-fact CR-5 selection would not be canonical evidence.
     replySnapshotTags: replies.map(reply => {
-      const row = db.prepare('SELECT interaction_id AS interactionId, agent_id AS agentId, selected_entry_ids_json AS idsJson FROM cr_turn_context_snapshots WHERE id = ?').get(reply.contextSnapshotId);
-      return { agentId: row?.agentId ?? null, taggedWithInteraction: row?.interactionId === interaction.id, idsIsArray: Array.isArray(JSON.parse(row?.idsJson ?? 'null')) };
+      const row = db.prepare('SELECT interaction_id AS interactionId, agent_id AS agentId, turn_id AS turnId, selected_entry_ids_json AS idsJson FROM cr_turn_context_snapshots WHERE id = ?').get(reply.contextSnapshotId);
+      return {
+        agentId: row?.agentId ?? null,
+        taggedWithInteraction: row?.interactionId === interaction.id,
+        turnMatchesReply: row?.turnId === reply.turnId,
+        idsIsArray: Array.isArray(JSON.parse(row?.idsJson ?? 'null')),
+      };
     }),
     endedBy: mentionWalk.endedBy, maxConcurrent },
   { replyAgents: ['agent_reviewer', 'agent_lead'], hopOrders: [0, 1], hopChain: [null, 'agent_reviewer'],
@@ -189,13 +194,13 @@ expect('LITE-09-010', 'S5G-MENTION-02', 'the durable replies carry the serialize
       { agentId: 'agent_lead', sawSharedConversationEntry: true, contextIsFrozenEntry: true },
     ],
     replySnapshotTags: [
-      { agentId: 'agent_reviewer', taggedWithInteraction: true, idsIsArray: true },
-      { agentId: 'agent_lead', taggedWithInteraction: true, idsIsArray: true },
+      { agentId: 'agent_reviewer', taggedWithInteraction: true, turnMatchesReply: true, idsIsArray: true },
+      { agentId: 'agent_lead', taggedWithInteraction: true, turnMatchesReply: true, idsIsArray: true },
     ],
     endedBy: 'completed', maxConcurrent: 1 });
 expect('LITE-09-101', 'S5G-CONTEXT-01', 'every group speaker sees a durable context snapshot before its Provider call and receives the frozen shared context',
   { speakers: observations.slice(0, 2).map(observation => observation.agentId),
-    snapshotPersistedBeforeProvider: observations.slice(0, 2).every(observation => observation.interactionOnSnapshot === null),
+    snapshotPersistedBeforeProvider: observations.slice(0, 2).every(observation => observation.interactionOnSnapshot === interaction.id),
     sharedContextInjected: observations.slice(0, 2).every(observation => (observation.memoryContext ?? '').includes('the group shares this bounded context')),
     providerSelectionMatchesSnapshot: observations.slice(0, 2).every(observation => (observation.selectedIds ?? []).includes('mem_group_shared')) },
   { speakers: ['agent_reviewer', 'agent_lead'], snapshotPersistedBeforeProvider: true,
