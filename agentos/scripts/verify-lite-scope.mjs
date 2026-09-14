@@ -452,6 +452,95 @@ function validateRaw(proof, expectedBaseline, repositoryRoot, label) {
   return raw;
 }
 
+/**
+ * Candidate harnesses emit structured actual/expected receipts rather than TAP.
+ * They are accepted only through this stricter, explicit format: the receipt must
+ * be a preserved file from the literal command, every source receipt must pass,
+ * and every mapped assertion must point at the exact source invocation that
+ * produced it. This is not a file-level or keyword-based promotion path.
+ */
+function validateControlledHarnessRaw(proof, expectedBaseline, repositoryRoot, label) {
+  const raw = loadRaw(proof, repositoryRoot, label);
+  object(raw, `${label} raw receipt`);
+  assert.equal(raw.schemaVersion, 1, `${label} raw receipt schemaVersion`);
+  assert.equal(raw.format, 'controlled-harness', `${label} raw receipt format`);
+  assertSha(raw.baseline, sha40, `${label} raw baseline`);
+  assert.equal(raw.baseline, expectedBaseline, `${label} raw baseline mismatch`);
+  object(raw.command, `${label} raw command`);
+  assert.equal(typeof raw.command.executable, 'string', `${label} raw executable is required`);
+  assert.ok(raw.command.executable && Array.isArray(raw.command.args), `${label} raw command is incomplete`);
+  assert.ok(raw.command.args.every(argument => typeof argument === 'string'), `${label} raw command args are invalid`);
+  assert.ok(!/<[^>]+>/.test(JSON.stringify(raw.command)), `${label} raw command is not literal`);
+  assert.equal(typeof raw.cwd, 'string', `${label} raw cwd is required`);
+  assert.equal(resolve(existingPath(repositoryRoot, raw.cwd, `${label} raw cwd`)),
+    resolve(existingPath(repositoryRoot, proof.cwd, `${label} cwd`)), `${label} cwd mismatch`);
+  assert.equal(raw.trackedCheckoutUnchanged, true, `${label} checkout changed during invocation`);
+  assert.equal(raw.rawExitCode, 0, `${label} raw exit code must be zero`);
+  assert.equal(raw.signal, null, `${label} invocation ended by signal`);
+  assert.equal(raw.error, null, `${label} invocation reported a spawn error`);
+  assert.ok(Array.isArray(raw.logs) && raw.logs.length > 0, `${label} requires original raw logs`);
+  for (const log of raw.logs) {
+    object(log, `${label} raw log`);
+    assertSha(log.sha256, sha64, `${label} raw log sha256`);
+    const logPath = existingPath(repositoryRoot, log.path, `${label} raw log`);
+    assert.equal(fileDigest(logPath), log.sha256, `${label} raw log checksum mismatch`);
+  }
+  assert.equal(typeof raw.sourceReceipt, 'string', `${label} source receipt is required`);
+  const sourcePath = existingPath(repositoryRoot, raw.sourceReceipt, `${label} source receipt`);
+  assert.ok(raw.logs.some(log => resolve(repositoryRoot, log.path) === sourcePath), `${label} source receipt is not preserved in raw logs`);
+  const source = readJson(sourcePath);
+  object(source, `${label} source receipt`);
+  assert.equal(source.schemaVersion, 1, `${label} source receipt schemaVersion`);
+  assert.ok(Array.isArray(source.receipts), `${label} source receipts are required`);
+  object(source.counts, `${label} source counts`);
+  object(raw.counts, `${label} raw counts`);
+  for (const key of ['passed', 'failed', 'skipped']) {
+    assert.ok(Number.isSafeInteger(source.counts[key]) && source.counts[key] >= 0, `${label} source count ${key} is required`);
+    assert.equal(raw.counts[key], source.counts[key], `${label} raw/source count mismatch for ${key}`);
+  }
+  assert.equal(source.counts.total, source.counts.passed + source.counts.failed + source.counts.skipped,
+    `${label} source total count mismatch`);
+  assert.equal(raw.counts.total, source.counts.total, `${label} raw total count mismatch`);
+  assert.ok(raw.counts.passed > 0, `${label} raw pass count is zero`);
+  assert.equal(raw.counts.failed, 0, `${label} raw fail count is nonzero`);
+  assert.equal(raw.counts.skipped, 0, `${label} raw skip count is nonzero`);
+  assert.ok(Array.isArray(raw.assertionCoverage) && raw.assertionCoverage.length === source.receipts.length,
+    `${label} controlled assertion mapping must cover every source receipt`);
+  const bySourceId = new Map();
+  for (const receipt of source.receipts) {
+    object(receipt, `${label} source assertion`);
+    assert.equal(receipt.outcome, 'passed', `${label} source assertion outcome is not passed`);
+    assert.deepEqual(receipt.actual, receipt.expected, `${label} source assertion actual/expected mismatch: ${receipt.id}`);
+    assert.ok(typeof receipt.id === 'string' && receipt.id, `${label} source assertion id is required`);
+    assert.ok(!bySourceId.has(receipt.id), `${label} duplicate source assertion id: ${receipt.id}`);
+    bySourceId.set(receipt.id, receipt);
+  }
+  const mappedIds = new Set();
+  for (const assertion of raw.assertionCoverage) {
+    object(assertion, `${label} controlled assertion mapping`);
+    for (const key of ['id', 'requirementId', 'file', 'name', 'expression']) {
+      assert.equal(typeof assertion[key], 'string', `${label} controlled assertion ${key} is required`);
+      assert.ok(assertion[key].trim().length > 0, `${label} controlled assertion ${key} is empty`);
+    }
+    assert.ok(Number.isSafeInteger(assertion.line) && assertion.line > 0, `${label} controlled assertion line is required`);
+    assert.equal(assertion.outcome, 'passed', `${label} controlled assertion outcome is not passed`);
+    assert.ok(!mappedIds.has(assertion.id), `${label} duplicate controlled assertion mapping: ${assertion.id}`);
+    mappedIds.add(assertion.id);
+    const receipt = bySourceId.get(assertion.id);
+    assert.ok(receipt, `${label} controlled assertion is absent from source receipt: ${assertion.id}`);
+    assert.equal(assertion.requirementId, receipt.requirementId, `${label} controlled assertion requirement mismatch: ${assertion.id}`);
+    assert.deepEqual(assertion.actual, receipt.actual, `${label} controlled assertion actual mismatch: ${assertion.id}`);
+    assert.deepEqual(assertion.expected, receipt.expected, `${label} controlled assertion expected mismatch: ${assertion.id}`);
+    const sourceFile = existingPath(repositoryRoot, assertion.file, `${label} controlled assertion source`);
+    const sourceText = readFileSync(sourceFile, 'utf8');
+    assert.ok(sourceText.split(/\r?\n/)[assertion.line - 1]?.includes(assertion.expression),
+      `${label} controlled assertion expression is not at the stated source line: ${assertion.id}`);
+    assert.ok(sourceText.includes(assertion.name), `${label} controlled assertion name is absent: ${assertion.id}`);
+    assert.ok(JSON.stringify(source).includes(assertion.id), `${label} source receipt does not preserve assertion id: ${assertion.id}`);
+  }
+  return raw;
+}
+
 function validateResult(proof, raw, label) {
   object(proof.result, `${label} result`);
   for (const key of ['passed', 'failed', 'skipped']) {
@@ -473,8 +562,10 @@ export function validatePassEvidence(row, proof, matrix, repositoryRoot = root) 
   assert.equal(typeof proof.limitation, 'string', `PASS evidence limitation is required: ${proof.id ?? '<unknown>'}`);
   assert.ok(Array.isArray(proof.requirementIds) && proof.requirementIds.includes(row.id), `evidence is not mapped to requirement: ${row.id}`);
   if (proof.kind === 'github-actions') assert.ok(proof.url, `unverified PASS evidence: ${proof.id}`);
-  assert.ok(['local-tests', 'github-actions', 'runtime-verification'].includes(proof.kind), `unsupported PASS evidence kind: ${proof.kind}`);
-  const raw = validateRaw(proof, proof.baseline, repositoryRoot, `PASS evidence ${proof.id}`);
+  assert.ok(['local-tests', 'github-actions', 'runtime-verification', 'controlled-harness'].includes(proof.kind), `unsupported PASS evidence kind: ${proof.kind}`);
+  const raw = proof.kind === 'controlled-harness'
+    ? validateControlledHarnessRaw(proof, proof.baseline, repositoryRoot, `PASS evidence ${proof.id}`)
+    : validateRaw(proof, proof.baseline, repositoryRoot, `PASS evidence ${proof.id}`);
   validateResult(proof, raw, `PASS evidence ${proof.id}`);
   assert.ok(raw.assertionCoverage.some(assertion => assertion.requirementId === row.id), `assertion mapping is not exact: ${row.id}`);
   return raw;
