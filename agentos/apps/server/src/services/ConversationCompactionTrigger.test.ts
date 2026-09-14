@@ -54,6 +54,27 @@ function fakeEngine(captured: { input?: Record<string, unknown> }, outcome: stri
   } as unknown as ConversationCompactionService;
 }
 
+/**
+ * LITE-09-107/108: the Turn path evaluates automatically and must stay inside the
+ * bounded retry chain; the retry endpoint asks for a new attempt explicitly. The
+ * distinction only exists if it reaches the engine, so it is asserted on the
+ * engine's input rather than on the response.
+ */
+test('S6 trigger spends a new attempt only for an explicit retry', async () => {
+  const fx = fixture();
+  try {
+    const captured: { input?: Record<string, unknown> } = {};
+    const trigger = new ConversationCompactionTrigger({
+      store: fx.store, engine: fakeEngine(captured),
+      getAgent: () => agent({}), now: () => NOW,
+    });
+    await trigger.ensureCompacted({ workspaceId: WS, conversationId: CONV, agentId: 'agent_codex' });
+    assert.equal(captured.input?.resume, 'automatic');
+    await trigger.ensureCompacted({ workspaceId: WS, conversationId: CONV, agentId: 'agent_codex', mode: 'explicit' });
+    assert.equal(captured.input?.resume, 'explicit');
+  } finally { fx.close(); }
+});
+
 test('S6 trigger fails closed when the lite-v1 policy row is missing', async () => {
   const root = mkdtempSync(join(tmpdir(), 'agentos-s6-nopolicy-'));
   const store = new SqliteStore(root);

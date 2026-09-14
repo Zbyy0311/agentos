@@ -246,6 +246,14 @@ export class ConversationCompactionService {
     budget: CompactionBudgetInput;
     provider: CompactionProviderIdentity;
     priorSummary?: { readonly id: string; readonly summary: string } | null;
+    /**
+     * LITE-09-107: how this evaluation may spend attempts. `automatic` (the Turn
+     * path) is bounded: it continues the Conversation's existing attempt for the
+     * same source, and once `maxAutomaticRetries` is spent it reports the durable
+     * failure without starting another Provider call. `explicit` is the retry the
+     * user asks for through the retry endpoint, so it may start a fresh attempt.
+     */
+    resume?: 'automatic' | 'explicit';
   }): Promise<{ readonly outcome: 'noop' | 'published' | 'retry-pending' | 'failed'; readonly task?: CompactionTaskRecord }> {
     const policy = this.policies.findByVersion(input.policyVersion);
     if (policy === undefined) throw new ConversationCompactionError('COMPACTION_INPUT_INVALID');
@@ -258,44 +266,39 @@ export class ConversationCompactionService {
     if (existing !== undefined && existing.sourceHash === plan.sourceHash) {
       return { outcome: 'published', task: existing };
     }
+    // LITE-09-107: resume, do not restart. A repeating failure must not buy a fresh
+    // automatic retry budget on every Turn, so an automatic evaluation continues the
+    // Conversation's durable attempt for this exact source while that attempt still has
+    // attempts left, and stops calling the Provider once the bound is spent.
+    const resumable = input.resume === 'explicit'
+      ? undefined
+      : this.resumableAttempt(input.workspaceId, input.conversationId, plan.sourceHash, input.provider);
+    if (resumable !== undefined) {
+      const chainPolicy = this.policies.findById(resumable.policyId) ?? policy;
+      if (resumable.attempts >= chainPolicy.maxAutomaticRetries + 1) {
+        const exhausted = inTransaction(this.options.store.getDatabase(), () => this.compactions.failWithinTransaction({
+          workspaceId: input.workspaceId, id: resumable.id, expectedVersion: resumable.version,
+          failureCode: 'COMPACTION_RETRIES_EXHAUSTED',
+          failureMessage: `${chainPolicy.maxAutomaticRetries} automatic retr${chainPolicy.maxAutomaticRetries === 1 ? 'y' : 'ies'} already spent for this source`,
+          now: this.now(),
+        }));
+        return { outcome: 'failed', task: exhausted };
+      }
+    }
+    // A source whose automatic chain is already spent stays spent: the next evaluation
+    // reports the durable failure and offers the explicit retry instead of silently
+    // scheduling another Provider call.
+    if (input.resume !== 'explicit') {
+      const spent = this.spentAutomaticChain(input.workspaceId, input.conversationId, plan.sourceHash);
+      if (spent !== undefined) return { outcome: 'failed', task: spent };
+    }
     const summarySource = plan.priorSummary === null ? plan.sourceMessages.map(m => m.content).join('\n') : plan.priorSummary + '\n' + plan.sourceMessages.map(m => m.content).join('\n');
     const summarizer = this.options.summarizer;
     const timestamp = this.now();
-    const created = inTransaction(this.options.store.getDatabase(), () => this.compactions.createTaskWithinTransaction({
-      id: createEntityId('snapshot'),
-      workspaceId: input.workspaceId,
-      conversationId: input.conversationId,
-      policyId: policy.id,
-      sourceStartMessageId: plan.sourceStartMessageId,
-      sourceEndMessageId: plan.sourceEndMessageId,
-      sourceMessageCount: plan.sourceMessages.length,
-      sourceHash: plan.sourceHash,
-      priorSummaryId: input.priorSummary?.id ?? null,
-      budgetJson: plan.budgetJson,
-      providerConfigId: input.provider.providerConfigId,
-      providerType: input.provider.providerType,
-      adapterId: input.provider.adapterId,
-      adapterVersion: input.provider.adapterVersion,
-      model: input.provider.model,
-      estimatorVersion: COMPACTION_ESTIMATOR_VERSION,
-      createdAt: timestamp,
-    }));
     const leaseMs = this.options.leaseMs ?? policy.timeoutMs;
-    let running: CompactionTaskRecord;
-    try {
-      running = inTransaction(this.options.store.getDatabase(), () => this.compactions.claimRunningWithinTransaction({
-        workspaceId: input.workspaceId, id: created.id, expectedVersion: created.version,
-        leaseOwner: 'compaction-engine', leaseExpiresAt: new Date(Date.parse(timestamp) + leaseMs).toISOString(),
-        now: timestamp, attempt: 1,
-      }));
-    } catch (error) {
-      if (error instanceof CompactionRepositoryError && error.code === 'CONFLICT') {
-        // Another authority already owns this Conversation's compaction.
-        const active = this.compactions.findActive(input.workspaceId, input.conversationId);
-        return { outcome: 'retry-pending', ...(active === undefined ? {} : { task: active }) };
-      }
-      throw error;
-    }
+    const claimed = this.claimAttempt(input, plan, policy, resumable, timestamp, leaseMs);
+    if (claimed.kind === 'conflict') return claimed.result;
+    const running = claimed.running;
     if (summarizer === undefined) {
       const failed = inTransaction(this.options.store.getDatabase(), () => this.compactions.failWithinTransaction({
         workspaceId: input.workspaceId, id: running.id, expectedVersion: running.version,
@@ -370,5 +373,96 @@ export class ConversationCompactionService {
         failureCode, failureMessage, now: this.now(),
       }));
     return { outcome: updated.status === 'failed' ? 'failed' : 'retry-pending', task: updated };
+  }
+
+  /**
+   * LITE-09-107: the durable attempt an automatic evaluation may continue. Only the
+   * Conversation's own pending attempt for this exact source qualifies, and only while
+   * its frozen execution identity still matches the request: a Provider or model change
+   * is a different execution, so it starts its own attempt instead of being run under an
+   * identity that no longer describes it.
+   */
+  private resumableAttempt(
+    workspaceId: string,
+    conversationId: string,
+    sourceHash: string,
+    provider: CompactionProviderIdentity,
+  ): CompactionTaskRecord | undefined {
+    const active = this.compactions.findActive(workspaceId, conversationId);
+    if (active === undefined || active.status !== 'retry-pending' || active.sourceHash !== sourceHash) return undefined;
+    const sameIdentity = active.providerType === provider.providerType
+      && active.adapterId === provider.adapterId
+      && active.adapterVersion === provider.adapterVersion
+      && active.model === provider.model
+      && active.providerConfigId === (provider.providerConfigId ?? null);
+    return sameIdentity ? active : undefined;
+  }
+
+  /**
+   * LITE-09-107: a source whose bounded automatic chain is spent stays spent. Without
+   * this, every later Turn would create a new task and buy another Provider call, which
+   * is exactly the unbounded scheduling the requirement forbids. The explicit retry the
+   * user asks for is the only way to spend a new attempt on the same source.
+   */
+  private spentAutomaticChain(
+    workspaceId: string,
+    conversationId: string,
+    sourceHash: string,
+  ): CompactionTaskRecord | undefined {
+    const finished = this.compactions.findLatestFinishedForSource(workspaceId, conversationId, sourceHash);
+    return finished !== undefined && finished.status === 'failed' && finished.failureCode === 'COMPACTION_RETRIES_EXHAUSTED'
+      ? finished
+      : undefined;
+  }
+
+  /**
+   * Claims the durable execution right for one attempt: the Conversation's existing
+   * attempt when an automatic evaluation continues its bounded chain, otherwise a fresh
+   * row that freezes the plan, budget and Provider identity of this evaluation.
+   */
+  private claimAttempt(
+    input: { readonly workspaceId: string; readonly conversationId: string; readonly provider: CompactionProviderIdentity; readonly priorSummary?: { readonly id: string; readonly summary: string } | null },
+    plan: CompactionPlan,
+    policy: CompactionPolicyRecord,
+    resumable: CompactionTaskRecord | undefined,
+    timestamp: string,
+    leaseMs: number,
+  ): { readonly kind: 'claimed'; readonly running: CompactionTaskRecord } | { readonly kind: 'conflict'; readonly result: { readonly outcome: 'retry-pending'; readonly task?: CompactionTaskRecord } } {
+    const db = this.options.store.getDatabase();
+    const target = resumable ?? inTransaction(db, () => this.compactions.createTaskWithinTransaction({
+      id: createEntityId('snapshot'),
+      workspaceId: input.workspaceId,
+      conversationId: input.conversationId,
+      policyId: policy.id,
+      sourceStartMessageId: plan.sourceStartMessageId,
+      sourceEndMessageId: plan.sourceEndMessageId,
+      sourceMessageCount: plan.sourceMessages.length,
+      sourceHash: plan.sourceHash,
+      priorSummaryId: input.priorSummary?.id ?? null,
+      budgetJson: plan.budgetJson,
+      providerConfigId: input.provider.providerConfigId,
+      providerType: input.provider.providerType,
+      adapterId: input.provider.adapterId,
+      adapterVersion: input.provider.adapterVersion,
+      model: input.provider.model,
+      estimatorVersion: COMPACTION_ESTIMATOR_VERSION,
+      createdAt: timestamp,
+    }));
+    try {
+      const running = inTransaction(db, () => this.compactions.claimRunningWithinTransaction({
+        workspaceId: input.workspaceId, id: target.id, expectedVersion: target.version,
+        leaseOwner: 'compaction-engine',
+        leaseExpiresAt: new Date(Date.parse(timestamp) + leaseMs).toISOString(),
+        now: timestamp, attempt: resumable === undefined ? 1 : resumable.attempts + 1,
+      }));
+      return { kind: 'claimed', running };
+    } catch (error) {
+      if (error instanceof CompactionRepositoryError && error.code === 'CONFLICT') {
+        // Another authority already owns this Conversation's compaction.
+        const active = this.compactions.findActive(input.workspaceId, input.conversationId);
+        return { kind: 'conflict', result: { outcome: 'retry-pending', ...(active === undefined ? {} : { task: active }) } };
+      }
+      throw error;
+    }
   }
 }

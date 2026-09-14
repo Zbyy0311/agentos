@@ -135,8 +135,9 @@ test('S6: publish writes summary, review-required candidate and workspace event 
   } finally { fx.close(); }
 });
 
-test('S6: a failed summary retries once and then fails with a stable code', async () => {
-  const fx = fixture({ summarize: async () => { throw new Error('provider timeout'); } });
+test('S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt', async () => {
+  let calls = 0;
+  const fx = fixture({ summarize: async () => { calls += 1; throw new Error('provider timeout'); } });
   try {
     const input = {
       workspaceId: WS, conversationId: CONV, policyVersion: 'lite-v1',
@@ -146,20 +147,28 @@ test('S6: a failed summary retries once and then fails with a stable code', asyn
     const first = await fx.service.compact(input as never);
     assert.equal(first.outcome, 'retry-pending');
     assert.equal(first.task?.attempts, 1);
-    // A second attempt exhausts maxAutomaticRetries (1) and fails.
-    const retryClaim = fx.compactions.findActive(WS, CONV)!;
-    inTransaction(fx.db, () => fx.compactions.claimRunningWithinTransaction({
-      workspaceId: WS, id: retryClaim.id, expectedVersion: retryClaim.version,
-      leaseOwner: 'compaction-engine', leaseExpiresAt: NOW, now: NOW, attempt: 2,
-    }));
-    const running = fx.compactions.findById(WS, retryClaim.id)!;
-    inTransaction(fx.db, () => fx.compactions.failWithinTransaction({
-      workspaceId: WS, id: running.id, expectedVersion: running.version,
-      failureCode: 'COMPACTION_RETRIES_EXHAUSTED', failureMessage: 'summary execution failed', now: NOW,
-    }));
-    const latest = fx.compactions.findById(WS, retryClaim.id)!;
-    assert.equal(latest.status, 'failed');
-    assert.equal(latest.failureCode, 'COMPACTION_RETRIES_EXHAUSTED');
+    assert.equal(calls, 1, 'the first automatic attempt really called the summarizer');
+    // LITE-09-107: the automatic retry continues the SAME durable attempt, so the bound
+    // is spent instead of being renewed by evaluating again.
+    const second = await fx.service.compact(input as never);
+    assert.equal(second.outcome, 'failed');
+    assert.equal(second.task?.id, first.task?.id, 'the retry resumes the existing attempt');
+    assert.equal(second.task?.attempts, 2);
+    assert.equal(second.task?.failureCode, 'COMPACTION_RETRIES_EXHAUSTED');
+    assert.equal(calls, 2, 'one initial attempt plus exactly one automatic retry');
+    // A spent source stays spent: the next Turn reports the durable failure and does not
+    // schedule another Provider call.
+    const third = await fx.service.compact(input as never);
+    assert.equal(third.outcome, 'failed');
+    assert.equal(third.task?.id, first.task?.id);
+    assert.equal(calls, 2, 'a spent chain must not start a new Provider call');
+    assert.equal(fx.compactions.listForConversation(WS, CONV).length, 1, 'no new task row for a spent source');
+    // The retry the user explicitly asks for is the only way to spend another attempt.
+    const explicit = await fx.service.compact({ ...input, resume: 'explicit' } as never);
+    assert.equal(explicit.outcome, 'retry-pending');
+    assert.notEqual(explicit.task?.id, first.task?.id, 'an explicit retry starts its own attempt');
+    assert.equal(explicit.task?.attempts, 1);
+    assert.equal(calls, 3);
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS n FROM memory_candidate_entries').get() as { n: number }).n, 0);
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS n FROM workspace_events').get() as { n: number }).n, 0);
   } finally { fx.close(); }

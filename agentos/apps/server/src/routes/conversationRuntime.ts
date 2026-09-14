@@ -341,6 +341,9 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
         workspaceId: workspace.id,
         conversationId: conversation.id,
         agentId: member.subjectId,
+        // LITE-09-108: this is the explicit retry, so it may spend a new attempt even when
+        // the automatic chain for the source is already exhausted.
+        mode: 'explicit',
       });
       const task = result.taskId === undefined ? undefined : new CompactionRepository(store.getDatabase())
         .findById(workspace.id, result.taskId);

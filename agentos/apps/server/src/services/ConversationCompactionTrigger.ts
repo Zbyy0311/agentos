@@ -69,6 +69,12 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
     readonly workspaceId: string;
     readonly conversationId: string;
     readonly agentId: string;
+    /**
+     * LITE-09-107 / LITE-09-108: the Turn path evaluates automatically, so its attempt
+     * stays inside the bounded retry chain. The retry endpoint passes `explicit` because
+     * a human asked for one more real attempt.
+     */
+    readonly mode?: 'automatic' | 'explicit';
   }): Promise<CompactionTriggerResult> {
     const policyVersion = this.options.policyVersion ?? DEFAULT_COMPACTION_POLICY_VERSION;
     try {
@@ -161,6 +167,7 @@ export class ConversationCompactionTrigger implements ConversationCompactionTrig
         budget,
         provider,
         priorSummary,
+        resume: input.mode === 'explicit' ? 'explicit' : 'automatic',
       });
       this.options.onAttempt?.({
         outcome: result.outcome,
