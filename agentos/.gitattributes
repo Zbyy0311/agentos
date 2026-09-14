@@ -3,3 +3,7 @@
 
 # Explicitly set for the agent-memory files
 agent-memory/** text eol=lf
+
+# Raw evidence receipts are byte-addressed by SHA-256 in the manifest.
+# Keep Windows stdout/stderr bytes stable across checkout and review.
+docs/implementation/lite-closeout/evidence/**/*.txt binary
