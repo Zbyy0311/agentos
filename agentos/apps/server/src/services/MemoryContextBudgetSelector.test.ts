@@ -312,3 +312,50 @@ test('MF4B-10 applyBudget records every considered entry', () => {
   assert.equal(outcome.selected.length, 1);
   assert.equal(outcome.exclusions.length, 1);
 });
+
+// LITE-07-013: the snapshot must explain that its ranking ran WITHOUT FTS. The
+// retrieval service already computes the flag; the selector used the plain retrieve()
+// and dropped it, so the real Context path could not state its own degradation.
+test('LITE-07-013 MF4B-14 the snapshot records whether FTS ranking was degraded', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: 'alpha', content: 'body', tokenEstimate: 1 });
+    // A query made only of FTS operators has no usable tokens, which is the degraded
+    // path: structured ranking still runs, FTS ranking does not.
+    const degradedQuery = "***";
+    const planned = fx.selector.plan(selectInput({
+      snapshotId: SNAP + "d",
+      retrieval: { context: { workspaceId: WS, taskId: TASK, runId: RUN }, query: degradedQuery },
+    }));
+    assert.equal(planned.snapshotInput.retrievalDegraded, true,
+      "a degraded retrieval must be visible on the snapshot payload");
+
+    // And the persisted row carries it, so the explanation survives the write.
+    const persisted = fx.selector.select(selectInput({
+      snapshotId: SNAP + "e",
+      retrieval: { context: { workspaceId: WS, taskId: TASK, runId: RUN }, query: degradedQuery },
+    }));
+    assert.equal(persisted.snapshot.retrievalDegraded, true);
+    assert.equal(persisted.snapshot.selected.length, 1, "the structured ranking still produced a selection");
+    const reloaded = fx.snapshots.findById(WS, SNAP + "e");
+    assert.equal(reloaded?.retrievalDegraded, true, "the flag round-trips through the store");
+  } finally { fx.close(); }
+});
+
+// The negative control: a healthy query is not reported as degraded, so the flag means
+// what it says rather than defaulting to true.
+test('LITE-07-013 MF4B-15 a healthy FTS query is not reported as degraded', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: "alpha", content: "body alpha", tokenEstimate: 1 });
+    const healthy = fx.selector.select(selectInput({
+      snapshotId: SNAP + "f",
+      retrieval: { context: { workspaceId: WS, taskId: TASK, runId: RUN }, query: "alpha" },
+    }));
+    assert.equal(healthy.snapshot.retrievalDegraded, false);
+    assert.equal(healthy.snapshot.selected.length, 1);
+    // A retrieval with no query at all never ran FTS, so it is not degraded either.
+    const unqueried = fx.selector.select(selectInput({ snapshotId: SNAP + "g" }));
+    assert.equal(unqueried.snapshot.retrievalDegraded, false);
+  } finally { fx.close(); }
+});
