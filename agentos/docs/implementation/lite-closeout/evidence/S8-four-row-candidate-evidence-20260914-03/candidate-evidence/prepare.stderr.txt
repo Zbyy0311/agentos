@@ -1,0 +1,19 @@
+node:internal/modules/esm/resolve:314
+  return new ERR_PACKAGE_PATH_NOT_EXPORTED(
+         ^
+
+Error [ERR_PACKAGE_PATH_NOT_EXPORTED]: No "exports" main defined in E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\apps\server\node_modules\@agentos\agent-core\package.json
+    at exportsNotFound (node:internal/modules/esm/resolve:314:10)
+    at packageExportsResolve (node:internal/modules/esm/resolve:605:13)
+    at resolveExports (node:internal/modules/cjs/loader:707:36)
+    at Module._findPath (node:internal/modules/cjs/loader:774:31)
+    at node:internal/modules/cjs/loader:1502:27
+    at j._resolveFilename (file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/node_modules/.pnpm/tsx@4.23.11/node_modules/tsx/dist/register-loq3nxmB.mjs:2:17957)
+    at nextResolveSimple (E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\node_modules\.pnpm\tsx@4.23.11\node_modules\tsx\dist\register-CeSc3Ioe.cjs:10:1006)
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\node_modules\.pnpm\tsx@4.23.11\node_modules\tsx\dist\register-CeSc3Ioe.cjs:9:4959
+    at E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\node_modules\.pnpm\tsx@4.23.11\node_modules\tsx\dist\register-CeSc3Ioe.cjs:9:4261
+    at resolveTsPaths (E:\workspace\Multi-Agent-worktrees\agentos-lite-four-row-candidate-evidence\agentos\node_modules\.pnpm\tsx@4.23.11\node_modules\tsx\dist\register-CeSc3Ioe.cjs:10:759) {
+  code: 'ERR_PACKAGE_PATH_NOT_EXPORTED'
+}
+
+Node.js v24.18.0

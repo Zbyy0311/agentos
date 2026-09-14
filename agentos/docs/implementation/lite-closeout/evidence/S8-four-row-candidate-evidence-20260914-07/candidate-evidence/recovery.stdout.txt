@@ -1,0 +1,1 @@
+{"phase":"recovery","counts":{"total":4,"passed":4,"failed":0,"skipped":0},"errors":0,"outputPath":"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-07\\candidate-evidence\\recovery.json"}

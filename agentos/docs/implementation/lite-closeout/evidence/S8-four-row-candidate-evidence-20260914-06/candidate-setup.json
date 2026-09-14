@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "createdAt": "2026-09-14T07:30:54.491Z",
+  "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+  "workspaceId": "d7994c0c",
+  "taskId": "task_01M2FD6Y9YS5EJ3ZHJAXHRM968",
+  "runId": "run_01M2FD6YAAWJK4DG14KBPRQ81J",
+  "admissionId": "candidate-admission-09f1a017-c10e-434a-a5d5-0f4ce8921740",
+  "stageIds": [
+    "stage_01M2FD6YAN2W8GMF0DN5GBGY4G",
+    "stage_01M2FD6YAN2W8GMF0DN5GBGY4H",
+    "stage_01M2FD6YAN2W8GMF0DN5GBGY4J",
+    "stage_01M2FD6YAN2W8GMF0DN5GBGY4K"
+  ],
+  "stageKeys": [
+    "codex_manager",
+    "kimi_worker",
+    "opencode_reviewer",
+    "codex_final_review"
+  ],
+  "routeModels": {
+    "codex": "deepseek/deepseek-flash",
+    "kimi": "opencodex/deepseek/deepseek-flash",
+    "opencode": "deepseek/deepseek-v4-flash"
+  },
+  "modelScopeStatement": "此证据验证的是指定路由模型下的 AgentOS Provider/Runtime canonical chain，不证明机器默认模型或额度受限模型可用。"
+}
