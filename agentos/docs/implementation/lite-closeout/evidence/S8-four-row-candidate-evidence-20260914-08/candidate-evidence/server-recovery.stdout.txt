@@ -1,0 +1,2 @@
+[AgentOS Server] running on http://127.0.0.1:3201
+[AgentOS Server] API base: http://127.0.0.1:3201/api

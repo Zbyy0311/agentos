@@ -1,0 +1,22 @@
+[legacy-migration] skipped Workspace e525c034: canonical_root_path already exists
+file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/apps/server/dist/store/TaskRepository.js:77
+      `).run(id, input.workspaceId, input.legacyTaskId ?? null, input.title, input.description ?? null, input.priority ?? 'normal', input.sourceConversationId ?? null, input.sourceMessageId ?? null, input.createdBy, now, now);
+         ^
+
+Error: FOREIGN KEY constraint failed
+    at TaskRepository.insert (file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/apps/server/dist/store/TaskRepository.js:77:10)
+    at TaskRunService.createTaskInTransaction (file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/apps/server/dist/services/TaskRunService.js:861:43)
+    at file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/apps/server/dist/services/TaskRunService.js:97:54
+    at inTransaction (file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/apps/server/dist/store/Transaction.js:27:18)
+    at SqliteStore.runInTransaction (file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/apps/server/dist/store/SqliteStore.js:323:16)
+    at TaskRunService.createTask (file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/apps/server/dist/services/TaskRunService.js:97:26)
+    at file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/scripts/prepare-lite-four-row-candidate-evidence.mjs:50:24
+    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)
+    at async node:internal/modules/esm/loader:643:26
+    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5) {
+  code: 'ERR_SQLITE_ERROR',
+  errcode: 787,
+  errstr: 'constraint failed'
+}
+
+Node.js v24.18.0

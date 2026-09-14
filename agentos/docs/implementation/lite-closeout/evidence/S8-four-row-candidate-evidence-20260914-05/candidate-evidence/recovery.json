@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "phase": "recovery",
+  "startedAt": "2026-09-14T07:28:12.273Z",
+  "setupPath": "E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-05\\candidate-setup.json",
+  "assertions": [],
+  "metadata": {},
+  "errors": [
+    "Error: pre phase did not persist recoveryConversationId\n    at runRecovery (file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/scripts/verify-lite-four-row-candidate-evidence.mjs:433:30)\n    at file:///E:/workspace/Multi-Agent-worktrees/agentos-lite-four-row-candidate-evidence/agentos/scripts/verify-lite-four-row-candidate-evidence.mjs:503:14\n    at ModuleJob.run (node:internal/modules/esm/module_job:439:25)\n    at async node:internal/modules/esm/loader:643:26\n    at async asyncRunEntryPointWithESMLoader (node:internal/modules/run_main:101:5)"
+  ],
+  "finishedAt": "2026-09-14T07:28:12.274Z",
+  "counts": {
+    "total": 0,
+    "passed": 0,
+    "failed": 0,
+    "skipped": 0
+  },
+  "rawExitCode": 1
+}

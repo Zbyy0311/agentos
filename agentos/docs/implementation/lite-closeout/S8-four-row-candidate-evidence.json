@@ -1,0 +1,897 @@
+{
+  "schemaVersion": 1,
+  "evidencePackage": "S8-four-row-candidate-evidence",
+  "generatedAt": "2026-09-14T07:40:12.186Z",
+  "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+  "testCodeSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+  "exactParent": "f9cfbd00c807d91bd80eadcfa6f74b014df07eb5",
+  "finalRun": {
+    "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-lite-four-row-candidate-evidence.ps1 -ServerPort 3201 -AcceptanceRoot \"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-09\"",
+    "rawExitCodes": {
+      "prepare": 0,
+      "pre": 0,
+      "recovery": 0
+    },
+    "allRawLogs": [
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/prepare.stdout.txt",
+        "sha256": "af3360d2dc0cf53b463de71ddbcc9681dab9c7731103b33c1906428177caeb17",
+        "bytes": 1009
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/prepare.stderr.txt",
+        "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+        "bytes": 82
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stdout.txt",
+        "sha256": "63c76f4c1ff334fb40618ad8f6ed3daa1e975d29e6a883951311308e929a704a",
+        "bytes": 308
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stdout.txt",
+        "sha256": "9b5dbf2d962467a6166eac14ea6e3c9f3920697f463dc3617775c83d159cf8ce",
+        "bytes": 103
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stderr.txt",
+        "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+        "bytes": 82
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/recovery.stdout.txt",
+        "sha256": "78a7a49af4b727562e8f989f094f1e8c5580051c8c748e182d2156c72aa29da1",
+        "bytes": 316
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/recovery.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-recovery.stdout.txt",
+        "sha256": "9b5dbf2d962467a6166eac14ea6e3c9f3920697f463dc3617775c83d159cf8ce",
+        "bytes": 103
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-recovery.stderr.txt",
+        "sha256": "be702983c83e6e93989599bda9d8f2e29603b1adbae7b52e6a157887a3b629b2",
+        "bytes": 140
+      }
+    ],
+    "serverLifecycle": [
+      "pre server started",
+      "pre candidate phase completed",
+      "pre server stopped",
+      "recovery server started",
+      "recovery phase completed",
+      "recovery server stopped"
+    ]
+  },
+  "routeModels": {
+    "codex": "deepseek/deepseek-flash",
+    "kimi": "opencodex/deepseek/deepseek-flash",
+    "opencode": "deepseek/deepseek-v4-flash"
+  },
+  "modelScopeStatement": "此证据验证的是指定路由模型下的 AgentOS Provider/Runtime canonical chain，不证明机器默认模型或额度受限模型可用。",
+  "requirements": [
+    {
+      "id": "LITE-00-004",
+      "specification": {
+        "text": "a Run survives browser disconnect;",
+        "sourceFile": "docs/Runtime-Specification lite/00-Vision.md",
+        "sourceLine": 406
+      },
+      "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+      "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-lite-four-row-candidate-evidence.ps1 -ServerPort 3201 -AcceptanceRoot \"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-09\"",
+      "rawExitCode": 0,
+      "phaseRawExitCodes": {
+        "pre": 0,
+        "recovery": 0,
+        "prepare": 0
+      },
+      "counts": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/prepare.stdout.txt",
+          "sha256": "af3360d2dc0cf53b463de71ddbcc9681dab9c7731103b33c1906428177caeb17",
+          "bytes": 1009
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/prepare.stderr.txt",
+          "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stdout.txt",
+          "sha256": "63c76f4c1ff334fb40618ad8f6ed3daa1e975d29e6a883951311308e929a704a",
+          "bytes": 308
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stdout.txt",
+          "sha256": "9b5dbf2d962467a6166eac14ea6e3c9f3920697f463dc3617775c83d159cf8ce",
+          "bytes": 103
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stderr.txt",
+          "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+          "bytes": 82
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "requirementId": "LITE-00-004",
+          "assertionId": "LITE-00-004-A1",
+          "description": "canonical Run start was accepted before disconnect",
+          "step": "POST /api/runs/:runId/start with {}",
+          "observedObject": "Run start HTTP acceptance",
+          "actual": {
+            "status": 202,
+            "operation": {
+              "id": "op_01M2FDQN1YZ7W01PSJVY4DC6AN",
+              "type": "run.start",
+              "status": "queued",
+              "workspaceId": "d7994c0c",
+              "aggregateType": "run",
+              "aggregateId": "run_01M2FDQMQZ038MQHS6RH0BTVZB",
+              "runId": "run_01M2FDQMQZ038MQHS6RH0BTVZB",
+              "correlationId": "op_01M2FDQN1YZ7W01PSJVY4DC6AN",
+              "createdAt": "2026-09-14T07:40:01.982Z",
+              "version": 1
+            }
+          },
+          "expected": {
+            "status": 202,
+            "operationStatus": "queued"
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "canonical-run-start-accepted"
+          },
+          "why": "It establishes the same Run and durable start Operation later observed after subscription disconnect.",
+          "limits": "Acceptance alone does not prove active Run survival."
+        },
+        {
+          "requirementId": "LITE-00-004",
+          "assertionId": "LITE-00-004-A2",
+          "description": "Run was observed active before subscription disconnect",
+          "step": "Poll Runtime Inspector after canonical start",
+          "observedObject": "Inspector projection.overview.status",
+          "actual": "running",
+          "expected": "running",
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "runtime-inspector-run-active-before-disconnect"
+          },
+          "why": "The requirement concerns a Run already in execution when the browser/subscription disconnect occurs.",
+          "limits": "This assertion does not prove Process linkage; that is recorded separately for LITE-02-009."
+        },
+        {
+          "requirementId": "LITE-00-004",
+          "assertionId": "LITE-00-004-A3",
+          "description": "Run remained active after subscription disconnect",
+          "step": "Read Runtime Inspector after AbortController.abort",
+          "observedObject": "Inspector projection.overview.status",
+          "actual": "running",
+          "expected": "running",
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "runtime-inspector-run-active-after-disconnect"
+          },
+          "why": "It directly observes the same Run after the browser/subscription transport was disconnected.",
+          "limits": "It does not prove the Run can complete; the normal lifecycle close is checked separately."
+        },
+        {
+          "requirementId": "LITE-00-004",
+          "assertionId": "LITE-00-004-A4",
+          "description": "the still-active Run was ended by a separate normal lifecycle cancellation action",
+          "step": "GET run.cancel Operation then POST /api/operations/:operationId/cancel with its current version",
+          "observedObject": "Operation cancel response and Runtime Inspector terminal Run state",
+          "actual": {
+            "operationReadStatus": 200,
+            "operationType": "run.cancel",
+            "operationStatusBeforeCancel": "queued",
+            "cancelStatus": 200,
+            "runStatusAfterCancel": "cancelled"
+          },
+          "expected": {
+            "cancelStatus": 200,
+            "runStatusAfterCancel": "cancelled"
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "explicit-operation-cancel-after-disconnect"
+          },
+          "why": "It demonstrates the Run was not ended by the subscription disconnect and could be ended by the ordinary lifecycle action afterward.",
+          "limits": "This is an explicit cancellation proof, not proof of successful provider completion."
+        }
+      ],
+      "whyAssertionsSuffice": "The evidence observes one canonical Run as running, disconnects the canonical browser/Event subscription, observes that same Run still running, then ends it with the ordinary Operation cancellation action.",
+      "adjacentBehaviorNotProven": "It proves survival across this controlled subscription disconnect and explicit later cancellation. It does not prove successful completion, provider quota, or every browser/network failure mode.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-00-007",
+      "specification": {
+        "text": "recovery classifies uncertainty without guessing completion;",
+        "sourceFile": "docs/Runtime-Specification lite/00-Vision.md",
+        "sourceLine": 409
+      },
+      "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+      "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-lite-four-row-candidate-evidence.ps1 -ServerPort 3201 -AcceptanceRoot \"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-09\"",
+      "rawExitCode": 0,
+      "phaseRawExitCodes": {
+        "pre": 0,
+        "recovery": 0,
+        "prepare": 0
+      },
+      "counts": {
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 6,
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stdout.txt",
+          "sha256": "63c76f4c1ff334fb40618ad8f6ed3daa1e975d29e6a883951311308e929a704a",
+          "bytes": 308
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stdout.txt",
+          "sha256": "9b5dbf2d962467a6166eac14ea6e3c9f3920697f463dc3617775c83d159cf8ce",
+          "bytes": 103
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stderr.txt",
+          "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/recovery.stdout.txt",
+          "sha256": "78a7a49af4b727562e8f989f094f1e8c5580051c8c748e182d2156c72aa29da1",
+          "bytes": 316
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/recovery.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-recovery.stdout.txt",
+          "sha256": "9b5dbf2d962467a6166eac14ea6e3c9f3920697f463dc3617775c83d159cf8ce",
+          "bytes": 103
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-recovery.stderr.txt",
+          "sha256": "be702983c83e6e93989599bda9d8f2e29603b1adbae7b52e6a157887a3b629b2",
+          "bytes": 140
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "requirementId": "LITE-00-007",
+          "assertionId": "LITE-00-007-A1",
+          "description": "a dedicated recovery fixture conversation was created for queued/running/waiting_user states",
+          "step": "POST /api/workspaces/:workspaceId/runtime/conversations",
+          "observedObject": "Recovery fixture conversation",
+          "actual": {
+            "status": 201,
+            "conversationId": "601eaedd-074b-4b70-ba4e-2f1af77a292f"
+          },
+          "expected": {
+            "status": 201,
+            "conversationId": "non-empty"
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "recovery-fixture-conversation-created"
+          },
+          "why": "It provides a real persisted Conversation foreign-key target for the restart recovery rows.",
+          "limits": "Conversation creation alone does not prove recovery classification."
+        },
+        {
+          "requirementId": "LITE-00-007",
+          "assertionId": "LITE-00-007-A2",
+          "description": "recovery input states were recorded before the simulated server restart",
+          "step": "Insert and immediately re-read three legacy agent_runs rows",
+          "observedObject": "SQLite agent_runs rows before restart",
+          "actual": [
+            {
+              "id": "candidate-recovery-run-queued-7e3116f3-7218-4b38-8fa9-1ef1f681d3fd",
+              "objective": "candidate recovery queued",
+              "status": "queued",
+              "failureReason": null,
+              "waitingQuestion": null
+            },
+            {
+              "id": "candidate-recovery-run-running-3cbe4910-e7df-49e2-abea-b9a7dd87db68",
+              "objective": "candidate recovery running",
+              "status": "running",
+              "failureReason": null,
+              "waitingQuestion": null
+            },
+            {
+              "id": "candidate-recovery-run-waiting_user-f478a774-7ceb-47ba-b8db-9bad8a50f70d",
+              "objective": "candidate recovery waiting_user",
+              "status": "waiting_user",
+              "failureReason": null,
+              "waitingQuestion": "保留 waiting_user 状态"
+            }
+          ],
+          "expected": {
+            "statuses": [
+              "queued",
+              "running",
+              "waiting_user"
+            ]
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "recovery-before-state-recorded-before-server-stop"
+          },
+          "why": "It records the exact uncertainty states presented to startup recovery instead of inferring them afterward.",
+          "limits": "The restart action itself is recorded by the runner and server stdout/stderr receipts."
+        },
+        {
+          "requirementId": "LITE-00-007",
+          "assertionId": "LITE-00-007-A3-queued",
+          "description": "startup recovery conservatively classified queued as failed",
+          "step": "Read legacy runs after server process restart",
+          "observedObject": "agent_run objective=candidate recovery queued",
+          "actual": {
+            "id": "candidate-recovery-run-queued-7e3116f3-7218-4b38-8fa9-1ef1f681d3fd",
+            "workspaceId": "d7994c0c",
+            "conversationId": "601eaedd-074b-4b70-ba4e-2f1af77a292f",
+            "sourceMessageId": "candidate-recovery-message-queued-943faab6-7c02-49df-be85-264758bb74ea",
+            "objective": "candidate recovery queued",
+            "status": "failed",
+            "failureReason": "服务重启导致执行中断",
+            "completedAt": "2026-09-14T07:40:09.838Z",
+            "createdAt": "2026-09-14T07:40:03.493Z",
+            "updatedAt": "2026-09-14T07:40:09.838Z"
+          },
+          "expected": {
+            "status": "failed",
+            "completed": false
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "recovery-after-restart-queued-classified-failed"
+          },
+          "why": "A queued/running execution with no proof of completion is classified as failed rather than guessed completed.",
+          "limits": "This fixture does not prove recovery of a live native Process identity."
+        },
+        {
+          "requirementId": "LITE-00-007",
+          "assertionId": "LITE-00-007-A3-running",
+          "description": "startup recovery conservatively classified running as failed",
+          "step": "Read legacy runs after server process restart",
+          "observedObject": "agent_run objective=candidate recovery running",
+          "actual": {
+            "id": "candidate-recovery-run-running-3cbe4910-e7df-49e2-abea-b9a7dd87db68",
+            "workspaceId": "d7994c0c",
+            "conversationId": "601eaedd-074b-4b70-ba4e-2f1af77a292f",
+            "sourceMessageId": "candidate-recovery-message-running-4208272b-468a-47cd-99e3-eb86da1561eb",
+            "objective": "candidate recovery running",
+            "status": "failed",
+            "failureReason": "服务重启导致执行中断",
+            "startedAt": "2026-09-14T07:40:03.493Z",
+            "completedAt": "2026-09-14T07:40:09.845Z",
+            "createdAt": "2026-09-14T07:40:03.493Z",
+            "updatedAt": "2026-09-14T07:40:09.845Z"
+          },
+          "expected": {
+            "status": "failed",
+            "completed": false
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "recovery-after-restart-running-classified-failed"
+          },
+          "why": "A queued/running execution with no proof of completion is classified as failed rather than guessed completed.",
+          "limits": "This fixture does not prove recovery of a live native Process identity."
+        },
+        {
+          "requirementId": "LITE-00-007",
+          "assertionId": "LITE-00-007-A4",
+          "description": "waiting_user remained waiting_user after startup recovery",
+          "step": "Read legacy runs after server process restart",
+          "observedObject": "agent_run objective=candidate recovery waiting_user",
+          "actual": {
+            "id": "candidate-recovery-run-waiting_user-f478a774-7ceb-47ba-b8db-9bad8a50f70d",
+            "workspaceId": "d7994c0c",
+            "conversationId": "601eaedd-074b-4b70-ba4e-2f1af77a292f",
+            "sourceMessageId": "candidate-recovery-message-waiting_user-e0afa648-8613-47db-a35f-0b30e2848132",
+            "objective": "candidate recovery waiting_user",
+            "status": "waiting_user",
+            "waitingQuestion": "保留 waiting_user 状态",
+            "waitingAgentId": "codex",
+            "createdAt": "2026-09-14T07:40:03.493Z",
+            "updatedAt": "2026-09-14T07:40:03.493Z"
+          },
+          "expected": {
+            "status": "waiting_user",
+            "completed": false
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "recovery-after-restart-waiting-user-preserved"
+          },
+          "why": "It checks that a user-waiting state was not treated as an interrupted provider execution.",
+          "limits": "It does not prove a later user response/resume flow."
+        },
+        {
+          "requirementId": "LITE-00-007",
+          "assertionId": "LITE-00-007-A5",
+          "description": "no recovery input was guessed completed",
+          "step": "Compare all recorded recovery rows after restart",
+          "observedObject": "three recovery rows and their resulting statuses",
+          "actual": {
+            "before": [
+              {
+                "id": "candidate-recovery-run-queued-7e3116f3-7218-4b38-8fa9-1ef1f681d3fd",
+                "objective": "candidate recovery queued",
+                "status": "queued",
+                "failureReason": null,
+                "waitingQuestion": null
+              },
+              {
+                "id": "candidate-recovery-run-running-3cbe4910-e7df-49e2-abea-b9a7dd87db68",
+                "objective": "candidate recovery running",
+                "status": "running",
+                "failureReason": null,
+                "waitingQuestion": null
+              },
+              {
+                "id": "candidate-recovery-run-waiting_user-f478a774-7ceb-47ba-b8db-9bad8a50f70d",
+                "objective": "candidate recovery waiting_user",
+                "status": "waiting_user",
+                "failureReason": null,
+                "waitingQuestion": "保留 waiting_user 状态"
+              }
+            ],
+            "after": [
+              {
+                "objective": "candidate recovery running",
+                "status": "failed",
+                "failureReason": "服务重启导致执行中断"
+              },
+              {
+                "objective": "candidate recovery queued",
+                "status": "failed",
+                "failureReason": "服务重启导致执行中断"
+              },
+              {
+                "objective": "candidate recovery waiting_user",
+                "status": "waiting_user",
+                "failureReason": null
+              }
+            ]
+          },
+          "expected": {
+            "completedRows": 0
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "recovery-no-completed-guess"
+          },
+          "why": "The complete before/after set shows every uncertain input classification and rules out a fabricated completion.",
+          "limits": "It is scoped to these three legacy fixture rows."
+        }
+      ],
+      "whyAssertionsSuffice": "The evidence records queued/running/waiting_user before stopping the server, records a new server process, and observes queued/running become failed while waiting_user remains waiting_user, with zero completed rows.",
+      "adjacentBehaviorNotProven": "It proves the three recorded legacy fixture states and their restart classification. It does not prove recovery of a live native Process identity or later resume behavior.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-02-009",
+      "specification": {
+        "text": "browser disconnect leaves Run and Process active;",
+        "sourceFile": "docs/Runtime-Specification lite/02-Runtime-Lifecycle.md",
+        "sourceLine": 530
+      },
+      "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+      "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-lite-four-row-candidate-evidence.ps1 -ServerPort 3201 -AcceptanceRoot \"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-09\"",
+      "rawExitCode": 0,
+      "phaseRawExitCodes": {
+        "pre": 0,
+        "recovery": 0,
+        "prepare": 0
+      },
+      "counts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/prepare.stdout.txt",
+          "sha256": "af3360d2dc0cf53b463de71ddbcc9681dab9c7731103b33c1906428177caeb17",
+          "bytes": 1009
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/prepare.stderr.txt",
+          "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stdout.txt",
+          "sha256": "63c76f4c1ff334fb40618ad8f6ed3daa1e975d29e6a883951311308e929a704a",
+          "bytes": 308
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stdout.txt",
+          "sha256": "9b5dbf2d962467a6166eac14ea6e3c9f3920697f463dc3617775c83d159cf8ce",
+          "bytes": 103
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stderr.txt",
+          "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+          "bytes": 82
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "requirementId": "LITE-02-009",
+          "assertionId": "LITE-02-009-A1",
+          "description": "the Run has a linked active durable Process before disconnect",
+          "step": "Poll Runtime Inspector after canonical start",
+          "observedObject": "Inspector projection.processes[]",
+          "actual": {
+            "runId": "run_01M2FDQMQZ038MQHS6RH0BTVZB",
+            "status": "starting",
+            "processType": "provider"
+          },
+          "expected": {
+            "linkedRunId": "run_01M2FDQMQZ038MQHS6RH0BTVZB",
+            "activeStatus": [
+              "starting",
+              "running"
+            ]
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "runtime-inspector-run-and-process-active-before-disconnect"
+          },
+          "why": "It proves the Process object being protected is the Process belonging to this Run.",
+          "limits": "It is a point-in-time observation before the disconnect."
+        },
+        {
+          "requirementId": "LITE-02-009",
+          "assertionId": "LITE-02-009-A2",
+          "description": "the Run-linked Process remained active after subscription disconnect",
+          "step": "Read Runtime Inspector after AbortController.abort",
+          "observedObject": "Inspector projection.processes[] for the same process id",
+          "actual": {
+            "runId": "run_01M2FDQMQZ038MQHS6RH0BTVZB",
+            "status": "starting",
+            "processType": "provider"
+          },
+          "expected": {
+            "linkedRunId": "run_01M2FDQMQZ038MQHS6RH0BTVZB",
+            "activeStatus": [
+              "starting",
+              "running"
+            ]
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "runtime-inspector-process-active-after-disconnect"
+          },
+          "why": "It extends Run survival to the durable Process owner and checks the same Process identity after disconnect.",
+          "limits": "It does not claim that a Process survives an explicit cancellation."
+        }
+      ],
+      "whyAssertionsSuffice": "The evidence links a Process id to the Run in Runtime Inspector before disconnect and checks the same Process id and Run id remain active after the canonical subscription abort.",
+      "adjacentBehaviorNotProven": "It proves the observed active Process during this run. It does not claim that explicit cancellation leaves the Process active.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-03-010",
+      "specification": {
+        "text": "browser disconnect without Run cancellation;",
+        "sourceFile": "docs/Runtime-Specification lite/03-Event-Model.md",
+        "sourceLine": 550
+      },
+      "baselineSha": "31020c9ba0cab64aa1706a48126c4681c12e562f",
+      "command": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/verify-lite-four-row-candidate-evidence.ps1 -ServerPort 3201 -AcceptanceRoot \"E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-four-row-candidate-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\S8-four-row-candidate-evidence-20260914-09\"",
+      "rawExitCode": 0,
+      "phaseRawExitCodes": {
+        "pre": 0,
+        "recovery": 0,
+        "prepare": 0
+      },
+      "counts": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/prepare.stdout.txt",
+          "sha256": "af3360d2dc0cf53b463de71ddbcc9681dab9c7731103b33c1906428177caeb17",
+          "bytes": 1009
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/prepare.stderr.txt",
+          "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stdout.txt",
+          "sha256": "63c76f4c1ff334fb40618ad8f6ed3daa1e975d29e6a883951311308e929a704a",
+          "bytes": 308
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/pre.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stdout.txt",
+          "sha256": "9b5dbf2d962467a6166eac14ea6e3c9f3920697f463dc3617775c83d159cf8ce",
+          "bytes": 103
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/S8-four-row-candidate-evidence-20260914-09/candidate-evidence/server-pre.stderr.txt",
+          "sha256": "f80b0a60011ab3a1f57ed1e27806a4a096dc9716a85a716ded2816e2b51c152f",
+          "bytes": 82
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "requirementId": "LITE-03-010",
+          "assertionId": "LITE-03-010-A1",
+          "description": "canonical Event stream subscription was accepted",
+          "step": "GET /api/runs/:runId/stream before Run start",
+          "observedObject": "HTTP response and SSE subscription",
+          "actual": {
+            "status": 200,
+            "contentType": "text/event-stream; charset=utf-8"
+          },
+          "expected": {
+            "status": 200,
+            "contentTypePrefix": "text/event-stream"
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "canonical-stream-open-before-start"
+          },
+          "why": "This binds the later disconnect action to the production canonical Run Event subscription route.",
+          "limits": "It does not by itself prove Run or Process lifecycle behavior."
+        },
+        {
+          "requirementId": "LITE-03-010",
+          "assertionId": "LITE-03-010-A2",
+          "description": "the canonical subscription received an actual Event frame before disconnect",
+          "step": "Consume the production SSE body while Run starts",
+          "observedObject": "SSE frames received by the client",
+          "actual": {
+            "frameCount": 15,
+            "events": [
+              {
+                "id": "evt_01M2FDQMRAZJPM4P9HXWXWNPM1",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\",\"schemaVersion\":1,\"type\":\"run.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":1,\"timestamp\":\"2026-09-14T07:40:01.674Z\",\"source\":\"run-engine\",\"correlationId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"createdBy\":\"candidate-evidence\",\"reason\":\"initial\",\"rootRunId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"workflowDefinitionId\":\"workflow_00000000000000000000000003\",\"worktreeMode\":\"preferred\"},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\"}"
+              },
+              {
+                "id": "evt_01M2FDQMRCEKCR61TEEES52J68",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQMRCEKCR61TEEES52J68\",\"schemaVersion\":1,\"type\":\"stage.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":2,\"timestamp\":\"2026-09-14T07:40:01.674Z\",\"source\":\"stage-executor\",\"correlationId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependsOn\":[],\"name\":\"codex_manager\",\"sequence\":1,\"workflowStageKey\":\"codex_manager\"},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\",\"stageId\":\"stage_01M2FDQMR9BTBTS1113QP3GSDR\",\"causationId\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\",\"parentEventId\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\"}"
+              },
+              {
+                "id": "evt_01M2FDQMRDQH4YZJVSMZWXDRMC",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQMRDQH4YZJVSMZWXDRMC\",\"schemaVersion\":1,\"type\":\"stage.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":3,\"timestamp\":\"2026-09-14T07:40:01.674Z\",\"source\":\"stage-executor\",\"correlationId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependsOn\":[\"codex_manager\"],\"name\":\"kimi_worker\",\"sequence\":2,\"workflowStageKey\":\"kimi_worker\"},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\",\"stageId\":\"stage_01M2FDQMRAZJPM4P9HXWXWNPKY\",\"causationId\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\",\"parentEventId\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\"}"
+              },
+              {
+                "id": "evt_01M2FDQMRDQH4YZJVSMZWXDRMD",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQMRDQH4YZJVSMZWXDRMD\",\"schemaVersion\":1,\"type\":\"stage.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":4,\"timestamp\":\"2026-09-14T07:40:01.674Z\",\"source\":\"stage-executor\",\"correlationId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependsOn\":[\"kimi_worker\"],\"name\":\"opencode_reviewer\",\"sequence\":3,\"workflowStageKey\":\"opencode_reviewer\"},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\",\"stageId\":\"stage_01M2FDQMRAZJPM4P9HXWXWNPKZ\",\"causationId\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\",\"parentEventId\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\"}"
+              },
+              {
+                "id": "evt_01M2FDQMRDQH4YZJVSMZWXDRME",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQMRDQH4YZJVSMZWXDRME\",\"schemaVersion\":1,\"type\":\"stage.created\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":5,\"timestamp\":\"2026-09-14T07:40:01.674Z\",\"source\":\"stage-executor\",\"correlationId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependsOn\":[\"opencode_reviewer\"],\"name\":\"codex_final_review\",\"sequence\":4,\"workflowStageKey\":\"codex_final_review\"},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\",\"stageId\":\"stage_01M2FDQMRAZJPM4P9HXWXWNPM0\",\"causationId\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\",\"parentEventId\":\"evt_01M2FDQMRAZJPM4P9HXWXWNPM1\"}"
+              },
+              {
+                "id": "evt_01M2FDQN2CGEMNJA0AQ4JC35S0",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQN2CGEMNJA0AQ4JC35S0\",\"schemaVersion\":1,\"type\":\"run.dequeued\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":6,\"timestamp\":\"2026-09-14T07:40:01.995Z\",\"source\":\"scheduler\",\"correlationId\":\"op_01M2FDQN1YZ7W01PSJVY4DC6AN\",\"severity\":\"info\",\"visibility\":\"internal\",\"durability\":\"durable\",\"payload\":{\"dequeuedAt\":\"2026-09-14T07:40:01.995Z\"},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\"}"
+              },
+              {
+                "id": "evt_01M2FDQN2YTAF7ZAVDBFEY1YQZ",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQN2YTAF7ZAVDBFEY1YQZ\",\"schemaVersion\":1,\"type\":\"stage.ready\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":7,\"timestamp\":\"2026-09-14T07:40:02.013Z\",\"source\":\"stage-executor\",\"correlationId\":\"op_01M2FDQN1YZ7W01PSJVY4DC6AN\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"dependenciesCompleted\":[]},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\",\"stageId\":\"stage_01M2FDQMR9BTBTS1113QP3GSDR\"}"
+              },
+              {
+                "id": "evt_01M2FDQN3CZKABJ8CV4KEW4TMA",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQN3CZKABJ8CV4KEW4TMA\",\"schemaVersion\":1,\"type\":\"stage.starting\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":8,\"timestamp\":\"2026-09-14T07:40:02.026Z\",\"source\":\"stage-executor\",\"correlationId\":\"op_01M2FDQN1YZ7W01PSJVY4DC6AN\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"attempt\":1,\"name\":\"codex_manager\",\"startingAt\":\"2026-09-14T07:40:02.026Z\",\"workflowStageKey\":\"codex_manager\"},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\",\"stageId\":\"stage_01M2FDQMR9BTBTS1113QP3GSDR\"}"
+              },
+              {
+                "id": "evt_01M2FDQN3T3F6BAKJ8P7E45F6P",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQN3T3F6BAKJ8P7E45F6P\",\"schemaVersion\":1,\"type\":\"stage.started\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":9,\"timestamp\":\"2026-09-14T07:40:02.041Z\",\"source\":\"stage-executor\",\"correlationId\":\"op_01M2FDQN1YZ7W01PSJVY4DC6AN\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"agentSnapshot\":{\"agentId\":\"codex\",\"enabled\":true,\"name\":\"Codex\",\"permissions\":[\"read\",\"review\"],\"providerConfigId\":\"provider_01M2FDQM5TP190YPPQXC43J7TG\",\"role\":\"codex\",\"roleTitle\":\"首席架构师\",\"systemPrompt\":\"负责分析需求、制定方案和完成最终决策。\",\"version\":1},\"attempt\":1,\"name\":\"codex_manager\",\"providerSnapshot\":{\"adapterId\":\"builtin.codex\",\"approvalMode\":\"agentos\",\"argsTemplate\":[\"exec\",\"--dangerously-bypass-approvals-and-sandbox\",\"--skip-git-repo-check\",\"--ephemeral\",\"--model\",\"deepseek/deepseek-flash\"],\"capabilities\":{\"cancellation\":false,\"fileEvents\":false,\"interactiveInput\":false,\"modelSelection\":false,\"nativeApprovals\":false,\"nativeSandbox\":false,\"outputContracts\":false,\"pause\":false,\"reasoningStream\":false,\"sessionResume\":false,\"structuredEvents\":false,\"subagents\":false,\"toolEvents\":false,\"usageEvents\":false,\"workspaceAwareness\":false},\"enabled\":true,\"environmentProfileId\":null,\"executable\":\"C:\\\\Users\\\\Administrator\\\\.codex\\\\.sandbox-bin\\\\codex.exe\",\"model\":null,\"name\":\"Codex Provider\",\"outputMode\":\"structured\",\"providerConfigId\":\"provider_01M2FDQM5TP190YPPQXC43J7TG\",\"providerType\":\"codex\",\"runtimeMode\":\"cli\",\"secretProfileId\":null,\"timeoutPolicy\":{\"approvalTimeoutMs\":null,\"cancelGracePeriodMs\":5000,\"discoveryTimeoutMs\":10000,\"idleTimeoutMs\":600000,\"startupTimeoutMs\":60000,\"totalTimeoutMs\":null,\"validationTimeoutMs\":30000},\"version\":2,\"workingDirectoryMode\":\"workspace\",\"workspaceRelativeWorkingDirectory\":null},\"workflowStageKey\":\"codex_manager\"},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\",\"stageId\":\"stage_01M2FDQMR9BTBTS1113QP3GSDR\"}"
+              },
+              {
+                "id": "evt_01M2FDQN3VHA1AXSFMTAXRSPZ5",
+                "event": "runtime-event",
+                "data": "{\"id\":\"evt_01M2FDQN3VHA1AXSFMTAXRSPZ5\",\"schemaVersion\":1,\"type\":\"run.started\",\"workspaceId\":\"d7994c0c\",\"runId\":\"run_01M2FDQMQZ038MQHS6RH0BTVZB\",\"sequence\":10,\"timestamp\":\"2026-09-14T07:40:02.041Z\",\"source\":\"run-engine\",\"correlationId\":\"op_01M2FDQN1YZ7W01PSJVY4DC6AN\",\"severity\":\"info\",\"visibility\":\"public\",\"durability\":\"durable\",\"payload\":{\"startedAt\":\"2026-09-14T07:40:02.041Z\",\"workflowSnapshotVersion\":2},\"taskId\":\"task_01M2FDQMQH1CVG4HEBS928P53X\"}"
+              }
+            ]
+          },
+          "expected": {
+            "minimumFrameCount": 1
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "canonical-stream-frame-received-before-disconnect"
+          },
+          "why": "It demonstrates that the tested action is an active Event stream subscription, not merely an unopened HTTP request.",
+          "limits": "The frame content is an observed event sample, not a full replay audit."
+        },
+        {
+          "requirementId": "LITE-03-010",
+          "assertionId": "LITE-03-010-A3",
+          "description": "the client observed its own subscription abort completing",
+          "step": "Abort the canonical SSE subscription after active Run/Process observation",
+          "observedObject": "SSE reader and AbortController",
+          "actual": {
+            "abortSignal": true,
+            "abortObservedByReader": true,
+            "nonAbortError": null
+          },
+          "expected": {
+            "abortSignal": true,
+            "abortObservedByReader": true,
+            "nonAbortError": null
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "canonical-stream-client-disconnect-observed"
+          },
+          "why": "This records the actual subscription-disconnect event used for the causal no-cancellation check.",
+          "limits": "It does not claim that every possible browser network failure behaves identically."
+        },
+        {
+          "requirementId": "LITE-03-010",
+          "assertionId": "LITE-03-010-A4",
+          "description": "the stream disconnect was not accompanied by a Run cancellation event or cancelled status",
+          "step": "Compare post-disconnect Run status and persisted Event projection",
+          "observedObject": "Inspector overview plus persisted Runtime Events",
+          "actual": {
+            "runStatus": "running",
+            "eventTypes": [
+              "run.created",
+              "stage.created",
+              "stage.created",
+              "stage.created",
+              "stage.created",
+              "run.dequeued",
+              "stage.ready",
+              "stage.starting",
+              "stage.started",
+              "run.started",
+              "memory.context_created",
+              "process.session_claimed",
+              "process.launch_requested",
+              "process.session_state_changed",
+              "process.starting"
+            ]
+          },
+          "expected": {
+            "runStatus": "running",
+            "forbiddenEventTypes": [
+              "run.cancelled",
+              "run.cancellation_requested"
+            ]
+          },
+          "outcome": "passed",
+          "assertionSource": {
+            "type": "e2e-checkpoint",
+            "file": "scripts/verify-lite-four-row-candidate-evidence.mjs",
+            "checkpoint": "canonical-stream-disconnect-no-run-cancellation-observed"
+          },
+          "why": "The explicit stream action, reader abort receipt, post-action Run status, and event projection together test the causal boundary.",
+          "limits": "It establishes absence in this observed interval; it does not prove unrelated later explicit cancellation cannot occur."
+        }
+      ],
+      "whyAssertionsSuffice": "The evidence names the canonical stream route, records a received Event frame, records the client abort, and separately checks post-abort Run status and persisted cancellation event types.",
+      "adjacentBehaviorNotProven": "It proves the causal boundary for this canonical SSE subscription action and observed interval. It does not prove all transport failures are equivalent or prohibit a later explicit cancel.",
+      "verdict": "candidate-supported"
+    }
+  ],
+  "matrixProtection": {
+    "passFreezeEdited": false,
+    "passPromotionExecuted": false,
+    "requireClosedExecuted": false,
+    "verdictVocabulary": [
+      "candidate-supported",
+      "insufficient-evidence",
+      "failed"
+    ]
+  }
+}
