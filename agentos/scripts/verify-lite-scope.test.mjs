@@ -235,7 +235,7 @@ function promotionFixture() {
       id: 'PROMO-ASSERT-LITE-07-003',
       file: 'apps/server/src/routes/runs.test.ts',
       name: 'returns run list and aggregated details with workspace isolation and capped limit',
-      line: 39,
+      line: 44,
       expression: "assert.deepEqual(list.runs.map(run => run.id), ['run-a']);",
       clause: 'The production route returns the run details for the requested workspace and run.',
       whyDirect: 'This assertion exercises the route through HTTP and checks the exact scoped response, rather than merely loading the test file.',
