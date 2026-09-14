@@ -20,7 +20,10 @@ test('S7/030: fresh and through029 upgrade apply identical additive 030', () => 
     for (const original of before as Array<Record<string, unknown>>) {
       assert.deepEqual(upgrade.prepare('SELECT type,name,sql FROM sqlite_master WHERE name = ?').get(original.name), original);
     }
-    for (const migration of DEFAULT_REGISTRY_MIGRATIONS) migration.apply({ db: fresh });
+    // Compare at the 030 boundary, the same way the 029 proof bounds itself: a later
+    // additive migration belongs to its own proof, not to this one. Without the bound
+    // this case would fail for the wrong reason as soon as 031 exists.
+    for (const migration of DEFAULT_REGISTRY_MIGRATIONS.filter(item => item.id <= '030')) migration.apply({ db: fresh });
     assert.deepEqual(upgrade.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all(),
       fresh.prepare('SELECT name,sql FROM sqlite_master ORDER BY name').all());
     assert.equal(migration030Checksum, createHash('sha256')
@@ -42,4 +45,3 @@ test('S7/030: refuses incomplete prerequisites and defines the idempotency tuple
     assert.ok(db.prepare("SELECT name FROM sqlite_master WHERE name = 'memory_import_records_workspace_source'").get());
   } finally { db.close(); }
 });
-

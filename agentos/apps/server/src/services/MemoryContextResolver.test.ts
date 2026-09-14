@@ -317,3 +317,25 @@ test('LITE-07-109: new snapshots exclude ineligible content while historical sna
     assert.equal(fx.entries.findById(WS, eligible)?.status, 'active');
   } finally { fx.close(); }
 });
+
+// LITE-07-013: the real Context path must retain the degradation explanation. The
+// resolver is what a Run actually calls, so the persisted snapshot it writes has to say
+// whether its ranking ran with or without FTS.
+test('LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation', () => {
+  const fx = fixture();
+  try {
+    addEntry(fx, { title: 'alpha', content: 'body alpha' });
+    // Operators only: no usable FTS tokens, so FTS ranking is skipped while the
+    // structured ranking still runs. That is the degraded mode the row is about.
+    const degraded = fx.resolver.resolve(resolveInput({ query: "***", createdAt: '2026-09-14T01:00:00.000Z' }));
+    assert.equal(degraded.snapshot.retrievalDegraded, true);
+    assert.equal(fx.snapshots.findById(WS, degraded.snapshot.id)?.retrievalDegraded, true,
+      "the durable snapshot must carry the degradation, not just the in-memory record");
+
+    // The negative control on the same path: a healthy query is not reported as degraded.
+    const healthy = fx.resolver.resolve(resolveInput({
+      stageId: STAGE, query: 'alpha', createdAt: '2026-09-14T01:00:00.000Z',
+    }));
+    assert.equal(healthy.snapshot.retrievalDegraded, false);
+  } finally { fx.close(); }
+});

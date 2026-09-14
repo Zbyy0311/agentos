@@ -45,6 +45,8 @@ export interface CreateMemoryContextSnapshotInput {
   readonly totalTokens: number;
   readonly truncated: boolean;
   readonly promptArtifactId?: string;
+  /** LITE-07-013: whether the retrieval that produced this selection ran degraded. */
+  readonly retrievalDegraded?: boolean;
   readonly createdAt: string;
   readonly selected: readonly MemorySelectionExplanationV1[];
   readonly exclusions: readonly MemoryExclusionExplanationV1[];
@@ -65,6 +67,8 @@ export interface MemoryContextSnapshotRecord {
   readonly totalTokens: number;
   readonly truncated: boolean;
   readonly promptArtifactId: string | null;
+  /** LITE-07-013: true when the FTS ranking for this snapshot ran degraded. */
+  readonly retrievalDegraded: boolean;
   readonly createdAt: string;
   readonly selected: readonly MemorySelectionExplanationV1[];
   readonly exclusions: readonly MemoryExclusionExplanationV1[];
@@ -86,6 +90,8 @@ interface SnapshotRow {
   truncated: number;
   prompt_artifact_id: string | null;
   created_at: string;
+  /** LITE-07-013; the column is additive, so the field is defensive. */
+  retrieval_degraded?: number;
 }
 
 interface EntryRow {
@@ -136,14 +142,16 @@ export class MemoryContextSnapshotRepository {
     this.db.prepare(
       'INSERT INTO memory_context_snapshots ('
         + 'id, schema_version, workspace_id, agent_id, task_id, run_id, stage_id, provider_config_id,'
-        + ' query_hash, retrieval_strategy_version, budget_json, total_tokens, truncated, prompt_artifact_id, created_at'
-        + ') VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+        + ' query_hash, retrieval_strategy_version, budget_json, total_tokens, truncated, prompt_artifact_id, created_at,'
+        + ' retrieval_degraded'
+        + ') VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
     ).run(
       input.id, input.workspaceId, input.agentId ?? null, input.taskId ?? null,
       input.runId, input.stageId ?? null, input.providerConfigId ?? null,
       input.queryHash, input.retrievalStrategyVersion, JSON.stringify(input.budget),
       input.totalTokens, input.truncated ? 1 : 0, input.promptArtifactId ?? null,
       input.createdAt,
+      input.retrievalDegraded ? 1 : 0,
     );
     for (const selected of input.selected) {
       this.db.prepare(
@@ -326,6 +334,7 @@ export class MemoryContextSnapshotRepository {
       budget: JSON.parse(row.budget_json) as MemoryBudgetPolicyV1,
       totalTokens: row.total_tokens,
       truncated: row.truncated === 1,
+      retrievalDegraded: (row.retrieval_degraded ?? 0) === 1,
       promptArtifactId: row.prompt_artifact_id,
       createdAt: row.created_at,
       selected,

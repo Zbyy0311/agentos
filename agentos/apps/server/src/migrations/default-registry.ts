@@ -28,6 +28,7 @@ import { migration027 } from './migrations/027-mf2-review-test-artifact.js';
 import { migration028 } from './migrations/028-lite-runtime-approval-requests.js';
 import { migration029 } from './migrations/029-s6-conversation-compaction.js';
 import { migration030 } from './migrations/030-s7-explicit-markdown-import.js';
+import { migration031 } from './migrations/031-mf5-retrieval-degraded.js';
 import type { Migration } from './types.js';
 
 /**
@@ -95,4 +96,5 @@ export const DEFAULT_REGISTRY_MIGRATIONS: Migration[] = [
   migration028,
   migration029,
   migration030,
+  migration031,
 ];

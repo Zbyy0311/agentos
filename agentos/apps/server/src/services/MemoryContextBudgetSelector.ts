@@ -122,7 +122,11 @@ export class MemoryContextBudgetSelector {
     const policyCheck = validateMemoryBudgetPolicy(input.budget);
     if (!policyCheck.valid) throw new MemoryBudgetSelectionError('INPUT_INVALID');
 
-    const ranked = this.retrieval.retrieve(input.retrieval);
+    // LITE-07-013: take the retrieval WITH its status, so a ranking produced in a
+    // degraded FTS mode is recorded on the snapshot instead of being discarded. The
+    // selection itself is unchanged: the structured ranking still drives the budget.
+    const retrieval = this.retrieval.retrieveWithStatus(input.retrieval);
+    const ranked = retrieval.results;
     const { selected, exclusions, totalTokens, truncated } = applyBudget(ranked, input.budget);
 
     const contextText = selected
@@ -144,6 +148,7 @@ export class MemoryContextBudgetSelector {
         budget: input.budget,
         totalTokens,
         truncated,
+        retrievalDegraded: retrieval.degraded,
         promptArtifactId: input.promptArtifactId,
         createdAt: input.createdAt,
         selected: selected.map(item => item.explanation),
