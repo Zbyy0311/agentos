@@ -1,0 +1,592 @@
+{
+  "schemaVersion": 1,
+  "evidencePackage": "S1-budget-and-retrieval-candidate-evidence",
+  "generatedAt": "2026-09-14T12:56:13.271Z",
+  "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+  "testCodeSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+  "routeModels": {
+    "retrieval": "none (deterministic budget and eligibility rules)"
+  },
+  "modelScopeStatement": "预算与检索资格路径不调用任何 Provider 模型：证据绑定 AgentOS 自身的定价、归因、时效与降级规则。",
+  "finalRun": {
+    "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s1-budget-candidate-evidence-20260914",
+    "rawExitCode": 0,
+    "allRawLogs": [
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/receipts.json",
+        "sha256": "a9d028bb68a78612723ddcc28de0ddfd89f9c1d3a6fcb557a196303802c2dd5b",
+        "bytes": 7023
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/stdout.txt",
+        "sha256": "f815ee3fd5343a76c7cbafb367287a7f7b201e5f60feec25a534e9ad18d0d83b",
+        "bytes": 68
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/exit.txt",
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+        "bytes": 3
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/scope-verifier.stdout.txt",
+        "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+        "bytes": 93
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/scope-verifier.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+        "sha256": "49a1beb2885daef5d26804d5dac70ac594400b7779cd76dbc4a0e0b279b58f16",
+        "bytes": 2108
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "phases": {
+      "eligibility": {
+        "inWindow": "mem_001eeeeeeeeeeeeeeeeeeee",
+        "noWindow": "mem_002eeeeeeeeeeeeeeeeeeee",
+        "expired": "mem_003eeeeeeeeeeeeeeeeeeee",
+        "notYetValid": "mem_004eeeeeeeeeeeeeeeeeeee",
+        "restricted": "mem_005eeeeeeeeeeeeeeeeeeee",
+        "expiresLater": "mem_006eeeeeeeeeeeeeeeeeeee"
+      }
+    },
+    "counts": {
+      "total": 9,
+      "passed": 9,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "requirements": [
+    {
+      "id": "LITE-07-007",
+      "specification": {
+        "text": "token, count, Scope, category, and diversity budgets",
+        "section": "S1 预算与多样性",
+        "sourceFile": "apps/server/src/services/MemoryContextBudgetSelector.ts",
+        "sourceLine": 188,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/services/MemoryContextBudgetSelector.ts",
+            "sourceLine": 86,
+            "note": "定价使用实际注入文本（### title + content），不是存储的 tokenEstimate"
+          },
+          {
+            "sourceFile": "apps/server/src/services/MemoryContextBudgetSelector.ts",
+            "sourceLine": 208,
+            "note": "per-Scope 限制归因为 scope-excluded，per-category 归因为 category-budget"
+          },
+          {
+            "sourceFile": "apps/server/src/services/MemoryContextBudgetSelector.ts",
+            "sourceLine": 245,
+            "note": "diversity 两趟：先每个 category 一条，再按 rank 填空，失败归因 diversity-limit"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S1",
+        "document": "07-Memory-Runtime.md",
+        "section": "18. Acceptance Expectations",
+        "requirement": "token, count, Scope, category, and diversity budgets;",
+        "exitCriteria": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+        "recordedGap": "applyBudget未读取requireDiversity；只累计Entry tokenEstimate而非实际heading+content；scope限制误报category-budget，truncated分支实际是整条排除。",
+        "productionEntryPoints": [
+          "apps/server/src/services/MemoryRetrievalService.ts",
+          "apps/server/src/store/MemoryEntryRepository.ts",
+          "apps/server/src/services/MemoryContextBudgetSelector.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/MemoryRetrievalService.test.ts",
+          "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
+        ],
+        "evidence": [
+          "S1C-SOURCE"
+        ]
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s1-budget-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 7,
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/receipts.json",
+          "sha256": "a9d028bb68a78612723ddcc28de0ddfd89f9c1d3a6fcb557a196303802c2dd5b",
+          "bytes": 7023
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/stdout.txt",
+          "sha256": "f815ee3fd5343a76c7cbafb367287a7f7b201e5f60feec25a534e9ad18d0d83b",
+          "bytes": 68
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "49a1beb2885daef5d26804d5dac70ac594400b7779cd76dbc4a0e0b279b58f16",
+          "bytes": 2108
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S1E-PRICING-01",
+          "assertionId": "S1E-PRICING-01",
+          "requirementId": "LITE-07-007",
+          "phase": "budget",
+          "step": "an Entry is priced by the text that is actually injected, not by its stored estimate",
+          "actual": {
+            "injectedText": "### short\ntiny",
+            "longInjectedTokens": 124,
+            "shortInjectedTokens": 4,
+            "storedEstimates": {
+              "long": 1,
+              "short": 9999
+            },
+            "selected": [
+              "mem_short"
+            ],
+            "totalTokens": 4,
+            "reasons": {
+              "mem_long": "token-budget"
+            }
+          },
+          "expected": {
+            "injectedText": "### short\ntiny",
+            "longInjectedTokens": 124,
+            "shortInjectedTokens": 4,
+            "storedEstimates": {
+              "long": 1,
+              "short": 9999
+            },
+            "selected": [
+              "mem_short"
+            ],
+            "totalTokens": 4,
+            "reasons": {
+              "mem_long": "token-budget"
+            }
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-THRESHOLD-01",
+          "assertionId": "S1E-THRESHOLD-01",
+          "requirementId": "LITE-07-007",
+          "phase": "budget",
+          "step": "confidence and importance thresholds exclude with their own reason",
+          "actual": {
+            "selected": [
+              "mem_ok"
+            ],
+            "reasons": {
+              "mem_low_confidence": "below-confidence",
+              "mem_low_importance": "below-importance"
+            }
+          },
+          "expected": {
+            "selected": [
+              "mem_ok"
+            ],
+            "reasons": {
+              "mem_low_confidence": "below-confidence",
+              "mem_low_importance": "below-importance"
+            }
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-COUNT-01",
+          "assertionId": "S1E-COUNT-01",
+          "requirementId": "LITE-07-007",
+          "phase": "budget",
+          "step": "the Entry count budget excludes the overflow and records every considered Entry",
+          "actual": {
+            "selected": [
+              "mem_a",
+              "mem_b"
+            ],
+            "reasons": {
+              "mem_c": "entry-budget"
+            },
+            "considered": 3
+          },
+          "expected": {
+            "selected": [
+              "mem_a",
+              "mem_b"
+            ],
+            "reasons": {
+              "mem_c": "entry-budget"
+            },
+            "considered": 3
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-SCOPE-01",
+          "assertionId": "S1E-SCOPE-01",
+          "requirementId": "LITE-07-007",
+          "phase": "budget",
+          "step": "a per-Scope limit is attributed to the Scope, not to the category",
+          "actual": {
+            "selected": [
+              "mem_task_1",
+              "mem_workspace"
+            ],
+            "reasons": {
+              "mem_task_2": "scope-excluded"
+            }
+          },
+          "expected": {
+            "selected": [
+              "mem_task_1",
+              "mem_workspace"
+            ],
+            "reasons": {
+              "mem_task_2": "scope-excluded"
+            }
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-CATEGORY-01",
+          "assertionId": "S1E-CATEGORY-01",
+          "requirementId": "LITE-07-007",
+          "phase": "budget",
+          "step": "a per-category limit is attributed to the category",
+          "actual": {
+            "selected": [
+              "mem_decision_1",
+              "mem_knowledge"
+            ],
+            "reasons": {
+              "mem_decision_2": "category-budget"
+            }
+          },
+          "expected": {
+            "selected": [
+              "mem_decision_1",
+              "mem_knowledge"
+            ],
+            "reasons": {
+              "mem_decision_2": "category-budget"
+            }
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-DIVERSITY-01",
+          "assertionId": "S1E-DIVERSITY-01",
+          "requirementId": "LITE-07-007",
+          "phase": "budget",
+          "step": "requireDiversity keeps the set from being monopolized and explains the exclusion",
+          "actual": {
+            "selected": [
+              "mem_decision_1",
+              "mem_knowledge_1"
+            ],
+            "reasons": {
+              "mem_decision_2": "diversity-limit",
+              "mem_knowledge_2": "entry-budget"
+            }
+          },
+          "expected": {
+            "selected": [
+              "mem_decision_1",
+              "mem_knowledge_1"
+            ],
+            "reasons": {
+              "mem_decision_2": "diversity-limit",
+              "mem_knowledge_2": "entry-budget"
+            }
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-TRUNC-01",
+          "assertionId": "S1E-TRUNC-01",
+          "requirementId": "LITE-07-007",
+          "phase": "budget",
+          "step": "token-budget overflow is truncated explicitly and bounded, never silently",
+          "actual": {
+            "selected": [
+              "mem_t1"
+            ],
+            "reasons": {
+              "mem_t2": "truncated",
+              "mem_t3": "token-budget"
+            },
+            "truncated": true,
+            "totalTokens": 7,
+            "perEntryTokens": 7,
+            "budgetTokens": 13
+          },
+          "expected": {
+            "selected": [
+              "mem_t1"
+            ],
+            "reasons": {
+              "mem_t2": "truncated",
+              "mem_t3": "token-budget"
+            },
+            "truncated": true,
+            "totalTokens": 7,
+            "perEntryTokens": 7,
+            "budgetTokens": 13
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The five dimensions are exercised on the production applyBudget: an Entry whose stored tokenEstimate is deliberately wrong is priced by the text that is actually injected (a 124-token Entry is excluded while a 4-token Entry is selected, and totalTokens equals the contract formula); confidence and importance thresholds attribute below-confidence / below-importance; maxEntries excludes the overflow as entry-budget and every considered Entry is recorded; a per-Scope limit is attributed to scope-excluded rather than mislabelled as a category limit; a per-category limit is category-budget; requireDiversity keeps two same-category Entries from monopolizing the set (the deferred one explains itself as diversity-limit) while the second category is admitted; and token overflow is truncated explicitly and bounded, with the entry after the truncation budget reported as token-budget.",
+      "adjacentBehaviorNotProven": "This is the budget function itself, called with ranked fixtures: it proves the decision and attribution rules, not retrieval ranking quality. The matrix row's recorded gaps (ignored requireDiversity, stored-estimate pricing, mis-attributed Scope limits) are closed by commit acecf93c on this baseline, which the assertions above verify; snapshot persistence and reproducibility are covered by the selector suite in the targeted tests rather than re-asserted here.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-07-109",
+      "specification": {
+        "text": "有效期、敏感度、FTS降级及预算策略符合规范",
+        "section": "S1-C1 时效与敏感度；MF-5 degraded",
+        "sourceFile": "apps/server/src/services/MemoryRetrievalService.ts",
+        "sourceLine": 81,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/services/MemoryRetrievalService.ts",
+            "sourceLine": 100,
+            "note": "可注入 clock，证据用固定时钟"
+          },
+          {
+            "sourceFile": "apps/server/src/services/MemoryRetrievalService.ts",
+            "sourceLine": 74,
+            "note": "toSafeFtsQuery 把查询中和为 token；无可用 token 时报告 degraded"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S1",
+        "document": "07-Memory-Runtime.md",
+        "section": "§9–§11",
+        "requirement": "有效期、敏感度、FTS降级及预算策略符合规范",
+        "exitCriteria": "固定时钟下验证有效期和敏感度，显式降级与真实快照理由，不重构无关排名。",
+        "recordedGap": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。 S1-C1已过滤有效期/敏感度并取得新快照证据；FTS降级与预算解释尚未闭合，不标PASS。",
+        "productionEntryPoints": [
+          "apps/server/src/services/MemoryRetrievalService.ts",
+          "apps/server/src/store/MemoryEntryRepository.ts",
+          "apps/server/src/services/MemoryContextBudgetSelector.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/MemoryRetrievalService.test.ts",
+          "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
+        ],
+        "evidence": [
+          "S1C-SOURCE",
+          "S1C1-RED",
+          "S1C1-GREEN",
+          "S1DC1-INTEGRATION"
+        ]
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s1-budget-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/receipts.json",
+          "sha256": "a9d028bb68a78612723ddcc28de0ddfd89f9c1d3a6fcb557a196303802c2dd5b",
+          "bytes": 7023
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/stdout.txt",
+          "sha256": "f815ee3fd5343a76c7cbafb367287a7f7b201e5f60feec25a534e9ad18d0d83b",
+          "bytes": 68
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "49a1beb2885daef5d26804d5dac70ac594400b7779cd76dbc4a0e0b279b58f16",
+          "bytes": 2108
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S1E-ELIGIBILITY-01",
+          "assertionId": "S1E-ELIGIBILITY-01",
+          "requirementId": "LITE-07-109",
+          "phase": "eligibility",
+          "step": "temporal and access eligibility decide before ranking",
+          "actual": {
+            "now": "2026-09-14T00:00:00.000Z",
+            "returned": [
+              "mem_001eeeeeeeeeeeeeeeeeeee",
+              "mem_002eeeeeeeeeeeeeeeeeeee",
+              "mem_006eeeeeeeeeeeeeeeeeeee"
+            ],
+            "degraded": false,
+            "excludedIdsPresent": []
+          },
+          "expected": {
+            "now": "2026-09-14T00:00:00.000Z",
+            "returned": [
+              "mem_001eeeeeeeeeeeeeeeeeeee",
+              "mem_002eeeeeeeeeeeeeeeeeeee",
+              "mem_006eeeeeeeeeeeeeeeeeeee"
+            ],
+            "degraded": false,
+            "excludedIdsPresent": []
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-DEGRADED-01",
+          "assertionId": "S1E-DEGRADED-01",
+          "requirementId": "LITE-07-109",
+          "phase": "eligibility",
+          "step": "a query with no usable FTS tokens reports degraded while structured filters stay authoritative",
+          "actual": {
+            "degraded": true,
+            "rankedResults": [
+              "mem_001eeeeeeeeeeeeeeeeeeee",
+              "mem_002eeeeeeeeeeeeeeeeeeee",
+              "mem_006eeeeeeeeeeeeeeeeeeee"
+            ],
+            "sameSetAsRankedQuery": true,
+            "queryTextStored": 0
+          },
+          "expected": {
+            "degraded": true,
+            "rankedResults": [
+              "mem_001eeeeeeeeeeeeeeeeeeee",
+              "mem_002eeeeeeeeeeeeeeeeeeee",
+              "mem_006eeeeeeeeeeeeeeeeeeee"
+            ],
+            "sameSetAsRankedQuery": true,
+            "queryTextStored": 0
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "Real memory_entries rows are written through the production repository and read back through the production retrieval service with a FIXED clock: an Entry inside its validity window and one without a window are returned, while an expired Entry, a not-yet-valid Entry and a restricted-sensitivity Entry are all withheld (none of them appears in the result set). The FTS-degraded status is visible rather than silent: a query with no usable tokens reports degraded=true while the structured-filter result set stays exactly the same as the ranked query, and no snapshot or query text is written by the read.",
+      "adjacentBehaviorNotProven": "Covers temporal and access eligibility plus the degraded-status signal for this baseline. The Run Context Snapshot projection of the degraded mode (LITE-07-013) is delivered by the separate FTS-degraded slice and is not re-asserted here; sensitivity is proven as a withheld-content rule, not as a grant mechanism, because the current callers have no verified restricted-content grant.",
+      "verdict": "candidate-supported"
+    }
+  ],
+  "matrixProtection": {
+    "passFreezeEdited": false,
+    "passPromotionExecuted": false,
+    "requireClosedExecuted": false,
+    "protectedFiles": [
+      {
+        "path": "docs/implementation/lite-closeout/matrix.json",
+        "worktreeSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "baselineSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-freeze.json",
+        "worktreeSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "baselineSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-evidence-audit.json",
+        "worktreeSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "baselineSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "matchesBaseline": true
+      }
+    ],
+    "workingTreeDelta": [
+      "?? agentos/docs/implementation/lite-closeout/evidence/s1-budget-candidate-evidence-20260914/",
+      "?? agentos/scripts/assemble-lite-s1-budget-candidate-evidence.mjs",
+      "?? agentos/scripts/verify-lite-s1-budget-candidate-evidence.mjs"
+    ],
+    "verdictVocabulary": [
+      "candidate-supported",
+      "insufficient-evidence",
+      "failed"
+    ]
+  }
+}
