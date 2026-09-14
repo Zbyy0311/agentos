@@ -3783,15 +3783,18 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S8",
       "implementation": [
-        "apps/server/src/index.ts"
+        "apps/server/src/index.ts",
+        "apps/server/src/routes/artifacts.ts",
+        "apps/server/src/store/SqliteStore.ts"
       ],
       "tests": [
+        "apps/server/src/routes/artifacts.test.ts",
         "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件唯一的断言覆盖 content 服务（200、nosniff、CSP、metadata-only 409）与跨 Workspace 404，**没有任何断言检查 DTO 字段中不含存储路径**（例如 job 目录、绝对路径或内部文件名）。按缺口记录：需要一条对 Artifact DTO 字段集合/敏感字段的断言。 (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订反证（未闭合的一半）：canonical 面已正确脱敏——canonicalRunEvents.test.ts:214 与 RunReplayService.test.ts:125 都断言序列化结果不含 originalPath，routes/artifacts.ts 的 content 端点只回内容不回收路径；但工作区级运行详情端点 GET /api/workspaces/:workspaceId/runs/:runId（routes/runs.ts:17 → SqliteStore.listRuntimeArtifacts → SqliteStore.ts:3359 toRuntimeArtifact 的 originalPath 分支）仍把 runtime_artifacts.original_path 这一本地绝对路径放进响应，Web 端 ArtifactShelf.tsx:46 还在渲染它。规范§15要求 Storage URI 与本地绝对路径不得成为响应契约，故本条仍缺该端点的不泄漏证据。修复会同时改动该 compat 路由的 DTO 与 ArtifactShelf 的展示，属于产品行为变更，按收尾计划“发现即记录、不扩范围”登记为标准反证，等待明确授权后再改。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
