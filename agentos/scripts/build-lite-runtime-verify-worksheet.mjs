@@ -37,6 +37,15 @@ const args = parseArgs(process.argv.slice(2));
 const repoRoot = resolve(args['repo-root'] ?? '.');
 const batches = JSON.parse(readFileSync(resolve(repoRoot, args.batches), 'utf8'));
 const ledger = JSON.parse(readFileSync(resolve(repoRoot, args.ledger), 'utf8'));
+/**
+ * Optional verbose receipts. The batch summary sometimes carries no per-assertion names (a
+ * package test file run by vitest prints only totals), so those files keep a separate receipt
+ * whose names are merged here - otherwise the worksheet would show "0 assertions" for a file
+ * that demonstrably ran several.
+ */
+const extraManifest = args['extra-assertions'] === undefined
+  ? {}
+  : JSON.parse(readFileSync(resolve(repoRoot, args['extra-assertions']), 'utf8'));
 const from = Number(args.from ?? 0);
 const count = Number(args.count ?? 12);
 
@@ -70,6 +79,15 @@ const entries = slice.map(row => {
   };
 });
 
+for (const entry of entries) {
+  const extraBase = extraManifest[entry.namedTestFile];
+  if (extraBase === undefined) continue;
+  const extra = namesIn(readFileSync(resolve(repoRoot, extraBase + '.stdout.txt'), 'utf8'));
+  const known = new Set(entry.executedAssertions.map(assertion => assertion.name));
+  entry.executedAssertions = [...entry.executedAssertions,
+    ...extra.filter(assertion => !known.has(assertion.name))];
+}
+
 const out = { schemaVersion: 1, generatedAt: new Date().toISOString(),
   source: { batches: args.batches, ledger: args.ledger },
   window: { from, count, openRows: open.length }, entries };
@@ -96,4 +114,3 @@ mkdirSync(dirname(resolve(repoRoot, args['out-md'])), { recursive: true });
 writeFileSync(resolve(repoRoot, args['out-md']), lines.join(LF) + LF, 'utf8');
 
 process.stdout.write(JSON.stringify({ window: { from, count, openRows: open.length }, ids: entries.map(entry => entry.id) }) + LF);
-

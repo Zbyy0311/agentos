@@ -697,56 +697,159 @@
 **条款**：errors normalize to stable codes with retryability;
 
 - 点名文件：`packages/agent-core/src/providers/kimiCodeAdapter.test.ts`（passed，raw exit 0，计数 {"passed":21,"failed":0,"skipped":0}）
-- 该文件实际执行过的断言（0 条）：
+- 该文件实际执行过的断言（21 条）：
 
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > normalizes the legacy kimi input token without changing canonical adapter identity
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > validates direct KimiCode fixtures without emitting the forbidden generic validation error
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > routes version, help, and auth probes through the injected Process Runtime port
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > uses the same Windows safe-environment semantics for validation, auth, and launch
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > keeps POSIX safe-environment matching case-sensitive
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > fails closed on conflicting Windows safe-environment aliases
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > distinguishes an explicitly configured inaccessible executable from no discovery candidate
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > sanitizes discovery warning text before returning validation evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > builds a canonical direct launch plan with separated args and secret references only
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > freezes an absent persisted Kimi version to the manifest compatibility version
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > refuses to build an execution plan for an unfreezable missing-version adapter
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > uses canonical environment override before the legacy Kimi override when config is unset
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > does not fall back to another executable when a configured binary is inaccessible
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > marks authentication authenticated from a successful structured assistant response
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > marks authentication unauthenticated on explicit login-required evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > no longer probes the stale auth status command
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > parses golden, malformed, unknown and usage output without fabricating provider semantics
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > maps finalize outcomes and sends cancel only through an accepted Process port ticket
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > keeps precise auth-required, auth-expired, and generic session classifications
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > has no direct child_process or spawn/exec dependency in the adapter source
 
 ## `LITE-04-007`  04-Provider-Specification.md · 19. Acceptance Expectations
 
 **条款**：capability declarations match tested behavior;
 
 - 点名文件：`packages/agent-core/src/providers/kimiCodeAdapter.test.ts`（passed，raw exit 0，计数 {"passed":21,"failed":0,"skipped":0}）
-- 该文件实际执行过的断言（0 条）：
+- 该文件实际执行过的断言（21 条）：
 
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > normalizes the legacy kimi input token without changing canonical adapter identity
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > validates direct KimiCode fixtures without emitting the forbidden generic validation error
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > routes version, help, and auth probes through the injected Process Runtime port
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > uses the same Windows safe-environment semantics for validation, auth, and launch
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > keeps POSIX safe-environment matching case-sensitive
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > fails closed on conflicting Windows safe-environment aliases
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > distinguishes an explicitly configured inaccessible executable from no discovery candidate
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > sanitizes discovery warning text before returning validation evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > builds a canonical direct launch plan with separated args and secret references only
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > freezes an absent persisted Kimi version to the manifest compatibility version
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > refuses to build an execution plan for an unfreezable missing-version adapter
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > uses canonical environment override before the legacy Kimi override when config is unset
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > does not fall back to another executable when a configured binary is inaccessible
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > marks authentication authenticated from a successful structured assistant response
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > marks authentication unauthenticated on explicit login-required evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > no longer probes the stale auth status command
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > parses golden, malformed, unknown and usage output without fabricating provider semantics
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > maps finalize outcomes and sends cancel only through an accepted Process port ticket
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > keeps precise auth-required, auth-expired, and generic session classifications
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > has no direct child_process or spawn/exec dependency in the adapter source
 
 ## `LITE-04-008`  04-Provider-Specification.md · 19. Acceptance Expectations
 
 **条款**：concurrent read-only admission is available only when attempted Workspace writes are technically denied and tested;
 
 - 点名文件：`packages/agent-core/src/providers/kimiCodeAdapter.test.ts`（passed，raw exit 0，计数 {"passed":21,"failed":0,"skipped":0}）
-- 该文件实际执行过的断言（0 条）：
+- 该文件实际执行过的断言（21 条）：
 
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > normalizes the legacy kimi input token without changing canonical adapter identity
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > validates direct KimiCode fixtures without emitting the forbidden generic validation error
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > routes version, help, and auth probes through the injected Process Runtime port
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > uses the same Windows safe-environment semantics for validation, auth, and launch
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > keeps POSIX safe-environment matching case-sensitive
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > fails closed on conflicting Windows safe-environment aliases
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > distinguishes an explicitly configured inaccessible executable from no discovery candidate
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > sanitizes discovery warning text before returning validation evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > builds a canonical direct launch plan with separated args and secret references only
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > freezes an absent persisted Kimi version to the manifest compatibility version
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > refuses to build an execution plan for an unfreezable missing-version adapter
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > uses canonical environment override before the legacy Kimi override when config is unset
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > does not fall back to another executable when a configured binary is inaccessible
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > marks authentication authenticated from a successful structured assistant response
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > marks authentication unauthenticated on explicit login-required evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > no longer probes the stale auth status command
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > parses golden, malformed, unknown and usage output without fabricating provider semantics
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > maps finalize outcomes and sends cancel only through an accepted Process port ticket
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > keeps precise auth-required, auth-expired, and generic session classifications
+  - [pass] src/providers/kimiCodeAdapter.test.ts > KimiCodeProviderAdapter > has no direct child_process or spawn/exec dependency in the adapter source
 
 ## `LITE-05-001`  05-Process-Runtime.md · 15. Acceptance Expectations
 
 **条款**：reserve-before-spawn ordering and idempotency;
 
 - 点名文件：`packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts`（passed，raw exit 0，计数 {"passed":10,"failed":0,"skipped":0}）
-- 该文件实际执行过的断言（0 条）：
+- 该文件实际执行过的断言（10 条）：
 
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2: spawn capture and live probe carry the same CANONICAL FILETIME; classifier SAME (primitive-only)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 oracle: production helper FILETIME == independent .NET StartTime.ToFileTimeUtc oracle; real value > 2^53 (BigInt test-only)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: read-only probe fails closed on an invalid PID (never MISSING)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: probe failure / unreadable identity fails closed to unknown (not missing)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 primitive: a live self PID reads a stable, repeatable canonical FILETIME
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: PID reuse is never classified same
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D: valid v2 with NULL birth in column and mirror + PID absent -> missing
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D guard: NULL birth + live PID -> unknown (not missing)
 
 ## `LITE-05-008`  05-Process-Runtime.md · 15. Acceptance Expectations
 
 **条款**：browser disconnect leaves the Process running;
 
 - 点名文件：`packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts`（passed，raw exit 0，计数 {"passed":10,"failed":0,"skipped":0}）
-- 该文件实际执行过的断言（0 条）：
+- 该文件实际执行过的断言（10 条）：
 
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2: spawn capture and live probe carry the same CANONICAL FILETIME; classifier SAME (primitive-only)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 oracle: production helper FILETIME == independent .NET StartTime.ToFileTimeUtc oracle; real value > 2^53 (BigInt test-only)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: read-only probe fails closed on an invalid PID (never MISSING)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: probe failure / unreadable identity fails closed to unknown (not missing)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 primitive: a live self PID reads a stable, repeatable canonical FILETIME
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: PID reuse is never classified same
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D: valid v2 with NULL birth in column and mirror + PID absent -> missing
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D guard: NULL birth + live PID -> unknown (not missing)
 
 ## `LITE-05-009`  05-Process-Runtime.md · 15. Acceptance Expectations
 
 **条款**：timeout, approval-wait exclusion, and race-safe terminal transitions;
 
 - 点名文件：`packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts`（passed，raw exit 0，计数 {"passed":10,"failed":0,"skipped":0}）
-- 该文件实际执行过的断言（0 条）：
+- 该文件实际执行过的断言（10 条）：
 
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2: spawn capture and live probe carry the same CANONICAL FILETIME; classifier SAME (primitive-only)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 oracle: production helper FILETIME == independent .NET StartTime.ToFileTimeUtc oracle; real value > 2^53 (BigInt test-only)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: read-only probe fails closed on an invalid PID (never MISSING)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: probe failure / unreadable identity fails closed to unknown (not missing)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 primitive: a live self PID reads a stable, repeatable canonical FILETIME
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: PID reuse is never classified same
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D: valid v2 with NULL birth in column and mirror + PID absent -> missing
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D guard: NULL birth + live PID -> unknown (not missing)
 
 ## `LITE-05-011`  05-Process-Runtime.md · 15. Acceptance Expectations
 
 **条款**：startup preflight never probes OS state inside a SQLite write transaction;
 
 - 点名文件：`packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts`（passed，raw exit 0，计数 {"passed":10,"failed":0,"skipped":0}）
-- 该文件实际执行过的断言（0 条）：
+- 该文件实际执行过的断言（10 条）：
 
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2: spawn capture and live probe carry the same CANONICAL FILETIME; classifier SAME (primitive-only)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W1: kill-on-close ownership loss via session close reaps the provider; recovery sees MISSING (no terminateTree on the proof path)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 oracle: production helper FILETIME == independent .NET StartTime.ToFileTimeUtc oracle; real value > 2^53 (BigInt test-only)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: read-only probe fails closed on an invalid PID (never MISSING)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W3: probe failure / unreadable identity fails closed to unknown (not missing)
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b Windows birth-identity gates > W2 primitive: a live self PID reads a stable, repeatable canonical FILETIME
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: persisted FILETIME A vs observed FILETIME B (B != A) -> MISMATCH, classification-only
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > W4: PID reuse is never classified same
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D: valid v2 with NULL birth in column and mirror + PID absent -> missing
+  - [pass] src/p6-m3b-windows-birth-identity.test.ts > P6-M3b W4 + version gates (deterministic seams) > V2-D guard: NULL birth + live PID -> unknown (not missing)
 
 ## `LITE-06-006`  06-Worktree-Runtime.md · 13. Acceptance Expectations
 

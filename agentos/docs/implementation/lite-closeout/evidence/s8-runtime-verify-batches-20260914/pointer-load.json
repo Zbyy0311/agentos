@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-14T13:55:31.450Z",
+  "generatedAt": "2026-09-14T13:57:06.920Z",
   "evidencePackage": "S8-runtime-verify-pointer-load",
   "ledgerPath": "docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/runtime-verify-ledger.json",
   "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
