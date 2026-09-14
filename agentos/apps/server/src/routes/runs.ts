@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from 'express';
-import type { AgentRunDetails } from '@agentos/shared';
+import type { AgentRunDetails, RuntimeArtifact } from '@agentos/shared';
 import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { SqliteStore } from '../store/SqliteStore.js';
 
@@ -28,7 +28,10 @@ export function createRunRoutes(store: SqliteStore, workspaceManager: WorkspaceM
       events: store.listAgentEvents(workspace.id, run.id),
       cliInvocations: store.listRunCliInvocations(workspace.id, run.id),
       fileChanges: store.listRunFileChanges(workspace.id, run.id),
-      artifacts: store.listRuntimeArtifacts(workspace.id, run.id),
+      // `originalPath` is an internal provenance field.  It may be useful to
+      // storage and collection code, but it is not part of the public Run
+      // Details DTO: exposing it would disclose a local filesystem path.
+      artifacts: store.listRuntimeArtifacts(workspace.id, run.id).map(toPublicRuntimeArtifact),
       usedMemories: store.listMemoryUsage(workspace.id, run.id),
       preferenceApplications: store.listPreferenceApplications(workspace.id, run.id),
       steps: store.listRunSteps(workspace.id, run.id),
@@ -37,6 +40,11 @@ export function createRunRoutes(store: SqliteStore, workspaceManager: WorkspaceM
   });
 
   return router;
+}
+
+function toPublicRuntimeArtifact(artifact: RuntimeArtifact): RuntimeArtifact {
+  const { originalPath: _originalPath, ...publicArtifact } = artifact;
+  return publicArtifact;
 }
 
 function parseRunLimit(value: unknown): number {
