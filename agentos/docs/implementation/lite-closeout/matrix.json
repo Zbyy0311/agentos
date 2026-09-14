@@ -1577,10 +1577,14 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S4",
       "implementation": [
-        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
       ],
       "tests": [
-        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
+        "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+        "packages/shared/p6-l1a-admission.test.ts",
+        "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"

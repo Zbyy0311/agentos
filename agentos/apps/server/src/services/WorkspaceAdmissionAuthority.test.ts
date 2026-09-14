@@ -760,6 +760,7 @@ describe('WorkspaceAdmissionAuthority unit contract', () => {
   });
 
   test('L1D-U20 stale active reader reclassified MODIFYING conflicts with its active reader peer and denies all authorization', async () => {
+
     const fixture = createFixture({
       collector: fixedCollector({
         ...FRESH_READ_ONLY_FACTS,
@@ -808,6 +809,73 @@ describe('WorkspaceAdmissionAuthority unit contract', () => {
       assert.deepEqual(fixture.admissions.listByWorkspace(WORKSPACE_ID), before);
     } finally { fixture.close(); }
   });
+  test('LITE-04-008 concurrent READ_ONLY admission requires a tested technical write denial', async () => {
+    // Two directions of the same clause. The classifier is the authority, so a stale
+    // seeded effective class cannot carry a request: both scenarios seed the same
+    // request shape and differ ONLY in the collected denial evidence.
+    //
+    // A) The denial is technical AND tested (all three proof fields present), so two
+    //    concurrent readers are admitted.
+    const testedFixture = createFixture({ collector: fixedCollector(FRESH_READ_ONLY_FACTS) });
+    try {
+      seedAdmission(testedFixture, { id: 'adm_u21a_a', order: 1, requested: 'READ_ONLY', effective: 'MODIFYING' });
+      seedAdmission(testedFixture, { id: 'adm_u21a_b', order: 2, requested: 'READ_ONLY', effective: 'MODIFYING' });
+
+      const granted = await testedFixture.authority.advanceWorkspaceAdmissions(WORKSPACE_ID);
+
+      assert.equal(granted.length, 2, 'a tested write denial admits concurrent readers');
+      const grantedRows = testedFixture.admissions.listByWorkspace(WORKSPACE_ID)
+        .filter(row => row.state === 'GRANTED');
+      assert.equal(grantedRows.length, 2);
+      assert.ok(grantedRows.every(row => row.effectiveMutationClass === 'READ_ONLY'),
+        'the effective class is recomputed from the evidence, not taken from the request');
+    } finally { testedFixture.close(); }
+
+    // B) The denial is technical but NOT tested (the qualification field is absent),
+    //    so the same two requests resolve MODIFYING: one single writer is admitted and
+    //    the other is queued. Concurrency is therefore gated on the test, not on the
+    //    caller asking for READ_ONLY.
+    const untestedFixture = createFixture({ collector: fixedCollector({
+      ...FRESH_READ_ONLY_FACTS,
+      // Cast because the type system already refuses a verified claim without all
+      // three proof fields - that is the first line of defence. This asserts the
+      // second: an untyped caller that slips such a shape past the compiler still
+      // cannot obtain READ_ONLY, because the classifier re-checks every field.
+      evidence: { status: 'verified', source: 'qualified-write-denial', boundaryId: 'boundary-l1d' } as unknown as WorkspaceReadOnlyEvidence,
+    }) });
+    try {
+      seedAdmission(untestedFixture, { id: 'adm_u21b_a', order: 1, requested: 'READ_ONLY', effective: 'READ_ONLY' });
+      seedAdmission(untestedFixture, { id: 'adm_u21b_b', order: 2, requested: 'READ_ONLY', effective: 'READ_ONLY' });
+
+      const granted = await untestedFixture.authority.advanceWorkspaceAdmissions(WORKSPACE_ID);
+
+      assert.equal(granted.length, 1, 'an untested denial collapses concurrency to one writer');
+      const first = untestedFixture.admissions.findById(WORKSPACE_ID, 'adm_u21b_a');
+      const second = untestedFixture.admissions.findById(WORKSPACE_ID, 'adm_u21b_b');
+      assert.equal(first?.state, 'GRANTED', 'the first request takes the single-writer slot');
+      assert.equal(first?.effectiveMutationClass, 'MODIFYING',
+        'a stale seeded READ_ONLY class is overridden by the classification of untested evidence');
+      assert.equal(second?.state, 'QUEUED', 'the second request cannot join as a concurrent reader');
+      assert.equal(second?.queueReason, QUEUE_REASON);
+      // The clause is about admission, so the decisive assertion is dispatch
+      // authority rather than a bookkeeping field: the admitted writer may execute,
+      // and the queued peer may not. A row the advancement loop never re-classified
+      // keeps its persisted class, which is why its effective field is not asserted
+      // here - what matters is that it cannot obtain authority.
+      const writer = await untestedFixture.authority.authorizeCanonicalRun({
+        workspaceId: WORKSPACE_ID,
+        runId: `run_adm_u21b_a`,
+      });
+      assert.equal(writer.authorized, true, 'the single admitted writer may execute');
+      const queuedPeer = await untestedFixture.authority.authorizeCanonicalRun({
+        workspaceId: WORKSPACE_ID,
+        runId: `run_adm_u21b_b`,
+      });
+      assert.equal(queuedPeer.authorized, false,
+        'the queued peer cannot execute as a concurrent reader on untested evidence');
+    } finally { untestedFixture.close(); }
+  });
+
 });
 
 function seedMissingProcess(db: Db, runId: string): void {
