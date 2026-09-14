@@ -951,4 +951,20 @@
     ],
     "limitation": "Each re-pointed file was executed in isolation with zero failures and zero skips; the counts are per file in details and in docs/implementation/lite-closeout/verification-batches.json."
   }
+  ,
+  {
+    "id": "S6-COMPACTION-INSPECTOR-SOURCE",
+    "baseline": "07c1773ad108c066262753492ba2767bb3fc62d8",
+    "kind": "source-audit",
+    "command": "rg -n -i compaction apps/server/src/services/RuntimeInspector.ts apps/server/src/routes/runtimeInspector.ts apps/web/src; rg -n -A 30 'CREATE TABLE cr_agent_turns' apps/server/src/migrations/migrations; rg -n 'bindMessageReferencesWithinTransaction' apps/server/src/services/ConversationBridgeService.ts",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-13-101"
+    ],
+    "result": {
+      "findings": 4
+    },
+    "environment": "Read-only source audit on main 07c1773a before implementation; no runtime evidence",
+    "limitation": "Confirmed the Run-scoped Inspector carries no compaction projection at all (RuntimeInspector.ts / routes/runtimeInspector.ts / apps/web/src return no match for compaction), while the Conversation-scoped compactions route already existed. Also established the two durable Run->Conversation relations this slice relies on: cr_agent_turns.run_id plus cr_messages.run_id written by ConversationBridgeService.startRunFromMessage, and tasks.source_conversation_id written by createTaskFromMessage. Not PASS evidence; the row stays GAP under the PASS freeze."
+  }
 ]
