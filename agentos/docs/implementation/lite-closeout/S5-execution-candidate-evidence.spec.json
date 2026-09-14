@@ -1,0 +1,84 @@
+{
+  "packageName": "S5-execution-boundary-candidate-evidence",
+  "title": "S5 Chat/Group 执行边界候选证据包（LITE-09-101 / LITE-09-013 / LITE-09-102）",
+  "modelScopeStatement": "本包不调用任何 Provider 模型：它驱动的是生产 Turn 驱动的持久化、Scope 与授权边界（recording runner 记录 Provider 本会收到的内容）。",
+  "routeModels": {
+    "selection": "chat-memory.v1（MF-3 检索 + MF-4 预算，无模型）",
+    "runner": "recording runner（不调用 CLI）"
+  },
+  "testNote": "受影响测试（4 个文件：ChatMemorySelectionPort / ConversationTurnDriver / conversationRuntime / conversationRuntime.group，`node --import tsx --test --test-concurrency=1`，在 `apps/server` 下执行）raw exit = 0，Node summary 为 `34 pass / 0 fail / 0 skipped`；普通 scope verifier 未加 `--require-closed`，raw exit = 0，stdout 原文为 `{\"matrixVersion\":15,\"status\":\"frozen\",\"PASS\":0,\"GAP\":26,\"RUNTIME-VERIFY\":205,\"DEFERRED\":164}`。",
+  "knownLimitations": [
+    "本包用 recording runner 替代真实 CLI：证明的是「Provider 本会收到什么」与冻结顺序，不是模型输出质量（Provider 生产链由 S4/S9 gate 包覆盖）。",
+    "群聊的 mention/@all/顺序解析（LITE-09-010）不在本包：它需要一个把生产 GroupTurnDriver 与 group interaction 预算一起驱动的切片，尚未出具候选证据。",
+    "D3 关闭（不提供 parallel-read-only）只在本包被记录为当前生产配置；其行为断言属于 09-010 的切片。",
+    "浏览器断开只结束订阅、取消/恢复沿用规范生命周期，由 S8/S9 相关包覆盖，不在本包。"
+  ],
+  "requirements": {
+    "LITE-09-101": {
+      "text": "Provider调用前持久化并实际注入有界Agent上下文",
+      "section": "S5 会话执行边界",
+      "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+      "sourceLine": 407,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/services/ChatMemorySelectionPort.ts",
+          "sourceLine": 43,
+          "note": "生产 chat 选择端口：MF-3 检索 + MF-4 预算，Scope 限于 global/workspace/agent/conversation"
+        },
+        {
+          "sourceFile": "apps/server/src/routes/conversationRuntime.ts",
+          "sourceLine": 91,
+          "note": "组合根把该端口接入生产路由"
+        },
+        {
+          "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+          "sourceLine": 480,
+          "note": "注入文本 = 刚持久化的那份选择，读一次复用"
+        }
+      ],
+      "why": "真实驱动生产 ConversationTurnDriver（真实 MemoryEntryRepository 行 + 生产 ChatMemorySelectionPort + 生产 CR-5 快照端口）：runner 在自己的 run() 内读到的快照行已经存在，且其 selected ids 非空、totalTokens 与策略版本（chat-memory.v1）已持久；Turn 行的 context_snapshot_id 指向同一快照；runner 收到的 memoryContext 与「按该快照 ids 重新读 Entry 并用 injectedEntryText 组装」的文本逐字相等（即注入的是冻结内容而不是事后重新选的内容）；workspace 与 agent scope 的 Entry 进入选择，task scope 的 Entry 既不进 ids 也不进注入文本，另一个 Agent 的 agent-scope Entry 同样不进。",
+      "limits": "选择端口本身不是模型：它证明「持久化先于调用、注入等于冻结选择、Scope 有界」，不证明模型如何使用该上下文；有界窗口（MAX_FROZEN_HISTORY_MESSAGES）与快照预算字段由既有 driver 测试覆盖，本包只断言本次运行的实际值。"
+    },
+    "LITE-09-013": {
+      "text": "per-Agent contexts remain isolated",
+      "section": "S5 会话执行边界",
+      "sourceFile": "apps/server/src/services/ChatMemorySelectionPort.ts",
+      "sourceLine": 43,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/store/MemoryEntryRepository.ts",
+          "sourceLine": 448,
+          "note": "Entry 的 scope/owner 决定可读性"
+        },
+        {
+          "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+          "sourceLine": 409,
+          "note": "每个 Turn 以自己的 agentId 选择并冻结"
+        }
+      ],
+      "why": "同一个 Conversation 里两个 Agent 各跑一个真实 Turn：B 的选择包含自己的 agent-scope Entry 与 workspace Entry，不包含 A 的 agent-scope Entry；B 收到的注入文本提到自己的条目、不提到 A 的条目；两次 Turn 产生两个不同快照，快照行的 (agentId, turnId) 与各自 Turn 一一对应，且 A 的 Turn 仍指向它自己的快照（B 的运行没有改写 A 的冻结上下文）。",
+      "limits": "隔离是按 Scope/owner 的可读性证明的；跨会话或跨 Run 的竞争不在本包（09-010 与 09-102 的授权语义覆盖 Workspace 级互斥）。"
+    },
+    "LITE-09-102": {
+      "text": "Chat/Group执行权限不能由串行或提示词代替",
+      "section": "S5 会话执行边界",
+      "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+      "sourceLine": 391,
+      "secondarySources": [
+        {
+          "sourceFile": "apps/server/src/routes/conversationRuntime.ts",
+          "sourceLine": 102,
+          "note": "生产 authority 端口读 WorkspaceAdmissionRepository 的 MODIFYING+GRANTED 行"
+        },
+        {
+          "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+          "sourceLine": 396,
+          "note": "D2=A：拒绝并指向显式 Run 路径，而不是隐式授予 modifying 权限"
+        }
+      ],
+      "why": "当 Workspace 里存在另一个主体的 MODIFYING+GRANTED admission 时，chat Turn 以 CONVERSATION_WORKSPACE_MODIFYING_BUSY 失败，Provider 调用为 0 次、该 Turn 没有创建快照、没有 Runtime Event，失败信息点名了持有者；释放该 admission 后同一个 Turn 正常执行（Provider 调用 1 次、Turn final），因此拒绝来自授权状态而不是任何提示词或串行化副作用。",
+      "limits": "本包用生产 authority 端口 + 真实 admission 行证明拒绝路径；真实并发 HTTP 竞争与跨进程时序不在本包（#162 的既有路由测试与 S3 授权包覆盖相邻分支）。"
+    }
+  }
+}
+

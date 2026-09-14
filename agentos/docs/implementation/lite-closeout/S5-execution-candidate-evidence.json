@@ -1,0 +1,630 @@
+{
+  "schemaVersion": 1,
+  "evidencePackage": "S5-execution-boundary-candidate-evidence",
+  "generatedAt": "2026-09-14T13:13:50.302Z",
+  "baselineSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+  "testCodeSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+  "routeModels": {
+    "selection": "chat-memory.v1（MF-3 检索 + MF-4 预算，无模型）",
+    "runner": "recording runner（不调用 CLI）"
+  },
+  "modelScopeStatement": "本包不调用任何 Provider 模型：它驱动的是生产 Turn 驱动的持久化、Scope 与授权边界（recording runner 记录 Provider 本会收到的内容）。",
+  "finalRun": {
+    "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s5-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s5-execution-candidate-evidence-20260914",
+    "rawExitCode": 0,
+    "allRawLogs": [
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/receipts.json",
+        "sha256": "d91a63eb6887225f3eea231156a030b82cb7966cf5aabbcbc263cb40df6a76a8",
+        "bytes": 5962
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/stdout.txt",
+        "sha256": "a94808df3569a28c94b5fd2d60dbfea85c878e878c923df4426bea8ebbd7dd03",
+        "bytes": 71
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/exit.txt",
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+        "bytes": 3
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/scope-verifier.stdout.txt",
+        "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+        "bytes": 93
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/scope-verifier.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+        "sha256": "47e39d24bcb11fdf97bede8edfcf0611ec017fd600fa33daef7b5505ff7cba21",
+        "bytes": 13645
+      },
+      {
+        "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "bytes": 0
+      }
+    ],
+    "phases": {
+      "direct": {
+        "turnId": "turn_aaaaaaaaaaaaaaaaaaaa",
+        "snapshotId": "snapshot_01M2G0SK07049XN28B3Q1JF21X",
+        "selectedIds": [
+          "mem_s5_02",
+          "mem_s5_01"
+        ],
+        "totalTokens": 23
+      },
+      "isolation": {
+        "turnId": "turn_bbbbbbbbbbbbbbbbbbbb",
+        "snapshotId": "snapshot_01M2G0SK0M32GQNQN2HK4RT9XV",
+        "selectedIds": [
+          "mem_s5_03",
+          "mem_s5_01"
+        ]
+      },
+      "authority": {
+        "refusedTurn": "turn_cccccccccccccccccccc",
+        "admittedTurnStatus": "final"
+      }
+    },
+    "counts": {
+      "total": 6,
+      "passed": 6,
+      "failed": 0,
+      "skipped": 0
+    }
+  },
+  "requirements": [
+    {
+      "id": "LITE-09-101",
+      "specification": {
+        "text": "Provider调用前持久化并实际注入有界Agent上下文",
+        "section": "S5 会话执行边界",
+        "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+        "sourceLine": 407,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/services/ChatMemorySelectionPort.ts",
+            "sourceLine": 43,
+            "note": "生产 chat 选择端口：MF-3 检索 + MF-4 预算，Scope 限于 global/workspace/agent/conversation"
+          },
+          {
+            "sourceFile": "apps/server/src/routes/conversationRuntime.ts",
+            "sourceLine": 91,
+            "note": "组合根把该端口接入生产路由"
+          },
+          {
+            "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+            "sourceLine": 480,
+            "note": "注入文本 = 刚持久化的那份选择，读一次复用"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S5",
+        "document": "09-Conversation-Runtime.md",
+        "section": "§4.4; §11.7",
+        "requirement": "Provider调用前持久化并实际注入有界Agent上下文",
+        "exitCriteria": "Direct/Group按实际调用前快照预算与Scope，provider收到冻结选中内容，事后记录引用原快照。",
+        "recordedGap": "快照在recordReply创建，driver已先调用Provider；history未使用该快照。",
+        "productionEntryPoints": [
+          "apps/server/src/services/ConversationTurnDriver.ts",
+          "apps/server/src/services/BoundedGroupService.ts",
+          "apps/server/src/services/GroupTurnDriver.ts",
+          "apps/server/src/routes/conversationRuntime.ts",
+          "apps/server/src/store/TurnContextSnapshotRepository.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "apps/server/src/services/BoundedGroupService.test.ts",
+          "apps/server/src/services/GroupTurnDriver.test.ts",
+          "apps/server/src/routes/conversationRuntime.test.ts"
+        ],
+        "evidence": [
+          "S5-EXECUTION-SOURCE",
+          "S5-101-LOCAL"
+        ]
+      },
+      "baselineSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+      "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s5-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s5-execution-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/receipts.json",
+          "sha256": "d91a63eb6887225f3eea231156a030b82cb7966cf5aabbcbc263cb40df6a76a8",
+          "bytes": 5962
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/stdout.txt",
+          "sha256": "a94808df3569a28c94b5fd2d60dbfea85c878e878c923df4426bea8ebbd7dd03",
+          "bytes": 71
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "47e39d24bcb11fdf97bede8edfcf0611ec017fd600fa33daef7b5505ff7cba21",
+          "bytes": 13645
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S5E-DIRECT-01",
+          "assertionId": "S5E-DIRECT-01",
+          "requirementId": "LITE-09-101",
+          "phase": "direct",
+          "step": "the frozen selection is persisted before the Provider call and names the real Memory entries",
+          "actual": {
+            "runnerSawSnapshot": true,
+            "selectedIds": [
+              "mem_s5_02",
+              "mem_s5_01"
+            ],
+            "totalTokens": 23,
+            "strategyVersion": "chat-memory.v1",
+            "turnStatus": "final",
+            "messageStatus": "final",
+            "turnReferencesThatSnapshot": true,
+            "expectsWorkspaceEntry": true,
+            "expectsAgentEntry": true
+          },
+          "expected": {
+            "runnerSawSnapshot": true,
+            "selectedIds": [
+              "mem_s5_02",
+              "mem_s5_01"
+            ],
+            "totalTokens": 23,
+            "strategyVersion": "chat-memory.v1",
+            "turnStatus": "final",
+            "messageStatus": "final",
+            "turnReferencesThatSnapshot": true,
+            "expectsWorkspaceEntry": true,
+            "expectsAgentEntry": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5E-DIRECT-02",
+          "assertionId": "S5E-DIRECT-02",
+          "requirementId": "LITE-09-101",
+          "phase": "direct",
+          "step": "the Provider receives exactly the frozen selection text and the out-of-scope entry never enters it",
+          "actual": {
+            "memoryContextMatchesSnapshotEntries": true,
+            "injectedEntryCount": 2,
+            "contextMentionsWorkspaceEntry": true,
+            "contextMentionsAgentEntry": true,
+            "taskScopedEntrySelected": false,
+            "contextMentionsTaskEntry": false,
+            "otherAgentEntrySelected": false
+          },
+          "expected": {
+            "memoryContextMatchesSnapshotEntries": true,
+            "injectedEntryCount": 2,
+            "contextMentionsWorkspaceEntry": true,
+            "contextMentionsAgentEntry": true,
+            "taskScopedEntrySelected": false,
+            "contextMentionsTaskEntry": false,
+            "otherAgentEntrySelected": false
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "真实驱动生产 ConversationTurnDriver（真实 MemoryEntryRepository 行 + 生产 ChatMemorySelectionPort + 生产 CR-5 快照端口）：runner 在自己的 run() 内读到的快照行已经存在，且其 selected ids 非空、totalTokens 与策略版本（chat-memory.v1）已持久；Turn 行的 context_snapshot_id 指向同一快照；runner 收到的 memoryContext 与「按该快照 ids 重新读 Entry 并用 injectedEntryText 组装」的文本逐字相等（即注入的是冻结内容而不是事后重新选的内容）；workspace 与 agent scope 的 Entry 进入选择，task scope 的 Entry 既不进 ids 也不进注入文本，另一个 Agent 的 agent-scope Entry 同样不进。",
+      "adjacentBehaviorNotProven": "选择端口本身不是模型：它证明「持久化先于调用、注入等于冻结选择、Scope 有界」，不证明模型如何使用该上下文；有界窗口（MAX_FROZEN_HISTORY_MESSAGES）与快照预算字段由既有 driver 测试覆盖，本包只断言本次运行的实际值。",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-09-013",
+      "specification": {
+        "text": "per-Agent contexts remain isolated",
+        "section": "S5 会话执行边界",
+        "sourceFile": "apps/server/src/services/ChatMemorySelectionPort.ts",
+        "sourceLine": 43,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/store/MemoryEntryRepository.ts",
+            "sourceLine": 448,
+            "note": "Entry 的 scope/owner 决定可读性"
+          },
+          {
+            "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+            "sourceLine": 409,
+            "note": "每个 Turn 以自己的 agentId 选择并冻结"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S5",
+        "document": "09-Conversation-Runtime.md",
+        "section": "18. Acceptance Expectations",
+        "requirement": "per-Agent contexts remain isolated;",
+        "exitCriteria": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。",
+        "recordedGap": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
+        "productionEntryPoints": [
+          "apps/server/src/services/GroupTurnDriver.ts",
+          "apps/server/src/services/ConversationTurnDriver.ts",
+          "apps/server/src/services/BoundedGroupService.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "apps/server/src/services/GroupTurnDriver.test.ts",
+          "apps/server/src/routes/conversationRuntime.test.ts"
+        ],
+        "evidence": [
+          "S5-EXECUTION-SOURCE",
+          "S5-101-LOCAL",
+          "S5-102-LOCAL"
+        ]
+      },
+      "baselineSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+      "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s5-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s5-execution-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/receipts.json",
+          "sha256": "d91a63eb6887225f3eea231156a030b82cb7966cf5aabbcbc263cb40df6a76a8",
+          "bytes": 5962
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/stdout.txt",
+          "sha256": "a94808df3569a28c94b5fd2d60dbfea85c878e878c923df4426bea8ebbd7dd03",
+          "bytes": 71
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "47e39d24bcb11fdf97bede8edfcf0611ec017fd600fa33daef7b5505ff7cba21",
+          "bytes": 13645
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S5E-ISOLATION-01",
+          "assertionId": "S5E-ISOLATION-01",
+          "requirementId": "LITE-09-013",
+          "phase": "isolation",
+          "step": "each Agent receives only its own reachable Memory and its own frozen snapshot",
+          "actual": {
+            "turnsObserved": 1,
+            "selectedIds": [
+              "mem_s5_03",
+              "mem_s5_01"
+            ],
+            "seesOwnAgentEntry": true,
+            "seesOtherAgentEntry": false,
+            "seesWorkspaceEntry": true,
+            "contextMentionsOwnEntry": true,
+            "contextMentionsOtherAgentEntry": false,
+            "distinctSnapshots": true,
+            "turnStatus": "final"
+          },
+          "expected": {
+            "turnsObserved": 1,
+            "selectedIds": [
+              "mem_s5_03",
+              "mem_s5_01"
+            ],
+            "seesOwnAgentEntry": true,
+            "seesOtherAgentEntry": false,
+            "seesWorkspaceEntry": true,
+            "contextMentionsOwnEntry": true,
+            "contextMentionsOtherAgentEntry": false,
+            "distinctSnapshots": true,
+            "turnStatus": "final"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5E-ISOLATION-02",
+          "assertionId": "S5E-ISOLATION-02",
+          "requirementId": "LITE-09-013",
+          "phase": "isolation",
+          "step": "the earlier Agent keeps its own snapshot and history unchanged",
+          "actual": {
+            "turnAPointsAtItsOwnSnapshot": true,
+            "snapshotsForTheConversation": 2,
+            "snapshotAgents": [
+              {
+                "agentId": "agent_a",
+                "turnId": "turn_aaaaaaaaaaaaaaaaaaaa"
+              },
+              {
+                "agentId": "agent_b",
+                "turnId": "turn_bbbbbbbbbbbbbbbbbbbb"
+              }
+            ]
+          },
+          "expected": {
+            "turnAPointsAtItsOwnSnapshot": true,
+            "snapshotsForTheConversation": 2,
+            "snapshotAgents": [
+              {
+                "agentId": "agent_a",
+                "turnId": "turn_aaaaaaaaaaaaaaaaaaaa"
+              },
+              {
+                "agentId": "agent_b",
+                "turnId": "turn_bbbbbbbbbbbbbbbbbbbb"
+              }
+            ]
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "同一个 Conversation 里两个 Agent 各跑一个真实 Turn：B 的选择包含自己的 agent-scope Entry 与 workspace Entry，不包含 A 的 agent-scope Entry；B 收到的注入文本提到自己的条目、不提到 A 的条目；两次 Turn 产生两个不同快照，快照行的 (agentId, turnId) 与各自 Turn 一一对应，且 A 的 Turn 仍指向它自己的快照（B 的运行没有改写 A 的冻结上下文）。",
+      "adjacentBehaviorNotProven": "隔离是按 Scope/owner 的可读性证明的；跨会话或跨 Run 的竞争不在本包（09-010 与 09-102 的授权语义覆盖 Workspace 级互斥）。",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-09-102",
+      "specification": {
+        "text": "Chat/Group执行权限不能由串行或提示词代替",
+        "section": "S5 会话执行边界",
+        "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+        "sourceLine": 391,
+        "secondarySources": [
+          {
+            "sourceFile": "apps/server/src/routes/conversationRuntime.ts",
+            "sourceLine": 102,
+            "note": "生产 authority 端口读 WorkspaceAdmissionRepository 的 MODIFYING+GRANTED 行"
+          },
+          {
+            "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+            "sourceLine": 396,
+            "note": "D2=A：拒绝并指向显式 Run 路径，而不是隐式授予 modifying 权限"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S5",
+        "document": "09-Conversation-Runtime.md",
+        "section": "§3; §11.2–§11.6; D1=B/D2=A/D3=off",
+        "requirement": "Chat/Group执行权限不能由串行或提示词代替",
+        "exitCriteria": "无隐式modifying authority，缺可靠只读证据显示不可用/要求显式Run；并发与拒绝路径测试。",
+        "recordedGap": "单interaction串行不证明与其他Conversation/Run共享Workspace权限；driver无显式admission。",
+        "productionEntryPoints": [
+          "apps/server/src/services/GroupTurnDriver.ts",
+          "apps/server/src/services/ConversationTurnDriver.ts"
+        ],
+        "tests": [
+          "apps/server/src/services/GroupTurnDriver.test.ts",
+          "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "apps/server/src/routes/conversationRuntime.test.ts"
+        ],
+        "evidence": [
+          "S5-EXECUTION-SOURCE",
+          "S5-102-LOCAL"
+        ]
+      },
+      "baselineSha": "b6476e1e4c4c460e4fcab9b2b09c05b9d61d3cc3",
+      "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s5-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s5-execution-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 2,
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/receipts.json",
+          "sha256": "d91a63eb6887225f3eea231156a030b82cb7966cf5aabbcbc263cb40df6a76a8",
+          "bytes": 5962
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/stdout.txt",
+          "sha256": "a94808df3569a28c94b5fd2d60dbfea85c878e878c923df4426bea8ebbd7dd03",
+          "bytes": 71
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "47e39d24bcb11fdf97bede8edfcf0611ec017fd600fa33daef7b5505ff7cba21",
+          "bytes": 13645
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S5E-AUTHORITY-01",
+          "assertionId": "S5E-AUTHORITY-01",
+          "requirementId": "LITE-09-102",
+          "phase": "authority",
+          "step": "a chat Turn refuses instead of running beside another modifying holder, before any Provider call",
+          "actual": {
+            "providerCalls": 0,
+            "turnStatus": "failed",
+            "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY",
+            "messageStatus": "failed",
+            "snapshotCreatedForThatTurn": 0,
+            "refusalNamesTheHolder": true,
+            "runtimeEvents": 0
+          },
+          "expected": {
+            "providerCalls": 0,
+            "turnStatus": "failed",
+            "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY",
+            "messageStatus": "failed",
+            "snapshotCreatedForThatTurn": 0,
+            "refusalNamesTheHolder": true,
+            "runtimeEvents": 0
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S5E-AUTHORITY-02",
+          "assertionId": "S5E-AUTHORITY-02",
+          "requirementId": "LITE-09-102",
+          "phase": "authority",
+          "step": "the same Turn runs once the modifying holder is released, so the refusal is about authority only",
+          "actual": {
+            "providerCalls": 1,
+            "status": "final"
+          },
+          "expected": {
+            "providerCalls": 1,
+            "status": "final"
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "当 Workspace 里存在另一个主体的 MODIFYING+GRANTED admission 时，chat Turn 以 CONVERSATION_WORKSPACE_MODIFYING_BUSY 失败，Provider 调用为 0 次、该 Turn 没有创建快照、没有 Runtime Event，失败信息点名了持有者；释放该 admission 后同一个 Turn 正常执行（Provider 调用 1 次、Turn final），因此拒绝来自授权状态而不是任何提示词或串行化副作用。",
+      "adjacentBehaviorNotProven": "本包用生产 authority 端口 + 真实 admission 行证明拒绝路径；真实并发 HTTP 竞争与跨进程时序不在本包（#162 的既有路由测试与 S3 授权包覆盖相邻分支）。",
+      "verdict": "candidate-supported"
+    }
+  ],
+  "matrixProtection": {
+    "passFreezeEdited": false,
+    "passPromotionExecuted": false,
+    "requireClosedExecuted": false,
+    "protectedFiles": [
+      {
+        "path": "docs/implementation/lite-closeout/matrix.json",
+        "worktreeSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "baselineSha256": "81202d2273568177df2ed370cc0f5525cd38f961b65e85d0f7e66feda2001690",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-freeze.json",
+        "worktreeSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "baselineSha256": "7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6",
+        "matchesBaseline": true
+      },
+      {
+        "path": "docs/implementation/lite-closeout/pass-evidence-audit.json",
+        "worktreeSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "baselineSha256": "e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795",
+        "matchesBaseline": true
+      }
+    ],
+    "workingTreeDelta": [
+      "?? agentos/docs/implementation/lite-closeout/S5-execution-candidate-evidence.spec.json",
+      "?? agentos/docs/implementation/lite-closeout/evidence/s5-execution-candidate-evidence-20260914/",
+      "?? agentos/scripts/assemble-lite-candidate-evidence.mjs",
+      "?? agentos/scripts/verify-lite-s5-execution-candidate-evidence.mjs"
+    ],
+    "verdictVocabulary": [
+      "candidate-supported",
+      "insufficient-evidence",
+      "failed"
+    ]
+  }
+}
