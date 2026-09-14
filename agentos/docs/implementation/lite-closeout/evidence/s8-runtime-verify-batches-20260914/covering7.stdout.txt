@@ -1,0 +1,5 @@
+passed      apps/server/src/routes/conversationRuntime.test.ts  rows=0  9 pass / 0 fail / 0 skip  exit=0  2812ms
+passed      apps/server/src/routes/runLifecycle.test.ts  rows=0  55 pass / 0 fail / 0 skip  exit=0  25013ms
+passed      apps/web/src/liteScopeBoundary.test.ts  rows=0  3 pass / 0 fail / 0 skip  exit=0  373ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches-7.json
+batches=3 passed=3 failed=0 provableRequirements=0/0
