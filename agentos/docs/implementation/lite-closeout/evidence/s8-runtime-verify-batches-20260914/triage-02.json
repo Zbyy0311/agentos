@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T13:59:05.389Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 2,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "复合条款必须两部分都有具名断言才接受；只有一半覆盖时按驳回记录缺失的那一半。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-00-010",
+      "clause": "Memory selection is reproducible and explainable;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "coveringAssertion": "MF4I-02 resolve is idempotent per run scope",
+      "supportingAssertions": [
+        {
+          "file": "apps/server/src/routes/memoryRuntime.test.ts",
+          "name": "MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons"
+        }
+      ],
+      "rationale": "可复现性由 MF4I-02 断言体覆盖：同一 scope 二次 resolve 返回 reused=true 且 snapshot.id 与首次相同、库中仅 1 行快照。可解释性由 memory-context by id 断言体覆盖：GET /memory-contexts/:id 返回的 snapshot 带 selected[].reasons 与 exclusions[].reason。两半各有具名断言。",
+      "currentPointer": "同一文件（指针正确，断言名不含条款词元）"
+    },
+    {
+      "id": "LITE-01-011",
+      "clause": "Stage remains optional and bounded;",
+      "verdict": "accepted",
+      "coveringFile": "packages/shared/wf-template-instantiation.test.ts",
+      "coveringAssertion": "WFI-04 optional security review",
+      "rationale": "断言体（已执行，属本批次文件集）：includeOptionalSecurityReview:true 时 payload.stages.length===4，最后一段 key='security-review' 且 agentRole 已绑定、dependsOn=['review']。覆盖「可选」（由入参控制是否追加该段）与「有界」（段数与依赖形状固定）。",
+      "limits": "同一行为的另一份断言 WFT-12（packages/shared/wf-templates.test.ts）不在本批次文件集内、未执行，故不作为取证依据（避免引用未执行断言）。",
+      "line": 55,
+      "currentPointer": "apps/server/src/store/Identity.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-02-013",
+      "clause": "Process exit does not falsely complete a Run;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "coveringAssertion": "consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle",
+      "rationale": "断言体：驱动得到内部 stopped 结果后，断言 stage.status==='running' 且 run.status==='running'，即进程侧停止**不会**把 Run 推向完成或终态。直接覆盖「进程退出不虚假完成 Run」。",
+      "line": 897,
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）"
+    },
+    {
+      "id": "LITE-00-013",
+      "clause": "Group Conversation and workflow templates remain bounded.",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/BoundedGroupService.test.ts",
+      "coveringAssertion": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "supportingAssertions": [
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-05 a per-Agent budget breach ends the interaction"
+        },
+        {
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-08 a same-Agent cycle terminates the interaction with loop-guard"
+        },
+        {
+          "file": "packages/shared/wf-template-instantiation.test.ts",
+          "name": "WFI-10 every template compiles"
+        }
+      ],
+      "rationale": "复合条款两半都有具名断言：群聊有界性由 CR5S-01..17 的预算/环guard/停止断言覆盖（总帽、单 Agent 帽、同 Agent 环、重复内容、跳数、重复提及均以稳定原因终止）；模板有界性由 WFI-10 覆盖（每个 WORKFLOW_TEMPLATES_V1 模板实例化后段数与角色绑定完整）。",
+      "currentPointer": "同一文件（群聊半句覆盖；模板半句在另一文件）"
+    },
+    {
+      "id": "LITE-02-001",
+      "clause": "Message-only turns do not create modifying Runs;",
+      "verdict": "rejected",
+      "candidateFile": "apps/web/src/lib/directConversation.test.ts",
+      "candidateAssertion": "DCUX-P01 chat send produces no Task and no Run",
+      "rationale": "仅有 UI 意图层断言（resolveComposerAction 的 actionCreatesWork===false），它证明的是 Composer 不会把 chat 模式映射成建 Task/Run 的动作，**不证明运行时**在 message-only turn 后不产生 Task/Run 行。全仓检索未找到运行时段言该行为的断言（ConversationTurnDriver.test.ts 的 TD-01..06 也不含此类断言）。按缺口记录：需要一条「chat turn 后 cr_agent_turns 之外的 Task/Run 行数不变」的断言。",
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）"
+    }
+  ],
+  "summary": {
+    "judged": 5,
+    "accepted": 4,
+    "rejected": 1,
+    "cumulativeJudged": 22,
+    "cumulativeAccepted": 12,
+    "cumulativeRejected": 10,
+    "remaining": 84
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
