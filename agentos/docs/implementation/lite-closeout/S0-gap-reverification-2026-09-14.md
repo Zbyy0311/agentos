@@ -45,13 +45,13 @@ code that main actually ships.
 | LITE-09-107 | no compaction recovery state | durable lease, one-running partial unique index, `retry-pending` and bounded attempts | STALE - fixed |
 | LITE-09-108 | no hard-budget gate | `applyCompactionSummary` returns `over-budget`, the driver blocks the Provider call and the retry route is explicit | STALE - fixed |
 | LITE-09-109 | no source revision validation for the summary | the covered range is validated against count and content hash before the summary may stand in | STALE - fixed |
-| LITE-09-110 | the provider-native boundary must be stated | no assertion or artifact enforces or demonstrates it; only the S6 authorization prose mentions it | OPEN - real remaining gap |
+| LITE-09-110 | the provider-native boundary must be stated | `readSummary` adopted raw CLI stdout/stderr as the canonical summary, so a provider announcing its own compaction could be persisted as an AgentOS summary | REAL - closed by this branch, see S6-110-native-boundary-authorization.md |
 | LITE-13-101 | no compaction projection | closed by the companion slice (PR #171): shared read model, Run-scoped projection, web section | FIXED by #171 |
 
 ## What this changes about the remaining work
 
-1. The GAP set is mostly a classification lag, not 25 open implementations. Only
-   `LITE-09-110` still needs an implementation or evidence artifact, and
+1. The GAP set is mostly a classification lag, not 25 open implementations.
+   `LITE-09-110` was the one real remaining defect and is closed by this branch;
    `LITE-09-010` needs executed acceptance rather than new code here.
 2. The rest of the GAP rows are blocked on **executed acceptance** (live Provider and
    browser paths), not on product code. That acceptance is what a promotion review has to
@@ -67,4 +67,3 @@ Each verdict cites a symbol that exists on the audited baseline and was read dir
 gone and that a test or route exists, but it cannot show that the behaviour holds at
 runtime. No verdict here is PASS evidence, and none of the S2/S3/S4/S5 rows are promoted on
 the strength of this audit.
-

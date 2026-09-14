@@ -966,5 +966,20 @@
     },
     "environment": "Read-only source audit on main 07c1773a before implementation; no runtime evidence",
     "limitation": "Confirmed the Run-scoped Inspector carries no compaction projection at all (RuntimeInspector.ts / routes/runtimeInspector.ts / apps/web/src return no match for compaction), while the Conversation-scoped compactions route already existed. Also established the two durable Run->Conversation relations this slice relies on: cr_agent_turns.run_id plus cr_messages.run_id written by ConversationBridgeService.startRunFromMessage, and tasks.source_conversation_id written by createTaskFromMessage. Not PASS evidence; the row stays GAP under the PASS freeze."
+  },
+  {
+    "id": "S6-NATIVE-COMPACTION-BOUNDARY",
+    "baseline": "07c1773ad108c066262753492ba2767bb3fc62d8",
+    "kind": "source-audit",
+    "command": "Read apps/server/src/services/ProviderCompactionSummarizer.ts readSummary/executeSummary and packages/agent-core/src/conversationRunner.ts:98 (const content = streamedContent || log.stdout || log.stderr); rg -n -i compact packages/agent-core/src/adapters",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-09-110"
+    ],
+    "result": {
+      "findings": 2
+    },
+    "environment": "Read-only source audit on main 07c1773a before implementation; no runtime evidence",
+    "limitation": "Finding 1: readSummary adopted the raw CLI stdout or stderr as the canonical summary, so a provider announcing its own compaction could have that announcement persisted as an AgentOS summary and turned into a review Candidate. Finding 2: on the conversation channel the runner falls back to log.stdout || log.stderr whenever no streamed content was emitted, so the same provider text can also become an assistant Message. No adapter currently emits a compaction event type (the registry only produces diagnostic events for unknown or invalid lines), which is why the boundary is structural and had to be enforced explicitly. Not PASS evidence; the row stays GAP under the PASS freeze."
   }
 ]

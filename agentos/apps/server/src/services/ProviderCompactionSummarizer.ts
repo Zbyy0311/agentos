@@ -207,10 +207,16 @@ export class ProviderCompactionSummarizer implements CompactionSummarizerPort {
 
     const onRuntimeEvent = (event: NormalizedCliEvent): void => {
       if (rejectedEventType !== undefined) return;
-      if (!event.type.startsWith('tool.') && event.type !== 'approval.requested') return;
-      rejectedEventType = event.type;
+      // LITE-09-110: a provider that compacts its own context mid-run may be
+      // summarizing something narrower than the frozen source range we handed it,
+      // so a native compaction signal is rejected exactly like an unsanctioned
+      // tool call instead of being accepted as canonical evidence.
+      const nativeCompaction = (event.type === 'diagnostic' || event.type === 'status')
+        && isNativeCompactionNotice(event.type === 'diagnostic' ? event.message : event.label);
+      if (!nativeCompaction && !event.type.startsWith('tool.') && event.type !== 'approval.requested') return;
+      rejectedEventType = nativeCompaction ? 'provider.native_compaction' : event.type;
       controller.abort();
-      rejectRuntimeEvent(new SummarizerRuntimeEventError(event.type));
+      rejectRuntimeEvent(new SummarizerRuntimeEventError(rejectedEventType));
     };
 
     let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
@@ -282,11 +288,23 @@ export class ProviderCompactionSummarizer implements CompactionSummarizerPort {
       );
     }
 
-    const stdout = typeof log.stdout === 'string' ? log.stdout.trim() : '';
-    const stderr = typeof log.stderr === 'string' ? log.stderr.trim() : '';
-    const summary = stdout || stderr;
+    // LITE-09-110: a CLI may report that it compacted its own context. That
+    // notice is the provider's internal behaviour, not an AgentOS summary, so it
+    // is removed from the text that may become canonical. AgentOS publishes only
+    // its own persisted summary, source range, policy, budget and snapshot.
+    const rawStdout = typeof log.stdout === 'string' ? log.stdout : '';
+    const rawStderr = typeof log.stderr === 'string' ? log.stderr : '';
+    const cleanedStdout = stripNativeCompactionNotices(rawStdout);
+    const cleanedStderr = stripNativeCompactionNotices(rawStderr);
+    const summary = cleanedStdout.text || cleanedStderr.text;
     if (!summary) {
-      throw summaryFailure('COMPACTION_SUMMARY_INVALID', 'SUM summarizer returned an empty summary');
+      const noticeCount = cleanedStdout.notices + cleanedStderr.notices;
+      // A run whose only usable output was the provider describing its own
+      // compaction fails closed instead of publishing provider internals as a
+      // canonical summary or a review Candidate.
+      throw summaryFailure('COMPACTION_SUMMARY_INVALID', noticeCount === 0
+        ? 'SUM summarizer returned an empty summary'
+        : 'SUM summarizer returned only ' + noticeCount + ' provider-native compaction notice(s)');
     }
 
     if (!Number.isFinite(summaryMaxTokens) || summaryMaxTokens < 0 || summary.length > summaryMaxTokens * 4) {
@@ -297,6 +315,50 @@ export class ProviderCompactionSummarizer implements CompactionSummarizerPort {
     }
     return { summary };
   }
+}
+
+/**
+ * LITE-09-110: the provider-native compaction boundary.
+ *
+ * Codex, Kimi and OpenCode all compact their own context when it grows. That is
+ * the provider's internal behaviour and AgentOS deliberately does not model it:
+ * the only canonical compaction evidence is the summary, source range, policy,
+ * budget and context snapshot AgentOS persists itself. A CLI that announces its
+ * own compaction must therefore not have that announcement published as an
+ * AgentOS summary or turned into a review Candidate.
+ *
+ * The patterns are conservative and line-anchored, so ordinary prose that merely
+ * mentions compaction is not swallowed.
+ */
+const NATIVE_COMPACTION_NOTICE_PATTERNS: readonly RegExp[] = [
+  /^\s*(?:\[[^\]]{0,40}\]\s*)?(?:context|history|conversation|session)\s+(?:is\s+|has\s+been\s+)?(?:auto-?)?compacted\b/i,
+  /^\s*(?:auto-?)?compact(?:ing|ion)\s+(?:of\s+)?(?:the\s+)?(?:context|history|conversation|session|messages?|tokens?)\b/i,
+  /^\s*(?:warning|warn|info|note)\b[^:]{0,40}:\s*(?:auto-?)?compact(?:ing|ion)\b/i,
+  /^\s*(?:auto-?)?compact(?:ing|ion)\b[^:]{0,40}\b(?:context|history|tokens?|messages?)\b/i,
+];
+
+export function isNativeCompactionNotice(line: string): boolean {
+  return NATIVE_COMPACTION_NOTICE_PATTERNS.some(pattern => pattern.test(line));
+}
+
+/**
+ * Removes provider-native compaction notices from CLI output. Returns the
+ * remaining text together with how many notice lines were discarded, so the
+ * caller can fail closed when nothing usable is left instead of publishing
+ * provider internals as canonical evidence.
+ */
+export function stripNativeCompactionNotices(text: string): { readonly text: string; readonly notices: number } {
+  if (!text) return { text: '', notices: 0 };
+  let notices = 0;
+  const kept: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (isNativeCompactionNotice(line)) {
+      notices += 1;
+      continue;
+    }
+    kept.push(line);
+  }
+  return { text: kept.join('\n').trim(), notices };
 }
 
 function extractExitCode(error: unknown): number | null | undefined {

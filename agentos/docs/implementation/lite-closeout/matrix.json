@@ -4883,11 +4883,17 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
-        "packages/agent-core/src/conversationRunner.ts"
+        "packages/agent-core/src/conversationRunner.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "新AgentOS压缩尚未实现，必须明确native诊断边界。",
+      "tests": [
+        "apps/server/src/services/ProviderCompactionSummarizer.test.ts",
+        "apps/server/src/services/ConversationCompactionService.test.ts"
+      ],
+      "evidence": [
+        "S6-NATIVE-COMPACTION-BOUNDARY"
+      ],
+      "finding": "基线反证：CLI输出被原文当作canonical摘要（readSummary使用log.stdout||log.stderr），且ConversationRunner在无流式内容时同样回退到原始stdout/stderr，因此Provider自身压缩通知可成为AgentOS摘要并生成候选。已修：stripNativeCompactionNotices在摘要文本层移除native压缩通知行，仅剩通知时按COMPACTION_SUMMARY_INVALID失败关闭（不发布、不建候选、不发事件）；运行时事件层中diagnostic/status一旦报告native压缩即以provider.native_compaction拒绝整次运行，因为被压缩的上下文可能窄于冻结来源范围。测试：ProviderCompactionSummarizer.test.ts 三个文本层用例+一个运行时事件用例；ConversationCompactionService.test.ts 端到端证明native-only输出不产生摘要、候选或Workspace Event。仍缺：三个Provider真实CLI若将来新增native压缩事件类型需按此边界登记；PASS提升在冻结期内禁止，故保持GAP。",
       "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。"
     },
     {
