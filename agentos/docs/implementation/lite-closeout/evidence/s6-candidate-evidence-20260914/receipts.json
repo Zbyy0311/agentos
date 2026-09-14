@@ -1,0 +1,642 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T12:34:11.294Z",
+  "model": "gpt-5.6-luna",
+  "phases": {
+    "real": {
+      "outcome": "published",
+      "elapsedMs": 46434
+    },
+    "guard": {
+      "claimRefusalMessage": "COMPACTION_CONFLICT",
+      "guardTasksAfterRepeat": [
+        "retry-pending",
+        "retry-pending"
+      ],
+      "guardPublished": false
+    }
+  },
+  "counts": {
+    "total": 33,
+    "passed": 33,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S6E-REAL-01",
+      "requirementId": "LITE-07-105",
+      "phase": "real",
+      "step": "a real Provider compaction publishes a durable task",
+      "actual": "published",
+      "expected": "published",
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-02",
+      "requirementId": "LITE-09-106",
+      "phase": "real",
+      "step": "the summary was produced by a real Provider process",
+      "actual": {
+        "summaryNonEmpty": true
+      },
+      "expected": {
+        "summaryNonEmpty": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-03",
+      "requirementId": "LITE-09-106",
+      "phase": "real",
+      "step": "the frozen Provider identity is recorded on the task",
+      "actual": {
+        "adapterId": "cli.codex",
+        "adapterVersion": "1.0.0",
+        "providerType": "codex",
+        "model": "gpt-5.6-luna"
+      },
+      "expected": {
+        "adapterId": "cli.codex",
+        "adapterVersion": "1.0.0",
+        "providerType": "codex",
+        "model": "gpt-5.6-luna"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-04",
+      "requirementId": "LITE-09-106",
+      "phase": "real",
+      "step": "the summary ran under the allowlisted read-only CLI profile",
+      "actual": {
+        "readOnly": true,
+        "skipGitRepoCheck": true
+      },
+      "expected": {
+        "readOnly": true,
+        "skipGitRepoCheck": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-05",
+      "requirementId": "LITE-09-105",
+      "phase": "real",
+      "step": "the published summary is non-empty and inside the recorded budget",
+      "actual": {
+        "lengthOk": true,
+        "summaryHashMatches": true
+      },
+      "expected": {
+        "lengthOk": true,
+        "summaryHashMatches": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-06",
+      "requirementId": "LITE-09-105",
+      "phase": "real",
+      "step": "the source range it covered is recorded",
+      "actual": {
+        "sourceMessageCount": 4,
+        "hasStart": true,
+        "hasEnd": true,
+        "hasSourceHash": true
+      },
+      "expected": {
+        "sourceMessageCount": 4,
+        "hasStart": true,
+        "hasEnd": true,
+        "hasSourceHash": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-07",
+      "requirementId": "LITE-07-105",
+      "phase": "real",
+      "step": "publishing records a review-required agent-derived Candidate",
+      "actual": {
+        "decision": "review-required",
+        "outcome": "review-required",
+        "authority": "agent-derived",
+        "scope": "conversation"
+      },
+      "expected": {
+        "decision": "review-required",
+        "outcome": "review-required",
+        "authority": "agent-derived",
+        "scope": "conversation"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-08",
+      "requirementId": "LITE-07-105",
+      "phase": "real",
+      "step": "the fact and its canonical Workspace Event are one causal record",
+      "actual": {
+        "type": "memory.candidate_created",
+        "causationId": "snapshot_01M2FYGVA1Z41V511B1153ADW8",
+        "payloadCandidateMatches": true
+      },
+      "expected": {
+        "type": "memory.candidate_created",
+        "causationId": "snapshot_01M2FYGVA1Z41V511B1153ADW8",
+        "payloadCandidateMatches": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-09",
+      "requirementId": "LITE-07-105",
+      "phase": "real",
+      "step": "a repeat over the same source converges without a second fact",
+      "actual": {
+        "outcome": "published",
+        "sameTask": true,
+        "tasks": 1
+      },
+      "expected": {
+        "outcome": "published",
+        "sameTask": true,
+        "tasks": 1
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-10",
+      "requirementId": "LITE-09-104",
+      "phase": "real",
+      "step": "the lite-v1 policy records the versioned thresholds",
+      "actual": {
+        "policyVersion": "lite-v1",
+        "triggerRatio": 0.7,
+        "targetRatio": 0.5,
+        "minRecentMessages": 8,
+        "summaryMaxTokens": 2048,
+        "timeoutMs": 120000,
+        "maxAutomaticRetries": 1
+      },
+      "expected": {
+        "policyVersion": "lite-v1",
+        "triggerRatio": 0.7,
+        "targetRatio": 0.5,
+        "minRecentMessages": 8,
+        "summaryMaxTokens": 2048,
+        "timeoutMs": 120000,
+        "maxAutomaticRetries": 1
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-11",
+      "requirementId": "LITE-09-104",
+      "phase": "real",
+      "step": "the task records the budget composition and estimator that produced it",
+      "actual": {
+        "policyVersion": "lite-v1",
+        "estimatorVersion": "lite-v1-chars4",
+        "providerContextTokens": 12000,
+        "outputReserveTokens": 2048,
+        "applicationBudgetSource": "provider",
+        "triggerRatio": 0.7,
+        "targetRatio": 0.5,
+        "retainedRecentMessages": 8,
+        "taskEstimatorVersion": "lite-v1-chars4"
+      },
+      "expected": {
+        "policyVersion": "lite-v1",
+        "estimatorVersion": "lite-v1-chars4",
+        "providerContextTokens": 12000,
+        "outputReserveTokens": 2048,
+        "applicationBudgetSource": "provider",
+        "triggerRatio": 0.7,
+        "targetRatio": 0.5,
+        "retainedRecentMessages": 8,
+        "taskEstimatorVersion": "lite-v1-chars4"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-12",
+      "requirementId": "LITE-09-110",
+      "phase": "real",
+      "step": "only the AgentOS-persisted summary is canonical",
+      "actual": {
+        "persistedSummaries": 1,
+        "matchesTask": true,
+        "nativeRows": 0
+      },
+      "expected": {
+        "persistedSummaries": 1,
+        "matchesTask": true,
+        "nativeRows": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-13",
+      "requirementId": "LITE-09-105",
+      "phase": "real",
+      "step": "the Messages the summary covered survive the published compaction unchanged",
+      "actual": {
+        "rowsBefore": 12,
+        "rowsAfter": 12,
+        "digestUnchanged": true,
+        "distinctStatuses": [
+          "final"
+        ]
+      },
+      "expected": {
+        "rowsBefore": 12,
+        "rowsAfter": 12,
+        "digestUnchanged": true,
+        "distinctStatuses": [
+          "final"
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-14",
+      "requirementId": "LITE-09-106",
+      "phase": "real",
+      "step": "the summary run is read-only sandboxed with no approval or tool bypass",
+      "actual": {
+        "args": [
+          "exec",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check"
+        ],
+        "sandboxReadOnly": true,
+        "bypassFlagsPresent": [],
+        "approvalDecisions": 0,
+        "nonCandidateEvents": 0
+      },
+      "expected": {
+        "args": [
+          "exec",
+          "--sandbox",
+          "read-only",
+          "--skip-git-repo-check"
+        ],
+        "sandboxReadOnly": true,
+        "bypassFlagsPresent": [],
+        "approvalDecisions": 0,
+        "nonCandidateEvents": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-15",
+      "requirementId": "LITE-07-105",
+      "phase": "real",
+      "step": "publishing a summary does not create a Memory Entry: availability is not approval",
+      "actual": {
+        "memoryEntries": 0,
+        "candidateDecision": "review-required",
+        "candidateOutcome": "review-required"
+      },
+      "expected": {
+        "memoryEntries": 0,
+        "candidateDecision": "review-required",
+        "candidateOutcome": "review-required"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-REAL-16",
+      "requirementId": "LITE-09-105",
+      "phase": "real",
+      "step": "only the bounded old prefix is compacted: the recent window stays uncompressed",
+      "actual": {
+        "totalMessages": 12,
+        "sourceMessageCount": 4,
+        "retainedMessages": 8,
+        "minRecentMessages": 8,
+        "sourceStartIsOldest": true,
+        "sourceEndIsLastCoveredMessage": true
+      },
+      "expected": {
+        "totalMessages": 12,
+        "sourceMessageCount": 4,
+        "retainedMessages": 8,
+        "minRecentMessages": 8,
+        "sourceStartIsOldest": true,
+        "sourceEndIsLastCoveredMessage": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-01",
+      "requirementId": "LITE-09-105",
+      "phase": "guard",
+      "step": "an oversized summary is refused, never published",
+      "actual": {
+        "outcome": "retry-pending",
+        "failureCode": "COMPACTION_SUMMARY_INVALID",
+        "published": false,
+        "candidates": 0
+      },
+      "expected": {
+        "outcome": "retry-pending",
+        "failureCode": "COMPACTION_SUMMARY_INVALID",
+        "published": false,
+        "candidates": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-02",
+      "requirementId": "LITE-09-107",
+      "phase": "guard",
+      "step": "the schema carries a one-running-holder index per Conversation",
+      "actual": {
+        "unwrapped": "CREATE UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = 'running'",
+        "isUnique": true,
+        "scopedToRunning": true
+      },
+      "expected": {
+        "unwrapped": "CREATE UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = 'running'",
+        "isUnique": true,
+        "scopedToRunning": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-03",
+      "requirementId": "LITE-09-107",
+      "phase": "guard",
+      "step": "a second running holder for the same Conversation is refused by the store",
+      "actual": {
+        "refused": true,
+        "refusalIsStable": true
+      },
+      "expected": {
+        "refused": true,
+        "refusalIsStable": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-05",
+      "requirementId": "LITE-09-107",
+      "phase": "guard",
+      "step": "exactly one running holder remains after the refusal",
+      "actual": {
+        "running": 1
+      },
+      "expected": {
+        "running": 1
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-04",
+      "requirementId": "LITE-09-107",
+      "phase": "guard",
+      "step": "a pending attempt is not duplicated by another evaluation",
+      "actual": {
+        "outcome": "retry-pending",
+        "published": false,
+        "running": 0
+      },
+      "expected": {
+        "outcome": "retry-pending",
+        "published": false,
+        "running": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-06",
+      "requirementId": "LITE-07-105",
+      "phase": "guard",
+      "step": "a refused summary leaves no Candidate, no published row and no canonical Event behind",
+      "actual": {
+        "guardCandidates": 0,
+        "guardPublished": false,
+        "guardTasksWithSummary": 0,
+        "compactionEvents": 1
+      },
+      "expected": {
+        "guardCandidates": 0,
+        "guardPublished": false,
+        "guardTasksWithSummary": 0,
+        "compactionEvents": 1
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-BUDGET-01",
+      "requirementId": "LITE-09-108",
+      "phase": "budget",
+      "step": "summary plus tail beyond the hard budget is refused",
+      "actual": {
+        "kind": "over-budget"
+      },
+      "expected": {
+        "kind": "over-budget"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-BUDGET-02",
+      "requirementId": "LITE-09-108",
+      "phase": "budget",
+      "step": "the refusal never truncates or drops the messages",
+      "actual": {
+        "historyLength": 3,
+        "contents": [
+          1,
+          1,
+          400
+        ]
+      },
+      "expected": {
+        "historyLength": 3,
+        "contents": [
+          1,
+          1,
+          400
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-BUDGET-03",
+      "requirementId": "LITE-09-108",
+      "phase": "budget",
+      "step": "the same history inside the budget applies the summary",
+      "actual": {
+        "kind": "applied",
+        "summarizedMessages": 2
+      },
+      "expected": {
+        "kind": "applied",
+        "summarizedMessages": 2
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-STALE-01",
+      "requirementId": "LITE-09-109",
+      "phase": "stale",
+      "step": "a summary whose covered Message was edited is refused",
+      "actual": {
+        "kind": "stale-source",
+        "reason": "source-content-changed"
+      },
+      "expected": {
+        "kind": "stale-source",
+        "reason": "source-content-changed"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-01",
+      "requirementId": "LITE-09-104",
+      "phase": "durable",
+      "step": "a versioned policy row cannot be rewritten, so an old budget keeps its interpretation",
+      "actual": {
+        "refusedWithCode": true,
+        "storedMaxTokens": 2048
+      },
+      "expected": {
+        "refusedWithCode": true,
+        "storedMaxTokens": 2048
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-02",
+      "requirementId": "LITE-09-105",
+      "phase": "durable",
+      "step": "a published summary cannot be rewritten after it became canonical",
+      "actual": {
+        "refusedWithCode": true,
+        "summaryHashUnchanged": true
+      },
+      "expected": {
+        "refusedWithCode": true,
+        "summaryHashUnchanged": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-03",
+      "requirementId": "LITE-09-106",
+      "phase": "durable",
+      "step": "the frozen Provider identity cannot be rewritten after the summary was published",
+      "actual": {
+        "refusedWithCode": true,
+        "storedModel": "gpt-5.6-luna"
+      },
+      "expected": {
+        "refusedWithCode": true,
+        "storedModel": "gpt-5.6-luna"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-04",
+      "requirementId": "LITE-07-105",
+      "phase": "durable",
+      "step": "one published summary per Conversation source: a second publish of the same source is refused",
+      "actual": {
+        "indexIsUnique": true,
+        "scopedToPublished": true,
+        "refusedByUnique": true,
+        "publishedRowsInConversation": 1
+      },
+      "expected": {
+        "indexIsUnique": true,
+        "scopedToPublished": true,
+        "refusedByUnique": true,
+        "publishedRowsInConversation": 1
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-DB-05",
+      "requirementId": "LITE-09-107",
+      "phase": "durable",
+      "step": "a publish from a lease that no longer holds the attempt is refused",
+      "actual": {
+        "refused": true,
+        "stableCode": true,
+        "rowStillRunning": "running"
+      },
+      "expected": {
+        "refused": true,
+        "stableCode": true,
+        "rowStillRunning": "running"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-TURNGATE-01",
+      "requirementId": "LITE-09-108",
+      "phase": "turngate",
+      "step": "an over-budget summary and tail block the Provider call before any reservation",
+      "actual": {
+        "error": {
+          "type": "ConversationTurnDriverError",
+          "code": "TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED"
+        },
+        "runnerCalls": 0,
+        "messagesAdded": 0,
+        "turnsAdded": 0,
+        "digestsUnchanged": true
+      },
+      "expected": {
+        "error": {
+          "type": "ConversationTurnDriverError",
+          "code": "TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED"
+        },
+        "runnerCalls": 0,
+        "messagesAdded": 0,
+        "turnsAdded": 0,
+        "digestsUnchanged": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-TURNGATE-02",
+      "requirementId": "LITE-09-105",
+      "phase": "turngate",
+      "step": "the real published summary reaches the Provider context and replaces exactly the covered Messages",
+      "actual": {
+        "status": "completed",
+        "runnerCalls": 1,
+        "summaryEntryIdPresent": true,
+        "summaryTextInContext": true,
+        "coveredIdsStillInContext": [],
+        "tailIdsStillInContext": [
+          "msg_004",
+          "msg_005",
+          "msg_006",
+          "msg_007"
+        ]
+      },
+      "expected": {
+        "status": "completed",
+        "runnerCalls": 1,
+        "summaryEntryIdPresent": true,
+        "summaryTextInContext": true,
+        "coveredIdsStillInContext": [],
+        "tailIdsStillInContext": [
+          "msg_004",
+          "msg_005",
+          "msg_006",
+          "msg_007"
+        ]
+      },
+      "outcome": "passed"
+    }
+  ]
+}

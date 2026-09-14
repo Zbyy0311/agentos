@@ -1,0 +1,2 @@
+S6_CANDIDATE_EVIDENCE: passed
+  model=gpt-5.6-luna receipts=33 passed=33 failed=0
