@@ -8,6 +8,7 @@ import type { AddressInfo } from 'node:net';
 import { SqliteStore } from '../store/SqliteStore.js';
 import { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { createConversationRuntimeRoutes } from './conversationRuntime.js';
+import { createRuntimeInspectorRoutes } from './runtimeInspector.js';
 
 function createProjectRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'agentos-cr-compaction-'));
@@ -30,6 +31,9 @@ async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<
   try {
     app.use(express.json());
     app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
+    // LITE-13-101: the Run-scoped Inspector is mounted beside the Conversation
+    // runtime so one test can prove both surfaces read the same durable rows.
+    app.use('/api/workspaces/:workspaceId/runtime', createRuntimeInspectorRoutes(store, new WorkspaceManager(store)));
     await new Promise<void>(resolve => server.once('listening', resolve));
     const address = server.address() as AddressInfo;
     await run(`http://127.0.0.1:${address.port}/api/workspaces/workspace-a/runtime`, store);
@@ -161,6 +165,84 @@ test('S6: the automatic trigger compacts a long Conversation before the next Tur
       assert.equal(retryBody.policyVersion, 'lite-v1');
       const afterRetry = db.prepare('SELECT COUNT(*) AS n FROM conversation_compactions').get() as { n: number | bigint };
       assert.equal(Number(afterRetry.n), 1, 'a retry must not fabricate a second task');
+
+      // LITE-13-101 through the Run-scoped Runtime Inspector: a Run started from
+      // this Conversation must explain the same compaction the Conversation view
+      // explains, naming the summary and the Snapshot that received it. The Run
+      // is placed through the Task's source Conversation, which is the relation
+      // the bridge actually writes, and the projection says so via linkVia.
+      // A Run created for a Task that came from this Conversation, where the
+      // Message is bound to the Task but not to the Run: the Task source
+      // Conversation is the only relation, and the projection must say so.
+      const createdTask = await postJson(`${baseUrl}/messages/${seededIds[0]}/create-task`, {});
+      assert.equal(createdTask.status, 201);
+      const sourceRun = store.runRepository().insert({
+        workspaceId: 'workspace-a', taskId: createdTask.json.task.id, origin: 'v2_api', createdBy: 'user',
+      });
+      const runInspector = await fetch(`${baseUrl}/runs/${sourceRun.id}/inspector`).then(r => r.json()) as {
+        projection: {
+          compaction: {
+            conversationId: string;
+            linkVia: string;
+            policy: { policyVersion: string; triggerRatio: number } | null;
+            latest: { id: string; status: string; summary: string | null; sourceMessageCount: number } | null;
+            adoptions: Array<{ snapshotId: string; summaryId: string }>;
+            rejections: unknown[];
+            thisTurn: unknown;
+          } | null;
+        };
+      };
+      const compactionProjection = runInspector.projection.compaction;
+      assert.ok(compactionProjection, 'a Run started from a compacted Conversation must explain it');
+      assert.equal(compactionProjection.conversationId, conversationId);
+      assert.equal(compactionProjection.linkVia, 'task');
+      assert.equal(compactionProjection.policy?.policyVersion, 'lite-v1');
+      assert.equal(compactionProjection.policy?.triggerRatio, 0.7);
+      assert.equal(compactionProjection.latest?.id, task.id);
+      assert.equal(compactionProjection.latest?.status, 'published');
+      assert.ok((compactionProjection.latest?.summary ?? '').length > 0, 'the Inspector exposes the published summary');
+      assert.equal(compactionProjection.latest?.sourceMessageCount, task.source_message_count);
+      assert.ok(compactionProjection.adoptions.length >= 1, 'every Turn that received the summary is named');
+      for (const adoption of compactionProjection.adoptions) {
+        assert.equal(adoption.summaryId, compactionProjection.latest?.id,
+          'an adoption can only name a summary this Conversation actually published');
+      }
+      assert.equal(compactionProjection.thisTurn, null, 'this Run has no Turn-backed snapshot of its own');
+
+      // The same read model backs both surfaces, so their task sets cannot drift.
+      const conversationView = await fetch(`${baseUrl}/conversations/${conversationId}/compactions`).then(r => r.json()) as {
+        tasks: Array<{ id: string }>;
+      };
+      assert.deepEqual(
+        conversationView.tasks.map(entry => entry.id),
+        [compactionProjection.latest?.id],
+      );
+
+      // A Run that no durable relation places in a Conversation is reported as
+      // not placed, never as an empty compaction story.
+      const orphanTask = store.taskRepository().insert({ workspaceId: 'workspace-a', title: 'Orphan', createdBy: 'user' });
+      const orphanRun = store.runRepository().insert({
+        workspaceId: 'workspace-a', taskId: orphanTask.id, origin: 'v2_api', createdBy: 'user',
+      });
+      const orphanInspector = await fetch(`${baseUrl}/runs/${orphanRun.id}/inspector`).then(r => r.json()) as {
+        projection: { compaction: unknown };
+      };
+      assert.equal(orphanInspector.projection.compaction, null);
+
+      // The CR-4a start-run entry binds the Message to the Run it creates, so a
+      // Run started that way is placed through its Message and explains the very
+      // same compaction through the very same shared read model.
+      const startedRun = await postJson(`${baseUrl}/messages/${seededIds[1]}/start-run`, {});
+      assert.equal(startedRun.status, 201);
+      const startedInspector = await fetch(`${baseUrl}/runs/${startedRun.json.run.id}/inspector`).then(r => r.json()) as {
+        projection: {
+          compaction: { linkVia: string; latest: { id: string } | null; adoptions: unknown[] } | null;
+        };
+      };
+      assert.equal(startedInspector.projection.compaction?.linkVia, 'message',
+        'the bridge binds message.run_id, so the Message relation is the one used');
+      assert.equal(startedInspector.projection.compaction?.latest?.id, task.id);
+      assert.ok((startedInspector.projection.compaction?.adoptions.length ?? 0) >= 1);
     });
   } finally {
     delete process.env.AGENTOS_FORCE_MOCK;

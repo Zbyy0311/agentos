@@ -9,6 +9,15 @@ import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js'
 import type { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
 import { RuntimeEventRepositoryError } from '../store/RuntimeEventRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
+import {
+  projectConversationCompaction,
+  resolveRunConversation,
+  type CompactionInspectorAdoption,
+  type CompactionInspectorPolicy,
+  type CompactionInspectorRejection,
+  type CompactionInspectorTask,
+  type RunConversationLinkVia,
+} from './ConversationCompactionInspector.js';
 
 /**
  * Lite Runtime Inspector — read-only query projection.
@@ -162,6 +171,46 @@ export interface InspectorRunOverview {
   readonly version: number;
 }
 
+/**
+ * LITE-13-101: why the Conversation behind this Run compacted, and which
+ * Turn/Snapshot actually received the summary.
+ *
+ * The projection is deliberately explicit about its own strength. The Run is
+ * placed in a Conversation through a durable relation, and which relation it
+ * was is reported as linkVia instead of being presented as equally solid. A Run
+ * that cannot be placed, or a Conversation that never compacted, is reported as
+ * absent - the Inspector never invents a compaction story.
+ */
+export interface InspectorCompactionSummary {
+  readonly conversationId: string;
+  readonly linkVia: RunConversationLinkVia;
+  /** The Turn that carried this Run, when the link is Turn-backed. */
+  readonly turnId: string | null;
+  /** The frozen Context Snapshot recorded on that Turn. */
+  readonly contextSnapshotId: string | null;
+  /** Immutable policy of the newest task; null until a task exists. */
+  readonly policy: CompactionInspectorPolicy | null;
+  /** Newest task by creation, published or not. */
+  readonly latest: CompactionInspectorTask | null;
+  readonly tasks: readonly CompactionInspectorTask[];
+  /** True when older tasks were dropped from this bounded projection. */
+  readonly tasksTruncated: boolean;
+  readonly adoptions: readonly CompactionInspectorAdoption[];
+  readonly rejections: readonly CompactionInspectorRejection[];
+  /**
+   * What THIS Run's own Turn/Snapshot did with a summary: the summary id it
+   * received, or the durable reason it refused one. Both read from the one
+   * snapshot row; null means this Run's Turn recorded no verdict.
+   */
+  readonly thisTurn: {
+    readonly snapshotId: string;
+    readonly appliedSummaryId: string | null;
+    readonly summarizedMessages: number | null;
+    readonly rejectedSummaryId: string | null;
+    readonly rejectedReason: string | null;
+  } | null;
+}
+
 export interface InspectorProjection {
   readonly overview: InspectorRunOverview;
   readonly stages: readonly InspectorStageSummary[];
@@ -172,6 +221,8 @@ export interface InspectorProjection {
   /** Event sequence the projection is consistent through; clients resume after it. */
   readonly highWatermark: number;
   readonly memoryContext: InspectorMemoryContextSummary | null;
+  /** LITE-13-101: null when this Run cannot be placed in a Conversation. */
+  readonly compaction: InspectorCompactionSummary | null;
   readonly truncated: boolean;
 }
 
@@ -358,9 +409,62 @@ export class RuntimeInspector {
       events: projected,
       highWatermark,
       memoryContext,
+      compaction: toCompactionSummary(this.db, query.workspaceId, query.runId),
       truncated,
     };
   }
+}
+
+/** Bounded like every other Inspector list; the newest tasks are the relevant ones. */
+const MAX_INSPECTOR_COMPACTION_TASKS = 20;
+
+/**
+ * LITE-13-101: reads the compaction explanation for the Conversation this Run
+ * belongs to. Returns null when no durable relation places the Run in a
+ * Conversation, which the view must show as not placed rather than as an empty
+ * compaction story.
+ */
+function toCompactionSummary(
+  db: TransactionDatabase,
+  workspaceId: string,
+  runId: string,
+): InspectorCompactionSummary | null {
+  const link = resolveRunConversation(db, workspaceId, runId);
+  if (link === undefined) return null;
+  const explanation = projectConversationCompaction(db, workspaceId, link.conversationId);
+  const tasks = explanation.tasks.slice(-MAX_INSPECTOR_COMPACTION_TASKS);
+  const latest = tasks.length === 0 ? null : tasks[tasks.length - 1]!;
+  const policy = latest === null
+    ? null
+    : explanation.policies.find(candidate => candidate.id === latest.policyId) ?? null;
+  // The verdict of THIS Run is read from its own snapshot row through the
+  // Conversation-level lists, so a Run can never borrow another Turn's adoption.
+  const snapshotId = link.contextSnapshotId;
+  const adoption = snapshotId === null
+    ? undefined
+    : explanation.adoptions.find(entry => entry.snapshotId === snapshotId);
+  const rejection = snapshotId === null
+    ? undefined
+    : explanation.rejections.find(entry => entry.snapshotId === snapshotId);
+  return {
+    conversationId: link.conversationId,
+    linkVia: link.via,
+    turnId: link.turnId,
+    contextSnapshotId: snapshotId,
+    policy,
+    latest,
+    tasks,
+    tasksTruncated: explanation.tasks.length > tasks.length,
+    adoptions: explanation.adoptions,
+    rejections: explanation.rejections,
+    thisTurn: snapshotId === null ? null : {
+      snapshotId,
+      appliedSummaryId: adoption?.summaryId ?? null,
+      summarizedMessages: adoption?.summarizedMessages ?? null,
+      rejectedSummaryId: rejection?.summaryId ?? null,
+      rejectedReason: rejection?.reason ?? null,
+    },
+  };
 }
 
 function toStageSummary(stage: ReturnType<RunStageRepository['listByRun']>[number]): InspectorStageSummary {

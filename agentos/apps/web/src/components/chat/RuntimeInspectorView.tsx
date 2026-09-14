@@ -61,6 +61,68 @@ export interface InspectorEventDto {
  */
 export type InspectorMemoryDto = MemoryExplanationSnapshotDto;
 
+/**
+ * LITE-13-101: the compaction explanation for the Conversation behind this Run.
+ * The view renders the frozen budget inputs (trigger value against threshold),
+ * the policy version, the source range, the summary, the attempts/failure state
+ * and the Turn/Snapshot that actually received the summary. It never recomputes
+ * a threshold: it shows what the durable row recorded.
+ */
+export interface InspectorCompactionTaskDto {
+  readonly id: string;
+  readonly status: string;
+  readonly sourceMessageCount: number;
+  readonly sourceStartMessageId: string | null;
+  readonly sourceEndMessageId: string | null;
+  readonly summary: string | null;
+  readonly summaryTokenEstimate: number | null;
+  readonly candidateId: string | null;
+  readonly model: string | null;
+  readonly adapterId: string | null;
+  readonly attempts: number;
+  readonly failureCode: string | null;
+  readonly failureMessage: string | null;
+  readonly publishedAt: string | null;
+  readonly budget: Record<string, unknown>;
+}
+
+export interface InspectorCompactionDto {
+  readonly conversationId: string;
+  readonly linkVia: 'turn' | 'message' | 'task';
+  readonly turnId: string | null;
+  readonly contextSnapshotId: string | null;
+  readonly policy: {
+    readonly policyVersion: string;
+    readonly triggerRatio: number;
+    readonly targetRatio: number;
+    readonly minRecentMessages: number;
+    readonly summaryMaxTokens: number;
+    readonly maxAutomaticRetries: number;
+  } | null;
+  readonly latest: InspectorCompactionTaskDto | null;
+  readonly tasks: readonly InspectorCompactionTaskDto[];
+  readonly tasksTruncated: boolean;
+  readonly adoptions: readonly {
+    readonly snapshotId: string;
+    readonly turnId: string | null;
+    readonly summaryId: string;
+    readonly summarizedMessages: number | null;
+  }[];
+  readonly rejections: readonly {
+    readonly snapshotId: string;
+    readonly turnId: string | null;
+    readonly summaryId: string;
+    readonly reason: string;
+  }[];
+  readonly thisTurn: {
+    readonly snapshotId: string;
+    readonly appliedSummaryId: string | null;
+    readonly summarizedMessages: number | null;
+    readonly rejectedSummaryId: string | null;
+    readonly rejectedReason: string | null;
+  } | null;
+}
+
 export interface InspectorProjectionDto {
   readonly overview: InspectorRunOverviewDto;
   readonly stages: readonly InspectorStageDto[];
@@ -68,6 +130,7 @@ export interface InspectorProjectionDto {
   readonly events: readonly InspectorEventDto[];
   readonly highWatermark: number;
   readonly memoryContext: InspectorMemoryDto | null;
+  readonly compaction?: InspectorCompactionDto | null;
   readonly truncated: boolean;
 }
 
@@ -106,9 +169,53 @@ function formatDuration(ms: number | null): string {
   return `${(ms / 1000).toFixed(1)} s`;
 }
 
+/** Read a recorded budget input; a missing or non-numeric member stays absent. */
+function budgetNumber(budget: Record<string, unknown>, key: string): number | null {
+  const value = budget[key];
+  return typeof value === 'number' && Number.isFinite(value) ? value : null;
+}
+
+function budgetText(budget: Record<string, unknown>, key: string): string | null {
+  const value = budget[key];
+  return typeof value === 'string' && value.length > 0 ? value : null;
+}
+
+/**
+ * LITE-13-101: the frozen inputs of the evaluation are shown as recorded, so a
+ * reader sees the trigger value against its budget instead of a conclusion.
+ * Nothing here recomputes the decision.
+ */
+function CompactionBudgetFields(props: { readonly task: InspectorCompactionTaskDto }) {
+  const { budget } = props.task;
+  const historyTokens = budgetNumber(budget, 'historyTokens');
+  const historyBudgetTokens = budgetNumber(budget, 'historyBudgetTokens');
+  const triggerRatio = budgetNumber(budget, 'triggerRatio');
+  const targetRatio = budgetNumber(budget, 'targetRatio');
+  const retained = budgetNumber(budget, 'retainedRecentMessages');
+  const applicationBudgetSource = budgetText(budget, 'applicationBudgetSource');
+  const estimatorVersion = budgetText(budget, 'estimatorVersion');
+  return (
+    <dl style={{ margin: 0, display: 'grid', rowGap: 2 }}>
+      <Field label="trigger" value={
+        historyTokens === null || historyBudgetTokens === null
+          ? 'not recorded'
+          : (historyTokens + ' / ' + historyBudgetTokens + ' tokens')
+      } />
+      <Field label="ratios" value={
+        triggerRatio === null && targetRatio === null
+          ? 'not recorded'
+          : ('trigger ' + (triggerRatio ?? '—') + ' · target ' + (targetRatio ?? '—'))
+      } />
+      <Field label="recent retained" value={retained === null ? 'not recorded' : retained} />
+      <Field label="budget source" value={applicationBudgetSource ?? 'not recorded'} />
+      <Field label="estimator" value={estimatorVersion ?? 'not recorded'} />
+    </dl>
+  );
+}
+
 export function RuntimeInspectorView(props: RuntimeInspectorViewProps) {
   const { theme, projection, error } = props;
-  const { overview, stages, processes, events, memoryContext } = projection;
+  const { overview, stages, processes, events, memoryContext, compaction } = projection;
   return (
     <div
       data-agentos="runtime-inspector"
@@ -190,6 +297,62 @@ export function RuntimeInspectorView(props: RuntimeInspectorViewProps) {
           <p style={{ margin: 0, color: 'var(--text-tertiary)' }}>No Memory Context snapshot.</p>
         ) : (
           <MemoryExplanationView snapshot={memoryContext} />
+        )}
+      </Section>
+
+      <Section title="Compaction">
+        {compaction === undefined || compaction === null ? (
+          <p data-compaction="not-placed" style={{ margin: 0, color: 'var(--text-tertiary)' }}>
+            This Run is not placed in a Conversation, so no compaction explanation exists.
+          </p>
+        ) : compaction.latest === null ? (
+          <p data-compaction="none" style={{ margin: 0, color: 'var(--text-tertiary)' }}>
+            No compaction has run for this Conversation.
+          </p>
+        ) : (
+          <div data-agentos="compaction-explanation" data-compaction-status={compaction.latest.status}>
+            <dl style={{ margin: 0, display: 'grid', rowGap: 2 }}>
+              <Field label="conversation" value={compaction.conversationId + ' (via ' + compaction.linkVia + ')'} />
+              <Field label="policy" value={compaction.policy === null ? 'not recorded' : compaction.policy.policyVersion} />
+              <Field label="status" value={<span data-status={compaction.latest.status}>{compaction.latest.status}</span>} />
+            </dl>
+            <CompactionBudgetFields task={compaction.latest} />
+            <dl style={{ margin: 0, display: 'grid', rowGap: 2 }}>
+              <Field label="source" value={
+                compaction.latest.sourceMessageCount + ' messages · '
+                + (compaction.latest.sourceStartMessageId ?? '—') + ' .. ' + (compaction.latest.sourceEndMessageId ?? '—')
+              } />
+              <Field label="summary" value={compaction.latest.summary ?? 'not published'} />
+              <Field label="attempts" value={
+                compaction.latest.attempts
+                + (compaction.latest.failureCode === null ? '' : (' · ' + compaction.latest.failureCode))
+              } />
+              <Field label="adopted by" value={
+                compaction.thisTurn !== null && compaction.thisTurn.appliedSummaryId !== null
+                  ? ('this Run · snapshot ' + compaction.thisTurn.snapshotId + ' · ' + compaction.thisTurn.appliedSummaryId)
+                  : (compaction.adoptions.length === 0
+                    ? 'no Turn received the summary'
+                    : ('snapshot ' + compaction.adoptions[compaction.adoptions.length - 1]!.snapshotId
+                      + ' · ' + compaction.adoptions[compaction.adoptions.length - 1]!.summaryId))
+              } />
+              <Field label="refused" value={
+                compaction.thisTurn !== null && compaction.thisTurn.rejectedSummaryId !== null
+                  ? (compaction.thisTurn.rejectedReason ?? 'unknown')
+                  : (compaction.rejections.length === 0
+                    ? '—'
+                    : compaction.rejections[compaction.rejections.length - 1]!.reason)
+              } />
+            </dl>
+            {compaction.tasks.length > 1 ? (
+              <ul data-compaction-tasks={compaction.tasks.length} style={{ listStyle: 'none', margin: 0, padding: 0 }}>
+                {compaction.tasks.map(task => (
+                  <li key={task.id} data-compaction-task={task.id} style={{ fontSize: 12, padding: '2px 0' }}>
+                    {task.id} · <span data-status={task.status}>{task.status}</span> · {task.sourceMessageCount} messages
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
         )}
       </Section>
     </div>

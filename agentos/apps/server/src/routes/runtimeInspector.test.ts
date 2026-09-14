@@ -154,3 +154,97 @@ test('GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring
     assert.equal(body.projection.memoryContext?.selected[0]?.memoryId, entryId);
   });
 });
+
+/**
+ * LITE-13-101: a Run carried by a Turn that adopted a compaction summary must
+ * explain that decision, and a Run whose Turn refused a summary must explain the
+ * refusal. Both verdicts are read from that Run own snapshot row, so a Run can
+ * never borrow another Turn explanation. The write path that produces these rows
+ * is proven end to end in conversationRuntime.compaction.test.ts; this test
+ * proves the Run-scoped projection over durable rows.
+ */
+test('GET /runs/:runId/inspector explains the compaction of the Conversation behind the Run', async () => {
+  await withServer(async (baseUrl, store) => {
+    const db = store.getDatabase();
+    const now = '2026-09-13T00:00:00.000Z';
+    db.prepare(
+      'INSERT INTO cr_conversations (id, workspace_id, kind, title, status, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 1, ?, ?)',
+    ).run('conv_insp', 'workspace-a', 'direct', 'Inspector conversation', 'active', now, now);
+
+    const adoptingTask = store.taskRepository().insert({ workspaceId: 'workspace-a', title: 'Adopting', createdBy: 'user' });
+    const adoptingRun = store.runRepository().insert({
+      workspaceId: 'workspace-a', taskId: adoptingTask.id, origin: 'v2_api', createdBy: 'user',
+    });
+    const refusingTask = store.taskRepository().insert({ workspaceId: 'workspace-a', title: 'Refusing', createdBy: 'user' });
+    const refusingRun = store.runRepository().insert({
+      workspaceId: 'workspace-a', taskId: refusingTask.id, origin: 'v2_api', createdBy: 'user',
+    });
+
+    db.prepare(
+      'INSERT INTO cr_agent_turns (id, conversation_id, workspace_id, agent_id, status, context_snapshot_id, run_id, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
+    ).run('turn_apply', 'conv_insp', 'workspace-a', 'codex', 'final', 'tsnap_apply', adoptingRun.id, now, now);
+    db.prepare(
+      'INSERT INTO cr_turn_context_snapshots (id, workspace_id, conversation_id, agent_id, turn_id, budget_json, selected_entry_ids_json, total_tokens, truncated, retrieval_strategy_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)',
+    ).run('tsnap_apply', 'workspace-a', 'conv_insp', 'codex', 'turn_apply',
+      JSON.stringify({ compactionSummaryId: 'snap_comp_1', summarizedMessages: 3, frozenHistoryMessages: 4 }),
+      JSON.stringify([]), 'cr5-turn-context.v1', now);
+
+    db.prepare(
+      'INSERT INTO cr_agent_turns (id, conversation_id, workspace_id, agent_id, status, context_snapshot_id, run_id, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)',
+    ).run('turn_refuse', 'conv_insp', 'workspace-a', 'codex', 'final', 'tsnap_refuse', refusingRun.id, now, now);
+    db.prepare(
+      'INSERT INTO cr_turn_context_snapshots (id, workspace_id, conversation_id, agent_id, turn_id, budget_json, selected_entry_ids_json, total_tokens, truncated, retrieval_strategy_version, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)',
+    ).run('tsnap_refuse', 'workspace-a', 'conv_insp', 'codex', 'turn_refuse',
+      JSON.stringify({ rejectedCompactionSummaryId: 'snap_comp_stale', rejectedCompactionReason: 'source-content-changed' }),
+      JSON.stringify([]), 'cr5-turn-context.v1', now);
+
+    const adopting = await fetch(`${baseUrl}/runs/${adoptingRun.id}/inspector`).then(r => r.json()) as {
+      projection: {
+        compaction: {
+          conversationId: string; linkVia: string; turnId: string | null; contextSnapshotId: string | null;
+          policy: unknown; latest: unknown; tasks: unknown[];
+          adoptions: Array<{ snapshotId: string; turnId: string | null; summaryId: string; summarizedMessages: number | null }>;
+          rejections: Array<{ snapshotId: string; turnId: string | null; summaryId: string; reason: string }>;
+          thisTurn: { snapshotId: string; appliedSummaryId: string | null; summarizedMessages: number | null; rejectedSummaryId: string | null; rejectedReason: string | null } | null;
+        } | null;
+      };
+    };
+    const explanation = adopting.projection.compaction;
+    assert.ok(explanation, 'a Turn-backed Run is placed in its Conversation');
+    assert.equal(explanation.linkVia, 'turn');
+    assert.equal(explanation.conversationId, 'conv_insp');
+    assert.equal(explanation.turnId, 'turn_apply');
+    assert.equal(explanation.contextSnapshotId, 'tsnap_apply');
+    // The summary this Run received, read from its own snapshot row.
+    assert.equal(explanation.thisTurn?.snapshotId, 'tsnap_apply');
+    assert.equal(explanation.thisTurn?.appliedSummaryId, 'snap_comp_1');
+    assert.equal(explanation.thisTurn?.summarizedMessages, 3);
+    // No compaction task exists yet in this Conversation, so nothing is invented.
+    assert.equal(explanation.latest, null);
+    assert.equal(explanation.policy, null);
+    assert.deepEqual(explanation.tasks, []);
+    assert.equal(explanation.adoptions.length, 1);
+    assert.equal(explanation.adoptions[0]?.turnId, 'turn_apply');
+    // The Conversation-level refusal belongs to the OTHER Turn, so it is listed
+    // while this Run own verdict stays applied: the two scopes are distinct.
+    assert.equal(explanation.rejections.length, 1);
+    assert.equal(explanation.rejections[0]?.turnId, 'turn_refuse');
+    assert.equal(explanation.thisTurn?.rejectedSummaryId, null);
+
+    const refusing = await fetch(`${baseUrl}/runs/${refusingRun.id}/inspector`).then(r => r.json()) as {
+      projection: {
+        compaction: {
+          turnId: string | null;
+          thisTurn: { appliedSummaryId: string | null; rejectedSummaryId: string | null; rejectedReason: string | null } | null;
+          rejections: Array<{ snapshotId: string; summaryId: string; reason: string }>;
+        } | null;
+      };
+    };
+    assert.equal(refusing.projection.compaction?.turnId, 'turn_refuse');
+    assert.equal(refusing.projection.compaction?.thisTurn?.appliedSummaryId, null,
+      'a Turn that refused a summary must not be reported as having applied one');
+    assert.equal(refusing.projection.compaction?.thisTurn?.rejectedSummaryId, 'snap_comp_stale');
+    assert.equal(refusing.projection.compaction?.thisTurn?.rejectedReason, 'source-content-changed');
+    assert.equal(refusing.projection.compaction?.rejections[0]?.reason, 'source-content-changed');
+  });
+});
