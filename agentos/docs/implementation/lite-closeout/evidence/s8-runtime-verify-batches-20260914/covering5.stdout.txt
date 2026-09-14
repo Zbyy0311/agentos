@@ -1,0 +1,5 @@
+passed      apps/server/src/taskRecovery.test.ts  rows=0  29 pass / 0 fail / 0 skip  exit=0  6444ms
+passed      packages/process-runtime/src/manager.test.ts  rows=0  30 pass / 0 fail / 0 skip  exit=0  1088ms
+passed      packages/process-runtime/src/races.test.ts  rows=0  5 pass / 0 fail / 0 skip  exit=0  1098ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches-5.json
+batches=3 passed=3 failed=0 provableRequirements=0/0
