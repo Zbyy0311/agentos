@@ -950,8 +950,7 @@
       "LITE-13-012"
     ],
     "limitation": "Each re-pointed file was executed in isolation with zero failures and zero skips; the counts are per file in details and in docs/implementation/lite-closeout/verification-batches.json."
-  }
-  ,
+  },
   {
     "id": "S6-COMPACTION-INSPECTOR-SOURCE",
     "baseline": "07c1773ad108c066262753492ba2767bb3fc62d8",
@@ -1012,5 +1011,21 @@
     },
     "environment": "Local Windows, Node 24.18.0, vitest 4.1.9; the first run of the new contract test failed 1 of 3 cases and named both defects before they were fixed",
     "limitation": "The new cross-adapter contract test asserts one retryability table for Codex, KimiCode and OpenCode (network and rate-limit retryable; auth, quota and model not retryable), that retryability is always an explicit boolean, and that re-normalization is idempotent. It found two real inconsistencies: KimiCode normalizeError never consulted its own existing isProviderNormalizedError guard, so a second pass degraded any normalized error to PROVIDER_INTERNAL_ERROR and dropped retryability; OpenCode guard preserved the code but rebuilt the error without retryable, flipping a retryable transport failure to non-retryable. Both are fixed and the whole agent-core suite passes (29 files / 175 tests). Not PASS evidence on its own: the row keeps RUNTIME-VERIFY under the freeze."
+  },
+  {
+    "id": "S4-CAPABILITY-DECLARATION",
+    "baseline": "85685a96",
+    "kind": "behavior-observation",
+    "command": "cd packages/agent-core; npx vitest run src/providers/capabilityDeclaration.test.ts; npx vitest run",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-04-007"
+    ],
+    "result": {
+      "passed": 4,
+      "failed": 0
+    },
+    "environment": "Local Windows, Node 24.18.0, vitest 4.1.9; full agent-core suite 30 files / 179 tests pass",
+    "limitation": "Probes read the adapters own real fixtures and launch behavior instead of restating their capability constants, so the assertion is about behavior rather than about the declaration. OpenCode parses plain text, so its structuredEvents/toolEvents/usageEvents declarations are asserted in the negative direction. Kimi reports usage on stream flush, so the probe reads parseChunk plus finishParse; a parseChunk-only probe initially misreported the Kimi usage declaration as false, which is a probe defect and was corrected rather than treated as a product finding. Not PASS evidence on its own: the row keeps RUNTIME-VERIFY under the freeze."
   }
 ]
