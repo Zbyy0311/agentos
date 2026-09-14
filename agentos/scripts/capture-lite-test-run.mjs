@@ -5,7 +5,7 @@
  */
 import { execFileSync, spawn } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 
 const repositoryRoot = resolve(import.meta.dirname, '..');
 
@@ -47,8 +47,22 @@ try {
   throw new Error(`cannot capture pre-run checkout state: ${error.message}`);
 }
 
-const childExecutable = process.platform === 'win32' && executable === 'pnpm' ? 'pnpm.cmd' : executable;
-const child = spawn(childExecutable, args, {
+let childExecutable = process.platform === 'win32' && executable === 'pnpm' ? 'pnpm.cmd' : executable;
+let childArgs = args;
+// Windows cannot spawn a .cmd file with shell:false. Resolve the pnpm shim to
+// its real Node entry point instead of enabling a shell for evidence commands;
+// this preserves argument boundaries and avoids shell interpretation of a test
+// argument while keeping the recorded command as the user supplied `pnpm ...`.
+if (process.platform === 'win32' && childExecutable.toLowerCase() === 'pnpm.cmd') {
+  const shim = execFileSync('where.exe', [childExecutable], { encoding: 'utf8' })
+    .split(/\r?\n/).map(line => line.trim()).find(Boolean);
+  if (shim) {
+    const pnpmEntry = resolve(dirname(shim), 'node_modules', 'pnpm', 'bin', 'pnpm.mjs');
+    childExecutable = process.execPath;
+    childArgs = [pnpmEntry, ...args];
+  }
+}
+const child = spawn(childExecutable, childArgs, {
   cwd,
   env: { ...process.env, ...extraEnvironment },
   windowsHide: true,
