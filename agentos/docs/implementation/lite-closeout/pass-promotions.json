@@ -2,7 +2,875 @@
   "schemaVersion": 1,
   "authorityId": "lite-pass-promotion-20260915",
   "authorityHash": "b8a3f061b5d8f1688c57e5abefd6c4f03b800d0ee8d0d9de92329d69b4655714",
-  "matrixVersion": 17,
-  "baselineSha": "d163c40e33b17cde3540316a038bebef165b64cc",
-  "promotions": []
+  "matrixVersion": 18,
+  "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+  "promotions": [
+    {
+      "promotionId": "PROMOTION-LITE-07-003",
+      "requirementId": "LITE-07-003",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/MemoryCandidateGenerationService.ts",
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-07003-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-07-003-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-003\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S003-EXACT-01",
+          "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+          "name": "an exact duplicate converges on the accepted Entry and merges the new source atomically",
+          "line": 132,
+          "expression": "expect('LITE-07-003', 'S003-EXACT-01', 'an exact duplicate converges on the accepted Entry and merges the new source atomically',",
+          "clause": "Same Scope/owner exact duplicates converge atomically and preserve the source boundary.",
+          "whyDirect": "The assertion reads the production Entry, source, version, Candidate and canonical dedup Event deltas after generation; it is not a file-level or suite-level claim.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S003-OWNER-01",
+          "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+          "name": "identical content under a different owner does not converge",
+          "line": 195,
+          "expression": "expect('LITE-07-003', 'S003-OWNER-01', 'identical content under a different owner does not converge',",
+          "clause": "Identical content under a different owner does not converge.",
+          "whyDirect": "The assertion executes generation with a distinct owner and checks that a new review Candidate is created while the other owner's Entry remains unchanged.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S003-NEAR-01",
+          "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+          "name": "a normalized-hash near-duplicate is recorded as a review-required fact, never auto-accepted",
+          "line": 243,
+          "expression": "expect('LITE-07-003', 'S003-NEAR-01', 'a normalized-hash near-duplicate is recorded as a review-required fact, never auto-accepted',",
+          "clause": "Normalized near-duplicates remain review-required rather than being auto-accepted.",
+          "whyDirect": "The assertion checks the persisted Candidate decision, authority, duplicate target and absence of automatic promotion after the production generator runs.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S003-REVIEW-01",
+          "file": "scripts/verify-lite-07-003-candidate-evidence.mjs",
+          "name": "accepting a near-duplicate after review creates the Entry and keeps its sources",
+          "line": 303,
+          "expression": "expect('LITE-07-003', 'S003-REVIEW-01', 'accepting a near-duplicate after review creates the Entry and keeps its sources',",
+          "clause": "A near-duplicate becomes an Entry only through review and keeps its source.",
+          "whyDirect": "The assertion calls the production review path and reads back the resulting Entry scope, category, content size and source list.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main controlled receipt directly covers exact convergence, replay idempotency, owner isolation, normalized near-duplicate review and the review promotion path. Source/origin refusal assertions in the same receipt additionally verify that the evidence cannot fabricate provenance."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-007",
+      "requirementId": "LITE-07-007",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S1-BUDGET-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s1-budget\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S1E-PRICING-01",
+          "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+          "name": "an Entry is priced by the text that is actually injected, not by its stored estimate",
+          "line": 101,
+          "expression": "expect('LITE-07-007', 'S1E-PRICING-01', 'an Entry is priced by the text that is actually injected, not by its stored estimate',",
+          "clause": "Token budget uses the content actually injected.",
+          "whyDirect": "The assertion runs the production selector with a deliberately stale stored estimate and compares the selected budget to the rendered injected text.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-COUNT-01",
+          "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+          "name": "the Entry count budget excludes the overflow and records every considered Entry",
+          "line": 119,
+          "expression": "expect('LITE-07-007', 'S1E-COUNT-01', 'the Entry count budget excludes the overflow and records every considered Entry',",
+          "clause": "Entry count budget excludes overflow and explains considered entries.",
+          "whyDirect": "The assertion reads the production selector result and verifies both the excluded Entry and the per-entry decision record.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-SCOPE-01",
+          "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+          "name": "a per-Scope limit is attributed to the Scope, not to the category",
+          "line": 129,
+          "expression": "expect('LITE-07-007', 'S1E-SCOPE-01', 'a per-Scope limit is attributed to the Scope, not to the category',",
+          "clause": "Scope budget exhaustion is attributed to Scope.",
+          "whyDirect": "The assertion exercises the selector with a per-Scope cap and checks the emitted exclusion reason rather than inferring it from configuration.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-CATEGORY-01",
+          "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+          "name": "a per-category limit is attributed to the category",
+          "line": 138,
+          "expression": "expect('LITE-07-007', 'S1E-CATEGORY-01', 'a per-category limit is attributed to the category',",
+          "clause": "Category budget exhaustion is attributed to category.",
+          "whyDirect": "The assertion executes a category cap and checks the production decision reason for the overflow entry.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-DIVERSITY-01",
+          "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+          "name": "requireDiversity keeps the set from being monopolized and explains the exclusion",
+          "line": 148,
+          "expression": "expect('LITE-07-007', 'S1E-DIVERSITY-01', 'requireDiversity keeps the set from being monopolized and explains the exclusion',",
+          "clause": "Diversity budget prevents one category from monopolizing the selection and explains the exclusion.",
+          "whyDirect": "The assertion runs the requireDiversity branch and reads the selected set plus the explicit exclusion reason.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-TRUNC-01",
+          "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+          "name": "token-budget overflow is truncated explicitly and bounded, never silently",
+          "line": 158,
+          "expression": "expect('LITE-07-007', 'S1E-TRUNC-01', 'token-budget overflow is truncated explicitly and bounded, never silently',",
+          "clause": "Token overflow is explicitly bounded rather than silently dropped.",
+          "whyDirect": "The assertion observes the production truncated result, bounded content and recorded reason for a token overflow.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main budget receipt covers actual injected-text pricing plus count, Scope, category, diversity and explicit truncation outcomes, with each dimension tied to a source assertion and the production selector."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-013",
+      "requirementId": "LITE-07-013",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-0713-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-07-013-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-013\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S0713-RESOLVE-01",
+          "file": "scripts/verify-lite-07-013-candidate-evidence.mjs",
+          "name": "the real Run context path records whether its retrieval ran degraded, per snapshot",
+          "line": 120,
+          "expression": "expect('LITE-07-013', 'S0713-RESOLVE-01', 'the real Run context path records whether its retrieval ran degraded, per snapshot',",
+          "clause": "The real Run context path records degraded retrieval per snapshot.",
+          "whyDirect": "The assertion drives both ranked and degraded production retrieval paths and compares the persisted snapshot flag and selected entries.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S0713-RESOLVE-02",
+          "file": "scripts/verify-lite-07-013-candidate-evidence.mjs",
+          "name": "the flag survives the production read path and the injected text is unaffected by it",
+          "line": 135,
+          "expression": "expect('LITE-07-013', 'S0713-RESOLVE-02', 'the flag survives the production read path and the injected text is unaffected by it',",
+          "clause": "The degraded flag survives readback without changing the selected injected text.",
+          "whyDirect": "The assertion reads the durable snapshot, context text, events and Outbox rows produced by the production context resolver.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main receipt directly observes ranked/degraded retrieval, durable snapshot readback and the canonical event/Outbox result, so it closes the visible degraded-mode contract without relying on symbol or suite matching."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-102",
+      "requirementId": "LITE-07-102",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+        "apps/server/src/services/MemoryCandidateGenerationService.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-07102-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-07-102-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-102\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S102-TRIGGER-01",
+          "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+          "name": "a non-success terminal Run produces exactly one bounded Candidate from the dispatch-time trigger",
+          "line": 160,
+          "expression": "expect('LITE-07-102', 'S102-TRIGGER-01', 'a non-success terminal Run produces exactly one bounded Candidate from the dispatch-time trigger',",
+          "clause": "A non-success terminal Run produces one bounded review Candidate from the terminal trigger.",
+          "whyDirect": "The assertion drives the production terminal path and reads the Run status, stage outcomes, Candidate payload, event count and absence of provider-output rows.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-IDEMPOTENT-01",
+          "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+          "name": "a replay neither modifies the terminal Run nor creates a second fact or Event",
+          "line": 218,
+          "expression": "expect('LITE-07-102', 'S102-IDEMPOTENT-01', 'a replay neither modifies the terminal Run nor creates a second fact or Event',",
+          "clause": "Replay does not mutate the terminal Run or create a second fact/Event.",
+          "whyDirect": "The assertion repeats production generation and compares Run rows, Candidate rows and canonical Event deltas.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-RESTART-01",
+          "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+          "name": "the startup sweep repairs the crashed Run and reports the Run that has no authority to repair from",
+          "line": 255,
+          "expression": "expect('LITE-07-102', 'S102-RESTART-01', 'the startup sweep repairs the crashed Run and reports the Run that has no authority to repair from',",
+          "clause": "Startup repair recovers an unrecorded terminal fact only from durable authority and reports missing authority.",
+          "whyDirect": "The assertion runs the production startup sweep and reads generated/existing/missing-authority counts plus the repaired Candidate source.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S102-REFUSE-01",
+          "file": "scripts/verify-lite-07-102-candidate-evidence.mjs",
+          "name": "a non-terminal Run is refused without being touched and without any execution starting",
+          "line": 286,
+          "expression": "expect('LITE-07-102', 'S102-REFUSE-01', 'a non-terminal Run is refused without being touched and without any execution starting',",
+          "clause": "A non-terminal Run is refused without mutation or execution.",
+          "whyDirect": "The assertion invokes the production terminal-generation API on a live Run and compares the Run row and provider-process count before and after.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The receipt directly covers failed/cancelled terminal triggers, bounded record-only content, replay convergence, startup repair and refusal of a non-terminal Run. The same invocation records zero provider-output rows, satisfying the no-raw-output boundary."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-105",
+      "requirementId": "LITE-07-105",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 39,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S6E-REAL-01",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "a real Provider compaction publishes a durable task",
+          "line": 171,
+          "expression": "expect('LITE-07-105', 'S6E-REAL-01', 'a real Provider compaction publishes a durable task', real.outcome, 'published');",
+          "clause": "A real Conversation compaction creates a durable completion task.",
+          "whyDirect": "The assertion awaits the production compaction engine with a real Provider process and checks its returned persisted task outcome.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-07",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "publishing records a review-required agent-derived Candidate",
+          "line": 198,
+          "expression": "expect('LITE-07-105', 'S6E-REAL-07', 'publishing records a review-required agent-derived Candidate',",
+          "clause": "Compaction publishes an agent-derived review-required Candidate.",
+          "whyDirect": "The assertion reads the Candidate created by the published task and checks its durable decision, outcome, authority and Scope.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-08",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the fact and its canonical Workspace Event are one causal record",
+          "line": 204,
+          "expression": "expect('LITE-07-105', 'S6E-REAL-08', 'the fact and its canonical Workspace Event are one causal record',",
+          "clause": "Candidate creation and its canonical Workspace Event retain one causal record.",
+          "whyDirect": "The assertion reads the actual Workspace Event payload and compares its causation and Candidate identity with the persisted compaction output.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-15",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "publishing a summary does not create a Memory Entry: availability is not approval",
+          "line": 263,
+          "expression": "expect('LITE-07-105', 'S6E-REAL-15', 'publishing a summary does not create a Memory Entry: availability is not approval',",
+          "clause": "Published compaction availability does not bypass Memory review.",
+          "whyDirect": "The assertion reads the Memory Entry table after production publication and verifies that no approved Entry was created.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-06",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "a refused summary leaves no Candidate, no published row and no canonical Event behind",
+          "line": 379,
+          "expression": "expect('LITE-07-105', 'S6E-GUARD-06', 'a refused summary leaves no Candidate, no published row and no canonical Event behind',",
+          "clause": "A refused compaction atomically leaves no Candidate, completion row or canonical Event.",
+          "whyDirect": "The assertion forces the production summary refusal and reads all three durable stores to verify rollback rather than trusting the thrown error alone.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The real compaction receipt covers the durable task, bounded summary, Candidate and Workspace Event chain, and separately proves review-required availability plus atomic refusal. Provider identity and native-compaction boundaries are recorded in companion promotions from the same receipt."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-106",
+      "requirementId": "LITE-07-106",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/managers/WorkspaceManager.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S7-IMPORT-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s7\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S7E-PREVIEW-01",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "the production preview segments the real file without persisting anything",
+          "line": 141,
+          "expression": "expect('LITE-07-106', 'S7E-PREVIEW-01', 'the production preview segments the real file without persisting anything',",
+          "clause": "Preview segments the selected Markdown without persistence.",
+          "whyDirect": "The assertion calls the production preview service on a real UTF-8 file and reads both the segment result and database write counts.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-PREVIEW-02",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "an oversized section is split further so every fragment stays bounded",
+          "line": 152,
+          "expression": "expect('LITE-07-106', 'S7E-PREVIEW-02', 'an oversized section is split further so every fragment stays bounded',",
+          "clause": "Oversized sections are split into bounded fragments.",
+          "whyDirect": "The assertion executes the production parser with a section above the bound and checks reassembly and every fragment length.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-PREVIEW-03",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "each fragment is content-addressed and the user file is left untouched",
+          "line": 162,
+          "expression": "expect('LITE-07-106', 'S7E-PREVIEW-03', 'each fragment is content-addressed and the user file is left untouched',",
+          "clause": "Fragments are content-addressed and the selected source file remains unchanged.",
+          "whyDirect": "The assertion compares source and fragment hashes plus on-disk bytes before and after the production preview.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-CONFIRM-01",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "a confirmed import writes review-required Candidates, durable records and canonical Events",
+          "line": 183,
+          "expression": "expect('LITE-07-106', 'S7E-CONFIRM-01', 'a confirmed import writes review-required Candidates, durable records and canonical Events',",
+          "clause": "Confirmation writes bounded review-required Candidates, sources and canonical Events.",
+          "whyDirect": "The assertion confirms the production import and reads Candidate, import-record, source hash, Scope, authority, decision and event counts.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-HTTP-01",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "the mounted router previews, confirms and converges over real HTTP",
+          "line": 357,
+          "expression": "expect('LITE-07-106', 'S7E-HTTP-01', 'the mounted router previews, confirms and converges over real HTTP',",
+          "clause": "The mounted API performs preview, confirm and idempotent repeat over HTTP with bounded input errors.",
+          "whyDirect": "The assertion sends real HTTP requests to the mounted router and checks statuses, fragment counts, repeat convergence, size and input refusal codes.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main import receipt follows a selected UTF-8 Markdown file through production preview, bounded splitting, confirmation, durable review-required records, canonical Events and an idempotent HTTP repeat while verifying the source file is unchanged."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-109",
+      "requirementId": "LITE-07-109",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S1-BUDGET-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s1-budget\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S1E-ELIGIBILITY-01",
+          "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+          "name": "temporal and access eligibility decide before ranking",
+          "line": 191,
+          "expression": "expect('LITE-07-109', 'S1E-ELIGIBILITY-01', 'temporal and access eligibility decide before ranking',",
+          "clause": "Validity and sensitivity/access eligibility are applied before ranking.",
+          "whyDirect": "The assertion fixes the clock, runs the production retrieval, and reads the returned ids and degraded state to verify excluded temporal and restricted entries do not reach ranking.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S1E-DEGRADED-01",
+          "file": "scripts/verify-lite-s1-budget-candidate-evidence.mjs",
+          "name": "a query with no usable FTS tokens reports degraded while structured filters stay authoritative",
+          "line": 196,
+          "expression": "expect('LITE-07-109', 'S1E-DEGRADED-01', 'a query with no usable FTS tokens reports degraded while structured filters stay authoritative',",
+          "clause": "FTS degradation is visible while structured filters remain authoritative.",
+          "whyDirect": "The assertion executes the production no-token query and compares degraded readback, structured result identity and stored query state.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main S1 budget receipt directly exercises fixed-clock eligibility and the degraded retrieval path; it is paired with the same run's budget decisions, so the row's validity, sensitivity, degradation and budget explanation are all observed rather than inferred."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-102",
+      "requirementId": "LITE-09-102",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S5-AUTHORITY-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s5-execution\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S5E-AUTHORITY-01",
+          "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+          "name": "a chat Turn refuses instead of running beside another modifying holder, before any Provider call",
+          "line": 228,
+          "expression": "expect('LITE-09-102', 'S5E-AUTHORITY-01', 'a chat Turn refuses instead of running beside another modifying holder, before any Provider call',",
+          "clause": "A chat Turn cannot substitute serialization for Workspace modifying authority.",
+          "whyDirect": "The assertion drives the production Turn with a foreign modifying holder and reads provider-call count, failure code, snapshot count, message status and event count.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5E-AUTHORITY-02",
+          "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+          "name": "the same Turn runs once the modifying holder is released, so the refusal is about authority only",
+          "line": 242,
+          "expression": "expect('LITE-09-102', 'S5E-AUTHORITY-02', 'the same Turn runs once the modifying holder is released, so the refusal is about authority only',",
+          "clause": "Releasing the holder admits the same Turn without changing the requested action.",
+          "whyDirect": "The assertion reruns the same production Turn after releasing the holder and checks for exactly one provider call and a final Turn.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The controlled final-main receipt observes the production authorization refusal before Provider invocation and the successful retry after authority release, including stable failure code and no snapshot/event side effects on refusal."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-104",
+      "requirementId": "LITE-09-104",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 39,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S6E-REAL-10",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the lite-v1 policy records the versioned thresholds",
+          "line": 219,
+          "expression": "expect('LITE-09-104', 'S6E-REAL-10', 'the lite-v1 policy records the versioned thresholds',",
+          "clause": "The lite-v1 policy persists its version and default thresholds.",
+          "whyDirect": "The assertion reads the policy row produced by the production compaction engine and compares every requested threshold.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-11",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the task records the budget composition and estimator that produced it",
+          "line": 226,
+          "expression": "expect('LITE-09-104', 'S6E-REAL-11', 'the task records the budget composition and estimator that produced it',",
+          "clause": "Each compaction records budget inputs, source and estimator version.",
+          "whyDirect": "The assertion parses the persisted task budget JSON and checks provider budget, reserve, application source, estimator and trigger fields.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-DB-01",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "a versioned policy row cannot be rewritten, so an old budget keeps its interpretation",
+          "line": 444,
+          "expression": "expect('LITE-09-104', 'S6E-DB-01', 'a versioned policy row cannot be rewritten, so an old budget keeps its interpretation',",
+          "clause": "Historical policy versions cannot be rewritten.",
+          "whyDirect": "The assertion attempts a production database update and reads the unchanged policy row and prior task interpretation.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The real compaction receipt proves the immutable lite-v1 policy, all requested thresholds and the persisted budget/estimator inputs; the database guard proves historical interpretation is not rewritten."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-105",
+      "requirementId": "LITE-09-105",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/store/ConversationRepository.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 39,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S6E-REAL-05",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the published summary is non-empty and inside the recorded budget",
+          "line": 186,
+          "expression": "expect('LITE-09-105', 'S6E-REAL-05', 'the published summary is non-empty and inside the recorded budget',",
+          "clause": "The published summary is bounded and content-addressed.",
+          "whyDirect": "The assertion reads the real persisted summary and compares its hash and length to the persisted policy budget.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-06",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the source range it covered is recorded",
+          "line": 190,
+          "expression": "expect('LITE-09-105', 'S6E-REAL-06', 'the source range it covered is recorded',",
+          "clause": "The summary records its bounded source message range and source hash.",
+          "whyDirect": "The assertion reads start/end ids, source count and hash from the completed task created by the production engine.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-13",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the Messages the summary covered survive the published compaction unchanged",
+          "line": 247,
+          "expression": "expect('LITE-09-105', 'S6E-REAL-13', 'the Messages the summary covered survive the published compaction unchanged',",
+          "clause": "Original Messages remain durable and unchanged after publication.",
+          "whyDirect": "The assertion compares the pre-compaction and post-publication persisted Message digest, including ids, status, version and content hash.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-16",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "only the bounded old prefix is compacted: the recent window stays uncompressed",
+          "line": 268,
+          "expression": "expect('LITE-09-105', 'S6E-REAL-16', 'only the bounded old prefix is compacted: the recent window stays uncompressed',",
+          "clause": "Only the bounded old prefix is replaced while the recent window remains uncompressed.",
+          "whyDirect": "The assertion reads the production compaction source range and verifies the retained recent message ids and count.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-01",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "an oversized summary is refused, never published",
+          "line": 289,
+          "expression": "expect('LITE-09-105', 'S6E-GUARD-01', 'an oversized summary is refused, never published',",
+          "clause": "An oversized summary is not published.",
+          "whyDirect": "The assertion runs the production completion path with an oversized summary and reads the absence of a published row.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-DB-02",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "a published summary cannot be rewritten after it became canonical",
+          "line": 450,
+          "expression": "expect('LITE-09-105', 'S6E-DB-02', 'a published summary cannot be rewritten after it became canonical',",
+          "clause": "A published summary is immutable.",
+          "whyDirect": "The assertion attempts to rewrite the published row and reads the stable hash and refusal result.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-TURNGATE-02",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the real published summary reaches the Provider context and replaces exactly the covered Messages",
+          "line": 580,
+          "expression": "expect('LITE-09-105', 'S6E-TURNGATE-02', 'the real published summary reaches the Provider context and replaces exactly the covered Messages',",
+          "clause": "The next Provider context adopts the persisted summary for exactly its covered Messages.",
+          "whyDirect": "The assertion drives the production Turn gate with a real published row and reads the Provider-observed context ids and summary text.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The real final-main compaction receipt covers source range, bounded summary, retained recent tail, immutable publication and the subsequent Provider context adoption. Refusal and no-silent-loss assertions complete the hard boundaries."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-106",
+      "requirementId": "LITE-09-106",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "packages/agent-core/src/conversationRunner.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 39,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S6E-REAL-02",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the summary was produced by a real Provider process",
+          "line": 174,
+          "expression": "expect('LITE-09-106', 'S6E-REAL-02', 'the summary was produced by a real Provider process',",
+          "clause": "The compaction summary is produced by a Provider process.",
+          "whyDirect": "The assertion checks the non-empty output returned by the awaited production summarizer process rather than a fixture string.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-03",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the frozen Provider identity is recorded on the task",
+          "line": 177,
+          "expression": "expect('LITE-09-106', 'S6E-REAL-03', 'the frozen Provider identity is recorded on the task',",
+          "clause": "The triggering Provider identity is persisted on the compaction task.",
+          "whyDirect": "The assertion reads adapter, version, provider type and model from the task persisted by the production engine.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-04",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the summary ran under the allowlisted read-only CLI profile",
+          "line": 180,
+          "expression": "expect('LITE-09-106', 'S6E-REAL-04', 'the summary ran under the allowlisted read-only CLI profile',",
+          "clause": "Summary execution uses the allowlisted read-only CLI profile.",
+          "whyDirect": "The assertion reads the actual summarization profile used by the production Provider path and checks its read-only flags.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-REAL-14",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the summary run is read-only sandboxed with no approval or tool bypass",
+          "line": 255,
+          "expression": "expect('LITE-09-106', 'S6E-REAL-14', 'the summary run is read-only sandboxed with no approval or tool bypass',",
+          "clause": "Summary execution has no tool, approval or workspace-write bypass.",
+          "whyDirect": "The assertion compares the exact production CLI args against read-only sandbox requirements and an explicit bypass denylist.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-DB-03",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the frozen Provider identity cannot be rewritten after the summary was published",
+          "line": 456,
+          "expression": "expect('LITE-09-106', 'S6E-DB-03', 'the frozen Provider identity cannot be rewritten after the summary was published',",
+          "clause": "The Provider identity is immutable after publication.",
+          "whyDirect": "The assertion attempts to mutate the persisted task identity and reads the stable model and refusal code.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main receipt uses a real Codex summarization process, records and freezes its Provider identity, checks the allowlisted read-only profile and denies bypass flags. This is local runtime evidence and is intentionally not used to close the separate hosted-CI three-provider requirement LITE-04-101."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-108",
+      "requirementId": "LITE-09-108",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 39,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S6E-GUARD-08",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the explicit retry spends its own attempt instead of being blocked by the spent chain",
+          "line": 373,
+          "expression": "expect('LITE-09-108', 'S6E-GUARD-08', 'the explicit retry spends its own attempt instead of being blocked by the spent chain',",
+          "clause": "An explicit retry gets its own bounded attempt after automatic retry exhaustion.",
+          "whyDirect": "The assertion calls the production explicit retry path after a spent automatic chain and reads its attempt and outcome.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-BUDGET-01",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "summary plus tail beyond the hard budget is refused",
+          "line": 405,
+          "expression": "expect('LITE-09-108', 'S6E-BUDGET-01', 'summary plus tail beyond the hard budget is refused',",
+          "clause": "Summary plus retained tail beyond hard budget is refused.",
+          "whyDirect": "The assertion invokes the production context-application function with an over-budget summary/tail and checks the refusal result.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-BUDGET-02",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the refusal never truncates or drops the messages",
+          "line": 407,
+          "expression": "expect('LITE-09-108', 'S6E-BUDGET-02', 'the refusal never truncates or drops the messages',",
+          "clause": "The over-budget refusal preserves all source messages.",
+          "whyDirect": "The assertion compares the input history with the production refusal result and checks no silent truncation/drop.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-BUDGET-03",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "the same history inside the budget applies the summary",
+          "line": 411,
+          "expression": "expect('LITE-09-108', 'S6E-BUDGET-03', 'the same history inside the budget applies the summary',",
+          "clause": "When within budget, the persisted summary is applied.",
+          "whyDirect": "The assertion reruns the same production application with a fitting budget and checks the summary replacement result.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-TURNGATE-01",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "an over-budget summary and tail block the Provider call before any reservation",
+          "line": 547,
+          "expression": "expect('LITE-09-108', 'S6E-TURNGATE-01', 'an over-budget summary and tail block the Provider call before any reservation',",
+          "clause": "The Turn gate blocks a new Provider call before reservation when the context cannot fit.",
+          "whyDirect": "The assertion drives the production Turn driver with an over-budget context and reads zero runner calls and no reservation.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main compaction receipt covers budget-fit continuation, over-budget no-drop refusal, pre-call gating and an explicit retry separate from the exhausted automatic chain."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-109",
+      "requirementId": "LITE-09-109",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/store/ConversationRepository.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 39,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S6E-STALE-01",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "a summary whose covered Message was edited is refused",
+          "line": 421,
+          "expression": "expect('LITE-09-109', 'S6E-STALE-01', 'a summary whose covered Message was edited is refused',",
+          "clause": "A summary whose source Message was edited cannot be applied to a new context.",
+          "whyDirect": "The assertion edits a covered production Message and invokes the production summary application path, checking the stable refusal rather than a fixture flag.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main receipt directly exercises the existing Message edit path against a covered summary and verifies that source staleness refuses adoption, preserving the historical snapshot. No new edit API or versioning feature was added."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-110",
+      "requirementId": "LITE-09-110",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "packages/agent-core/src/conversationRunner.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 39,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S6E-REAL-12",
+          "file": "scripts/verify-lite-s6-candidate-evidence.mjs",
+          "name": "only the AgentOS-persisted summary is canonical",
+          "line": 241,
+          "expression": "expect('LITE-09-110', 'S6E-REAL-12', 'only the AgentOS-persisted summary is canonical',",
+          "clause": "Only the AgentOS-persisted summary is canonical; Provider-native notices are not canonical evidence.",
+          "whyDirect": "The assertion compares the production persisted summary with the task row and reads the native-provider row count, rather than treating CLI output text as proof.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main receipt verifies that canonical summary identity comes from the persisted AgentOS compaction row and that no native-provider compaction row is accepted as canonical. The deterministic native-only refusal tests remain part of the same raw receipt's 39 passing assertions."
+    }
+  ]
 }

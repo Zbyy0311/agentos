@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 17,
+  "matrixVersion": 18,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -2218,7 +2218,7 @@
       "section": "18. Acceptance Expectations",
       "line": 370,
       "requirement": "exact and near-duplicate convergence;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryCandidateGenerationService.ts",
@@ -2230,11 +2230,9 @@
         "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S1A-RED",
-        "S1A-GREEN",
-        "S1D-SOURCE",
-        "S1D-GREEN"
+        "S9-M0-07003-CONTROLLED"
       ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "精确/normalized hash查找仅限Workspace，未过滤status或Scope/owner；终态精确命中直接返回并丢弃新来源。见MemoryCandidateRepository.ts:617-637、MemoryCandidateGenerationService.ts:163-170。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
       "exit": "同Scope/owner精确重复原子汇聚来源和规范事件；重放零新增；不同owner不错误汇聚，近似重复保留审核。"
     },
@@ -2308,7 +2306,7 @@
       "section": "18. Acceptance Expectations",
       "line": 374,
       "requirement": "token, count, Scope, category, and diversity budgets;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
@@ -2320,8 +2318,9 @@
         "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
       "evidence": [
-        "S1C-SOURCE"
+        "S9-M0-S1-BUDGET-CONTROLLED"
       ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "applyBudget未读取requireDiversity；只累计Entry tokenEstimate而非实际heading+content；scope限制误报category-budget，truncated分支实际是整条排除。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -2438,7 +2437,7 @@
       "section": "18. Acceptance Expectations",
       "line": 380,
       "requirement": "visible FTS degraded mode;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
@@ -2450,8 +2449,9 @@
         "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
       "evidence": [
-        "S1C-SOURCE"
+        "S9-M0-0713-CONTROLLED"
       ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "selector.plan调用retrieve丢弃retrieveWithStatus.degraded；真实Context路径未保留降级说明。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -4556,7 +4556,7 @@
       "section": "§7; §14",
       "line": null,
       "requirement": "Task/Run/Stage terminal outcome 触发及故障后收敛",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
@@ -4565,7 +4565,10 @@
       "tests": [
         "apps/server/src/services/MemoryCandidateGenerationService.emission.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S9-M0-07102-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "仅成功最终Run路径触发；非成功终态、独立Stage和终态提交到候选生成之间的崩溃窗口未覆盖。",
       "exit": "有界规范终态按来源幂等生成，重启不遗漏；失败不得修改已终态Run或启动执行；不保存raw输出。"
     },
@@ -4633,7 +4636,7 @@
       "section": "§7; user-approved compaction",
       "line": null,
       "requirement": "Conversation compaction 来源触发",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
@@ -4641,7 +4644,10 @@
       "tests": [
         "apps/server/src/services/ConversationTurnDriver.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "无canonical compaction任务、摘要、策略或生产调用链。",
       "exit": "来源记录、完成摘要、候选与事件原子提交，review-required；摘要可用性不等于Memory审核。"
     },
@@ -4651,7 +4657,7 @@
       "section": "§7; §17",
       "line": null,
       "requirement": "显式Markdown导入为Candidates",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S7",
       "implementation": [
         "apps/server/src/managers/WorkspaceManager.ts"
@@ -4659,7 +4665,10 @@
       "tests": [
         "apps/server/src/services/LegacyTaskItemImportService.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S9-M0-S7-IMPORT-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "Workspace import强制memory:false；没有forward Memory import入口。",
       "exit": "用户选择UTF-8 Markdown<=1MiB→预览→确认→有界分段候选/来源/事件；幂等、源文件保持。"
     },
@@ -4718,7 +4727,7 @@
       "section": "§9–§11",
       "line": null,
       "requirement": "有效期、敏感度、FTS降级及预算策略符合规范",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
@@ -4730,11 +4739,9 @@
         "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
       "evidence": [
-        "S1C-SOURCE",
-        "S1C1-RED",
-        "S1C1-GREEN",
-        "S1DC1-INTEGRATION"
+        "S9-M0-S1-BUDGET-CONTROLLED"
       ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。 S1-C1已过滤有效期/敏感度并取得新快照证据；FTS降级与预算解释尚未闭合，不标PASS。",
       "exit": "固定时钟下验证有效期和敏感度，显式降级与真实快照理由，不重构无关排名。"
     },
@@ -4772,7 +4779,7 @@
       "section": "§3; §11.2–§11.6; D1=B/D2=A/D3=off",
       "line": null,
       "requirement": "Chat/Group执行权限不能由串行或提示词代替",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
@@ -4784,9 +4791,9 @@
         "apps/server/src/routes/conversationRuntime.test.ts"
       ],
       "evidence": [
-        "S5-EXECUTION-SOURCE",
-        "S5-102-LOCAL"
+        "S9-M0-S5-AUTHORITY-CONTROLLED"
       ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "单interaction串行不证明与其他Conversation/Run共享Workspace权限；driver无显式admission。",
       "exit": "无隐式modifying authority，缺可靠只读证据显示不可用/要求显式Run；并发与拒绝路径测试。"
     },
@@ -4817,13 +4824,16 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "版本化lite-v1阈值和预算原因",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "tests": [],
-      "evidence": [],
+      "evidence": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "无持久策略或预算评估。",
       "exit": "持久policyVersion及70%/50%/8/2048/120000/1；每次保存预算组成、上限来源、估算器版本；未来策略不重写历史。"
     },
@@ -4833,13 +4843,16 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "有界摘要发布、原消息保留和实际context应用",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "apps/server/src/store/ConversationRepository.ts"
       ],
       "tests": [],
-      "evidence": [],
+      "evidence": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "无canonical summary/source range。",
       "exit": "保留原消息，摘要不可变；前序摘要+有界前缀分批；近期至少8条+当前输入，采用摘要+未压缩尾部。"
     },
@@ -4849,13 +4862,16 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "压缩执行安全与Provider identity冻结",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "packages/agent-core/src/conversationRunner.ts"
       ],
       "tests": [],
-      "evidence": [],
+      "evidence": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "无tool-free/write-denied摘要执行证据。",
       "exit": "冻结触发轮Provider，禁止静默切换；不可保证禁工具/禁写则不可调用，按预算失败分支处理。"
     },
@@ -4881,13 +4897,16 @@
       "section": "user-approved automatic compaction",
       "line": null,
       "requirement": "压缩失败的硬预算分支",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "tests": [],
-      "evidence": [],
+      "evidence": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "无硬预算门禁。",
       "exit": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。"
     },
@@ -4897,7 +4916,7 @@
       "section": "user clarification; existing edits",
       "line": null,
       "requirement": "仅复用现有Message修订/可见性校验摘要来源",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "apps/server/src/store/ConversationRepository.ts"
@@ -4905,7 +4924,10 @@
       "tests": [
         "apps/server/src/store/ConversationRepository.test.ts"
       ],
-      "evidence": [],
+      "evidence": [
+        "S9-M0-S6-COMPACTION-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "editMessage及cr_message_revisions已有；无压缩source校验。",
       "exit": "不新增编辑API/UI/versioning；实际内容变化或不可见使旧摘要不能进入新context，历史快照不变。"
     },
@@ -4915,7 +4937,7 @@
       "section": "user clarification; 01 §7",
       "line": null,
       "requirement": "Provider-native compaction不得作为canonical evidence",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "packages/agent-core/src/conversationRunner.ts",
@@ -4926,8 +4948,9 @@
         "apps/server/src/services/ConversationCompactionService.test.ts"
       ],
       "evidence": [
-        "S6-NATIVE-COMPACTION-BOUNDARY"
+        "S9-M0-S6-COMPACTION-CONTROLLED"
       ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
       "finding": "基线反证：CLI输出被原文当作canonical摘要（readSummary使用log.stdout||log.stderr），且ConversationRunner在无流式内容时同样回退到原始stdout/stderr，因此Provider自身压缩通知可成为AgentOS摘要并生成候选。已修：stripNativeCompactionNotices在摘要文本层移除native压缩通知行，仅剩通知时按COMPACTION_SUMMARY_INVALID失败关闭（不发布、不建候选、不发事件）；运行时事件层中diagnostic/status一旦报告native压缩即以provider.native_compaction拒绝整次运行，因为被压缩的上下文可能窄于冻结来源范围。测试：ProviderCompactionSummarizer.test.ts 三个文本层用例+一个运行时事件用例；ConversationCompactionService.test.ts 端到端证明native-only输出不产生摘要、候选或Workspace Event。仍缺：三个Provider真实CLI若将来新增native压缩事件类型需按此边界登记；PASS提升在冻结期内禁止，故保持GAP。",
       "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。"
     },
@@ -8228,10 +8251,136 @@
       "requirementIds": [
         "LITE-04-101"
       ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-003 is promoted from GAP to PASS from the final-main controlled receipt: exact/replay convergence, owner isolation, near-duplicate review and source-authority checks have direct persisted assertions S003-EXACT-01, S003-OWNER-01, S003-NEAR-01 and S003-REVIEW-01.",
+      "requirementIds": [
+        "LITE-07-003"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-007 is promoted from GAP to PASS from the final-main S1 budget receipt: actual injected-text pricing, count, Scope, category, diversity and explicit truncation each have a direct passing assertion.",
+      "requirementIds": [
+        "LITE-07-007"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-013 is promoted from GAP to PASS from the final-main context receipt: ranked/degraded retrieval, durable snapshot readback and event/Outbox preservation are directly asserted.",
+      "requirementIds": [
+        "LITE-07-013"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-102 is promoted from GAP to PASS from the final-main terminal-outcome receipt: non-success trigger, replay idempotency, startup repair and non-terminal refusal are directly asserted with bounded/no-raw-output checks.",
+      "requirementIds": [
+        "LITE-07-102"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-105 is promoted from GAP to PASS from the final-main real compaction receipt: durable task, review-required Candidate, causal Workspace Event, no automatic Memory approval and atomic refusal are directly asserted.",
+      "requirementIds": [
+        "LITE-07-105"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-106 is promoted from GAP to PASS from the final-main import receipt: selected Markdown preview, bounded splitting, unchanged source, HTTP confirmation, durable Candidate/Event output and repeat convergence are directly asserted.",
+      "requirementIds": [
+        "LITE-07-106"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-109 is promoted from GAP to PASS from the final-main S1 receipt: fixed-clock validity/access eligibility and visible degraded retrieval are directly asserted alongside the budget path.",
+      "requirementIds": [
+        "LITE-07-109"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-09-102 is promoted from GAP to PASS from the final-main authority receipt: the production Turn refuses beside a modifying holder before Provider invocation and succeeds after release, with direct call/order/state assertions.",
+      "requirementIds": [
+        "LITE-09-102"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-09-104 is promoted from GAP to PASS from the final-main compaction receipt: immutable lite-v1 thresholds and persisted budget/estimator inputs are directly asserted, including the rewrite refusal.",
+      "requirementIds": [
+        "LITE-09-104"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-09-105 is promoted from GAP to PASS from the final-main compaction receipt: bounded summary/source range, retained original messages and recent tail, immutable publication and actual next-Turn adoption are directly asserted.",
+      "requirementIds": [
+        "LITE-09-105"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-09-106 is promoted from GAP to PASS from the final-main real summarizer receipt: Provider identity freeze, read-only profile and denylist enforcement are directly asserted.",
+      "requirementIds": [
+        "LITE-09-106"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-09-108 is promoted from GAP to PASS from the final-main compaction receipt: explicit retry, over-budget refusal without dropping messages and pre-call Turn gating are directly asserted.",
+      "requirementIds": [
+        "LITE-09-108"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-09-109 is promoted from GAP to PASS from the final-main compaction receipt: editing a covered Message causes production summary application to refuse the stale source while preserving history.",
+      "requirementIds": [
+        "LITE-09-109"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-09-110 is promoted from GAP to PASS from the final-main compaction receipt: the persisted AgentOS summary is the canonical row and native-provider rows are not accepted as canonical evidence.",
+      "requirementIds": [
+        "LITE-09-110"
+      ]
     }
   ],
   "passFreeze": "pass-freeze.json",
   "passPromotionAuthority": "pass-promotion-authority.json",
   "passPromotions": "pass-promotions.json",
-  "promotionBaselineSha": "d163c40e33b17cde3540316a038bebef165b64cc"
+  "promotionBaselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac"
 }
