@@ -1,0 +1,186 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:15:43.809Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 8,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过。",
+    "复合条款缺任一分项的具名断言即记驳回；UI 条款以 SSR 标记/契约常量断言为证据边界，不假装证明浏览器运行时行为。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-12-006",
+      "clause": "cursor reconnect without gaps/duplicates;",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/lib/directConversation.test.ts",
+      "coveringAssertion": "DCUX-S03 reconnect resumes from the durable cursor and resyncs",
+      "rationale": "断言体：消费 checkpoint cursor 1、2 后断开 → 状态 disconnected → reconnecting 且 **resumeCursor()===2** → resync 后应用 cursor 3，最终文本恰为 'abc'（无缺帧、无重复）。直接覆盖「重连从游标续传且无缺口/重复」。",
+      "line": 37,
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（布局，不覆盖本条）",
+      "receipt": "covering-batches-8.json（10 passed / exit 0）"
+    },
+    {
+      "id": "LITE-12-009",
+      "clause": "bounded Group controls;",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+      "coveringAssertion": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+      "supportiveAssertions": [
+        {
+          "file": "apps/web/src/components/chat/DirectConversationWorkbench.test.tsx",
+          "name": "WB-05 a group Conversation gets the bounded group canvas, not the direct composer"
+        }
+      ],
+      "rationale": "断言体：群聊画布挂载后断言存在 bounded group 标记、群聊 composer 与发送控件，并显式断言**四个预算控件**（replies/agent、total replies、hops 等）都在标记中；另一条断言群聊会话走群聊画布而非直接 composer。直接覆盖「有界的群聊控件」。",
+      "line": 20,
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "receipt": "covering-batches-8.json（2 passed）"
+    },
+    {
+      "id": "LITE-12-011",
+      "clause": "Memory selection explanation;",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+      "coveringAssertion": "INS-07 Memory Context explains selection and exclusion from the frozen Snapshot",
+      "supportiveAssertions": [
+        {
+          "file": "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
+          "name": "INS-05 Memory Context is a section, and its absence is named, not hidden"
+        }
+      ],
+      "rationale": "断言体：渲染 Inspector 的 Memory Context 区段后，断言它**解释了选择与排除**（来自冻结快照的 selection/exclusion 理由）；另一条断言该区段缺失时被明确命名而非隐藏。直接覆盖「Memory 选择可解释」。",
+      "line": 84,
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "receipt": "covering-batches-8.json（7 passed）"
+    },
+    {
+      "id": "LITE-12-014",
+      "clause": "keyboard core flow and stable focus;",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/lib/uiFoundation.test.ts",
+      "coveringAssertion": "UIF-13 accessibility rules",
+      "rationale": "断言体：冻结焦点契约常量 —— `visibleRing:true`、`logicalOrder:true`、`restoreAfterClose:true`、`streamStealsFocus:false`、`modalTrapOnlyForBlocking:true`，另加状态不可仅靠颜色（icon/text/accessibleName 均 required）。覆盖「键盘核心流与稳定焦点」的契约面。",
+      "limits": "这是**契约常量**断言，不证明组件在真实浏览器中的实际焦点行为（无 DOM/浏览器运行时断言）。WorkbenchShell 另断言 CSS 暴露 `--focus-ring` 变量，属同一契约面。",
+      "line": 152,
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（布局断言不覆盖键盘流）",
+      "receipt": "covering-batches-8.json（15 passed）"
+    },
+    {
+      "id": "LITE-12-002",
+      "clause": "shared semantic token coverage;",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/lib/uiFoundation.test.ts",
+      "coveringAssertion": "UIF-14 uiCssVariables flattens all semantic tokens",
+      "supportiveAssertions": [
+        {
+          "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+          "name": "SHELL-02 the shell consumes the token system through CSS variables"
+        },
+        {
+          "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+          "name": "SHELL-07 dark and light themes emit their own token values"
+        }
+      ],
+      "rationale": "断言体：`uiCssVariables('dark')` 把每个语义 token 扁平化为 CSS 变量并逐项比对（如 --surface-base / --text-primary），即**无遗漏**；shell 侧断言实际消费这些变量，且深浅两套主题各自产出自己的 token 值。",
+      "line": 165,
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（同一主题的组件侧断言存在，但 token 完备性在本文件）",
+      "receipt": "covering-batches-8.json（15 passed）"
+    },
+    {
+      "id": "LITE-12-005",
+      "clause": "batched streaming and stable scroll;",
+      "verdict": "rejected",
+      "candidateFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "candidateAssertion": "SHELL-08 the Canvas keeps its minimum width",
+      "rationale": "全仓检索 `batched streaming` / `stable scroll` / `autoscroll` 均无命中；布局断言与流式批处理、滚动稳定性无关。条款两项（批处理流式、滚动稳定）都没有具名断言。按缺口记录。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）"
+    },
+    {
+      "id": "LITE-12-007",
+      "clause": "complete async states;",
+      "verdict": "rejected",
+      "candidateFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "candidateAssertion": "SHELL-03 standard mode collapses the Inspector into an affordance",
+      "rationale": "检索 `async state` / `loading.*error.*empty` / `four states` 无命中；布局断言不覆盖「加载/错误/空/成功」等异步状态完备性。按缺口记录。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）"
+    },
+    {
+      "id": "LITE-12-013",
+      "clause": "Agent-unified History and secret-free Search;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/AgentHistoryService.test.ts",
+      "coveringAssertion": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "history endpoint returns the agent unified references"
+        }
+      ],
+      "rationale": "与 LITE-11-011 同一对证据：服务端断言搜索永不触及消息体（含 sk-secret-99 的消息零命中），路由断言 Agent 统一历史引用。12 文档语境下这两条即为该 UI 条款的服务端契约面。",
+      "limits": "覆盖服务端契约；**未**覆盖 UI 组件对这两项的实际渲染（HistorySearchView/HistorySearch 的组件断言在 apps/web/src/lib/historySearch.test.tsx，本轮未纳入判读的覆盖文件）。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）",
+      "receipt": "covering-batches-6.json（7 passed）＋ covering-batches-7.json（9 passed）"
+    },
+    {
+      "id": "LITE-12-015",
+      "clause": "API-client-only access;",
+      "verdict": "rejected",
+      "candidateFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "candidateAssertion": "LITE-12-016 the UI ships only the Lite route surface",
+      "rationale": "候选断言覆盖的是「只发布 Lite 路由面」（范围边界），不是「访问仅经 API 客户端」（即 UI 不直连数据库/文件系统、所有数据经 HTTP API）。全仓检索未见该断言。按缺口记录。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（不覆盖）"
+    },
+    {
+      "id": "LITE-12-101",
+      "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+      "verdict": "rejected",
+      "candidateFile": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "candidateAssertion": "SHELL-01 wide mode renders all four columns with landmarks",
+      "partialCoverage": [
+        {
+          "item": "四栏布局与 landmark",
+          "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+          "name": "SHELL-01 wide mode renders all four columns with landmarks",
+          "status": "有具名断言"
+        },
+        {
+          "item": "导航",
+          "file": "（未找到 UI 导航断言）",
+          "name": "—",
+          "status": "缺"
+        },
+        {
+          "item": "通知状态",
+          "file": "（未找到通知状态断言）",
+          "name": "—",
+          "status": "缺"
+        },
+        {
+          "item": "键盘流",
+          "file": "apps/web/src/lib/uiFoundation.test.ts",
+          "name": "UIF-13 accessibility rules（契约常量）",
+          "status": "仅有契约层断言"
+        }
+      ],
+      "rationale": "四项中只有「四栏布局」有组件级断言；导航与通知状态缺具名断言，键盘流只有契约常量（非组件/浏览器行为）。按复合条款口径记驳回：需补导航、通知状态与组件级键盘流断言。",
+      "currentPointer": "apps/web/src/components/layout/WorkbenchShell.test.tsx（仅覆盖布局一项）"
+    }
+  ],
+  "summary": {
+    "judged": 10,
+    "accepted": 6,
+    "rejected": 4,
+    "cumulativeJudged": 66,
+    "cumulativeAccepted": 43,
+    "cumulativeRejected": 23,
+    "remaining": 40
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
+
