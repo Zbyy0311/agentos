@@ -871,6 +871,158 @@
         }
       ],
       "rationale": "The final-main receipt verifies that canonical summary identity comes from the persisted AgentOS compaction row and that no native-provider compaction row is accepted as canonical. The deterministic native-only refusal tests remain part of the same raw receipt's 39 passing assertions."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-13-002",
+      "requirementId": "LITE-13-002",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "INSP-12-RUN-IDENTITY",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+          "line": 144,
+          "expression": "assert.equal(projection.overview.runId, RUN);",
+          "clause": "Run, Stage, Provider, Process, and duration are distinct.",
+          "whyDirect": "The named production RuntimeInspector test reads the canonical projection and asserts the Run identity, stage, provider session, process identity, evidence-only PID, and Run-derived duration as separate values.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-12-PROCESS",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+          "line": 160,
+          "expression": "assert.equal(projection.processes.length, 1);",
+          "clause": "The projection contains a distinct Process record linked to the Provider Session and Stage.",
+          "whyDirect": "The assertion observes the persisted Process projection separately from the Stage and Provider Session records created by the fixture.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-12-DURATION",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+          "line": 175,
+          "expression": "assert.equal(timed.overview.durationMs, 2500);",
+          "clause": "Duration is derived from the canonical Run timestamps.",
+          "whyDirect": "The test changes only the Run timestamps and verifies the Inspector duration, proving duration is a Run projection rather than a Process identity or PID.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion is based on the final implementation baseline and a clean TAP receipt whose named assertions directly cover the distinct canonical identities and Run-derived duration."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-13-003",
+      "requirementId": "LITE-13-003",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "INSP-04-ID",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-04 process PID is evidence-only",
+          "line": 230,
+          "expression": "assert.equal(projection.processes[0].processId, processId);",
+          "clause": "The durable Process ID is projected as the AgentOS identity.",
+          "whyDirect": "The named test inserts a Process with a distinct durable ID and reads that ID back from the production Inspector projection.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-04-PID",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-04 process PID is evidence-only",
+          "line": 231,
+          "expression": "assert.equal(projection.processes[0].nativePidEvidenceOnly, 4242);",
+          "clause": "The native PID is retained only as evidence.",
+          "whyDirect": "The assertion verifies the native PID is exposed under the explicit evidence-only field, not substituted for the durable Process ID.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-04-NO-NATIVE-ID",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-04 process PID is evidence-only",
+          "line": 233,
+          "expression": "assert.ok(!('nativePid' in projection.processes[0]));",
+          "clause": "The DTO does not expose a misleading nativePid identity field.",
+          "whyDirect": "The assertion directly checks the returned production DTO shape and rejects the ambiguous nativePid property.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion directly verifies the durable Process ID/native PID boundary in the returned Inspector DTO, including the absence of the ambiguous nativePid field."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-13-015",
+      "requirementId": "LITE-13-015",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "INSP-07-EVENTS",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-07 inspect performs no writes",
+          "line": 280,
+          "expression": "assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runtime_events'), before);",
+          "clause": "Inspector replay does not append Runtime Events.",
+          "whyDirect": "The test snapshots the canonical Runtime Event count, invokes the production Inspector, and verifies the count is unchanged.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-07-RUN-STATE",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-07 inspect performs no writes",
+          "line": 281,
+          "expression": "assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runs WHERE status = ?', 'running'), 1);",
+          "clause": "Inspector replay does not mutate the canonical Run state.",
+          "whyDirect": "The assertion reads the canonical Run table after inspection and confirms the existing running state remains unchanged.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion is based on before/after canonical database assertions around the production Inspector call, proving that replay has no Runtime Event or Run-state side effects."
     }
   ]
 }

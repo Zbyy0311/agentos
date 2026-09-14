@@ -4207,7 +4207,7 @@
       "section": "19. Acceptance Expectations",
       "line": 315,
       "requirement": "Run, Stage, Provider, Process, and duration are distinct;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
@@ -4216,10 +4216,11 @@
         "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
       ],
-      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: INSP-12 Run, Stage, Provider, Process and duration stay distinct (triage triage-09.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/routes/runtimeInspector.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
-      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
+      "finding": "本轮受控提升：apps/server/src/services/RuntimeInspector.test.ts 的 INSP-12 直接断言 Run、Stage、Provider、Process 的独立标识，以及由 Run 时间戳计算的 duration；标准 TAP 原始收据 12 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
+      "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
     },
     {
       "id": "LITE-13-003",
@@ -4227,7 +4228,7 @@
       "section": "19. Acceptance Expectations",
       "line": 316,
       "requirement": "Process ID is never confused with PID;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
@@ -4236,11 +4237,11 @@
         "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
       ],
-      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: INSP-04 process PID is evidence-only (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-003. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "本轮受控提升：apps/server/src/services/RuntimeInspector.test.ts 的 INSP-04 直接断言 durable processId、nativePidEvidenceOnly 与 nativeBirthIdentity 的区别，并断言 DTO 不含 nativePid 身份字段；标准 TAP 原始收据 12 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
     },
     {
       "id": "LITE-13-004",
@@ -4485,7 +4486,7 @@
       "section": "19. Acceptance Expectations",
       "line": 328,
       "requirement": "replay has zero external side effects.",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
@@ -4494,11 +4495,11 @@
         "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
       ],
-      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: INSP-07 inspect performs no writes (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "本轮受控提升：apps/server/src/services/RuntimeInspector.test.ts 的 INSP-07 在调用生产 Inspector 前后比较 Runtime Event 计数及 running Run 状态，直接证明 replay 无外部写副作用；标准 TAP 原始收据 12 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
     },
     {
       "id": "LITE-04-101",
@@ -8376,6 +8377,33 @@
       "reason": "LITE-09-110 is promoted from GAP to PASS from the final-main compaction receipt: the persisted AgentOS summary is the canonical row and native-provider rows are not accepted as canonical evidence.",
       "requirementIds": [
         "LITE-09-110"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-13-002 is promoted from RUNTIME-VERIFY to PASS from the individual RuntimeInspector TAP receipt: INSP-12 directly asserts distinct canonical identities and Run-derived duration.",
+      "requirementIds": [
+        "LITE-13-002"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-13-003 is promoted from RUNTIME-VERIFY to PASS from the individual RuntimeInspector TAP receipt: INSP-04 directly asserts durable Process ID versus evidence-only native PID and DTO shape.",
+      "requirementIds": [
+        "LITE-13-003"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-13-015 is promoted from RUNTIME-VERIFY to PASS from the individual RuntimeInspector TAP receipt: INSP-07 compares canonical Runtime Event and Run-state counts before and after inspection.",
+      "requirementIds": [
+        "LITE-13-015"
       ]
     }
   ],

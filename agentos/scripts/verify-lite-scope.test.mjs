@@ -124,12 +124,12 @@ function passFixture() {
 
 test('scope accepts the frozen matrix with individually authorized PASS rows', () => {
   const result = validateScope(matrix(), evidence, lock, root);
-  assert.equal(result.PASS, 14);
+  assert.equal(result.PASS, 17);
   assert.equal(result.GAP, 12);
-  // 204 / 165 rather than 205 / 164: the user-authorized LITE-04-101 deferral moves
-  // exactly one row, and the controlled v18 promotions close fourteen independently
+  // 201 / 165 rather than 205 / 164: the user-authorized LITE-04-101 deferral moves
+  // exactly one row, and the controlled v18 promotions close seventeen independently
   // evidenced rows without changing the permanent scope.
-  assert.equal(result['RUNTIME-VERIFY'], 204);
+  assert.equal(result['RUNTIME-VERIFY'], 201);
   assert.equal(result.DEFERRED, 165);
 });
 
@@ -224,7 +224,12 @@ function promotionFixture() {
   const frozen = freeze();
   const frozenById = new Map(frozen.rows.map(item => [item.id, item.state]));
   for (const item of currentMatrix.requirements) {
-    if (item.state === 'PASS') item.state = frozenById.get(item.id);
+    if (item.state === 'PASS') {
+      const frozenState = frozenById.get(item.id);
+      // The original freeze recorded two historical PASS rows that were
+      // explicitly withdrawn to RUNTIME-VERIFY before this promotion authority.
+      item.state = frozenState === 'PASS' ? 'RUNTIME-VERIFY' : frozenState;
+    }
   }
   row.state = 'PASS';
   const authority = json('pass-promotion-authority.json');

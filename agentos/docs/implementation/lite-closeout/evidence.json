@@ -1179,5 +1179,25 @@
     ],
     "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
     "limitation": "The receipt exercises the mounted HTTP preview/confirm path and durable import records; browser rendering is outside this row's import contract."
+  },
+  {
+    "id": "S9-M0-S8-INSPECTOR-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-runtime-inspector-controlled.json",
+    "result": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-13-002",
+      "LITE-13-003",
+      "LITE-13-015"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "This local receipt directly proves the three mapped Inspector clauses through named assertions and canonical SQLite projections. It does not prove browser acceptance or unrelated Inspector clauses such as Event gap recovery/deduplication and Cancel/Retry source-chain projection."
   }
 ]
