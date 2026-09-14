@@ -4881,15 +4881,27 @@
       "document": "09-Conversation-Runtime.md",
       "section": "user-approved automatic compaction",
       "line": null,
-      "requirement": "每Conversation单持有者、持久恢复、租约与重试",
-      "state": "GAP",
+    "requirement": "每Conversation单持有者、持久恢复、租约与重试",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
-        "apps/server/src/index.ts"
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/store/SqliteStore.ts"
       ],
-      "tests": [],
-      "evidence": [],
-      "finding": "无压缩任务恢复状态。",
+      "tests": [
+        "apps/server/src/services/ConversationCompactionService.test.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+        "apps/server/src/store/CompactionRepository.test.ts"
+      ],
+      "evidence": [
+        "S9-M0-S6-RETRY-SERVICE-CONTROLLED",
+        "S9-M0-S6-RETRY-TRIGGER-CONTROLLED",
+        "S9-M0-S6-RETRY-REPOSITORY-CONTROLLED"
+      ],
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "finding": "本轮受控提升：CompactionService 直接证明一次自动失败后最多重试一次、耗尽后不再调度；CompactionTrigger 直接证明持久过期租约在 SQLite 关闭/重开后回收、活动租约不被窃取；CompactionRepository 直接证明 Lite v1 的 120000ms/1 次策略、单Conversation运行唯一性、版本化租约及旧租约发布冲突。三份 TAP 原始收据合计 22 pass / 0 fail / 0 skip，raw exit 0，基线 f51a6e1d。",
       "exit": "并发单持有者；重启先判断旧执行，不猜测结束；旧租约不可发布；自动重试最多一次，超时120秒。"
     },
     {
@@ -8449,6 +8461,15 @@
       "reason": "LITE-13-008 is promoted from RUNTIME-VERIFY to PASS from the individual recovery receipt: mismatch leaves the Run running but durably recoveryRequired, so Inspector cannot report guessed success.",
       "requirementIds": [
         "LITE-13-008"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-09-107 is promoted from GAP to PASS from three separately captured S6 receipts: bounded automatic retry, durable SQLite restart/lease recovery, live-lease non-stealing, stale publication fencing, and the immutable Lite v1 timeout/retry policy are each directly asserted.",
+      "requirementIds": [
+        "LITE-09-107"
       ]
     }
   ],
