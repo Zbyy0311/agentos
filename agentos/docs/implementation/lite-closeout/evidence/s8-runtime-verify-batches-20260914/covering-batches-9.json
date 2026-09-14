@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "baseline": "4392e35f7004a59621489a5151b71d4440c020b0",
+  "trackedStatus": "",
+  "generatedAt": "2026-09-14T14:17:47.932Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 1,
+    "passed": 1,
+    "failed": 0,
+    "requirementsProvable": 0,
+    "requirementsTotal": 0
+  },
+  "results": [
+    {
+      "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 6899,
+      "sourceSha256": "414c50cf5fe5c625ffe11b5f659eb2a7660f01e7eab979bf41cc0db83f10c7f6",
+      "rawLogSha256": "92a19b6ec20ba5cfcbafd11a6f42d490d10fe2d3413801958bdc5550c8b124d1",
+      "rawOutput": "✔ P6D-A1 complete Legacy canonical execution persists one Task/Run/Snapshot/Stages/Start and a strict durable Event graph (343.3956ms)\n✔ P6D-A2 every durable Runtime Event has exactly one Outbox with matching binding (298.0345ms)\n✔ P6D-A3 OutboxPublisher delivers every Outbox to RunStream exactly once without domain mutation (519.9603ms)\n✔ P6D-A4 thinking projection is persisted-first: Event and Outbox already queryable at projection time (314.9352ms)\n✔ P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue (303.261ms)\n✔ P6D-A6 reconnect replays exactly once after the last observed cursor and continues live (299.6981ms)\n✔ P6D-A7 Outbox crash window redelivers the same Event after lease reclaim without a second Event (219.3923ms)\n✔ P6D-A8 lease expiry preserves failure budget and attempts semantics (191.2215ms)\n✔ P6D-A9 classified retryable failure consumes budget with frozen firstFailedAt and deterministic backoff (263.7184ms)\n✔ P6D-A10 non-retryable classified failure dead-letters exactly once with atomic Outbox mutation (234.0595ms)\n✔ P6D-A11 subscriber failure and transport close stay isolated from Outbox and Run state (553.0001ms)\n✔ P6D-B1 v2 queued recovery restores authorization with queued Start and no execution (187.4574ms)\n✔ P6D-B2 v2 starting recovery fails Run/Start atomically with Event and Outbox (195.3787ms)\n✔ P6D-B3 v2 running uncertainty marks recovery_required without completion, failure or restart (207.2892ms)\n✔ P6D-C1 Legacy running recovery fails active Stage and Run while Start stays completed (200.6961ms)\n✔ P6D-C2 Legacy starting recovery fails Stage/Run/Start with canonical Task reconciliation (192.7516ms)\n✔ P6D-C3 historical Legacy running Run with zero Start and zero Event graph is preserved (183.7615ms)\n✔ P6D-C4 final-review crash window preserves review evidence and never re-executes (238.5158ms)\n✔ P6D-C5 a later Legacy POST after recovery creates one retry Run with parent/root and one Start (385.0217ms)\n✔ P6D-C6 recovery Events all carry one Outbox and deliver without domain mutation (285.7683ms)\n✔ P6D-C7 RunStream observes recovery Events in strict sequence and recovery state remains committed after disconnect (190.9561ms)\n✔ P6D-D1 unknown future Event boundary fails both P6B and P6C recovery with zero mutation (203.0003ms)\n✔ P6D-D2 sequence gap boundary fails recovery closed without repair or row deletion (186.4449ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 6821.1909\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 23,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 23,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ P6D-C6 recovery Events all carry one Outbox and deliver without domain mutation (285.7683ms)\n✔ P6D-C7 RunStream observes recovery Events in strict sequence and recovery state remains committed after disconnect (190.9561ms)\n✔ P6D-D1 unknown future Event boundary fails both P6B and P6C recovery with zero mutation (203.0003ms)\n✔ P6D-D2 sequence gap boundary fails recovery closed without repair or row deletion (186.4449ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 6821.1909",
+      "baseline": "4392e35f7004a59621489a5151b71d4440c020b0",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/m3-p6-integrated-verification.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ P6D-A1 complete Legacy canonical execution persists one Task/Run/Snapshot/Stages/Start and a strict durable Event graph (343.3956ms)\n✔ P6D-A2 every durable Runtime Event has exactly one Outbox with matching binding (298.0345ms)\n✔ P6D-A3 OutboxPublisher delivers every Outbox to RunStream exactly once without domain mutation (519.9603ms)\n✔ P6D-A4 thinking projection is persisted-first: Event and Outbox already queryable at projection time (314.9352ms)\n✔ P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue (303.261ms)\n✔ P6D-A6 reconnect replays exactly once after the last observed cursor and continues live (299.6981ms)\n✔ P6D-A7 Outbox crash window redelivers the same Event after lease reclaim without a second Event (219.3923ms)\n✔ P6D-A8 lease expiry preserves failure budget and attempts semantics (191.2215ms)\n✔ P6D-A9 classified retryable failure consumes budget with frozen firstFailedAt and deterministic backoff (263.7184ms)\n✔ P6D-A10 non-retryable classified failure dead-letters exactly once with atomic Outbox mutation (234.0595ms)\n✔ P6D-A11 subscriber failure and transport close stay isolated from Outbox and Run state (553.0001ms)\n✔ P6D-B1 v2 queued recovery restores authorization with queued Start and no execution (187.4574ms)\n✔ P6D-B2 v2 starting recovery fails Run/Start atomically with Event and Outbox (195.3787ms)\n✔ P6D-B3 v2 running uncertainty marks recovery_required without completion, failure or restart (207.2892ms)\n✔ P6D-C1 Legacy running recovery fails active Stage and Run while Start stays completed (200.6961ms)\n✔ P6D-C2 Legacy starting recovery fails Stage/Run/Start with canonical Task reconciliation (192.7516ms)\n✔ P6D-C3 historical Legacy running Run with zero Start and zero Event graph is preserved (183.7615ms)\n✔ P6D-C4 final-review crash window preserves review evidence and never re-executes (238.5158ms)\n✔ P6D-C5 a later Legacy POST after recovery creates one retry Run with parent/root and one Start (385.0217ms)\n✔ P6D-C6 recovery Events all carry one Outbox and deliver without domain mutation (285.7683ms)\n✔ P6D-C7 RunStream observes recovery Events in strict sequence and recovery state remains committed after disconnect (190.9561ms)\n✔ P6D-D1 unknown future Event boundary fails both P6B and P6C recovery with zero mutation (203.0003ms)\n✔ P6D-D2 sequence gap boundary fails recovery closed without repair or row deletion (186.4449ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 6821.1909\n",
+      "stderr": ""
+    }
+  ]
+}
