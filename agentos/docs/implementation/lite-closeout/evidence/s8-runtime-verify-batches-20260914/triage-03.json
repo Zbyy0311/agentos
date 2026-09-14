@@ -1,0 +1,85 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:01:43.642Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 3,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过（本批次内，或本批为此单独执行的覆盖文件收据 covering-batches*.json）。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-02-006",
+      "clause": "transition-to-Event mappings remain exact;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "coveringAssertion": "P2C-2A Run queued -> starting emits run.dequeued with service timestamp",
+      "supportingAssertions": [
+        {
+          "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+          "name": "P2C-2A Run starting -> failed persists failure fields and emits run.failed"
+        },
+        {
+          "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+          "name": "P2C-2A Run running -> paused emits run.paused"
+        }
+      ],
+      "rationale": "断言体：transitionRun(queued→starting) 后断言 Run 状态为 starting 且事件类型恰为 'run.dequeued'、payload 带 dequeuedAt；starting→failed 断言事件 'run.failed' 且带 errorCode/message/phase/retryable。逐转移的「状态迁移 → 事件类型与载荷」映射被直接断言。",
+      "line": 278,
+      "currentPointer": "同一文件（指针正确）"
+    },
+    {
+      "id": "LITE-02-012",
+      "clause": "retry creates a new Run with preserved lineage;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/TaskRunService.test.ts",
+      "coveringAssertion": "P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically",
+      "supportingAssertions": [
+        {
+          "file": "apps/server/src/services/TaskRunService.test.ts",
+          "name": "[M27-P4-T005] Bridge retry and failure stay isolated from P3 compatibility rows and Registry evidence"
+        }
+      ],
+      "rationale": "断言体：retry 后断言 retry.run.reason==='retry' 且 retry.run.parentRunId===first.run.id；P3C1-RY-S02 进一步断言 child.parentRunId===parent.id 并连同 fingerprint/子字段/事件/Outbox 原子持久化。既证明是新 Run，也证明谱系被保留。",
+      "line": 2127,
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）",
+      "receipt": "covering-batches.json（本批单独执行本文件，92 passed / 0 fail，exit 0）"
+    },
+    {
+      "id": "LITE-02-002",
+      "clause": "Task creation is idempotent and separate from Run creation;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "coveringAssertion": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "rationale": "断言体：同一输入三次 createTaskFromMessage → created 分别 true/false/false，第二三次返回同一 task.id，库中 tasks 行数为 1、**runs 行数为 0**。两句条款各有直接断言：幂等（重复调用收敛到同一 Task）与「与建 Run 分离」（建 Task 不产生 Run）。",
+      "line": 111,
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）",
+      "receipt": "covering-batches-2.json（本批单独执行本文件，14 passed / 0 fail，exit 0）"
+    },
+    {
+      "id": "LITE-02-016",
+      "clause": "Worktree absence does not block a modifying Run after Workspace admission;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/WorktreeManager.test.ts",
+      "candidateAssertion": "reconciles missing paths as failed without deleting worktrees",
+      "rationale": "断言体覆盖 WorktreeManager 对缺失路径的**协调与失败标记**，与「无 Worktree 时被准入的 modifying Run 仍可继续」不是同一命题。全仓检索未见断言「worktree 缺失 + 已准入 → Run 照常执行」的断言。按缺口记录。",
+      "currentPointer": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts（不覆盖本条语义）"
+    }
+  ],
+  "summary": {
+    "judged": 4,
+    "accepted": 3,
+    "rejected": 1,
+    "cumulativeJudged": 26,
+    "cumulativeAccepted": 15,
+    "cumulativeRejected": 11,
+    "remaining": 84
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
+
