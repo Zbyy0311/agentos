@@ -207,6 +207,29 @@ test('strict S8 wrapper accepts only a complete raw zero gate log', () => {
   assert.match(output, /raw_harness_exit_code: 0/);
 });
 
+test('strict S8 wrapper tolerates not_run only for gates that passed in their owning phase', () => {
+  const multiPhase = 'S8_RAW_EXIT_CODE: 0\n'
+    + 'REAL_EXTERNAL_AGENT: passed\n'
+    + 'DETERMINISTIC_LIFECYCLE: passed\n'
+    + 'RECOVERY: not_run\n'
+    + 'MEMORY_CANDIDATE: passed\n'
+    + 'REAL_EXTERNAL_AGENT: not_run\n'
+    + 'DETERMINISTIC_LIFECYCLE: not_run\n'
+    + 'RECOVERY: passed\n'
+    + 'MEMORY_CANDIDATE: not_run\n'
+    + requiredGates.map(gate => gate + ': passed').join('\n') + '\n';
+  const { result, output } = runGateLog(multiPhase);
+  assert.equal(result.status, 0);
+  assert.match(output, /S8_GATES: passed/);
+});
+
+test('strict S8 wrapper still rejects a gate that only ever reports not_run', () => {
+  const { result, output } = runGateLog(gateLog({ REAL_DIRECT_KIMI: 'not_run' }, 0));
+  assert.equal(result.status, 1);
+  assert.match(output, /non-executed gate result cannot prove PASS: REAL_DIRECT_KIMI = not_run/);
+  assert.doesNotMatch(output, /S8_GATES: passed/);
+});
+
 test('zero exit with skipped or unparsed tests never proves acceptance', () => {
   for (const summary of ['no test output', '# pass 1\\n# fail 0\\n# skipped 2\\n# cancelled 0\\n# todo 0']) {
     const root = initFixture();
