@@ -1,0 +1,24 @@
+✔ serves owned artifact content and rejects metadata-only artifacts (254.3123ms)
+✔ LITE-07-104/108: exact concurrent finalization and replay converge, conflicting conclusion rejects (197.4468ms)
+✔ LITE-07-104/108: memory_candidate_entries failure rolls back Artifact, completion, Candidate, Event and files (189.6574ms)
+✔ LITE-07-104/108: memory_candidate_sources failure rolls back Artifact, completion, Candidate, Event and files (182.8679ms)
+✔ LITE-07-104/108: artifact_completions failure rolls back Artifact, completion, Candidate, Event and files (183.6474ms)
+✔ LITE-07-104/108: workspace_events failure rolls back Artifact, completion, Candidate, Event and files (188.1376ms)
+✔ LITE-07-108: source-specific Workspace creation cannot be redirected to a different Candidate or Event (175.6937ms)
+✔ LITE-07-104: database refuses substituted Artifact/type/Workspace/Run source even outside the service (180.2825ms)
+✔ LITE-07-104: explicit canonical review result creates real-source Event/Outbox then reviews to Entry (203.7958ms)
+✔ LITE-07-104: concurrent conflicting producer result has stable conflict and one committed Artifact (198.1106ms)
+✔ LITE-07-104: stale canonical attempt or cancelled Run cannot publish a new result (200.5885ms)
+✔ LITE-07-108: canonical completion emitter rejects unrelated Candidate and completion identity (210.7396ms)
+✔ LITE-07-104: canonical runtime_events failure rolls back the whole finalization (206.1412ms)
+✔ LITE-07-104: canonical outbox_messages failure rolls back the whole finalization (202.476ms)
+✔ LITE-07-104: only explicit typed results and direct test invocations are eligible (0.4652ms)
+✔ LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content (498.2088ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 4302.6657

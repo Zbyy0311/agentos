@@ -1,0 +1,662 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T13:08:32.656Z",
+  "client": "E:\\software\\opencode\\node_modules\\opencode-ai\\bin\\opencode.exe",
+  "model": "deepseek/deepseek-v4-flash",
+  "phases": {
+    "gates": {
+      "artifact-gate": {
+        "command": "node --import tsx --test --test-concurrency=1 src/services/run-engine/CanonicalArtifactResult.liveGate.test.ts",
+        "exitCode": 0,
+        "signal": null,
+        "reusedFrom": "E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s2s3-live-candidate-evidence-20260914\\artifact-gate",
+        "stdoutBytes": 323,
+        "stderrBytes": 0,
+        "keptRoot": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-live-artifact-Cm2eip",
+        "testSummary": {
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      "approval-gate": {
+        "command": "node --import tsx --test --test-concurrency=1 src/services/run-engine/RuntimeApprovalGate.liveGate.test.ts",
+        "exitCode": 0,
+        "signal": null,
+        "reusedFrom": "E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s2s3-live-candidate-evidence-20260914\\approval-gate",
+        "stdoutBytes": 327,
+        "stderrBytes": 0,
+        "keptRoot": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-live-approval-CGrnbn",
+        "testSummary": {
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0
+        }
+      }
+    },
+    "artifact": {
+      "keptRoot": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-live-artifact-Cm2eip",
+      "dbPath": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-live-artifact-Cm2eip\\.agentos\\agentos.sqlite",
+      "artifacts": 3,
+      "completions": 3,
+      "candidates": 4,
+      "entries": 1,
+      "runtimeEventCount": 90,
+      "outboxCount": 90
+    },
+    "approval": {
+      "keptRoot": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-live-approval-CGrnbn",
+      "dbPath": "C:\\Users\\ADMINI~1\\AppData\\Local\\Temp\\agentos-live-approval-CGrnbn\\.agentos\\agentos.sqlite",
+      "requests": 2,
+      "decisions": 2,
+      "providerProcesses": 2,
+      "decisionCandidates": 3,
+      "expiredRequests": 1,
+      "expiredDecisions": 0,
+      "expiredProcesses": 0
+    }
+  },
+  "counts": {
+    "total": 13,
+    "passed": 13,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S2E-GATE-01",
+      "requirementId": "LITE-07-104",
+      "phase": "artifact",
+      "step": "the real-Provider artifact gate itself passed under its gated run",
+      "actual": {
+        "exitCode": 0,
+        "signal": null,
+        "testSummary": {
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      "expected": {
+        "exitCode": 0,
+        "signal": null,
+        "testSummary": {
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S2E-ARTIFACT-01",
+      "requirementId": "LITE-07-104",
+      "phase": "artifact",
+      "step": "a real review produced a canonical Artifact bound to the Run and a known Stage",
+      "actual": {
+        "runStatus": "completed",
+        "allStagesCompleted": true,
+        "artifactCount": 3,
+        "artifacts": [
+          {
+            "id": "3fb491df-951e-47d4-bac9-4f6b12845522",
+            "type": "review",
+            "runMatches": true,
+            "provenance": "CANONICAL",
+            "stageKey": "codex_manager",
+            "summaryNonEmpty": true
+          },
+          {
+            "id": "8e66877d-1e31-4e23-92af-04ea48455d57",
+            "type": "review",
+            "runMatches": true,
+            "provenance": "CANONICAL",
+            "stageKey": "kimi_worker",
+            "summaryNonEmpty": true
+          },
+          {
+            "id": "eeb6cf53-599f-4eb1-9c6f-f8eda2f492dd",
+            "type": "review",
+            "runMatches": true,
+            "provenance": "CANONICAL",
+            "stageKey": "codex_final_review",
+            "summaryNonEmpty": true
+          }
+        ]
+      },
+      "expected": {
+        "runStatus": "completed",
+        "allStagesCompleted": true,
+        "artifactCount": 3,
+        "artifacts": [
+          {
+            "id": "3fb491df-951e-47d4-bac9-4f6b12845522",
+            "type": "review",
+            "runMatches": true,
+            "provenance": "CANONICAL",
+            "stageKey": "codex_manager",
+            "summaryNonEmpty": true
+          },
+          {
+            "id": "8e66877d-1e31-4e23-92af-04ea48455d57",
+            "type": "review",
+            "runMatches": true,
+            "provenance": "CANONICAL",
+            "stageKey": "kimi_worker",
+            "summaryNonEmpty": true
+          },
+          {
+            "id": "eeb6cf53-599f-4eb1-9c6f-f8eda2f492dd",
+            "type": "review",
+            "runMatches": true,
+            "provenance": "CANONICAL",
+            "stageKey": "codex_final_review",
+            "summaryNonEmpty": true
+          }
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S2E-COMPLETION-01",
+      "requirementId": "LITE-07-104",
+      "phase": "artifact",
+      "step": "every Artifact reached exactly one type-matched terminal completion from the canonical seam",
+      "actual": {
+        "completions": 3,
+        "oneCompletionPerArtifact": true,
+        "coveredArtifacts": [
+          "3fb491df-951e-47d4-bac9-4f6b12845522",
+          "8e66877d-1e31-4e23-92af-04ea48455d57",
+          "eeb6cf53-599f-4eb1-9c6f-f8eda2f492dd"
+        ],
+        "types": [
+          "review",
+          "review",
+          "review"
+        ],
+        "conclusionMatchesType": true,
+        "fromCanonicalSeam": true
+      },
+      "expected": {
+        "completions": 3,
+        "oneCompletionPerArtifact": true,
+        "coveredArtifacts": [
+          "3fb491df-951e-47d4-bac9-4f6b12845522",
+          "8e66877d-1e31-4e23-92af-04ea48455d57",
+          "eeb6cf53-599f-4eb1-9c6f-f8eda2f492dd"
+        ],
+        "types": [
+          "review",
+          "review",
+          "review"
+        ],
+        "conclusionMatchesType": true,
+        "fromCanonicalSeam": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S2E-CANDIDATE-01",
+      "requirementId": "LITE-07-104",
+      "phase": "artifact",
+      "step": "each completion produced a review-required Candidate that cites the Artifact as its source",
+      "actual": {
+        "candidateCount": 3,
+        "candidates": [
+          {
+            "id": "mcand_01M2G0A05ZKEYP7PDMASY8X8RE",
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "citesArtifact": true
+          },
+          {
+            "id": "mcand_01M2G0ABAX9ZSTQ0D8YYRNHTDH",
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "citesArtifact": true
+          },
+          {
+            "id": "mcand_01M2G0B381YNGX43JR6KFWQ3RV",
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "citesArtifact": true
+          }
+        ],
+        "oneCandidatePerCompletion": true
+      },
+      "expected": {
+        "candidateCount": 3,
+        "candidates": [
+          {
+            "id": "mcand_01M2G0A05ZKEYP7PDMASY8X8RE",
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "citesArtifact": true
+          },
+          {
+            "id": "mcand_01M2G0ABAX9ZSTQ0D8YYRNHTDH",
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "citesArtifact": true
+          },
+          {
+            "id": "mcand_01M2G0B381YNGX43JR6KFWQ3RV",
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "agent-derived",
+            "decision": "review-required",
+            "citesArtifact": true
+          }
+        ],
+        "oneCandidatePerCompletion": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S2E-EVENT-01",
+      "requirementId": "LITE-07-104",
+      "phase": "artifact",
+      "step": "each completion Candidate became a canonical Runtime Event with exactly one Outbox handoff",
+      "actual": {
+        "eventTypes": [
+          "memory.candidate_created"
+        ],
+        "eventCandidates": [
+          "mcand_01M2G0A05ZKEYP7PDMASY8X8RE",
+          "mcand_01M2G0ABAX9ZSTQ0D8YYRNHTDH",
+          "mcand_01M2G0B381YNGX43JR6KFWQ3RV",
+          "mcand_terminal_run_live_artifact"
+        ],
+        "completionCandidates": [
+          "mcand_01M2G0A05ZKEYP7PDMASY8X8RE",
+          "mcand_01M2G0ABAX9ZSTQ0D8YYRNHTDH",
+          "mcand_01M2G0B381YNGX43JR6KFWQ3RV"
+        ],
+        "everyCompletionHasEvent": true,
+        "oneEventPerCandidate": true,
+        "runtimeEventCount": 90,
+        "outboxCount": 90,
+        "oneHandoffPerEvent": true
+      },
+      "expected": {
+        "eventTypes": [
+          "memory.candidate_created"
+        ],
+        "eventCandidates": [
+          "mcand_01M2G0A05ZKEYP7PDMASY8X8RE",
+          "mcand_01M2G0ABAX9ZSTQ0D8YYRNHTDH",
+          "mcand_01M2G0B381YNGX43JR6KFWQ3RV",
+          "mcand_terminal_run_live_artifact"
+        ],
+        "completionCandidates": [
+          "mcand_01M2G0A05ZKEYP7PDMASY8X8RE",
+          "mcand_01M2G0ABAX9ZSTQ0D8YYRNHTDH",
+          "mcand_01M2G0B381YNGX43JR6KFWQ3RV"
+        ],
+        "everyCompletionHasEvent": true,
+        "oneEventPerCandidate": true,
+        "runtimeEventCount": 90,
+        "outboxCount": 90,
+        "oneHandoffPerEvent": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S2E-ENTRY-01",
+      "requirementId": "LITE-07-104",
+      "phase": "artifact",
+      "step": "accepting the Candidate promoted a durable Entry that keeps the Artifact provenance",
+      "actual": {
+        "acceptedCandidates": [
+          "mcand_01M2G0A05ZKEYP7PDMASY8X8RE"
+        ],
+        "entryCount": 1,
+        "entryIds": [
+          "mcand_01M2G0A05ZKEYP7PDMASY8X8RE"
+        ],
+        "entriesMatchAccepted": true,
+        "contentsNonEmpty": true,
+        "artifactProvenanceKept": true,
+        "entrySourceKinds": [
+          "artifact",
+          "run"
+        ]
+      },
+      "expected": {
+        "acceptedCandidates": [
+          "mcand_01M2G0A05ZKEYP7PDMASY8X8RE"
+        ],
+        "entryCount": 1,
+        "entryIds": [
+          "mcand_01M2G0A05ZKEYP7PDMASY8X8RE"
+        ],
+        "entriesMatchAccepted": true,
+        "contentsNonEmpty": true,
+        "artifactProvenanceKept": true,
+        "entrySourceKinds": [
+          "artifact",
+          "run"
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S2E-REVIEW-GATE-01",
+      "requirementId": "LITE-07-104",
+      "phase": "artifact",
+      "step": "only the reviewed Candidate was promoted; every unreviewed one stays review-required and unmapped",
+      "actual": {
+        "artifactCandidates": 3,
+        "totalCandidates": 4,
+        "everyCandidateIsReviewRequired": true,
+        "reviewedCandidateWasPromoted": true,
+        "unreviewedCandidates": 3,
+        "unreviewedStayUnmapped": true,
+        "acceptedCandidatePredatesNothing": true
+      },
+      "expected": {
+        "artifactCandidates": 3,
+        "totalCandidates": 4,
+        "everyCandidateIsReviewRequired": true,
+        "reviewedCandidateWasPromoted": true,
+        "unreviewedCandidates": 3,
+        "unreviewedStayUnmapped": true,
+        "acceptedCandidatePredatesNothing": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S3E-GATE-01",
+      "requirementId": "LITE-08-005",
+      "phase": "approval",
+      "step": "the real-Provider approval gate itself passed under its gated run",
+      "actual": {
+        "exitCode": 0,
+        "signal": null,
+        "testSummary": {
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      "expected": {
+        "exitCode": 0,
+        "signal": null,
+        "testSummary": {
+          "pass": 1,
+          "fail": 0,
+          "skipped": 0
+        }
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S3E-REQUEST-01",
+      "requirementId": "LITE-08-005",
+      "phase": "approval",
+      "step": "the paused Run carries its own persisted request with frozen identities",
+      "actual": {
+        "requestCount": 2,
+        "runsOnStage": [
+          "run_approved"
+        ],
+        "stagesOnRequest": [
+          "stage_approved_2",
+          "stage_approved_3"
+        ],
+        "statuses": [
+          "approved"
+        ],
+        "resolutions": [
+          "approve_once"
+        ],
+        "frozenIdentities": true,
+        "snapshotsPersisted": true,
+        "expiriesInFuture": true,
+        "distinctActions": 2
+      },
+      "expected": {
+        "requestCount": 2,
+        "runsOnStage": [
+          "run_approved"
+        ],
+        "stagesOnRequest": [
+          "stage_approved_2",
+          "stage_approved_3"
+        ],
+        "statuses": [
+          "approved"
+        ],
+        "resolutions": [
+          "approve_once"
+        ],
+        "frozenIdentities": true,
+        "snapshotsPersisted": true,
+        "expiriesInFuture": true,
+        "distinctActions": 2
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S3E-PROCESS-01",
+      "requirementId": "LITE-08-005",
+      "phase": "approval",
+      "step": "the authorized Run executed real provider processes while decision rows stay one per request",
+      "actual": {
+        "providerProcesses": 2,
+        "processesPerRun": 2,
+        "distinctProcesses": 2,
+        "decisionRows": 2,
+        "decisions": [
+          "allow_once",
+          "allow_once"
+        ],
+        "oneDecisionPerRequest": true,
+        "runStatuses": [
+          "completed"
+        ],
+        "stageStatuses": [
+          "completed"
+        ]
+      },
+      "expected": {
+        "providerProcesses": 2,
+        "processesPerRun": 2,
+        "distinctProcesses": 2,
+        "decisionRows": 2,
+        "decisions": [
+          "allow_once",
+          "allow_once"
+        ],
+        "oneDecisionPerRequest": true,
+        "runStatuses": [
+          "completed"
+        ],
+        "stageStatuses": [
+          "completed"
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S3E-IDEMPOTENT-01",
+      "requirementId": "LITE-08-006",
+      "phase": "approval",
+      "step": "each resolved request keeps exactly one durable decision and that decision cannot be rewritten",
+      "actual": {
+        "requests": 2,
+        "decisions": 2,
+        "perRequestDecisionCounts": [
+          1,
+          1
+        ],
+        "everyRequestHasExactlyOneDecision": true,
+        "distinctDecidedRequests": 2,
+        "distinctResolutions": 1,
+        "decisionsAreImmutable": true
+      },
+      "expected": {
+        "requests": 2,
+        "decisions": 2,
+        "perRequestDecisionCounts": [
+          1,
+          1
+        ],
+        "everyRequestHasExactlyOneDecision": true,
+        "distinctDecidedRequests": 2,
+        "distinctResolutions": 1,
+        "decisionsAreImmutable": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S3E-DECISION-CANDIDATE-01",
+      "requirementId": "LITE-07-103",
+      "phase": "approval",
+      "step": "each accepted decision produced its own user-authority Candidate citing the Run and its resolution Event",
+      "actual": {
+        "userAuthorityCandidates": 2,
+        "described": [
+          {
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "user-explicit",
+            "outcome": "review-required",
+            "sourceKinds": [
+              "event",
+              "run"
+            ],
+            "citesItsRun": true,
+            "citesAResolutionEvent": true
+          },
+          {
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "user-explicit",
+            "outcome": "review-required",
+            "sourceKinds": [
+              "event",
+              "run"
+            ],
+            "citesItsRun": true,
+            "citesAResolutionEvent": true
+          }
+        ],
+        "distinctResolutionEvents": 2,
+        "eventCandidates": [
+          "mcand_01M2G0B5VNNH5NNXMQD6TRKE5C",
+          "mcand_01M2G0BFQ4W3P6PTFJB3J09BRA",
+          "mcand_terminal_run_approved"
+        ],
+        "allCandidateIds": [
+          "mcand_01M2G0B5VNNH5NNXMQD6TRKE5C",
+          "mcand_01M2G0BFQ4W3P6PTFJB3J09BRA",
+          "mcand_terminal_run_approved"
+        ]
+      },
+      "expected": {
+        "userAuthorityCandidates": 2,
+        "described": [
+          {
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "user-explicit",
+            "outcome": "review-required",
+            "sourceKinds": [
+              "event",
+              "run"
+            ],
+            "citesItsRun": true,
+            "citesAResolutionEvent": true
+          },
+          {
+            "scope": "workspace",
+            "category": "decision",
+            "authority": "user-explicit",
+            "outcome": "review-required",
+            "sourceKinds": [
+              "event",
+              "run"
+            ],
+            "citesItsRun": true,
+            "citesAResolutionEvent": true
+          }
+        ],
+        "distinctResolutionEvents": 2,
+        "eventCandidates": [
+          "mcand_01M2G0B5VNNH5NNXMQD6TRKE5C",
+          "mcand_01M2G0BFQ4W3P6PTFJB3J09BRA",
+          "mcand_terminal_run_approved"
+        ],
+        "allCandidateIds": [
+          "mcand_01M2G0B5VNNH5NNXMQD6TRKE5C",
+          "mcand_01M2G0BFQ4W3P6PTFJB3J09BRA",
+          "mcand_terminal_run_approved"
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S3E-EXPIRY-01",
+      "requirementId": "LITE-08-007",
+      "phase": "approval",
+      "step": "an expired request records no decision, spawns nothing and keeps its paused attempt",
+      "actual": {
+        "requests": [
+          {
+            "status": "expired",
+            "resolution": null,
+            "frozen": true
+          }
+        ],
+        "decisions": 0,
+        "providerProcesses": 0,
+        "runStatuses": [
+          "waiting_approval"
+        ],
+        "attemptStageStillWaiting": "waiting_approval",
+        "anyStageRunning": false,
+        "stageStatuses": [
+          "completed",
+          "completed",
+          "pending",
+          "waiting_approval"
+        ]
+      },
+      "expected": {
+        "requests": [
+          {
+            "status": "expired",
+            "resolution": null,
+            "frozen": true
+          }
+        ],
+        "decisions": 0,
+        "providerProcesses": 0,
+        "runStatuses": [
+          "waiting_approval"
+        ],
+        "attemptStageStillWaiting": "waiting_approval",
+        "anyStageRunning": false,
+        "stageStatuses": [
+          "completed",
+          "completed",
+          "pending",
+          "waiting_approval"
+        ]
+      },
+      "outcome": "passed"
+    }
+  ]
+}
