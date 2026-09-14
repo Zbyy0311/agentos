@@ -189,7 +189,7 @@
       "section": "17. Acceptance Expectations",
       "line": 409,
       "requirement": "recovery classifies uncertainty without guessing completion;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
@@ -198,11 +198,11 @@
         "apps/server/src/services/TaskRunRecoveryService.test.ts"
       ],
       "evidence": [
-        "S8-E2E-RUN2"
+        "S9-M0-S8-RECOVERY-CONTROLLED"
       ],
-      "finding": "[matrix v16 re-point] previous tests: docs/implementation/milestones/Lite-FastTrack-progress.md, scripts/verify-agentos-e2e.ps1; verified covering assertion: P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8真实服务验收（run 2）：重启后遗留queued/running被判failed、waiting_user保持等待，不猜测完成。",
+      "finding": "本轮受控提升：TaskRunRecoveryService 的 P6M2b mismatch 用例直接观察 uncertainty-marked、Run 仍为 running 且 recoveryRequired=true，证明恢复不会猜测完成或继续执行；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
     },
     {
       "id": "LITE-00-008",
@@ -932,7 +932,7 @@
       "section": "21. Acceptance Expectations",
       "line": 535,
       "requirement": "recovery handles `MISSING`, `MISMATCH`, `UNKNOWN`, and technically justified `SAME` without guessing continuation;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/LifecycleTransactionService.ts"
@@ -941,11 +941,11 @@
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-M0-S8-RECOVERY-CONTROLLED"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "本轮受控提升：TaskRunRecoveryService 的 P6M2b 测试分别覆盖 MISSING、MISMATCH、SAME、UNKNOWN，并直接断言各自的终态/不恢复行为；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
     },
     {
       "id": "LITE-02-015",
@@ -953,7 +953,7 @@
       "section": "21. Acceptance Expectations",
       "line": 536,
       "requirement": "recovery preserves the **NON-GOAL** of reattach/adoption/respawn and creates no duplicate authority;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/LifecycleTransactionService.ts"
@@ -962,11 +962,11 @@
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-M0-S8-RECOVERY-CONTROLLED"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "本轮受控提升：SAME recovery test 直接断言不恢复、不接管且 runtime_processes 不新增，证明 Lite 明确的 reattach/adoption/respawn 非目标边界；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
     },
     {
       "id": "LITE-02-016",
@@ -1372,7 +1372,7 @@
       "section": "20. Acceptance Expectations",
       "line": 558,
       "requirement": "recovery classification preserves the **NON-GOAL** of reattach and never guesses success;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/store/RuntimeEventRepository.ts"
@@ -1381,11 +1381,11 @@
         "apps/server/src/services/OutboxPublisher.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-M0-S8-RECOVERY-CONTROLLED"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-03-018. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/OutboxPublisher.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "本轮受控提升：SAME/UNKNOWN recovery 测试直接断言不恢复、不接管、不重生且保留 uncertainty；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
     },
     {
       "id": "LITE-03-019",
@@ -4334,7 +4334,7 @@
       "section": "19. Acceptance Expectations",
       "line": 321,
       "requirement": "recovery never guesses success;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
@@ -4343,11 +4343,11 @@
         "apps/server/src/services/TaskRunRecoveryService.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-M0-S8-RECOVERY-CONTROLLED"
       ],
-      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "本轮受控提升：TaskRunRecoveryService 的 P6M2b mismatch 断言 recoveryRequired=true 且 Run 保持 running，直接证明 Inspector 所依赖的恢复事实不会被标成成功；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
     },
     {
       "id": "LITE-13-009",
@@ -8404,6 +8404,51 @@
       "reason": "LITE-13-015 is promoted from RUNTIME-VERIFY to PASS from the individual RuntimeInspector TAP receipt: INSP-07 compares canonical Runtime Event and Run-state counts before and after inspection.",
       "requirementIds": [
         "LITE-13-015"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-00-007 is promoted from RUNTIME-VERIFY to PASS from the individual TaskRunRecoveryService TAP receipt: mismatch remains uncertain and does not resume or falsely complete the Run.",
+      "requirementIds": [
+        "LITE-00-007"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-02-014 is promoted from RUNTIME-VERIFY to PASS from the individual TaskRunRecoveryService TAP receipt: MISSING, MISMATCH, SAME and UNKNOWN branches each have direct disposition or state assertions.",
+      "requirementIds": [
+        "LITE-02-014"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-02-015 is promoted from RUNTIME-VERIFY to PASS from the individual recovery receipt: SAME evidence does not resume, take over, respawn, or create a second owned process.",
+      "requirementIds": [
+        "LITE-02-015"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-03-018 is promoted from RUNTIME-VERIFY to PASS from the individual recovery receipt: SAME and UNKNOWN classifications remain fail-safe and do not become successful reattach or continuation.",
+      "requirementIds": [
+        "LITE-03-018"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-13-008 is promoted from RUNTIME-VERIFY to PASS from the individual recovery receipt: mismatch leaves the Run running but durably recoveryRequired, so Inspector cannot report guessed success.",
+      "requirementIds": [
+        "LITE-13-008"
       ]
     }
   ],

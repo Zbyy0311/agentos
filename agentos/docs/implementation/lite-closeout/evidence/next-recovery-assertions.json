@@ -1,0 +1,145 @@
+[
+  {
+    "id": "REC-MISMATCH-DISPOSITION",
+    "requirementId": "LITE-00-007",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+    "line": 1186,
+    "expression": "assert.equal(disposition, 'uncertainty-marked');",
+    "clause": "A mismatched running process is classified as uncertainty rather than successful continuation.",
+    "whyDirect": "The named production recovery test injects the mismatch classification and checks the actual recovery disposition returned by TaskRunRecoveryService.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-MISMATCH-RUN",
+    "requirementId": "LITE-00-007",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+    "line": 1188,
+    "expression": "assert.equal(run.status, 'running', 'mismatch must not resume or terminal-fail');",
+    "clause": "Recovery does not guess completion or resume after a mismatch.",
+    "whyDirect": "The assertion reads the canonical Run after recovery and verifies that the uncertain Run is neither resumed nor falsely terminalized.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-MISMATCH-FLAG",
+    "requirementId": "LITE-13-008",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+    "line": 1189,
+    "expression": "assert.equal(run.recoveryRequired, true);",
+    "clause": "An uncertain recovery is durably flagged for operator handling.",
+    "whyDirect": "The production recovery test reads the persisted Run record and checks the explicit recoveryRequired flag after the mismatch path.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-MISMATCH-NO-TERMINAL",
+    "requirementId": "LITE-13-008",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+    "line": 1188,
+    "expression": "assert.equal(run.status, 'running', 'mismatch must not resume or terminal-fail');",
+    "clause": "An uncertain recovery is not presented as successful completion or resumed execution.",
+    "whyDirect": "The production recovery test reads the canonical Run after mismatch handling and directly verifies that its status remains running and uncertain.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-MISSING-FAILURE",
+    "requirementId": "LITE-02-014",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + missing process -> canonical terminal failure",
+    "line": 1171,
+    "expression": "assert.equal(disposition, 'process-missing-failed');",
+    "clause": "MISSING process evidence takes the canonical terminal-failure path.",
+    "whyDirect": "The named test drives the production recovery service with a missing process classification and observes its committed disposition.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-MISMATCH-UNCERTAIN",
+    "requirementId": "LITE-02-014",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+    "line": 1186,
+    "expression": "assert.equal(disposition, 'uncertainty-marked');",
+    "clause": "MISMATCH process evidence is marked uncertain without continuation.",
+    "whyDirect": "The production recovery path is exercised with mismatch evidence and its actual uncertainty disposition is asserted.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-SAME-NO-RESUME",
+    "requirementId": "LITE-02-014",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+    "line": 1201,
+    "expression": "assert.equal(run.status, 'running', 'same must not resume execution');",
+    "clause": "SAME process evidence does not by itself authorize continuation.",
+    "whyDirect": "The named production test supplies SAME evidence and reads the canonical Run to prove it remains in the uncertain running state.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-UNKNOWN-NO-RESUME",
+    "requirementId": "LITE-02-014",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + unknown -> fail-safe, no resume",
+    "line": 1215,
+    "expression": "assert.equal(run.status, 'running', 'unknown must never resume');",
+    "clause": "UNKNOWN process evidence fails safe and never resumes execution.",
+    "whyDirect": "The production recovery test drives UNKNOWN evidence and checks the persisted Run status after the recovery attempt.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-SAME-NO-TAKEOVER",
+    "requirementId": "LITE-03-018",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+    "line": 1202,
+    "expression": "assert.equal(run.recoveryRequired, true, 'same stays uncertain pending M2c cleanup');",
+    "clause": "Recovery does not reattach or take over a SAME process and remains uncertain.",
+    "whyDirect": "The test uses the production recovery service with SAME evidence and verifies the durable uncertainty flag rather than an ownership transfer or resume.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-UNKNOWN-FAILSAFE",
+    "requirementId": "LITE-03-018",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + unknown -> fail-safe, no resume",
+    "line": 1213,
+    "expression": "assert.equal(disposition, 'uncertainty-marked');",
+    "clause": "Unknown recovery evidence never becomes a successful reattach or continuation.",
+    "whyDirect": "The production recovery test asserts the fail-safe disposition from UNKNOWN evidence, directly covering the non-reattach boundary.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-SAME-NO-RESPAWN",
+    "requirementId": "LITE-02-015",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+    "line": 1203,
+    "expression": "assert.equal((fixture.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes WHERE workspace_id = ? AND run_id = ?').get(WORKSPACE_ID, fixture.runId) as { c: number }).c, 0, 'same must not respawn or create a second owned process');",
+    "clause": "Recovery does not reattach, take over, or respawn a SAME process.",
+    "whyDirect": "The production recovery test reads the process table after the SAME path and verifies that recovery created no owned process or duplicate execution entity.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-SAME-NO-RESUME-NON-GOAL",
+    "requirementId": "LITE-02-015",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+    "line": 1201,
+    "expression": "assert.equal(run.status, 'running', 'same must not resume execution');",
+    "clause": "SAME process evidence does not authorize a resume or adoption.",
+    "whyDirect": "The production recovery test observes the canonical Run after SAME classification and confirms the execution remains uncertain rather than being reattached.",
+    "outcome": "passed"
+  },
+  {
+    "id": "REC-SAME-NO-RESPAWN-EVENT",
+    "requirementId": "LITE-03-018",
+    "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+    "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+    "line": 1203,
+    "expression": "assert.equal((fixture.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes WHERE workspace_id = ? AND run_id = ?').get(WORKSPACE_ID, fixture.runId) as { c: number }).c, 0, 'same must not respawn or create a second owned process');",
+    "clause": "The recovery boundary does not create a second owned process while preserving uncertainty.",
+    "whyDirect": "The assertion observes the canonical runtime_processes table after the production recovery path and directly checks that no respawn or duplicate owned process was persisted.",
+    "outcome": "passed"
+  }
+]

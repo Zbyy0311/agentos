@@ -1199,5 +1199,27 @@
     ],
     "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
     "limitation": "This local receipt directly proves the three mapped Inspector clauses through named assertions and canonical SQLite projections. It does not prove browser acceptance or unrelated Inspector clauses such as Event gap recovery/deduplication and Cancel/Retry source-chain projection."
+  },
+  {
+    "id": "S9-M0-S8-RECOVERY-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-recovery-controlled.json",
+    "result": {
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-00-007",
+      "LITE-02-014",
+      "LITE-02-015",
+      "LITE-03-018",
+      "LITE-13-008"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "The receipt directly covers the mapped recovery classifications and non-reattach boundary through named production assertions. It does not claim the separate live Provider, browser, or cross-process approval gates."
   }
 ]

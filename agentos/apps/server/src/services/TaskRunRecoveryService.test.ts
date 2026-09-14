@@ -1200,6 +1200,7 @@ test('P6M2b running + same process -> no resume, no ownership takeover, stays un
   const run = fixture.runRepository.findById(WORKSPACE_ID, fixture.runId)!;
   assert.equal(run.status, 'running', 'same must not resume execution');
   assert.equal(run.recoveryRequired, true, 'same stays uncertain pending M2c cleanup');
+  assert.equal((fixture.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes WHERE workspace_id = ? AND run_id = ?').get(WORKSPACE_ID, fixture.runId) as { c: number }).c, 0, 'same must not respawn or create a second owned process');
 }));
 
 test('P6M2b running + unknown -> fail-safe, no resume', () => withFixture({
