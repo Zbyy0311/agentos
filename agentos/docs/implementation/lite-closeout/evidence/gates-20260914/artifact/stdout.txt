@@ -1,0 +1,9 @@
+✔ LITE-07-104 a real Provider drives the canonical chain from review work to an accepted Memory Entry (60536.4058ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 62258.7562

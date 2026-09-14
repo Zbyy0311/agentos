@@ -1,0 +1,92 @@
+{
+  "schemaVersion": 1,
+  "baseline": "0df73d7544f8c1d98feba83bbcca9e34ec28d91b",
+  "capturedAt": "2026-09-14T09:32:03.616Z",
+  "note": "Raw stdout/stderr and exit codes for the real Provider gates run from this pinned clean SHA. These are receipts for the audit final-verification order step 3; they do not change any matrix state.",
+  "gates": [
+    {
+      "gate": "artifact",
+      "exitCode": 0,
+      "receipts": [
+        {
+          "file": "exit.txt",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        {
+          "file": "stderr.txt",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "file": "stdout.txt",
+          "bytes": 234,
+          "sha256": "e6751f1642c95849e0a8c878119bcae70e66e27545d53b6294cfbf2f8edb8e3e"
+        }
+      ]
+    },
+    {
+      "gate": "codex",
+      "exitCode": 0,
+      "receipts": [
+        {
+          "file": "exit.txt",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        {
+          "file": "stderr.txt",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "file": "stdout.txt",
+          "bytes": 319,
+          "sha256": "c458f9751b1feaa7d400c0419dd4c2b78e797ccb20fd9a039057352928db1811"
+        }
+      ]
+    },
+    {
+      "gate": "kimi-routed",
+      "exitCode": 0,
+      "receipts": [
+        {
+          "file": "exit.txt",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        {
+          "file": "stderr.txt",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "file": "stdout.txt",
+          "bytes": 304,
+          "sha256": "dd68a542e27a7cd3471d6590d64bb55660a4036ae836d67a0793f500cdd9ee93"
+        }
+      ]
+    },
+    {
+      "gate": "opencode",
+      "exitCode": 0,
+      "receipts": [
+        {
+          "file": "exit.txt",
+          "bytes": 2,
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+        },
+        {
+          "file": "stderr.txt",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "file": "stdout.txt",
+          "bytes": 303,
+          "sha256": "d187a723dc716ebc9fdf17e9d7798208978a18acba4eb60bc4890710f6b5ce1c"
+        }
+      ]
+    }
+  ]
+}
