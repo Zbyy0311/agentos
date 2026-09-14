@@ -1,24 +1,25 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-09-14T12:34:11.294Z",
+  "generatedAt": "2026-09-14T12:44:50.099Z",
   "model": "gpt-5.6-luna",
   "phases": {
     "real": {
       "outcome": "published",
-      "elapsedMs": 46434
+      "elapsedMs": 60417
     },
     "guard": {
       "claimRefusalMessage": "COMPACTION_CONFLICT",
-      "guardTasksAfterRepeat": [
-        "retry-pending",
+      "guardSummarizerCalls": 3,
+      "guardTaskStatuses": [
+        "failed",
         "retry-pending"
       ],
       "guardPublished": false
     }
   },
   "counts": {
-    "total": 33,
-    "passed": 33,
+    "total": 39,
+    "passed": 39,
     "failed": 0,
     "skipped": 0
   },
@@ -139,12 +140,12 @@
       "step": "the fact and its canonical Workspace Event are one causal record",
       "actual": {
         "type": "memory.candidate_created",
-        "causationId": "snapshot_01M2FYGVA1Z41V511B1153ADW8",
+        "causationId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
         "payloadCandidateMatches": true
       },
       "expected": {
         "type": "memory.candidate_created",
-        "causationId": "snapshot_01M2FYGVA1Z41V511B1153ADW8",
+        "causationId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
         "payloadCandidateMatches": true
       },
       "outcome": "passed"
@@ -339,12 +340,16 @@
       "actual": {
         "outcome": "retry-pending",
         "failureCode": "COMPACTION_SUMMARY_INVALID",
+        "attempts": 1,
+        "summarizerCalls": 1,
         "published": false,
         "candidates": 0
       },
       "expected": {
         "outcome": "retry-pending",
         "failureCode": "COMPACTION_SUMMARY_INVALID",
+        "attempts": 1,
+        "summarizerCalls": 1,
         "published": false,
         "candidates": 0
       },
@@ -399,16 +404,68 @@
       "id": "S6E-GUARD-04",
       "requirementId": "LITE-09-107",
       "phase": "guard",
-      "step": "a pending attempt is not duplicated by another evaluation",
+      "step": "the automatic evaluation resumes the same attempt and stops at the bounded retry budget",
       "actual": {
-        "outcome": "retry-pending",
+        "outcome": "failed",
+        "sameTask": true,
+        "attempts": 2,
+        "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+        "summarizerCalls": 2,
         "published": false,
         "running": 0
       },
       "expected": {
-        "outcome": "retry-pending",
+        "outcome": "failed",
+        "sameTask": true,
+        "attempts": 2,
+        "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+        "summarizerCalls": 2,
         "published": false,
         "running": 0
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-07",
+      "requirementId": "LITE-09-107",
+      "phase": "guard",
+      "step": "a spent automatic chain is never re-scheduled: no new attempt row and no new Provider call",
+      "actual": {
+        "outcome": "failed",
+        "sameTask": true,
+        "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+        "summarizerCalls": 2,
+        "guardTaskRows": 1
+      },
+      "expected": {
+        "outcome": "failed",
+        "sameTask": true,
+        "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+        "summarizerCalls": 2,
+        "guardTaskRows": 1
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-GUARD-08",
+      "requirementId": "LITE-09-108",
+      "phase": "guard",
+      "step": "the explicit retry spends its own attempt instead of being blocked by the spent chain",
+      "actual": {
+        "outcome": "retry-pending",
+        "startsNewAttempt": true,
+        "attempts": 1,
+        "summarizerCalls": 3,
+        "guardTaskRows": 2,
+        "published": false
+      },
+      "expected": {
+        "outcome": "retry-pending",
+        "startsNewAttempt": true,
+        "attempts": 1,
+        "summarizerCalls": 3,
+        "guardTaskRows": 2,
+        "published": false
       },
       "outcome": "passed"
     },
@@ -635,6 +692,198 @@
           "msg_006",
           "msg_007"
         ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-INSPECTOR-01",
+      "requirementId": "LITE-13-101",
+      "phase": "inspector",
+      "step": "the read surface explains why this compaction happened, to whom and under which policy",
+      "actual": {
+        "status": 200,
+        "taskCount": 1,
+        "tasksMatchDurableRows": true,
+        "taskStatus": "published",
+        "taskModel": "gpt-5.6-luna",
+        "adapterId": "cli.codex",
+        "adapterVersion": "1.0.0",
+        "estimatorVersion": "lite-v1-chars4",
+        "attempts": 1,
+        "failureCode": null,
+        "hasSummaryHash": true,
+        "candidateMatches": true,
+        "summaryMatchesDurableRow": true,
+        "sourceRange": {
+          "start": "msg_000",
+          "end": "msg_003",
+          "count": 4
+        },
+        "recordedTriggerAboveThreshold": true,
+        "budgetKeys": [
+          "applicationBudgetSource",
+          "appliedApplicationBudgetTokens",
+          "estimatorVersion",
+          "historyBudgetTokens",
+          "historyTokens",
+          "memoryContextTokens",
+          "outputReserveTokens",
+          "policyVersion",
+          "providerContextTokens",
+          "retainedRecentMessages",
+          "sourceMessageCount",
+          "systemPromptTokens",
+          "targetRatio",
+          "triggerRatio"
+        ]
+      },
+      "expected": {
+        "status": 200,
+        "taskCount": 1,
+        "tasksMatchDurableRows": true,
+        "taskStatus": "published",
+        "taskModel": "gpt-5.6-luna",
+        "adapterId": "cli.codex",
+        "adapterVersion": "1.0.0",
+        "estimatorVersion": "lite-v1-chars4",
+        "attempts": 1,
+        "failureCode": null,
+        "hasSummaryHash": true,
+        "candidateMatches": true,
+        "summaryMatchesDurableRow": true,
+        "sourceRange": {
+          "start": "msg_000",
+          "end": "msg_003",
+          "count": 4
+        },
+        "recordedTriggerAboveThreshold": true,
+        "budgetKeys": [
+          "applicationBudgetSource",
+          "appliedApplicationBudgetTokens",
+          "estimatorVersion",
+          "historyBudgetTokens",
+          "historyTokens",
+          "memoryContextTokens",
+          "outputReserveTokens",
+          "policyVersion",
+          "providerContextTokens",
+          "retainedRecentMessages",
+          "sourceMessageCount",
+          "systemPromptTokens",
+          "targetRatio",
+          "triggerRatio"
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-INSPECTOR-02",
+      "requirementId": "LITE-13-101",
+      "phase": "inspector",
+      "step": "the effective policy version and its parameters are readable, not implied",
+      "actual": {
+        "policies": [
+          {
+            "policyVersion": "lite-v1",
+            "triggerRatio": 0.7,
+            "targetRatio": 0.5,
+            "minRecentMessages": 8,
+            "summaryMaxTokens": 2048,
+            "timeoutMs": 120000,
+            "maxAutomaticRetries": 1,
+            "fallbackApplicationBudgetTokens": 16384
+          }
+        ],
+        "estimatorVersion": "lite-v1-chars4"
+      },
+      "expected": {
+        "policies": [
+          {
+            "policyVersion": "lite-v1",
+            "triggerRatio": 0.7,
+            "targetRatio": 0.5,
+            "minRecentMessages": 8,
+            "summaryMaxTokens": 2048,
+            "timeoutMs": 120000,
+            "maxAutomaticRetries": 1,
+            "fallbackApplicationBudgetTokens": 16384
+          }
+        ],
+        "estimatorVersion": "lite-v1-chars4"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-INSPECTOR-03",
+      "requirementId": "LITE-13-101",
+      "phase": "inspector",
+      "step": "the surface names the Turn and frozen snapshot that actually adopted the summary",
+      "actual": {
+        "adoptions": [
+          {
+            "snapshotId": "snapshot_01M2FZ5RF398WPA1NPBJX42SEX",
+            "turnId": "turn_cccccccccccccccccccc",
+            "summaryId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
+            "createdAt": "2026-09-14T12:43:49.484Z"
+          }
+        ],
+        "turnPointsAtAdoptedSnapshot": true,
+        "adoptedSummaryIsThePublishedRow": true
+      },
+      "expected": {
+        "adoptions": [
+          {
+            "snapshotId": "snapshot_01M2FZ5RF398WPA1NPBJX42SEX",
+            "turnId": "turn_cccccccccccccccccccc",
+            "summaryId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
+            "createdAt": "2026-09-14T12:43:49.484Z"
+          }
+        ],
+        "turnPointsAtAdoptedSnapshot": true,
+        "adoptedSummaryIsThePublishedRow": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S6E-INSPECTOR-04",
+      "requirementId": "LITE-13-101",
+      "phase": "inspector",
+      "step": "failure and retry state are visible, and a Conversation without compactions reports none",
+      "actual": {
+        "guardTasks": [
+          {
+            "status": "failed",
+            "attempts": 2,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED"
+          },
+          {
+            "status": "retry-pending",
+            "attempts": 1,
+            "failureCode": "COMPACTION_SUMMARY_INVALID"
+          }
+        ],
+        "guardAdoptions": 0,
+        "emptyTasks": 0,
+        "emptyPolicies": 0,
+        "emptyAdoptions": 0
+      },
+      "expected": {
+        "guardTasks": [
+          {
+            "status": "failed",
+            "attempts": 2,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED"
+          },
+          {
+            "status": "retry-pending",
+            "attempts": 1,
+            "failureCode": "COMPACTION_SUMMARY_INVALID"
+          }
+        ],
+        "guardAdoptions": 0,
+        "emptyTasks": 0,
+        "emptyPolicies": 0,
+        "emptyAdoptions": 0
       },
       "outcome": "passed"
     }

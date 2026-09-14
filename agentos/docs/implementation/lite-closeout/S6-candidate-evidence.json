@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "evidencePackage": "S6-candidate-evidence",
-  "generatedAt": "2026-09-14T12:34:48.536Z",
+  "generatedAt": "2026-09-14T12:45:38.493Z",
   "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
   "testCodeSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
   "routeModels": {
@@ -14,12 +14,12 @@
     "allRawLogs": [
       {
         "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-        "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-        "bytes": 17400
+        "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+        "bytes": 24852
       },
       {
         "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-        "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+        "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
         "bytes": 82
       },
       {
@@ -44,8 +44,8 @@
       },
       {
         "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-        "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-        "bytes": 4721
+        "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+        "bytes": 4820
       },
       {
         "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -71,20 +71,21 @@
     "phases": {
       "real": {
         "outcome": "published",
-        "elapsedMs": 46434
+        "elapsedMs": 60417
       },
       "guard": {
         "claimRefusalMessage": "COMPACTION_CONFLICT",
-        "guardTasksAfterRepeat": [
-          "retry-pending",
+        "guardSummarizerCalls": 3,
+        "guardTaskStatuses": [
+          "failed",
           "retry-pending"
         ],
         "guardPublished": false
       }
     },
     "counts": {
-      "total": 33,
-      "passed": 33,
+      "total": 39,
+      "passed": 39,
       "failed": 0,
       "skipped": 0
     }
@@ -143,12 +144,12 @@
       "rawLogs": [
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-          "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-          "bytes": 17400
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-          "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
           "bytes": 82
         },
         {
@@ -173,8 +174,8 @@
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-          "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-          "bytes": 4721
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -328,12 +329,12 @@
       "rawLogs": [
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-          "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-          "bytes": 17400
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-          "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
           "bytes": 82
         },
         {
@@ -358,8 +359,8 @@
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-          "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-          "bytes": 4721
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -476,12 +477,16 @@
           "actual": {
             "outcome": "retry-pending",
             "failureCode": "COMPACTION_SUMMARY_INVALID",
+            "attempts": 1,
+            "summarizerCalls": 1,
             "published": false,
             "candidates": 0
           },
           "expected": {
             "outcome": "retry-pending",
             "failureCode": "COMPACTION_SUMMARY_INVALID",
+            "attempts": 1,
+            "summarizerCalls": 1,
             "published": false,
             "candidates": 0
           },
@@ -595,12 +600,12 @@
       "rawLogs": [
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-          "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-          "bytes": 17400
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-          "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
           "bytes": 82
         },
         {
@@ -625,8 +630,8 @@
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-          "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-          "bytes": 4721
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -787,26 +792,26 @@
       "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
       "rawExitCode": 0,
       "counts": {
-        "total": 5,
-        "passed": 5,
+        "total": 6,
+        "passed": 6,
         "failed": 0,
         "skipped": 0
       },
       "observedCounts": {
-        "total": 5,
-        "passed": 5,
+        "total": 6,
+        "passed": 6,
         "failed": 0,
         "skipped": 0
       },
       "rawLogs": [
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-          "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-          "bytes": 17400
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-          "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
           "bytes": 82
         },
         {
@@ -831,8 +836,8 @@
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-          "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-          "bytes": 4721
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -909,16 +914,46 @@
           "assertionId": "S6E-GUARD-04",
           "requirementId": "LITE-09-107",
           "phase": "guard",
-          "step": "a pending attempt is not duplicated by another evaluation",
+          "step": "the automatic evaluation resumes the same attempt and stops at the bounded retry budget",
           "actual": {
-            "outcome": "retry-pending",
+            "outcome": "failed",
+            "sameTask": true,
+            "attempts": 2,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+            "summarizerCalls": 2,
             "published": false,
             "running": 0
           },
           "expected": {
-            "outcome": "retry-pending",
+            "outcome": "failed",
+            "sameTask": true,
+            "attempts": 2,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+            "summarizerCalls": 2,
             "published": false,
             "running": 0
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-GUARD-07",
+          "assertionId": "S6E-GUARD-07",
+          "requirementId": "LITE-09-107",
+          "phase": "guard",
+          "step": "a spent automatic chain is never re-scheduled: no new attempt row and no new Provider call",
+          "actual": {
+            "outcome": "failed",
+            "sameTask": true,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+            "summarizerCalls": 2,
+            "guardTaskRows": 1
+          },
+          "expected": {
+            "outcome": "failed",
+            "sameTask": true,
+            "failureCode": "COMPACTION_RETRIES_EXHAUSTED",
+            "summarizerCalls": 2,
+            "guardTaskRows": 1
           },
           "outcome": "passed"
         },
@@ -941,8 +976,8 @@
           "outcome": "passed"
         }
       ],
-      "whyAssertionsSuffice": "The schema-level invariant is read from sqlite_master (UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = running), and the executed check claims a second running holder for the same Conversation while the first still holds it: the store refuses with the stable code COMPACTION_CONFLICT (no raw SQLite text leaks) and exactly one running row remains afterwards. A failed attempt re-evaluated again neither starts a parallel execution (running=0) nor publishes a second fact (published=false).",
-      "adjacentBehaviorNotProven": "Covers the single-holder, refusal, stale-lease and retry branches (a publish from a lease that no longer holds the attempt is refused with the stable conflict code and the row stays running). Restart classification and the expired-lease reclaim are covered by the migration/unit tests of the same slice, not replayed against a real Provider in this harness.",
+      "whyAssertionsSuffice": "The schema-level invariant is read from sqlite_master (UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = running), and the executed check claims a second running holder for the same Conversation while the first still holds it: the store refuses with the stable code COMPACTION_CONFLICT (no raw SQLite text leaks) and exactly one running row remains afterwards. The retry bound is executed as well: the first failing attempt records retry-pending with attempts=1 and one summarizer call, the second automatic evaluation resumes that same row, spends the single allowed automatic retry (attempts=2, second summarizer call) and records COMPACTION_RETRIES_EXHAUSTED, and the third automatic evaluation makes no Provider call at all and adds no row. Only the explicit retry starts a fresh attempt.",
+      "adjacentBehaviorNotProven": "Covers the single-holder, refusal, stale-lease and bounded-retry branches (a publish from a lease that no longer holds the attempt is refused with the stable conflict code and the row stays running). Restart classification and the expired-lease reclaim are covered by the migration/unit tests of the same slice, not replayed against a real Provider in this harness. A Provider/model change during a pending chain starts a new attempt instead of continuing the frozen identity; that branch is covered by the identity comparison in the service and is not exercised here.",
       "verdict": "candidate-supported"
     },
     {
@@ -979,26 +1014,26 @@
       "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
       "rawExitCode": 0,
       "counts": {
-        "total": 4,
-        "passed": 4,
+        "total": 5,
+        "passed": 5,
         "failed": 0,
         "skipped": 0
       },
       "observedCounts": {
-        "total": 4,
-        "passed": 4,
+        "total": 5,
+        "passed": 5,
         "failed": 0,
         "skipped": 0
       },
       "rawLogs": [
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-          "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-          "bytes": 17400
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-          "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
           "bytes": 82
         },
         {
@@ -1023,8 +1058,8 @@
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-          "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-          "bytes": 4721
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -1048,6 +1083,30 @@
         }
       ],
       "assertionCoverage": [
+        {
+          "id": "S6E-GUARD-08",
+          "assertionId": "S6E-GUARD-08",
+          "requirementId": "LITE-09-108",
+          "phase": "guard",
+          "step": "the explicit retry spends its own attempt instead of being blocked by the spent chain",
+          "actual": {
+            "outcome": "retry-pending",
+            "startsNewAttempt": true,
+            "attempts": 1,
+            "summarizerCalls": 3,
+            "guardTaskRows": 2,
+            "published": false
+          },
+          "expected": {
+            "outcome": "retry-pending",
+            "startsNewAttempt": true,
+            "attempts": 1,
+            "summarizerCalls": 3,
+            "guardTaskRows": 2,
+            "published": false
+          },
+          "outcome": "passed"
+        },
         {
           "id": "S6E-BUDGET-01",
           "assertionId": "S6E-BUDGET-01",
@@ -1131,8 +1190,320 @@
           "outcome": "passed"
         }
       ],
-      "whyAssertionsSuffice": "On the production apply function, when prior summary plus the uncompressed tail exceeds the hard budget the result is over-budget and the input history is unchanged in length and in per-message content length (nothing truncated or dropped); the same history inside the budget applies the summary and reports summarizedMessages=2. Together with the refused-summary assertions, the failure branch keeps the Conversation data intact.",
-      "adjacentBehaviorNotProven": "The over-budget branch is asserted on the production function and again through the production Turn driver, where the Turn raises TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED before any reservation: zero Runner calls, zero Messages and zero Turns added, and every Message digest unchanged. The within-budget \"continue plus retry-pending\" Turn behaviour is covered by the ConversationTurnDriver unit tests.",
+      "whyAssertionsSuffice": "On the production apply function, when prior summary plus the uncompressed tail exceeds the hard budget the result is over-budget and the input history is unchanged in length and in per-message content length (nothing truncated or dropped); the same history inside the budget applies the summary and reports summarizedMessages=2. The production Turn driver then refuses the same way end to end: TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED before any reservation, zero Runner calls, zero Messages and zero Turns added, every Message digest unchanged. The explicit retry the failure branch promises is executed too: after the bounded automatic chain is spent, the retry with resume=explicit starts its own attempt (new row, attempts=1) instead of being blocked by the spent chain.",
+      "adjacentBehaviorNotProven": "The over-budget branch is asserted on the production function and through the production Turn driver rather than as a live Provider conversation, and the explicit retry is asserted on the production engine/service path as the retry endpoint calls it (the endpoint itself adds no logic beyond passing the mode). The within-budget \"continue plus retry-pending\" Turn behaviour is covered by the ConversationTurnDriver unit tests.",
+      "verdict": "candidate-supported"
+    },
+    {
+      "id": "LITE-13-101",
+      "specification": {
+        "text": "Inspector解释每次压缩为何触发及被谁采用",
+        "section": "Inspector 压缩读面",
+        "sourceFile": "apps/server/src/routes/conversationRuntime.ts",
+        "sourceLine": 269,
+        "secondarySources": [
+          {
+            "sourceFile": "docs/implementation/lite-closeout/S6-compaction-authorization.md",
+            "sourceLine": 17,
+            "note": "每次压缩持久化策略版本、实际参数与预算组成"
+          },
+          {
+            "sourceFile": "apps/server/src/services/ConversationTurnDriver.ts",
+            "sourceLine": 416,
+            "note": "采用摘要的 Turn 在冻结快照里记录 compactionSummaryId 与 summarizedMessages"
+          }
+        ]
+      },
+      "matrixRow": {
+        "matrixVersion": 15,
+        "state": "GAP",
+        "workPackage": "S6",
+        "document": "13-Runtime-Inspector.md",
+        "section": "user-approved compaction; §10",
+        "requirement": "Inspector解释每次压缩为何触发及被谁采用",
+        "exitCriteria": "展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。",
+        "recordedGap": "无compaction projection。",
+        "productionEntryPoints": [
+          "apps/server/src/services/RuntimeInspector.ts",
+          "apps/web/src/components/chat/RuntimeInspectorView.tsx"
+        ],
+        "tests": [
+          "apps/server/src/routes/runtimeInspector.test.ts"
+        ],
+        "evidence": []
+      },
+      "baselineSha": "d89137ccbf72ef75faca8c807de61fb972f356ff",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-s67-evidence\\agentos\\docs\\implementation\\lite-closeout\\evidence\\s6-candidate-evidence-20260914",
+      "rawExitCode": 0,
+      "counts": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "observedCounts": {
+        "total": 4,
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "rawLogs": [
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
+          "bytes": 82
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt",
+          "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354",
+          "bytes": 3
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt",
+          "sha256": "c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1",
+          "bytes": 93
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt",
+          "sha256": "60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33",
+          "bytes": 337
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/exit.txt",
+          "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa",
+          "bytes": 2
+        }
+      ],
+      "assertionCoverage": [
+        {
+          "id": "S6E-INSPECTOR-01",
+          "assertionId": "S6E-INSPECTOR-01",
+          "requirementId": "LITE-13-101",
+          "phase": "inspector",
+          "step": "the read surface explains why this compaction happened, to whom and under which policy",
+          "actual": {
+            "status": 200,
+            "taskCount": 1,
+            "tasksMatchDurableRows": true,
+            "taskStatus": "published",
+            "taskModel": "gpt-5.6-luna",
+            "adapterId": "cli.codex",
+            "adapterVersion": "1.0.0",
+            "estimatorVersion": "lite-v1-chars4",
+            "attempts": 1,
+            "failureCode": null,
+            "hasSummaryHash": true,
+            "candidateMatches": true,
+            "summaryMatchesDurableRow": true,
+            "sourceRange": {
+              "start": "msg_000",
+              "end": "msg_003",
+              "count": 4
+            },
+            "recordedTriggerAboveThreshold": true,
+            "budgetKeys": [
+              "applicationBudgetSource",
+              "appliedApplicationBudgetTokens",
+              "estimatorVersion",
+              "historyBudgetTokens",
+              "historyTokens",
+              "memoryContextTokens",
+              "outputReserveTokens",
+              "policyVersion",
+              "providerContextTokens",
+              "retainedRecentMessages",
+              "sourceMessageCount",
+              "systemPromptTokens",
+              "targetRatio",
+              "triggerRatio"
+            ]
+          },
+          "expected": {
+            "status": 200,
+            "taskCount": 1,
+            "tasksMatchDurableRows": true,
+            "taskStatus": "published",
+            "taskModel": "gpt-5.6-luna",
+            "adapterId": "cli.codex",
+            "adapterVersion": "1.0.0",
+            "estimatorVersion": "lite-v1-chars4",
+            "attempts": 1,
+            "failureCode": null,
+            "hasSummaryHash": true,
+            "candidateMatches": true,
+            "summaryMatchesDurableRow": true,
+            "sourceRange": {
+              "start": "msg_000",
+              "end": "msg_003",
+              "count": 4
+            },
+            "recordedTriggerAboveThreshold": true,
+            "budgetKeys": [
+              "applicationBudgetSource",
+              "appliedApplicationBudgetTokens",
+              "estimatorVersion",
+              "historyBudgetTokens",
+              "historyTokens",
+              "memoryContextTokens",
+              "outputReserveTokens",
+              "policyVersion",
+              "providerContextTokens",
+              "retainedRecentMessages",
+              "sourceMessageCount",
+              "systemPromptTokens",
+              "targetRatio",
+              "triggerRatio"
+            ]
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-INSPECTOR-02",
+          "assertionId": "S6E-INSPECTOR-02",
+          "requirementId": "LITE-13-101",
+          "phase": "inspector",
+          "step": "the effective policy version and its parameters are readable, not implied",
+          "actual": {
+            "policies": [
+              {
+                "policyVersion": "lite-v1",
+                "triggerRatio": 0.7,
+                "targetRatio": 0.5,
+                "minRecentMessages": 8,
+                "summaryMaxTokens": 2048,
+                "timeoutMs": 120000,
+                "maxAutomaticRetries": 1,
+                "fallbackApplicationBudgetTokens": 16384
+              }
+            ],
+            "estimatorVersion": "lite-v1-chars4"
+          },
+          "expected": {
+            "policies": [
+              {
+                "policyVersion": "lite-v1",
+                "triggerRatio": 0.7,
+                "targetRatio": 0.5,
+                "minRecentMessages": 8,
+                "summaryMaxTokens": 2048,
+                "timeoutMs": 120000,
+                "maxAutomaticRetries": 1,
+                "fallbackApplicationBudgetTokens": 16384
+              }
+            ],
+            "estimatorVersion": "lite-v1-chars4"
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-INSPECTOR-03",
+          "assertionId": "S6E-INSPECTOR-03",
+          "requirementId": "LITE-13-101",
+          "phase": "inspector",
+          "step": "the surface names the Turn and frozen snapshot that actually adopted the summary",
+          "actual": {
+            "adoptions": [
+              {
+                "snapshotId": "snapshot_01M2FZ5RF398WPA1NPBJX42SEX",
+                "turnId": "turn_cccccccccccccccccccc",
+                "summaryId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
+                "createdAt": "2026-09-14T12:43:49.484Z"
+              }
+            ],
+            "turnPointsAtAdoptedSnapshot": true,
+            "adoptedSummaryIsThePublishedRow": true
+          },
+          "expected": {
+            "adoptions": [
+              {
+                "snapshotId": "snapshot_01M2FZ5RF398WPA1NPBJX42SEX",
+                "turnId": "turn_cccccccccccccccccccc",
+                "summaryId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
+                "createdAt": "2026-09-14T12:43:49.484Z"
+              }
+            ],
+            "turnPointsAtAdoptedSnapshot": true,
+            "adoptedSummaryIsThePublishedRow": true
+          },
+          "outcome": "passed"
+        },
+        {
+          "id": "S6E-INSPECTOR-04",
+          "assertionId": "S6E-INSPECTOR-04",
+          "requirementId": "LITE-13-101",
+          "phase": "inspector",
+          "step": "failure and retry state are visible, and a Conversation without compactions reports none",
+          "actual": {
+            "guardTasks": [
+              {
+                "status": "failed",
+                "attempts": 2,
+                "failureCode": "COMPACTION_RETRIES_EXHAUSTED"
+              },
+              {
+                "status": "retry-pending",
+                "attempts": 1,
+                "failureCode": "COMPACTION_SUMMARY_INVALID"
+              }
+            ],
+            "guardAdoptions": 0,
+            "emptyTasks": 0,
+            "emptyPolicies": 0,
+            "emptyAdoptions": 0
+          },
+          "expected": {
+            "guardTasks": [
+              {
+                "status": "failed",
+                "attempts": 2,
+                "failureCode": "COMPACTION_RETRIES_EXHAUSTED"
+              },
+              {
+                "status": "retry-pending",
+                "attempts": 1,
+                "failureCode": "COMPACTION_SUMMARY_INVALID"
+              }
+            ],
+            "guardAdoptions": 0,
+            "emptyTasks": 0,
+            "emptyPolicies": 0,
+            "emptyAdoptions": 0
+          },
+          "outcome": "passed"
+        }
+      ],
+      "whyAssertionsSuffice": "The production router is mounted and reached over real HTTP. The read surface answers all four questions from durable rows: why it triggered (the recorded historyTokens is above triggerRatio x historyBudgetTokens), under which policy (lite-v1 with all six parameters plus the fallback application budget and the estimator version), who adopted it (the adoption names the snapshot and the real Turn whose durable row points at that same snapshot, and the adopted summaryId is the published row), and what happened on failure (the refused Conversation shows attempts plus COMPACTION_SUMMARY_INVALID and COMPACTION_RETRIES_EXHAUSTED). A Conversation with no compaction reports empty tasks, policies and adoptions instead of borrowing another Conversation's state.",
+      "adjacentBehaviorNotProven": "It proves the read surface for the states this harness produced. It does not render the UI, and it does not exercise a compaction whose source range was rejected as stale (that state is durable and readable through the same projection, but is not asserted here).",
       "verdict": "candidate-supported"
     },
     {
@@ -1190,12 +1561,12 @@
       "rawLogs": [
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-          "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-          "bytes": 17400
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-          "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
           "bytes": 82
         },
         {
@@ -1220,8 +1591,8 @@
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-          "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-          "bytes": 4721
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -1319,12 +1690,12 @@
       "rawLogs": [
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-          "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-          "bytes": 17400
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-          "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
           "bytes": 82
         },
         {
@@ -1349,8 +1720,8 @@
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-          "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-          "bytes": 4721
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -1452,12 +1823,12 @@
       "rawLogs": [
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
-          "sha256": "f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079",
-          "bytes": 17400
+          "sha256": "d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b",
+          "bytes": 24852
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
-          "sha256": "67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982",
+          "sha256": "db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253",
           "bytes": 82
         },
         {
@@ -1482,8 +1853,8 @@
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
-          "sha256": "32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef",
-          "bytes": 4721
+          "sha256": "fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe",
+          "bytes": 4820
         },
         {
           "path": "docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt",
@@ -1545,12 +1916,12 @@
           "step": "the fact and its canonical Workspace Event are one causal record",
           "actual": {
             "type": "memory.candidate_created",
-            "causationId": "snapshot_01M2FYGVA1Z41V511B1153ADW8",
+            "causationId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
             "payloadCandidateMatches": true
           },
           "expected": {
             "type": "memory.candidate_created",
-            "causationId": "snapshot_01M2FYGVA1Z41V511B1153ADW8",
+            "causationId": "snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV",
             "payloadCandidateMatches": true
           },
           "outcome": "passed"
@@ -1662,12 +2033,17 @@
       }
     ],
     "workingTreeDelta": [
-      "?? agentos/docs/implementation/lite-closeout/S6-candidate-evidence.json",
-      "?? agentos/docs/implementation/lite-closeout/S6-candidate-evidence.md",
-      "?? agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/",
-      "?? agentos/docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/",
-      "?? agentos/scripts/assemble-lite-s6-candidate-evidence.mjs",
-      "?? agentos/scripts/verify-lite-s6-candidate-evidence.mjs"
+      " M agentos/apps/server/src/routes/conversationRuntime.ts",
+      " M agentos/apps/server/src/services/ConversationCompactionService.test.ts",
+      " M agentos/apps/server/src/services/ConversationCompactionService.ts",
+      " M agentos/apps/server/src/services/ConversationCompactionTrigger.test.ts",
+      " M agentos/apps/server/src/services/ConversationCompactionTrigger.ts",
+      " M agentos/apps/server/src/store/CompactionRepository.ts",
+      " M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json",
+      " M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt",
+      " M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt",
+      " M agentos/scripts/assemble-lite-s6-candidate-evidence.mjs",
+      " M agentos/scripts/verify-lite-s6-candidate-evidence.mjs"
     ],
     "verdictVocabulary": [
       "candidate-supported",

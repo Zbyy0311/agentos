@@ -6,9 +6,12 @@
  * suite-level pass. Phases:
  *
  *   real   - one compaction through the PRODUCTION engine against the real Codex CLI
- *   guard  - the durable single-holder and idempotent-source invariants, executed
+ *   guard  - the single-holder and bounded-retry invariants, executed
  *   budget - the application hard-budget refusal on the production function
  *   stale  - the LITE-09-109 source validation on the production function
+ *   durable- the immutable/unique invariants the schema enforces, executed
+ *   turngate - the same decisions through the production Turn driver
+ *   inspector - the read surface an operator sees, over real HTTP
  *
  * Usage (from apps/server, with tsx resolvable and the codex CLI on PATH):
  *   node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out <dir>
@@ -30,10 +33,19 @@ import { createEntityId } from '../apps/server/src/store/Identity.ts';
 import { ConversationRepository } from '../apps/server/src/store/ConversationRepository.ts';
 import { AgentTurnRepository } from '../apps/server/src/store/AgentTurnRepository.ts';
 import { ConversationStreamService } from '../apps/server/src/services/ConversationStreamService.ts';
+import { createConversationRuntimeRoutes } from '../apps/server/src/routes/conversationRuntime.ts';
+import { WorkspaceManager } from '../apps/server/src/managers/WorkspaceManager.ts';
+import { createRequire } from 'node:module';
+
+// This harness lives outside the server package, so package dependencies (express) are
+// resolved from the server's own node_modules instead of the script's directory.
+const serverRequire = createRequire(new URL('../apps/server/package.json', import.meta.url));
+const express = serverRequire('express');
 import {
   applyCompactionSummary,
   ConversationTurnDriver,
   ConversationTurnDriverError,
+  createDurableTurnContextSnapshotPort,
 } from '../apps/server/src/services/ConversationTurnDriver.ts';
 
 function argValue(name) {
@@ -139,6 +151,7 @@ let publishedTask;
 let publishedCandidateId;
 let makeTask;
 let claim;
+let inspectorTurn;
 
 // ---------------------------------------------------------------- real phase
 phase = 'real';
@@ -264,9 +277,10 @@ expect('LITE-09-105', 'S6E-REAL-16', 'only the bounded old prefix is compacted: 
 // --------------------------------------------------------------- guard phase
 phase = 'guard';
 try {
+let guardSummarizerCalls = 0;
 const guardEngine = new ConversationCompactionService({
   store,
-  summarizer: { summarize: async () => ({ summary: 'x'.repeat(20000) }) },
+  summarizer: { summarize: async () => { guardSummarizerCalls += 1; return { summary: 'x'.repeat(20000) }; } },
 });
 const oversized = await guardEngine.compact({
   workspaceId: WS, conversationId: CONV_GUARD, policyVersion: 'lite-v1',
@@ -274,9 +288,11 @@ const oversized = await guardEngine.compact({
 });
 expect('LITE-09-105', 'S6E-GUARD-01', 'an oversized summary is refused, never published',
   { outcome: oversized.outcome, failureCode: oversized.task?.failureCode,
+    attempts: oversized.task?.attempts, summarizerCalls: guardSummarizerCalls,
     published: compactions.findLatestPublished(WS, CONV_GUARD) !== undefined,
     candidates: candidates.listCandidates(WS).filter(item => item.ownerConversationId === CONV_GUARD).length },
-  { outcome: 'retry-pending', failureCode: 'COMPACTION_SUMMARY_INVALID', published: false, candidates: 0 });
+  { outcome: 'retry-pending', failureCode: 'COMPACTION_SUMMARY_INVALID', attempts: 1, summarizerCalls: 1,
+    published: false, candidates: 0 });
 
 // One durable execution holder per Conversation, enforced by the schema itself: a second
 // running row for the same Conversation cannot exist.
@@ -325,29 +341,52 @@ const runningNow = Number(db.prepare("SELECT COUNT(*) AS n FROM conversation_com
 expect('LITE-09-107', 'S6E-GUARD-05', 'exactly one running holder remains after the refusal',
   { running: runningNow }, { running: 1 });
 
-// A retry-pending task stays the Conversation's active attempt: another evaluation does
-// not start a parallel execution or publish a second fact.
+// LITE-09-107: the automatic retry chain is bounded. The second automatic evaluation
+// resumes the SAME durable attempt, spends the single allowed retry and then records the
+// bounded failure; a third evaluation must not buy another Provider call.
 const secondAttempt = await guardEngine.compact({
   workspaceId: WS, conversationId: CONV_GUARD, policyVersion: 'lite-v1',
   messages, budget, provider, priorSummary: null,
 });
-expect('LITE-09-107', 'S6E-GUARD-04', 'a pending attempt is not duplicated by another evaluation',
-  { outcome: secondAttempt.outcome, published: compactions.findLatestPublished(WS, CONV_GUARD) !== undefined,
+expect('LITE-09-107', 'S6E-GUARD-04', 'the automatic evaluation resumes the same attempt and stops at the bounded retry budget',
+  { outcome: secondAttempt.outcome, sameTask: secondAttempt.task?.id === oversized.task?.id,
+    attempts: secondAttempt.task?.attempts, failureCode: secondAttempt.task?.failureCode,
+    summarizerCalls: guardSummarizerCalls,
+    published: compactions.findLatestPublished(WS, CONV_GUARD) !== undefined,
     running: Number(db.prepare("SELECT COUNT(*) AS n FROM conversation_compactions WHERE workspace_id = ? AND conversation_id = ? AND status = 'running'").get(WS, CONV_GUARD).n) },
-  { outcome: 'retry-pending', published: false, running: 0 });
+  { outcome: 'failed', sameTask: true, attempts: 2, failureCode: 'COMPACTION_RETRIES_EXHAUSTED',
+    summarizerCalls: 2, published: false, running: 0 });
+const thirdAttempt = await guardEngine.compact({
+  workspaceId: WS, conversationId: CONV_GUARD, policyVersion: 'lite-v1',
+  messages, budget, provider, priorSummary: null,
+});
+expect('LITE-09-107', 'S6E-GUARD-07', 'a spent automatic chain is never re-scheduled: no new attempt row and no new Provider call',
+  { outcome: thirdAttempt.outcome, sameTask: thirdAttempt.task?.id === oversized.task?.id,
+    failureCode: thirdAttempt.task?.failureCode, summarizerCalls: guardSummarizerCalls,
+    guardTaskRows: compactions.listForConversation(WS, CONV_GUARD).length },
+  { outcome: 'failed', sameTask: true, failureCode: 'COMPACTION_RETRIES_EXHAUSTED', summarizerCalls: 2, guardTaskRows: 1 });
+// LITE-09-108: only the retry a human asks for may spend another attempt on that source.
+const explicitRetry = await guardEngine.compact({
+  workspaceId: WS, conversationId: CONV_GUARD, policyVersion: 'lite-v1',
+  messages, budget, provider, priorSummary: null, resume: 'explicit',
+});
+expect('LITE-09-108', 'S6E-GUARD-08', 'the explicit retry spends its own attempt instead of being blocked by the spent chain',
+  { outcome: explicitRetry.outcome, startsNewAttempt: explicitRetry.task?.id !== oversized.task?.id,
+    attempts: explicitRetry.task?.attempts, summarizerCalls: guardSummarizerCalls,
+    guardTaskRows: compactions.listForConversation(WS, CONV_GUARD).length,
+    published: compactions.findLatestPublished(WS, CONV_GUARD) !== undefined },
+  { outcome: 'retry-pending', startsNewAttempt: true, attempts: 1, summarizerCalls: 3, guardTaskRows: 2, published: false });
 expect('LITE-07-105', 'S6E-GUARD-06', 'a refused summary leaves no Candidate, no published row and no canonical Event behind',
   { guardCandidates: candidates.listCandidates(WS).filter(item => item.ownerConversationId === CONV_GUARD).length,
     guardPublished: compactions.findLatestPublished(WS, CONV_GUARD) !== undefined,
     guardTasksWithSummary: compactions.listForConversation(WS, CONV_GUARD).filter(item => typeof item.summary === 'string' && item.summary.length > 0).length,
     compactionEvents: Number(db.prepare("SELECT COUNT(*) AS n FROM workspace_events WHERE workspace_id = ? AND type = 'memory.candidate_created'").get(WS).n) },
   { guardCandidates: 0, guardPublished: false, guardTasksWithSummary: 0, compactionEvents: 1 });
-// Recorded, not asserted: how many durable task rows a repeated evaluation left behind.
-// The requirement bounds execution holders and published facts, so a leftover pending row
-// is reported here for review rather than silently folded into the assertion above.
+// Recorded alongside the assertions: the durable state the bounded chain left behind.
 phases.guard = {
   claimRefusalMessage: secondRunningError.slice(0, 200),
-
-  guardTasksAfterRepeat: compactions.listForConversation(WS, CONV_GUARD).map(item => item.status),
+  guardSummarizerCalls,
+  guardTaskStatuses: compactions.listForConversation(WS, CONV_GUARD).map(item => item.status),
   guardPublished: compactions.findLatestPublished(WS, CONV_GUARD) !== undefined,
 };
 } catch (error) { catchPhase(error); }
@@ -420,7 +459,19 @@ expect('LITE-09-106', 'S6E-DB-03', 'the frozen Provider identity cannot be rewri
   { refusedWithCode: true, storedModel: MODEL });
 
 const publishedSourceIndex = db.prepare("SELECT sql FROM sqlite_master WHERE type = 'index' AND name = 'conversation_compactions_one_published_source'").get();
-const duplicateClaimed = claim(makeTask(CONV_REAL, publishedRow.sourceHash));
+// The duplicate publish runs in its own Conversation so the real one keeps exactly the
+// rows the production path produced: a summary the engine published, and nothing else.
+const CONV_DUP = 'conv_' + 'd'.repeat(26);
+db.prepare(`INSERT INTO cr_conversations (id, workspace_id, kind, status, title, created_at, updated_at, version)
+  VALUES (?, ?, 'direct', 'active', 's6 evidence duplicate', ?, ?, 1)`).run(CONV_DUP, WS, NOW, NOW);
+const DUP_SOURCE = 'd'.repeat(64);
+const dupFirst = claim(makeTask(CONV_DUP, DUP_SOURCE));
+inTransaction(db, () => compactions.publishWithinTransaction({
+  workspaceId: WS, id: dupFirst.id, expectedVersion: dupFirst.version, leaseOwner: 'evidence-holder',
+  summary: 'first published summary for this source', summaryHash: sha256Hex('first published summary for this source'),
+  summaryTokenEstimate: 8, candidateId: publishedRow.candidateId, publishedAt: NOW,
+}));
+const duplicateClaimed = claim(makeTask(CONV_DUP, DUP_SOURCE));
 const duplicatePublish = attemptRepo(() => inTransaction(db, () => compactions.publishWithinTransaction({
   workspaceId: WS, id: duplicateClaimed.id, expectedVersion: duplicateClaimed.version, leaseOwner: 'evidence-holder',
   summary: 'duplicate publish attempt', summaryHash: sha256Hex('duplicate publish attempt'),
@@ -430,7 +481,7 @@ expect('LITE-07-105', 'S6E-DB-04', 'one published summary per Conversation sourc
   { indexIsUnique: /UNIQUE INDEX/iu.test(String(publishedSourceIndex?.sql)),
     scopedToPublished: /WHERE status = 'published'/iu.test(String(publishedSourceIndex?.sql)),
     refusedByUnique: duplicatePublish.refused === true && /UNIQUE/iu.test(String(duplicatePublish.message)),
-    publishedRowsInConversation: compactions.listForConversation(WS, CONV_REAL).filter(item => item.status === 'published').length },
+    publishedRowsInConversation: compactions.listForConversation(WS, CONV_DUP).filter(item => item.status === 'published').length },
   { indexIsUnique: true, scopedToPublished: true, refusedByUnique: true, publishedRowsInConversation: 1 });
 
 const CONV_LEASE = 'conv_' + 'l'.repeat(26);
@@ -502,18 +553,27 @@ expect('LITE-09-108', 'S6E-TURNGATE-01', 'an over-budget summary and tail block 
 
 let controlHistory;
 let controlRunnerCalls = 0;
+/**
+ * The real Turn persists its frozen context snapshot before the Provider is invoked, and
+ * that snapshot is what records which summary this Turn adopted. The Inspector phase reads
+ * the adoption back from those durable rows, so the snapshot port has to be the production
+ * one here as well.
+ */
+const snapshots = createDurableTurnContextSnapshotPort({ getDatabase: () => db });
 const controlDriver = new ConversationTurnDriver(conversations, stream, getAgent,
   (options) => ({ run: async () => {
     controlRunnerCalls += 1;
     controlHistory = options.history;
     return { status: 'completed', content: 'ok', mode: 'mock', startedAt: NOW, completedAt: NOW };
   } }),
-  { compaction: compactionPort, compactionBudget: { hardBudgetTokens: 100000 } });
+  { compaction: compactionPort, compactionBudget: { hardBudgetTokens: 100000 }, snapshots, contextTokenBudget: null });
+const CONTROL_TURN_ID = 'turn_' + 'c'.repeat(20);
 const control = await controlDriver.replyWithTurn({
   workspaceId: WS, workspaceRoot: root, conversationId: CONV_REAL, agentId: agent.id,
   sourceMessageId: 'msg_turn_gate_input', content: 'current input',
-  turnId: 'turn_' + 'c'.repeat(20), responseMessageId: 'msg_' + 'q'.repeat(20), createdAt: NOW,
+  turnId: CONTROL_TURN_ID, responseMessageId: 'msg_' + 'q'.repeat(20), createdAt: NOW,
 });
+inspectorTurn = { turnId: CONTROL_TURN_ID, snapshotId: control.turn.contextSnapshotId ?? null };
 const contextIds = (controlHistory ?? []).map(entry => entry.id);
 const coveredIds = ['msg_000', 'msg_001', 'msg_002', 'msg_003'];
 const tailIds = ['msg_004', 'msg_005', 'msg_006', 'msg_007'];
@@ -525,6 +585,88 @@ expect('LITE-09-105', 'S6E-TURNGATE-02', 'the real published summary reaches the
     tailIdsStillInContext: tailIds.filter(id => contextIds.includes(id)) },
   { status: 'completed', runnerCalls: 1, summaryEntryIdPresent: true, summaryTextInContext: true,
     coveredIdsStillInContext: [], tailIdsStillInContext: tailIds });
+} catch (error) { catchPhase(error); }
+
+// ------------------------------------------------------------- inspector phase
+// LITE-13-101: what an operator can actually read back. The endpoint is mounted on the
+// production router and reached over real HTTP, so the receipt is the response an operator
+// would get, not a restatement of the projection code.
+phase = 'inspector';
+try {
+const app = express();
+app.use(express.json());
+app.use('/api/workspaces/:workspaceId/runtime', createConversationRuntimeRoutes(store, new WorkspaceManager(store)));
+const server = app.listen(0, '127.0.0.1');
+// The HTTP phase is the only one that opens sockets. They are tracked so the phase can
+// close them deterministically: an undrained keep-alive socket would otherwise leave a
+// libuv async handle behind and abort the process during exit on Windows.
+const sockets = new Set();
+server.on('connection', socket => {
+  sockets.add(socket);
+  socket.on('close', () => sockets.delete(socket));
+});
+await new Promise(resolve => server.once('listening', resolve));
+const port = server.address().port;
+const base = 'http://127.0.0.1:' + String(port) + '/api/workspaces/' + WS + '/runtime';
+try {
+  const response = await fetch(base + '/conversations/' + CONV_REAL + '/compactions');
+  const body = await response.json();
+  const publishedRow = compactions.findLatestPublished(WS, CONV_REAL);
+  const published = body.tasks.find(item => item.id === publishedRow.id);
+  const budget = JSON.parse(publishedRow.budgetJson);
+  expect('LITE-13-101', 'S6E-INSPECTOR-01', 'the read surface explains why this compaction happened, to whom and under which policy',
+    { status: response.status,
+      taskCount: body.tasks.length,
+      tasksMatchDurableRows: JSON.stringify(body.tasks.map(item => item.id).sort()) === JSON.stringify(compactions.listForConversation(WS, CONV_REAL).map(item => item.id).sort()),
+      taskStatus: published?.status, taskModel: published?.model,
+      adapterId: published?.adapterId, adapterVersion: published?.adapterVersion,
+      estimatorVersion: published?.estimatorVersion, attempts: published?.attempts,
+      failureCode: published?.failureCode, hasSummaryHash: typeof published?.summaryHash === 'string',
+      candidateMatches: published?.candidateId === publishedCandidateId,
+      summaryMatchesDurableRow: published?.summary === publishedRow.summary,
+      sourceRange: { start: published?.sourceStartMessageId, end: published?.sourceEndMessageId, count: published?.sourceMessageCount },
+      recordedTriggerAboveThreshold: published?.budget?.historyTokens > published?.budget?.triggerRatio * published?.budget?.historyBudgetTokens,
+      budgetKeys: Object.keys(published?.budget ?? {}).sort() },
+    { status: 200, taskCount: 1, tasksMatchDurableRows: true, taskStatus: 'published', taskModel: MODEL,
+      adapterId: 'cli.codex', adapterVersion: '1.0.0', estimatorVersion: 'lite-v1-chars4', attempts: 1,
+      failureCode: null, hasSummaryHash: true, candidateMatches: true, summaryMatchesDurableRow: true,
+      sourceRange: { start: messages[0].id, end: messages[3].id, count: 4 },
+      recordedTriggerAboveThreshold: true,
+      budgetKeys: Object.keys(budget).sort() });
+  expect('LITE-13-101', 'S6E-INSPECTOR-02', 'the effective policy version and its parameters are readable, not implied',
+    { policies: body.policies.map(item => ({ policyVersion: item.policyVersion, triggerRatio: item.triggerRatio,
+      targetRatio: item.targetRatio, minRecentMessages: item.minRecentMessages, summaryMaxTokens: item.summaryMaxTokens,
+      timeoutMs: item.timeoutMs, maxAutomaticRetries: item.maxAutomaticRetries,
+      fallbackApplicationBudgetTokens: item.fallbackApplicationBudgetTokens })),
+      estimatorVersion: body.policies[0]?.parameters?.estimatorVersion },
+    { policies: [{ policyVersion: 'lite-v1', triggerRatio: 0.7, targetRatio: 0.5, minRecentMessages: 8,
+      summaryMaxTokens: 2048, timeoutMs: 120000, maxAutomaticRetries: 1, fallbackApplicationBudgetTokens: 16384 }],
+      estimatorVersion: 'lite-v1-chars4' });
+  const turnRow = db.prepare('SELECT context_snapshot_id AS snapshotId FROM cr_agent_turns WHERE id = ?').get(inspectorTurn.turnId);
+  expect('LITE-13-101', 'S6E-INSPECTOR-03', 'the surface names the Turn and frozen snapshot that actually adopted the summary',
+    { adoptions: body.adoptions,
+      turnPointsAtAdoptedSnapshot: turnRow?.snapshotId === inspectorTurn.snapshotId,
+      adoptedSummaryIsThePublishedRow: body.adoptions.every(item => item.summaryId === publishedRow.id) },
+    { adoptions: [{ snapshotId: inspectorTurn.snapshotId, turnId: inspectorTurn.turnId, summaryId: publishedRow.id, createdAt: NOW }],
+      turnPointsAtAdoptedSnapshot: true, adoptedSummaryIsThePublishedRow: true });
+  const failure = await (await fetch(base + '/conversations/' + CONV_GUARD + '/compactions')).json();
+  // A Conversation nobody compacted yet: the surface must report nothing rather than
+  // borrowing another Conversation's state.
+  const CONV_EMPTY = 'conv_' + 'z'.repeat(26);
+  db.prepare(`INSERT INTO cr_conversations (id, workspace_id, kind, status, title, created_at, updated_at, version)
+    VALUES (?, ?, 'direct', 'active', 's6 evidence empty', ?, ?, 1)`).run(CONV_EMPTY, WS, NOW, NOW);
+  const empty = await (await fetch(base + '/conversations/' + CONV_EMPTY + '/compactions')).json();
+  expect('LITE-13-101', 'S6E-INSPECTOR-04', 'failure and retry state are visible, and a Conversation without compactions reports none',
+    { guardTasks: failure.tasks.map(item => ({ status: item.status, attempts: item.attempts, failureCode: item.failureCode })),
+      guardAdoptions: failure.adoptions.length,
+      emptyTasks: empty.tasks.length, emptyPolicies: empty.policies.length, emptyAdoptions: empty.adoptions.length },
+    { guardTasks: [{ status: 'failed', attempts: 2, failureCode: 'COMPACTION_RETRIES_EXHAUSTED' },
+                   { status: 'retry-pending', attempts: 1, failureCode: 'COMPACTION_SUMMARY_INVALID' }],
+      guardAdoptions: 0, emptyTasks: 0, emptyPolicies: 0, emptyAdoptions: 0 });
+} finally {
+  for (const socket of sockets) socket.destroy();
+  await new Promise(resolve => server.close(() => resolve()));
+}
 } catch (error) { catchPhase(error); }
 
 store.close();
@@ -551,4 +693,8 @@ console.log(`  model=${MODEL} receipts=${counts.total} passed=${counts.passed} f
 for (const receipt of receipts.filter(item => item.outcome !== 'passed')) {
   console.log(`  FAILED ${receipt.id} (${receipt.requirementId}): ${receipt.detail ?? ''}`);
 }
-process.exit(counts.failed === 0 ? 0 : 1);
+// Exit through the normal path: `process.exit` while a just-closed HTTP server still has
+// handles pending trips a libuv assertion on Windows and destroys the raw exit code the
+// receipt needs. An explicit process.exitCode lets the loop drain instead.
+await new Promise(resolve => setTimeout(resolve, 100));
+process.exitCode = counts.failed === 0 ? 0 : 1;

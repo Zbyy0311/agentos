@@ -131,8 +131,8 @@ const SPEC = {
     secondarySources: [
       { sourceFile: AUTH, sourceLine: 32, note: '自动重试在 maxAutomaticRetries 处停止' },
     ],
-    why: 'The schema-level invariant is read from sqlite_master (UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = running), and the executed check claims a second running holder for the same Conversation while the first still holds it: the store refuses with the stable code COMPACTION_CONFLICT (no raw SQLite text leaks) and exactly one running row remains afterwards. A failed attempt re-evaluated again neither starts a parallel execution (running=0) nor publishes a second fact (published=false).',
-    limits: 'Covers the single-holder, refusal, stale-lease and retry branches (a publish from a lease that no longer holds the attempt is refused with the stable conflict code and the row stays running). Restart classification and the expired-lease reclaim are covered by the migration/unit tests of the same slice, not replayed against a real Provider in this harness.',
+    why: 'The schema-level invariant is read from sqlite_master (UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = running), and the executed check claims a second running holder for the same Conversation while the first still holds it: the store refuses with the stable code COMPACTION_CONFLICT (no raw SQLite text leaks) and exactly one running row remains afterwards. The retry bound is executed as well: the first failing attempt records retry-pending with attempts=1 and one summarizer call, the second automatic evaluation resumes that same row, spends the single allowed automatic retry (attempts=2, second summarizer call) and records COMPACTION_RETRIES_EXHAUSTED, and the third automatic evaluation makes no Provider call at all and adds no row. Only the explicit retry starts a fresh attempt.',
+    limits: 'Covers the single-holder, refusal, stale-lease and bounded-retry branches (a publish from a lease that no longer holds the attempt is refused with the stable conflict code and the row stays running). Restart classification and the expired-lease reclaim are covered by the migration/unit tests of the same slice, not replayed against a real Provider in this harness. A Provider/model change during a pending chain starts a new attempt instead of continuing the frozen identity; that branch is covered by the identity comparison in the service and is not exercised here.',
   },
   'LITE-09-108': {
     text: '压缩失败的硬预算分支',
@@ -142,8 +142,20 @@ const SPEC = {
     secondarySources: [
       { sourceFile: AUTH, sourceLine: 40, note: '超限时保留输入并提供显式重试' },
     ],
-    why: 'On the production apply function, when prior summary plus the uncompressed tail exceeds the hard budget the result is over-budget and the input history is unchanged in length and in per-message content length (nothing truncated or dropped); the same history inside the budget applies the summary and reports summarizedMessages=2. Together with the refused-summary assertions, the failure branch keeps the Conversation data intact.',
-    limits: 'The over-budget branch is asserted on the production function and again through the production Turn driver, where the Turn raises TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED before any reservation: zero Runner calls, zero Messages and zero Turns added, and every Message digest unchanged. The within-budget "continue plus retry-pending" Turn behaviour is covered by the ConversationTurnDriver unit tests.',
+    why: 'On the production apply function, when prior summary plus the uncompressed tail exceeds the hard budget the result is over-budget and the input history is unchanged in length and in per-message content length (nothing truncated or dropped); the same history inside the budget applies the summary and reports summarizedMessages=2. The production Turn driver then refuses the same way end to end: TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED before any reservation, zero Runner calls, zero Messages and zero Turns added, every Message digest unchanged. The explicit retry the failure branch promises is executed too: after the bounded automatic chain is spent, the retry with resume=explicit starts its own attempt (new row, attempts=1) instead of being blocked by the spent chain.',
+    limits: 'The over-budget branch is asserted on the production function and through the production Turn driver rather than as a live Provider conversation, and the explicit retry is asserted on the production engine/service path as the retry endpoint calls it (the endpoint itself adds no logic beyond passing the mode). The within-budget "continue plus retry-pending" Turn behaviour is covered by the ConversationTurnDriver unit tests.',
+  },
+  'LITE-13-101': {
+    text: 'Inspector解释每次压缩为何触发及被谁采用',
+    section: 'Inspector 压缩读面',
+    sourceFile: 'apps/server/src/routes/conversationRuntime.ts',
+    sourceLine: 269,
+    secondarySources: [
+      { sourceFile: 'docs/implementation/lite-closeout/S6-compaction-authorization.md', sourceLine: 17, note: '每次压缩持久化策略版本、实际参数与预算组成' },
+      { sourceFile: 'apps/server/src/services/ConversationTurnDriver.ts', sourceLine: 416, note: '采用摘要的 Turn 在冻结快照里记录 compactionSummaryId 与 summarizedMessages' },
+    ],
+    why: 'The production router is mounted and reached over real HTTP. The read surface answers all four questions from durable rows: why it triggered (the recorded historyTokens is above triggerRatio x historyBudgetTokens), under which policy (lite-v1 with all six parameters plus the fallback application budget and the estimator version), who adopted it (the adoption names the snapshot and the real Turn whose durable row points at that same snapshot, and the adopted summaryId is the published row), and what happened on failure (the refused Conversation shows attempts plus COMPACTION_SUMMARY_INVALID and COMPACTION_RETRIES_EXHAUSTED). A Conversation with no compaction reports empty tasks, policies and adoptions instead of borrowing another Conversation\'s state.',
+    limits: 'It proves the read surface for the states this harness produced. It does not render the UI, and it does not exercise a compaction whose source range was rejected as stale (that state is durable and readable through the same projection, but is not asserted here).',
   },
   'LITE-09-109': {
     text: '仅复用现有Message修订/可见性校验摘要来源',
@@ -293,9 +305,9 @@ const output = {
 writeFileSync(outJson, JSON.stringify(output, null, 2) + String.fromCharCode(10), 'utf8');
 
 const lines = [];
-lines.push('# S6 自动压缩候选证据包（LITE-07-105 / LITE-09-104～110）');
+lines.push('# S6 自动压缩候选证据包（LITE-07-105 / LITE-09-104～110 / LITE-13-101）');
 lines.push('');
-lines.push('本报告只记录候选证据，不能直接改变验收矩阵状态。八个 requirement 的本轮 verdict 只能取 ' + md('candidate-supported') + '、' + md('insufficient-evidence') + ' 或 ' + md('failed') + '；本轮没有执行 PASS 提升，也没有执行 ' + md('--require-closed') + '。');
+lines.push('本报告只记录候选证据，不能直接改变验收矩阵状态。九个 requirement 的本轮 verdict 只能取 ' + md('candidate-supported') + '、' + md('insufficient-evidence') + ' 或 ' + md('failed') + '；本轮没有执行 PASS 提升，也没有执行 ' + md('--require-closed') + '。');
 lines.push('');
 lines.push('## 固定边界');
 lines.push('');
@@ -364,11 +376,14 @@ for (const item of requirements) {
 }
 lines.push('## targeted tests 与 scope verifier');
 lines.push('');
-lines.push('受影响测试（9 个 S6 文件，' + md('node --import tsx --test --test-concurrency=1') + '，在 ' + md('apps/server') + ' 下执行）raw exit = 0，Node summary 为 ' + md('50 pass / 0 fail / 0 skipped / 0 cancelled / 0 todo') + '；普通 scope verifier 未加 ' + md('--require-closed') + '，raw exit = 0，stdout 原文为 ' + md('{"matrixVersion":15,"status":"frozen","PASS":0,"GAP":26,"RUNTIME-VERIFY":205,"DEFERRED":164}') + '。');
+lines.push('受影响测试（9 个 S6 文件，' + md('node --import tsx --test --test-concurrency=1') + '，在 ' + md('apps/server') + ' 下执行）raw exit = 0，Node summary 为 ' + md('51 pass / 0 fail / 0 skipped / 0 cancelled / 0 todo') + '；普通 scope verifier 未加 ' + md('--require-closed') + '，raw exit = 0，stdout 原文为 ' + md('{"matrixVersion":15,"status":"frozen","PASS":0,"GAP":26,"RUNTIME-VERIFY":205,"DEFERRED":164}') + '。');
 lines.push('');
 lines.push('## 已知限制与运行历史');
 lines.push('');
-lines.push('- 本目录的 receipts/stdout/stderr 是最终 24 条断言的运行结果；早期 21 条断言的运行写入同一路径并被最终运行覆盖（早期断言集是最终断言集的真子集，harness 已随本分支提交，可原样重放）。');
+lines.push('- 本轮证据工作发现并修复了一个真实缺陷：' + md('ConversationCompactionService.compact()') + ' 每次评估都新建 ' + md('attempt: 1') + ' 的任务，因此 ' + md('COMPACTION_RETRIES_EXHAUSTED') + ' 分支在生产路径上不可达，自动重试没有上界（每次 Turn 都会再启动一次 Provider 摘要调用）。原单测只能手工 claim/fail 来模拟该分支。修复后自动评估复用同一 durable attempt 并在 ' + md('maxAutomaticRetries') + ' 处停止，只有显式重试才会开始新尝试。');
+lines.push('- 修复的单元测试证据：' + md('ConversationCompactionService.test.ts') + ' → “the automatic retry chain is bounded, and only an explicit retry spends a new attempt”（生产路径，断言 1 → 2 → 停止 → 显式重试新链）与 ' + md('ConversationCompactionTrigger.test.ts') + ' → “S6 trigger spends a new attempt only for an explicit retry”（mode 传递）。本 harness 的 ' + md('S6E-GUARD-04/07/08') + ' 在真实 store 上观测到同一行为（summarizer 调用 1 → 2 → 2 → 3）。');
+lines.push('- HTTP 阶段是本 harness 唯一打开 socket 的阶段；它在关闭前销毁自己建立的连接并按正常路径退出，以便 ' + md('exit.txt') + ' 记录真实的 raw exit code（此前 ' + md('process.exit') + ' 与刚关闭的 server 竞态会在 Windows 触发 libuv 断言，产生不可用的退出码）。');
+lines.push('- 本目录的 receipts/stdout/stderr 是当前断言集（39 条）的运行结果；同一路径上更早的运行（21 条、24 条、33 条、36 条断言）被覆盖而未单独归档。这些早期断言集是当前断言集的真子集，harness 已随本分支提交，可原样重放。');
 lines.push('- ' + md('ProviderCompactionSummarizer') + ' 的失败语义由单元测试覆盖（非零退出码、硬超时、空/超长摘要拒绝），真实链路只重放了成功发布；真实 Provider 失败注入未执行。');
 lines.push('- 本轮没有对 kimi / opencode 取得真实摘要证据：它们没有 allowlist profile，按 fail-closed 处理。');
 lines.push('- 证据只覆盖被点到编号的行为，没有把任何 skipped、缺日志或失败项折算为通过。');
@@ -383,7 +398,7 @@ for (const file of protectedFiles) {
   lines.push('| ' + md(file.path) + ' | ' + md(file.worktreeSha256) + ' | ' + md(file.baselineSha256) + ' | ' + file.matchesBaseline + ' |');
 }
 lines.push('');
-lines.push('矩阵仍为 v15、' + md('status=frozen') + '、PASS=0、GAP=26、RUNTIME-VERIFY=205、DEFERRED=164：这八个 requirement 保持 ' + md('GAP') + '，verdict 只是候选证据。');
+lines.push('矩阵仍为 v15、' + md('status=frozen') + '、PASS=0、GAP=26、RUNTIME-VERIFY=205、DEFERRED=164：这九个 requirement 保持 ' + md('GAP') + '，verdict 只是候选证据。');
 lines.push('');
 lines.push('工作区 delta（' + md('git status --porcelain=v1') + '）：');
 lines.push('');

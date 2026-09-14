@@ -1,6 +1,6 @@
-# S6 自动压缩候选证据包（LITE-07-105 / LITE-09-104～110）
+# S6 自动压缩候选证据包（LITE-07-105 / LITE-09-104～110 / LITE-13-101）
 
-本报告只记录候选证据，不能直接改变验收矩阵状态。八个 requirement 的本轮 verdict 只能取 `candidate-supported`、`insufficient-evidence` 或 `failed`；本轮没有执行 PASS 提升，也没有执行 `--require-closed`。
+本报告只记录候选证据，不能直接改变验收矩阵状态。九个 requirement 的本轮 verdict 只能取 `candidate-supported`、`insufficient-evidence` 或 `failed`；本轮没有执行 PASS 提升，也没有执行 `--require-closed`。
 
 ## 固定边界
 
@@ -16,8 +16,9 @@
 | `LITE-09-104` | `版本化lite-v1阈值和预算原因` | `candidate-supported` | 3 total / 3 passed / 0 failed / 0 skipped | 0 |
 | `LITE-09-105` | `有界摘要发布、原消息保留和实际context应用` | `candidate-supported` | 7 total / 7 passed / 0 failed / 0 skipped | 0 |
 | `LITE-09-106` | `压缩执行安全与Provider identity冻结` | `candidate-supported` | 5 total / 5 passed / 0 failed / 0 skipped | 0 |
-| `LITE-09-107` | `每Conversation单持有者、持久恢复、租约与重试` | `candidate-supported` | 5 total / 5 passed / 0 failed / 0 skipped | 0 |
-| `LITE-09-108` | `压缩失败的硬预算分支` | `candidate-supported` | 4 total / 4 passed / 0 failed / 0 skipped | 0 |
+| `LITE-09-107` | `每Conversation单持有者、持久恢复、租约与重试` | `candidate-supported` | 6 total / 6 passed / 0 failed / 0 skipped | 0 |
+| `LITE-09-108` | `压缩失败的硬预算分支` | `candidate-supported` | 5 total / 5 passed / 0 failed / 0 skipped | 0 |
+| `LITE-13-101` | `Inspector解释每次压缩为何触发及被谁采用` | `candidate-supported` | 4 total / 4 passed / 0 failed / 0 skipped | 0 |
 | `LITE-09-109` | `仅复用现有Message修订/可见性校验摘要来源` | `candidate-supported` | 1 total / 1 passed / 0 failed / 0 skipped | 0 |
 | `LITE-09-110` | `Provider-native compaction不得作为canonical evidence` | `candidate-supported` | 1 total / 1 passed / 0 failed / 0 skipped | 0 |
 | `LITE-07-105` | `Conversation compaction 来源触发` | `candidate-supported` | 7 total / 7 passed / 0 failed / 0 skipped | 0 |
@@ -32,17 +33,17 @@ $env:AGENTOS_COMPACTION_MODEL = 'gpt-5.6-luna'
 node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\workspace\Multi-Agent-worktrees\agentos-lite-s67-evidence\agentos\docs\implementation\lite-closeout\evidence\s6-candidate-evidence-20260914
 ```
 
-raw exit = `0`；receipts 统计 `33 total / 33 passed / 0 failed / 0 skipped`；真实 Provider 压缩耗时 46434 ms。
+raw exit = `0`；receipts 统计 `39 total / 39 passed / 0 failed / 0 skipped`；真实 Provider 压缩耗时 60417 ms。
 
 | 日志 / 收据 | bytes | SHA-256 |
 | --- | ---: | --- |
-| `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json` | 17400 | `f4ed9bfbadeb48b18219c881d12fd601d7c1b2a0bbb09482cb8f798d5ed40079` |
-| `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt` | 82 | `67cc1131fe4546aa5a9b13b446b6c6196b8c765548a76dd984b426a1f41a3982` |
+| `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json` | 24852 | `d62e8cff5a109699eaa83988f42f10c94568261d851d0abf72e98a0c2e73a73b` |
+| `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt` | 82 | `db3561b868c255ae9313c05b8031cecc6d33e585240fc972ed78419ed670d253` |
 | `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stderr.txt` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/exit.txt` | 3 | `13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354` |
 | `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stdout.txt` | 93 | `c412198c0b3a31ba0bce0ce7a3d661de904524bc7082edd140be153a9d2eb5b1` |
 | `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/scope-verifier.stderr.txt` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
-| `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt` | 4721 | `32b5970c468fca3eb8e3271af3a07a62b9723318bea57d237804ecd6e594f5ef` |
+| `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt` | 4820 | `fbb6e9aac033a6208f4bfd29c115f268438bd971f4ba189fb4048f54cc6f5dbe` |
 | `docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stderr.txt` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
 | `docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stdout.txt` | 337 | `60e027d5cf126163909def98aeb671e9eaadc106a4ff57f1c1ada8bea8f70b33` |
 | `docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/stderr.txt` | 0 | `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855` |
@@ -92,7 +93,7 @@ matrix 原文为 `有界摘要发布、原消息保留和实际context应用`，
 | `S6E-REAL-06` | `real`：the source range it covered is recorded | `{"sourceMessageCount":4,"hasStart":true,"hasEnd":true,"hasSourceHash":true}` | `{"sourceMessageCount":4,"hasStart":true,"hasEnd":true,"hasSourceHash":true}` | passed |
 | `S6E-REAL-13` | `real`：the Messages the summary covered survive the published compaction unchanged | `{"rowsBefore":12,"rowsAfter":12,"digestUnchanged":true,"distinctStatuses":["final"]}` | `{"rowsBefore":12,"rowsAfter":12,"digestUnchanged":true,"distinctStatuses":["final"]}` | passed |
 | `S6E-REAL-16` | `real`：only the bounded old prefix is compacted: the recent window stays uncompressed | `{"totalMessages":12,"sourceMessageCount":4,"retainedMessages":8,"minRecentMessages":8,"sourceStartIsOldest":true,"sourceEndIsLastCoveredMessage":true}` | `{"totalMessages":12,"sourceMessageCount":4,"retainedMessages":8,"minRecentMessages":8,"sourceStartIsOldest":true,"sourceEndIsLastCoveredMessage":true}` | passed |
-| `S6E-GUARD-01` | `guard`：an oversized summary is refused, never published | `{"outcome":"retry-pending","failureCode":"COMPACTION_SUMMARY_INVALID","published":false,"candidates":0}` | `{"outcome":"retry-pending","failureCode":"COMPACTION_SUMMARY_INVALID","published":false,"candidates":0}` | passed |
+| `S6E-GUARD-01` | `guard`：an oversized summary is refused, never published | `{"outcome":"retry-pending","failureCode":"COMPACTION_SUMMARY_INVALID","attempts":1,"summarizerCalls":1,"published":false,"candidates":0}` | `{"outcome":"retry-pending","failureCode":"COMPACTION_SUMMARY_INVALID","attempts":1,"summarizerCalls":1,"published":false,"candidates":0}` | passed |
 | `S6E-DB-02` | `durable`：a published summary cannot be rewritten after it became canonical | `{"refusedWithCode":true,"summaryHashUnchanged":true}` | `{"refusedWithCode":true,"summaryHashUnchanged":true}` | passed |
 | `S6E-TURNGATE-02` | `turngate`：the real published summary reaches the Provider context and replaces exactly the covered Messages | `{"status":"completed","runnerCalls":1,"summaryEntryIdPresent":true,"summaryTextInContext":true,"coveredIdsStillInContext":[],"tailIdsStillInContext":["msg_004","msg_005","msg_006","msg_007"]}` | `{"status":"completed","runnerCalls":1,"summaryEntryIdPresent":true,"summaryTextInContext":true,"coveredIdsStillInContext":[],"tailIdsStillInContext":["msg_004","msg_005","msg_006","msg_007"]}` | passed |
 
@@ -142,12 +143,13 @@ matrix 原文为 `每Conversation单持有者、持久恢复、租约与重试`�
 | `S6E-GUARD-02` | `guard`：the schema carries a one-running-holder index per Conversation | `{"unwrapped":"CREATE UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = 'running'","isUnique":true,"scopedToRunning":true}` | `{"unwrapped":"CREATE UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = 'running'","isUnique":true,"scopedToRunning":true}` | passed |
 | `S6E-GUARD-03` | `guard`：a second running holder for the same Conversation is refused by the store | `{"refused":true,"refusalIsStable":true}` | `{"refused":true,"refusalIsStable":true}` | passed |
 | `S6E-GUARD-05` | `guard`：exactly one running holder remains after the refusal | `{"running":1}` | `{"running":1}` | passed |
-| `S6E-GUARD-04` | `guard`：a pending attempt is not duplicated by another evaluation | `{"outcome":"retry-pending","published":false,"running":0}` | `{"outcome":"retry-pending","published":false,"running":0}` | passed |
+| `S6E-GUARD-04` | `guard`：the automatic evaluation resumes the same attempt and stops at the bounded retry budget | `{"outcome":"failed","sameTask":true,"attempts":2,"failureCode":"COMPACTION_RETRIES_EXHAUSTED","summarizerCalls":2,"published":false,"running":0}` | `{"outcome":"failed","sameTask":true,"attempts":2,"failureCode":"COMPACTION_RETRIES_EXHAUSTED","summarizerCalls":2,"published":false,"running":0}` | passed |
+| `S6E-GUARD-07` | `guard`：a spent automatic chain is never re-scheduled: no new attempt row and no new Provider call | `{"outcome":"failed","sameTask":true,"failureCode":"COMPACTION_RETRIES_EXHAUSTED","summarizerCalls":2,"guardTaskRows":1}` | `{"outcome":"failed","sameTask":true,"failureCode":"COMPACTION_RETRIES_EXHAUSTED","summarizerCalls":2,"guardTaskRows":1}` | passed |
 | `S6E-DB-05` | `durable`：a publish from a lease that no longer holds the attempt is refused | `{"refused":true,"stableCode":true,"rowStillRunning":"running"}` | `{"refused":true,"stableCode":true,"rowStillRunning":"running"}` | passed |
 
-The schema-level invariant is read from sqlite_master (UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = running), and the executed check claims a second running holder for the same Conversation while the first still holds it: the store refuses with the stable code COMPACTION_CONFLICT (no raw SQLite text leaks) and exactly one running row remains afterwards. A failed attempt re-evaluated again neither starts a parallel execution (running=0) nor publishes a second fact (published=false).
+The schema-level invariant is read from sqlite_master (UNIQUE INDEX conversation_compactions_one_running ON conversation_compactions (conversation_id) WHERE status = running), and the executed check claims a second running holder for the same Conversation while the first still holds it: the store refuses with the stable code COMPACTION_CONFLICT (no raw SQLite text leaks) and exactly one running row remains afterwards. The retry bound is executed as well: the first failing attempt records retry-pending with attempts=1 and one summarizer call, the second automatic evaluation resumes that same row, spends the single allowed automatic retry (attempts=2, second summarizer call) and records COMPACTION_RETRIES_EXHAUSTED, and the third automatic evaluation makes no Provider call at all and adds no row. Only the explicit retry starts a fresh attempt.
 
-未证明的相邻行为：Covers the single-holder, refusal, stale-lease and retry branches (a publish from a lease that no longer holds the attempt is refused with the stable conflict code and the row stays running). Restart classification and the expired-lease reclaim are covered by the migration/unit tests of the same slice, not replayed against a real Provider in this harness.
+未证明的相邻行为：Covers the single-holder, refusal, stale-lease and bounded-retry branches (a publish from a lease that no longer holds the attempt is refused with the stable conflict code and the row stays running). Restart classification and the expired-lease reclaim are covered by the migration/unit tests of the same slice, not replayed against a real Provider in this harness. A Provider/model change during a pending chain starts a new attempt instead of continuing the frozen identity; that branch is covered by the identity comparison in the service and is not exercised here.
 
 ## `LITE-09-108`
 
@@ -163,14 +165,39 @@ matrix 原文为 `压缩失败的硬预算分支`，matrix section 为 `user-app
 
 | Assertion | 阶段 / 步骤 | 实际值 | 预期值 | 结果 |
 | --- | --- | --- | --- | --- |
+| `S6E-GUARD-08` | `guard`：the explicit retry spends its own attempt instead of being blocked by the spent chain | `{"outcome":"retry-pending","startsNewAttempt":true,"attempts":1,"summarizerCalls":3,"guardTaskRows":2,"published":false}` | `{"outcome":"retry-pending","startsNewAttempt":true,"attempts":1,"summarizerCalls":3,"guardTaskRows":2,"published":false}` | passed |
 | `S6E-BUDGET-01` | `budget`：summary plus tail beyond the hard budget is refused | `{"kind":"over-budget"}` | `{"kind":"over-budget"}` | passed |
 | `S6E-BUDGET-02` | `budget`：the refusal never truncates or drops the messages | `{"historyLength":3,"contents":[1,1,400]}` | `{"historyLength":3,"contents":[1,1,400]}` | passed |
 | `S6E-BUDGET-03` | `budget`：the same history inside the budget applies the summary | `{"kind":"applied","summarizedMessages":2}` | `{"kind":"applied","summarizedMessages":2}` | passed |
 | `S6E-TURNGATE-01` | `turngate`：an over-budget summary and tail block the Provider call before any reservation | `{"error":{"type":"ConversationTurnDriverError","code":"TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED"},"runnerCalls":0,"messagesAdded":0,"turnsAdded":0,"digestsUnchanged":true}` | `{"error":{"type":"ConversationTurnDriverError","code":"TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED"},"runnerCalls":0,"messagesAdded":0,"turnsAdded":0,"digestsUnchanged":true}` | passed |
 
-On the production apply function, when prior summary plus the uncompressed tail exceeds the hard budget the result is over-budget and the input history is unchanged in length and in per-message content length (nothing truncated or dropped); the same history inside the budget applies the summary and reports summarizedMessages=2. Together with the refused-summary assertions, the failure branch keeps the Conversation data intact.
+On the production apply function, when prior summary plus the uncompressed tail exceeds the hard budget the result is over-budget and the input history is unchanged in length and in per-message content length (nothing truncated or dropped); the same history inside the budget applies the summary and reports summarizedMessages=2. The production Turn driver then refuses the same way end to end: TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED before any reservation, zero Runner calls, zero Messages and zero Turns added, every Message digest unchanged. The explicit retry the failure branch promises is executed too: after the bounded automatic chain is spent, the retry with resume=explicit starts its own attempt (new row, attempts=1) instead of being blocked by the spent chain.
 
-未证明的相邻行为：The over-budget branch is asserted on the production function and again through the production Turn driver, where the Turn raises TURN_DRIVER_COMPACTION_BUDGET_EXCEEDED before any reservation: zero Runner calls, zero Messages and zero Turns added, and every Message digest unchanged. The within-budget "continue plus retry-pending" Turn behaviour is covered by the ConversationTurnDriver unit tests.
+未证明的相邻行为：The over-budget branch is asserted on the production function and through the production Turn driver rather than as a live Provider conversation, and the explicit retry is asserted on the production engine/service path as the retry endpoint calls it (the endpoint itself adds no logic beyond passing the mode). The within-budget "continue plus retry-pending" Turn behaviour is covered by the ConversationTurnDriver unit tests.
+
+## `LITE-13-101`
+
+matrix 原文为 `Inspector解释每次压缩为何触发及被谁采用`，matrix section 为 `Inspector 压缩读面`；冻结条款来源 `apps/server/src/routes/conversationRuntime.ts:269`，并引用：
+
+- `docs/implementation/lite-closeout/S6-compaction-authorization.md:17` — 每次压缩持久化策略版本、实际参数与预算组成
+- `apps/server/src/services/ConversationTurnDriver.ts:416` — 采用摘要的 Turn 在冻结快照里记录 compactionSummaryId 与 summarizedMessages
+
+- matrix 状态：`GAP`（workPackage `S6`，matrixVersion 15，本轮未改动）
+- 冻结退出条件（matrix `exit`）：展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。
+- 原始记录缺口（matrix `finding`）：无compaction projection。
+- 生产入口（matrix `implementation`）：`apps/server/src/services/RuntimeInspector.ts`、`apps/web/src/components/chat/RuntimeInspectorView.tsx`
+- 关联测试（matrix `tests`）：`apps/server/src/routes/runtimeInspector.test.ts`
+
+| Assertion | 阶段 / 步骤 | 实际值 | 预期值 | 结果 |
+| --- | --- | --- | --- | --- |
+| `S6E-INSPECTOR-01` | `inspector`：the read surface explains why this compaction happened, to whom and under which policy | `{"status":200,"taskCount":1,"tasksMatchDurableRows":true,"taskStatus":"published","taskModel":"gpt-5.6-luna","adapterId":"cli.codex","adapterVersion":"1.0.0","estimatorVersion":"lite-v1-chars4","attempts":1,"failureCode":null,"hasSummaryHash":true,"candidateMatches":true,"summaryMatchesDurableRow":true,"sourceRange":{"…` | `{"status":200,"taskCount":1,"tasksMatchDurableRows":true,"taskStatus":"published","taskModel":"gpt-5.6-luna","adapterId":"cli.codex","adapterVersion":"1.0.0","estimatorVersion":"lite-v1-chars4","attem…` | passed |
+| `S6E-INSPECTOR-02` | `inspector`：the effective policy version and its parameters are readable, not implied | `{"policies":[{"policyVersion":"lite-v1","triggerRatio":0.7,"targetRatio":0.5,"minRecentMessages":8,"summaryMaxTokens":2048,"timeoutMs":120000,"maxAutomaticRetries":1,"fallbackApplicationBudgetTokens":16384}],"estimatorVersion":"lite-v1-chars4"}` | `{"policies":[{"policyVersion":"lite-v1","triggerRatio":0.7,"targetRatio":0.5,"minRecentMessages":8,"summaryMaxTokens":2048,"timeoutMs":120000,"maxAutomaticRetries":1,"fallbackApplicationBudgetTokens":…` | passed |
+| `S6E-INSPECTOR-03` | `inspector`：the surface names the Turn and frozen snapshot that actually adopted the summary | `{"adoptions":[{"snapshotId":"snapshot_01M2FZ5RF398WPA1NPBJX42SEX","turnId":"turn_cccccccccccccccccccc","summaryId":"snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV","createdAt":"2026-09-14T12:43:49.484Z"}],"turnPointsAtAdoptedSnapshot":true,"adoptedSummaryIsThePublishedRow":true}` | `{"adoptions":[{"snapshotId":"snapshot_01M2FZ5RF398WPA1NPBJX42SEX","turnId":"turn_cccccccccccccccccccc","summaryId":"snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV","createdAt":"2026-09-14T12:43:49.484Z"}],"turnP…` | passed |
+| `S6E-INSPECTOR-04` | `inspector`：failure and retry state are visible, and a Conversation without compactions reports none | `{"guardTasks":[{"status":"failed","attempts":2,"failureCode":"COMPACTION_RETRIES_EXHAUSTED"},{"status":"retry-pending","attempts":1,"failureCode":"COMPACTION_SUMMARY_INVALID"}],"guardAdoptions":0,"emptyTasks":0,"emptyPolicies":0,"emptyAdoptions":0}` | `{"guardTasks":[{"status":"failed","attempts":2,"failureCode":"COMPACTION_RETRIES_EXHAUSTED"},{"status":"retry-pending","attempts":1,"failureCode":"COMPACTION_SUMMARY_INVALID"}],"guardAdoptions":0,"emp…` | passed |
+
+The production router is mounted and reached over real HTTP. The read surface answers all four questions from durable rows: why it triggered (the recorded historyTokens is above triggerRatio x historyBudgetTokens), under which policy (lite-v1 with all six parameters plus the fallback application budget and the estimator version), who adopted it (the adoption names the snapshot and the real Turn whose durable row points at that same snapshot, and the adopted summaryId is the published row), and what happened on failure (the refused Conversation shows attempts plus COMPACTION_SUMMARY_INVALID and COMPACTION_RETRIES_EXHAUSTED). A Conversation with no compaction reports empty tasks, policies and adoptions instead of borrowing another Conversation's state.
+
+未证明的相邻行为：It proves the read surface for the states this harness produced. It does not render the UI, and it does not exercise a compaction whose source range was rejected as stale (that state is durable and readable through the same projection, but is not asserted here).
 
 ## `LITE-09-109`
 
@@ -231,7 +258,7 @@ matrix 原文为 `Conversation compaction 来源触发`，matrix section 为 `§
 | --- | --- | --- | --- | --- |
 | `S6E-REAL-01` | `real`：a real Provider compaction publishes a durable task | `"published"` | `"published"` | passed |
 | `S6E-REAL-07` | `real`：publishing records a review-required agent-derived Candidate | `{"decision":"review-required","outcome":"review-required","authority":"agent-derived","scope":"conversation"}` | `{"decision":"review-required","outcome":"review-required","authority":"agent-derived","scope":"conversation"}` | passed |
-| `S6E-REAL-08` | `real`：the fact and its canonical Workspace Event are one causal record | `{"type":"memory.candidate_created","causationId":"snapshot_01M2FYGVA1Z41V511B1153ADW8","payloadCandidateMatches":true}` | `{"type":"memory.candidate_created","causationId":"snapshot_01M2FYGVA1Z41V511B1153ADW8","payloadCandidateMatches":true}` | passed |
+| `S6E-REAL-08` | `real`：the fact and its canonical Workspace Event are one causal record | `{"type":"memory.candidate_created","causationId":"snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV","payloadCandidateMatches":true}` | `{"type":"memory.candidate_created","causationId":"snapshot_01M2FZ3XCQ0H1EC3FD81SRQ4CV","payloadCandidateMatches":true}` | passed |
 | `S6E-REAL-09` | `real`：a repeat over the same source converges without a second fact | `{"outcome":"published","sameTask":true,"tasks":1}` | `{"outcome":"published","sameTask":true,"tasks":1}` | passed |
 | `S6E-REAL-15` | `real`：publishing a summary does not create a Memory Entry: availability is not approval | `{"memoryEntries":0,"candidateDecision":"review-required","candidateOutcome":"review-required"}` | `{"memoryEntries":0,"candidateDecision":"review-required","candidateOutcome":"review-required"}` | passed |
 | `S6E-GUARD-06` | `guard`：a refused summary leaves no Candidate, no published row and no canonical Event behind | `{"guardCandidates":0,"guardPublished":false,"guardTasksWithSummary":0,"compactionEvents":1}` | `{"guardCandidates":0,"guardPublished":false,"guardTasksWithSummary":0,"compactionEvents":1}` | passed |
@@ -243,11 +270,14 @@ The evidence walks the production trigger itself: a real Provider summary, a dur
 
 ## targeted tests 与 scope verifier
 
-受影响测试（9 个 S6 文件，`node --import tsx --test --test-concurrency=1`，在 `apps/server` 下执行）raw exit = 0，Node summary 为 `50 pass / 0 fail / 0 skipped / 0 cancelled / 0 todo`；普通 scope verifier 未加 `--require-closed`，raw exit = 0，stdout 原文为 `{"matrixVersion":15,"status":"frozen","PASS":0,"GAP":26,"RUNTIME-VERIFY":205,"DEFERRED":164}`。
+受影响测试（9 个 S6 文件，`node --import tsx --test --test-concurrency=1`，在 `apps/server` 下执行）raw exit = 0，Node summary 为 `51 pass / 0 fail / 0 skipped / 0 cancelled / 0 todo`；普通 scope verifier 未加 `--require-closed`，raw exit = 0，stdout 原文为 `{"matrixVersion":15,"status":"frozen","PASS":0,"GAP":26,"RUNTIME-VERIFY":205,"DEFERRED":164}`。
 
 ## 已知限制与运行历史
 
-- 本目录的 receipts/stdout/stderr 是最终 24 条断言的运行结果；早期 21 条断言的运行写入同一路径并被最终运行覆盖（早期断言集是最终断言集的真子集，harness 已随本分支提交，可原样重放）。
+- 本轮证据工作发现并修复了一个真实缺陷：`ConversationCompactionService.compact()` 每次评估都新建 `attempt: 1` 的任务，因此 `COMPACTION_RETRIES_EXHAUSTED` 分支在生产路径上不可达，自动重试没有上界（每次 Turn 都会再启动一次 Provider 摘要调用）。原单测只能手工 claim/fail 来模拟该分支。修复后自动评估复用同一 durable attempt 并在 `maxAutomaticRetries` 处停止，只有显式重试才会开始新尝试。
+- 修复的单元测试证据：`ConversationCompactionService.test.ts` → “the automatic retry chain is bounded, and only an explicit retry spends a new attempt”（生产路径，断言 1 → 2 → 停止 → 显式重试新链）与 `ConversationCompactionTrigger.test.ts` → “S6 trigger spends a new attempt only for an explicit retry”（mode 传递）。本 harness 的 `S6E-GUARD-04/07/08` 在真实 store 上观测到同一行为（summarizer 调用 1 → 2 → 2 → 3）。
+- HTTP 阶段是本 harness 唯一打开 socket 的阶段；它在关闭前销毁自己建立的连接并按正常路径退出，以便 `exit.txt` 记录真实的 raw exit code（此前 `process.exit` 与刚关闭的 server 竞态会在 Windows 触发 libuv 断言，产生不可用的退出码）。
+- 本目录的 receipts/stdout/stderr 是当前断言集（39 条）的运行结果；同一路径上更早的运行（21 条、24 条、33 条、36 条断言）被覆盖而未单独归档。这些早期断言集是当前断言集的真子集，harness 已随本分支提交，可原样重放。
 - `ProviderCompactionSummarizer` 的失败语义由单元测试覆盖（非零退出码、硬超时、空/超长摘要拒绝），真实链路只重放了成功发布；真实 Provider 失败注入未执行。
 - 本轮没有对 kimi / opencode 取得真实摘要证据：它们没有 allowlist profile，按 fail-closed 处理。
 - 证据只覆盖被点到编号的行为，没有把任何 skipped、缺日志或失败项折算为通过。
@@ -262,16 +292,21 @@ The evidence walks the production trigger itself: a real Provider summary, a dur
 | `docs/implementation/lite-closeout/pass-freeze.json` | `7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6` | `7263d8c4d857804e5c3603658bd2f3081eda7cb46ab3380b5b87532cda88dcb6` | true |
 | `docs/implementation/lite-closeout/pass-evidence-audit.json` | `e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795` | `e5b81d9904136abe1aad251f25afba3e6c4d8765ccd4629bcd138a839eeb9795` | true |
 
-矩阵仍为 v15、`status=frozen`、PASS=0、GAP=26、RUNTIME-VERIFY=205、DEFERRED=164：这八个 requirement 保持 `GAP`，verdict 只是候选证据。
+矩阵仍为 v15、`status=frozen`、PASS=0、GAP=26、RUNTIME-VERIFY=205、DEFERRED=164：这九个 requirement 保持 `GAP`，verdict 只是候选证据。
 
 工作区 delta（`git status --porcelain=v1`）：
 
 ```text
-?? agentos/docs/implementation/lite-closeout/S6-candidate-evidence.json
-?? agentos/docs/implementation/lite-closeout/S6-candidate-evidence.md
-?? agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/
-?? agentos/docs/implementation/lite-closeout/evidence/s6-real-summary-20260914/
-?? agentos/scripts/assemble-lite-s6-candidate-evidence.mjs
-?? agentos/scripts/verify-lite-s6-candidate-evidence.mjs
+ M agentos/apps/server/src/routes/conversationRuntime.ts
+ M agentos/apps/server/src/services/ConversationCompactionService.test.ts
+ M agentos/apps/server/src/services/ConversationCompactionService.ts
+ M agentos/apps/server/src/services/ConversationCompactionTrigger.test.ts
+ M agentos/apps/server/src/services/ConversationCompactionTrigger.ts
+ M agentos/apps/server/src/store/CompactionRepository.ts
+ M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/receipts.json
+ M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/stdout.txt
+ M agentos/docs/implementation/lite-closeout/evidence/s6-candidate-evidence-20260914/targeted-tests/targeted.stdout.txt
+ M agentos/scripts/assemble-lite-s6-candidate-evidence.mjs
+ M agentos/scripts/verify-lite-s6-candidate-evidence.mjs
 ```
 
