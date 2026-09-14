@@ -1,0 +1,5 @@
+passed      apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts  rows=0  16 pass / 0 fail / 0 skip  exit=0  1393ms
+passed      apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts  rows=0  62 pass / 0 fail / 0 skip  exit=0  3783ms
+passed      apps/server/src/services/AgentHistoryService.test.ts  rows=0  7 pass / 0 fail / 0 skip  exit=0  1928ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches-6.json
+batches=3 passed=3 failed=0 provableRequirements=0/0

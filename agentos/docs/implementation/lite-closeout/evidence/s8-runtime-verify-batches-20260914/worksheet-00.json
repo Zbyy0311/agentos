@@ -1,0 +1,913 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T13:54:10.451Z",
+  "source": {
+    "batches": "docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/verification-batches.json",
+    "ledger": "docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/runtime-verify-ledger.json"
+  },
+  "window": {
+    "from": 0,
+    "count": 12,
+    "openRows": 106
+  },
+  "entries": [
+    {
+      "id": "LITE-00-002",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Conversation and Message records survive reconnect and restart;",
+      "namedTestFile": null,
+      "fileStatus": "not-in-batch",
+      "fileRawExit": null,
+      "fileCounts": null,
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-00-003",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Task, Run, Process, and Event remain distinct and traceable;",
+      "namedTestFile": null,
+      "fileStatus": "not-in-batch",
+      "fileRawExit": null,
+      "fileCounts": null,
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-00-004",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "a Run survives browser disconnect;",
+      "namedTestFile": null,
+      "fileStatus": "not-in-batch",
+      "fileRawExit": null,
+      "fileCounts": null,
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-00-006",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Windows cancellation handles the owned process tree;",
+      "namedTestFile": null,
+      "fileStatus": "not-in-batch",
+      "fileRawExit": null,
+      "fileCounts": null,
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-00-007",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "recovery classifies uncertainty without guessing completion;",
+      "namedTestFile": null,
+      "fileStatus": "not-in-batch",
+      "fileRawExit": null,
+      "fileCounts": null,
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-00-009",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "concurrent read-only Runs cannot mutate the Workspace because admission requires tested `enforcedWorkspaceReadOnly` evidence;",
+      "namedTestFile": null,
+      "fileStatus": "not-in-batch",
+      "fileRawExit": null,
+      "fileCounts": null,
+      "executedAssertions": []
+    },
+    {
+      "id": "LITE-00-010",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Memory selection is reproducible and explainable;",
+      "namedTestFile": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "MF4I-01 resolve persists a snapshot and returns bounded context",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-02 resolve is idempotent per run scope",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-03 stage scope is distinct from run scope",
+          "outcome": "pass"
+        },
+        {
+          "name": "replaying an earlier scope after a later Stage does not recreate its snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-04 snapshot failure blocks injection",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-05 invalid input fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-06 injection gate rejects absent snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-07 later entry edits do not rewrite the snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "frozen injection survives content edits and logical deletion of its Entry",
+          "outcome": "pass"
+        },
+        {
+          "name": "historical metadata-only snapshot is inspectable but blocks injection",
+          "outcome": "pass"
+        },
+        {
+          "name": "payload failure rolls back the snapshot and its selections",
+          "outcome": "pass"
+        },
+        {
+          "name": "corrupt frozen payload blocks replay",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-08 empty store still persists a snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-09 default budget is frozen and valid",
+          "outcome": "pass"
+        },
+        {
+          "name": "MF4I-10 workspace isolation",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen",
+          "outcome": "pass"
+        },
+        {
+          "name": "LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-00-011",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Git changes are observable without AgentOS owning Git workflow execution;",
+      "namedTestFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "gitSnapshot reports stable state/code facts without cwd or raw diagnostics",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector integration failure diagnostics",
+          "outcome": "pass"
+        },
+        {
+          "name": "observes a clean committed repository: canonical root/HEAD, clean complete status, available empty diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "observes a tracked dirty file: dirty status entry and non-empty diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "observes an untracked file: untracked status entry with an available empty diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "observes a staged rename with the NUL-framed previous path",
+          "outcome": "pass"
+        },
+        {
+          "name": "nested Workspace A excludes dirty and untracked sibling Workspace B in status and diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "non-Git directory yields the exact C-locale NOT_GIT snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "unborn git init repository: GIT, null commits, complete clean status, diff not_applicable",
+          "outcome": "pass"
+        },
+        {
+          "name": "unborn repository with an untracked file: complete dirty status while diff stays not_applicable",
+          "outcome": "pass"
+        },
+        {
+          "name": "workspace, repository, and file paths containing spaces and Unicode",
+          "outcome": "pass"
+        },
+        {
+          "name": "junction at the Workspace path is resolved first and never reports the lexical repository (fail closed)",
+          "outcome": "pass"
+        },
+        {
+          "name": "junction inside the Workspace is fail-closed: escaped sibling content never appears in status or diff",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector real Git integration (production factory)",
+          "outcome": "pass"
+        },
+        {
+          "name": "preserves distinct first/final HEAD SHAs across a real commit boundary",
+          "outcome": "pass"
+        },
+        {
+          "name": "malformed HEAD output stays unavailable and is never unborn",
+          "outcome": "pass"
+        },
+        {
+          "name": "legacy ambiguous rev-parse HEAD diagnostic stays unavailable and is never unborn evidence",
+          "outcome": "pass"
+        },
+        {
+          "name": "missing executable maps through the controlled driver seam to not_found -> GIT_EXECUTABLE_UNAVAILABLE",
+          "outcome": "pass"
+        },
+        {
+          "name": "unknown spawn failure maps through the controlled driver seam to frozen unknown -> GIT_COMMAND_SPAWN_FAILED",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector controlled seams around real command results",
+          "outcome": "pass"
+        },
+        {
+          "name": "holds real NodeProcessDriver spawn resolution under launch budget, then arms family runtime",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitCommandAdapter real Windows launch/runtime deadline separation",
+          "outcome": "pass"
+        },
+        {
+          "name": "deterministic timeout on a live real Git command after real handle/identity observation",
+          "outcome": "pass"
+        },
+        {
+          "name": "deterministic cancellation of a live real Git command after real handle/identity observation",
+          "outcome": "pass"
+        },
+        {
+          "name": "bounded_diff beyond 4 MiB maps to adapter output_limit with bounded retained stdout and proven owned-tree cleanup",
+          "outcome": "pass"
+        },
+        {
+          "name": "bounded_diff beyond 4 MiB yields a truncated collector diff with diffBytes null and the same owned cleanup proof",
+          "outcome": "pass"
+        },
+        {
+          "name": "porcelain_v2_status beyond 1 MiB maps to adapter output_limit with bounded retained stdout",
+          "outcome": "pass"
+        },
+        {
+          "name": "porcelain_v2_status beyond 1 MiB is never clean or complete in the collector snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": ">16 KiB stderr on a real owned Git command stays bounded and truncated while stdout stays intact",
+          "outcome": "pass"
+        },
+        {
+          "name": "truncated stderr diagnostics never prove NOT_GIT and no raw diagnostic reaches the public snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "a truncated discovery diagnostic on a non-Git directory fails closed as UNAVAILABLE, never NOT_GIT",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector real Git bounds and Windows process ownership (Phase B)",
+          "outcome": "pass"
+        },
+        {
+          "name": "real adapter + controlled unproven verification aborts collection after first HEAD, with no status/diff/final HEAD",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitObservationCollector cleanup-unproven through the real adapter (HIGH-1)",
+          "outcome": "pass"
+        },
+        {
+          "name": "real NodeProcessDriver maps a missing git executable to not_found -> GIT_EXECUTABLE_UNAVAILABLE",
+          "outcome": "pass"
+        },
+        {
+          "name": "GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1)",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-00-013",
+      "document": "00-Vision.md",
+      "section": "17. Acceptance Expectations",
+      "requirement": "Group Conversation and workflow templates remain bounded.",
+      "namedTestFile": "apps/server/src/services/BoundedGroupService.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "CR5S-01 a valid budget creates an active interaction; an invalid budget fails closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-02 recording replies increments counters transactionally",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-04 a reply beyond the total cap is blocked and not recorded",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-05 a per-Agent budget breach ends the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-06 a distinct-Agent budget breach ends the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-07 Stop blocks new replies and never cancels a Run",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-08 a same-Agent cycle terminates the interaction with loop-guard",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-09 repeated content terminates the interaction with loop-guard",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-10 hops beyond the configured limit terminate the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-11 a repeated mention with no new information terminates the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-12 every recorded reply stores a distinct Turn-scoped per-Agent context snapshot",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-13 per-Agent snapshots are isolated for the same interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-14 reply content is stored as a hash only, never as text",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-15 the timeout budget ends the interaction",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-16 unknown interaction and invalid input fail closed",
+          "outcome": "pass"
+        },
+        {
+          "name": "CR5S-17 within-transaction composition rolls back atomically",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-01-004",
+      "document": "01-Core-Concepts.md",
+      "section": "16. Acceptance Expectations",
+      "requirement": "Task supports zero or many Runs;",
+      "namedTestFile": "apps/server/src/store/Identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "all prefix constants map to valid EntityIdKind",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId produces prefix_ulid format",
+          "outcome": "pass"
+        },
+        {
+          "name": "ULID body is 26 Crockford Base32 characters, no ILOU",
+          "outcome": "pass"
+        },
+        {
+          "name": "same kind produces unique IDs",
+          "outcome": "pass"
+        },
+        {
+          "name": "same kind produces unique IDs under heavy load",
+          "outcome": "pass"
+        },
+        {
+          "name": "different kinds have different prefixes",
+          "outcome": "pass"
+        },
+        {
+          "name": "isValidEntityId validates prefix and body",
+          "outcome": "pass"
+        },
+        {
+          "name": "no database dependency",
+          "outcome": "pass"
+        },
+        {
+          "name": "ULID matches known reference (timestamp=0, random=0)",
+          "outcome": "pass"
+        },
+        {
+          "name": "first character always in 0–7 range",
+          "outcome": "pass"
+        },
+        {
+          "name": "real 13-digit Unix-ms timestamp round-trips",
+          "outcome": "pass"
+        },
+        {
+          "name": "maximum timestamp 2^48-1 round-trips and first char is 7",
+          "outcome": "pass"
+        },
+        {
+          "name": "timestamp = 2^48 is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "negative timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "NaN timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "Infinity timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "non-integer timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "randomness not exactly 10 bytes is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "time increase: same random, larger timestamp → strictly larger ID",
+          "outcome": "pass"
+        },
+        {
+          "name": "same ms: 200 IDs within single generator are strictly increasing",
+          "outcome": "pass"
+        },
+        {
+          "name": "clock regression: same generator with clock [100, 50] produces id1 < id2",
+          "outcome": "pass"
+        },
+        {
+          "name": "two generators do not share state",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — canonical entity IDs",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot kind exists with snapshot prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId snapshot starts with snapshot_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot ULID body is 26 Crockford Base32 characters",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot prefix is not confused with other kinds",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M2.5 snapshot kind",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency kind exists with idem prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId idempotency starts with idem_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency ULID body is 26 Crockford Base32 characters",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency ID is not recognized as snapshot/run/task",
+          "outcome": "pass"
+        },
+        {
+          "name": "all pre-import kinds remain unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M2.6 idempotency kind",
+          "outcome": "pass"
+        },
+        {
+          "name": "operation kind exists with op prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId operation starts with op_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "operation IDs remain distinct from all existing kinds",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M3 P3A operation kind",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-01-005",
+      "document": "01-Core-Concepts.md",
+      "section": "16. Acceptance Expectations",
+      "requirement": "retry creates a new Run lineage;",
+      "namedTestFile": "apps/server/src/store/Identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "all prefix constants map to valid EntityIdKind",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId produces prefix_ulid format",
+          "outcome": "pass"
+        },
+        {
+          "name": "ULID body is 26 Crockford Base32 characters, no ILOU",
+          "outcome": "pass"
+        },
+        {
+          "name": "same kind produces unique IDs",
+          "outcome": "pass"
+        },
+        {
+          "name": "same kind produces unique IDs under heavy load",
+          "outcome": "pass"
+        },
+        {
+          "name": "different kinds have different prefixes",
+          "outcome": "pass"
+        },
+        {
+          "name": "isValidEntityId validates prefix and body",
+          "outcome": "pass"
+        },
+        {
+          "name": "no database dependency",
+          "outcome": "pass"
+        },
+        {
+          "name": "ULID matches known reference (timestamp=0, random=0)",
+          "outcome": "pass"
+        },
+        {
+          "name": "first character always in 0–7 range",
+          "outcome": "pass"
+        },
+        {
+          "name": "real 13-digit Unix-ms timestamp round-trips",
+          "outcome": "pass"
+        },
+        {
+          "name": "maximum timestamp 2^48-1 round-trips and first char is 7",
+          "outcome": "pass"
+        },
+        {
+          "name": "timestamp = 2^48 is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "negative timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "NaN timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "Infinity timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "non-integer timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "randomness not exactly 10 bytes is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "time increase: same random, larger timestamp → strictly larger ID",
+          "outcome": "pass"
+        },
+        {
+          "name": "same ms: 200 IDs within single generator are strictly increasing",
+          "outcome": "pass"
+        },
+        {
+          "name": "clock regression: same generator with clock [100, 50] produces id1 < id2",
+          "outcome": "pass"
+        },
+        {
+          "name": "two generators do not share state",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — canonical entity IDs",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot kind exists with snapshot prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId snapshot starts with snapshot_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot ULID body is 26 Crockford Base32 characters",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot prefix is not confused with other kinds",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M2.5 snapshot kind",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency kind exists with idem prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId idempotency starts with idem_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency ULID body is 26 Crockford Base32 characters",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency ID is not recognized as snapshot/run/task",
+          "outcome": "pass"
+        },
+        {
+          "name": "all pre-import kinds remain unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M2.6 idempotency kind",
+          "outcome": "pass"
+        },
+        {
+          "name": "operation kind exists with op prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId operation starts with op_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "operation IDs remain distinct from all existing kinds",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M3 P3A operation kind",
+          "outcome": "pass"
+        }
+      ]
+    },
+    {
+      "id": "LITE-01-006",
+      "document": "01-Core-Concepts.md",
+      "section": "16. Acceptance Expectations",
+      "requirement": "Run and Process can be queried independently;",
+      "namedTestFile": "apps/server/src/store/Identity.test.ts",
+      "fileStatus": "passed",
+      "fileRawExit": 0,
+      "fileCounts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "executedAssertions": [
+        {
+          "name": "all prefix constants map to valid EntityIdKind",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId produces prefix_ulid format",
+          "outcome": "pass"
+        },
+        {
+          "name": "ULID body is 26 Crockford Base32 characters, no ILOU",
+          "outcome": "pass"
+        },
+        {
+          "name": "same kind produces unique IDs",
+          "outcome": "pass"
+        },
+        {
+          "name": "same kind produces unique IDs under heavy load",
+          "outcome": "pass"
+        },
+        {
+          "name": "different kinds have different prefixes",
+          "outcome": "pass"
+        },
+        {
+          "name": "isValidEntityId validates prefix and body",
+          "outcome": "pass"
+        },
+        {
+          "name": "no database dependency",
+          "outcome": "pass"
+        },
+        {
+          "name": "ULID matches known reference (timestamp=0, random=0)",
+          "outcome": "pass"
+        },
+        {
+          "name": "first character always in 0–7 range",
+          "outcome": "pass"
+        },
+        {
+          "name": "real 13-digit Unix-ms timestamp round-trips",
+          "outcome": "pass"
+        },
+        {
+          "name": "maximum timestamp 2^48-1 round-trips and first char is 7",
+          "outcome": "pass"
+        },
+        {
+          "name": "timestamp = 2^48 is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "negative timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "NaN timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "Infinity timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "non-integer timestamp is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "randomness not exactly 10 bytes is rejected",
+          "outcome": "pass"
+        },
+        {
+          "name": "time increase: same random, larger timestamp → strictly larger ID",
+          "outcome": "pass"
+        },
+        {
+          "name": "same ms: 200 IDs within single generator are strictly increasing",
+          "outcome": "pass"
+        },
+        {
+          "name": "clock regression: same generator with clock [100, 50] produces id1 < id2",
+          "outcome": "pass"
+        },
+        {
+          "name": "two generators do not share state",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — canonical entity IDs",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot kind exists with snapshot prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId snapshot starts with snapshot_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot ULID body is 26 Crockford Base32 characters",
+          "outcome": "pass"
+        },
+        {
+          "name": "snapshot prefix is not confused with other kinds",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M2.5 snapshot kind",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency kind exists with idem prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId idempotency starts with idem_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency ULID body is 26 Crockford Base32 characters",
+          "outcome": "pass"
+        },
+        {
+          "name": "idempotency ID is not recognized as snapshot/run/task",
+          "outcome": "pass"
+        },
+        {
+          "name": "all pre-import kinds remain unchanged",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M2.6 idempotency kind",
+          "outcome": "pass"
+        },
+        {
+          "name": "operation kind exists with op prefix",
+          "outcome": "pass"
+        },
+        {
+          "name": "createEntityId operation starts with op_ and validates",
+          "outcome": "pass"
+        },
+        {
+          "name": "operation IDs remain distinct from all existing kinds",
+          "outcome": "pass"
+        },
+        {
+          "name": "Identity — M3 P3A operation kind",
+          "outcome": "pass"
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+[
+  "apps/server/src/routes/runLifecycle.test.ts",
+  "apps/server/src/routes/conversationRuntime.test.ts",
+  "apps/web/src/liteScopeBoundary.test.ts"
+]
+

@@ -1,0 +1,29 @@
+passed      apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts  rows=17  2 pass / 0 fail / 0 skip  exit=0  402ms
+passed      apps/server/src/routes/canonicalRunStream.test.ts  rows=16  16 pass / 0 fail / 0 skip  exit=0  3396ms
+passed      apps/server/src/routes/memoryRuntime.test.ts  rows=1  16 pass / 0 fail / 0 skip  exit=0  3873ms
+passed      apps/server/src/routes/runtimeInspector.test.ts  rows=15  4 pass / 0 fail / 0 skip  exit=0  1336ms
+passed      apps/server/src/services/AgentHistoryService.test.ts  rows=1  7 pass / 0 fail / 0 skip  exit=0  1694ms
+passed      apps/server/src/services/BoundedGroupService.test.ts  rows=1  17 pass / 0 fail / 0 skip  exit=0  3286ms
+passed      apps/server/src/services/ConversationTurnDriver.test.ts  rows=16  14 pass / 0 fail / 0 skip  exit=0  2856ms
+passed      apps/server/src/services/GitObservationCollector.integration.test.ts  rows=1  29 pass / 0 fail / 0 skip  exit=0  42826ms
+passed      apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts  rows=3  30 pass / 0 fail / 0 skip  exit=0  4416ms
+passed      apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts  rows=31  30 pass / 0 fail / 0 skip  exit=0  5565ms
+passed      apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts  rows=3  13 pass / 0 fail / 0 skip  exit=0  2600ms
+passed      apps/server/src/services/MemoryCandidateGenerationService.test.ts  rows=1  15 pass / 0 fail / 0 skip  exit=0  2939ms
+passed      apps/server/src/services/MemoryContextResolver.test.ts  rows=12  17 pass / 0 fail / 0 skip  exit=0  3241ms
+passed      apps/server/src/services/OutboxPublisher.test.ts  rows=18  12 pass / 0 fail / 0 skip  exit=0  1018ms
+not-clean   apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts  rows=1  32 pass / 0 fail / 4 skip  exit=0  3268ms
+passed      apps/server/src/services/RuntimeInspector.test.ts  rows=1  12 pass / 0 fail / 0 skip  exit=0  2278ms
+passed      apps/server/src/services/WorkspaceAdmissionAuthority.test.ts  rows=13  43 pass / 0 fail / 0 skip  exit=0  3173ms
+passed      apps/server/src/store/Identity.test.ts  rows=15  34 pass / 0 fail / 0 skip  exit=0  295ms
+passed      apps/server/src/store/MemoryCandidateRepository.test.ts  rows=3  24 pass / 0 fail / 0 skip  exit=0  4234ms
+passed      apps/server/src/store/SqliteStore.test.ts  rows=3  36 pass / 0 fail / 0 skip  exit=0  9212ms
+passed      apps/web/src/components/layout/WorkbenchShell.test.tsx  rows=18  9 pass / 0 fail / 0 skip  exit=0  436ms
+passed      packages/agent-core/src/providers/codexProviderAdapter.test.ts  rows=1  5 pass / 0 fail / 0 skip  exit=0  1121ms
+passed      packages/agent-core/src/providers/kimiCodeAdapter.test.ts  rows=14  21 pass / 0 fail / 0 skip  exit=0  1093ms
+passed      packages/agent-core/src/providers/opencodeProviderAdapter.test.ts  rows=1  7 pass / 0 fail / 0 skip  exit=0  1059ms
+passed      packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts  rows=12  10 pass / 0 fail / 0 skip  exit=0  3762ms
+passed      packages/shared/p6-l1a-admission.test.ts  rows=1  23 pass / 0 fail / 0 skip  exit=0  346ms
+passed      packages/shared/wf-template-instantiation.test.ts  rows=2  10 pass / 0 fail / 0 skip  exit=0  313ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/verification-batches.json
+batches=27 passed=26 failed=1 provableRequirements=0/221

@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:07:53.894Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 5,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过（主批次、covering-batches*.json，或已合并的真实 HTTP 候选证据包）。",
+    "复合条款的分项若缺具名断言，按驳回记录缺失项（与 LITE-04-006 同一口径）。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-05-001",
+      "clause": "reserve-before-spawn ordering and idempotency;",
+      "verdict": "accepted",
+      "coveringFile": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "coveringAssertion": "only the winning created->starting CAS calls spawn; losers join without spawning",
+      "supportiveAssertions": [
+        {
+          "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+          "name": "establish creates exactly one Session and one root Process atomically; duplicates join"
+        },
+        {
+          "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+          "name": "Process reservation failure rolls back the pair atomically (Session=0, Process=0)"
+        }
+      ],
+      "rationale": "两句都有具名断言：顺序 —— 先做 created→starting 的 CAS 耗尽 spawn 权，只有**胜者**才调用 spawn；幂等 —— 败者 join 且不 spawn，establish 重复调用也 join 到同一对（Session/root Process 各一）。另有一条断言证明预留失败会原子回滚（Session=0、Process=0），即不会留下已预留未 spawn 的残行。",
+      "currentPointer": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts（FILETIME 身份分类，与本条无关）",
+      "receipt": "covering-batches-4.json（34 passed / exit 0）＋ vitest-verbose/durable-coordinator.stdout.txt（逐条断言名）"
+    },
+    {
+      "id": "LITE-05-008",
+      "clause": "browser disconnect leaves the Process running;",
+      "verdict": "accepted",
+      "coveringFile": "docs/implementation/lite-closeout/S8-four-row-candidate-evidence.json",
+      "coveringAssertion": "LITE-02-009-A2 runtime-inspector-process-active-after-disconnect",
+      "rationale": "本条与 LITE-02-009 是同一语义在 05 文档中的表述；该证据包用真实 HTTP 断言级收据覆盖了它：在 canonical Run 启动并观察到 Process 后 abort 浏览器订阅，再读同一 Process id 的 Runtime Inspector 投影，断言仍是同一 Run 关联、状态仍为 active（starting/running）。",
+      "limits": "证据是真实 HTTP 断言收据（非单元测试）；单元层未见等价断言（检索 'browser disconnect leaves Process running' 无命中），若要求单元级复现需补一条。",
+      "currentPointer": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts（不覆盖本条）",
+      "receipt": "docs/implementation/lite-closeout/S8-four-row-candidate-evidence.json（#165 已合并）"
+    },
+    {
+      "id": "LITE-05-009",
+      "clause": "timeout, approval-wait exclusion, and race-safe terminal transitions;",
+      "verdict": "rejected",
+      "candidateFile": "packages/process-runtime/src/manager.test.ts",
+      "candidateAssertion": "idle timeout resets on activity",
+      "partialCoverage": [
+        {
+          "item": "timeout",
+          "file": "packages/process-runtime/src/manager.test.ts",
+          "name": "idle timeout resets on activity",
+          "status": "有具名断言"
+        },
+        {
+          "item": "race-safe terminal transitions",
+          "file": "packages/process-runtime/src/races.test.ts",
+          "name": "RACE-S5: terminal boundary joins every late caller",
+          "status": "有具名断言（另有 RACE-S1..S4 与 durable-coordinator 的 late-success never running）"
+        },
+        {
+          "item": "approval-wait exclusion",
+          "file": "（未找到）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ],
+      "rationale": "三项并列中两项有具名断言，第三项「approval 等待不消耗 idle 预算」在全仓检索（approval.*inactiv / idle.*approval / waiting_approval.*timeout / approvalTimeoutMs 的使用断言）中未见专门断言。按复合条款口径记驳回：需补一条「Run 处于 waiting_approval 期间 idle 预算不被消耗」的断言。",
+      "currentPointer": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts（不覆盖本条）"
+    },
+    {
+      "id": "LITE-05-011",
+      "clause": "startup preflight never probes OS state inside a SQLite write transaction;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/taskRecovery.test.ts",
+      "coveringAssertion": "P6M2b-composition A: recoverInterruptedTaskRuntime consumes the supplied port",
+      "rationale": "断言体：恢复组合从外部消费注入的 processRecovery port —— 其分类先由 `await preflightProcessRecoveryClassifications(store2, verifier)`（异步、独立于恢复写入）算出，再以 `createPreflightProcessRecoveryPort(classifications)` 注入 `recoverInterruptedTaskRuntime`，随后断言恢复结果使用了该分类（processMissingFailed.length===1）。即 OS 探测发生在恢复写入之外，写入路径只消费已算好的分类。",
+      "limits": "这是**结构性**证据（端口注入模式）＋结果断言，不是「断言某函数内部没有发起 OS 调用」的直接断言。若要求更强的直接证据（例如在写事务内断言无 verifier 调用计数），需补一条。",
+      "line": 639,
+      "currentPointer": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts（不覆盖本条）",
+      "receipt": "covering-batches-5.json（taskRecovery 29 passed / exit 0）"
+    },
+    {
+      "id": "LITE-07-002",
+      "clause": "source requirement for automatic Entries;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+      "coveringAssertion": "MF2R-03 automatic candidate without source rejects",
+      "rationale": "断言体：authority='agent-derived' 且 sources: [] 时创建候选抛 `SOURCE_REQUIRED`；而同为空来源的 authority='user-explicit' 被接受。直接覆盖「自动（非用户显式）Entry 必须有稳定来源」。",
+      "line": 195,
+      "currentPointer": "apps/server/src/services/MemoryContextResolver.test.ts（快照/注入契约，不覆盖 source 要求）"
+    },
+    {
+      "id": "LITE-07-006",
+      "clause": "deterministic ranking with reasons;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/routes/memoryRuntime.test.ts",
+      "coveringAssertion": "MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+          "name": "MF4I-02 resolve is idempotent per run scope"
+        }
+      ],
+      "rationale": "两句各有具名断言：ranking with reasons —— 检索结果带 `reasons[]`（断言 reasons.length>0）并按 rank 排序、FTS 命中带 ftsRank、类别过滤与 limit 生效；deterministic —— 同一 scope 二次 resolve 得到同一快照 id（MF4I-02），即同一输入产出同一排序结果。",
+      "line": 288,
+      "currentPointer": "apps/server/src/services/MemoryContextResolver.test.ts（指针正确，断言名不含条款词元）"
+    },
+    {
+      "id": "LITE-07-010",
+      "clause": "no bulk transcript or Provider-history promotion;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+      "coveringAssertion": "MF2R-G1 completed Run generates a review-required Candidate with bounded evidence",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+          "name": "MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run"
+        }
+      ],
+      "rationale": "断言体：候选内容被断言为**有界 bundle** —— 只含任务标题与 Stage 结果行（`implement: completed`），并显式断言 **不包含原始 Provider 输出**（`!content.includes('raw-provider')`），同时具备精确/归一化哈希。即不会把整段 transcript 或 Provider 历史提升为记忆，只提升有界的记录型事实。",
+      "limits": "「不提升 bulk transcript」由内容组成断言间接覆盖（内容只由 Run/Stage 记录拼装）；若要求一条对超长 transcript 输入的直接否证断言，需补一条。",
+      "line": 109,
+      "currentPointer": "同一文件（指针正确，断言名不含条款词元）"
+    }
+  ],
+  "summary": {
+    "judged": 7,
+    "accepted": 6,
+    "rejected": 1,
+    "cumulativeJudged": 40,
+    "cumulativeAccepted": 27,
+    "cumulativeRejected": 13,
+    "remaining": 67
+  },
+  "systemicFinding": {
+    "pointerPattern": "本批再次确认指针错指模式：LITE-05-001/008/009/011 四条全部指向 p6-m3b-windows-birth-identity.test.ts，而该文件的 10 条断言全是 Windows FILETIME 出生身份分类，与本批四条条款语义无关。"
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}

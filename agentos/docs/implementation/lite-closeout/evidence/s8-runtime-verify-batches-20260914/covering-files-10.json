@@ -1,0 +1,7 @@
+[
+  "packages/shared/mf0-memory-contracts.test.ts",
+  "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+  "apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts",
+  "apps/server/src/store/MemoryEntryRepository.test.ts"
+]
+

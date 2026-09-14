@@ -1,0 +1,6 @@
+[
+  "packages/process-runtime/src/races.test.ts",
+  "packages/process-runtime/src/manager.test.ts",
+  "apps/server/src/taskRecovery.test.ts"
+]
+
