@@ -1027,5 +1027,24 @@
     },
     "environment": "Local Windows, Node 24.18.0, vitest 4.1.9; full agent-core suite 30 files / 179 tests pass",
     "limitation": "Probes read the adapters own real fixtures and launch behavior instead of restating their capability constants, so the assertion is about behavior rather than about the declaration. OpenCode parses plain text, so its structuredEvents/toolEvents/usageEvents declarations are asserted in the negative direction. Kimi reports usage on stream flush, so the probe reads parseChunk plus finishParse; a parseChunk-only probe initially misreported the Kimi usage declaration as false, which is a probe defect and was corrected rather than treated as a product finding. Not PASS evidence on its own: the row keeps RUNTIME-VERIFY under the freeze."
+  },
+  {
+    "id": "S4-04-101-DEFERRAL",
+    "baseline": "0df73d7544f8c1d98feba83bbcca9e34ec28d91b",
+    "kind": "deferral-authorization",
+    "command": "git diff --stat 0df73d75 HEAD -- packages/process-runtime packages/agent-core apps/server/src/services/run-engine; git diff --diff-filter=M --name-only 0df73d75 HEAD -- packages/agent-core/src apps/server/src/services/run-engine; node scripts/verify-lite-scope.mjs",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "result": {
+      "productionChainModifiedFiles": 0,
+      "addedTestFilesInChain": 2,
+      "receipts": 3,
+      "receiptsExitCode": 0,
+      "receiptsSkipped": 0
+    },
+    "environment": "Local Windows receipts captured 2026-09-14 from the pinned clean SHA 0df73d75; GitHub-hosted CI provides none of the three Provider CLIs and no controlled credentials",
+    "limitation": "These are local real-invocation receipts, not CI-reproducible evidence, so they do NOT satisfy exit condition item 1 and this record must never be used to grant a PASS. Three receipts are preserved: Codex about 190169ms, Kimi-routed about 27631ms and OpenCode about 29917ms, each raw exit 0 with 0 skipped, under docs/implementation/lite-closeout/evidence/gates-20260914/. The receipt baseline stays 0df73d75, and the verification that the relevant Provider, Run Engine and Process Runtime production chain has zero modified files from that baseline to this revision is recorded as supplementary credibility for the deferral only. No production credentials were injected into a hosted runner and no acceptance standard was lowered. LITE-04-101 is DEFERRED under deferral-amendments.json, which is anchored outside itself and may only authorize RUNTIME-VERIFY to DEFERRED."
   }
 ]

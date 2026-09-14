@@ -23,6 +23,12 @@ const scopeLockHash = '140848da717c448daae0a6ddd44413c8d808eab70464bd0d482946f5f
 export const PASS_FREEZE_BASELINE = '3ac02ceb54b701e3143c9ffdda7b782aac396ace';
 export const PASS_FREEZE_MATRIX_VERSION = 14;
 export const PASS_FREEZE_HASH_ANCHOR = '66ffb04af96000c074482bb3ad3f01405197290a6d0447515ff415315c17a05e';
+// deferral-amendments.json is anchored outside the file for the same reason the
+// pass freeze is: rewriting both the file and its self-declared hash must not be
+// able to authorize a state change on its own. An amendment may only ever move a
+// row into DEFERRED, so this anchor is never a promotion path.
+export const DEFERRAL_AMENDMENT_HASH_ANCHOR = 'dd0c0dde61d23c1307516eb2f6a299d306136b73a5c2a044f7f702a523a3a5df';
+const DEFERRAL_AMENDMENT_FILE = 'deferral-amendments.json';
 
 const isObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 const object = (value, label) => assert.ok(isObject(value), `${label} must be an object`);
@@ -103,7 +109,68 @@ export function validatePassFreeze(freeze) {
   return { byId, allowedPassIds: new Set(freeze.allowedPassIds), anchor };
 }
 
-export function validateFrozenScopeStates(matrix, freeze) {
+/**
+ * A user-authorized deferral amendment. It is deliberately narrow: it can only move
+ * a row into DEFERRED, it must name the state it came from, it must carry the
+ * authority for the change and the condition under which the row is reopened, and its
+ * identity is anchored outside the file. Nothing here can create or restore a PASS.
+ */
+function amendmentPayload(amendments) {
+  return { schemaVersion: amendments.schemaVersion, amendments: amendments.amendments };
+}
+
+export function hashDeferralAmendments(amendments) {
+  return digest(JSON.stringify(amendmentPayload(amendments)));
+}
+
+export function validateDeferralAmendments(amendments) {
+  object(amendments, 'deferral-amendments');
+  for (const key of Object.keys(amendments)) {
+    assert.ok(['schemaVersion', 'amendments', 'hashAnchor'].includes(key),
+      `deferral-amendments has unknown field ${key}`);
+  }
+  assert.equal(amendments.schemaVersion, 1, 'invalid deferral-amendments schemaVersion');
+  assert.ok(Array.isArray(amendments.amendments), 'deferral-amendments must be an array');
+  const byId = new Map();
+  for (const amendment of amendments.amendments) {
+    object(amendment, 'deferral amendment');
+    for (const key of Object.keys(amendment)) {
+      assert.ok(['requirementId', 'from', 'to', 'authority', 'exitCondition', 'exitConditionSource',
+        'reason', 'receipts', 'receiptBaseline', 'chainVerification', 'reopenCondition', 'boundary'].includes(key),
+      `deferral amendment has unknown field ${key}`);
+    }
+    assert.match(amendment.requirementId, requirementId, `invalid deferral amendment id ${amendment.requirementId}`);
+    assert.ok(states.has(amendment.from), `invalid deferral amendment from ${amendment.requirementId}`);
+    // The only target an amendment may name is DEFERRED, and a row already in
+    // DEFERRED has nothing to amend. Both refusals keep this file from becoming a
+    // second, weaker route to a PASS.
+    assert.equal(amendment.to, 'DEFERRED', `a deferral amendment may only defer: ${amendment.requirementId}`);
+    assert.notEqual(amendment.from, 'DEFERRED', `a deferral amendment must move into DEFERRED: ${amendment.requirementId}`);
+    for (const [field, label] of [['authority', 'authority'], ['reopenCondition', 'reopen condition'],
+      ['boundary', 'boundary'], ['exitCondition', 'exit condition']]) {
+      assert.equal(typeof amendment[field], 'string', `a deferral amendment requires ${label}: ${amendment.requirementId}`);
+      assert.ok(amendment[field].trim().length > 0, `a deferral amendment requires ${label}: ${amendment.requirementId}`);
+    }
+    assert.ok(Array.isArray(amendment.reason) && amendment.reason.length > 0,
+      `a deferral amendment requires reasons: ${amendment.requirementId}`);
+    assert.ok(Array.isArray(amendment.receipts), `a deferral amendment requires receipts: ${amendment.requirementId}`);
+    assert.ok(byId.get(amendment.requirementId) === undefined, `duplicate deferral amendment ${amendment.requirementId}`);
+    byId.set(amendment.requirementId, amendment);
+  }
+  const anchor = hashDeferralAmendments(amendments);
+  assert.equal(anchor, DEFERRAL_AMENDMENT_HASH_ANCHOR, 'deferral amendment identity changed');
+  if (Object.hasOwn(amendments, 'hashAnchor')) {
+    assert.equal(amendments.hashAnchor, anchor, 'deferral amendment hash anchor mismatch');
+  }
+  return byId;
+}
+
+function loadDeferralAmendments(repositoryRoot) {
+  const path = resolve(repositoryRoot, 'docs/implementation/lite-closeout', DEFERRAL_AMENDMENT_FILE);
+  return validateDeferralAmendments(readJson(existingPath(repositoryRoot, path, 'deferral amendment file')));
+}
+
+export function validateFrozenScopeStates(matrix, freeze, deferralAmendments = new Map()) {
   const { byId, allowedPassIds } = validatePassFreeze(freeze);
   const current = new Map(matrix.requirements.map(row => [row.id, row]));
   for (const id of byId.keys()) assert.ok(current.has(id), `removed frozen requirement ${id}`);
@@ -116,7 +183,13 @@ export function validateFrozenScopeStates(matrix, freeze) {
         `frozen PASS may only be withdrawn to RUNTIME-VERIFY: ${row.id}`);
       if (row.state === 'PASS') assert.ok(allowedPassIds.has(row.id), `PASS state is frozen and not allowed: ${row.id}`);
     } else {
-      assert.equal(row.state, before, `original ${before} state changed: ${row.id}`);
+      // A user-authorized deferral amendment may move a row from the state the freeze
+      // recorded into DEFERRED, and only into DEFERRED: validateDeferralAmendments has
+      // already refused every other target, so this cannot become a promotion path.
+      const amendment = deferralAmendments.get(row.id);
+      const authorizedDeferral = row.state === 'DEFERRED' && amendment !== undefined && amendment.from === before;
+      assert.ok(authorizedDeferral || row.state === before,
+        `original ${before} state changed: ${row.id}`);
     }
   }
   return { byId, allowedPassIds };
@@ -257,7 +330,7 @@ export function validateFinalClosure(matrix, evidence, repositoryRoot = root) {
   for (const provider of ['codex', 'kimi', 'opencode']) assert.ok(providers.has(provider), `missing Provider gate ${provider}`);
 }
 
-export function validateScope(matrix, evidence, lock, repositoryRoot = root, passFreeze = undefined) {
+export function validateScope(matrix, evidence, lock, repositoryRoot = root, passFreeze = undefined, deferralAmendmentFile = undefined) {
   assert.equal(digest(JSON.stringify(lock, null, 2) + '\n'), scopeLockHash, 'permanent scope lock changed');
   assert.equal(matrix.schemaVersion, 1);
   assert.ok(['draft', 'frozen'].includes(matrix.status), 'invalid matrix status');
@@ -265,6 +338,9 @@ export function validateScope(matrix, evidence, lock, repositoryRoot = root, pas
   const evidenceMap = evidenceById(evidence);
   const lockedById = new Map(lock.map(item => [item.id, item]));
   assert.equal(lockedById.size, lock.length, 'duplicate locked id');
+  const deferralAmendments = deferralAmendmentFile === undefined
+    ? loadDeferralAmendments(repositoryRoot)
+    : validateDeferralAmendments(deferralAmendmentFile);
   const ids = new Set();
   const documents = new Map();
   for (const doc of matrix.documents) {
@@ -282,8 +358,21 @@ export function validateScope(matrix, evidence, lock, repositoryRoot = root, pas
     assert.ok(row.section && row.requirement && row.finding && row.exit, `missing criterion ${row.id}`);
     assert.ok(row.state === 'DEFERRED' ? row.workPackage === null : /^S[1-8]$/.test(row.workPackage), `work package ${row.id}`);
     if (row.state === 'DEFERRED') {
-      assert.equal(lockedById.get(row.id)?.initialState, 'DEFERRED', `new deferral requires an explicit scope amendment: ${row.id}`);
-      assert.ok(row.line !== null && row.finding && row.exit, `DEFERRED requires normative source: ${row.id}`);
+      // A deferral is legitimate when S0 v1 already classified the row that way, or
+      // when a separately anchored user authorization records the change.
+      const originallyDeferred = lockedById.get(row.id)?.initialState === 'DEFERRED';
+      const amendment = deferralAmendments.get(row.id);
+      const authorizedDeferral = amendment?.to === 'DEFERRED';
+      assert.ok(originallyDeferred || authorizedDeferral,
+        `new deferral requires an explicit scope amendment: ${row.id}`);
+      // Traceability: a row quoted from a document carries its literal line, while a
+      // requirement derived from a user clarification has no literal line by
+      // construction (all such rows are line-less). For those, the anchored amendment
+      // must quote this row's exact exit condition, which ties the deferral to a real
+      // criterion instead of letting a line-less row be deferred without a source.
+      const traceable = row.line !== null
+        || (amendment !== undefined && amendment.exitCondition === row.exit);
+      assert.ok(traceable && row.finding && row.exit, `DEFERRED requires normative source: ${row.id}`);
     }
     const original = documents.get(row.document);
     if (row.line !== null) {
@@ -316,7 +405,7 @@ export function validateScope(matrix, evidence, lock, repositoryRoot = root, pas
     }
   }
   const freeze = passFreeze ?? loadFreeze(matrix, repositoryRoot);
-  validateFrozenScopeStates(matrix, freeze);
+  validateFrozenScopeStates(matrix, freeze, deferralAmendments);
   for (const row of matrix.requirements) {
     if (row.state !== 'PASS') continue;
     assert.ok(freeze.allowedPassIds.includes(row.id), `PASS state is frozen and not allowed: ${row.id}`);

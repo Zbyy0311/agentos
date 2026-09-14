@@ -1,0 +1,15 @@
+✔ missing summary counts remain null and cannot produce a clean batch (1.4161ms)
+✔ raw nonzero exit defeats a clean-looking parsed summary (0.0864ms)
+✔ timeout and spawn error stay non-passing even with output counts (0.074ms)
+✔ process receipt retains source SHA, full log SHA, raw fields, and counts (0.7259ms)
+✔ a passing source file does not become assertion coverage (0.773ms)
+✔ missing and unsupported batches make the runner return failure (182.225ms)
+✔ freeze guards reject all historical S8 writers before any write (264.2753ms)
+ℹ tests 7
+ℹ suites 0
+ℹ pass 7
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 454.4381

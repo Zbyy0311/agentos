@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 16,
+  "matrixVersion": 17,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -4367,12 +4367,14 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/routes/runtimeInspector.test.ts",
+        "apps/server/src/routes/runLifecycle.test.ts",
+        "apps/server/src/routes/operations.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 四段中 API 与 Runtime 有具名断言，Policy 段与「committed Event」段没有（未找到断言 cancel/retry 产生并持久化对应规范事件的用例）。按复合条款口径记驳回。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 四段中 API 与 Runtime 有具名断言，Policy 段与「committed Event」段没有（未找到断言 cancel/retry 产生并持久化对应规范事件的用例）。按复合条款口径记驳回。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 缺口已在本修订闭合：Retry 侧由 apps/server/src/routes/runLifecycle.test.ts 的 P3C1-RY13 覆盖四段——API（canonical POST /runs/:runId/retry 接受）、Policy（运行中的 Parent 被 409 拒绝、到达终态失败后才可重试、过期 expectedVersion 被 409 拒绝）、Runtime（子 Run 以 parentRunId/rootRunId/reason=retry 持久创建）、committed Event（接受结果提交为子 Run 的 run.created，且恰好一条 run.retry Operation）；Cancel 侧早已由 apps/server/src/routes/operations.test.ts 断言 committed Event 顺序为 approval.required → approval.resolved → run.cancelled。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4489,8 +4491,8 @@
       "section": "§14; §15.2",
       "line": null,
       "requirement": "Codex/Kimi/OpenCode 的实际生产链接入与真实调用",
-      "state": "RUNTIME-VERIFY",
-      "workPackage": "S4",
+      "state": "DEFERRED",
+      "workPackage": null,
       "implementation": [
         "apps/server/src/services/run-engine/providerExecutionChain.ts",
         "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
@@ -4506,9 +4508,10 @@
         "S4-ADAPTERS",
         "S4-REAL-GATES",
         "S4-CODEX-LUNA-GATE",
-        "S4-OPENCODE-REAL-GATE"
+        "S4-OPENCODE-REAL-GATE",
+        "S4-04-101-DEFERRAL"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件 33 条断言覆盖的是调度器/协调器/生命周期组合，其**真实 Provider 调用**部分是 env-gated 且本机跳过（文件 raw exit 0 但 4 skip）。真实调用证据不在本文件，而在 evidence/gates-20260914/ 的三个 Provider gate 收据（codex / kimi-routed / opencode，各自 exit 0）。本行应指向那些收据，而不是这个测试文件。 (triage triage-01.json). Historical finding: 实现缺口已修复：composition root 现注册三个 canonical adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）已在同头被真实清除，而非删除条件。但本条要求的是「实际生产链接入与真实调用」，其证据必须是可被 CI 复算的运行记录，而本机三个 CLI 在 GitHub runner 上均不存在，故本地真实调用属机器相关证据，不足以支撑 PASS。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件 33 条断言覆盖的是调度器/协调器/生命周期组合，其**真实 Provider 调用**部分是 env-gated 且本机跳过（文件 raw exit 0 但 4 skip）。真实调用证据不在本文件，而在 evidence/gates-20260914/ 的三个 Provider gate 收据（codex / kimi-routed / opencode，各自 exit 0）。本行应指向那些收据，而不是这个测试文件。 (triage triage-01.json). Historical finding: 实现缺口已修复：composition root 现注册三个 canonical adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）已在同头被真实清除，而非删除条件。但本条要求的是「实际生产链接入与真实调用」，其证据必须是可被 CI 复算的运行记录，而本机三个 CLI 在 GitHub runner 上均不存在，故本地真实调用属机器相关证据，不足以支撑 PASS。 [2026-09-14 user-authorized deferral] 按用户批准，本条依退出条件第 2 项正式从 RUNTIME-VERIFY 改判为 DEFERRED；退出条件原文未修改、未放宽。当前没有已知的真实 Provider 生产链失败：三个真实调用收据 Codex 约 190s、Kimi-routed 约 27.6s、OpenCode 约 29.9s 均 raw exit 0 且 0 skip，保存于 evidence/gates-20260914/（codex / kimi-routed / opencode）。延期原因是环境能力而非产品缺陷：GitHub 托管 CI runner 不具备 codex / kimi / opencode 三个 CLI，也不具备受控凭据，因此无法产生退出条件第 1 项要求的 CI 可复算真实调用证据。明确拒绝的替代做法：向托管 Runner 注入生产凭据，或用模拟、桩、按名称匹配冒充真实调用，以人为降低验收标准来闭合本条。收据基线 0df73d75 保留；从该基线到当前修订，相关生产执行链零改动（packages/process-runtime 无改动，packages/agent-core 与 apps/server/src/services/run-engine 各自仅新增一个测试文件）。该结论只作为延期的补充可信度依据，不使本地收据变成 CI 可复算证据，因此不得据此改判 PASS。重新打开条件：只有在具备受控 self-hosted runner，或 CI 已合法提供三个 Provider CLI 与受控凭据时，才重新打开本条并尝试改判 PASS。授权与证据：deferral-amendments.json（独立哈希锚定，仅授权 RUNTIME-VERIFY 到 DEFERRED）、evidence.json 的 S4-04-101-DEFERRAL，以及脚本新增的授权延期校验与自测。",
       "exit": "待闭合：需要一份 CI 可复算的真实调用证据（runner 内可用的 Provider CLI，或由 CI 触发的真实调用闸门），或将该条按用户批准的整体延期正式改判 DEFERRED。在此之前保持 RUNTIME-VERIFY，不按名称或本地结果提升。"
     },
     {
@@ -8200,6 +8203,15 @@
         "LITE-08-004",
         "LITE-08-012",
         "LITE-09-001"
+      ]
+    },
+    {
+      "version": 17,
+      "baseline": "bbce19ad0c03aa0cfa6ea51c8365efb98cdef6d4",
+      "authority": "User instruction 2026-09-14: 批准 LITE-04-101 按退出条件第 2 项正式改判为 DEFERRED。",
+      "reason": "User-authorized deferral: LITE-04-101 moves from RUNTIME-VERIFY to DEFERRED under the existing exit condition item 2. The exit condition is unchanged; the local real-Provider receipts are recorded as supplementary credibility only and are not treated as CI-reproducible evidence, so no PASS is granted.",
+      "requirementIds": [
+        "LITE-04-101"
       ]
     }
   ],
