@@ -19,7 +19,8 @@ import { ProviderCompactionSummarizer } from '../services/ProviderCompactionSumm
 import { SUMMARIZATION_CLI_PROFILES } from '../services/summarizationCliProfiles.js';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CompactionPolicyRepository, CompactionRepository } from '../store/CompactionRepository.js';
+import { CompactionRepository } from '../store/CompactionRepository.js';
+import { projectConversationCompaction } from '../services/ConversationCompactionInspector.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
 import { createChatMemorySelectionPort } from '../services/ChatMemorySelectionPort.js';
@@ -283,55 +284,11 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
   router.get('/conversations/:conversationId/compactions', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
     if (!workspace) return;
-    const compactions = new CompactionRepository(store.getDatabase());
-    const tasks = compactions.listForConversation(workspace.id, req.params.conversationId);
-    const policyIds = [...new Set(tasks.map(task => task.policyId))];
     // LITE-13-101 also has to answer WHO adopted a summary: a published summary
     // only matters through the Turn and frozen context snapshot that used it.
-    // Both are read back from durable rows; nothing is inferred.
-    const adoptions = (store.getDatabase().prepare(
-      'SELECT id, turn_id, created_at, budget_json FROM cr_turn_context_snapshots WHERE conversation_id = ? ORDER BY created_at ASC, id ASC',
-    ).all(req.params.conversationId) as Array<{ id: string; turn_id: string | null; created_at: string; budget_json: string }>)
-      .flatMap(row => {
-        let summaryId: unknown;
-        try {
-          summaryId = (JSON.parse(row.budget_json) as { compactionSummaryId?: unknown }).compactionSummaryId;
-        } catch {
-          return [];
-        }
-        return typeof summaryId === 'string'
-          ? [{ snapshotId: row.id, turnId: row.turn_id, summaryId, createdAt: row.created_at }]
-          : [];
-      });
-    res.json({
-      adoptions,
-      tasks: tasks.map(task => ({
-        id: task.id, status: task.status, policyId: task.policyId,
-        sourceStartMessageId: task.sourceStartMessageId, sourceEndMessageId: task.sourceEndMessageId,
-        sourceMessageCount: task.sourceMessageCount, sourceHash: task.sourceHash,
-        priorSummaryId: task.priorSummaryId,
-        summary: task.summary, summaryHash: task.summaryHash, summaryTokenEstimate: task.summaryTokenEstimate,
-        candidateId: task.candidateId,
-        providerConfigId: task.providerConfigId, providerType: task.providerType,
-        adapterId: task.adapterId, adapterVersion: task.adapterVersion, model: task.model,
-        estimatorVersion: task.estimatorVersion, attempts: task.attempts,
-        leaseOwner: task.leaseOwner, leaseExpiresAt: task.leaseExpiresAt,
-        failureCode: task.failureCode, failureMessage: task.failureMessage,
-        createdAt: task.createdAt, updatedAt: task.updatedAt, publishedAt: task.publishedAt,
-        budget: JSON.parse(task.budgetJson) as Record<string, unknown>,
-      })),
-      policies: policyIds.map(id => {
-        const policy = new CompactionPolicyRepository(store.getDatabase()).findById(id);
-        return policy === undefined ? { id } : {
-          id: policy.id, policyVersion: policy.policyVersion, triggerRatio: policy.triggerRatio,
-          targetRatio: policy.targetRatio, minRecentMessages: policy.minRecentMessages,
-          summaryMaxTokens: policy.summaryMaxTokens, timeoutMs: policy.timeoutMs,
-          maxAutomaticRetries: policy.maxAutomaticRetries,
-          fallbackApplicationBudgetTokens: policy.fallbackApplicationBudgetTokens,
-          parameters: JSON.parse(policy.parametersJson) as Record<string, unknown>,
-        };
-      }),
-    });
+    // The read model is shared with the Run-scoped Inspector so the two surfaces
+    // cannot report different compaction stories for the same Conversation.
+    res.json(projectConversationCompaction(store.getDatabase(), workspace.id, req.params.conversationId));
   });
 
   // ---- Messages -----------------------------------------------------------

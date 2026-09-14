@@ -23,6 +23,37 @@ const PROJECTION: InspectorProjectionDto = {
     { eventId: 'evt_2', sequence: 2, type: 'stage.completed', timestamp: 't', severity: 'info' },
   ],
   highWatermark: 12,
+  compaction: {
+    conversationId: 'conv_1',
+    linkVia: 'turn',
+    turnId: 'turn_1',
+    contextSnapshotId: 'tsnap_1',
+    policy: {
+      policyVersion: 'lite-v1', triggerRatio: 0.7, targetRatio: 0.5,
+      minRecentMessages: 8, summaryMaxTokens: 2048, maxAutomaticRetries: 1,
+    },
+    latest: {
+      id: 'snap_comp_1', status: 'published', sourceMessageCount: 4,
+      sourceStartMessageId: 'msg_1', sourceEndMessageId: 'msg_4',
+      summary: 'The runtime keeps Tasks, Runs and Processes distinct.',
+      summaryTokenEstimate: 12, candidateId: 'cand_1', model: 'gpt-5.6-luna',
+      adapterId: 'cli.codex', attempts: 1, failureCode: null, failureMessage: null,
+      publishedAt: '2026-09-01T00:00:02Z',
+      budget: {
+        historyTokens: 12400, historyBudgetTokens: 16384, triggerRatio: 0.7, targetRatio: 0.5,
+        retainedRecentMessages: 8, applicationBudgetSource: 'lite-v1-fallback',
+        estimatorVersion: 'lite-v1-chars4',
+      },
+    },
+    tasks: [],
+    tasksTruncated: false,
+    adoptions: [{ snapshotId: 'tsnap_1', turnId: 'turn_1', summaryId: 'snap_comp_1', summarizedMessages: 4 }],
+    rejections: [],
+    thisTurn: {
+      snapshotId: 'tsnap_1', appliedSummaryId: 'snap_comp_1', summarizedMessages: 4,
+      rejectedSummaryId: null, rejectedReason: null,
+    },
+  },
   memoryContext: {
     memoryContextId: 'mctx_1', queryHash: 'qh', retrievalStrategyVersion: 'mf3-ranking-v1',
     totalTokens: 42, truncated: false, createdAt: '2026-09-01T00:00:00Z',
@@ -99,4 +130,31 @@ test('INS-06 a section error is an alert, never a page failure', async () => {
   assert.ok(markup.includes('RUNTIME_INSPECTOR_RUN_NOT_FOUND'));
   // the rest of the page still renders
   assert.ok(markup.includes('run_1'));
+});
+
+test('INS-08 Compaction explains WHY it ran and WHO adopted the summary', async () => {
+  const markup = await render();
+  assert.ok(markup.includes('data-agentos="compaction-explanation"'));
+  assert.ok(markup.includes('data-compaction-status="published"'));
+  // the frozen inputs, as recorded: trigger value against its budget
+  assert.ok(markup.includes('12400 / 16384 tokens'));
+  assert.ok(markup.includes('trigger 0.7 · target 0.5'));
+  assert.ok(markup.includes('lite-v1-fallback'));
+  assert.ok(markup.includes('lite-v1-chars4'));
+  // the source range, the summary and the policy version
+  assert.ok(markup.includes('conv_1 (via turn)'));
+  assert.ok(markup.includes('4 messages'));
+  assert.ok(markup.includes('The runtime keeps Tasks, Runs and Processes distinct.'));
+  assert.ok(markup.includes('lite-v1'));
+  // the Turn and Snapshot that actually received it
+  assert.ok(markup.includes('this Run · snapshot tsnap_1 · snap_comp_1'));
+});
+
+test('INS-09 an absent compaction is named, never rendered as a silent empty section', async () => {
+  const notPlaced = await render({ projection: { ...PROJECTION, compaction: null } });
+  assert.ok(notPlaced.includes('data-compaction="not-placed"'));
+  const noTasks = await render({
+    projection: { ...PROJECTION, compaction: { ...PROJECTION.compaction!, latest: null, tasks: [] } },
+  });
+  assert.ok(noTasks.includes('data-compaction="none"'));
 });

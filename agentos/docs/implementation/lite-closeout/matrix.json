@@ -4285,6 +4285,7 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeInspector.redaction.test.ts",
         "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
@@ -4327,6 +4328,7 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeInspector.redaction.test.ts",
         "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
@@ -4412,6 +4414,7 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeInspector.redaction.test.ts",
         "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
@@ -4896,14 +4899,19 @@
       "state": "GAP",
       "workPackage": "S6",
       "implementation": [
+        "apps/server/src/services/ConversationCompactionInspector.ts",
         "apps/server/src/services/RuntimeInspector.ts",
         "apps/web/src/components/chat/RuntimeInspectorView.tsx"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.compaction.test.ts",
+        "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
         "apps/server/src/routes/runtimeInspector.test.ts"
       ],
-      "evidence": [],
-      "finding": "无compaction projection。",
+      "evidence": [
+        "S6-COMPACTION-INSPECTOR-SOURCE"
+      ],
+      "finding": "基线反证：Run级Inspector无任何compaction投影，RuntimeInspector.ts与RuntimeInspectorView.tsx均无compaction字段，会话级compactions路由虽已存在但Run无法解释其Conversation为何压缩。已补：共享只读读模型ConversationCompactionInspector（tasks/不可变policy/adoptions/rejections均读自持久行）、Run→Conversation解析器显式报告连接来源(turn|message|task)、InspectorProjection新增有界compaction投影（含thisTurn，即本Run自身快照的采用或拒绝结论，禁止借用其他Turn）、Web Compaction区块渲染触发值/预算/策略/来源/摘要/尝试与失败/实际Turn与Snapshot。测试：真实HTTP Turn路径产生压缩后经Run Inspector读回同一任务(linkVia=task与message两路)，跨接口任务集合一致性，孤儿Run报告为未落位；Turn级采用与拒绝分支；Web渲染与两种缺失态。仍缺：浏览器内真实页面验收，且PASS提升在冻结期内被禁止，故保持GAP。",
       "exit": "展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。"
     },
     {
