@@ -2136,15 +2136,17 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S8",
       "implementation": [
+        "apps/server/src/routes/git.ts",
         "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
       ],
       "tests": [
+        "apps/server/src/routes/git.test.ts",
         "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体保证的是「原始诊断不外泄」，不覆盖「措辞不得暗示 AgentOS 拥有 Git 工作流」这一类**文案/接口措辞**约束；全仓检索未找到措辞层面的断言。按缺口记录。 (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体保证的是「原始诊断不外泄」，不覆盖「措辞不得暗示 AgentOS 拥有 Git 工作流」这一类**文案/接口措辞**约束；全仓检索未找到措辞层面的断言。按缺口记录。 (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 缺口已在本修订闭合：apps/server/src/routes/git.test.ts 的 LITE-06-011 用例断言 Git 面三条路由（status/diff/log）都只读取、各自只回一个同名观测字段，POST/PUT/PATCH/DELETE 一律不被路由（404），且该面实际发出的每条 git 命令都是只读查询，因此措辞与能力都不暗示 AgentOS 拥有 Git 工作流。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },

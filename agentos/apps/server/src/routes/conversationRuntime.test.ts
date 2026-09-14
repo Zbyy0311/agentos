@@ -222,7 +222,7 @@ test('LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Tas
     await withServer(async (baseUrl, store) => {
       const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
       assert.equal(created.status, 201);
-      const conversationId = created.json.conversation.id as string;
+      const conversationId = (created.json as { conversation: { id: string } }).conversation.id;
       const db = store.getDatabase();
       const countRows = (table: string): number =>
         Number((db.prepare('SELECT COUNT(*) AS n FROM ' + table).get() as { n: number | bigint }).n);
@@ -257,7 +257,8 @@ test('LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Tas
       assert.ok(messages.messages.some(message => message.senderType === 'agent' && message.status === 'final'));
 
       // 3. Durable work starts only when explicitly requested through the bridge.
-      const bridged = await postJson(`${baseUrl}/messages/${posted.json.message.id}/start-run`, {});
+      const postedMessageId = (posted.json as { message: { id: string } }).message.id;
+      const bridged = await postJson(`${baseUrl}/messages/${postedMessageId}/start-run`, {});
       assert.equal(bridged.status, 201);
       assert.equal(countRows('tasks'), 1, 'the explicit start-run entry is what creates the Task');
       assert.equal(countRows('runs'), 1, 'the explicit start-run entry is what creates the Run');
