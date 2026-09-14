@@ -1,6 +1,7 @@
 import type { TransactionDatabase } from '../store/Transaction.js';
 import { isValidEntityId } from '../store/Identity.js';
 import { proveWorkspaceArtifactCompletion } from '../store/ArtifactCompletionRepository.js';
+import { proveWorkspaceCompaction } from '../store/CompactionRepository.js';
 import type {
   AuthorizedWorkspaceEventContextV1,
   WorkspaceEventContextAuthorityV1,
@@ -99,6 +100,8 @@ implements WorkspaceEventContextAuthorityV1 {
     const parentEventId = this.requireParentEvent(workspaceId, claimed.parentEventId);
     const authorityVersion = subject.kind === 'memory.artifact_completion'
       ? this.proveArtifactCompletion(workspaceId, subject.completionId)
+      : subject.kind === 'memory.compaction'
+      ? this.proveCompaction(workspaceId, subject.compactionId)
       : subject.kind === 'memory.candidate_review'
       ? this.proveCandidateReview(workspaceId, subject)
       : subject.kind === 'memory.conflict_resolution'
@@ -107,6 +110,7 @@ implements WorkspaceEventContextAuthorityV1 {
     return {
       origin: subject.kind,
       authorityId: subject.kind === 'memory.artifact_completion' ? subject.completionId
+        : subject.kind === 'memory.compaction' ? subject.compactionId
         : subject.kind === 'memory.candidate_review' ? subject.candidateId
         : subject.kind === 'memory.conflict_resolution' ? subject.conflictId
         : subject.entryId,
@@ -128,6 +132,10 @@ implements WorkspaceEventContextAuthorityV1 {
     if (origin.kind === 'memory.artifact_completion') {
       if (!nonBlank(origin.completionId)) throw new WorkspaceEventContextAuthorityError('INPUT_INVALID');
       return { kind: 'memory.artifact_completion', completionId: origin.completionId };
+    }
+    if (origin.kind === 'memory.compaction') {
+      if (!nonBlank(origin.compactionId)) throw new WorkspaceEventContextAuthorityError('INPUT_INVALID');
+      return { kind: 'memory.compaction', compactionId: origin.compactionId };
     }
     if (origin.kind === 'memory.candidate_review') {
       if (!nonBlank(origin.candidateId) || !isPositiveSafeInteger(origin.candidateVersion)) {
@@ -274,6 +282,14 @@ implements WorkspaceEventContextAuthorityV1 {
 
   private proveArtifactCompletion(workspaceId: string, completionId: string): number {
     if (!proveWorkspaceArtifactCompletion(this.db, workspaceId, completionId)) {
+      throw new WorkspaceEventContextAuthorityError('ORIGIN_UNPROVEN');
+    }
+    return 1;
+  }
+
+  /** S6: only a persisted published compaction with its real Candidate proves this origin. */
+  private proveCompaction(workspaceId: string, compactionId: string): number {
+    if (!proveWorkspaceCompaction(this.db, workspaceId, compactionId)) {
       throw new WorkspaceEventContextAuthorityError('ORIGIN_UNPROVEN');
     }
     return 1;

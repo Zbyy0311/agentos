@@ -10,6 +10,16 @@ import {
   type ChatWorkspaceAuthorityPort,
 } from '../services/ConversationTurnDriver.js';
 import { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
+import {
+  ConversationCompactionService,
+  createConversationCompactionPort,
+} from '../services/ConversationCompactionService.js';
+import { ConversationCompactionTrigger } from '../services/ConversationCompactionTrigger.js';
+import { ProviderCompactionSummarizer } from '../services/ProviderCompactionSummarizer.js';
+import { SUMMARIZATION_CLI_PROFILES } from '../services/summarizationCliProfiles.js';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { CompactionPolicyRepository, CompactionRepository } from '../store/CompactionRepository.js';
 import { GroupTurnDriver, GroupTurnDriverError } from '../services/GroupTurnDriver.js';
 import {
   CONVERSATION_REPLY_MODES,
@@ -87,6 +97,35 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       };
     },
   };
+
+  // S6: published compaction summaries apply to new Turn contexts. The hard
+  // application budget is the frozen lite-v1 fallback when no provider bound
+  // is known, which is what the compaction policy records today.
+  const compactionPort = createConversationCompactionPort(store);
+  const compactionBudget = { hardBudgetTokens: 16384 };
+
+  // S6 / LITE-09-106 + LITE-09-107: the automatic trigger. One engine per
+  // router and one summary execution channel: only an allowlisted CLI profile
+  // may produce a summary, and it runs in an isolated scratch directory that
+  // is outside every Workspace. Without an allowlisted profile the attempt
+  // fails closed and the durable task records the failure code.
+  const compactionEngine = new ConversationCompactionService({
+    store,
+    summarizer: new ProviderCompactionSummarizer({
+      scratchRoot: join(tmpdir(), 'agentos-compaction-scratch'),
+      profiles: SUMMARIZATION_CLI_PROFILES,
+    }),
+  });
+  const compactionTrigger = new ConversationCompactionTrigger({
+    store,
+    engine: compactionEngine,
+    getAgent: (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(profile => profile.id === agentId),
+    onAttempt: attempt => console.log(
+      `COMPACTION_ATTEMPT outcome=${attempt.outcome} policy=${attempt.policyVersion}`
+      + (attempt.taskId === undefined ? '' : ` task=${attempt.taskId}`),
+    ),
+    onError: (code, error) => console.error(`COMPACTION_TRIGGER_ERROR code=${code}`, error),
+  });
 
   // ---- Conversations ------------------------------------------------------
 
@@ -221,7 +260,107 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
     res.json({ turns: store.agentTurnRepository().listTurnsByConversation(workspace.id, req.params.conversationId) });
   });
 
+  /**
+   * S6 Inspector read surface (LITE-09-104/107): the effective compaction
+   * policy, every task of the Conversation with its frozen budget inputs, the
+   * applied summary and the attempts/failure state. Read-only, no Provider
+   * work, no mutation.
+   */
+  router.get('/conversations/:conversationId/compactions', (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const compactions = new CompactionRepository(store.getDatabase());
+    const tasks = compactions.listForConversation(workspace.id, req.params.conversationId);
+    const policyIds = [...new Set(tasks.map(task => task.policyId))];
+    // LITE-13-101 also has to answer WHO adopted a summary: a published summary
+    // only matters through the Turn and frozen context snapshot that used it.
+    // Both are read back from durable rows; nothing is inferred.
+    const adoptions = (store.getDatabase().prepare(
+      'SELECT id, turn_id, created_at, budget_json FROM cr_turn_context_snapshots WHERE conversation_id = ? ORDER BY created_at ASC, id ASC',
+    ).all(req.params.conversationId) as Array<{ id: string; turn_id: string | null; created_at: string; budget_json: string }>)
+      .flatMap(row => {
+        let summaryId: unknown;
+        try {
+          summaryId = (JSON.parse(row.budget_json) as { compactionSummaryId?: unknown }).compactionSummaryId;
+        } catch {
+          return [];
+        }
+        return typeof summaryId === 'string'
+          ? [{ snapshotId: row.id, turnId: row.turn_id, summaryId, createdAt: row.created_at }]
+          : [];
+      });
+    res.json({
+      adoptions,
+      tasks: tasks.map(task => ({
+        id: task.id, status: task.status, policyId: task.policyId,
+        sourceStartMessageId: task.sourceStartMessageId, sourceEndMessageId: task.sourceEndMessageId,
+        sourceMessageCount: task.sourceMessageCount, sourceHash: task.sourceHash,
+        priorSummaryId: task.priorSummaryId,
+        summary: task.summary, summaryHash: task.summaryHash, summaryTokenEstimate: task.summaryTokenEstimate,
+        candidateId: task.candidateId,
+        providerConfigId: task.providerConfigId, providerType: task.providerType,
+        adapterId: task.adapterId, adapterVersion: task.adapterVersion, model: task.model,
+        estimatorVersion: task.estimatorVersion, attempts: task.attempts,
+        leaseOwner: task.leaseOwner, leaseExpiresAt: task.leaseExpiresAt,
+        failureCode: task.failureCode, failureMessage: task.failureMessage,
+        createdAt: task.createdAt, updatedAt: task.updatedAt, publishedAt: task.publishedAt,
+        budget: JSON.parse(task.budgetJson) as Record<string, unknown>,
+      })),
+      policies: policyIds.map(id => {
+        const policy = new CompactionPolicyRepository(store.getDatabase()).findById(id);
+        return policy === undefined ? { id } : {
+          id: policy.id, policyVersion: policy.policyVersion, triggerRatio: policy.triggerRatio,
+          targetRatio: policy.targetRatio, minRecentMessages: policy.minRecentMessages,
+          summaryMaxTokens: policy.summaryMaxTokens, timeoutMs: policy.timeoutMs,
+          maxAutomaticRetries: policy.maxAutomaticRetries,
+          fallbackApplicationBudgetTokens: policy.fallbackApplicationBudgetTokens,
+          parameters: JSON.parse(policy.parametersJson) as Record<string, unknown>,
+        };
+      }),
+    });
+  });
+
   // ---- Messages -----------------------------------------------------------
+  /**
+   * S6 / LITE-09-108: explicit retry for a Conversation whose automatic
+   * compaction could not complete. It runs exactly the same evaluation the
+   * Turn path runs, so it can never invent a different outcome, and it reports
+   * the durable task state instead of a bare success.
+   */
+  router.post('/conversations/:conversationId/compactions/retry', async (req: Request, res: Response) => {
+    const workspace = requireWorkspace(req, res);
+    if (!workspace) return;
+    const conversation = conversations().findConversationById(workspace.id, req.params.conversationId);
+    if (!conversation) { res.status(404).json({ error: 'Conversation not found' }); return; }
+    if (conversation.status !== 'active') { res.status(409).json({ error: 'Conversation is archived' }); return; }
+    const member = conversations().listMembers(workspace.id, conversation.id)
+      .find(candidate => candidate.subjectType === 'agent' && candidate.status === 'active');
+    if (member === undefined) { res.status(400).json({ error: 'no active Agent member' }); return; }
+    try {
+      const result = await compactionTrigger.ensureCompacted({
+        workspaceId: workspace.id,
+        conversationId: conversation.id,
+        agentId: member.subjectId,
+      });
+      const task = result.taskId === undefined ? undefined : new CompactionRepository(store.getDatabase())
+        .findById(workspace.id, result.taskId);
+      // A blocked retry is not a server error: the reason is durable policy or
+      // execution state, and the caller needs it verbatim.
+      res.status(200).json({
+        outcome: result.outcome,
+        policyVersion: result.policyVersion,
+        ...(result.blockedReason === undefined ? {} : { blockedReason: result.blockedReason }),
+        ...(task === undefined ? {} : { task: {
+          id: task.id, status: task.status, attempts: task.attempts,
+          failureCode: task.failureCode, failureMessage: task.failureMessage,
+          sourceMessageCount: task.sourceMessageCount, publishedAt: task.publishedAt,
+        } }),
+      });
+    } catch (error) {
+      fail(res, error);
+    }
+  });
+
 
   router.get('/conversations/:conversationId/messages', (req: Request, res: Response) => {
     const workspace = requireWorkspace(req, res);
@@ -452,7 +591,13 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       conversations(),
       store.conversationStreamService(),
       (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
-      { snapshots: createDurableTurnContextSnapshotPort(store), workspaceAuthority: chatWorkspaceAuthority },
+      {
+        snapshots: createDurableTurnContextSnapshotPort(store),
+        workspaceAuthority: chatWorkspaceAuthority,
+        compaction: compactionPort,
+        compactionBudget,
+        compactionTrigger,
+      },
     );
     try {
       const result = await driver.run(
@@ -545,7 +690,13 @@ export function createConversationRuntimeRoutes(store: SqliteStore, workspaceMan
       store.conversationStreamService(),
       (workspaceId, agentId) => store.listAgentProfiles(workspaceId).find(p => p.id === agentId && p.enabled),
       undefined,
-      { snapshots: createDurableTurnContextSnapshotPort(store), workspaceAuthority: chatWorkspaceAuthority },
+      {
+        snapshots: createDurableTurnContextSnapshotPort(store),
+        workspaceAuthority: chatWorkspaceAuthority,
+        compaction: compactionPort,
+        compactionBudget,
+        compactionTrigger,
+      },
     );
     try {
       const result = await driver.replyWithTurn({
