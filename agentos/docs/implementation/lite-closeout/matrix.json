@@ -8230,5 +8230,8 @@
       ]
     }
   ],
-  "passFreeze": "pass-freeze.json"
+  "passFreeze": "pass-freeze.json",
+  "passPromotionAuthority": "pass-promotion-authority.json",
+  "passPromotions": "pass-promotions.json",
+  "promotionBaselineSha": "d163c40e33b17cde3540316a038bebef165b64cc"
 }
