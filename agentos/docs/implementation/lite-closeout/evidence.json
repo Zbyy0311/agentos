@@ -996,5 +996,21 @@
     },
     "environment": "Read-only source audit on main 07c1773a; no runtime evidence",
     "limitation": "The canonical Artifact surfaces are properly redacted: canonicalRunEvents.test.ts:214 and RunReplayService.test.ts:125 both assert the serialized payload does not contain the local path, and routes/artifacts.ts serves content without returning a path. The workspace-scoped run details response is not: GET /api/workspaces/:workspaceId/runs/:runId (routes/runs.ts:17) returns listRuntimeArtifacts, whose mapper at SqliteStore.ts:3359 still emits the runtime_artifacts.original_path field, and apps/web/src/components/runs/ArtifactShelf.tsx:46 renders it. Specification section 15 requires that a storage URI and a local absolute path never become response contracts. Fixing it changes a compat route DTO and shelf rendering, so it is recorded as counterevidence rather than fixed inside this closeout without explicit authorization. Not PASS evidence."
+  },
+  {
+    "id": "S4-RETRYABILITY-CONTRACT",
+    "baseline": "85685a96",
+    "kind": "counterevidence-found",
+    "command": "node -e \"<add cross-adapter retryability contract test>\"; cd packages/agent-core; npx vitest run src/providers/providerErrorRetryability.test.ts; npx vitest run",
+    "cwd": "agentos",
+    "requirementIds": [
+      "LITE-04-006"
+    ],
+    "result": {
+      "failed": 2,
+      "passed": 3
+    },
+    "environment": "Local Windows, Node 24.18.0, vitest 4.1.9; the first run of the new contract test failed 1 of 3 cases and named both defects before they were fixed",
+    "limitation": "The new cross-adapter contract test asserts one retryability table for Codex, KimiCode and OpenCode (network and rate-limit retryable; auth, quota and model not retryable), that retryability is always an explicit boolean, and that re-normalization is idempotent. It found two real inconsistencies: KimiCode normalizeError never consulted its own existing isProviderNormalizedError guard, so a second pass degraded any normalized error to PROVIDER_INTERNAL_ERROR and dropped retryability; OpenCode guard preserved the code but rebuilt the error without retryable, flipping a retryable transport failure to non-retryable. Both are fixed and the whole agent-core suite passes (29 files / 175 tests). Not PASS evidence on its own: the row keeps RUNTIME-VERIFY under the freeze."
   }
 ]

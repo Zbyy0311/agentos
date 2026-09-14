@@ -591,7 +591,16 @@ export class OpenCodeProviderAdapter implements RuntimeProviderAdapter {
   normalizeError(error: unknown, context: { readonly phase?: ProviderErrorPhase } = {}): ProviderNormalizedError {
     const phase = context.phase ?? 'internal';
     if (isProviderNormalizedError(error)) {
-      return normalizedProviderError(error.code, phase === 'internal' ? error.phase : phase, stableErrorMessage(error.code));
+      // LITE-04-006: re-normalization must preserve retryability as well as the code.
+      // It previously rebuilt the error without the flag, so a retryable transport
+      // failure became non-retryable on the second pass and a caller that re-checked
+      // would refuse a retry it should have allowed.
+      return normalizedProviderError(
+        error.code,
+        phase === 'internal' ? error.phase : phase,
+        stableErrorMessage(error.code),
+        error.retryable,
+      );
     }
 
     const text = error instanceof Error ? error.message : typeof error === 'string' ? error : '';

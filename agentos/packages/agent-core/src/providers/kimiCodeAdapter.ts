@@ -405,6 +405,13 @@ export class KimiCodeProviderAdapter implements RuntimeProviderAdapter {
   }
 
   normalizeError(error: unknown, context: { readonly phase?: import('./types.js').ProviderErrorPhase } = {}): ProviderNormalizedError {
+    // LITE-04-006: normalization has to be idempotent, exactly as it is for Codex
+    // and OpenCode. A caller that re-normalizes an already-normalized error (the
+    // OpenCode adapter does so for input.providerError) must not lose the stable
+    // code or the retryability flag on the second pass. The type guard already
+    // existed here but was never consulted, so a second pass classified any
+    // normalized error as PROVIDER_INTERNAL_ERROR and dropped retryability.
+    if (isProviderNormalizedError(error)) return error;
     const text = error instanceof Error ? error.message : typeof error === 'string' ? error : '';
     const phase = context.phase ?? 'internal';
     if (/PROVIDER_CONFIG_INVALID/.test(text)) return normalizedProviderError('PROVIDER_CONFIG_INVALID', 'configuration', 'KimiCode provider configuration is invalid');

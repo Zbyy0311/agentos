@@ -1526,15 +1526,19 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S4",
       "implementation": [
-        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.ts"
       ],
       "tests": [
+        "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
         "packages/agent-core/src/providers/kimiCodeAdapter.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S8-VERIFY-BATCH-10",
+        "S4-RETRYABILITY-CONTRACT"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖「稳定分类码」这一半（另有 'fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence' 等），但没有任何断言覆盖条款后半句 retryability（可重试性）。条款为两部分，缺一不可。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖「稳定分类码」这一半（另有 'fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence' 等），但没有任何断言覆盖条款后半句 retryability（可重试性）。条款为两部分，缺一不可。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 缺口已在本修订闭合：新增 packages/agent-core/src/providers/providerErrorRetryability.test.ts，对三个生产适配器断言同一张可重试性表（network/rate-limit 可重试；auth/quota/model 不可重试），并断言可重试性总是显式布尔值、且再归一化幂等。该测试当场抓出两个真实不一致：KimiCode 的 normalizeError 从不使用已存在的 isProviderNormalizedError 守卫，二次归一化会把任意已归一化错误降级为 PROVIDER_INTERNAL_ERROR 并丢失可重试性；OpenCode 的守卫保留了 code 却重建错误时未传 retryable，使可重试的传输失败在第二次归一化后变成不可重试。两者已修，跨适配器契约一致。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
