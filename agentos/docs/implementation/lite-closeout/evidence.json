@@ -1179,5 +1179,119 @@
     ],
     "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
     "limitation": "The receipt exercises the mounted HTTP preview/confirm path and durable import records; browser rendering is outside this row's import contract."
+  },
+  {
+    "id": "S9-M0-S8-INSPECTOR-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-runtime-inspector-controlled.json",
+    "result": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-13-002",
+      "LITE-13-003",
+      "LITE-13-015"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "This local receipt directly proves the three mapped Inspector clauses through named assertions and canonical SQLite projections. It does not prove browser acceptance or unrelated Inspector clauses such as Event gap recovery/deduplication and Cancel/Retry source-chain projection."
+  },
+  {
+    "id": "S9-M0-S8-RECOVERY-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-recovery-controlled.json",
+    "result": {
+      "passed": 67,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-00-007",
+      "LITE-02-014",
+      "LITE-02-015",
+      "LITE-03-018",
+      "LITE-13-008"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "The receipt directly covers the mapped recovery classifications and non-reattach boundary through named production assertions. It does not claim the separate live Provider, browser, or cross-process approval gates."
+  },
+  {
+    "id": "S9-M0-S6-RETRY-SERVICE-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-compaction-service-controlled.json",
+    "result": {
+      "passed": 8,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "This receipt directly proves the bounded automatic retry chain and explicit-retry distinction in the production compaction service; lease recovery and stale publication are covered by the companion trigger and repository receipts."
+  },
+  {
+    "id": "S9-M0-S6-RETRY-TRIGGER-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionTrigger.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-compaction-trigger-controlled.json",
+    "result": {
+      "passed": 10,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "This receipt directly proves persisted expired-lease recovery, live-lease non-stealing, and SQLite close/reopen recovery in the production trigger; it does not claim a live Provider invocation."
+  },
+  {
+    "id": "S9-M0-S6-RETRY-REPOSITORY-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/CompactionRepository.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-compaction-repository-controlled.json",
+    "result": {
+      "passed": 4,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-09-107"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "This receipt directly proves the persisted Lite v1 timeout/retry policy, single-running-task fence, versioned lease transitions, and stale-publisher rejection; it is a repository/service test rather than a multi-process stress run."
+  },
+  {
+    "id": "S9-M0-S2-ARTIFACT-LIFECYCLE-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ArtifactCompletionService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-artifact-completion-controlled.json",
+    "result": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "The receipt starts with a real local node:test subprocess and proves the production Collector/HTTP/review chain; it does not claim a live model Provider invocation, which is outside the Artifact lifecycle clause."
   }
 ]

@@ -63,6 +63,8 @@ test('S6/029: policy rows are immutable and versioned', () => {
     assert.equal(fx.policy.policyVersion, 'lite-v1');
     assert.equal(fx.policy.triggerRatio, 0.7);
     assert.equal(fx.policy.minRecentMessages, 8);
+    assert.equal(fx.policy.timeoutMs, 120_000);
+    assert.equal(fx.policy.maxAutomaticRetries, 1);
     assert.throws(() => fx.db.prepare("UPDATE conversation_compaction_policies SET trigger_ratio = 0.9 WHERE id = 'policy_lite_v1'").run(),
       /COMPACTION_POLICY_IMMUTABLE/);
     assert.throws(() => inTransaction(fx.db, () => fx.policies.createWithinTransaction({
@@ -70,6 +72,30 @@ test('S6/029: policy rows are immutable and versioned', () => {
       summaryMaxTokens: 2048, timeoutMs: 120_000, maxAutomaticRetries: 1, fallbackApplicationBudgetTokens: 16384,
       parametersJson: '{}', checksum: hash('x'), createdAt: NOW,
     })), /COMPACTION_CONFLICT/);
+  } finally { fx.close(); }
+});
+
+test('S6/029: a reclaimed lease cannot publish from the old holder or version', () => {
+  const fx = fixture();
+  try {
+    const created = inTransaction(fx.db, () => fx.compactions.createTaskWithinTransaction(task({ id: 'comp_stale' }) as never));
+    const running = inTransaction(fx.db, () => fx.compactions.claimRunningWithinTransaction({
+      workspaceId: WS, id: created.id, expectedVersion: created.version, leaseOwner: 'holder-a',
+      leaseExpiresAt: LATER, now: NOW,
+    }));
+    const reclaimed = inTransaction(fx.db, () => fx.compactions.reclaimExpiredLeaseWithinTransaction({
+      workspaceId: WS, id: running.id, expectedVersion: running.version, failureCode: 'COMPACTION_LEASE_EXPIRED',
+      failureMessage: 'old holder lease expired', now: '2026-09-12T15:02:00.000Z',
+    }));
+    assert.equal(reclaimed.status, 'retry-pending');
+    assert.throws(() => inTransaction(fx.db, () => fx.compactions.publishWithinTransaction({
+      workspaceId: WS, id: running.id, expectedVersion: running.version, leaseOwner: 'holder-a',
+      summary: 'stale summary', summaryHash: hash('stale summary'), summaryTokenEstimate: 2,
+      candidateId: 'cand_1', publishedAt: '2026-09-12T15:02:00.000Z',
+    })), /COMPACTION_CONFLICT/);
+    const stored = fx.compactions.findById(WS, running.id)!;
+    assert.equal(stored.status, 'retry-pending');
+    assert.equal(stored.summary, null);
   } finally { fx.close(); }
 });
 

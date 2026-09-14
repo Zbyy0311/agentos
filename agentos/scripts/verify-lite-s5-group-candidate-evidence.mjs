@@ -77,6 +77,15 @@ entries.createEntry({
   content: 'the group shares this bounded context', tags: [], status: 'active',
   sources: [{ kind: 'conversation', id: CONV }], createdAt: NOW,
 });
+for (const [agentId, label] of [['agent_lead', 'lead'], ['agent_worker', 'worker'], ['agent_reviewer', 'reviewer']]) {
+  entries.createEntry({
+    id: 'mem_group_' + label, workspaceId: WS, scope: 'agent', ownerAgentId: agentId,
+    category: 'knowledge', authority: 'system-verified', confidence: 0.9, importance: 0.6,
+    title: label + ' private rule', summary: label + ' only',
+    content: 'private context for ' + agentId, tags: [], status: 'active',
+    sources: [{ kind: 'conversation', id: CONV }], createdAt: NOW,
+  });
+}
 
 const conversations = new ConversationRepository(db);
 const agents = Object.fromEntries(AGENT_IDS.map((id, index) => [id, {
@@ -184,6 +193,28 @@ expect('LITE-09-010', 'S5G-MENTION-02', 'the durable replies carry the serialize
       { agentId: 'agent_lead', taggedWithInteraction: true, idsIsArray: true },
     ],
     endedBy: 'completed', maxConcurrent: 1 });
+expect('LITE-09-101', 'S5G-CONTEXT-01', 'every group speaker sees a durable context snapshot before its Provider call and receives the frozen shared context',
+  { speakers: observations.slice(0, 2).map(observation => observation.agentId),
+    snapshotPersistedBeforeProvider: observations.slice(0, 2).every(observation => observation.interactionOnSnapshot === null),
+    sharedContextInjected: observations.slice(0, 2).every(observation => (observation.memoryContext ?? '').includes('the group shares this bounded context')),
+    providerSelectionMatchesSnapshot: observations.slice(0, 2).every(observation => (observation.selectedIds ?? []).includes('mem_group_shared')) },
+  { speakers: ['agent_reviewer', 'agent_lead'], snapshotPersistedBeforeProvider: true,
+    sharedContextInjected: true, providerSelectionMatchesSnapshot: true });
+const privateEntryId = { agent_lead: 'mem_group_lead', agent_worker: 'mem_group_worker', agent_reviewer: 'mem_group_reviewer' };
+expect('LITE-09-013', 'S5G-CONTEXT-ISOLATION-01', 'group speakers receive their own Agent-scoped context without seeing another Agent private rule',
+  { isolation: observations.slice(0, 2).map(observation => ({
+      agentId: observation.agentId,
+      seesOwn: (observation.memoryContext ?? '').includes('private context for ' + observation.agentId),
+      seesOther: AGENT_IDS.filter(agentId => agentId !== observation.agentId)
+        .some(agentId => (observation.memoryContext ?? '').includes('private context for ' + agentId)),
+      selectedOwn: (observation.selectedIds ?? []).includes(privateEntryId[observation.agentId]),
+      selectedOther: (observation.selectedIds ?? []).some(id => id.startsWith('mem_group_')
+        && id !== 'mem_group_shared' && id !== privateEntryId[observation.agentId]),
+    })) },
+  { isolation: [
+      { agentId: 'agent_reviewer', seesOwn: true, seesOther: false, selectedOwn: true, selectedOther: false },
+      { agentId: 'agent_lead', seesOwn: true, seesOther: false, selectedOwn: true, selectedOther: false },
+    ] });
 // The other direction of the same gate: with no mention at all, mention-only members are
 // reported as not-mentioned and only an always-mode member speaks.
 const noMentionInteraction = store.boundedGroupService().createInteraction({

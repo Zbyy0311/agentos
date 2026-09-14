@@ -248,6 +248,37 @@ test('S6 trigger never steals a live lease', async () => {
   fx.close();
 });
 
+test('S6 trigger re-evaluates the durable lease after a store restart', async () => {
+  const fx = fixture();
+  let restartedStore: SqliteStore | undefined;
+  const expiredAt = '2026-09-12T15:00:00.000Z';
+  const taskId = seedRunningAttempt(fx, expiredAt);
+  try {
+    fx.store.close();
+    restartedStore = new SqliteStore(fx.root);
+    const recoveries: Array<{ taskId: string; expiredLeaseAt: string }> = [];
+    const captured: { input?: Record<string, unknown> } = {};
+    const trigger = new ConversationCompactionTrigger({
+      store: restartedStore,
+      engine: fakeEngine(captured, 'published'),
+      getAgent: () => agent({}),
+      now: () => NOW,
+      onRecovery: observation => recoveries.push(observation),
+    });
+    await trigger.ensureCompacted({ workspaceId: WS, conversationId: CONV, agentId: 'agent_codex' });
+    assert.deepEqual(recoveries, [{ taskId, expiredLeaseAt: expiredAt }]);
+    const stored = restartedStore.getDatabase()
+      .prepare('SELECT status, failure_code FROM conversation_compactions WHERE id = ?')
+      .get(taskId) as { status: string; failure_code: string | null };
+    assert.equal(stored.status, 'retry-pending');
+    assert.equal(stored.failure_code, 'COMPACTION_LEASE_EXPIRED');
+    assert.ok(captured.input, 'restart recovery must continue after reclaiming');
+  } finally {
+    restartedStore?.close();
+    rmSync(fx.root, { recursive: true, force: true });
+  }
+});
+
 test('S6 trigger never breaks the Turn when the engine attempt throws', async () => {
   const fx = fixture();
   const errors: Array<[string, unknown]> = [];

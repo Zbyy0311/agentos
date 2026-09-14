@@ -871,6 +871,776 @@
         }
       ],
       "rationale": "The final-main receipt verifies that canonical summary identity comes from the persisted AgentOS compaction row and that no native-provider compaction row is accepted as canonical. The deterministic native-only refusal tests remain part of the same raw receipt's 39 passing assertions."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-13-002",
+      "requirementId": "LITE-13-002",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "INSP-12-RUN-IDENTITY",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+          "line": 144,
+          "expression": "assert.equal(projection.overview.runId, RUN);",
+          "clause": "Run, Stage, Provider, Process, and duration are distinct.",
+          "whyDirect": "The named production RuntimeInspector test reads the canonical projection and asserts the Run identity, stage, provider session, process identity, evidence-only PID, and Run-derived duration as separate values.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-12-PROCESS",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+          "line": 160,
+          "expression": "assert.equal(projection.processes.length, 1);",
+          "clause": "The projection contains a distinct Process record linked to the Provider Session and Stage.",
+          "whyDirect": "The assertion observes the persisted Process projection separately from the Stage and Provider Session records created by the fixture.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-12-DURATION",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+          "line": 175,
+          "expression": "assert.equal(timed.overview.durationMs, 2500);",
+          "clause": "Duration is derived from the canonical Run timestamps.",
+          "whyDirect": "The test changes only the Run timestamps and verifies the Inspector duration, proving duration is a Run projection rather than a Process identity or PID.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion is based on the final implementation baseline and a clean TAP receipt whose named assertions directly cover the distinct canonical identities and Run-derived duration."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-13-003",
+      "requirementId": "LITE-13-003",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "INSP-04-ID",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-04 process PID is evidence-only",
+          "line": 230,
+          "expression": "assert.equal(projection.processes[0].processId, processId);",
+          "clause": "The durable Process ID is projected as the AgentOS identity.",
+          "whyDirect": "The named test inserts a Process with a distinct durable ID and reads that ID back from the production Inspector projection.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-04-PID",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-04 process PID is evidence-only",
+          "line": 231,
+          "expression": "assert.equal(projection.processes[0].nativePidEvidenceOnly, 4242);",
+          "clause": "The native PID is retained only as evidence.",
+          "whyDirect": "The assertion verifies the native PID is exposed under the explicit evidence-only field, not substituted for the durable Process ID.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-04-NO-NATIVE-ID",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-04 process PID is evidence-only",
+          "line": 233,
+          "expression": "assert.ok(!('nativePid' in projection.processes[0]));",
+          "clause": "The DTO does not expose a misleading nativePid identity field.",
+          "whyDirect": "The assertion directly checks the returned production DTO shape and rejects the ambiguous nativePid property.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion directly verifies the durable Process ID/native PID boundary in the returned Inspector DTO, including the absence of the ambiguous nativePid field."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-13-015",
+      "requirementId": "LITE-13-015",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-INSPECTOR-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "INSP-07-EVENTS",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-07 inspect performs no writes",
+          "line": 280,
+          "expression": "assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runtime_events'), before);",
+          "clause": "Inspector replay does not append Runtime Events.",
+          "whyDirect": "The test snapshots the canonical Runtime Event count, invokes the production Inspector, and verifies the count is unchanged.",
+          "outcome": "passed"
+        },
+        {
+          "id": "INSP-07-RUN-STATE",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-07 inspect performs no writes",
+          "line": 281,
+          "expression": "assert.equal(count(fx.db, 'SELECT COUNT(*) AS c FROM runs WHERE status = ?', 'running'), 1);",
+          "clause": "Inspector replay does not mutate the canonical Run state.",
+          "whyDirect": "The assertion reads the canonical Run table after inspection and confirms the existing running state remains unchanged.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion is based on before/after canonical database assertions around the production Inspector call, proving that replay has no Runtime Event or Run-state side effects."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-00-007",
+      "requirementId": "LITE-00-007",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/TaskRunRecoveryService.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-RECOVERY-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 67,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "REC-MISMATCH-DISPOSITION",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+          "line": 1186,
+          "expression": "assert.equal(disposition, 'uncertainty-marked');",
+          "clause": "A mismatched running process is classified as uncertainty rather than successful continuation.",
+          "whyDirect": "The named production recovery test injects the mismatch classification and checks the actual recovery disposition returned by TaskRunRecoveryService.",
+          "outcome": "passed"
+        },
+        {
+          "id": "REC-MISMATCH-RUN",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+          "line": 1188,
+          "expression": "assert.equal(run.status, 'running', 'mismatch must not resume or terminal-fail');",
+          "clause": "Recovery does not guess completion or resume after a mismatch.",
+          "whyDirect": "The assertion reads the canonical Run after recovery and verifies that the uncertain Run is neither resumed nor falsely terminalized.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion directly observes the mismatch recovery disposition and the unchanged canonical Run state, proving the recovery path remains uncertain instead of guessing completion."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-02-014",
+      "requirementId": "LITE-02-014",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/TaskRunRecoveryService.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-RECOVERY-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 67,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "REC-MISSING-FAILURE",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + missing process -> canonical terminal failure",
+          "line": 1171,
+          "expression": "assert.equal(disposition, 'process-missing-failed');",
+          "clause": "MISSING process evidence takes the canonical terminal-failure path.",
+          "whyDirect": "The named test drives the production recovery service with a missing process classification and observes its committed disposition.",
+          "outcome": "passed"
+        },
+        {
+          "id": "REC-MISMATCH-UNCERTAIN",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+          "line": 1186,
+          "expression": "assert.equal(disposition, 'uncertainty-marked');",
+          "clause": "MISMATCH process evidence is marked uncertain without continuation.",
+          "whyDirect": "The production recovery path is exercised with mismatch evidence and its actual uncertainty disposition is asserted.",
+          "outcome": "passed"
+        },
+        {
+          "id": "REC-SAME-NO-RESUME",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+          "line": 1201,
+          "expression": "assert.equal(run.status, 'running', 'same must not resume execution');",
+          "clause": "SAME process evidence does not by itself authorize continuation.",
+          "whyDirect": "The named production test supplies SAME evidence and reads the canonical Run to prove it remains in the uncertain running state.",
+          "outcome": "passed"
+        },
+        {
+          "id": "REC-UNKNOWN-NO-RESUME",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + unknown -> fail-safe, no resume",
+          "line": 1215,
+          "expression": "assert.equal(run.status, 'running', 'unknown must never resume');",
+          "clause": "UNKNOWN process evidence fails safe and never resumes execution.",
+          "whyDirect": "The production recovery test drives UNKNOWN evidence and checks the persisted Run status after the recovery attempt.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The four named P6M2b cases directly cover MISSING, MISMATCH, SAME and UNKNOWN, with canonical disposition or Run-state assertions for each branch."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-02-015",
+      "requirementId": "LITE-02-015",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/TaskRunRecoveryService.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-RECOVERY-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 67,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "REC-SAME-NO-RESUME-NON-GOAL",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+          "line": 1201,
+          "expression": "assert.equal(run.status, 'running', 'same must not resume execution');",
+          "clause": "SAME process evidence does not authorize a resume or adoption.",
+          "whyDirect": "The production recovery test observes the canonical Run after SAME classification and confirms the execution remains uncertain rather than being reattached.",
+          "outcome": "passed"
+        },
+        {
+          "id": "REC-SAME-NO-RESPAWN",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+          "line": 1203,
+          "expression": "assert.equal((fixture.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes WHERE workspace_id = ? AND run_id = ?').get(WORKSPACE_ID, fixture.runId) as { c: number }).c, 0, 'same must not respawn or create a second owned process');",
+          "clause": "Recovery does not respawn or create a second owned process.",
+          "whyDirect": "The test reads the canonical runtime_processes table after the production recovery path and directly verifies no second execution entity was persisted.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion is limited to the explicit Lite non-goal: SAME evidence does not resume, adopt, take over, or respawn the execution, and no second process is persisted."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-03-018",
+      "requirementId": "LITE-03-018",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/TaskRunRecoveryService.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-RECOVERY-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 67,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "REC-SAME-NO-TAKEOVER",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+          "line": 1202,
+          "expression": "assert.equal(run.recoveryRequired, true, 'same stays uncertain pending M2c cleanup');",
+          "clause": "SAME classification remains explicitly uncertain instead of becoming a reattach success.",
+          "whyDirect": "The named production recovery test reads the durable recovery flag after SAME evidence and confirms the non-goal boundary remains active.",
+          "outcome": "passed"
+        },
+        {
+          "id": "REC-SAME-NO-RESPAWN-EVENT",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + same process -> no resume, no ownership takeover, stays uncertain",
+          "line": 1203,
+          "expression": "assert.equal((fixture.db.prepare('SELECT COUNT(*) AS c FROM runtime_processes WHERE workspace_id = ? AND run_id = ?').get(WORKSPACE_ID, fixture.runId) as { c: number }).c, 0, 'same must not respawn or create a second owned process');",
+          "clause": "The recovery boundary creates no respawned process or duplicate execution entity.",
+          "whyDirect": "The assertion reads the canonical process table after the recovery attempt and directly checks that no new owned process exists.",
+          "outcome": "passed"
+        },
+        {
+          "id": "REC-UNKNOWN-FAILSAFE",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + unknown -> fail-safe, no resume",
+          "line": 1213,
+          "expression": "assert.equal(disposition, 'uncertainty-marked');",
+          "clause": "UNKNOWN classification never becomes successful recovery.",
+          "whyDirect": "The production recovery test drives UNKNOWN evidence and observes the explicit fail-safe disposition.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The individual receipt directly covers the Event-model recovery boundary for SAME and UNKNOWN evidence: uncertainty is persisted, no resume or respawn is performed, and no successful reattach is inferred."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-13-008",
+      "requirementId": "LITE-13-008",
+      "from": "RUNTIME-VERIFY",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/TaskRunRecoveryService.ts",
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S8-RECOVERY-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 67,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "REC-MISMATCH-FLAG",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+          "line": 1189,
+          "expression": "assert.equal(run.recoveryRequired, true);",
+          "clause": "The uncertain recovery fact is durably marked and cannot be presented as success.",
+          "whyDirect": "The production recovery test reads the persisted Run record and checks the explicit recoveryRequired flag after mismatch evidence.",
+          "outcome": "passed"
+        },
+        {
+          "id": "REC-MISMATCH-NO-TERMINAL",
+          "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+          "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+          "line": 1188,
+          "expression": "assert.equal(run.status, 'running', 'mismatch must not resume or terminal-fail');",
+          "clause": "The Run remains uncertain rather than being reported as successfully recovered.",
+          "whyDirect": "The assertion observes the canonical Run status after the production recovery path and rejects both resume and false terminal success.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion binds Inspector's recovery truthfulness to the production recovery service's durable mismatch evidence: the Run stays uncertain and recoveryRequired remains true."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-107",
+      "requirementId": "LITE-09-107",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/store/SqliteStore.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S6-RETRY-SERVICE-CONTROLLED",
+        "S9-M0-S6-RETRY-TRIGGER-CONTROLLED",
+        "S9-M0-S6-RETRY-REPOSITORY-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionService.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 8,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "CMP-SERVICE-RETRY-PENDING",
+          "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+          "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+          "line": 149,
+          "expression": "assert.equal(first.outcome, 'retry-pending');",
+          "clause": "A failed automatic compaction remains durably retry-pending before its bounded retry.",
+          "whyDirect": "The named production service test invokes the real compaction service with a failing summarizer and asserts the persisted-attempt outcome returned by the first automatic call.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-SERVICE-SAME-TASK",
+          "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+          "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+          "line": 156,
+          "expression": "assert.equal(second.task?.id, first.task?.id, 'the retry resumes the existing attempt');",
+          "clause": "The automatic retry resumes the same durable compaction task.",
+          "whyDirect": "The service test compares the second attempt's durable task ID with the first task ID, proving retry recovery does not create an unrelated compaction chain.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-SERVICE-ATTEMPTS-EXHAUSTED",
+          "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+          "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+          "line": 158,
+          "expression": "assert.equal(second.task?.failureCode, 'COMPACTION_RETRIES_EXHAUSTED');",
+          "clause": "The automatic retry chain records exhaustion instead of scheduling indefinitely.",
+          "whyDirect": "The production service test observes the stable exhausted-retry failure code after the permitted automatic retry.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-SERVICE-ONE-AUTO-RETRY",
+          "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+          "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+          "line": 159,
+          "expression": "assert.equal(calls, 2, 'one initial attempt plus exactly one automatic retry');",
+          "clause": "At most one automatic retry is spent for one failed source chain.",
+          "whyDirect": "The test counts actual summarizer invocations and directly asserts exactly the initial invocation plus one automatic retry.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-SERVICE-NO-THIRD-AUTO-CALL",
+          "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+          "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+          "line": 165,
+          "expression": "assert.equal(calls, 2, 'a spent chain must not start a new Provider call');",
+          "clause": "An exhausted automatic chain does not schedule another Provider call on the next evaluation.",
+          "whyDirect": "The test invokes the service a third time and observes that the real summarizer call count remains two.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-SERVICE-EXPLICIT-ONLY",
+          "file": "apps/server/src/services/ConversationCompactionService.test.ts",
+          "name": "S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt",
+          "line": 170,
+          "expression": "assert.notEqual(explicit.task?.id, first.task?.id, 'an explicit retry starts its own attempt');",
+          "clause": "A new attempt after automatic exhaustion requires an explicit retry request.",
+          "whyDirect": "The service test supplies resume=explicit and directly verifies that only that explicit path starts a new durable attempt.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-TRIGGER-EXPIRED-RETRY",
+          "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+          "name": "S6 trigger reclaims an EXPIRED running lease before attempting again",
+          "line": 220,
+          "expression": "assert.equal(stored.status, 'retry-pending');",
+          "clause": "A persisted expired running lease is moved to retry-pending before another attempt.",
+          "whyDirect": "The trigger test seeds a durable running task with an expired lease, invokes the production trigger, and reads the stored task status.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-TRIGGER-EXPIRED-CODE",
+          "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+          "name": "S6 trigger reclaims an EXPIRED running lease before attempting again",
+          "line": 221,
+          "expression": "assert.equal(stored.failure_code, 'COMPACTION_LEASE_EXPIRED');",
+          "clause": "Lease recovery records the durable expired-lease reason.",
+          "whyDirect": "The test reads the persisted failure code after the production trigger reclaims the old lease and asserts the canonical code.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-TRIGGER-EXPIRED-CONTINUES",
+          "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+          "name": "S6 trigger reclaims an EXPIRED running lease before attempting again",
+          "line": 223,
+          "expression": "assert.ok(captured.input, 'the trigger must continue after reclaiming');",
+          "clause": "An expired lease does not permanently block the next bounded attempt.",
+          "whyDirect": "The production trigger test observes that the engine actually receives a new attempt after the expired task is reclaimed.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-TRIGGER-LIVE-NO-DUPLICATE",
+          "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+          "name": "S6 trigger never steals a live lease",
+          "line": 242,
+          "expression": "assert.equal(captured.input, undefined, 'a live attempt must not be duplicated');",
+          "clause": "An unexpired lease blocks a duplicate compaction attempt.",
+          "whyDirect": "The trigger test seeds a live persisted lease and directly verifies that the production trigger does not call the engine a second time.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-TRIGGER-RESTART-RECLAIM",
+          "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+          "name": "S6 trigger re-evaluates the durable lease after a store restart",
+          "line": 273,
+          "expression": "assert.equal(stored.status, 'retry-pending');",
+          "clause": "After the SQLite store is closed and reopened, persisted expired work is recovered as retry-pending.",
+          "whyDirect": "The named test closes the real SQLite store, opens it again, invokes the production trigger, and reads the durable task status after recovery.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-TRIGGER-RESTART-CODE",
+          "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+          "name": "S6 trigger re-evaluates the durable lease after a store restart",
+          "line": 274,
+          "expression": "assert.equal(stored.failure_code, 'COMPACTION_LEASE_EXPIRED');",
+          "clause": "Restart recovery preserves the explicit expired-lease disposition.",
+          "whyDirect": "The restarted trigger test reads the persisted failure code and directly verifies that recovery is based on the stored lease state.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-TRIGGER-RESTART-CONTINUES",
+          "file": "apps/server/src/services/ConversationCompactionTrigger.test.ts",
+          "name": "S6 trigger re-evaluates the durable lease after a store restart",
+          "line": 275,
+          "expression": "assert.ok(captured.input, 'restart recovery must continue after reclaiming');",
+          "clause": "The restarted trigger can continue the bounded attempt after reclaiming expired work.",
+          "whyDirect": "The test observes an actual engine input after the store restart and lease recovery, proving the restart path does not silently discard the retry.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-TIMEOUT",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: policy rows are immutable and versioned",
+          "line": 66,
+          "expression": "assert.equal(fx.policy.timeoutMs, 120_000);",
+          "clause": "The Lite v1 persisted policy records the 120 second compaction timeout.",
+          "whyDirect": "The repository test reads the actual policy row used by compaction and directly asserts its timeout value.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-AUTO-RETRIES",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: policy rows are immutable and versioned",
+          "line": 67,
+          "expression": "assert.equal(fx.policy.maxAutomaticRetries, 1);",
+          "clause": "The Lite v1 persisted policy allows one automatic retry.",
+          "whyDirect": "The repository test reads the actual immutable policy record and directly asserts the retry bound.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-STALE-RECLAIMED",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: a reclaimed lease cannot publish from the old holder or version",
+          "line": 90,
+          "expression": "assert.equal(reclaimed.status, 'retry-pending');",
+          "clause": "Reclaiming an expired lease advances the durable task out of running.",
+          "whyDirect": "The repository test invokes the real lease-reclaim transaction and asserts the resulting persisted state before attempting stale publication.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-STALE-PUBLISH-REJECTED",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: a reclaimed lease cannot publish from the old holder or version",
+          "line": 91,
+          "expression": "assert.throws(() => inTransaction(fx.db, () => fx.compactions.publishWithinTransaction({",
+          "clause": "A holder using the old running version cannot publish after lease reclamation.",
+          "whyDirect": "The named repository test attempts publication with the old holder and pre-reclaim version and requires the production repository's COMPACTION_CONFLICT assertion.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-STALE-STATE",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: a reclaimed lease cannot publish from the old holder or version",
+          "line": 97,
+          "expression": "assert.equal(stored.status, 'retry-pending');",
+          "clause": "Rejected stale publication leaves the reclaimed task retry-pending.",
+          "whyDirect": "The test reads the canonical compaction row after the stale publish attempt and verifies the durable state did not regress to published.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-STALE-NO-SUMMARY",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: a reclaimed lease cannot publish from the old holder or version",
+          "line": 98,
+          "expression": "assert.equal(stored.summary, null);",
+          "clause": "A rejected stale publisher cannot write a summary.",
+          "whyDirect": "The repository test directly observes the summary column after the rejected stale publication and confirms no stale result was persisted.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-SINGLE-RUNNING",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: one running compaction per Conversation and bounded retry/failure branches",
+          "line": 146,
+          "expression": "assert.throws(() => inTransaction(fx.db, () => fx.compactions.claimRunningWithinTransaction({",
+          "clause": "A second running compaction for one Conversation is rejected by the durable uniqueness fence.",
+          "whyDirect": "The repository test creates a second task for the same Conversation and directly asserts the production claim transaction rejects the competing holder.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-RETRY-ATTEMPT-2",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: one running compaction per Conversation and bounded retry/failure branches",
+          "line": 161,
+          "expression": "assert.equal(runningRetry.attempts, 2);",
+          "clause": "The durable retry transition increments the attempt number exactly once.",
+          "whyDirect": "The repository test reclaims the first running task, claims its retry, and reads the persisted attempt count.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CMP-REPO-RETRIES-EXHAUSTED",
+          "file": "apps/server/src/store/CompactionRepository.test.ts",
+          "name": "S6/029: one running compaction per Conversation and bounded retry/failure branches",
+          "line": 167,
+          "expression": "assert.equal(failed.failureCode, 'COMPACTION_RETRIES_EXHAUSTED');",
+          "clause": "The durable task records retry exhaustion as a terminal failure.",
+          "whyDirect": "The repository test performs the terminal failure transition after the second attempt and directly reads the canonical failure code.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses three separately captured literal commands: service 8 pass / 0 fail / 0 skip, trigger 10 pass / 0 fail / 0 skip, and repository 4 pass / 0 fail / 0 skip. Together their named assertions directly prove the Lite v1 120000ms/one-retry policy, one running holder, SQLite restart recovery, live-lease non-stealing, stale-lease publication fencing, and bounded retry exhaustion."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-104",
+      "requirementId": "LITE-07-104",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/RuntimeArtifactService.ts",
+        "apps/server/src/services/RuntimeArtifactCollector.ts",
+        "apps/server/src/services/ArtifactCompletionService.ts",
+        "apps/server/src/services/CanonicalArtifactResultService.ts",
+        "apps/server/src/store/ArtifactCompletionRepository.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S2-ARTIFACT-LIFECYCLE-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ArtifactCompletionService.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "ARTIFACT-REAL-TEST-PASS",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 262,
+          "expression": "assert.match(stdout, /ok 1 - real artifact evidence/);",
+          "clause": "The lifecycle starts with a real review/test subprocess whose passing result is captured.",
+          "whyDirect": "The named production test launches a real node:test child process and directly asserts its TAP output before passing the observation into the Artifact Collector.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-COMPLETION-LISTED",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 274,
+          "expression": "assert.equal(listed.completions.length, 1);",
+          "clause": "The Collector's real test observation creates one durable ArtifactCompletion record.",
+          "whyDirect": "After recording the child process observations through the production Collector, the test queries the mounted HTTP completion route and directly asserts the durable completion exists.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-REVIEW-QUEUE",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 277,
+          "expression": "assert.ok(queue.candidates.some(candidate => candidate.id === completion.candidateId));",
+          "clause": "The completed Artifact's Candidate appears in the review-required queue.",
+          "whyDirect": "The test reads the production memory candidate HTTP route and matches the candidate ID returned by the durable ArtifactCompletion produced by the Collector.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-EVENT",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 278,
+          "expression": "assert.equal((fx.store.getDatabase().prepare(\"SELECT COUNT(*) AS n FROM workspace_events WHERE type = 'memory.candidate_created'\").get() as { n: number }).n, 1);",
+          "clause": "The real Artifact completion emits the canonical candidate_created Workspace Event.",
+          "whyDirect": "After the Collector processes the real test observation, the test reads the production Workspace Event table and directly asserts one candidate_created event exists.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-CONFIRMATION",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 279,
+          "expression": "assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, conclusion: 'pass' })).status, 200);",
+          "clause": "The completion API accepts the matching final conclusion after the real Artifact exists.",
+          "whyDirect": "The test calls the production completion route with the actual Artifact ID returned by the Collector path and asserts the successful HTTP result.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-CONFLICT-REJECTED",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 280,
+          "expression": "assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, conclusion: 'fail' })).status, 409);",
+          "clause": "A conflicting conclusion for the same completed Artifact is rejected.",
+          "whyDirect": "The route is called with the same real Artifact ID and an opposing conclusion, and the test directly observes the stable conflict response.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-REVIEW-ACCEPTED",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 283,
+          "expression": "assert.equal(response.status, 200);",
+          "clause": "The review queue Candidate can be accepted through the production review route.",
+          "whyDirect": "The test posts acceptance for the exact Candidate linked by the real completion and directly asserts the successful review response.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-ENTRY-SOURCE",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 286,
+          "expression": "assert.deepEqual(entry.sources, [{ kind: 'artifact', id: completion.artifactId }]);",
+          "clause": "Acceptance creates a Memory Entry that preserves the actual Artifact source.",
+          "whyDirect": "The test reads the production Memory Entry after review acceptance and directly compares its source to the Artifact ID produced by the Collector path.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-CONTENT-READBACK",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 289,
+          "expression": "assert.match(await content.text(), /real artifact evidence/);",
+          "clause": "The final Artifact content remains readable through the production route after review.",
+          "whyDirect": "The test reads the actual Artifact content endpoint after the full completion and review chain and matches the child test's evidence marker.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion is based on the real test subprocess -> Collector -> durable ArtifactCompletion -> candidate_created Workspace Event -> review queue -> acceptance -> Memory Entry path. The 15 pass / 0 fail / 0 skip raw TAP receipt includes direct assertions for each transition and source/content link; the standalone completion POST is only an idempotency/conflict check after the real Collector-produced completion."
     }
   ]
 }

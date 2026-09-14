@@ -1,0 +1,512 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T19:48:40.220Z",
+  "maxConcurrent": 1,
+  "phases": {
+    "plan": {
+      "interactionId": "conv_01M2GQDTD9DRYH3BXW1Y9GS3DY",
+      "speakers": [
+        "agent_reviewer",
+        "agent_lead"
+      ],
+      "replies": [
+        {
+          "agentId": "agent_reviewer",
+          "hopOrder": 0
+        },
+        {
+          "agentId": "agent_lead",
+          "hopOrder": 1
+        }
+      ]
+    },
+    "members": {
+      "interactionId": "conv_01M2GQDTG6YQGA6SC9QD5NBKSB",
+      "speakers": 3
+    },
+    "d3off": {
+      "interactionId": "conv_01M2GQDTJ23S91DRZYXBW5F317",
+      "speakers": 2
+    },
+    "contention": {
+      "interactionId": "conv_01M2GQDTKJXMTAVKC1H3RWPQ8F"
+    },
+    "turnFailures": [
+      {
+        "conversationId": "conv_bbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "status": "failed",
+        "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY",
+        "failureMessage": "Workspace modifying authority is held by CANONICAL_RUN run_group_competitor; chat has no implicit modifying authority. Wait for that work to finish, or start an explicit Run."
+      }
+    ]
+  },
+  "counts": {
+    "total": 9,
+    "passed": 9,
+    "failed": 0,
+    "skipped": 0
+  },
+  "receipts": [
+    {
+      "id": "S5G-MENTION-01",
+      "requirementId": "LITE-09-010",
+      "phase": "plan",
+      "step": "a mention selects exactly the mentioned Agents, in mention order, and reports the rest as skipped",
+      "actual": {
+        "speakers": [
+          {
+            "agentId": "agent_reviewer",
+            "source": "mention"
+          },
+          {
+            "agentId": "agent_lead",
+            "source": "mention"
+          }
+        ],
+        "skipped": [
+          {
+            "agentId": null,
+            "reason": "member-not-active"
+          },
+          {
+            "agentId": "agent_worker",
+            "reason": "not-selected-manually"
+          }
+        ],
+        "repliesRecorded": [
+          {
+            "agentId": "agent_reviewer",
+            "status": "final",
+            "hasReply": true
+          },
+          {
+            "agentId": "agent_lead",
+            "status": "final",
+            "hasReply": true
+          }
+        ]
+      },
+      "expected": {
+        "speakers": [
+          {
+            "agentId": "agent_reviewer",
+            "source": "mention"
+          },
+          {
+            "agentId": "agent_lead",
+            "source": "mention"
+          }
+        ],
+        "skipped": [
+          {
+            "agentId": null,
+            "reason": "member-not-active"
+          },
+          {
+            "agentId": "agent_worker",
+            "reason": "not-selected-manually"
+          }
+        ],
+        "repliesRecorded": [
+          {
+            "agentId": "agent_reviewer",
+            "status": "final",
+            "hasReply": true
+          },
+          {
+            "agentId": "agent_lead",
+            "status": "final",
+            "hasReply": true
+          }
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-MENTION-02",
+      "requirementId": "LITE-09-010",
+      "phase": "plan",
+      "step": "the durable replies carry the serialized speaker order and the hop chain",
+      "actual": {
+        "replyAgents": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "hopOrders": [
+          0,
+          1
+        ],
+        "hopChain": [
+          null,
+          "agent_reviewer"
+        ],
+        "agentsSawTheirOwnSnapshot": [
+          {
+            "agentId": "agent_reviewer",
+            "sawSharedConversationEntry": true,
+            "contextIsFrozenEntry": true
+          },
+          {
+            "agentId": "agent_lead",
+            "sawSharedConversationEntry": true,
+            "contextIsFrozenEntry": true
+          }
+        ],
+        "replySnapshotTags": [
+          {
+            "agentId": "agent_reviewer",
+            "taggedWithInteraction": true,
+            "idsIsArray": true
+          },
+          {
+            "agentId": "agent_lead",
+            "taggedWithInteraction": true,
+            "idsIsArray": true
+          }
+        ],
+        "endedBy": "completed",
+        "maxConcurrent": 1
+      },
+      "expected": {
+        "replyAgents": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "hopOrders": [
+          0,
+          1
+        ],
+        "hopChain": [
+          null,
+          "agent_reviewer"
+        ],
+        "agentsSawTheirOwnSnapshot": [
+          {
+            "agentId": "agent_reviewer",
+            "sawSharedConversationEntry": true,
+            "contextIsFrozenEntry": true
+          },
+          {
+            "agentId": "agent_lead",
+            "sawSharedConversationEntry": true,
+            "contextIsFrozenEntry": true
+          }
+        ],
+        "replySnapshotTags": [
+          {
+            "agentId": "agent_reviewer",
+            "taggedWithInteraction": true,
+            "idsIsArray": true
+          },
+          {
+            "agentId": "agent_lead",
+            "taggedWithInteraction": true,
+            "idsIsArray": true
+          }
+        ],
+        "endedBy": "completed",
+        "maxConcurrent": 1
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-CONTEXT-01",
+      "requirementId": "LITE-09-101",
+      "phase": "plan",
+      "step": "every group speaker sees a durable context snapshot before its Provider call and receives the frozen shared context",
+      "actual": {
+        "speakers": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "snapshotPersistedBeforeProvider": true,
+        "sharedContextInjected": true,
+        "providerSelectionMatchesSnapshot": true
+      },
+      "expected": {
+        "speakers": [
+          "agent_reviewer",
+          "agent_lead"
+        ],
+        "snapshotPersistedBeforeProvider": true,
+        "sharedContextInjected": true,
+        "providerSelectionMatchesSnapshot": true
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-CONTEXT-ISOLATION-01",
+      "requirementId": "LITE-09-013",
+      "phase": "plan",
+      "step": "group speakers receive their own Agent-scoped context without seeing another Agent private rule",
+      "actual": {
+        "isolation": [
+          {
+            "agentId": "agent_reviewer",
+            "seesOwn": true,
+            "seesOther": false,
+            "selectedOwn": true,
+            "selectedOther": false
+          },
+          {
+            "agentId": "agent_lead",
+            "seesOwn": true,
+            "seesOther": false,
+            "selectedOwn": true,
+            "selectedOther": false
+          }
+        ]
+      },
+      "expected": {
+        "isolation": [
+          {
+            "agentId": "agent_reviewer",
+            "seesOwn": true,
+            "seesOther": false,
+            "selectedOwn": true,
+            "selectedOther": false
+          },
+          {
+            "agentId": "agent_lead",
+            "seesOwn": true,
+            "seesOther": false,
+            "selectedOwn": true,
+            "selectedOther": false
+          }
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-MENTION-03",
+      "requirementId": "LITE-09-010",
+      "phase": "plan",
+      "step": "without a mention only the always-mode member speaks and the mention-only members are reported as not-mentioned",
+      "actual": {
+        "speakers": [
+          {
+            "agentId": "agent_worker",
+            "source": "mode"
+          }
+        ],
+        "skipped": [
+          {
+            "agentId": "agent_lead",
+            "reason": "not-mentioned"
+          },
+          {
+            "agentId": "agent_reviewer",
+            "reason": "not-mentioned"
+          },
+          {
+            "agentId": null,
+            "reason": "member-not-active"
+          }
+        ],
+        "replies": [
+          "agent_worker"
+        ]
+      },
+      "expected": {
+        "speakers": [
+          {
+            "agentId": "agent_worker",
+            "source": "mode"
+          }
+        ],
+        "skipped": [
+          {
+            "agentId": "agent_lead",
+            "reason": "not-mentioned"
+          },
+          {
+            "agentId": "agent_reviewer",
+            "reason": "not-mentioned"
+          },
+          {
+            "agentId": null,
+            "reason": "member-not-active"
+          }
+        ],
+        "replies": [
+          "agent_worker"
+        ]
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-ALL-01",
+      "requirementId": "LITE-09-010",
+      "phase": "members",
+      "step": "the full member set speaks in the delivered order and the walk is serialized end to end",
+      "actual": {
+        "speakerOrder": [
+          "agent_lead",
+          "agent_worker",
+          "agent_reviewer"
+        ],
+        "declaredReadOnly": [
+          false
+        ],
+        "effectiveMutationClass": [
+          "modifying"
+        ],
+        "repliesRecorded": [
+          "agent_lead",
+          "agent_worker",
+          "agent_reviewer"
+        ],
+        "budgetAfter": {
+          "repliesUsed": 3,
+          "repliesRemaining": 0,
+          "hopsUsed": 2,
+          "hopsRemaining": 2,
+          "distinctAgents": 3,
+          "agentsRemaining": 0
+        },
+        "maxConcurrent": 1,
+        "endedBy": "budget-total-replies"
+      },
+      "expected": {
+        "speakerOrder": [
+          "agent_lead",
+          "agent_worker",
+          "agent_reviewer"
+        ],
+        "declaredReadOnly": [
+          false
+        ],
+        "effectiveMutationClass": [
+          "modifying"
+        ],
+        "repliesRecorded": [
+          "agent_lead",
+          "agent_worker",
+          "agent_reviewer"
+        ],
+        "budgetAfter": {
+          "repliesUsed": 3,
+          "repliesRemaining": 0,
+          "hopsUsed": 2,
+          "hopsRemaining": 2,
+          "distinctAgents": 3,
+          "agentsRemaining": 0
+        },
+        "maxConcurrent": 1,
+        "endedBy": "budget-total-replies"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-D3OFF-01",
+      "requirementId": "LITE-09-010",
+      "phase": "d3off",
+      "step": "a parallel-read-only request is recorded as declared but still classified modifying and stays serialized (D3 off)",
+      "actual": {
+        "declaredReadOnly": [
+          true
+        ],
+        "effectiveMutationClass": [
+          "modifying"
+        ],
+        "turnsStarted": 2,
+        "repliesRecorded": 2,
+        "maxConcurrent": 1,
+        "endedBy": "budget-total-replies"
+      },
+      "expected": {
+        "declaredReadOnly": [
+          true
+        ],
+        "effectiveMutationClass": [
+          "modifying"
+        ],
+        "turnsStarted": 2,
+        "repliesRecorded": 2,
+        "maxConcurrent": 1,
+        "endedBy": "budget-total-replies"
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-CONTENTION-01",
+      "requirementId": "LITE-09-010",
+      "phase": "contention",
+      "step": "a foreign modifying holder stops the walk before any reply is recorded, with the refusal named on the Turn",
+      "actual": {
+        "providerCalls": 0,
+        "repliesRecorded": 0,
+        "endedBy": "provider-failed",
+        "interactionStatus": {
+          "status": "active",
+          "stopReason": null
+        },
+        "budgetUnmoved": {
+          "repliesUsed": 0,
+          "repliesRemaining": 2,
+          "hopsUsed": 0,
+          "hopsRemaining": 2,
+          "distinctAgents": 0,
+          "agentsRemaining": 2
+        },
+        "turnStatuses": [
+          {
+            "status": "failed",
+            "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY"
+          }
+        ],
+        "refusalNamesTheHolder": true,
+        "replayBudgetLimited": 2
+      },
+      "expected": {
+        "providerCalls": 0,
+        "repliesRecorded": 0,
+        "endedBy": "provider-failed",
+        "interactionStatus": {
+          "status": "active",
+          "stopReason": null
+        },
+        "budgetUnmoved": {
+          "repliesUsed": 0,
+          "repliesRemaining": 2,
+          "hopsUsed": 0,
+          "hopsRemaining": 2,
+          "distinctAgents": 0,
+          "agentsRemaining": 2
+        },
+        "turnStatuses": [
+          {
+            "status": "failed",
+            "failureCode": "CONVERSATION_WORKSPACE_MODIFYING_BUSY"
+          }
+        ],
+        "refusalNamesTheHolder": true,
+        "replayBudgetLimited": 2
+      },
+      "outcome": "passed"
+    },
+    {
+      "id": "S5G-CONTENTION-02",
+      "requirementId": "LITE-09-010",
+      "phase": "contention",
+      "step": "once the holder is released the same interaction completes, so the stop was about authority only",
+      "actual": {
+        "repliesRecorded": 2,
+        "endedBy": "budget-total-replies",
+        "replyAgents": [
+          "agent_lead",
+          "agent_worker"
+        ]
+      },
+      "expected": {
+        "repliesRecorded": 2,
+        "endedBy": "budget-total-replies",
+        "replyAgents": [
+          "agent_lead",
+          "agent_worker"
+        ]
+      },
+      "outcome": "passed"
+    }
+  ]
+}
