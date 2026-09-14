@@ -274,16 +274,18 @@
       "state": "RUNTIME-VERIFY",
       "workPackage": "S8",
       "implementation": [
-        "apps/server/src/index.ts"
+        "apps/server/src/index.ts",
+        "apps/server/src/routes/git.ts",
+        "apps/server/src/services/GitObservationCollector.ts"
       ],
       "tests": [
         "apps/server/src/services/GitObservationCollector.integration.test.ts",
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/routes/git.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体只覆盖 HTTP run.start 接受与执行到终态，与 Git 可观测性无关（关键词 'execution'/'acceptance' 是巧合）。本条需重新寻找覆盖 Git observation 的断言。 (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-011. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。以只读收集器持久化Git观察快照（base/final commit SHA）并在终止时枚举自有进程树；不创建Git写操作或工作流。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体只覆盖 HTTP run.start 接受与执行到终态，与 Git 可观测性无关（关键词 'execution'/'acceptance' 是巧合）。本条需重新寻找覆盖 Git observation 的断言。 (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-011. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。以只读收集器持久化Git观察快照（base/final commit SHA）并在终止时枚举自有进程树；不创建Git写操作或工作流。 同修订已补齐两半（LITE-00-011）：前半「Git 变更可观测」由 apps/server/src/services/GitObservationCollector.integration.test.ts 覆盖（29 条断言、0 跳过，本地实跑 29/29 通过）：干净已提交仓库的 canonical root/HEAD 与完整 clean 状态、tracked dirty 文件的状态项与非空 diff、untracked 文件、带 NUL 前路径的分段重命名、嵌套工作区隔离（A 的状态与 diff 不含脏的兄弟工作区 B）、非 Git 目录的精确 C-locale NOT_GIT 快照、未出生仓库（GIT、null commits、clean 状态、diff not_applicable），以及 junction 路径先解析且绝不报告词法仓库（fail closed）。后半「AgentOS 不拥有 Git 工作流执行」由 apps/server/src/routes/git.test.ts 的 LITE-06-011 用例覆盖：Git 面三条路由（status/diff/log）各自只读取并只回一个同名观测字段，POST/PUT/PATCH/DELETE 一律不被路由（404），且该面实际发出的每条 git 命令都是只读查询。原 finding 指向的 docs/implementation/milestones/Lite-FastTrack-progress.md 是进度记录而非测试，已从 tests 指针移除。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
