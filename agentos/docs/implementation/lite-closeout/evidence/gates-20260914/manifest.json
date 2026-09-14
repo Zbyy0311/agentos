@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "baseline": "0df73d7544f8c1d98feba83bbcca9e34ec28d91b",
-  "capturedAt": "2026-09-14T09:32:03.616Z",
+  "capturedAt": "2026-09-14T09:34:56.433Z",
   "note": "Raw stdout/stderr and exit codes for the real Provider gates run from this pinned clean SHA. These are receipts for the audit final-verification order step 3; they do not change any matrix state.",
   "gates": [
     {
@@ -85,6 +85,27 @@
           "file": "stdout.txt",
           "bytes": 303,
           "sha256": "d187a723dc716ebc9fdf17e9d7798208978a18acba4eb60bc4890710f6b5ce1c"
+        }
+      ]
+    },
+    {
+      "gate": "require-closed",
+      "exitCode": 1,
+      "receipts": [
+        {
+          "file": "exit.txt",
+          "bytes": 2,
+          "sha256": "4355a46b19d348dc2f57c046f8ef63d4538ebb936000f3c9ee954a27460dd865"
+        },
+        {
+          "file": "stderr.txt",
+          "bytes": 641,
+          "sha256": "0170833056989039b6f2b353dcf0d90019c9a0519f66c71e3e7eef65ee72d358"
+        },
+        {
+          "file": "stdout.txt",
+          "bytes": 0,
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
         }
       ]
     }

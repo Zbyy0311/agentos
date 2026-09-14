@@ -47,3 +47,34 @@ from `apps/server`, with the switch in the environment.
 - The end-to-end product harness is not part of this run.
 - Receipt text is captured through PowerShell file redirection: it is the raw process
   output as observed, not a re-serialization of a parsed result.
+
+## Final-verification step 4: the closure check, run and preserved as-is
+
+`PASS-EVIDENCE-AUDIT.md` asks for `verify-lite-scope.mjs --require-closed` to be run only after
+the gates, and for its actual nonzero result to be preserved rather than made to pass. From this
+same pinned revision:
+
+```
+node scripts/verify-lite-scope.mjs --require-closed
+exit 1
+AssertionError [ERR_ASSERTION]: required Lite acceptance remains open
+231 !== 0
+```
+
+Raw `stdout`, `stderr` and the exit code are under
+`evidence/gates-20260914/require-closed/`. The ordinary scope verifier still exits 0 at
+matrixVersion 15 (`PASS 0 / GAP 26 / RUNTIME-VERIFY 205 / DEFERRED 164`), so the failure is
+specifically the closure condition rather than a malformed matrix. No row was promoted to
+change this result.
+
+## Final-verification step 2: the CI run for this revision
+
+The CI run for `0df73d75` itself is `34827184549` on workflow `CI`; its result has to be
+preserved once terminal. It is listed here so the run id is not lost.
+
+| Revision | CI run | Workflow |
+| --- | ---: | --- |
+| `0df73d7544f8c1d98feba83bbcca9e34ec28d91b` | `34827184549` | CI |
+
+Earlier main revisions for context: `31020c9b` -> run `34810883168` (success), `f9cfbd00` ->
+run `34764895472` (success).
