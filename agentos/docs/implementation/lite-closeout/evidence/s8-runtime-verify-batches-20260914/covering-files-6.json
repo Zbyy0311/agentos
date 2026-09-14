@@ -1,0 +1,6 @@
+[
+  "apps/server/src/services/AgentHistoryService.test.ts",
+  "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts",
+  "apps/server/src/migrations/__tests__/m2-5-workflow-snapshot-stage-schema.test.ts"
+]
+
