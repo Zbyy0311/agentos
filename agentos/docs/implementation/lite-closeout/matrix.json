@@ -97,10 +97,11 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.test.ts",
         "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖的是 reply 行的外键与级联删除，与「记录在重连/重启后存活」无关。需另找覆盖持久化后重开/重连的断言。 (triage triage-00.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖的是 reply 行的外键与级联删除，与「记录在重连/重启后存活」无关。需另找覆盖持久化后重开/重连的断言。 (triage triage-00.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 同修订已补断言（LITE-00-002）：新增用例经真实 API 创建 Conversation 与三条 Message，随后关闭服务器与 store，用全新的 store 实例重新打开同一个磁盘数据库（真实重启，而非复用存活的连接），再经 HTTP 读回：Conversation 仍可获取（200）、三条 Message 全部存在、顺序稳定、id 与创建时一致、内容与状态逐一不变，且重启后的 store 仍列出该 Conversation。这同时覆盖条款的两半：重启后记录存活，以及客户端重连后读到相同记录。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -3972,12 +3973,13 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
+        "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
         "apps/web/src/components/layout/WorkbenchShell.test.tsx"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `async state` / `loading.*error.*empty` / `four states` 无命中；布局断言不覆盖「加载/错误/空/成功」等异步状态完备性。按缺口记录。 (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `async state` / `loading.*error.*empty` / `four states` 无命中；布局断言不覆盖「加载/错误/空/成功」等异步状态完备性。按缺口记录。 (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。 同修订已补断言（LITE-12-007）：新增组件测试对会话运行视图断言四种状态齐备：空态具名显示（No messages in …）且仍提供可发起对话的合成器；错误态以 role=\"alert\" 暴露并逐字显示错误文本，且不抹掉界面身份；进行中态可区分于空闲态（发送中禁用发送控件，而可发送的空闲态不禁用），且真实流相位（connected）下渲染独立的 streaming 块、显示已到达的持久游标并以 aria-live=\"polite\" 播报；内容态渲染消息文本且不再显示空态，同时保留合成器。另有组合用例遍历六种状态组合，要求每种都能渲染而不抛错——抛错的状态等于不可达状态。写这条断言时先被我自己的假设纠正两次：相位枚举中并不存在 streaming（真实值是 connected/resyncing/reconnecting），且 sending 仅在合成器有内容时可观察（无内容时两种状态都禁用，这本就是正确行为），断言已按实测与规范枚举改写。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
