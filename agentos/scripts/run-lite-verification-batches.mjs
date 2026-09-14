@@ -41,8 +41,14 @@ function countFromSingleLine(lines, label) {
   return values.length === 1 ? values[0] : null;
 }
 
-function countFromVitestLine(line, label) {
+/**
+ * One vitest category. Vitest omits a category whose count is zero, so an absent token is a
+ * zero - but only the parenthesized total can confirm that reading, which the caller checks.
+ * Two matches for the same label are ambiguous and stay null (never guessed).
+ */
+function vitestCategory(line, label) {
   const matches = [...line.matchAll(new RegExp('(\\d+)\\s+' + label + '\\b', 'gi'))];
+  if (matches.length === 0) return 0;
   return matches.length === 1 ? Number(matches[0][1]) : null;
 }
 
@@ -62,11 +68,17 @@ export function parseCounts(output) {
   const vitestLines = lines.filter(line => /^\s*Tests\b/i.test(line));
   if (vitestLines.length !== 1) return undefined;
   const vitestLine = vitestLines[0];
-  return {
-    passed: countFromVitestLine(vitestLine, 'passed'),
-    failed: countFromVitestLine(vitestLine, 'failed'),
-    skipped: countFromVitestLine(vitestLine, 'skipped'),
-  };
+  const total = /\((\d+)\)\s*$/u.exec(vitestLine.trim());
+  if (total === null) return undefined;
+  const passed = vitestCategory(vitestLine, 'passed');
+  const failed = vitestCategory(vitestLine, 'failed');
+  const skipped = vitestCategory(vitestLine, 'skipped');
+  const todo = vitestCategory(vitestLine, 'todo');
+  if ([passed, failed, skipped, todo].some(value => value === null)) return undefined;
+  // A derived zero is only accepted when the categories add up to the reported total; anything
+  // else stays unparsed instead of becoming a confident-looking number.
+  if (passed + failed + skipped + todo !== Number(total[1])) return undefined;
+  return { passed, failed, skipped };
 }
 
 export function serializeSpawnError(error) {

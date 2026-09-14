@@ -1,0 +1,7 @@
+{
+  "packages/agent-core/src/providers/codexProviderAdapter.test.ts": "docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/vitest-verbose/codexProviderAdapter",
+  "packages/agent-core/src/providers/kimiCodeAdapter.test.ts": "docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/vitest-verbose/kimiCodeAdapter",
+  "packages/agent-core/src/providers/opencodeProviderAdapter.test.ts": "docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/vitest-verbose/opencodeProviderAdapter",
+  "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts": "docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/vitest-verbose/p6-m3b-windows-birth-identity"
+}
+
