@@ -117,6 +117,22 @@ for (const receipt of source.receipts) {
   }
 }
 
+// The source receipt is only a structured assertion payload. The invocation
+// facts must come from the capture utility's execution record in the same log
+// directory, not from the arguments passed to this assembler.
+const runDirectory = dirname(sourceReceiptPath);
+const executionPath = repoPath(resolve(runDirectory, 'execution.json'), 'execution record');
+const execution = JSON.parse(readFileSync(executionPath, 'utf8'));
+if (execution.schemaVersion !== 1) throw new Error('execution record schemaVersion must be 1');
+if (JSON.stringify(execution.command) !== JSON.stringify({ executable, args })) {
+  throw new Error('execution command does not match the literal command');
+}
+if (execution.cwd !== relativeRepoPath(cwdPath)) throw new Error('execution cwd does not match the literal cwd');
+if (execution.rawExitCode !== 0) throw new Error(`execution raw exit code is not zero: ${execution.rawExitCode}`);
+if (execution.signal !== null) throw new Error('execution ended by signal');
+if (execution.error !== null) throw new Error('execution reported a spawn error');
+if (execution.trackedCheckoutUnchanged !== true) throw new Error('execution changed the checkout');
+
 const sourceText = readFileSync(sourceFilePath, 'utf8');
 const assertionCoverage = source.receipts.map(receipt => sourceAssertion(sourceText, receipt));
 const logPaths = filesUnder(dirname(sourceReceiptPath));
@@ -128,10 +144,10 @@ const raw = {
   baseline,
   command: { executable, args },
   cwd: relativeRepoPath(cwdPath),
-  trackedCheckoutUnchanged: true,
-  rawExitCode: 0,
-  signal: null,
-  error: null,
+  trackedCheckoutUnchanged: execution.trackedCheckoutUnchanged,
+  rawExitCode: execution.rawExitCode,
+  signal: execution.signal,
+  error: execution.error,
   logs: logPaths.map(path => ({ path: relativeRepoPath(path), sha256: digest(path) })),
   sourceReceipt: relativeRepoPath(sourceReceiptPath),
   counts: source.counts,
