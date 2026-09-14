@@ -42,6 +42,7 @@ const EXPECTED_PREFIXES: Record<EntityIdKind, string> = {
   extension: 'ext',
   idempotency: 'idem',
   operation: 'op',
+  import: 'imp',
 };
 
 const MAX_TS = 2 ** 48 - 1; // 281474976710655
@@ -50,7 +51,7 @@ describe('Identity — canonical entity IDs', () => {
   // ---- production singleton tests ----
 
   it('all prefix constants map to valid EntityIdKind', () => {
-    assert.equal(kinds.length, 30);
+    assert.equal(kinds.length, 31);
     for (const kind of kinds) {
       assert.ok(ENTITY_ID_PREFIXES[kind].length >= 2);
     }
@@ -305,8 +306,8 @@ describe('Identity — M2.6 idempotency kind', () => {
     assert.ok(!isValidEntityId(taskId, 'idempotency'));
   });
 
-  it('all 29 pre-operation kinds remain unchanged', () => {
-    const priorKinds = kinds.filter((kind) => kind !== 'operation');
+  it('all pre-import kinds remain unchanged', () => {
+    const priorKinds = kinds.filter((kind) => kind !== 'import' && kind !== 'operation');
     assert.equal(priorKinds.length, 29);
     assert.ok(priorKinds.includes('idempotency'));
     assert.deepEqual(ENTITY_ID_PREFIXES, EXPECTED_PREFIXES);
