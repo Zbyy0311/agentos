@@ -4285,6 +4285,7 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeInspector.redaction.test.ts",
         "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
@@ -4327,6 +4328,7 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeInspector.redaction.test.ts",
         "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
@@ -4412,6 +4414,7 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
+        "apps/server/src/routes/runtimeInspector.redaction.test.ts",
         "apps/server/src/routes/runtimeInspector.test.ts"
       ],
       "evidence": [
