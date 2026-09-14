@@ -1523,6 +1523,124 @@
         }
       ],
       "rationale": "This individual promotion uses three separately captured literal commands: service 8 pass / 0 fail / 0 skip, trigger 10 pass / 0 fail / 0 skip, and repository 4 pass / 0 fail / 0 skip. Together their named assertions directly prove the Lite v1 120000ms/one-retry policy, one running holder, SQLite restart recovery, live-lease non-stealing, stale-lease publication fencing, and bounded retry exhaustion."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-104",
+      "requirementId": "LITE-07-104",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "implementation": [
+        "apps/server/src/services/RuntimeArtifactService.ts",
+        "apps/server/src/services/RuntimeArtifactCollector.ts",
+        "apps/server/src/services/ArtifactCompletionService.ts",
+        "apps/server/src/services/CanonicalArtifactResultService.ts",
+        "apps/server/src/store/ArtifactCompletionRepository.ts"
+      ],
+      "evidenceIds": [
+        "S9-M0-S2-ARTIFACT-LIFECYCLE-CONTROLLED"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ArtifactCompletionService.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "ARTIFACT-REAL-TEST-PASS",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 262,
+          "expression": "assert.match(stdout, /ok 1 - real artifact evidence/);",
+          "clause": "The lifecycle starts with a real review/test subprocess whose passing result is captured.",
+          "whyDirect": "The named production test launches a real node:test child process and directly asserts its TAP output before passing the observation into the Artifact Collector.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-COMPLETION-LISTED",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 274,
+          "expression": "assert.equal(listed.completions.length, 1);",
+          "clause": "The Collector's real test observation creates one durable ArtifactCompletion record.",
+          "whyDirect": "After recording the child process observations through the production Collector, the test queries the mounted HTTP completion route and directly asserts the durable completion exists.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-REVIEW-QUEUE",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 277,
+          "expression": "assert.ok(queue.candidates.some(candidate => candidate.id === completion.candidateId));",
+          "clause": "The completed Artifact's Candidate appears in the review-required queue.",
+          "whyDirect": "The test reads the production memory candidate HTTP route and matches the candidate ID returned by the durable ArtifactCompletion produced by the Collector.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-EVENT",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 278,
+          "expression": "assert.equal((fx.store.getDatabase().prepare(\"SELECT COUNT(*) AS n FROM workspace_events WHERE type = 'memory.candidate_created'\").get() as { n: number }).n, 1);",
+          "clause": "The real Artifact completion emits the canonical candidate_created Workspace Event.",
+          "whyDirect": "After the Collector processes the real test observation, the test reads the production Workspace Event table and directly asserts one candidate_created event exists.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-CONFIRMATION",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 279,
+          "expression": "assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, conclusion: 'pass' })).status, 200);",
+          "clause": "The completion API accepts the matching final conclusion after the real Artifact exists.",
+          "whyDirect": "The test calls the production completion route with the actual Artifact ID returned by the Collector path and asserts the successful HTTP result.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-CONFLICT-REJECTED",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 280,
+          "expression": "assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, conclusion: 'fail' })).status, 409);",
+          "clause": "A conflicting conclusion for the same completed Artifact is rejected.",
+          "whyDirect": "The route is called with the same real Artifact ID and an opposing conclusion, and the test directly observes the stable conflict response.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-REVIEW-ACCEPTED",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 283,
+          "expression": "assert.equal(response.status, 200);",
+          "clause": "The review queue Candidate can be accepted through the production review route.",
+          "whyDirect": "The test posts acceptance for the exact Candidate linked by the real completion and directly asserts the successful review response.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-ENTRY-SOURCE",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 286,
+          "expression": "assert.deepEqual(entry.sources, [{ kind: 'artifact', id: completion.artifactId }]);",
+          "clause": "Acceptance creates a Memory Entry that preserves the actual Artifact source.",
+          "whyDirect": "The test reads the production Memory Entry after review acceptance and directly compares its source to the Artifact ID produced by the Collector path.",
+          "outcome": "passed"
+        },
+        {
+          "id": "ARTIFACT-CONTENT-READBACK",
+          "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+          "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+          "line": 289,
+          "expression": "assert.match(await content.text(), /real artifact evidence/);",
+          "clause": "The final Artifact content remains readable through the production route after review.",
+          "whyDirect": "The test reads the actual Artifact content endpoint after the full completion and review chain and matches the child test's evidence marker.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion is based on the real test subprocess -> Collector -> durable ArtifactCompletion -> candidate_created Workspace Event -> review queue -> acceptance -> Memory Entry path. The 15 pass / 0 fail / 0 skip raw TAP receipt includes direct assertions for each transition and source/content link; the standalone completion POST is only an idempotency/conflict check after the real Collector-produced completion."
     }
   ]
 }

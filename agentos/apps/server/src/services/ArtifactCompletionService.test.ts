@@ -275,6 +275,7 @@ test('LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Ent
     const completion = listed.completions[0];
     const queue = await (await fetch(base + '/memory/candidates?outcome=review-required')).json() as { candidates: { id: string }[] };
     assert.ok(queue.candidates.some(candidate => candidate.id === completion.candidateId));
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS n FROM workspace_events WHERE type = 'memory.candidate_created'").get() as { n: number }).n, 1);
     assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, conclusion: 'pass' })).status, 200);
     assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, conclusion: 'fail' })).status, 409);
     assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, artifactType: 'review', conclusion: 'approved' })).status, 400);

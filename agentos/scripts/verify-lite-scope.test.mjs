@@ -124,10 +124,10 @@ function passFixture() {
 
 test('scope accepts the frozen matrix with individually authorized PASS rows', () => {
   const result = validateScope(matrix(), evidence, lock, root);
-  assert.equal(result.PASS, 23);
-  assert.equal(result.GAP, 11);
+  assert.equal(result.PASS, 24);
+  assert.equal(result.GAP, 10);
   // 196 / 165 rather than 205 / 164: the user-authorized LITE-04-101 deferral moves
-  // exactly one row, and the controlled v18 promotions close twenty-three independently
+  // exactly one row, and the controlled v18 promotions close twenty-four independently
   // evidenced rows without changing the permanent scope.
   assert.equal(result['RUNTIME-VERIFY'], 196);
   assert.equal(result.DEFERRED, 165);

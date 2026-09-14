@@ -4607,7 +4607,7 @@
       "section": "§7",
       "line": null,
       "requirement": "完成的真实review/test Artifact触发",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S2",
       "implementation": [
         "apps/server/src/services/RuntimeArtifactService.ts",
@@ -4624,11 +4624,10 @@
         "apps/server/src/services/RuntimeArtifactCollector.test.ts"
       ],
       "evidence": [
-        "S2-ARTIFACT-SOURCE",
-        "S2-LOCAL-27",
-        "S2-BROWSER"
+        "S9-M0-S2-ARTIFACT-LIFECYCLE-CONTROLLED"
       ],
-      "finding": "保留基线反证：主线仅合并授权、原草稿无真实来源/事件。隔离提交02a50947已补显式退出证据、Collector及canonical结构化结果、027完成事实、事务候选/事件与审核来源链接；见S2-artifact-evidence.md。实际Node测试与页面审核已验证，但执行记录/Provider观察为夹具，真实模型调用、故障恢复及CI仍需验收，保持GAP。",
+      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "finding": "本轮受控提升：ArtifactCompletionService 的生产测试先启动真实 node:test 子进程，再经 Codex parser 与 RuntimeArtifactCollector 产生 ArtifactCompletion；HTTP 查询确认候选进入 review-required 队列，Workspace Event 明确为 memory.candidate_created，接受后 Entry 保留实际 Artifact 来源并可回读内容，同时冲突结论返回409。原始 TAP 收据 15 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d；不将单独 POST 视为闭环起点。",
       "exit": "真实review/test→持久完成→候选+事件→Review Queue→接受→Entry；不以手工POST作为闭环。"
     },
     {
@@ -8470,6 +8469,15 @@
       "reason": "LITE-09-107 is promoted from GAP to PASS from three separately captured S6 receipts: bounded automatic retry, durable SQLite restart/lease recovery, live-lease non-stealing, stale publication fencing, and the immutable Lite v1 timeout/retry policy are each directly asserted.",
       "requirementIds": [
         "LITE-09-107"
+      ]
+    },
+    {
+      "version": 18,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-104 is promoted from GAP to PASS from the real test subprocess and Collector/HTTP/review receipt: completion, candidate queue, Workspace Event, review acceptance, Entry source and content are each directly asserted.",
+      "requirementIds": [
+        "LITE-07-104"
       ]
     }
   ],

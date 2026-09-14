@@ -1275,5 +1275,23 @@
     ],
     "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
     "limitation": "This receipt directly proves the persisted Lite v1 timeout/retry policy, single-running-task fence, versioned lease transitions, and stale-publisher rejection; it is a repository/service test rather than a multi-process stress run."
+  },
+  {
+    "id": "S9-M0-S2-ARTIFACT-LIFECYCLE-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ArtifactCompletionService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/next-artifact-completion-controlled.json",
+    "result": {
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-104"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
+    "limitation": "The receipt starts with a real local node:test subprocess and proves the production Collector/HTTP/review chain; it does not claim a live model Provider invocation, which is outside the Artifact lifecycle clause."
   }
 ]
