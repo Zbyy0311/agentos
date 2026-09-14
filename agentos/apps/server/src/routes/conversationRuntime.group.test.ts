@@ -159,18 +159,14 @@ test('bounded group respond: the runtime selects speakers, streams the walk, and
       assert.deepEqual(read.replies.map(reply => reply.agentId), ['codex', 'kimi']);
 
       const db = store.getDatabase();
-      // Two snapshot rows exist per speaker Turn, and they are different
-      // records with different owners:
-      //   - CR-5 records the per-Agent Memory selection with the reply
-      //     (interaction-scoped),
-      //   - LITE-09-101 freezes the bounded conversation history BEFORE the
-      //     Provider call (Turn-scoped, no interaction).
-      // Assert the contract of each rather than a bare total, so a missing
-      // freeze cannot hide behind the CR-5 row.
+      // The interaction reply must reuse the exact LITE-09-101 snapshot that
+      // was frozen before the Provider call. There is one durable row per
+      // speaker Turn; a second, after-the-fact CR-5 selection would make the
+      // reply evidence diverge from the context the Provider actually used.
       const rows = db.prepare('SELECT turn_id, interaction_id, budget_json FROM cr_turn_context_snapshots').all() as Array<{
         turn_id: string | null; interaction_id: string | null; budget_json: string;
       }>;
-      assert.equal(rows.length, 4);
+      assert.equal(rows.length, 2);
       const byTurn = new Map<string, typeof rows>();
       for (const row of rows) {
         assert.ok(row.turn_id);
@@ -178,11 +174,9 @@ test('bounded group respond: the runtime selects speakers, streams the walk, and
       }
       assert.equal(byTurn.size, 2);
       for (const turnRows of byTurn.values()) {
-        const frozen = turnRows.filter(row => row.interaction_id === null);
-        const replyScoped = turnRows.filter(row => row.interaction_id !== null);
-        assert.equal(frozen.length, 1, 'each speaker Turn freezes exactly one bounded context');
-        assert.equal(replyScoped.length, 1, 'each recorded reply keeps its CR-5 Memory snapshot');
-        const budget = JSON.parse(frozen[0]!.budget_json) as {
+        assert.equal(turnRows.length, 1, 'each recorded reply reuses exactly one Provider context snapshot');
+        assert.equal(turnRows[0]!.interaction_id, interaction.id);
+        const budget = JSON.parse(turnRows[0]!.budget_json) as {
           maxFrozenHistoryMessages: number; frozenHistoryMessageIds: string[];
         };
         assert.ok(budget.maxFrozenHistoryMessages > 0);
@@ -274,8 +268,8 @@ test('LITE-09-013 each group speaker freezes only its own Agent-scoped Memory', 
       await response.text();
 
       const frozen = store.getDatabase().prepare(
-        "SELECT agent_id AS agentId, selected_entry_ids_json AS ids FROM cr_turn_context_snapshots WHERE conversation_id = ? AND interaction_id IS NULL ORDER BY agent_id",
-      ).all(conversationId) as Array<{ agentId: string; ids: string }>;
+        "SELECT agent_id AS agentId, selected_entry_ids_json AS ids FROM cr_turn_context_snapshots WHERE conversation_id = ? AND interaction_id = ? ORDER BY agent_id",
+      ).all(conversationId, interaction.id) as Array<{ agentId: string; ids: string }>;
       assert.equal(frozen.length, 2, 'each speaker Turn froze exactly one bounded context');
       const byAgent = new Map(frozen.map(row => [row.agentId, JSON.parse(row.ids) as string[]]));
       assert.deepEqual([...byAgent.keys()].sort(), ['codex', 'kimi']);
