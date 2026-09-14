@@ -30,6 +30,11 @@ test('returns run list and aggregated details with workspace isolation and cappe
     store.createMessage({ id: 'message-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', senderType: 'user', content: '详情', createdAt: '2026-07-12T01:00:01.000Z' });
     store.createRun({ id: 'run-a', workspaceId: 'workspace-a', conversationId: 'conversation-a', sourceMessageId: 'message-a', objective: '详情', status: 'completed', resultSummary: '完成', createdAt: '2026-07-12T01:00:01.000Z', updatedAt: '2026-07-12T01:00:02.000Z' });
     store.createExecution({ id: 'execution-a', runId: 'run-a', conversationId: 'conversation-a', workspaceId: 'workspace-a', sourceMessageId: 'message-a', agentId: 'codex', status: 'completed', mode: 'mock', createdAt: '2026-07-12T01:00:01.000Z', updatedAt: '2026-07-12T01:00:02.000Z' });
+    store.createRuntimeArtifact({
+      id: 'artifact-a', workspaceId: 'workspace-a', runId: 'run-a', sourceExecutionId: 'execution-a', agentId: 'codex',
+      type: 'file', title: 'artifact', originalPath: 'C:/private/workspace/secret.txt', sizeBytes: 0,
+      contentAvailable: false, createdAt: '2026-07-12T01:00:01.500Z',
+    }, null);
     store.appendAgentEvent({ eventId: 'event-a', schemaVersion: 2, type: 'run.completed', workspaceId: 'workspace-a', conversationId: 'conversation-a', runId: 'run-a', timestamp: '2026-07-12T01:00:02.000Z', payload: { status: 'completed' } });
     await new Promise<void>(resolve => server.once('listening', resolve));
     const address = server.address();
@@ -37,10 +42,18 @@ test('returns run list and aggregated details with workspace isolation and cappe
     const base = `http://127.0.0.1:${address.port}/api/workspaces`;
     const list = await fetch(`${base}/workspace-a/runs?conversationId=conversation-a&limit=999`).then(response => response.json()) as { runs: Array<{ id: string }> };
     assert.deepEqual(list.runs.map(run => run.id), ['run-a']);
-    const details = await fetch(`${base}/workspace-a/runs/run-a`).then(response => response.json()) as { run: { resultSummary: string }; sourceMessage: { content: string }; events: Array<{ runId: string }> };
+    const details = await fetch(`${base}/workspace-a/runs/run-a`).then(response => response.json()) as {
+      run: { resultSummary: string };
+      sourceMessage: { content: string };
+      events: Array<{ runId: string }>;
+      artifacts: Array<Record<string, unknown>>;
+    };
     assert.equal(details.run.resultSummary, '完成');
     assert.equal(details.sourceMessage.content, '详情');
     assert.equal(details.events[0]?.runId, 'run-a');
+    assert.equal(details.artifacts.length, 1);
+    assert.equal(Object.hasOwn(details.artifacts[0]!, 'originalPath'), false);
+    assert.equal(JSON.stringify(details).includes('C:/private/workspace/secret.txt'), false);
     assert.equal((await fetch(`${base}/workspace-b/runs/run-a`)).status, 404);
     assert.equal((await fetch(`${base}/workspace-a/runs/unknown`)).status, 404);
   } finally {
