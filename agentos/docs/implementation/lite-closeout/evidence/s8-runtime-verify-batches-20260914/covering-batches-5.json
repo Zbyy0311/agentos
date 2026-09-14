@@ -1,0 +1,146 @@
+{
+  "schemaVersion": 1,
+  "baseline": "ef8a29eeb7aa9c004956642758e6aac712465d45",
+  "trackedStatus": "",
+  "generatedAt": "2026-09-14T14:07:15.753Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 3,
+    "passed": 3,
+    "failed": 0,
+    "requirementsProvable": 0,
+    "requirementsTotal": 0
+  },
+  "results": [
+    {
+      "file": "apps/server/src/taskRecovery.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 6444,
+      "sourceSha256": "5b3d5896477ed4151184e12c3c30ad44a88d80d051d12c774e1e736911bd217f",
+      "rawLogSha256": "c09b1650950cebbc206cbdc9e4359d187d42d8ac99e2360cf2506bc3b8230a17",
+      "rawOutput": "✔ recoverInterruptedRunningTasks marks stale running tasks as failed on startup (1.4314ms)\n✔ R17/RC01 queued Run + queued Start recovery remains unchanged and permits retry (253.7156ms)\n✔ R18 Window B recovers JSON running and queued Run after a real store reopen (222.1174ms)\n✔ R19 startup queued recovery is idempotent across repeated calls (184.6448ms)\n✔ P6M2b-composition A: recoverInterruptedTaskRuntime consumes the supplied port (213.1896ms)\n✔ P6M2b-composition B: production running Run with missing process reconciles to canonical failure (217.6666ms)\n✔ P6M2b-composition C: unavailable verifier keeps recovery fail-safe uncertain (219.7912ms)\n✔ P6M2b-composition D: verifier failure is fail-safe and never terminal-fails incorrectly (240.2634ms)\n✔ P6M2b-composition E: no classifier/verifier call occurs inside the recovery transaction (237.736ms)\n✔ P6M2-composition real-platform: proven-absent provider PID drives missing -> Stage failed + Run failed (270.2023ms)\n✔ R20 startup recovery leaves queued v2_api Runs untouched (193.303ms)\n✔ R21 startup recovery preserves an existing pending acceptance window (231.5243ms)\n✔ R22a startup recovery preserves a pre-P6C running Legacy Run with no canonical Start/Event graph (191.8504ms)\n✔ R23 startup recovery fails closed and rolls back queued recovery errors (180.3225ms)\n✔ R24 startup recovery is workspace-scoped and returns precise evidence (188.9545ms)\n✔ R25 startup composition preserves Legacy recovery and then restores canonical queued authorization (218.9797ms)\n✔ RC02 starting Run + running Start + no starting Stage fails Run and Start canonically (205.0101ms)\n✔ RC03 starting Run + running Start + one starting Stage fails Stage, Run, and Start atomically (195.1409ms)\n✔ RC04 starting recovery failure injection rolls back every canonical mutation (193.4636ms)\n✔ RC05 running Run + completed Start + running Stage fails Stage and Run while Start remains completed (217.7ms)\n✔ RC06 running Run + completed Start + one starting Stage fails the active Stage and Run (216.6314ms)\n✔ RC07 running Run + completed Start + zero active Stage fails Run safely (223.1415ms)\n✔ RC08 running recovery failure injection rolls back Stage, Run, Event, Outbox, and Task (207.2344ms)\n✔ RC09 multiple Start Operations fail closed with zero mutation (182.6225ms)\n✔ RC10 wrong Start status fails closed with zero mutation (190.1416ms)\n✔ RC11 more than one active Stage fails closed with zero mutation (248.5046ms)\n✔ canonical recovery requires one persisted Outbox for every existing Runtime Event (246.6795ms)\n✔ RC12 restart recovery source never constructs AgentRunner or invokes Provider execution (0.6195ms)\n✔ final-review crash window fails canonical Run/final Stage and completed JSON mirror without a second execution (299.8848ms)\nℹ tests 29\nℹ suites 0\nℹ pass 29\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 6365.4569\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 29,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ RC11 more than one active Stage fails closed with zero mutation (248.5046ms)\n✔ canonical recovery requires one persisted Outbox for every existing Runtime Event (246.6795ms)\n✔ RC12 restart recovery source never constructs AgentRunner or invokes Provider execution (0.6195ms)\n✔ final-review crash window fails canonical Run/final Stage and completed JSON mirror without a second execution (299.8848ms)\nℹ tests 29\nℹ suites 0\nℹ pass 29\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 6365.4569",
+      "baseline": "ef8a29eeb7aa9c004956642758e6aac712465d45",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/taskRecovery.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ recoverInterruptedRunningTasks marks stale running tasks as failed on startup (1.4314ms)\n✔ R17/RC01 queued Run + queued Start recovery remains unchanged and permits retry (253.7156ms)\n✔ R18 Window B recovers JSON running and queued Run after a real store reopen (222.1174ms)\n✔ R19 startup queued recovery is idempotent across repeated calls (184.6448ms)\n✔ P6M2b-composition A: recoverInterruptedTaskRuntime consumes the supplied port (213.1896ms)\n✔ P6M2b-composition B: production running Run with missing process reconciles to canonical failure (217.6666ms)\n✔ P6M2b-composition C: unavailable verifier keeps recovery fail-safe uncertain (219.7912ms)\n✔ P6M2b-composition D: verifier failure is fail-safe and never terminal-fails incorrectly (240.2634ms)\n✔ P6M2b-composition E: no classifier/verifier call occurs inside the recovery transaction (237.736ms)\n✔ P6M2-composition real-platform: proven-absent provider PID drives missing -> Stage failed + Run failed (270.2023ms)\n✔ R20 startup recovery leaves queued v2_api Runs untouched (193.303ms)\n✔ R21 startup recovery preserves an existing pending acceptance window (231.5243ms)\n✔ R22a startup recovery preserves a pre-P6C running Legacy Run with no canonical Start/Event graph (191.8504ms)\n✔ R23 startup recovery fails closed and rolls back queued recovery errors (180.3225ms)\n✔ R24 startup recovery is workspace-scoped and returns precise evidence (188.9545ms)\n✔ R25 startup composition preserves Legacy recovery and then restores canonical queued authorization (218.9797ms)\n✔ RC02 starting Run + running Start + no starting Stage fails Run and Start canonically (205.0101ms)\n✔ RC03 starting Run + running Start + one starting Stage fails Stage, Run, and Start atomically (195.1409ms)\n✔ RC04 starting recovery failure injection rolls back every canonical mutation (193.4636ms)\n✔ RC05 running Run + completed Start + running Stage fails Stage and Run while Start remains completed (217.7ms)\n✔ RC06 running Run + completed Start + one starting Stage fails the active Stage and Run (216.6314ms)\n✔ RC07 running Run + completed Start + zero active Stage fails Run safely (223.1415ms)\n✔ RC08 running recovery failure injection rolls back Stage, Run, Event, Outbox, and Task (207.2344ms)\n✔ RC09 multiple Start Operations fail closed with zero mutation (182.6225ms)\n✔ RC10 wrong Start status fails closed with zero mutation (190.1416ms)\n✔ RC11 more than one active Stage fails closed with zero mutation (248.5046ms)\n✔ canonical recovery requires one persisted Outbox for every existing Runtime Event (246.6795ms)\n✔ RC12 restart recovery source never constructs AgentRunner or invokes Provider execution (0.6195ms)\n✔ final-review crash window fails canonical Run/final Stage and completed JSON mirror without a second execution (299.8848ms)\nℹ tests 29\nℹ suites 0\nℹ pass 29\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 6365.4569\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/process-runtime/src/manager.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 1088,
+      "sourceSha256": "5138d3589b218bcb6e5e2ccc7242cdebd77f3fa5c0934dc55b7acb850f4b2f44",
+      "rawLogSha256": "118b373f3c97c34ec373ab10f98fa920e3b6c1def986c1820ff4064a65a150d8",
+      "rawOutput": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  30 passed (30)\n   Start at  22:07:14\n   Duration  346ms (transform 115ms, setup 0ms, import 150ms, tests 31ms, environment 0ms)\n\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 30,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  30 passed (30)\n   Start at  22:07:14\n   Duration  346ms (transform 115ms, setup 0ms, import 150ms, tests 31ms, environment 0ms)",
+      "baseline": "ef8a29eeb7aa9c004956642758e6aac712465d45",
+      "command": {
+        "executable": "pnpm",
+        "args": [
+          "exec",
+          "vitest",
+          "run",
+          "src/manager.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "packages/process-runtime",
+      "stdout": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  30 passed (30)\n   Start at  22:07:14\n   Duration  346ms (transform 115ms, setup 0ms, import 150ms, tests 31ms, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/process-runtime/src/races.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 1098,
+      "sourceSha256": "73044fe53f174ef900b7fddaea446da472e68023534fb8ce9519194694e07ea7",
+      "rawLogSha256": "1549f72a09d6e3465bcecda4703d5de49fd58808b4d33d3df142baeeb8e01263",
+      "rawOutput": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  22:07:15\n   Duration  312ms (transform 102ms, setup 0ms, import 131ms, tests 15ms, environment 0ms)\n\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  22:07:15\n   Duration  312ms (transform 102ms, setup 0ms, import 131ms, tests 15ms, environment 0ms)",
+      "baseline": "ef8a29eeb7aa9c004956642758e6aac712465d45",
+      "command": {
+        "executable": "pnpm",
+        "args": [
+          "exec",
+          "vitest",
+          "run",
+          "src/races.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "packages/process-runtime",
+      "stdout": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  22:07:15\n   Duration  312ms (transform 102ms, setup 0ms, import 131ms, tests 15ms, environment 0ms)\n\n",
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,6 @@
+passed      apps/web/src/components/chat/GroupConversationCanvas.test.tsx  rows=0  2 pass / 0 fail / 0 skip  exit=0  462ms
+passed      apps/web/src/components/chat/RuntimeInspectorView.test.tsx  rows=0  7 pass / 0 fail / 0 skip  exit=0  482ms
+passed      apps/web/src/lib/directConversation.test.ts  rows=0  10 pass / 0 fail / 0 skip  exit=0  456ms
+passed      apps/web/src/lib/uiFoundation.test.ts  rows=0  15 pass / 0 fail / 0 skip  exit=0  543ms
+report=docs/implementation/lite-closeout/evidence/s8-runtime-verify-batches-20260914/covering-batches-8.json
+batches=4 passed=4 failed=0 provableRequirements=0/0

@@ -1,0 +1,59 @@
+{
+  "schemaVersion": 1,
+  "baseline": "ef8a29eeb7aa9c004956642758e6aac712465d45",
+  "trackedStatus": "",
+  "generatedAt": "2026-09-14T14:06:29.714Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 1,
+    "passed": 1,
+    "failed": 0,
+    "requirementsProvable": 0,
+    "requirementsTotal": 0
+  },
+  "results": [
+    {
+      "file": "packages/process-runtime/src/durable-coordinator.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 1323,
+      "sourceSha256": "5658b5e080b2c4cde0ed1b18b9aa05763513242767877226b359fafb37c4ac05",
+      "rawLogSha256": "7c14872fc941907ff4a7709417c38339cd1ef77ee5c684086d98a607981a2b85",
+      "rawOutput": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  34 passed (34)\n   Start at  22:06:29\n   Duration  438ms (transform 148ms, setup 0ms, import 182ms, tests 72ms, environment 0ms)\n\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 34,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  34 passed (34)\n   Start at  22:06:29\n   Duration  438ms (transform 148ms, setup 0ms, import 182ms, tests 72ms, environment 0ms)",
+      "baseline": "ef8a29eeb7aa9c004956642758e6aac712465d45",
+      "command": {
+        "executable": "pnpm",
+        "args": [
+          "exec",
+          "vitest",
+          "run",
+          "src/durable-coordinator.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "packages/process-runtime",
+      "stdout": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  34 passed (34)\n   Start at  22:06:29\n   Duration  438ms (transform 148ms, setup 0ms, import 182ms, tests 72ms, environment 0ms)\n\n",
+      "stderr": ""
+    }
+  ]
+}

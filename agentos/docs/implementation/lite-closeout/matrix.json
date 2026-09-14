@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 15,
+  "matrixVersion": 16,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -100,7 +100,7 @@
         "docs/implementation/milestones/Lite-FastTrack-progress.md"
       ],
       "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖的是 reply 行的外键与级联删除，与「记录在重连/重启后存活」无关。需另找覆盖持久化后重开/重连的断言。 (triage triage-00.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -115,10 +115,10 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
+      "finding": "[matrix v16 re-point] previous tests: docs/implementation/milestones/Lite-FastTrack-progress.md; verified covering assertion: INSP-12 Run, Stage, Provider, Process and duration stay distinct (triage triage-10.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -133,13 +133,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md",
-        "scripts/verify-agentos-e2e.ps1"
+        "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [
         "S8-E2E-RUN2"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8真实服务验收（run 2）：断线后Run仍为running，随后经公开cancel端点变为cancelled。",
+      "finding": "[matrix v16 re-point] previous tests: docs/implementation/milestones/Lite-FastTrack-progress.md, scripts/verify-agentos-e2e.ps1; verified covering assertion: P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8真实服务验收（run 2）：断线后Run仍为running，随后经公开cancel端点变为cancelled。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -177,10 +176,10 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts"
       ],
       "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
+      "finding": "[matrix v16 re-point] previous tests: docs/implementation/milestones/Lite-FastTrack-progress.md; verified covering assertion: P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once (triage triage-00.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -195,13 +194,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md",
-        "scripts/verify-agentos-e2e.ps1"
+        "apps/server/src/services/TaskRunRecoveryService.test.ts"
       ],
       "evidence": [
         "S8-E2E-RUN2"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8真实服务验收（run 2）：重启后遗留queued/running被判failed、waiting_user保持等待，不猜测完成。",
+      "finding": "[matrix v16 re-point] previous tests: docs/implementation/milestones/Lite-FastTrack-progress.md, scripts/verify-agentos-e2e.ps1; verified covering assertion: P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8真实服务验收（run 2）：重启后遗留queued/running被判failed、waiting_user保持等待，不猜测完成。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -239,10 +237,10 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts"
       ],
       "evidence": [],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
+      "finding": "[matrix v16 re-point] previous tests: docs/implementation/milestones/Lite-FastTrack-progress.md; verified covering assertion: L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn (triage triage-10.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -257,13 +255,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts",
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/MemoryContextResolver.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-010. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。选择被持久化为快照（MF4I-01）、每scope幂等（MF4I-02/03）、条目后续编辑不改写快照（MF4I-07）、历史元数据快照可解释但阻止注入、工作区隔离（MF4I-10）：选择可复现且可解释。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/MemoryContextResolver.test.ts, docs/implementation/milestones/Lite-FastTrack-progress.md; verified covering assertion: MF4I-02 resolve is idempotent per run scope (triage triage-02.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-010. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。选择被持久化为快照（MF4I-01）、每scope幂等（MF4I-02/03）、条目后续编辑不改写快照（MF4I-07）、历史元数据快照可解释但阻止注入、工作区隔离（MF4I-10）：选择可复现且可解释。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
@@ -285,7 +282,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-11"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-011. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。以只读收集器持久化Git观察快照（base/final commit SHA）并在终止时枚举自有进程树；不创建Git写操作或工作流。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体只覆盖 HTTP run.start 接受与执行到终态，与 Git 可观测性无关（关键词 'execution'/'acceptance' 是巧合）。本条需重新寻找覆盖 Git observation 的断言。 (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-011. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。以只读收集器持久化Git观察快照（base/final commit SHA）并在终止时枚举自有进程树；不创建Git写操作或工作流。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
@@ -323,14 +320,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/services/BoundedGroupService.test.ts",
-        "packages/shared/wf-template-instantiation.test.ts",
-        "docs/implementation/milestones/Lite-FastTrack-progress.md"
+        "apps/server/src/services/BoundedGroupService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-013. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。有界群聊由预算/循环守卫/终止原因断言覆盖；有界Workflow模板由模板实例化契约测试覆盖。两者共同构成本条“群聊与模板保持有界”。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/BoundedGroupService.test.ts, packages/shared/wf-template-instantiation.test.ts, docs/implementation/milestones/Lite-FastTrack-progress.md; verified covering assertion: CR5S-03 reaching the total cap exhausts the interaction with a stable reason (triage triage-02.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-00-013. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。有界群聊由预算/循环守卫/终止原因断言覆盖；有界Workflow模板由模板实例化契约测试覆盖。两者共同构成本条“群聊与模板保持有界”。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
@@ -409,12 +404,12 @@
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/store/Identity.test.ts"
+        "apps/server/src/services/TaskRunService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/store/Identity.test.ts; verified covering assertion: TaskRunService atomically rolls back a Run and a newly created Legacy Task when capture fails (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -430,12 +425,12 @@
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/store/Identity.test.ts"
+        "apps/server/src/services/TaskRunService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/store/Identity.test.ts; verified covering assertion: P3C1-RY-S01 Retry acceptance creates a queued Child and completed v3 Operation (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -451,12 +446,12 @@
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/store/Identity.test.ts"
+        "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/store/Identity.test.ts; verified covering assertion: INSP-04 process PID is evidence-only (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -493,12 +488,12 @@
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/store/Identity.test.ts"
+        "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/store/Identity.test.ts; verified covering assertion: L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -536,12 +531,12 @@
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/store/Identity.test.ts"
+        "apps/server/src/services/GroupSpeakerResolver.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/store/Identity.test.ts; verified covering assertion: CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -557,12 +552,12 @@
         "apps/server/src/store/Identity.ts"
       ],
       "tests": [
-        "apps/server/src/store/Identity.test.ts"
+        "packages/shared/wf-template-instantiation.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/store/Identity.test.ts; verified covering assertion: WFI-04 optional security review (triage triage-02.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -647,7 +642,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖 legacy 导入只写兼容行、可重跑为 no-op 与退出码；与「归档/兼容记录不被破坏性移除」不是同一命题。需另找断言。 (triage triage-00.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/store/Identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -668,7 +663,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 仅有 UI 意图层断言（resolveComposerAction 的 actionCreatesWork===false），它证明的是 Composer 不会把 chat 模式映射成建 Task/Run 的动作，**不证明运行时**在 message-only turn 后不产生 Task/Run 行。全仓检索未找到运行时段言该行为的断言（ConversationTurnDriver.test.ts 的 TD-01..06 也不含此类断言）。按缺口记录：需要一条「chat turn 后 cr_agent_turns 之外的 Task/Run 行数不变」的断言。 (triage triage-02.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -684,12 +679,12 @@
         "apps/server/src/services/LifecycleTransactionService.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/ConversationBridgeService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: CR4B-02 create-task is idempotent across retries and starts nothing (triage triage-03.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -769,14 +764,12 @@
         "apps/server/src/services/LifecycleTransactionService.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
-        "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts"
+        "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts"
       ],
       "evidence": [
         "S0-V02"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-006. Historical finding (not current acceptance): 对应行为在本次冻结基线测试通过；不扩展为其他调用链的完成证据。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts, apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts, apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts; verified covering assertion: P2C-2A Run queued -> starting emits run.dequeued with service timestamp (triage triage-03.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-006. Historical finding (not current acceptance): 对应行为在本次冻结基线测试通过；不扩展为其他调用链的完成证据。",
       "exit": "后续受影响修改需回归；新反证按变更日志重开。"
     },
     {
@@ -899,12 +892,12 @@
         "apps/server/src/services/LifecycleTransactionService.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/TaskRunService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: P3C1-RY-S02 Retry persists the exact fingerprint, Child fields, Events, and Outbox atomically (triage triage-03.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -920,12 +913,12 @@
         "apps/server/src/services/LifecycleTransactionService.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle (triage triage-02.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -988,7 +981,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-016. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖 WorktreeManager 对缺失路径的**协调与失败标记**，与「无 Worktree 时被准入的 modifying Run 仍可继续」不是同一命题。全仓检索未见断言「worktree 缺失 + 已准入 → Run 照常执行」的断言。按缺口记录。 (triage triage-03.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-016. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1540,7 +1533,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖「稳定分类码」这一半（另有 'fails closed to unknown for timeout, spawn, unrelated and malformed auth evidence' 等），但没有任何断言覆盖条款后半句 retryability（可重试性）。条款为两部分，缺一不可。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1561,7 +1554,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件的断言集中在版本冻结、启动计划、环境语义与鉴权分类；没有任何断言把「能力声明」与「被测试行为」对齐（例如声明 sessionResume 就必须有对应行为断言）。需另找或按缺口记录。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1582,7 +1575,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 条款属于准入/只读资格（admission）子系统，而该文件是 Provider 适配器测试。真正的候选在 WorkspaceAdmissionAuthority.test.ts（L1D-I17/I18 关于 GRANTED READ_ONLY 与零副作用）或 p6-l1b-migration-016.test.ts。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-04-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/agent-core/src/providers/kimiCodeAdapter.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1682,12 +1675,12 @@
         "packages/process-runtime/src/platform-recovery-verifier.ts"
       ],
       "tests": [
-        "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts"
+        "packages/process-runtime/src/durable-coordinator.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts; verified covering assertion: only the winning created->starting CAS calls spawn; losers join without spawning (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1829,12 +1822,13 @@
         "packages/process-runtime/src/platform-recovery-verifier.ts"
       ],
       "tests": [
-        "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts"
+        "apps/server/src/routes/canonicalRunStream.test.ts",
+        "apps/server/src/services/m3-p6-integrated-verification.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts; verified covering assertion: LITE-02-009-A2 runtime-inspector-process-active-after-disconnect (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1855,7 +1849,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 三项并列中两项有具名断言，第三项「approval 等待不消耗 idle 预算」在全仓检索（approval.*inactiv / idle.*approval / waiting_approval.*timeout / approvalTimeoutMs 的使用断言）中未见专门断言。按复合条款口径记驳回：需补一条「Run 处于 waiting_approval 期间 idle 预算不被消耗」的断言。 (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -1892,12 +1886,12 @@
         "packages/process-runtime/src/platform-recovery-verifier.ts"
       ],
       "tests": [
-        "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts"
+        "apps/server/src/taskRecovery.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts; verified covering assertion: P6M2b-composition A: recoverInterruptedTaskRuntime consumes the supplied port (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-05-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2039,12 +2033,12 @@
         "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
       ],
       "tests": [
-        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
+        "apps/server/src/services/GitObservationCollector.integration.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/WorkspaceAdmissionAuthority.test.ts; verified covering assertion: non-Git directory yields the exact C-locale NOT_GIT snapshot (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2060,12 +2054,12 @@
         "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
       ],
       "tests": [
-        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
+        "packages/shared/p6-l1c-git-observation-contract.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/WorkspaceAdmissionAuthority.test.ts; verified covering assertion: L1C-M1-20 canonical diff Artifact crash ordering forbids DB-first availability (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2081,12 +2075,12 @@
         "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
       ],
       "tests": [
-        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
+        "apps/server/src/migrations/__tests__/m3-p2c0-workflow-creation-metadata.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/WorkspaceAdmissionAuthority.test.ts; verified covering assertion: WorkflowDefinitionRepository selects and exposes exact V2 metadata (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2123,12 +2117,12 @@
         "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
       ],
       "tests": [
-        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
+        "packages/shared/p6-l1c-git-observation-contract.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/WorkspaceAdmissionAuthority.test.ts; verified covering assertion: L1C-M1-04 GitCommandPort accepts only structured read families (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2149,7 +2143,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体保证的是「原始诊断不外泄」，不覆盖「措辞不得暗示 AgentOS 拥有 Git 工作流」这一类**文案/接口措辞**约束；全仓检索未找到措辞层面的断言。按缺口记录。 (triage triage-04.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-06-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/WorkspaceAdmissionAuthority.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2186,12 +2180,12 @@
         "apps/server/src/services/MemoryContextResolver.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/store/MemoryCandidateRepository.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/MemoryContextResolver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/MemoryContextResolver.test.ts; verified covering assertion: MF2R-03 automatic candidate without source rejects (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/MemoryContextResolver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2276,12 +2270,12 @@
         "apps/server/src/services/MemoryContextResolver.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/MemoryContextResolver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/MemoryContextResolver.test.ts; verified covering assertion: MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/MemoryContextResolver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2363,13 +2357,12 @@
         "apps/server/src/services/MemoryContextResolver.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/services/MemoryCandidateGenerationService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-11"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-010. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。候选只由完成的Run生成且有界证据（MF2R-G1），非完成或未知Run不生成任何内容（MF2R-G5）：不存在整段转录或Provider历史批量提升。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/MemoryCandidateGenerationService.test.ts, apps/server/src/services/MemoryContextResolver.test.ts; verified covering assertion: MF2R-G1 completed Run generates a review-required Candidate with bounded evidence (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-010. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。候选只由完成的Run生成且有界证据（MF2R-G1），非完成或未知Run不生成任何内容（MF2R-G5）：不存在整段转录或Provider历史批量提升。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
     },
@@ -2472,12 +2465,12 @@
         "apps/server/src/routes/approvals.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2493,12 +2486,12 @@
         "apps/server/src/routes/approvals.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2519,7 +2512,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索未找到「Provider 原生 merge/push 的可执行前置桥」相关断言；现有断言覆盖的是 AgentOS 控制的 spawn 闸门，不覆盖「Provider 原生动作 + 已验证可执行桥」这一条件式。按缺口记录。 (triage triage-11.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -2539,7 +2532,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `un-interceptable` / `never reported as blocked` 无命中；未找到「不可拦截动作不得被报告为已阻断」的断言，也未找到「不可用执行能力必须可见」的断言。按缺口记录。 (triage triage-11.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -2644,12 +2637,12 @@
         "apps/server/src/routes/approvals.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2733,7 +2726,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `disconnect does not decide` / `disconnect.*approval` 无命中；未找到「浏览器断开不构成审批决定」的断言（断线相关的两条断言是 Run 存活与执行继续，属 00-004/02-009/13-014，不是「不代替决定」）。按缺口记录。 (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2749,12 +2742,12 @@
         "apps/server/src/routes/approvals.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2770,12 +2763,13 @@
         "apps/server/src/routes/approvals.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/server/src/services/run-engine/CanonicalArtifactResult.liveGate.test.ts",
+        "apps/server/src/services/run-engine/RuntimeApprovalGate.liveGate.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: S2E-ARTIFACT-01 / S2E-COMPLETION-01（真实运行） (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2791,12 +2785,12 @@
         "apps/server/src/routes/approvals.ts"
       ],
       "tests": [
-        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        "apps/web/src/liteScopeBoundary.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts; verified covering assertion: LITE-12-016 no web module implements a deferred product surface (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-08-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2817,7 +2811,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 与 LITE-02-001/11-001 同一缺口：ConversationTurnDriver 的 14 条断言覆盖流式、失败、取消、快照与冻结选择，**没有**「message-only Turn 之后 Task/Run 行数不变」的运行时断言；唯一相关候选是 Composer 意图层断言（DCUX-P01），不在运行时。按缺口记录。 (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2833,12 +2827,12 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/ConversationBridgeService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/ConversationTurnDriver.test.ts; verified covering assertion: CR4B-02 create-task is idempotent across retries and starts nothing (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2938,12 +2932,13 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/routes/canonicalRunStream.test.ts",
+        "apps/server/src/services/m3-p6-integrated-verification.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/ConversationTurnDriver.test.ts; verified covering assertion: LITE-02-009-A2 runtime-inspector-process-active-after-disconnect (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -2964,7 +2959,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 候选断言覆盖的是「SSE 重放不重复投递同一 sequence」（传输层去重），而条款要求的是**投影层不产生重复卡片**（同一 canonical 事实在 UI 投影中只出现一次）。两者不是同一层。全仓检索未见「投影/卡片去重」的具名断言。按缺口记录。 (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3049,12 +3044,12 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/BoundedGroupService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/ConversationTurnDriver.test.ts; verified covering assertion: CR5S-03 reaching the total cap exhausts the interaction with a stable reason (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3117,12 +3112,12 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/GroupSpeakerResolver.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/ConversationTurnDriver.test.ts; verified covering assertion: CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3180,12 +3175,12 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/services/AgentHistoryService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-018. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/ConversationTurnDriver.test.ts; verified covering assertion: CR6-A3 the q filter never searches message bodies (secrets excluded from search) (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-018. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3222,12 +3217,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/migrations/__tests__/m2-4-task-run-schema.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: T14 PRAGMA integrity_check returns ok after 005/006 (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3243,12 +3238,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-003. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: INSP-04 process PID is evidence-only (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-003. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3264,12 +3259,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/services/TaskRunService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: TaskRunService atomically rolls back a Run and a newly created Legacy Task when capture fails (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3290,7 +3285,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 不可变性有两条具名断言（契约冻结 + resolver 的不改写断言）；但「child remapping」（子实体在迁移/复述时的 ID 重映射）在全仓检索（child.*remap / remaps / 重映射断言）无命中。按复合条款口径记驳回。 (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3306,12 +3301,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: runtime Events are append-only and preserve Run correlation constraints (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3327,12 +3322,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: P2C-2B every Event and Outbox position rolls back the composite transaction (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3348,12 +3343,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/routes/runLifecycle.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3369,12 +3364,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/store/__tests__/RunRepository.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: T48 concurrent transitions produce exactly one winner (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3390,12 +3385,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "packages/process-runtime/src/durable-coordinator.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: only the winning created->starting CAS calls spawn; losers join without spawning (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3411,12 +3406,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: L1D-U03 frozen classifier, not requested class, is effective authority (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3432,12 +3427,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "packages/process-runtime/src/durable-coordinator.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: cleanup terminateTree throw fails closed as unknown platform uncertainty (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3453,12 +3448,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "packages/process-runtime/src/durable-coordinator.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: retained cap fails closed BEFORE any byte commit (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3474,12 +3469,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/store/SqliteStore.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: records the tombstone schema through MigrationRunner and keeps it after restart (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3495,12 +3490,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: [M27-P5-T012] Workspace copy-only scope preserves source bytes and writes no Task-domain records (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3516,12 +3511,12 @@
         "apps/server/src/migrations/default-registry.ts"
       ],
       "tests": [
-        "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        "apps/server/src/store/MemoryEntryRepository.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-016. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: MF1R-15 record exposes no secret value field (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-016. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3542,7 +3537,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-017. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts; verified covering assertion: P2 Migration Registry contains exactly the registered migrations in contract order (triage triage-10.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-10-017. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3563,7 +3558,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 与 LITE-02-001 同一情形：候选断言只覆盖 Composer 意图层（actionCreatesWork===false），不覆盖运行时「POST 消息后 Task/Run 行数不变」。全仓检索未见该运行时断言。按缺口记录。 (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3579,12 +3574,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/routes/canonicalRunStream.test.ts"
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/canonicalRunStream.test.ts; verified covering assertion: create-task and start-run bridge a Message into durable work (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3647,7 +3642,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 候选断言只覆盖「新路由不遮蔽既有 Start 路由」这一条存在性/路由表性质，**没有断言 start/retry/cancel 的具体语义与错误码保持不变**（例如同一输入仍返回相同 httpStatus + error code 组合、字段形状不变）。虽然 R27/RY-C03 覆盖了 start/retry 的竞争错误码，但缺少一条对三者语义的**冻结基线对照**断言。按缺口记录。 (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3704,12 +3699,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/routes/canonicalRunStream.test.ts"
+        "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/canonicalRunStream.test.ts; verified covering assertion: L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3730,7 +3725,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 发言者侧的「声明不等于资格」有断言；但条款主语是 **API 客户端**，需要通过准入接口提交能力声明并被拒的断言（例如 POST admission 携带未验证 enforcedWorkspaceReadOnly 时得到 MODIFYING/拒绝）。全仓检索未见该 API 侧断言。按复合条款口径记驳回。 (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3746,12 +3741,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/routes/canonicalRunStream.test.ts"
+        "apps/server/src/routes/runLifecycle.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/canonicalRunStream.test.ts; verified covering assertion: P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3767,12 +3762,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/routes/canonicalRunStream.test.ts"
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/canonicalRunStream.test.ts; verified covering assertion: history endpoint returns the agent unified references (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3793,7 +3788,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件唯一的断言覆盖 content 服务（200、nosniff、CSP、metadata-only 409）与跨 Workspace 404，**没有任何断言检查 DTO 字段中不含存储路径**（例如 job 目录、绝对路径或内部文件名）。按缺口记录：需要一条对 Artifact DTO 字段集合/敏感字段的断言。 (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3809,12 +3804,12 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
-        "apps/server/src/routes/canonicalRunStream.test.ts"
+        "apps/web/src/liteScopeBoundary.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/canonicalRunStream.test.ts; verified covering assertion: LITE-12-016 no web module implements a deferred product surface (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3851,12 +3846,12 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/lib/uiFoundation.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: UIF-14 uiCssVariables flattens all semantic tokens (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3898,7 +3893,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: SHELL-05 reduced motion collapses panel transitions to zero (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3919,7 +3914,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 全仓检索 `batched streaming` / `stable scroll` / `autoscroll` 均无命中；布局断言与流式批处理、滚动稳定性无关。条款两项（批处理流式、滚动稳定）都没有具名断言。按缺口记录。 (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3935,12 +3930,12 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/lib/directConversation.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: DCUX-S03 reconnect resumes from the durable cursor and resyncs (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3961,7 +3956,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 检索 `async state` / `loading.*error.*empty` / `four states` 无命中；布局断言不覆盖「加载/错误/空/成功」等异步状态完备性。按缺口记录。 (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3977,12 +3972,12 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/lib/directConversation.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: DCUX-P02 task and run modes map to distinct explicit actions (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -3998,12 +3993,12 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/components/chat/GroupConversationCanvas.test.tsx"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: GRP-canvas: the group canvas mounts with a composer and the budget controls (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4040,12 +4035,12 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/components/chat/RuntimeInspectorView.test.tsx"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: INS-07 Memory Context explains selection and exclusion from the frozen Snapshot (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-011. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4082,12 +4077,12 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/server/src/services/AgentHistoryService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: CR6-A3 the q filter never searches message bodies (secrets excluded from search) (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4103,12 +4098,12 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/lib/uiFoundation.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: UIF-13 accessibility rules (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4129,7 +4124,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 候选断言覆盖的是「只发布 Lite 路由面」（范围边界），不是「访问仅经 API 客户端」（即 UI 不直连数据库/文件系统、所有数据经 HTTP API）。全仓检索未见该断言。按缺口记录。 (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4145,12 +4140,12 @@
         "apps/web/src/components/layout/WorkbenchShell.tsx"
       ],
       "tests": [
-        "apps/web/src/components/layout/WorkbenchShell.test.tsx"
+        "apps/web/src/liteScopeBoundary.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
+      "finding": "[matrix v16 re-point] previous tests: apps/web/src/components/layout/WorkbenchShell.test.tsx; verified covering assertion: LITE-12-016 the UI ships only the Lite route surface (triage triage-11.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -4186,12 +4181,12 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/routes/runtimeInspector.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: INSP-12 Run, Stage, Provider, Process and duration stay distinct (triage triage-09.json). Historical finding: 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：矩阵点名的证据文件 apps/server/src/routes/runtimeInspector.test.ts 已在本修订实际执行并通过，但该文件未覆盖本条主题，故保持RUNTIME-VERIFY，需补充真正断言本条的文件或运行证据。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
     {
@@ -4206,12 +4201,12 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-003. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: INSP-04 process PID is evidence-only (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-003. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4227,12 +4222,12 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: INSP-05 events are ordered and bounded (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-004. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4253,7 +4248,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 「bounded output」由 INSP-05 覆盖（截断并显式置 truncated）；「without unbounded client state」需要 UI 侧断言（组件在超长流下不累积状态），全仓检索未见该断言。按复合条款口径记驳回。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4295,7 +4290,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 与 LITE-06-011 同一缺口：全仓未见「Git 观测措辞不得暗示 AgentOS 拥有 Git 工作流」的文案/接口层断言。按缺口记录。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-007. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4311,12 +4306,12 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/services/TaskRunRecoveryService.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-008. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4337,7 +4332,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 全仓检索 Inspector 断言中无 control/kill/reattach/takeover 相关断言；`process-reattach` 只出现在 m3-runtime 的**恢复模式事件载荷**枚举里，与「Inspector 不提供重连/接管/直接杀进程控件」不是同一命题。按缺口记录。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4358,7 +4353,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 四段中 API 与 Runtime 有具名断言，Policy 段与「committed Event」段没有（未找到断言 cancel/retry 产生并持久化对应规范事件的用例）。按复合条款口径记驳回。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-010. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4422,7 +4417,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 投影测试插入 `args_redacted_json`（结构上使用已脱敏列），但**没有一条断言检查 DTO 内不含秘密值**（例如断言投影字段集合、或断言某秘密串不出现在序列化结果中）。记忆侧的 `MF2R-11 record exposes no secret value field` 覆盖的是记忆记录形状，不是 Inspector/Artifact DTO。按缺口记录。 (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-013. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4438,12 +4433,12 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/services/m3-p6-integrated-verification.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-014. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4459,12 +4454,12 @@
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "tests": [
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/runtimeInspector.test.ts; verified covering assertion: INSP-07 inspect performs no writes (triage triage-09.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-015. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/runtimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4493,7 +4488,7 @@
         "S4-CODEX-LUNA-GATE",
         "S4-OPENCODE-REAL-GATE"
       ],
-      "finding": "实现缺口已修复：composition root 现注册三个 canonical adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）已在同头被真实清除，而非删除条件。但本条要求的是「实际生产链接入与真实调用」，其证据必须是可被 CI 复算的运行记录，而本机三个 CLI 在 GitHub runner 上均不存在，故本地真实调用属机器相关证据，不足以支撑 PASS。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 该文件 33 条断言覆盖的是调度器/协调器/生命周期组合，其**真实 Provider 调用**部分是 env-gated 且本机跳过（文件 raw exit 0 但 4 skip）。真实调用证据不在本文件，而在 evidence/gates-20260914/ 的三个 Provider gate 收据（codex / kimi-routed / opencode，各自 exit 0）。本行应指向那些收据，而不是这个测试文件。 (triage triage-01.json). Historical finding: 实现缺口已修复：composition root 现注册三个 canonical adapter；OpenCode 原先不可通过的 fail-closed 拒绝（CLI 版本区间、run 子命令安全参数探测、取消协议）已在同头被真实清除，而非删除条件。但本条要求的是「实际生产链接入与真实调用」，其证据必须是可被 CI 复算的运行记录，而本机三个 CLI 在 GitHub runner 上均不存在，故本地真实调用属机器相关证据，不足以支撑 PASS。",
       "exit": "待闭合：需要一份 CI 可复算的真实调用证据（runner 内可用的 Provider CLI，或由 CI 触发的真实调用闸门），或将该条按用户批准的整体延期正式改判 DEFERRED。在此之前保持 RUNTIME-VERIFY，不按名称或本地结果提升。"
     },
     {
@@ -4513,7 +4508,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-101. Historical finding (not current acceptance): 已有POST /memory/entries；验证实际UI入口、Scope、来源、重复行为。 S8验收：本条点名的测试文件 apps/server/src/routes/memoryRuntime.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/memoryRuntime.test.ts; verified covering assertion: MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-101. Historical finding (not current acceptance): 已有POST /memory/entries；验证实际UI入口、Scope、来源、重复行为。 S8验收：本条点名的测试文件 apps/server/src/routes/memoryRuntime.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "真实保存→Entry+Event→可检索；无重复、越权或秘密泄漏。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4933,7 +4928,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-101. Historical finding (not current acceptance): 验收段总称不能代替正文功能核对。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 四项中只有「四栏布局」有组件级断言；导航与通知状态缺具名断言，键盘流只有契约常量（非组件/浏览器行为）。按复合条款口径记驳回：需补导航、通知状态与组件级键盘流断言。 (triage triage-08.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-12-101. Historical finding (not current acceptance): 验收段总称不能代替正文功能核对。 S8验收：本条点名的测试文件 apps/web/src/components/layout/WorkbenchShell.test.tsx 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "按现有页面验证Agent入口、Conversation状态、搜索/命令入口、主题/密度、核心键盘操作；缺口映射本ID子项。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4955,7 +4950,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-102. Historical finding (not current acceptance): projection已有；正文的mutation/approval/process/output/git等字段和实时更新需映射。 S8验收：本条点名的测试文件 apps/server/src/services/RuntimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 断言体覆盖各 section 的投影字段与顺序（含 INSP-12 身份区分），但**没有任何断言覆盖条款后半句 Cancel/Retry 源链**（即 Inspector 是否暴露取消/重试的来源链）。条款两部分，缺一不可。 (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-13-102. Historical finding (not current acceptance): projection已有；正文的mutation/approval/process/output/git等字段和实时更新需映射。 S8验收：本条点名的测试文件 apps/server/src/services/RuntimeInspector.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "规范字段逐项对照canonical数据，缺能力明确显示；禁止臆造或直接控制OS。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -4976,7 +4971,7 @@
       "evidence": [
         "S8-VERIFY-BATCH-10"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-101. Historical finding (not current acceptance): 模板catalog/实例化已合并，真实执行和readonly能力显示待验收。 S8验收：本条点名的测试文件 packages/shared/wf-template-instantiation.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "[matrix v16 re-point] previous tests: packages/shared/wf-template-instantiation.test.ts; verified covering assertion: WFI-10 every template compiles (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-01-101. Historical finding (not current acceptance): 模板catalog/实例化已合并，真实执行和readonly能力显示待验收。 S8验收：本条点名的测试文件 packages/shared/wf-template-instantiation.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "Single/Plan-Implement-Review/Parallel Analysis-Synthesis有限图，实际Task/Run/Stage；未证明只读不得并行修改。",
       "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
     },
@@ -8065,6 +8060,120 @@
         "LITE-12-101",
         "LITE-13-102",
         "LITE-01-101"
+      ]
+    },
+    {
+      "version": 16,
+      "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
+      "authority": "User-approved tightened Lite closeout plan: S0 is the only scope referee; re-pointing tests is not a promotion",
+      "reason": "Adopt the assertion-level ledger and its source-level triage: 75 rows are re-pointed to the test file that carries a named, executed covering assertion, and 31 rows record the specific assertion their clause still lacks. No state changed and no PASS was written (PASS remains 0).",
+      "requirementIds": [
+        "LITE-00-004",
+        "LITE-01-008",
+        "LITE-01-010",
+        "LITE-01-005",
+        "LITE-00-007",
+        "LITE-00-006",
+        "LITE-00-010",
+        "LITE-07-101",
+        "LITE-01-101",
+        "LITE-01-011",
+        "LITE-02-013",
+        "LITE-00-013",
+        "LITE-02-006",
+        "LITE-02-012",
+        "LITE-02-002",
+        "LITE-01-004",
+        "LITE-01-006",
+        "LITE-06-006",
+        "LITE-06-007",
+        "LITE-06-008",
+        "LITE-06-010",
+        "LITE-05-001",
+        "LITE-05-008",
+        "LITE-05-011",
+        "LITE-07-002",
+        "LITE-07-006",
+        "LITE-07-010",
+        "LITE-09-002",
+        "LITE-09-018",
+        "LITE-10-002",
+        "LITE-09-007",
+        "LITE-09-012",
+        "LITE-09-015",
+        "LITE-11-010",
+        "LITE-11-002",
+        "LITE-11-011",
+        "LITE-11-013",
+        "LITE-11-008",
+        "LITE-12-006",
+        "LITE-12-009",
+        "LITE-12-011",
+        "LITE-12-014",
+        "LITE-12-002",
+        "LITE-12-013",
+        "LITE-13-002",
+        "LITE-13-003",
+        "LITE-13-004",
+        "LITE-13-014",
+        "LITE-13-015",
+        "LITE-13-008",
+        "LITE-10-003",
+        "LITE-10-004",
+        "LITE-10-006",
+        "LITE-10-007",
+        "LITE-10-008",
+        "LITE-10-009",
+        "LITE-10-010",
+        "LITE-10-011",
+        "LITE-10-012",
+        "LITE-10-013",
+        "LITE-10-014",
+        "LITE-10-015",
+        "LITE-10-016",
+        "LITE-10-017",
+        "LITE-00-003",
+        "LITE-00-009",
+        "LITE-08-001",
+        "LITE-08-002",
+        "LITE-08-008",
+        "LITE-08-013",
+        "LITE-08-014",
+        "LITE-08-015",
+        "LITE-12-004",
+        "LITE-12-008",
+        "LITE-12-016",
+        "LITE-00-011",
+        "LITE-00-002",
+        "LITE-01-015",
+        "LITE-04-006",
+        "LITE-04-007",
+        "LITE-04-008",
+        "LITE-13-102",
+        "LITE-04-101",
+        "LITE-02-001",
+        "LITE-02-016",
+        "LITE-06-011",
+        "LITE-05-009",
+        "LITE-09-008",
+        "LITE-11-001",
+        "LITE-11-012",
+        "LITE-11-005",
+        "LITE-11-009",
+        "LITE-12-005",
+        "LITE-12-007",
+        "LITE-12-015",
+        "LITE-12-101",
+        "LITE-13-005",
+        "LITE-13-010",
+        "LITE-13-009",
+        "LITE-13-013",
+        "LITE-13-007",
+        "LITE-10-005",
+        "LITE-08-003",
+        "LITE-08-004",
+        "LITE-08-012",
+        "LITE-09-001"
       ]
     }
   ],

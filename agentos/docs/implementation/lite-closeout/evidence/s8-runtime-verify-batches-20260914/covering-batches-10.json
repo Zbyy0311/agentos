@@ -1,0 +1,192 @@
+{
+  "schemaVersion": 1,
+  "baseline": "10879ec10fa59aca5f72efcc6eea734ce1623a92",
+  "trackedStatus": "",
+  "generatedAt": "2026-09-14T14:19:16.065Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 4,
+    "passed": 4,
+    "failed": 0,
+    "requirementsProvable": 0,
+    "requirementsTotal": 0
+  },
+  "results": [
+    {
+      "file": "apps/server/src/migrations/__tests__/m2-7-workspace-compatibility.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 903,
+      "sourceSha256": "48c42d56539b51a21ae0026f673170f8afd73a8b56cd17d42d9e378366fbf8f7",
+      "rawLogSha256": "309b3e683145d6f7c073b47252840866c90dbf91dc666b5941ec5acf075da68d",
+      "rawOutput": "✔ [M27-P2-T011] Batch Workspace scopes isolate completion, quarantine, and resume without a global completed marker (379.2115ms)\n✔ [M27-P5-T012] Workspace copy-only scope preserves source bytes and writes no Task-domain records (187.8476ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 826.84\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ [M27-P2-T011] Batch Workspace scopes isolate completion, quarantine, and resume without a global completed marker (379.2115ms)\n✔ [M27-P5-T012] Workspace copy-only scope preserves source bytes and writes no Task-domain records (187.8476ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 826.84",
+      "baseline": "10879ec10fa59aca5f72efcc6eea734ce1623a92",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/migrations/__tests__/m2-7-workspace-compatibility.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ [M27-P2-T011] Batch Workspace scopes isolate completion, quarantine, and resume without a global completed marker (379.2115ms)\n✔ [M27-P5-T012] Workspace copy-only scope preserves source bytes and writes no Task-domain records (187.8476ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 826.84\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/migrations/__tests__/m3-p2a-migration-012.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 2207,
+      "sourceSha256": "0c8a3b7245127bcf8394709f2704130b2f21ad593248c5e2bb8e7017c31dc58c",
+      "rawLogSha256": "4614d46d0ace4bbfef181f2030a0697f05136ce955d25db7fcebcca3aaabb63b",
+      "rawOutput": "✔ Migration Registry contains 012 in contract order (0.8745ms)\n✔ Migration 012 is destructive and a confirmed fresh database may skip an old-state backup (64.9877ms)\n✔ existing 001-011 file DB without backup fails before any Migration 012 DDL (161.4192ms)\n✔ existing 001-011 file DB is backed up under the lock before Migration 012 (457.8388ms)\n✔ fresh DB applies Migration 012 and creates all M3 schema objects (54.8628ms)\n✔ legacy 001–011 rows and pending Stage data survive Migration 012 (606.6624ms)\n✔ Migration 012 checksum, order, repeat run and existing idempotency data are stable (89.195ms)\n✔ Migration 012 rolls back the full existing-schema transition when CREATE operations fails (72.0065ms)\n✔ runtime Events are append-only and preserve Run correlation constraints (57.8029ms)\n✔ Task-domain parent deletes are rejected without modifying the append-only Event (58.5985ms)\n✔ optional history references are not Foreign Keys and deleting their rows preserves Event IDs (57.2652ms)\n✔ Migration 012 exposes exact immutable FK, index and trigger structures (56.6457ms)\n✔ Operations, Outbox, Dead Letters, Stage status and recovery constraints are enforced (56.5247ms)\n✔ all Migration 012 foreign keys and integrity checks pass (55.4221ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2131.8562\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ optional history references are not Foreign Keys and deleting their rows preserves Event IDs (57.2652ms)\n✔ Migration 012 exposes exact immutable FK, index and trigger structures (56.6457ms)\n✔ Operations, Outbox, Dead Letters, Stage status and recovery constraints are enforced (56.5247ms)\n✔ all Migration 012 foreign keys and integrity checks pass (55.4221ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2131.8562",
+      "baseline": "10879ec10fa59aca5f72efcc6eea734ce1623a92",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/migrations/__tests__/m3-p2a-migration-012.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ Migration Registry contains 012 in contract order (0.8745ms)\n✔ Migration 012 is destructive and a confirmed fresh database may skip an old-state backup (64.9877ms)\n✔ existing 001-011 file DB without backup fails before any Migration 012 DDL (161.4192ms)\n✔ existing 001-011 file DB is backed up under the lock before Migration 012 (457.8388ms)\n✔ fresh DB applies Migration 012 and creates all M3 schema objects (54.8628ms)\n✔ legacy 001–011 rows and pending Stage data survive Migration 012 (606.6624ms)\n✔ Migration 012 checksum, order, repeat run and existing idempotency data are stable (89.195ms)\n✔ Migration 012 rolls back the full existing-schema transition when CREATE operations fails (72.0065ms)\n✔ runtime Events are append-only and preserve Run correlation constraints (57.8029ms)\n✔ Task-domain parent deletes are rejected without modifying the append-only Event (58.5985ms)\n✔ optional history references are not Foreign Keys and deleting their rows preserves Event IDs (57.2652ms)\n✔ Migration 012 exposes exact immutable FK, index and trigger structures (56.6457ms)\n✔ Operations, Outbox, Dead Letters, Stage status and recovery constraints are enforced (56.5247ms)\n✔ all Migration 012 foreign keys and integrity checks pass (55.4221ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2131.8562\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/store/MemoryEntryRepository.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 3081,
+      "sourceSha256": "55c1c15178b7036cbadd86d67624028fbabca0b87cb34cc94a1c00360b9e36a5",
+      "rawLogSha256": "d61e1b4d0242c83aff18d0f62c00ef901f716ab8e3fec3b749b6dfc590947f2d",
+      "rawOutput": "✔ MF1R-01 create persists entry, sources, and FTS row (177.1195ms)\n✔ MF1R-02 reads are workspace-scoped (160.8708ms)\n✔ MF1R-03 missing workspace fails closed (160.8179ms)\n✔ MF1R-04 automatic entry without source fails closed (161.7995ms)\n✔ MF1R-05 invalid scope/owner fails closed (161.4516ms)\n✔ MF1R-06 invalid vocabulary and bounds fail closed (164.0655ms)\n✔ MF1R-07 duplicate sources fail closed (158.8112ms)\n✔ MF1R-08 status update increments version (180.698ms)\n✔ MF1R-09 stale version and deleted entry fail closed (186.6995ms)\n✔ MF1R-10 soft delete preserves the row (190.6685ms)\n✔ MF1R-11 unknown entry fails closed (177.09ms)\n✔ MF1R-12 invalid update input fails closed (181.6412ms)\n✔ MF1R-13 duplicate entry id fails closed (173.3093ms)\n✔ MF1R-14 create is atomic across entry, sources, and FTS (156.5204ms)\n✔ MF1R-15 record exposes no secret value field (163.1626ms)\n✔ MF1R-16 pinned flag round-trips (156.0034ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3001.8697\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 16,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ MF1R-13 duplicate entry id fails closed (173.3093ms)\n✔ MF1R-14 create is atomic across entry, sources, and FTS (156.5204ms)\n✔ MF1R-15 record exposes no secret value field (163.1626ms)\n✔ MF1R-16 pinned flag round-trips (156.0034ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3001.8697",
+      "baseline": "10879ec10fa59aca5f72efcc6eea734ce1623a92",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/store/MemoryEntryRepository.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ MF1R-01 create persists entry, sources, and FTS row (177.1195ms)\n✔ MF1R-02 reads are workspace-scoped (160.8708ms)\n✔ MF1R-03 missing workspace fails closed (160.8179ms)\n✔ MF1R-04 automatic entry without source fails closed (161.7995ms)\n✔ MF1R-05 invalid scope/owner fails closed (161.4516ms)\n✔ MF1R-06 invalid vocabulary and bounds fail closed (164.0655ms)\n✔ MF1R-07 duplicate sources fail closed (158.8112ms)\n✔ MF1R-08 status update increments version (180.698ms)\n✔ MF1R-09 stale version and deleted entry fail closed (186.6995ms)\n✔ MF1R-10 soft delete preserves the row (190.6685ms)\n✔ MF1R-11 unknown entry fails closed (177.09ms)\n✔ MF1R-12 invalid update input fails closed (181.6412ms)\n✔ MF1R-13 duplicate entry id fails closed (173.3093ms)\n✔ MF1R-14 create is atomic across entry, sources, and FTS (156.5204ms)\n✔ MF1R-15 record exposes no secret value field (163.1626ms)\n✔ MF1R-16 pinned flag round-trips (156.0034ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3001.8697\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/shared/mf0-memory-contracts.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 344,
+      "sourceSha256": "2c8440d6bb320b5f66fe00c3a86827a03a4ff91031edb76cac49e010694e9ec6",
+      "rawLogSha256": "f9def377c6a6daa65541dc974b0aa954a118d98824a0e20c808aa074c2a371fb",
+      "rawOutput": "✔ MF0-01 scope vocabulary and proximity are frozen (1.1754ms)\n✔ MF0-02 category and authority vocabularies match Lite (0.143ms)\n✔ MF0-03 weak authority set is fail-closed (0.0691ms)\n✔ MF0-04 non-retrievable statuses are frozen (0.0515ms)\n✔ MF0-05 global scope accepts no owner (0.1364ms)\n✔ MF0-06 narrower scopes require exact owners (0.1302ms)\n✔ MF0-07 run scope requires workspace, task, and run (0.1245ms)\n✔ MF0-08 unknown scope and non-object fail closed (0.0709ms)\n✔ MF0-09 blank owner IDs are missing (0.0696ms)\n✔ MF0-10 assert form throws stable data-free error (0.3271ms)\n✔ MF0-11 source requirement is authority-dependent (0.1035ms)\n✔ MF0-12 promotion gate rejects secret content (0.1481ms)\n✔ MF0-13 promotion gate rejects automatic entry without source (0.1018ms)\n✔ MF0-14 review-required triggers are fail-closed (0.084ms)\n✔ MF0-15 promotion gate enforces duplicate, confidence, and size (0.0993ms)\n✔ MF0-16 qualified candidate auto-accepts (0.0911ms)\n✔ MF0-17 budget policy validation fails closed (0.1792ms)\n✔ MF0-18 deduplication order is frozen (0.0634ms)\n✔ MF0-19 snapshot immutability and event payload rules are frozen (0.061ms)\n✔ MF0-20 event family covers Lite memory events (0.1271ms)\nℹ tests 20\nℹ suites 0\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 267.7792\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 20,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 20,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ MF0-17 budget policy validation fails closed (0.1792ms)\n✔ MF0-18 deduplication order is frozen (0.0634ms)\n✔ MF0-19 snapshot immutability and event payload rules are frozen (0.061ms)\n✔ MF0-20 event family covers Lite memory events (0.1271ms)\nℹ tests 20\nℹ suites 0\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 267.7792",
+      "baseline": "10879ec10fa59aca5f72efcc6eea734ce1623a92",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "../../packages/shared/mf0-memory-contracts.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ MF0-01 scope vocabulary and proximity are frozen (1.1754ms)\n✔ MF0-02 category and authority vocabularies match Lite (0.143ms)\n✔ MF0-03 weak authority set is fail-closed (0.0691ms)\n✔ MF0-04 non-retrievable statuses are frozen (0.0515ms)\n✔ MF0-05 global scope accepts no owner (0.1364ms)\n✔ MF0-06 narrower scopes require exact owners (0.1302ms)\n✔ MF0-07 run scope requires workspace, task, and run (0.1245ms)\n✔ MF0-08 unknown scope and non-object fail closed (0.0709ms)\n✔ MF0-09 blank owner IDs are missing (0.0696ms)\n✔ MF0-10 assert form throws stable data-free error (0.3271ms)\n✔ MF0-11 source requirement is authority-dependent (0.1035ms)\n✔ MF0-12 promotion gate rejects secret content (0.1481ms)\n✔ MF0-13 promotion gate rejects automatic entry without source (0.1018ms)\n✔ MF0-14 review-required triggers are fail-closed (0.084ms)\n✔ MF0-15 promotion gate enforces duplicate, confidence, and size (0.0993ms)\n✔ MF0-16 qualified candidate auto-accepts (0.0911ms)\n✔ MF0-17 budget policy validation fails closed (0.1792ms)\n✔ MF0-18 deduplication order is frozen (0.0634ms)\n✔ MF0-19 snapshot immutability and event payload rules are frozen (0.061ms)\n✔ MF0-20 event family covers Lite memory events (0.1271ms)\nℹ tests 20\nℹ suites 0\nℹ pass 20\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 267.7792\n",
+      "stderr": ""
+    }
+  ]
+}

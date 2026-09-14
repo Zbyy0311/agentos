@@ -1,0 +1,14 @@
+
+ RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime
+
+ ✓ src/races.test.ts > RACE-S1: created cancel revokes the unconsumed spawn right > cancel commits first; the held start joins the terminal result 3ms
+ ✓ src/races.test.ts > RACE-S2: starting x cancel persists stopping with a null PID > cancel CASes starting -> stopping; spawn count stays exactly 1 9ms
+ ✓ src/races.test.ts > RACE-S3: late spawn success binds, cleans up and exits once > terminates the bound tree, verifies survivors and terminalizes exited 2ms
+ ✓ src/races.test.ts > RACE-S4: late spawn failure writes one compound failed fact > records cancel causation plus spawn-failure evidence; no exit, no retry 1ms
+ ✓ src/races.test.ts > RACE-S5: terminal boundary joins every late caller > duplicate starts, cancels, stale claims and late callbacks all join 2ms
+
+ Test Files  1 passed (1)
+      Tests  5 passed (5)
+   Start at  22:07:29
+   Duration  315ms (transform 107ms, setup 0ms, import 138ms, tests 17ms, environment 0ms)
+

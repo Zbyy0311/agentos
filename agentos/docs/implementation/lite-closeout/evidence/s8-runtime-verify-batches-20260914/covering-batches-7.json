@@ -1,0 +1,147 @@
+{
+  "schemaVersion": 1,
+  "baseline": "6e81497e47dcc2d1a7c9155ff40db7ad85ad11e2",
+  "trackedStatus": "",
+  "generatedAt": "2026-09-14T14:13:59.121Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 3,
+    "passed": 3,
+    "failed": 0,
+    "requirementsProvable": 0,
+    "requirementsTotal": 0
+  },
+  "results": [
+    {
+      "file": "apps/server/src/routes/conversationRuntime.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 2812,
+      "sourceSha256": "764f565e899b554caa4886065ed19412b0f9d641628f0cd5f8dc0504a4237843",
+      "rawLogSha256": "1e6967a1925d2d7641bf20f2a4bd6437d23b371d5aeb1fb70f14aa7bda024a03",
+      "rawOutput": "✔ direct Conversation lifecycle: create, send, list, archive, restore (345.9281ms)\n✔ group Conversation requires two Agents and a reply mode (199.0411ms)\n✔ checkpoints replay and unknown ids fail closed (234.0915ms)\n✔ create-task and start-run bridge a Message into durable work (228.8653ms)\n✔ history endpoint returns the agent unified references (240.1415ms)\n✔ unknown workspace and conversation fail closed with 404 (165.4992ms)\nCOMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex\n    at ConversationCompactionTrigger.ensureCompacted (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationCompactionTrigger.ts:116:69)\n    at ConversationTurnDriver.replyWithTurn (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationTurnDriver.ts:332:44)\n    at <anonymous> (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\routes\\conversationRuntime.ts:718:35)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at next (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:149:13)\n    at Route.dispatch (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:119:3)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:284:15\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:365:14)\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:376:14)\n✔ messages/stream sends, streams durable checkpoints, finalizes a reply, and freezes its context snapshot (223.4382ms)\nCOMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex\n    at ConversationCompactionTrigger.ensureCompacted (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationCompactionTrigger.ts:116:69)\n    at ConversationTurnDriver.replyWithTurn (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationTurnDriver.ts:332:44)\n    at <anonymous> (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\routes\\conversationRuntime.ts:718:35)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at next (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:149:13)\n    at Route.dispatch (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:119:3)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:284:15\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:365:14)\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:376:14)\n✔ LITE-09-101 messages/stream freezes a non-empty Memory selection for the reply (229.0506ms)\nCOMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex\n    at ConversationCompactionTrigger.ensureCompacted (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationCompactionTrigger.ts:116:69)\n    at ConversationTurnDriver.replyWithTurn (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationTurnDriver.ts:332:44)\n    at <anonymous> (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\routes\\conversationRuntime.ts:718:35)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at next (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:149:13)\n    at Route.dispatch (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:119:3)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:284:15\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:365:14)\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:376:14)\n✔ LITE-09-102 a busy Workspace refuses chat with a stable code instead of implicit modifying authority (225.504ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2736.3681\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 9,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "    at E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:284:15\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:365:14)\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:376:14)\n✔ LITE-09-102 a busy Workspace refuses chat with a stable code instead of implicit modifying authority (225.504ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2736.3681",
+      "baseline": "6e81497e47dcc2d1a7c9155ff40db7ad85ad11e2",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/routes/conversationRuntime.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ direct Conversation lifecycle: create, send, list, archive, restore (345.9281ms)\n✔ group Conversation requires two Agents and a reply mode (199.0411ms)\n✔ checkpoints replay and unknown ids fail closed (234.0915ms)\n✔ create-task and start-run bridge a Message into durable work (228.8653ms)\n✔ history endpoint returns the agent unified references (240.1415ms)\n✔ unknown workspace and conversation fail closed with 404 (165.4992ms)\nCOMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex\n    at ConversationCompactionTrigger.ensureCompacted (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationCompactionTrigger.ts:116:69)\n    at ConversationTurnDriver.replyWithTurn (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationTurnDriver.ts:332:44)\n    at <anonymous> (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\routes\\conversationRuntime.ts:718:35)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at next (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:149:13)\n    at Route.dispatch (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:119:3)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:284:15\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:365:14)\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:376:14)\n✔ messages/stream sends, streams durable checkpoints, finalizes a reply, and freezes its context snapshot (223.4382ms)\nCOMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex\n    at ConversationCompactionTrigger.ensureCompacted (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationCompactionTrigger.ts:116:69)\n    at ConversationTurnDriver.replyWithTurn (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationTurnDriver.ts:332:44)\n    at <anonymous> (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\routes\\conversationRuntime.ts:718:35)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at next (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:149:13)\n    at Route.dispatch (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:119:3)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:284:15\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:365:14)\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:376:14)\n✔ LITE-09-101 messages/stream freezes a non-empty Memory selection for the reply (229.0506ms)\nCOMPACTION_TRIGGER_ERROR code=COMPACTION_SUMMARIZER_UNAVAILABLE Error: codex\n    at ConversationCompactionTrigger.ensureCompacted (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationCompactionTrigger.ts:116:69)\n    at ConversationTurnDriver.replyWithTurn (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\services\\ConversationTurnDriver.ts:332:44)\n    at <anonymous> (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\apps\\server\\src\\routes\\conversationRuntime.ts:718:35)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at next (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:149:13)\n    at Route.dispatch (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\route.js:119:3)\n    at Layer.handle [as handle_request] (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\layer.js:95:5)\n    at E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:284:15\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:365:14)\n    at param (E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-runtime-batches\\agentos\\node_modules\\.pnpm\\express@4.22.2\\node_modules\\express\\lib\\router\\index.js:376:14)\n✔ LITE-09-102 a busy Workspace refuses chat with a stable code instead of implicit modifying authority (225.504ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2736.3681\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/routes/runLifecycle.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 25013,
+      "sourceSha256": "c25b752c3e3830fe2c32284a032b4151b09c8cfb4af2ff4e7307c970efda5d9c",
+      "rawLogSha256": "3c32edf1e553e620ab85d291ac42eb2a2fe08ab6bf52df4d985222010322f85d",
+      "rawOutput": "✔ P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body (245.1617ms)\n✔ P3C1-R02 no workspace-scoped start URL exists (172.0685ms)\n✔ P3C1-R03 the locator runs before body validation (179.1159ms)\n✔ P3C1-R04 an undefined body is rejected (171.6787ms)\n✔ P3C1-R05 a null body is rejected (169.0033ms)\n✔ P3C1-R06 an array body is rejected (197.0773ms)\n✔ P3C1-R07 a string body is rejected (158.9496ms)\n✔ P3C1-R08 a number body is rejected (164.6968ms)\n✔ P3C1-R09 a boolean body is rejected (169.2513ms)\n✔ P3C1-R10 unknown body fields are rejected (205.9908ms)\n✔ P3C1-R11 expectedVersion must be a positive safe integer when present (204.411ms)\n✔ P3C1-R12 query parameters are not accepted (190.5384ms)\n✔ P3C1-R13 keyed live then replay returns the identical snapshot with the replay header (213.4122ms)\n✔ P3C1-R14 the same key with a different fingerprint is rejected without new side effects (198.6742ms)\n✔ P3C1-R15 an unknown run returns 404 RUN_NOT_FOUND (183.5156ms)\n✔ P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT (175.7347ms)\n✔ P3C1-R17 a non-queued run returns 409 INVALID_RUN_TRANSITION (194.1873ms)\n✔ P3C1-R18 a second start while one is queued returns 409 RUN_START_ALREADY_ACTIVE (196.9739ms)\n✔ P3C1-R19 multiple non-terminal starts return 500 RUN_START_AUTHORIZATION_AMBIGUOUS (226.8941ms)\n✔ P3C1-R20 an inconsistent start history returns 500 RUN_START_STATE_INCONSISTENT (226.8765ms)\n✔ P3C1-R21 a real SQLite busy timeout maps to a sanitized 503 RUN_START_BUSY (5704.1767ms)\n✔ P3C1-R22 a missing OperationService capability is sanitized to 500 INTERNAL_ERROR before mutation (166.4262ms)\n✔ P3C1-R23 the route module touches no Engine, Provider, Process, or CLI surface (0.4119ms)\n✔ P3C1-R24 index.ts mounts the lifecycle router exactly once on /api (0.1983ms)\n✔ P3C1-R25 same-key race: exactly one live 202 and one replay 202 with one operation and one record (624.8571ms)\n✔ P3C1-R26 different-key race: exactly one live 202 and one stable 409 RUN_START_ALREADY_ACTIVE (623.7505ms)\n✔ P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record (625.4479ms)\n✔ P3C1-RY-C01 same Parent + same key has one live 201 and one replay 201 (625.2833ms)\n✔ P3C1-RY-C02 same Parent + different keys has one 201 and one RUN_RETRY_ALREADY_CREATED 409 (648.4552ms)\n✔ P3C1-RY-C03 same Task + two failed Parents has one 201 and one RUN_ACTIVE_EXISTS 409 (646.7977ms)\n✔ P3C1-R28 a store connection waits out a short foreign write lock instead of failing busy (896.4107ms)\n✔ P3C1-R29 unknown run + malformed JSON keeps 404 precedence over parser errors (170.4154ms)\n✔ P3C1-R30 known run + malformed JSON maps to a sanitized 400 VALIDATION_FAILED (168.9933ms)\n✔ P3C1-R31 a zero-byte JSON payload is rejected and writes nothing (165.5778ms)\n✔ P3C1-R32 an empty chunked JSON payload is rejected and writes nothing (165.3215ms)\n✔ P3C1-R33 application/json with a charset parameter accepts an explicit {} as 202 (166.2535ms)\n✔ P3C1-R34 a non-JSON content type is rejected and writes nothing (172.6564ms)\n✔ P3C1-R35 an oversized JSON payload maps to a sanitized 400 VALIDATION_FAILED (189.6763ms)\n✔ P3C1-R36 start-race workers finish store construction before signalling ready (0.6515ms)\n✔ P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201 (211.8346ms)\n✔ P3C1-RY02 Retry locator precedes malformed body, query, and invalid key validation (186.2635ms)\n✔ P3C1-RY03 Retry rejects query parameters before body and key processing (177.3629ms)\n✔ P3C1-RY04 Retry enforces the exact JSON body contract (213.5167ms)\n✔ P3C1-RY05 Retry rejects every missing or malformed Idempotency-Key shape (178.2348ms)\n✔ P3C1-RY06 live and replay return the immutable HTTP 201 acceptance snapshot (184.1951ms)\n✔ P3C1-RY07 Retry preserves locator, version, and failed-Parent guards (184.3911ms)\n✔ P3C1-RY08 Retry maps duplicate and active-slot races to stable 409 responses (335.9405ms)\n✔ P3C1-RY09 Retry ambiguity and inconsistency responses remain exact two-field errors (345.3704ms)\n✔ P3C1-RY10 a Run active-slot unique conflict returns the exact retryable false response (167.4088ms)\n✔ P3C1-RY11 an unknown Retry failure remains a sanitized 500 INTERNAL_ERROR (168.4268ms)\n✔ P3C1-RY12 genuine SQLite lock timeout maps only to Retry busy (5706.0896ms)\n✔ P6M1-D01 accepted start triggers exactly one runtime dispatch (165.4621ms)\n✔ P6M1-D02 replayed start does not dispatch again (replay-no-respawn) (170.8856ms)\n✔ P6M1-D03 dispatch rejection is contained and does not change the 202 contract (212.6132ms)\n✔ P6M1-D04 dispatch gate OFF (default) triggers no dispatch and preserves the 202 contract (170.5998ms)\nℹ tests 55\nℹ suites 0\nℹ pass 55\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 24940.4621\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 55,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 55,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ P6M1-D01 accepted start triggers exactly one runtime dispatch (165.4621ms)\n✔ P6M1-D02 replayed start does not dispatch again (replay-no-respawn) (170.8856ms)\n✔ P6M1-D03 dispatch rejection is contained and does not change the 202 contract (212.6132ms)\n✔ P6M1-D04 dispatch gate OFF (default) triggers no dispatch and preserves the 202 contract (170.5998ms)\nℹ tests 55\nℹ suites 0\nℹ pass 55\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 24940.4621",
+      "baseline": "6e81497e47dcc2d1a7c9155ff40db7ad85ad11e2",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/routes/runLifecycle.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ P3C1-R01 canonical URL accepts a live no-key start with the exact 202 operation body (245.1617ms)\n✔ P3C1-R02 no workspace-scoped start URL exists (172.0685ms)\n✔ P3C1-R03 the locator runs before body validation (179.1159ms)\n✔ P3C1-R04 an undefined body is rejected (171.6787ms)\n✔ P3C1-R05 a null body is rejected (169.0033ms)\n✔ P3C1-R06 an array body is rejected (197.0773ms)\n✔ P3C1-R07 a string body is rejected (158.9496ms)\n✔ P3C1-R08 a number body is rejected (164.6968ms)\n✔ P3C1-R09 a boolean body is rejected (169.2513ms)\n✔ P3C1-R10 unknown body fields are rejected (205.9908ms)\n✔ P3C1-R11 expectedVersion must be a positive safe integer when present (204.411ms)\n✔ P3C1-R12 query parameters are not accepted (190.5384ms)\n✔ P3C1-R13 keyed live then replay returns the identical snapshot with the replay header (213.4122ms)\n✔ P3C1-R14 the same key with a different fingerprint is rejected without new side effects (198.6742ms)\n✔ P3C1-R15 an unknown run returns 404 RUN_NOT_FOUND (183.5156ms)\n✔ P3C1-R16 an expectedVersion mismatch returns 409 VERSION_CONFLICT (175.7347ms)\n✔ P3C1-R17 a non-queued run returns 409 INVALID_RUN_TRANSITION (194.1873ms)\n✔ P3C1-R18 a second start while one is queued returns 409 RUN_START_ALREADY_ACTIVE (196.9739ms)\n✔ P3C1-R19 multiple non-terminal starts return 500 RUN_START_AUTHORIZATION_AMBIGUOUS (226.8941ms)\n✔ P3C1-R20 an inconsistent start history returns 500 RUN_START_STATE_INCONSISTENT (226.8765ms)\n✔ P3C1-R21 a real SQLite busy timeout maps to a sanitized 503 RUN_START_BUSY (5704.1767ms)\n✔ P3C1-R22 a missing OperationService capability is sanitized to 500 INTERNAL_ERROR before mutation (166.4262ms)\n✔ P3C1-R23 the route module touches no Engine, Provider, Process, or CLI surface (0.4119ms)\n✔ P3C1-R24 index.ts mounts the lifecycle router exactly once on /api (0.1983ms)\n✔ P3C1-R25 same-key race: exactly one live 202 and one replay 202 with one operation and one record (624.8571ms)\n✔ P3C1-R26 different-key race: exactly one live 202 and one stable 409 RUN_START_ALREADY_ACTIVE (623.7505ms)\n✔ P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record (625.4479ms)\n✔ P3C1-RY-C01 same Parent + same key has one live 201 and one replay 201 (625.2833ms)\n✔ P3C1-RY-C02 same Parent + different keys has one 201 and one RUN_RETRY_ALREADY_CREATED 409 (648.4552ms)\n✔ P3C1-RY-C03 same Task + two failed Parents has one 201 and one RUN_ACTIVE_EXISTS 409 (646.7977ms)\n✔ P3C1-R28 a store connection waits out a short foreign write lock instead of failing busy (896.4107ms)\n✔ P3C1-R29 unknown run + malformed JSON keeps 404 precedence over parser errors (170.4154ms)\n✔ P3C1-R30 known run + malformed JSON maps to a sanitized 400 VALIDATION_FAILED (168.9933ms)\n✔ P3C1-R31 a zero-byte JSON payload is rejected and writes nothing (165.5778ms)\n✔ P3C1-R32 an empty chunked JSON payload is rejected and writes nothing (165.3215ms)\n✔ P3C1-R33 application/json with a charset parameter accepts an explicit {} as 202 (166.2535ms)\n✔ P3C1-R34 a non-JSON content type is rejected and writes nothing (172.6564ms)\n✔ P3C1-R35 an oversized JSON payload maps to a sanitized 400 VALIDATION_FAILED (189.6763ms)\n✔ P3C1-R36 start-race workers finish store construction before signalling ready (0.6515ms)\n✔ P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201 (211.8346ms)\n✔ P3C1-RY02 Retry locator precedes malformed body, query, and invalid key validation (186.2635ms)\n✔ P3C1-RY03 Retry rejects query parameters before body and key processing (177.3629ms)\n✔ P3C1-RY04 Retry enforces the exact JSON body contract (213.5167ms)\n✔ P3C1-RY05 Retry rejects every missing or malformed Idempotency-Key shape (178.2348ms)\n✔ P3C1-RY06 live and replay return the immutable HTTP 201 acceptance snapshot (184.1951ms)\n✔ P3C1-RY07 Retry preserves locator, version, and failed-Parent guards (184.3911ms)\n✔ P3C1-RY08 Retry maps duplicate and active-slot races to stable 409 responses (335.9405ms)\n✔ P3C1-RY09 Retry ambiguity and inconsistency responses remain exact two-field errors (345.3704ms)\n✔ P3C1-RY10 a Run active-slot unique conflict returns the exact retryable false response (167.4088ms)\n✔ P3C1-RY11 an unknown Retry failure remains a sanitized 500 INTERNAL_ERROR (168.4268ms)\n✔ P3C1-RY12 genuine SQLite lock timeout maps only to Retry busy (5706.0896ms)\n✔ P6M1-D01 accepted start triggers exactly one runtime dispatch (165.4621ms)\n✔ P6M1-D02 replayed start does not dispatch again (replay-no-respawn) (170.8856ms)\n✔ P6M1-D03 dispatch rejection is contained and does not change the 202 contract (212.6132ms)\n✔ P6M1-D04 dispatch gate OFF (default) triggers no dispatch and preserves the 202 contract (170.5998ms)\nℹ tests 55\nℹ suites 0\nℹ pass 55\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 24940.4621\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/web/src/liteScopeBoundary.test.ts",
+      "requirementIds": [],
+      "status": "passed",
+      "durationMs": 373,
+      "sourceSha256": "36e57abdfbb4dad52ad6ebe29c678b27a9693e7be44b79a7900aae4ab8e1d3f1",
+      "rawLogSha256": "08fe27def6cc62703cf03fd3d9ae9f36bd6262267dbce4dd7ae4cd22370e25ca",
+      "rawOutput": "✔ LITE-12-016 the UI ships only the Lite route surface (1.8527ms)\n✔ LITE-12-016 no web module implements a deferred product surface (5.3261ms)\n✔ LITE-12-016 the workspace shells expose no deferred product entry point (0.5492ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 296.3473\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 3,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 3,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ LITE-12-016 the UI ships only the Lite route surface (1.8527ms)\n✔ LITE-12-016 no web module implements a deferred product surface (5.3261ms)\n✔ LITE-12-016 the workspace shells expose no deferred product entry point (0.5492ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 296.3473",
+      "baseline": "6e81497e47dcc2d1a7c9155ff40db7ad85ad11e2",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "src/liteScopeBoundary.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/web",
+      "stdout": "✔ LITE-12-016 the UI ships only the Lite route surface (1.8527ms)\n✔ LITE-12-016 no web module implements a deferred product surface (5.3261ms)\n✔ LITE-12-016 the workspace shells expose no deferred product entry point (0.5492ms)\nℹ tests 3\nℹ suites 0\nℹ pass 3\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 296.3473\n",
+      "stderr": ""
+    }
+  ]
+}

@@ -1,0 +1,1447 @@
+{
+  "schemaVersion": 1,
+  "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "trackedStatus": "M agentos/scripts/run-lite-verification-batches.mjs",
+  "generatedAt": "2026-09-14T13:47:48.716Z",
+  "matrixVersion": 15,
+  "summary": {
+    "batches": 27,
+    "passed": 26,
+    "failed": 1,
+    "requirementsProvable": 0,
+    "requirementsTotal": 221
+  },
+  "results": [
+    {
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "requirementIds": [
+        "LITE-10-001",
+        "LITE-10-002",
+        "LITE-10-003",
+        "LITE-10-004",
+        "LITE-10-005",
+        "LITE-10-006",
+        "LITE-10-007",
+        "LITE-10-008",
+        "LITE-10-009",
+        "LITE-10-010",
+        "LITE-10-011",
+        "LITE-10-012",
+        "LITE-10-013",
+        "LITE-10-014",
+        "LITE-10-015",
+        "LITE-10-016",
+        "LITE-10-017"
+      ],
+      "status": "passed",
+      "durationMs": 402,
+      "sourceSha256": "7be6e48654e376c48aa7fd7b9ec0a2c4bf04ef731942038ab85773b346a9ecdd",
+      "rawLogSha256": "a966eb8b5a93ad7a417d82afee187a5e46c015ee38520e1ee997350fbddb9677",
+      "rawOutput": "✔ P2 Migration Registry contains exactly the registered migrations in contract order (1.4453ms)\n✔ P2 Migration Registry preserves the exact padded order when instantiated (7.1844ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 327.0304\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 2,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ P2 Migration Registry contains exactly the registered migrations in contract order (1.4453ms)\n✔ P2 Migration Registry preserves the exact padded order when instantiated (7.1844ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 327.0304",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/migrations/M2MigrationRegistryAcceptance.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ P2 Migration Registry contains exactly the registered migrations in contract order (1.4453ms)\n✔ P2 Migration Registry preserves the exact padded order when instantiated (7.1844ms)\nℹ tests 2\nℹ suites 0\nℹ pass 2\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 327.0304\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+      "requirementIds": [
+        "LITE-02-010",
+        "LITE-03-009",
+        "LITE-04-005",
+        "LITE-11-001",
+        "LITE-11-002",
+        "LITE-11-003",
+        "LITE-11-004",
+        "LITE-11-005",
+        "LITE-11-006",
+        "LITE-11-007",
+        "LITE-11-008",
+        "LITE-11-009",
+        "LITE-11-010",
+        "LITE-11-011",
+        "LITE-11-012",
+        "LITE-11-013"
+      ],
+      "status": "passed",
+      "durationMs": 3396,
+      "sourceSha256": "3d4ba14dfa86bc49c82bb6cfeabdc80cc3f8c7d2a357b4146c227703efc80b23",
+      "rawLogSha256": "c459a3a965a8827b780682bd9ee4bd598ecf1fd70e8dbf1c83c479f8c53e6a82",
+      "rawOutput": "✔ P5C-R01 GET run stream is implemented as SSE with inherited request id (default cursor 0) (241.0877ms)\n✔ P5C afterSequence-only cursor replays strictly greater durable sequences (169.1334ms)\n✔ P5C Last-Event-ID-only cursor resolves the persisted Event sequence (188.4843ms)\n✔ P5C-R05 monotonic cursor: query lower than Last-Event-ID lets the header win (native reconnect) (186.3514ms)\n✔ P5C-R05 monotonic cursor: query higher than Last-Event-ID lets the query win (175.6064ms)\n✔ P5C malformed afterSequence variants fail with 400 VALIDATION_FAILED before any SSE header (171.8965ms)\n✔ P5C unknown, foreign-Run and foreign-Workspace Last-Event-ID share one 400 representation (208.0939ms)\n✔ P5C unknown Run takes precedence over a malformed cursor with 404 RUN_NOT_FOUND (172.6555ms)\n✔ P5C live durable commits after subscribe are delivered exactly once with the persisted id (190.0245ms)\n✔ P5C unknown persisted runtime events stream losslessly with kind/raw/warning (187.8089ms)\n✔ P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues (192.2302ms)\n✔ P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once (6.1895ms)\n✔ P5C overflow closes the SSE transport without synthetic frames or durable writes (5.9197ms)\n✔ P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed (198.4828ms)\n✔ P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable) (161.2445ms)\n✔ P5C stream route does not shadow canonical Run, Events or Replay routes (179.3862ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3324.5108\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 16,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ P5C overflow closes the SSE transport without synthetic frames or durable writes (5.9197ms)\n✔ P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed (198.4828ms)\n✔ P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable) (161.2445ms)\n✔ P5C stream route does not shadow canonical Run, Events or Replay routes (179.3862ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3324.5108",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/routes/canonicalRunStream.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ P5C-R01 GET run stream is implemented as SSE with inherited request id (default cursor 0) (241.0877ms)\n✔ P5C afterSequence-only cursor replays strictly greater durable sequences (169.1334ms)\n✔ P5C Last-Event-ID-only cursor resolves the persisted Event sequence (188.4843ms)\n✔ P5C-R05 monotonic cursor: query lower than Last-Event-ID lets the header win (native reconnect) (186.3514ms)\n✔ P5C-R05 monotonic cursor: query higher than Last-Event-ID lets the query win (175.6064ms)\n✔ P5C malformed afterSequence variants fail with 400 VALIDATION_FAILED before any SSE header (171.8965ms)\n✔ P5C unknown, foreign-Run and foreign-Workspace Last-Event-ID share one 400 representation (208.0939ms)\n✔ P5C unknown Run takes precedence over a malformed cursor with 404 RUN_NOT_FOUND (172.6555ms)\n✔ P5C live durable commits after subscribe are delivered exactly once with the persisted id (190.0245ms)\n✔ P5C unknown persisted runtime events stream losslessly with kind/raw/warning (187.8089ms)\n✔ P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues (192.2302ms)\n✔ P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once (6.1895ms)\n✔ P5C overflow closes the SSE transport without synthetic frames or durable writes (5.9197ms)\n✔ P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed (198.4828ms)\n✔ P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable) (161.2445ms)\n✔ P5C stream route does not shadow canonical Run, Events or Replay routes (179.3862ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3324.5108\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/routes/memoryRuntime.test.ts",
+      "requirementIds": [
+        "LITE-07-101"
+      ],
+      "status": "passed",
+      "durationMs": 3873,
+      "sourceSha256": "ac658eb13474a06727ca61bb70b3d4c5d27b94a4581af21f98c495647953c0e8",
+      "rawLogSha256": "3159bcff0ac4b4620672467037fcf610112724bc762202b325cea95db33392cd",
+      "rawOutput": "✔ MF5W-A10/A14: the review and resolve routes append Workspace Events, not Run-scoped rows (226.919ms)\n✔ MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag (190.2689ms)\n✔ MF-5 retrieve: unknown Workspace is 404 (169.791ms)\n✔ MF-5 Run memory-context: 404 for unknown Run, ordered snapshots otherwise (218.6164ms)\n✔ MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons (231.2622ms)\n✔ MF-5 conflict resolve: 200 once, 409 on replay or version skew, 404 unknown (226.0697ms)\n✔ MF-5 candidate queue: list, outcome filter, and version-guarded review (234.2383ms)\n✔ MF-5 candidate review: strict edits promote an Entry and retrieval sees only the active Entry (229.5448ms)\n✔ MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction (183.3569ms)\n✔ LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup (278.7628ms)\n✔ LITE-07-003: explicit save does not converge across category or global/workspace scope (156.6408ms)\n✔ LITE-07-003: an archived hash match does not swallow a legal explicit save (166.5616ms)\n✔ LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event (185.0506ms)\n✔ LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence (175.3891ms)\n✔ LITE-07-003: source write failure rolls back dedup before any Event is published (173.8335ms)\n✔ LITE-07-003: simultaneous exact saves converge to one source mutation and one Event (200.514ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3777.9981\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 16,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 16,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event (185.0506ms)\n✔ LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence (175.3891ms)\n✔ LITE-07-003: source write failure rolls back dedup before any Event is published (173.8335ms)\n✔ LITE-07-003: simultaneous exact saves converge to one source mutation and one Event (200.514ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3777.9981",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/routes/memoryRuntime.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ MF5W-A10/A14: the review and resolve routes append Workspace Events, not Run-scoped rows (226.919ms)\n✔ MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag (190.2689ms)\n✔ MF-5 retrieve: unknown Workspace is 404 (169.791ms)\n✔ MF-5 Run memory-context: 404 for unknown Run, ordered snapshots otherwise (218.6164ms)\n✔ MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons (231.2622ms)\n✔ MF-5 conflict resolve: 200 once, 409 on replay or version skew, 404 unknown (226.0697ms)\n✔ MF-5 candidate queue: list, outcome filter, and version-guarded review (234.2383ms)\n✔ MF-5 candidate review: strict edits promote an Entry and retrieval sees only the active Entry (229.5448ms)\n✔ MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction (183.3569ms)\n✔ LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup (278.7628ms)\n✔ LITE-07-003: explicit save does not converge across category or global/workspace scope (156.6408ms)\n✔ LITE-07-003: an archived hash match does not swallow a legal explicit save (166.5616ms)\n✔ LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event (185.0506ms)\n✔ LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence (175.3891ms)\n✔ LITE-07-003: source write failure rolls back dedup before any Event is published (173.8335ms)\n✔ LITE-07-003: simultaneous exact saves converge to one source mutation and one Event (200.514ms)\nℹ tests 16\nℹ suites 0\nℹ pass 16\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3777.9981\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/routes/runtimeInspector.test.ts",
+      "requirementIds": [
+        "LITE-13-001",
+        "LITE-13-002",
+        "LITE-13-003",
+        "LITE-13-004",
+        "LITE-13-005",
+        "LITE-13-006",
+        "LITE-13-007",
+        "LITE-13-008",
+        "LITE-13-009",
+        "LITE-13-010",
+        "LITE-13-011",
+        "LITE-13-012",
+        "LITE-13-013",
+        "LITE-13-014",
+        "LITE-13-015"
+      ],
+      "status": "passed",
+      "durationMs": 1336,
+      "sourceSha256": "9a327969d8869b0b75eaa2859175ae60ec16d9a8166ec2f05a964792ceb39628",
+      "rawLogSha256": "7b89132e56a8a33a0e47919b45aeb65f5485d58cba5923ad463a38f2783a26a1",
+      "rawOutput": "✔ GET /runs/:runId/inspector names the effective mutation class and the read-only enforcement state (216.1229ms)\n✔ GET /runs/:runId/inspector returns the redacted projection for a canonical Run (166.3127ms)\n✔ GET /runs/:runId/inspector fails closed for an unknown Run and workspace (151.389ms)\n✔ GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring) (193.2005ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1257.3452\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 4,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ GET /runs/:runId/inspector names the effective mutation class and the read-only enforcement state (216.1229ms)\n✔ GET /runs/:runId/inspector returns the redacted projection for a canonical Run (166.3127ms)\n✔ GET /runs/:runId/inspector fails closed for an unknown Run and workspace (151.389ms)\n✔ GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring) (193.2005ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1257.3452",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/routes/runtimeInspector.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ GET /runs/:runId/inspector names the effective mutation class and the read-only enforcement state (216.1229ms)\n✔ GET /runs/:runId/inspector returns the redacted projection for a canonical Run (166.3127ms)\n✔ GET /runs/:runId/inspector fails closed for an unknown Run and workspace (151.389ms)\n✔ GET /runs/:runId/inspector surfaces the frozen Memory Context (MF-5 wiring) (193.2005ms)\nℹ tests 4\nℹ suites 0\nℹ pass 4\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1257.3452\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "requirementIds": [
+        "LITE-09-103"
+      ],
+      "status": "passed",
+      "durationMs": 1694,
+      "sourceSha256": "31d0d659a13c4e96a9a752d561103c884a095a550fc7f8fd73c59cd62f28eaee",
+      "rawLogSha256": "4fcb07dae3025a3cea894199bf2a83ff563cef129faa5b88cea2779531ae235d",
+      "rawOutput": "✔ CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Tasks, Runs, Memory, Snapshots, and Artifacts (199.2553ms)\n✔ CR6-A2 History entries are durable references, never content-bearing (189.2946ms)\n✔ CR6-A3 the q filter never searches message bodies (secrets excluded from search) (189.4316ms)\n✔ CR6-A4 filters by kind, status, conversation, task, run, and time compose (193.6019ms)\n✔ CR6-A5 provider filter scopes Turns to their Provider configuration (189.7845ms)\n✔ CR6-A6 the limit is bounded and deterministic (188.9774ms)\n✔ CR6-A7 archive/restore is a read-only History concern and stays with CR-1 (215.6385ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1620.9984\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 7,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ CR6-A4 filters by kind, status, conversation, task, run, and time compose (193.6019ms)\n✔ CR6-A5 provider filter scopes Turns to their Provider configuration (189.7845ms)\n✔ CR6-A6 the limit is bounded and deterministic (188.9774ms)\n✔ CR6-A7 archive/restore is a read-only History concern and stays with CR-1 (215.6385ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1620.9984",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/AgentHistoryService.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Tasks, Runs, Memory, Snapshots, and Artifacts (199.2553ms)\n✔ CR6-A2 History entries are durable references, never content-bearing (189.2946ms)\n✔ CR6-A3 the q filter never searches message bodies (secrets excluded from search) (189.4316ms)\n✔ CR6-A4 filters by kind, status, conversation, task, run, and time compose (193.6019ms)\n✔ CR6-A5 provider filter scopes Turns to their Provider configuration (189.7845ms)\n✔ CR6-A6 the limit is bounded and deterministic (188.9774ms)\n✔ CR6-A7 archive/restore is a read-only History concern and stays with CR-1 (215.6385ms)\nℹ tests 7\nℹ suites 0\nℹ pass 7\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 1620.9984\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "requirementIds": [
+        "LITE-00-013"
+      ],
+      "status": "passed",
+      "durationMs": 3286,
+      "sourceSha256": "448c9fd60b1b2b3cd0e33164a68e1c72b16a6d5f95952e580ee07f4b9179abd6",
+      "rawLogSha256": "6edade9f98530165630fd183a30cfe890426c17d618ae39dcd071cbc982d3a9f",
+      "rawOutput": "✔ CR5S-01 a valid budget creates an active interaction; an invalid budget fails closed (173.7272ms)\n✔ CR5S-02 recording replies increments counters transactionally (170.5199ms)\n✔ CR5S-03 reaching the total cap exhausts the interaction with a stable reason (158.131ms)\n✔ CR5S-04 a reply beyond the total cap is blocked and not recorded (167.3685ms)\n✔ CR5S-05 a per-Agent budget breach ends the interaction (163.2081ms)\n✔ CR5S-06 a distinct-Agent budget breach ends the interaction (165.4943ms)\n✔ CR5S-07 Stop blocks new replies and never cancels a Run (170.0358ms)\n✔ CR5S-08 a same-Agent cycle terminates the interaction with loop-guard (182.2794ms)\n✔ CR5S-09 repeated content terminates the interaction with loop-guard (183.6855ms)\n✔ CR5S-10 hops beyond the configured limit terminate the interaction (192.8605ms)\n✔ CR5S-11 a repeated mention with no new information terminates the interaction (191.2018ms)\n✔ CR5S-12 every recorded reply stores a distinct Turn-scoped per-Agent context snapshot (191.2347ms)\n✔ CR5S-13 per-Agent snapshots are isolated for the same interaction (180.8437ms)\n✔ CR5S-14 reply content is stored as a hash only, never as text (166.3778ms)\n✔ CR5S-15 the timeout budget ends the interaction (154.901ms)\n✔ CR5S-16 unknown interaction and invalid input fail closed (156.7199ms)\n✔ CR5S-17 within-transaction composition rolls back atomically (157.399ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3208.7755\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 17,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ CR5S-14 reply content is stored as a hash only, never as text (166.3778ms)\n✔ CR5S-15 the timeout budget ends the interaction (154.901ms)\n✔ CR5S-16 unknown interaction and invalid input fail closed (156.7199ms)\n✔ CR5S-17 within-transaction composition rolls back atomically (157.399ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3208.7755",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/BoundedGroupService.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ CR5S-01 a valid budget creates an active interaction; an invalid budget fails closed (173.7272ms)\n✔ CR5S-02 recording replies increments counters transactionally (170.5199ms)\n✔ CR5S-03 reaching the total cap exhausts the interaction with a stable reason (158.131ms)\n✔ CR5S-04 a reply beyond the total cap is blocked and not recorded (167.3685ms)\n✔ CR5S-05 a per-Agent budget breach ends the interaction (163.2081ms)\n✔ CR5S-06 a distinct-Agent budget breach ends the interaction (165.4943ms)\n✔ CR5S-07 Stop blocks new replies and never cancels a Run (170.0358ms)\n✔ CR5S-08 a same-Agent cycle terminates the interaction with loop-guard (182.2794ms)\n✔ CR5S-09 repeated content terminates the interaction with loop-guard (183.6855ms)\n✔ CR5S-10 hops beyond the configured limit terminate the interaction (192.8605ms)\n✔ CR5S-11 a repeated mention with no new information terminates the interaction (191.2018ms)\n✔ CR5S-12 every recorded reply stores a distinct Turn-scoped per-Agent context snapshot (191.2347ms)\n✔ CR5S-13 per-Agent snapshots are isolated for the same interaction (180.8437ms)\n✔ CR5S-14 reply content is stored as a hash only, never as text (166.3778ms)\n✔ CR5S-15 the timeout budget ends the interaction (154.901ms)\n✔ CR5S-16 unknown interaction and invalid input fail closed (156.7199ms)\n✔ CR5S-17 within-transaction composition rolls back atomically (157.399ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3208.7755\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+      "requirementIds": [
+        "LITE-09-001",
+        "LITE-09-002",
+        "LITE-09-003",
+        "LITE-09-004",
+        "LITE-09-005",
+        "LITE-09-006",
+        "LITE-09-007",
+        "LITE-09-008",
+        "LITE-09-009",
+        "LITE-09-011",
+        "LITE-09-012",
+        "LITE-09-014",
+        "LITE-09-015",
+        "LITE-09-016",
+        "LITE-09-017",
+        "LITE-09-018"
+      ],
+      "status": "passed",
+      "durationMs": 2856,
+      "sourceSha256": "edc9048640eaecf11a5fa78ff9b86a334324ee7fab180415a90901ea08f90ded",
+      "rawLogSha256": "5cc375e3758d7e474db0ba23306b152b9f9b561cd08e6e7bb3201afd2485f3b6",
+      "rawOutput": "✔ TD-01 a completed reply streams every delta as a durable checkpoint and finalizes (187.6725ms)\n✔ TD-02 a provider failure finalizes failed and preserves the checkpoints (188.6949ms)\n✔ TD-03 a cancelled reply finalizes the Turn cancelled and the Message failed (166.9685ms)\n✔ TD-04 an unknown Agent fails closed without reserving a stream (152.882ms)\n✔ TD-05 waiting_user finalizes the Turn final with the question as content (168.7988ms)\n✔ TD-06 a runner crash finalizes failed instead of leaving an open stream (157.9593ms)\n✔ LITE-09-101 TD-07 freezes a bounded history and persists its selector result before the Provider (201.2515ms)\n✔ LITE-09-101 TD-08 a context snapshot persistence failure fails the Turn without invoking the Provider (158.9416ms)\n✔ LITE-09-102 chat refuses while another subject holds the Workspace modifying authority (176.7578ms)\n✔ LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-only stays unavailable (185.5832ms)\n✔ LITE-09-109 TD-11 a summary whose covered Message was edited is refused and the reason is recorded (194.1638ms)\n✔ LITE-09-109 TD-12 an unchanged source still adopts the summary and records it (183.2989ms)\n✔ LITE-09-101 TD-09 injects exactly the frozen selection into the Provider call (183.0131ms)\n✔ LITE-09-101 TD-10 an empty selection injects no context block (170.4702ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2778.2602\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 14,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ LITE-09-109 TD-11 a summary whose covered Message was edited is refused and the reason is recorded (194.1638ms)\n✔ LITE-09-109 TD-12 an unchanged source still adopts the summary and records it (183.2989ms)\n✔ LITE-09-101 TD-09 injects exactly the frozen selection into the Provider call (183.0131ms)\n✔ LITE-09-101 TD-10 an empty selection injects no context block (170.4702ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2778.2602",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/ConversationTurnDriver.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ TD-01 a completed reply streams every delta as a durable checkpoint and finalizes (187.6725ms)\n✔ TD-02 a provider failure finalizes failed and preserves the checkpoints (188.6949ms)\n✔ TD-03 a cancelled reply finalizes the Turn cancelled and the Message failed (166.9685ms)\n✔ TD-04 an unknown Agent fails closed without reserving a stream (152.882ms)\n✔ TD-05 waiting_user finalizes the Turn final with the question as content (168.7988ms)\n✔ TD-06 a runner crash finalizes failed instead of leaving an open stream (157.9593ms)\n✔ LITE-09-101 TD-07 freezes a bounded history and persists its selector result before the Provider (201.2515ms)\n✔ LITE-09-101 TD-08 a context snapshot persistence failure fails the Turn without invoking the Provider (158.9416ms)\n✔ LITE-09-102 chat refuses while another subject holds the Workspace modifying authority (176.7578ms)\n✔ LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-only stays unavailable (185.5832ms)\n✔ LITE-09-109 TD-11 a summary whose covered Message was edited is refused and the reason is recorded (194.1638ms)\n✔ LITE-09-109 TD-12 an unchanged source still adopts the summary and records it (183.2989ms)\n✔ LITE-09-101 TD-09 injects exactly the frozen selection into the Provider call (183.0131ms)\n✔ LITE-09-101 TD-10 an empty selection injects no context block (170.4702ms)\nℹ tests 14\nℹ suites 0\nℹ pass 14\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2778.2602\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/GitObservationCollector.integration.test.ts",
+      "requirementIds": [
+        "LITE-00-011"
+      ],
+      "status": "passed",
+      "durationMs": 42826,
+      "sourceSha256": "6ccc1aef645691d00ef7bc265fd3d1ffb9b01523275563dfd09574946910e6b0",
+      "rawLogSha256": "60a02d6e3d2f3c14021e9c51157e007d029e05d19666579bdc639b4f18acb158",
+      "rawOutput": "▶ GitObservationCollector integration failure diagnostics\n  ✔ gitSnapshot reports stable state/code facts without cwd or raw diagnostics (0.5305ms)\n✔ GitObservationCollector integration failure diagnostics (1.0268ms)\n▶ GitObservationCollector real Git integration (production factory)\n  ✔ observes a clean committed repository: canonical root/HEAD, clean complete status, available empty diff (2003.1516ms)\n  ✔ observes a tracked dirty file: dirty status entry and non-empty diff (1892.8269ms)\n  ✔ observes an untracked file: untracked status entry with an available empty diff (1920.8131ms)\n  ✔ observes a staged rename with the NUL-framed previous path (1967.769ms)\n  ✔ nested Workspace A excludes dirty and untracked sibling Workspace B in status and diff (1949.8824ms)\n  ✔ non-Git directory yields the exact C-locale NOT_GIT snapshot (350.5689ms)\n  ✔ unborn git init repository: GIT, null commits, complete clean status, diff not_applicable (1426.0711ms)\n  ✔ unborn repository with an untracked file: complete dirty status while diff stays not_applicable (1421.9205ms)\n  ✔ workspace, repository, and file paths containing spaces and Unicode (1896.5613ms)\n  ✔ junction at the Workspace path is resolved first and never reports the lexical repository (fail closed) (568.4344ms)\n  ✔ junction inside the Workspace is fail-closed: escaped sibling content never appears in status or diff (1631.7707ms)\n✔ GitObservationCollector real Git integration (production factory) (17030.5394ms)\n▶ GitObservationCollector controlled seams around real command results\n  ✔ preserves distinct first/final HEAD SHAs across a real commit boundary (3569.657ms)\n  ✔ malformed HEAD output stays unavailable and is never unborn (1304.602ms)\n  ✔ legacy ambiguous rev-parse HEAD diagnostic stays unavailable and is never unborn evidence (949.8557ms)\n  ✔ missing executable maps through the controlled driver seam to not_found -> GIT_EXECUTABLE_UNAVAILABLE (254.1358ms)\n  ✔ unknown spawn failure maps through the controlled driver seam to frozen unknown -> GIT_COMMAND_SPAWN_FAILED (250.9732ms)\n✔ GitObservationCollector controlled seams around real command results (6329.5762ms)\n▶ GitCommandAdapter real Windows launch/runtime deadline separation\n  ✔ holds real NodeProcessDriver spawn resolution under launch budget, then arms family runtime (599.8712ms)\n✔ GitCommandAdapter real Windows launch/runtime deadline separation (600.0004ms)\n▶ GitObservationCollector real Git bounds and Windows process ownership (Phase B)\n  ✔ deterministic timeout on a live real Git command after real handle/identity observation (740.3953ms)\n  ✔ deterministic cancellation of a live real Git command after real handle/identity observation (740.9674ms)\n  ✔ bounded_diff beyond 4 MiB maps to adapter output_limit with bounded retained stdout and proven owned-tree cleanup (712.2201ms)\n  ✔ bounded_diff beyond 4 MiB yields a truncated collector diff with diffBytes null and the same owned cleanup proof (2112.2556ms)\n  ✔ porcelain_v2_status beyond 1 MiB maps to adapter output_limit with bounded retained stdout (3726.8137ms)\n  ✔ porcelain_v2_status beyond 1 MiB is never clean or complete in the collector snapshot (4884.1543ms)\n  ✔ >16 KiB stderr on a real owned Git command stays bounded and truncated while stdout stays intact (606.1259ms)\n  ✔ truncated stderr diagnostics never prove NOT_GIT and no raw diagnostic reaches the public snapshot (1988.075ms)\n  ✔ a truncated discovery diagnostic on a non-Git directory fails closed as UNAVAILABLE, never NOT_GIT (348.3927ms)\n✔ GitObservationCollector real Git bounds and Windows process ownership (Phase B) (15859.9378ms)\n▶ GitObservationCollector cleanup-unproven through the real adapter (HIGH-1)\n  ✔ real adapter + controlled unproven verification aborts collection after first HEAD, with no status/diff/final HEAD (939.0331ms)\n✔ GitObservationCollector cleanup-unproven through the real adapter (HIGH-1) (939.2122ms)\n▶ GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1)\n  ✔ real NodeProcessDriver maps a missing git executable to not_found -> GIT_EXECUTABLE_UNAVAILABLE (733.5265ms)\n✔ GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1) (733.6511ms)\nℹ tests 29\nℹ suites 7\nℹ pass 29\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 42753.1646\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 29,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 29,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ GitObservationCollector cleanup-unproven through the real adapter (HIGH-1) (939.2122ms)\n▶ GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1)\n  ✔ real NodeProcessDriver maps a missing git executable to not_found -> GIT_EXECUTABLE_UNAVAILABLE (733.5265ms)\n✔ GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1) (733.6511ms)\nℹ tests 29\nℹ suites 7\nℹ pass 29\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 42753.1646",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/GitObservationCollector.integration.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "▶ GitObservationCollector integration failure diagnostics\n  ✔ gitSnapshot reports stable state/code facts without cwd or raw diagnostics (0.5305ms)\n✔ GitObservationCollector integration failure diagnostics (1.0268ms)\n▶ GitObservationCollector real Git integration (production factory)\n  ✔ observes a clean committed repository: canonical root/HEAD, clean complete status, available empty diff (2003.1516ms)\n  ✔ observes a tracked dirty file: dirty status entry and non-empty diff (1892.8269ms)\n  ✔ observes an untracked file: untracked status entry with an available empty diff (1920.8131ms)\n  ✔ observes a staged rename with the NUL-framed previous path (1967.769ms)\n  ✔ nested Workspace A excludes dirty and untracked sibling Workspace B in status and diff (1949.8824ms)\n  ✔ non-Git directory yields the exact C-locale NOT_GIT snapshot (350.5689ms)\n  ✔ unborn git init repository: GIT, null commits, complete clean status, diff not_applicable (1426.0711ms)\n  ✔ unborn repository with an untracked file: complete dirty status while diff stays not_applicable (1421.9205ms)\n  ✔ workspace, repository, and file paths containing spaces and Unicode (1896.5613ms)\n  ✔ junction at the Workspace path is resolved first and never reports the lexical repository (fail closed) (568.4344ms)\n  ✔ junction inside the Workspace is fail-closed: escaped sibling content never appears in status or diff (1631.7707ms)\n✔ GitObservationCollector real Git integration (production factory) (17030.5394ms)\n▶ GitObservationCollector controlled seams around real command results\n  ✔ preserves distinct first/final HEAD SHAs across a real commit boundary (3569.657ms)\n  ✔ malformed HEAD output stays unavailable and is never unborn (1304.602ms)\n  ✔ legacy ambiguous rev-parse HEAD diagnostic stays unavailable and is never unborn evidence (949.8557ms)\n  ✔ missing executable maps through the controlled driver seam to not_found -> GIT_EXECUTABLE_UNAVAILABLE (254.1358ms)\n  ✔ unknown spawn failure maps through the controlled driver seam to frozen unknown -> GIT_COMMAND_SPAWN_FAILED (250.9732ms)\n✔ GitObservationCollector controlled seams around real command results (6329.5762ms)\n▶ GitCommandAdapter real Windows launch/runtime deadline separation\n  ✔ holds real NodeProcessDriver spawn resolution under launch budget, then arms family runtime (599.8712ms)\n✔ GitCommandAdapter real Windows launch/runtime deadline separation (600.0004ms)\n▶ GitObservationCollector real Git bounds and Windows process ownership (Phase B)\n  ✔ deterministic timeout on a live real Git command after real handle/identity observation (740.3953ms)\n  ✔ deterministic cancellation of a live real Git command after real handle/identity observation (740.9674ms)\n  ✔ bounded_diff beyond 4 MiB maps to adapter output_limit with bounded retained stdout and proven owned-tree cleanup (712.2201ms)\n  ✔ bounded_diff beyond 4 MiB yields a truncated collector diff with diffBytes null and the same owned cleanup proof (2112.2556ms)\n  ✔ porcelain_v2_status beyond 1 MiB maps to adapter output_limit with bounded retained stdout (3726.8137ms)\n  ✔ porcelain_v2_status beyond 1 MiB is never clean or complete in the collector snapshot (4884.1543ms)\n  ✔ >16 KiB stderr on a real owned Git command stays bounded and truncated while stdout stays intact (606.1259ms)\n  ✔ truncated stderr diagnostics never prove NOT_GIT and no raw diagnostic reaches the public snapshot (1988.075ms)\n  ✔ a truncated discovery diagnostic on a non-Git directory fails closed as UNAVAILABLE, never NOT_GIT (348.3927ms)\n✔ GitObservationCollector real Git bounds and Windows process ownership (Phase B) (15859.9378ms)\n▶ GitObservationCollector cleanup-unproven through the real adapter (HIGH-1)\n  ✔ real adapter + controlled unproven verification aborts collection after first HEAD, with no status/diff/final HEAD (939.0331ms)\n✔ GitObservationCollector cleanup-unproven through the real adapter (HIGH-1) (939.2122ms)\n▶ GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1)\n  ✔ real NodeProcessDriver maps a missing git executable to not_found -> GIT_EXECUTABLE_UNAVAILABLE (733.5265ms)\n✔ GitCommandAdapter real Windows owned-spawn missing-Git (MEDIUM-1) (733.6511ms)\nℹ tests 29\nℹ suites 7\nℹ pass 29\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 42753.1646\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/m3-p2c2a-lifecycle-transaction.test.ts",
+      "requirementIds": [
+        "LITE-02-005",
+        "LITE-02-006",
+        "LITE-02-007"
+      ],
+      "status": "passed",
+      "durationMs": 4416,
+      "sourceSha256": "cf9036dcc2dcb3dce61d4f861815d263a1ae0a8ecbbbc2f419fbb10ff8afbb92",
+      "rawLogSha256": "733514fb24652a2f5ae72821f72092f8ebd8f6c364e7c1238c3de1db7c2290a2",
+      "rawOutput": "✔ P2C-2A Run queued -> starting emits run.dequeued with service timestamp (64.5138ms)\n✔ P2C-2A Run starting -> failed persists failure fields and emits run.failed (53.9813ms)\n✔ P2C-2A Run running -> paused emits run.paused (53.6409ms)\n✔ P2C-2A Run running -> failed emits run.failed (50.2113ms)\n✔ P2C-2A Run paused -> running emits run.resumed (52.499ms)\n✔ P2C-2A Run paused -> failed emits run.failed (49.6106ms)\n✔ P2C-2A Stage pending -> ready emits stage.ready (49.6607ms)\n✔ P2C-2A Stage pending -> skipped writes completed_at and emits stage.skipped (52.8979ms)\n✔ P2C-2A Stage ready -> starting emits stage.starting with service timestamp (54.1885ms)\n✔ P2C-2A Stage starting -> failed persists failure fields and emits stage.failed (50.9263ms)\n✔ P2C-2A Stage running -> paused emits stage.paused (49.6414ms)\n✔ P2C-2A Stage running -> completed writes completed_at without run completion (56.0517ms)\n✔ P2C-2A Stage running -> failed persists failure fields and emits stage.failed (54.6394ms)\n✔ P2C-2A Stage paused -> running emits stage.resumed (49.7627ms)\n✔ P2C-2A rejects supported Run composite transitions without writes (58.2349ms)\n✔ P2C-2A rejects all unsupported Stage composite transitions without writes (51.0254ms)\n✔ P2C-2A transition classification is exhaustive for every Run and Stage pair (0.887ms)\n✔ P2C-2A invalid and composite routing never calls now (58.7855ms)\n✔ P2C-2A captures one canonical timestamp only after BEGIN IMMEDIATE (106.6611ms)\n✔ P2C-2A service validation errors are stable and do not leak repository errors (733.5552ms)\n✔ P2C-2A stored Stage not found has a stable error and does not call the clock (57.1312ms)\n✔ P2C-2A Stage/Run mismatch is reported before parent-state or clock checks (57.3617ms)\n✔ P2C-2A Run stale version fails before clock or mutation (53.0054ms)\n✔ P2C-2A Stage stale version fails before clock or mutation (50.945ms)\n✔ P2C-2A caller lifecycle fields cannot override derived Event boundaries (49.119ms)\n✔ P2C-2A caller Stage lifecycle fields cannot override derived Event boundaries (42.2631ms)\n✔ P2C-2A terminal parent Run fences all 8 Stage Single transitions (1183.1904ms)\n✔ RunStageRepository reports non-Matrix transitions as INVALID_RUN_STAGE_TRANSITION (48.6225ms)\n✔ P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure (425.7569ms)\n✔ P2C-2A file database concurrency allows one conditional transition and rejects the other (340.1228ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 4339.2437\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 30,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ P2C-2A terminal parent Run fences all 8 Stage Single transitions (1183.1904ms)\n✔ RunStageRepository reports non-Matrix transitions as INVALID_RUN_STAGE_TRANSITION (48.6225ms)\n✔ P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure (425.7569ms)\n✔ P2C-2A file database concurrency allows one conditional transition and rejects the other (340.1228ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 4339.2437",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/m3-p2c2a-lifecycle-transaction.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ P2C-2A Run queued -> starting emits run.dequeued with service timestamp (64.5138ms)\n✔ P2C-2A Run starting -> failed persists failure fields and emits run.failed (53.9813ms)\n✔ P2C-2A Run running -> paused emits run.paused (53.6409ms)\n✔ P2C-2A Run running -> failed emits run.failed (50.2113ms)\n✔ P2C-2A Run paused -> running emits run.resumed (52.499ms)\n✔ P2C-2A Run paused -> failed emits run.failed (49.6106ms)\n✔ P2C-2A Stage pending -> ready emits stage.ready (49.6607ms)\n✔ P2C-2A Stage pending -> skipped writes completed_at and emits stage.skipped (52.8979ms)\n✔ P2C-2A Stage ready -> starting emits stage.starting with service timestamp (54.1885ms)\n✔ P2C-2A Stage starting -> failed persists failure fields and emits stage.failed (50.9263ms)\n✔ P2C-2A Stage running -> paused emits stage.paused (49.6414ms)\n✔ P2C-2A Stage running -> completed writes completed_at without run completion (56.0517ms)\n✔ P2C-2A Stage running -> failed persists failure fields and emits stage.failed (54.6394ms)\n✔ P2C-2A Stage paused -> running emits stage.resumed (49.7627ms)\n✔ P2C-2A rejects supported Run composite transitions without writes (58.2349ms)\n✔ P2C-2A rejects all unsupported Stage composite transitions without writes (51.0254ms)\n✔ P2C-2A transition classification is exhaustive for every Run and Stage pair (0.887ms)\n✔ P2C-2A invalid and composite routing never calls now (58.7855ms)\n✔ P2C-2A captures one canonical timestamp only after BEGIN IMMEDIATE (106.6611ms)\n✔ P2C-2A service validation errors are stable and do not leak repository errors (733.5552ms)\n✔ P2C-2A stored Stage not found has a stable error and does not call the clock (57.1312ms)\n✔ P2C-2A Stage/Run mismatch is reported before parent-state or clock checks (57.3617ms)\n✔ P2C-2A Run stale version fails before clock or mutation (53.0054ms)\n✔ P2C-2A Stage stale version fails before clock or mutation (50.945ms)\n✔ P2C-2A caller lifecycle fields cannot override derived Event boundaries (49.119ms)\n✔ P2C-2A caller Stage lifecycle fields cannot override derived Event boundaries (42.2631ms)\n✔ P2C-2A terminal parent Run fences all 8 Stage Single transitions (1183.1904ms)\n✔ RunStageRepository reports non-Matrix transitions as INVALID_RUN_STAGE_TRANSITION (48.6225ms)\n✔ P2C-2A rollback matrix preserves current state, sequence, events, and outbox on every failure (425.7569ms)\n✔ P2C-2A file database concurrency allows one conditional transition and rejects the other (340.1228ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 4339.2437\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts",
+      "requirementIds": [
+        "LITE-02-001",
+        "LITE-02-002",
+        "LITE-02-003",
+        "LITE-02-004",
+        "LITE-02-005",
+        "LITE-02-006",
+        "LITE-02-007",
+        "LITE-02-009",
+        "LITE-02-010",
+        "LITE-02-011",
+        "LITE-02-012",
+        "LITE-02-013",
+        "LITE-02-014",
+        "LITE-02-015",
+        "LITE-02-016",
+        "LITE-02-017",
+        "LITE-03-004",
+        "LITE-03-005",
+        "LITE-03-006",
+        "LITE-08-001",
+        "LITE-08-002",
+        "LITE-08-003",
+        "LITE-08-004",
+        "LITE-08-008",
+        "LITE-08-009",
+        "LITE-08-010",
+        "LITE-08-011",
+        "LITE-08-012",
+        "LITE-08-013",
+        "LITE-08-014",
+        "LITE-08-015"
+      ],
+      "status": "passed",
+      "durationMs": 5565,
+      "sourceSha256": "54793853731f753cc251810734831c6dd819d6b02b2e396ae1bb3c1d39ba0186",
+      "rawLogSha256": "7940156f1b8931f3dd68181084c5f17856631a3e042bf76fad90c0992545eb46",
+      "rawOutput": "✔ P2C-2B completeRunStartup commits Stage then Run started events with snapshots (72.5762ms)\n✔ P2C-2B requestApproval supports Run-only and Stage-specific approval envelopes (103.5623ms)\n✔ P2C-2B resolveApprovalToRunning emits only approval.resolved (112.277ms)\n✔ P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run failure (57.0295ms)\n✔ P2C-2B resolveApprovalToCancellation fans out affected Stages in stable order (60.7844ms)\n✔ P2C-2B resolution retries return already-resolved before state, Stage, or version checks (228.4127ms)\n✔ P2C-2B approval resolution binds identity and exact Run/Stage scope before the clock (262.6259ms)\n✔ P2C-2B all three approval running decisions and strict composite version contract pass (315.9869ms)\n✔ P2C-2B resolveApprovalToFailure requires Stage-specific scope and expectedStageVersion (101.0516ms)\n✔ P2C-2B cancelRun handles zero and multiple non-terminal Stages and rejects waiting approval (214.7758ms)\n✔ P2C-2B caller-owned Run cancellation preserves lifecycle order and transaction ownership (57.3696ms)\n✔ P3D-2 operation cancel discovers Run-level and Stage-level unresolved approvals (105.4811ms)\n✔ P3D-2 approval cancel is ordered, contiguous, metadata-fixed, and one-outbox-per-event (56.2106ms)\n✔ P3D-2 approval history with zero, multiple, duplicate, or inconsistent records fails closed (255.7803ms)\n✔ P3D-2 unsafe unknown approval history fails closed (46.2658ms)\n✔ P3D-2 invalid approvalRequestId history fails closed and rolls back (46.576ms)\n✔ P3D-2 operation cancel reuses non-approval caller-owned cancellation for all guarded Run states (196.0738ms)\n✔ P3D-2 operation approval Event and Outbox failures roll back all state (310.9922ms)\n✔ P2C-2B completeRun derives completedStageIds and enforces the completion rule (147.283ms)\n✔ P2C-2B stale versions, invalid decisions, and terminal states fail before clock or mutation (192.4669ms)\n✔ P2C-2B every Event and Outbox position rolls back the composite transaction (1525.0901ms)\n✔ P2C-2B same-file concurrency permits only one composite cancellation (348.47ms)\n✔ HANDOFF-01 caller-supplied cancellation evidence reaches the canonical Run event unchanged (51.6296ms)\n✔ HANDOFF-02 stale caller Run version leaves Run, Stage, and Approval state unchanged (47.9259ms)\n✔ HANDOFF-03 waiting approval reuses the ordered cancellation composite with caller evidence (48.4002ms)\n✔ HANDOFF-04 generic caller-owned cancellation still rejects waiting_approval (50.6212ms)\n✔ HANDOFF-05 new evidence seam is safe inside a caller-owned transaction (48.3617ms)\n✔ HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible (42.912ms)\n✔ HANDOFF-07 evidence seam returns synchronously without an async transaction callback (49.2084ms)\n✔ P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state (49.7717ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5494.1035\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 30,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 30,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ HANDOFF-05 new evidence seam is safe inside a caller-owned transaction (48.3617ms)\n✔ HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible (42.912ms)\n✔ HANDOFF-07 evidence seam returns synchronously without an async transaction callback (49.2084ms)\n✔ P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state (49.7717ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5494.1035",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/m3-p2c2b-composite-lifecycle.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ P2C-2B completeRunStartup commits Stage then Run started events with snapshots (72.5762ms)\n✔ P2C-2B requestApproval supports Run-only and Stage-specific approval envelopes (103.5623ms)\n✔ P2C-2B resolveApprovalToRunning emits only approval.resolved (112.277ms)\n✔ P2C-2B resolveApprovalToFailure orders approval, Stage failure, and Run failure (57.0295ms)\n✔ P2C-2B resolveApprovalToCancellation fans out affected Stages in stable order (60.7844ms)\n✔ P2C-2B resolution retries return already-resolved before state, Stage, or version checks (228.4127ms)\n✔ P2C-2B approval resolution binds identity and exact Run/Stage scope before the clock (262.6259ms)\n✔ P2C-2B all three approval running decisions and strict composite version contract pass (315.9869ms)\n✔ P2C-2B resolveApprovalToFailure requires Stage-specific scope and expectedStageVersion (101.0516ms)\n✔ P2C-2B cancelRun handles zero and multiple non-terminal Stages and rejects waiting approval (214.7758ms)\n✔ P2C-2B caller-owned Run cancellation preserves lifecycle order and transaction ownership (57.3696ms)\n✔ P3D-2 operation cancel discovers Run-level and Stage-level unresolved approvals (105.4811ms)\n✔ P3D-2 approval cancel is ordered, contiguous, metadata-fixed, and one-outbox-per-event (56.2106ms)\n✔ P3D-2 approval history with zero, multiple, duplicate, or inconsistent records fails closed (255.7803ms)\n✔ P3D-2 unsafe unknown approval history fails closed (46.2658ms)\n✔ P3D-2 invalid approvalRequestId history fails closed and rolls back (46.576ms)\n✔ P3D-2 operation cancel reuses non-approval caller-owned cancellation for all guarded Run states (196.0738ms)\n✔ P3D-2 operation approval Event and Outbox failures roll back all state (310.9922ms)\n✔ P2C-2B completeRun derives completedStageIds and enforces the completion rule (147.283ms)\n✔ P2C-2B stale versions, invalid decisions, and terminal states fail before clock or mutation (192.4669ms)\n✔ P2C-2B every Event and Outbox position rolls back the composite transaction (1525.0901ms)\n✔ P2C-2B same-file concurrency permits only one composite cancellation (348.47ms)\n✔ HANDOFF-01 caller-supplied cancellation evidence reaches the canonical Run event unchanged (51.6296ms)\n✔ HANDOFF-02 stale caller Run version leaves Run, Stage, and Approval state unchanged (47.9259ms)\n✔ HANDOFF-03 waiting approval reuses the ordered cancellation composite with caller evidence (48.4002ms)\n✔ HANDOFF-04 generic caller-owned cancellation still rejects waiting_approval (50.6212ms)\n✔ HANDOFF-05 new evidence seam is safe inside a caller-owned transaction (48.3617ms)\n✔ HANDOFF-06 existing Operation cancellation seam remains behaviorally compatible (42.912ms)\n✔ HANDOFF-07 evidence seam returns synchronously without an async transaction callback (49.2084ms)\n✔ P6C text stream seam persists Event and Outbox atomically without mutating Run or Stage lifecycle state (49.7717ms)\nℹ tests 30\nℹ suites 0\nℹ pass 30\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 5494.1035\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/m3-p2c2c-run-graph-creation.test.ts",
+      "requirementIds": [
+        "LITE-02-005",
+        "LITE-02-006",
+        "LITE-02-007"
+      ],
+      "status": "passed",
+      "durationMs": 2600,
+      "sourceSha256": "f2ee1b1edc21c743f895da6e3e5ee89984c491e46ca9d4d989eeb9b7661713cf",
+      "rawLogSha256": "fcc5340215d0f0b95e4c9222a860f7e84fb25f09d58d9991bd1ed11bac8c55ce",
+      "rawOutput": "✔ N=0 writes only run.created with sequence 1 and next sequence 2 (163.7066ms)\n✔ missing lifecycle Event service fails closed before any V2 Run creation write (150.1861ms)\n✔ missing lifecycle Event service fails closed for keyed createRunForV2 without Idempotency Success (150.4498ms)\n✔ undefined and invalid lifecycle Event service factories fail closed (306.4209ms)\n✔ a successful V2 creation resolves and invokes the Event service exactly once (157.6364ms)\n✔ N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event (169.3996ms)\n✔ equal Stage sequences are ordered by Stage id (0.4396ms)\n✔ creation payloads and envelope fields are derived from persisted state, not caller extras (159.1368ms)\n✔ idempotency replay returns the stored result without adding Events or Outboxes (172.4522ms)\n✔ failure during Event append rolls back the entire creation graph and idempotency miss (179.0241ms)\n✔ failure during Outbox append rolls back Event, current state, Snapshot, Stage, and idempotency (176.1697ms)\n✔ Snapshot and Stage graph mismatch fails closed before any Event is appended (171.821ms)\n✔ failure at Idempotency Success rolls back the already-created graph (172.582ms)\nℹ tests 13\nℹ suites 0\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2525.5623\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 13,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 13,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ failure during Event append rolls back the entire creation graph and idempotency miss (179.0241ms)\n✔ failure during Outbox append rolls back Event, current state, Snapshot, Stage, and idempotency (176.1697ms)\n✔ Snapshot and Stage graph mismatch fails closed before any Event is appended (171.821ms)\n✔ failure at Idempotency Success rolls back the already-created graph (172.582ms)\nℹ tests 13\nℹ suites 0\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2525.5623",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/m3-p2c2c-run-graph-creation.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ N=0 writes only run.created with sequence 1 and next sequence 2 (163.7066ms)\n✔ missing lifecycle Event service fails closed before any V2 Run creation write (150.1861ms)\n✔ missing lifecycle Event service fails closed for keyed createRunForV2 without Idempotency Success (150.4498ms)\n✔ undefined and invalid lifecycle Event service factories fail closed (306.4209ms)\n✔ a successful V2 creation resolves and invokes the Event service exactly once (157.6364ms)\n✔ N>0 writes the persisted graph in sequence order with one timestamp and one Outbox per Event (169.3996ms)\n✔ equal Stage sequences are ordered by Stage id (0.4396ms)\n✔ creation payloads and envelope fields are derived from persisted state, not caller extras (159.1368ms)\n✔ idempotency replay returns the stored result without adding Events or Outboxes (172.4522ms)\n✔ failure during Event append rolls back the entire creation graph and idempotency miss (179.0241ms)\n✔ failure during Outbox append rolls back Event, current state, Snapshot, Stage, and idempotency (176.1697ms)\n✔ Snapshot and Stage graph mismatch fails closed before any Event is appended (171.821ms)\n✔ failure at Idempotency Success rolls back the already-created graph (172.582ms)\nℹ tests 13\nℹ suites 0\nℹ pass 13\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2525.5623\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+      "requirementIds": [
+        "LITE-07-010"
+      ],
+      "status": "passed",
+      "durationMs": 2939,
+      "sourceSha256": "941b7e3c4d771dc08a1512711623f1f9fa153660efa0619b8bf02603f02be769",
+      "rawLogSha256": "9ae5aa40cdf26c552d8b4f1022bbcc32a99dbeacbb6d9eb7a07e83a47325856e",
+      "rawOutput": "✔ MF2R-G1 completed Run generates a review-required Candidate with bounded evidence (169.9327ms)\n✔ MF2R-G2 replay converges on the existing Candidate (163.119ms)\n✔ MF2R-G3 exact duplicate content converges with no new Candidate (170.29ms)\n✔ MF2R-G4 normalized-hash near-duplicate forces review-required (164.7347ms)\n✔ MF2R-G4b FTS-similar near-duplicate forces review-required (165.6815ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores another task (168.8559ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores workspace scope (178.3363ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores another category (191.7544ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores archived (182.4585ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores deleted (181.9363ms)\n✔ LITE-07-107 exact terminal dedup adds source once without changing accepted content (178.8475ms)\n✔ MF2R-G5 non-terminal or unknown Run generates nothing (176.3508ms)\n✔ MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run (157.6186ms)\n✔ MF2R-G7 cancelled Run generates one bounded failure Candidate without a failure code (170.9332ms)\n✔ MF2R input validation fails closed (150.7609ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2868.198\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 15,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 15,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ MF2R-G5 non-terminal or unknown Run generates nothing (176.3508ms)\n✔ MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run (157.6186ms)\n✔ MF2R-G7 cancelled Run generates one bounded failure Candidate without a failure code (170.9332ms)\n✔ MF2R input validation fails closed (150.7609ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2868.198",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/MemoryCandidateGenerationService.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ MF2R-G1 completed Run generates a review-required Candidate with bounded evidence (169.9327ms)\n✔ MF2R-G2 replay converges on the existing Candidate (163.119ms)\n✔ MF2R-G3 exact duplicate content converges with no new Candidate (170.29ms)\n✔ MF2R-G4 normalized-hash near-duplicate forces review-required (164.7347ms)\n✔ MF2R-G4b FTS-similar near-duplicate forces review-required (165.6815ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores another task (168.8559ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores workspace scope (178.3363ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores another category (191.7544ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores archived (182.4585ms)\n✔ LITE-07-003 LITE-07-107 terminal dedup ignores deleted (181.9363ms)\n✔ LITE-07-107 exact terminal dedup adds source once without changing accepted content (178.8475ms)\n✔ MF2R-G5 non-terminal or unknown Run generates nothing (176.3508ms)\n✔ MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run (157.6186ms)\n✔ MF2R-G7 cancelled Run generates one bounded failure Candidate without a failure code (170.9332ms)\n✔ MF2R input validation fails closed (150.7609ms)\nℹ tests 15\nℹ suites 0\nℹ pass 15\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2868.198\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "requirementIds": [
+        "LITE-00-010",
+        "LITE-07-001",
+        "LITE-07-002",
+        "LITE-07-004",
+        "LITE-07-005",
+        "LITE-07-006",
+        "LITE-07-008",
+        "LITE-07-009",
+        "LITE-07-010",
+        "LITE-07-011",
+        "LITE-07-012",
+        "LITE-07-014"
+      ],
+      "status": "passed",
+      "durationMs": 3241,
+      "sourceSha256": "80b9b5f715f9a36fe7d5f6ea5e29b0212421cb33cd77bd11d83626a6388d35ef",
+      "rawLogSha256": "c5bd2fe82bb9846b9d2f312bab8110682e619353c4642918c120d4498eb95584",
+      "rawOutput": "✔ MF4I-01 resolve persists a snapshot and returns bounded context (172.6718ms)\n✔ MF4I-02 resolve is idempotent per run scope (157.1505ms)\n✔ MF4I-03 stage scope is distinct from run scope (168.3175ms)\n✔ replaying an earlier scope after a later Stage does not recreate its snapshot (168.9947ms)\n✔ MF4I-04 snapshot failure blocks injection (155.7204ms)\n✔ MF4I-05 invalid input fails closed (147.8387ms)\n✔ MF4I-06 injection gate rejects absent snapshot (153.8234ms)\n✔ MF4I-07 later entry edits do not rewrite the snapshot (167.8027ms)\n✔ frozen injection survives content edits and logical deletion of its Entry (181.9252ms)\n✔ historical metadata-only snapshot is inspectable but blocks injection (178.9193ms)\n✔ payload failure rolls back the snapshot and its selections (172.244ms)\n✔ corrupt frozen payload blocks replay (179.9258ms)\n✔ MF4I-08 empty store still persists a snapshot (206.8476ms)\n✔ MF4I-09 default budget is frozen and valid (160.3316ms)\n✔ MF4I-10 workspace isolation (166.2039ms)\n✔ LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen (178.1878ms)\n✔ LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation (168.0001ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3164.9629\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 17,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 17,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ MF4I-09 default budget is frozen and valid (160.3316ms)\n✔ MF4I-10 workspace isolation (166.2039ms)\n✔ LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen (178.1878ms)\n✔ LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation (168.0001ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3164.9629",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/MemoryContextResolver.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ MF4I-01 resolve persists a snapshot and returns bounded context (172.6718ms)\n✔ MF4I-02 resolve is idempotent per run scope (157.1505ms)\n✔ MF4I-03 stage scope is distinct from run scope (168.3175ms)\n✔ replaying an earlier scope after a later Stage does not recreate its snapshot (168.9947ms)\n✔ MF4I-04 snapshot failure blocks injection (155.7204ms)\n✔ MF4I-05 invalid input fails closed (147.8387ms)\n✔ MF4I-06 injection gate rejects absent snapshot (153.8234ms)\n✔ MF4I-07 later entry edits do not rewrite the snapshot (167.8027ms)\n✔ frozen injection survives content edits and logical deletion of its Entry (181.9252ms)\n✔ historical metadata-only snapshot is inspectable but blocks injection (178.9193ms)\n✔ payload failure rolls back the snapshot and its selections (172.244ms)\n✔ corrupt frozen payload blocks replay (179.9258ms)\n✔ MF4I-08 empty store still persists a snapshot (206.8476ms)\n✔ MF4I-09 default budget is frozen and valid (160.3316ms)\n✔ MF4I-10 workspace isolation (166.2039ms)\n✔ LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen (178.1878ms)\n✔ LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation (168.0001ms)\nℹ tests 17\nℹ suites 0\nℹ pass 17\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3164.9629\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/OutboxPublisher.test.ts",
+      "requirementIds": [
+        "LITE-00-005",
+        "LITE-02-008",
+        "LITE-03-001",
+        "LITE-03-002",
+        "LITE-03-003",
+        "LITE-03-007",
+        "LITE-03-008",
+        "LITE-03-009",
+        "LITE-03-010",
+        "LITE-03-011",
+        "LITE-03-012",
+        "LITE-03-013",
+        "LITE-03-014",
+        "LITE-03-015",
+        "LITE-03-016",
+        "LITE-03-017",
+        "LITE-03-018",
+        "LITE-03-019"
+      ],
+      "status": "passed",
+      "durationMs": 1018,
+      "sourceSha256": "85ebcf1cf585286b6bef819e7e82e7749cc975338ae4fcd45858c0764b515b25",
+      "rawLogSha256": "d04831872d8b3d37ce013dd46795124dcf36d06fe2918aecccca503f45135b79",
+      "rawOutput": "✔ M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acceptance (63.2793ms)\n✔ M3 P6A P03/F01-F03/F06 retry state uses completed failures, freezes firstFailedAt, and applies exact backoff (65.3329ms)\n✔ M3 P6A unknown delivery Errors persist only the stable sanitized retryable classification (65.4658ms)\n✔ M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence (51.5955ms)\n✔ M3 P6A P05/F07/F09 fifth retryable classified failure exhausts budget without using attempts as the decision (53.922ms)\n✔ M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event (54.2143ms)\n✔ M3 P6A P09/P10/F10 malformed state fails closed while the independently listed next message succeeds (54.8126ms)\n✔ M3 P6A P11/P12 due messages are deterministic and future messages are ignored (53.2632ms)\n✔ M3 P6A P13/P14 start-stop is timer-deterministic, idempotent, and inactive before start (55.2454ms)\n✔ M3 P6A timer ticks reclaim leases that expire while the server remains alive before processing due work (54.3396ms)\n✔ M3 P6A F11 Outbox terminal mutation rolls back when dead-letter insertion fails (49.476ms)\n✔ M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events (54.7937ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 946.4363\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 12,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ M3 P6A P13/P14 start-stop is timer-deterministic, idempotent, and inactive before start (55.2454ms)\n✔ M3 P6A timer ticks reclaim leases that expire while the server remains alive before processing due work (54.3396ms)\n✔ M3 P6A F11 Outbox terminal mutation rolls back when dead-letter insertion fails (49.476ms)\n✔ M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events (54.7937ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 946.4363",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/OutboxPublisher.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ M3 P6A P01/P02 success claims outside-sink transaction and marks published only after acceptance (63.2793ms)\n✔ M3 P6A P03/F01-F03/F06 retry state uses completed failures, freezes firstFailedAt, and applies exact backoff (65.3329ms)\n✔ M3 P6A unknown delivery Errors persist only the stable sanitized retryable classification (65.4658ms)\n✔ M3 P6A P04/F08 non-retryable failure creates exact atomic dead-letter evidence (51.5955ms)\n✔ M3 P6A P05/F07/F09 fifth retryable classified failure exhausts budget without using attempts as the decision (53.922ms)\n✔ M3 P6A P06-P08/F04-F05 crash-like lease loss reclaims without consuming failure budget and redelivers the same Event (54.2143ms)\n✔ M3 P6A P09/P10/F10 malformed state fails closed while the independently listed next message succeeds (54.8126ms)\n✔ M3 P6A P11/P12 due messages are deterministic and future messages are ignored (53.2632ms)\n✔ M3 P6A P13/P14 start-stop is timer-deterministic, idempotent, and inactive before start (55.2454ms)\n✔ M3 P6A timer ticks reclaim leases that expire while the server remains alive before processing due work (54.3396ms)\n✔ M3 P6A F11 Outbox terminal mutation rolls back when dead-letter insertion fails (49.476ms)\n✔ M3 P6A P15 delivery changes only Outbox/dead-letter/notifier state, never domain rows or Runtime Events (54.7937ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 946.4363\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "requirementIds": [
+        "LITE-04-101"
+      ],
+      "status": "not-clean",
+      "durationMs": 3268,
+      "sourceSha256": "93bd2330ffe3e97e3b21a5f351424409f7ea28de782830d2cd1ca14477f418ab",
+      "rawLogSha256": "ba2c962472097b7741cdf14430cc6e8d5b6e88e269c95dc3b7aee3108a1277a9",
+      "rawOutput": "▶ RunEngineProviderDispatcher E2E\n  ✔ LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once (146.2358ms)\n  ✔ LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute (69.1068ms)\n  ✔ LITE-08-006: an approved request rejects a contradictory replay without changing the result (100.0628ms)\n  ✔ LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect (77.6026ms)\n  ✔ LITE-08-005: startup resume never bypasses a Run already marked recovery-required (70.4544ms)\n  ✔ LITE-08-005: approved but unconsumed decisions are redriven after restart without a new start Operation (97.8281ms)\n  ✔ LITE-07-103: Candidate Event failure rolls back decision, lifecycle resume, and request evidence (82.2284ms)\n  ✔ LITE-07-104: completed adapter result reaches Artifact finalizer and Stage history before terminal Memory (132.8278ms)\n  ✔ LITE-07-104: active execution cannot finalize a review Artifact (64.7995ms)\n  ✔ L1D-I08 QUEUED admission causes zero engine, provider session, process, and spawn side effects (59.3624ms)\n  ✔ L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn (49.3044ms)\n  ✔ L1D-I18 freshly revalidated GRANTED READ_ONLY authority may pass the dispatcher gate (132.8093ms)\n  ✔ L1D-I19 QUEUED authorization never advances the queue and retains zero side effects (51.6429ms)\n  ✔ P5D maps only the exact proven stop identity into cancellation evidence (54.0647ms)\n  ✔ P5D rejects an unproven explicit stop before producing lifecycle evidence (51.4739ms)\n  ✔ consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle (55.0607ms)\n  ✔ drives one accepted Run through RunEngine -> coordinator -> lifecycle to completed with one spawn per stage (125.3171ms)\n  ✔ MEDIUM-1A: joined-existing active stage causes ONE coordinator attempt per drive (no 128 no-progress loop) (62.2397ms)\n  ✔ replay after terminal never re-dispatches or spawns again (126.6608ms)\n  ✔ P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once (80.1224ms)\n  ✔ auth failure fails the Run canonically with zero spawns (69.547ms)\n  ﹣ current-machine Kimi gate: real kimi drives the full chain to completion (env-gated) (0.0695ms) # SKIP\n  ﹣ LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated) (0.0348ms) # SKIP\n  ﹣ LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated) (0.0225ms) # SKIP\n  ﹣ LITE-04-101: real OpenCode completes the canonical production chain (env-gated) (0.0287ms) # SKIP\n  ✔ legacy-originated runs flow through the same authority to completion (legacy projection parity) (123.5651ms)\n  ✔ driveSafely drives one accepted run to completion (one spawn per stage) (121.5821ms)\n  ✔ driveSafely contains a post-claim coordinator failure into a canonical failure (no strand, no throw) (58.21ms)\n  ✔ LITE-07-102: a contained post-claim failure still fires one terminal trigger for the failed Run (63.1722ms)\n  ✔ driveSafely contains a pre-claim failure into a canonical operation failure (no strand, no throw) (63.602ms)\n  ✔ driveSafely is replay-safe: a second drive on a terminal run does not respawn (116.9255ms)\n  ✔ MF-4 integration: a configured resolver injects the persisted memory context into the stage prompt (123.4775ms)\n  ✔ MF-4 integration: a blocked injection prevents provider execution (58.4494ms)\n  ✔ MF-4 integration: a resolver snapshot failure prevents provider execution (55.1817ms)\n  ✔ MF-2R integration: terminal completion fires the candidate trigger once, Run-scoped (128.0888ms)\n  ✔ MF-2R integration: a failing generator never changes the terminal Run (127.7051ms)\n✔ RunEngineProviderDispatcher E2E (2801.2643ms)\nℹ tests 36\nℹ suites 1\nℹ pass 32\nℹ fail 0\nℹ cancelled 0\nℹ skipped 4\nℹ todo 0\nℹ duration_ms 3194.5834\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 32,
+        "failed": 0,
+        "skipped": 4
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 32,
+          "failed": 0,
+          "skipped": 4
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "  ✔ MF-4 integration: a resolver snapshot failure prevents provider execution (55.1817ms)\n  ✔ MF-2R integration: terminal completion fires the candidate trigger once, Run-scoped (128.0888ms)\n  ✔ MF-2R integration: a failing generator never changes the terminal Run (127.7051ms)\n✔ RunEngineProviderDispatcher E2E (2801.2643ms)\nℹ tests 36\nℹ suites 1\nℹ pass 32\nℹ fail 0\nℹ cancelled 0\nℹ skipped 4\nℹ todo 0\nℹ duration_ms 3194.5834",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "▶ RunEngineProviderDispatcher E2E\n  ✔ LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once (146.2358ms)\n  ✔ LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute (69.1068ms)\n  ✔ LITE-08-006: an approved request rejects a contradictory replay without changing the result (100.0628ms)\n  ✔ LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect (77.6026ms)\n  ✔ LITE-08-005: startup resume never bypasses a Run already marked recovery-required (70.4544ms)\n  ✔ LITE-08-005: approved but unconsumed decisions are redriven after restart without a new start Operation (97.8281ms)\n  ✔ LITE-07-103: Candidate Event failure rolls back decision, lifecycle resume, and request evidence (82.2284ms)\n  ✔ LITE-07-104: completed adapter result reaches Artifact finalizer and Stage history before terminal Memory (132.8278ms)\n  ✔ LITE-07-104: active execution cannot finalize a review Artifact (64.7995ms)\n  ✔ L1D-I08 QUEUED admission causes zero engine, provider session, process, and spawn side effects (59.3624ms)\n  ✔ L1D-I17 stale GRANTED READ_ONLY authority cannot reach RunEngine, provider, process, or spawn (49.3044ms)\n  ✔ L1D-I18 freshly revalidated GRANTED READ_ONLY authority may pass the dispatcher gate (132.8093ms)\n  ✔ L1D-I19 QUEUED authorization never advances the queue and retains zero side effects (51.6429ms)\n  ✔ P5D maps only the exact proven stop identity into cancellation evidence (54.0647ms)\n  ✔ P5D rejects an unproven explicit stop before producing lifecycle evidence (51.4739ms)\n  ✔ consumes an internal stopped outcome without mutating canonical Stage or Run lifecycle (55.0607ms)\n  ✔ drives one accepted Run through RunEngine -> coordinator -> lifecycle to completed with one spawn per stage (125.3171ms)\n  ✔ MEDIUM-1A: joined-existing active stage causes ONE coordinator attempt per drive (no 128 no-progress loop) (62.2397ms)\n  ✔ replay after terminal never re-dispatches or spawns again (126.6608ms)\n  ✔ P5E composes Dispatcher cancellation, owned Process cleanup, and LTS handoff exactly once (80.1224ms)\n  ✔ auth failure fails the Run canonically with zero spawns (69.547ms)\n  ﹣ current-machine Kimi gate: real kimi drives the full chain to completion (env-gated) (0.0695ms) # SKIP\n  ﹣ LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated) (0.0348ms) # SKIP\n  ﹣ LITE-04-101: current-machine Kimi gate with an explicit routed model (env-gated) (0.0225ms) # SKIP\n  ﹣ LITE-04-101: real OpenCode completes the canonical production chain (env-gated) (0.0287ms) # SKIP\n  ✔ legacy-originated runs flow through the same authority to completion (legacy projection parity) (123.5651ms)\n  ✔ driveSafely drives one accepted run to completion (one spawn per stage) (121.5821ms)\n  ✔ driveSafely contains a post-claim coordinator failure into a canonical failure (no strand, no throw) (58.21ms)\n  ✔ LITE-07-102: a contained post-claim failure still fires one terminal trigger for the failed Run (63.1722ms)\n  ✔ driveSafely contains a pre-claim failure into a canonical operation failure (no strand, no throw) (63.602ms)\n  ✔ driveSafely is replay-safe: a second drive on a terminal run does not respawn (116.9255ms)\n  ✔ MF-4 integration: a configured resolver injects the persisted memory context into the stage prompt (123.4775ms)\n  ✔ MF-4 integration: a blocked injection prevents provider execution (58.4494ms)\n  ✔ MF-4 integration: a resolver snapshot failure prevents provider execution (55.1817ms)\n  ✔ MF-2R integration: terminal completion fires the candidate trigger once, Run-scoped (128.0888ms)\n  ✔ MF-2R integration: a failing generator never changes the terminal Run (127.7051ms)\n✔ RunEngineProviderDispatcher E2E (2801.2643ms)\nℹ tests 36\nℹ suites 1\nℹ pass 32\nℹ fail 0\nℹ cancelled 0\nℹ skipped 4\nℹ todo 0\nℹ duration_ms 3194.5834\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/RuntimeInspector.test.ts",
+      "requirementIds": [
+        "LITE-13-102"
+      ],
+      "status": "passed",
+      "durationMs": 2278,
+      "sourceSha256": "71a25d55abcc146f41e20416ff9fa45b0e654c47d39fa05e23f446783ac269a4",
+      "rawLogSha256": "4de261d07332917e070db2994f2d8fe4f9ee0e2d214c34e4cdaef6896f51f16a",
+      "rawOutput": "✔ INSP-12 Run, Stage, Provider, Process and duration stay distinct (196.0109ms)\n✔ INSP-01 overview projects canonical run state (154.9415ms)\n✔ INSP-02 unknown run fails closed (148.8347ms)\n✔ INSP-03 invalid input fails closed (141.5867ms)\n✔ INSP-04 process PID is evidence-only (153.9542ms)\n✔ INSP-05 events are ordered and bounded (153.5497ms)\n✔ INSP-06 afterSequence cursor (158.6591ms)\n✔ INSP-07 inspect performs no writes (159.8017ms)\n✔ INSP-08 memory context projection (177.7103ms)\n✔ INSP-09 absent memory context is null (159.5568ms)\n✔ INSP-10 workspace isolation (159.0333ms)\n✔ INSP-11 stages are ordered (166.8599ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2206.2476\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 12,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ INSP-08 memory context projection (177.7103ms)\n✔ INSP-09 absent memory context is null (159.5568ms)\n✔ INSP-10 workspace isolation (159.0333ms)\n✔ INSP-11 stages are ordered (166.8599ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2206.2476",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/RuntimeInspector.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ INSP-12 Run, Stage, Provider, Process and duration stay distinct (196.0109ms)\n✔ INSP-01 overview projects canonical run state (154.9415ms)\n✔ INSP-02 unknown run fails closed (148.8347ms)\n✔ INSP-03 invalid input fails closed (141.5867ms)\n✔ INSP-04 process PID is evidence-only (153.9542ms)\n✔ INSP-05 events are ordered and bounded (153.5497ms)\n✔ INSP-06 afterSequence cursor (158.6591ms)\n✔ INSP-07 inspect performs no writes (159.8017ms)\n✔ INSP-08 memory context projection (177.7103ms)\n✔ INSP-09 absent memory context is null (159.5568ms)\n✔ INSP-10 workspace isolation (159.0333ms)\n✔ INSP-11 stages are ordered (166.8599ms)\nℹ tests 12\nℹ suites 0\nℹ pass 12\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 2206.2476\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts",
+      "requirementIds": [
+        "LITE-00-008",
+        "LITE-01-009",
+        "LITE-06-001",
+        "LITE-06-002",
+        "LITE-06-003",
+        "LITE-06-004",
+        "LITE-06-005",
+        "LITE-06-006",
+        "LITE-06-007",
+        "LITE-06-008",
+        "LITE-06-009",
+        "LITE-06-010",
+        "LITE-06-011"
+      ],
+      "status": "passed",
+      "durationMs": 3173,
+      "sourceSha256": "2b204f7a421f18d52f3c22102588729c6f2474f8b1eac69470950abbd6353859",
+      "rawLogSha256": "05adc0b8137150e64e202d87967522b20341115bf6acaffb35f7f13e5422410d",
+      "rawOutput": "▶ WorkspaceAdmissionAuthority unit contract\n  ✔ L1D-U01 invalid input fails with stable INPUT_INVALID (57.7303ms)\n  ✔ L1D-U02 a missing Workspace fails with WORKSPACE_NOT_FOUND (45.6775ms)\n  ✔ L1D-U03 frozen classifier, not requested class, is effective authority (48.6681ms)\n  ✔ L1D-U04 stale evidence is collected outside and revalidated/classified inside BEGIN IMMEDIATE (54.1853ms)\n  ✔ L1D-U05 stale evidence that cannot be recollected fails closed with no write (52.8778ms)\n  ✔ L1D-U06 MODIFYING winner follows durable request_order FIFO (48.9384ms)\n  ✔ L1D-U07 contiguous READ_ONLY head requests retain durable FIFO order (51.1616ms)\n  ✔ L1D-U08 frozen V1 READ_ONLY capacity is exactly two and is never exceeded (47.6549ms)\n  ✔ L1D-U09 an active MODIFYING admission blocks every later request (48.2521ms)\n  ✔ L1D-U10 repeated advancement is idempotent (49.1761ms)\n  ✔ L1D-U11 RELEASED admissions are never re-granted (53.9141ms)\n  ✔ L1D-U12 a queued request stays byte-for-byte unchanged while capacity is full (54.5088ms)\n  ✔ L1D-U13 public errors redact collector and SQLite details (57.4377ms)\n  ✔ L1D-U14 a queue-head writer blocks later readers while readers are active (55.5804ms)\n  ✔ L1D-U15 a newly selected reader remains mutually exclusive with the next writer (49.6994ms)\n  ✔ L1D-U16 stale active READ_ONLY evidence is reclassified before occupancy is trusted (51.2904ms)\n  ✔ L1D-U17 collected evidence cannot be rebound to a different subject before BEGIN IMMEDIATE (56.0579ms)\n  ✔ L1D-U18 expired GRANTED READ_ONLY evidence with unavailable collection denies dispatch authorization (53.2812ms)\n  ✔ L1D-U19 expired GRANTED READ_ONLY evidence refreshes outside and commits authorization inside BEGIN IMMEDIATE (57.4692ms)\n  ✔ L1D-U20 stale active reader reclassified MODIFYING conflicts with its active reader peer and denies all authorization (50.4271ms)\n✔ WorkspaceAdmissionAuthority unit contract (1045.3782ms)\n▶ WorkspaceAdmissionAuthority repository and transaction contract\n  ✔ L1D-R01 repository reads the queue by request_order then id (53.4926ms)\n  ✔ L1D-R02 grant state, timestamp, classification, and version commit atomically (48.3294ms)\n  ✔ L1D-R03 repository CAS rejects a stale version without changing the winner (49.9832ms)\n  ✔ L1D-R04 SQLite invariant rejects a second active MODIFYING admission (47.494ms)\n  ✔ L1D-R05 one transaction never persists more than two active readers (46.2835ms)\n  ✔ L1D-R06 release and next grant commit in the same transaction (45.4287ms)\n  ✔ L1D-R07 a non-terminal subject cannot release its admission (50.8505ms)\n  ✔ L1D-R08 durable MISSING evidence alone is not a terminal release proof (47.4547ms)\n✔ WorkspaceAdmissionAuthority repository and transaction contract (389.6685ms)\n▶ WorkspaceAdmissionAuthority integration contract\n  ✔ L1D-I01 one MODIFYING request becomes GRANTED (46.0786ms)\n  ✔ L1D-I02 a second MODIFYING request remains QUEUED (45.8757ms)\n  ✔ L1D-I03 releasing the first writer advances the second writer (47.4086ms)\n  ✔ L1D-I04 contiguous head readers batch-grant to V1 capacity (45.3134ms)\n  ✔ L1D-I05 a reader over V1 capacity remains QUEUED (44.8232ms)\n  ✔ L1D-I06 real competing processes produce exactly one MODIFYING winner (320.0471ms)\n  ✔ L1D-I07 concurrent advancement cannot double-grant readers (328.156ms)\n  ✔ L1D-I09 a running Run cannot release a GRANTED admission (46.2498ms)\n  ✔ L1D-I10 a committed terminal Run releases its admission (46.1222ms)\n  ✔ L1D-I11 MISSING without a terminal Run cannot release (47.1759ms)\n  ✔ L1D-I12 MISSING plus committed terminal failure permits release (50.9866ms)\n  ✔ L1D-I13 stale evidence is authoritatively replaced before grant (46.3368ms)\n  ✔ L1D-I14 a failure after release and grant writes rolls the whole transaction back (42.4418ms)\n  ✔ L1D-I15 a new service instance recovers the same durable authority state (182.3669ms)\n  ✔ L1D-I16 canonical and legacy subjects share one FIFO and release authority (54.1248ms)\n✔ WorkspaceAdmissionAuthority integration contract (1394.1003ms)\nℹ tests 43\nℹ suites 3\nℹ pass 43\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3100.2445\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 43,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 43,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "  ✔ L1D-I14 a failure after release and grant writes rolls the whole transaction back (42.4418ms)\n  ✔ L1D-I15 a new service instance recovers the same durable authority state (182.3669ms)\n  ✔ L1D-I16 canonical and legacy subjects share one FIFO and release authority (54.1248ms)\n✔ WorkspaceAdmissionAuthority integration contract (1394.1003ms)\nℹ tests 43\nℹ suites 3\nℹ pass 43\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3100.2445",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/services/WorkspaceAdmissionAuthority.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "▶ WorkspaceAdmissionAuthority unit contract\n  ✔ L1D-U01 invalid input fails with stable INPUT_INVALID (57.7303ms)\n  ✔ L1D-U02 a missing Workspace fails with WORKSPACE_NOT_FOUND (45.6775ms)\n  ✔ L1D-U03 frozen classifier, not requested class, is effective authority (48.6681ms)\n  ✔ L1D-U04 stale evidence is collected outside and revalidated/classified inside BEGIN IMMEDIATE (54.1853ms)\n  ✔ L1D-U05 stale evidence that cannot be recollected fails closed with no write (52.8778ms)\n  ✔ L1D-U06 MODIFYING winner follows durable request_order FIFO (48.9384ms)\n  ✔ L1D-U07 contiguous READ_ONLY head requests retain durable FIFO order (51.1616ms)\n  ✔ L1D-U08 frozen V1 READ_ONLY capacity is exactly two and is never exceeded (47.6549ms)\n  ✔ L1D-U09 an active MODIFYING admission blocks every later request (48.2521ms)\n  ✔ L1D-U10 repeated advancement is idempotent (49.1761ms)\n  ✔ L1D-U11 RELEASED admissions are never re-granted (53.9141ms)\n  ✔ L1D-U12 a queued request stays byte-for-byte unchanged while capacity is full (54.5088ms)\n  ✔ L1D-U13 public errors redact collector and SQLite details (57.4377ms)\n  ✔ L1D-U14 a queue-head writer blocks later readers while readers are active (55.5804ms)\n  ✔ L1D-U15 a newly selected reader remains mutually exclusive with the next writer (49.6994ms)\n  ✔ L1D-U16 stale active READ_ONLY evidence is reclassified before occupancy is trusted (51.2904ms)\n  ✔ L1D-U17 collected evidence cannot be rebound to a different subject before BEGIN IMMEDIATE (56.0579ms)\n  ✔ L1D-U18 expired GRANTED READ_ONLY evidence with unavailable collection denies dispatch authorization (53.2812ms)\n  ✔ L1D-U19 expired GRANTED READ_ONLY evidence refreshes outside and commits authorization inside BEGIN IMMEDIATE (57.4692ms)\n  ✔ L1D-U20 stale active reader reclassified MODIFYING conflicts with its active reader peer and denies all authorization (50.4271ms)\n✔ WorkspaceAdmissionAuthority unit contract (1045.3782ms)\n▶ WorkspaceAdmissionAuthority repository and transaction contract\n  ✔ L1D-R01 repository reads the queue by request_order then id (53.4926ms)\n  ✔ L1D-R02 grant state, timestamp, classification, and version commit atomically (48.3294ms)\n  ✔ L1D-R03 repository CAS rejects a stale version without changing the winner (49.9832ms)\n  ✔ L1D-R04 SQLite invariant rejects a second active MODIFYING admission (47.494ms)\n  ✔ L1D-R05 one transaction never persists more than two active readers (46.2835ms)\n  ✔ L1D-R06 release and next grant commit in the same transaction (45.4287ms)\n  ✔ L1D-R07 a non-terminal subject cannot release its admission (50.8505ms)\n  ✔ L1D-R08 durable MISSING evidence alone is not a terminal release proof (47.4547ms)\n✔ WorkspaceAdmissionAuthority repository and transaction contract (389.6685ms)\n▶ WorkspaceAdmissionAuthority integration contract\n  ✔ L1D-I01 one MODIFYING request becomes GRANTED (46.0786ms)\n  ✔ L1D-I02 a second MODIFYING request remains QUEUED (45.8757ms)\n  ✔ L1D-I03 releasing the first writer advances the second writer (47.4086ms)\n  ✔ L1D-I04 contiguous head readers batch-grant to V1 capacity (45.3134ms)\n  ✔ L1D-I05 a reader over V1 capacity remains QUEUED (44.8232ms)\n  ✔ L1D-I06 real competing processes produce exactly one MODIFYING winner (320.0471ms)\n  ✔ L1D-I07 concurrent advancement cannot double-grant readers (328.156ms)\n  ✔ L1D-I09 a running Run cannot release a GRANTED admission (46.2498ms)\n  ✔ L1D-I10 a committed terminal Run releases its admission (46.1222ms)\n  ✔ L1D-I11 MISSING without a terminal Run cannot release (47.1759ms)\n  ✔ L1D-I12 MISSING plus committed terminal failure permits release (50.9866ms)\n  ✔ L1D-I13 stale evidence is authoritatively replaced before grant (46.3368ms)\n  ✔ L1D-I14 a failure after release and grant writes rolls the whole transaction back (42.4418ms)\n  ✔ L1D-I15 a new service instance recovers the same durable authority state (182.3669ms)\n  ✔ L1D-I16 canonical and legacy subjects share one FIFO and release authority (54.1248ms)\n✔ WorkspaceAdmissionAuthority integration contract (1394.1003ms)\nℹ tests 43\nℹ suites 3\nℹ pass 43\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 3100.2445\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/store/Identity.test.ts",
+      "requirementIds": [
+        "LITE-01-001",
+        "LITE-01-002",
+        "LITE-01-003",
+        "LITE-01-004",
+        "LITE-01-005",
+        "LITE-01-006",
+        "LITE-01-007",
+        "LITE-01-008",
+        "LITE-01-009",
+        "LITE-01-010",
+        "LITE-01-011",
+        "LITE-01-012",
+        "LITE-01-013",
+        "LITE-01-014",
+        "LITE-01-015"
+      ],
+      "status": "passed",
+      "durationMs": 295,
+      "sourceSha256": "2f25c4e24e27ba2dd6c39905664d6a6281aa564c03b47af99a3715a73062d96c",
+      "rawLogSha256": "2d2373ffe6f88d46a2f1658b31b4f02b68fb1ad3a159b7bfbda5a5db0800619d",
+      "rawOutput": "▶ Identity — canonical entity IDs\n  ✔ all prefix constants map to valid EntityIdKind (0.5183ms)\n  ✔ createEntityId produces prefix_ulid format (0.3877ms)\n  ✔ ULID body is 26 Crockford Base32 characters, no ILOU (0.2141ms)\n  ✔ same kind produces unique IDs (0.2365ms)\n  ✔ same kind produces unique IDs under heavy load (1.1463ms)\n  ✔ different kinds have different prefixes (0.0743ms)\n  ✔ isValidEntityId validates prefix and body (0.083ms)\n  ✔ no database dependency (0.0712ms)\n  ✔ ULID matches known reference (timestamp=0, random=0) (0.1496ms)\n  ✔ first character always in 0–7 range (0.1435ms)\n  ✔ real 13-digit Unix-ms timestamp round-trips (0.1074ms)\n  ✔ maximum timestamp 2^48-1 round-trips and first char is 7 (0.0919ms)\n  ✔ timestamp = 2^48 is rejected (0.2455ms)\n  ✔ negative timestamp is rejected (0.0865ms)\n  ✔ NaN timestamp is rejected (0.0745ms)\n  ✔ Infinity timestamp is rejected (0.063ms)\n  ✔ non-integer timestamp is rejected (0.0629ms)\n  ✔ randomness not exactly 10 bytes is rejected (0.0827ms)\n  ✔ time increase: same random, larger timestamp → strictly larger ID (0.0952ms)\n  ✔ same ms: 200 IDs within single generator are strictly increasing (0.781ms)\n  ✔ clock regression: same generator with clock [100, 50] produces id1 < id2 (0.0852ms)\n  ✔ two generators do not share state (0.0792ms)\n✔ Identity — canonical entity IDs (5.7264ms)\n▶ Identity — M2.5 snapshot kind\n  ✔ snapshot kind exists with snapshot prefix (0.0491ms)\n  ✔ createEntityId snapshot starts with snapshot_ and validates (0.0591ms)\n  ✔ snapshot ULID body is 26 Crockford Base32 characters (0.046ms)\n  ✔ snapshot prefix is not confused with other kinds (0.0412ms)\n✔ Identity — M2.5 snapshot kind (0.2639ms)\n▶ Identity — M2.6 idempotency kind\n  ✔ idempotency kind exists with idem prefix (0.0585ms)\n  ✔ createEntityId idempotency starts with idem_ and validates (0.039ms)\n  ✔ idempotency ULID body is 26 Crockford Base32 characters (0.0377ms)\n  ✔ idempotency ID is not recognized as snapshot/run/task (0.044ms)\n  ✔ all pre-import kinds remain unchanged (0.4792ms)\n✔ Identity — M2.6 idempotency kind (0.739ms)\n▶ Identity — M3 P3A operation kind\n  ✔ operation kind exists with op prefix (0.05ms)\n  ✔ createEntityId operation starts with op_ and validates (0.0584ms)\n  ✔ operation IDs remain distinct from all existing kinds (0.0492ms)\n✔ Identity — M3 P3A operation kind (0.214ms)\nℹ tests 34\nℹ suites 4\nℹ pass 34\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 228.9849\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 34,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 34,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "  ✔ operation kind exists with op prefix (0.05ms)\n  ✔ createEntityId operation starts with op_ and validates (0.0584ms)\n  ✔ operation IDs remain distinct from all existing kinds (0.0492ms)\n✔ Identity — M3 P3A operation kind (0.214ms)\nℹ tests 34\nℹ suites 4\nℹ pass 34\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 228.9849",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/store/Identity.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "▶ Identity — canonical entity IDs\n  ✔ all prefix constants map to valid EntityIdKind (0.5183ms)\n  ✔ createEntityId produces prefix_ulid format (0.3877ms)\n  ✔ ULID body is 26 Crockford Base32 characters, no ILOU (0.2141ms)\n  ✔ same kind produces unique IDs (0.2365ms)\n  ✔ same kind produces unique IDs under heavy load (1.1463ms)\n  ✔ different kinds have different prefixes (0.0743ms)\n  ✔ isValidEntityId validates prefix and body (0.083ms)\n  ✔ no database dependency (0.0712ms)\n  ✔ ULID matches known reference (timestamp=0, random=0) (0.1496ms)\n  ✔ first character always in 0–7 range (0.1435ms)\n  ✔ real 13-digit Unix-ms timestamp round-trips (0.1074ms)\n  ✔ maximum timestamp 2^48-1 round-trips and first char is 7 (0.0919ms)\n  ✔ timestamp = 2^48 is rejected (0.2455ms)\n  ✔ negative timestamp is rejected (0.0865ms)\n  ✔ NaN timestamp is rejected (0.0745ms)\n  ✔ Infinity timestamp is rejected (0.063ms)\n  ✔ non-integer timestamp is rejected (0.0629ms)\n  ✔ randomness not exactly 10 bytes is rejected (0.0827ms)\n  ✔ time increase: same random, larger timestamp → strictly larger ID (0.0952ms)\n  ✔ same ms: 200 IDs within single generator are strictly increasing (0.781ms)\n  ✔ clock regression: same generator with clock [100, 50] produces id1 < id2 (0.0852ms)\n  ✔ two generators do not share state (0.0792ms)\n✔ Identity — canonical entity IDs (5.7264ms)\n▶ Identity — M2.5 snapshot kind\n  ✔ snapshot kind exists with snapshot prefix (0.0491ms)\n  ✔ createEntityId snapshot starts with snapshot_ and validates (0.0591ms)\n  ✔ snapshot ULID body is 26 Crockford Base32 characters (0.046ms)\n  ✔ snapshot prefix is not confused with other kinds (0.0412ms)\n✔ Identity — M2.5 snapshot kind (0.2639ms)\n▶ Identity — M2.6 idempotency kind\n  ✔ idempotency kind exists with idem prefix (0.0585ms)\n  ✔ createEntityId idempotency starts with idem_ and validates (0.039ms)\n  ✔ idempotency ULID body is 26 Crockford Base32 characters (0.0377ms)\n  ✔ idempotency ID is not recognized as snapshot/run/task (0.044ms)\n  ✔ all pre-import kinds remain unchanged (0.4792ms)\n✔ Identity — M2.6 idempotency kind (0.739ms)\n▶ Identity — M3 P3A operation kind\n  ✔ operation kind exists with op prefix (0.05ms)\n  ✔ createEntityId operation starts with op_ and validates (0.0584ms)\n  ✔ operation IDs remain distinct from all existing kinds (0.0492ms)\n✔ Identity — M3 P3A operation kind (0.214ms)\nℹ tests 34\nℹ suites 4\nℹ pass 34\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 228.9849\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+      "requirementIds": [
+        "LITE-07-004",
+        "LITE-07-008",
+        "LITE-07-011"
+      ],
+      "status": "passed",
+      "durationMs": 4234,
+      "sourceSha256": "4879ff8ca96435c8ec51df7d80b66b8b9f6440575d17eb5ab42ba652e442f04b",
+      "rawLogSha256": "eaf6adc568fb468d0fb5ff33fdbb1b8f6deaf3fb1087f2aa929e53b6c2d65c37",
+      "rawOutput": "✔ MF2R-01 create persists candidate and decision (160.2486ms)\n✔ MF2R-02 secret content rejects (151.6045ms)\n✔ MF2R-03 automatic candidate without source rejects (148.5494ms)\n✔ MF2R-04 review-required triggers (163.1757ms)\n✔ MF2R-05 invalid input fails closed (143.2089ms)\n✔ MF2R-06 review is versioned (152.9301ms)\n✔ MF2R-07 merge-with-existing requires a real entry (165.9289ms)\n✔ MF2R-14 accept promotes an active retrieval Entry and preserves provenance (173.9434ms)\n✔ MF2R-15 edit-and-accept updates fields and recomputes derived values (165.6623ms)\n✔ MF2R-16 merge rejects scope or owner leakage (168.2717ms)\n✔ MF2R-17 review promotion rolls back the Entry and candidate on persistence failure (165.0034ms)\n✔ MF2R-18 historical auto-accepted rows without review metadata remain reviewable (170.5968ms)\n✔ MF2R-19 malformed edits fail closed without changing the reviewable candidate (162.0007ms)\n✔ MF2R-08 exact duplicate lookup (149.0783ms)\n✔ MF2R-09 conflict open and resolve (152.8125ms)\n✔ MF2R-10 conflict input validation (148.4414ms)\n✔ MF2R-20 conflict open reports the entry effects it persisted (147.1965ms)\n✔ MF2R-21 keep-both releases both conflicted entries (150.1162ms)\n✔ MF2R-22 supersede dispositions target the addressed side (306.2818ms)\n✔ MF2R-23 reject-both rejects both sides (152.3907ms)\n✔ MF2R-24 conflict mutations respect other open conflicts and deleted entries (155.6289ms)\n✔ MF2R-11 record exposes no secret value field (147.8749ms)\n✔ MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2) (142.3951ms)\n✔ MF2R-12 listCandidates orders, filters, and guards (147.1183ms)\nℹ tests 24\nℹ suites 0\nℹ pass 24\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 4165.6263\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 24,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 24,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ MF2R-24 conflict mutations respect other open conflicts and deleted entries (155.6289ms)\n✔ MF2R-11 record exposes no secret value field (147.8749ms)\n✔ MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2) (142.3951ms)\n✔ MF2R-12 listCandidates orders, filters, and guards (147.1183ms)\nℹ tests 24\nℹ suites 0\nℹ pass 24\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 4165.6263",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/store/MemoryCandidateRepository.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ MF2R-01 create persists candidate and decision (160.2486ms)\n✔ MF2R-02 secret content rejects (151.6045ms)\n✔ MF2R-03 automatic candidate without source rejects (148.5494ms)\n✔ MF2R-04 review-required triggers (163.1757ms)\n✔ MF2R-05 invalid input fails closed (143.2089ms)\n✔ MF2R-06 review is versioned (152.9301ms)\n✔ MF2R-07 merge-with-existing requires a real entry (165.9289ms)\n✔ MF2R-14 accept promotes an active retrieval Entry and preserves provenance (173.9434ms)\n✔ MF2R-15 edit-and-accept updates fields and recomputes derived values (165.6623ms)\n✔ MF2R-16 merge rejects scope or owner leakage (168.2717ms)\n✔ MF2R-17 review promotion rolls back the Entry and candidate on persistence failure (165.0034ms)\n✔ MF2R-18 historical auto-accepted rows without review metadata remain reviewable (170.5968ms)\n✔ MF2R-19 malformed edits fail closed without changing the reviewable candidate (162.0007ms)\n✔ MF2R-08 exact duplicate lookup (149.0783ms)\n✔ MF2R-09 conflict open and resolve (152.8125ms)\n✔ MF2R-10 conflict input validation (148.4414ms)\n✔ MF2R-20 conflict open reports the entry effects it persisted (147.1965ms)\n✔ MF2R-21 keep-both releases both conflicted entries (150.1162ms)\n✔ MF2R-22 supersede dispositions target the addressed side (306.2818ms)\n✔ MF2R-23 reject-both rejects both sides (152.3907ms)\n✔ MF2R-24 conflict mutations respect other open conflicts and deleted entries (155.6289ms)\n✔ MF2R-11 record exposes no secret value field (147.8749ms)\n✔ MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2) (142.3951ms)\n✔ MF2R-12 listCandidates orders, filters, and guards (147.1183ms)\nℹ tests 24\nℹ suites 0\nℹ pass 24\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 4165.6263\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/server/src/store/SqliteStore.test.ts",
+      "requirementIds": [
+        "LITE-00-001",
+        "LITE-04-004",
+        "LITE-09-009"
+      ],
+      "status": "passed",
+      "durationMs": 9212,
+      "sourceSha256": "19a8b83ae974ed72dcaefe0dff8b6c94208386f474b5564354268e6558a6fcde",
+      "rawLogSha256": "36370ea71561eddb1d9205d141937e2ebcc9f28572a19592e56b7812c97843a8",
+      "rawOutput": "✔ tombstoned workspace rejected by assertWorkspaceExists for new Conversation (168.6727ms)\n✔ new Workspace assigns kimicode provider type to Kimi agent (149.2077ms)\n✔ Workspace.agents projected fields match Provider Configuration after update (222.9311ms)\n✔ Workspace.agents does not fall back to legacy model when Provider model is cleared (179.5965ms)\n✔ saveTask preserves peer tasks through the default SQLite store path (148.9551ms)\n✔ migrates legacy workspace agents into SQLite exactly once (147.8093ms)\n✔ legacy Agent migration creates and binds a Provider Configuration (147.9586ms)\n✔ migrates a legacy role into provider without rewriting a custom command (142.575ms)\n✔ migrates legacy Kimi CLI configuration without rewriting JSON (143.3959ms)\n✔ new SQLite-only Workspace can create a Conversation and reload default Agents (152.3373ms)\n✔ rolls back the whole Workspace aggregate when a Provider insert fails (167.7449ms)\n✔ rolls back one legacy Workspace aggregate when its Provider import fails (192.535ms)\n✔ Agent compatibility fields follow its Provider Configuration (173.1522ms)\n✔ records the tombstone schema through MigrationRunner and keeps it after restart (179.7414ms)\n✔ legacy workspace migration rethrows unknown database errors (177.5004ms)\n✔ keeps existing SQLite CLI configuration authoritative over later JSON edits (176.6934ms)\n✔ updates editable agent identity fields without changing CLI configuration (160.9033ms)\n✔ persists model and thinking effort while defaulting legacy values to auto (160.5469ms)\n✔ adds the thinking effort column when opening a legacy SQLite database (263.8419ms)\n✔ keeps conversations isolated by workspace (144.3294ms)\n✔ persists model and thinking effort independently for each conversation (173.963ms)\n✔ persists explicit group roles, sequence, and dispatch mode (142.3496ms)\n✔ adds conversation settings columns to a legacy SQLite database (257.6857ms)\n✔ persists execution activity with the conversation it belongs to (162.8013ms)\n✔ persists request-level runs, keeps workspace isolation, and cascades with conversations (165.0245ms)\n✔ persists waiting-user fields across restart and allows a resumed execution source message (165.1516ms)\n✔ migrates legacy executions without reducing historical row counts (182.1996ms)\n✔ persists unified agent events and isolates them by workspace and run (162.0907ms)\n✔ assigns monotonic sequences per run and keeps duplicate event ids idempotent (2747.0576ms)\n✔ backfills legacy event order once without changing timestamp ordering rules for new events (180.2388ms)\n✔ persists sanitized CLI invocation and deduplicated file evidence (162.7818ms)\n✔ creates a group conversation with exactly one leader (148.9522ms)\n✔ deletes one conversation and all dependent records without affecting another conversation (168.1703ms)\n✔ removes all SQLite workspace data when the workspace is removed (170.0722ms)\n✔ persists and hydrates message attachments across store reopen (167.5185ms)\n✔ persists preference evidence, projections, applications, and scoped controls across reopen (182.4809ms)\nℹ tests 36\nℹ suites 0\nℹ pass 36\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 9142.6636\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 36,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 36,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ deletes one conversation and all dependent records without affecting another conversation (168.1703ms)\n✔ removes all SQLite workspace data when the workspace is removed (170.0722ms)\n✔ persists and hydrates message attachments across store reopen (167.5185ms)\n✔ persists preference evidence, projections, applications, and scoped controls across reopen (182.4809ms)\nℹ tests 36\nℹ suites 0\nℹ pass 36\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 9142.6636",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "src/store/SqliteStore.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ tombstoned workspace rejected by assertWorkspaceExists for new Conversation (168.6727ms)\n✔ new Workspace assigns kimicode provider type to Kimi agent (149.2077ms)\n✔ Workspace.agents projected fields match Provider Configuration after update (222.9311ms)\n✔ Workspace.agents does not fall back to legacy model when Provider model is cleared (179.5965ms)\n✔ saveTask preserves peer tasks through the default SQLite store path (148.9551ms)\n✔ migrates legacy workspace agents into SQLite exactly once (147.8093ms)\n✔ legacy Agent migration creates and binds a Provider Configuration (147.9586ms)\n✔ migrates a legacy role into provider without rewriting a custom command (142.575ms)\n✔ migrates legacy Kimi CLI configuration without rewriting JSON (143.3959ms)\n✔ new SQLite-only Workspace can create a Conversation and reload default Agents (152.3373ms)\n✔ rolls back the whole Workspace aggregate when a Provider insert fails (167.7449ms)\n✔ rolls back one legacy Workspace aggregate when its Provider import fails (192.535ms)\n✔ Agent compatibility fields follow its Provider Configuration (173.1522ms)\n✔ records the tombstone schema through MigrationRunner and keeps it after restart (179.7414ms)\n✔ legacy workspace migration rethrows unknown database errors (177.5004ms)\n✔ keeps existing SQLite CLI configuration authoritative over later JSON edits (176.6934ms)\n✔ updates editable agent identity fields without changing CLI configuration (160.9033ms)\n✔ persists model and thinking effort while defaulting legacy values to auto (160.5469ms)\n✔ adds the thinking effort column when opening a legacy SQLite database (263.8419ms)\n✔ keeps conversations isolated by workspace (144.3294ms)\n✔ persists model and thinking effort independently for each conversation (173.963ms)\n✔ persists explicit group roles, sequence, and dispatch mode (142.3496ms)\n✔ adds conversation settings columns to a legacy SQLite database (257.6857ms)\n✔ persists execution activity with the conversation it belongs to (162.8013ms)\n✔ persists request-level runs, keeps workspace isolation, and cascades with conversations (165.0245ms)\n✔ persists waiting-user fields across restart and allows a resumed execution source message (165.1516ms)\n✔ migrates legacy executions without reducing historical row counts (182.1996ms)\n✔ persists unified agent events and isolates them by workspace and run (162.0907ms)\n✔ assigns monotonic sequences per run and keeps duplicate event ids idempotent (2747.0576ms)\n✔ backfills legacy event order once without changing timestamp ordering rules for new events (180.2388ms)\n✔ persists sanitized CLI invocation and deduplicated file evidence (162.7818ms)\n✔ creates a group conversation with exactly one leader (148.9522ms)\n✔ deletes one conversation and all dependent records without affecting another conversation (168.1703ms)\n✔ removes all SQLite workspace data when the workspace is removed (170.0722ms)\n✔ persists and hydrates message attachments across store reopen (167.5185ms)\n✔ persists preference evidence, projections, applications, and scoped controls across reopen (182.4809ms)\nℹ tests 36\nℹ suites 0\nℹ pass 36\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 9142.6636\n",
+      "stderr": ""
+    },
+    {
+      "file": "apps/web/src/components/layout/WorkbenchShell.test.tsx",
+      "requirementIds": [
+        "LITE-00-012",
+        "LITE-12-001",
+        "LITE-12-002",
+        "LITE-12-003",
+        "LITE-12-004",
+        "LITE-12-005",
+        "LITE-12-006",
+        "LITE-12-007",
+        "LITE-12-008",
+        "LITE-12-009",
+        "LITE-12-010",
+        "LITE-12-011",
+        "LITE-12-012",
+        "LITE-12-013",
+        "LITE-12-014",
+        "LITE-12-015",
+        "LITE-12-016",
+        "LITE-12-101"
+      ],
+      "status": "passed",
+      "durationMs": 436,
+      "sourceSha256": "b1533256f970bb9b43c791470ea2e5b704bb995392ea4c35a79aeacc71ac0774",
+      "rawLogSha256": "7f04b551388bbe5fc1e12e1e865ef786b2ce714780eded6b6aabf68b6eb6ec01",
+      "rawOutput": "✔ SHELL-01 wide mode renders all four columns with landmarks (15.1064ms)\n✔ SHELL-02 the shell consumes the token system through CSS variables (5.6044ms)\n✔ SHELL-03 standard mode collapses the Inspector into an affordance (2.8772ms)\n✔ SHELL-04 compact mode keeps Agents and Canvas only (2.5711ms)\n✔ SHELL-05 reduced motion collapses panel transitions to zero (5.0351ms)\n✔ SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse (2.3122ms)\n✔ SHELL-07 dark and light themes emit their own token values (5.6949ms)\n✔ SHELL-08 the Canvas keeps its minimum width (3.0702ms)\n✔ SHELL-09 an optional toolbar renders above the columns (3.0386ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 364.4321\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 9,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse (2.3122ms)\n✔ SHELL-07 dark and light themes emit their own token values (5.6949ms)\n✔ SHELL-08 the Canvas keeps its minimum width (3.0702ms)\n✔ SHELL-09 an optional toolbar renders above the columns (3.0386ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 364.4321",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "src/components/layout/WorkbenchShell.test.tsx"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/web",
+      "stdout": "✔ SHELL-01 wide mode renders all four columns with landmarks (15.1064ms)\n✔ SHELL-02 the shell consumes the token system through CSS variables (5.6044ms)\n✔ SHELL-03 standard mode collapses the Inspector into an affordance (2.8772ms)\n✔ SHELL-04 compact mode keeps Agents and Canvas only (2.5711ms)\n✔ SHELL-05 reduced motion collapses panel transitions to zero (5.0351ms)\n✔ SHELL-06 panel collapse is client-only UI state and the Canvas cannot collapse (2.3122ms)\n✔ SHELL-07 dark and light themes emit their own token values (5.6949ms)\n✔ SHELL-08 the Canvas keeps its minimum width (3.0702ms)\n✔ SHELL-09 an optional toolbar renders above the columns (3.0386ms)\nℹ tests 9\nℹ suites 0\nℹ pass 9\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 364.4321\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/agent-core/src/providers/codexProviderAdapter.test.ts",
+      "requirementIds": [
+        "LITE-04-001"
+      ],
+      "status": "passed",
+      "durationMs": 1121,
+      "sourceSha256": "aa14c95b922cfc3e25e6cef8c194d250803f66a95b8798efd67efb2403615381",
+      "rawLogSha256": "1d34884397bda12cd1eb22d9743474db303ffba30fae6202da686951b5fde3ca",
+      "rawOutput": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  21:47:41\n   Duration  347ms (transform 129ms, setup 0ms, import 168ms, tests 11ms, environment 0ms)\n\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 5,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 5,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  21:47:41\n   Duration  347ms (transform 129ms, setup 0ms, import 168ms, tests 11ms, environment 0ms)",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "pnpm",
+        "args": [
+          "exec",
+          "vitest",
+          "run",
+          "src/providers/codexProviderAdapter.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "packages/agent-core",
+      "stdout": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  5 passed (5)\n   Start at  21:47:41\n   Duration  347ms (transform 129ms, setup 0ms, import 168ms, tests 11ms, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/agent-core/src/providers/kimiCodeAdapter.test.ts",
+      "requirementIds": [
+        "LITE-01-014",
+        "LITE-04-001",
+        "LITE-04-002",
+        "LITE-04-003",
+        "LITE-04-004",
+        "LITE-04-005",
+        "LITE-04-006",
+        "LITE-04-007",
+        "LITE-04-008",
+        "LITE-04-009",
+        "LITE-04-010",
+        "LITE-04-011",
+        "LITE-04-012",
+        "LITE-04-101"
+      ],
+      "status": "passed",
+      "durationMs": 1093,
+      "sourceSha256": "6184005b14cd1ac6577af8026baa0ba2ea7c5d947013c370bf5ae95bb1a18af8",
+      "rawLogSha256": "cfcabeedb49b0d08184b44210d1ecee071eade1d61bf7965274d050ba7c86173",
+      "rawOutput": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  21 passed (21)\n   Start at  21:47:42\n   Duration  343ms (transform 132ms, setup 0ms, import 171ms, tests 17ms, environment 0ms)\n\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 21,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 21,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  21 passed (21)\n   Start at  21:47:42\n   Duration  343ms (transform 132ms, setup 0ms, import 171ms, tests 17ms, environment 0ms)",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "pnpm",
+        "args": [
+          "exec",
+          "vitest",
+          "run",
+          "src/providers/kimiCodeAdapter.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "packages/agent-core",
+      "stdout": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  21 passed (21)\n   Start at  21:47:42\n   Duration  343ms (transform 132ms, setup 0ms, import 171ms, tests 17ms, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/agent-core/src/providers/opencodeProviderAdapter.test.ts",
+      "requirementIds": [
+        "LITE-04-001"
+      ],
+      "status": "passed",
+      "durationMs": 1059,
+      "sourceSha256": "ec98355d448a45e955165d0b6f5a05aca796f1b69034b025dcc3ed528cc5c50c",
+      "rawLogSha256": "84d1deda6f0a55f6544f39e345c421a184c75a7855e5c9e6a7fe2adc18949aaa",
+      "rawOutput": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  21:47:43\n   Duration  325ms (transform 122ms, setup 0ms, import 158ms, tests 10ms, environment 0ms)\n\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 7,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 7,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  21:47:43\n   Duration  325ms (transform 122ms, setup 0ms, import 158ms, tests 10ms, environment 0ms)",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "pnpm",
+        "args": [
+          "exec",
+          "vitest",
+          "run",
+          "src/providers/opencodeProviderAdapter.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "packages/agent-core",
+      "stdout": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/agent-core\n\n\n Test Files  1 passed (1)\n      Tests  7 passed (7)\n   Start at  21:47:43\n   Duration  325ms (transform 122ms, setup 0ms, import 158ms, tests 10ms, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/process-runtime/src/p6-m3b-windows-birth-identity.test.ts",
+      "requirementIds": [
+        "LITE-05-001",
+        "LITE-05-002",
+        "LITE-05-003",
+        "LITE-05-004",
+        "LITE-05-005",
+        "LITE-05-006",
+        "LITE-05-007",
+        "LITE-05-008",
+        "LITE-05-009",
+        "LITE-05-010",
+        "LITE-05-011",
+        "LITE-05-012"
+      ],
+      "status": "passed",
+      "durationMs": 3762,
+      "sourceSha256": "7d7441f00e84c80ccc406f78a125f5392f81868132ed541d3c5f8740eb4cc299",
+      "rawLogSha256": "9ee4621c7bd2b110afa8ebc9ed372a382169b8f3eace5820d23be371272ea24b",
+      "rawOutput": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  10 passed (10)\n   Start at  21:47:44\n   Duration  3.05s (transform 61ms, setup 0ms, import 82ms, tests 2.82s, environment 0ms)\n\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  10 passed (10)\n   Start at  21:47:44\n   Duration  3.05s (transform 61ms, setup 0ms, import 82ms, tests 2.82s, environment 0ms)",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "pnpm",
+        "args": [
+          "exec",
+          "vitest",
+          "run",
+          "src/p6-m3b-windows-birth-identity.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "packages/process-runtime",
+      "stdout": "\n RUN  v4.1.9 E:/workspace/Multi-Agent-worktrees/agentos-lite-runtime-batches/agentos/packages/process-runtime\n\n\n Test Files  1 passed (1)\n      Tests  10 passed (10)\n   Start at  21:47:44\n   Duration  3.05s (transform 61ms, setup 0ms, import 82ms, tests 2.82s, environment 0ms)\n\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/shared/p6-l1a-admission.test.ts",
+      "requirementIds": [
+        "LITE-13-012"
+      ],
+      "status": "passed",
+      "durationMs": 346,
+      "sourceSha256": "0db8c89282297364974de3a8bf3b6700c1ac07c7d715a1a65513990b67ec0962",
+      "rawLogSha256": "961faccf9dd942ed30a2ab5a5bf4290ddad7ead944e896d113f26aaa2d89200d",
+      "rawOutput": "✔ L1A-01 CANONICAL_RUN subject union accepts canonical ID only (0.5807ms)\n✔ L1A-02 LEGACY_AGENT_RUN subject union accepts legacy ID only (0.0713ms)\n✔ L1A-03 illegal dual/empty subject shape rejected (0.0671ms)\n✔ L1A-03b granted subject union enforces exactly one subject ID (0.055ms)\n✔ same-workspace subject validation fails closed on mismatch (0.3581ms)\n✔ L1A-04 requested MODIFYING resolves MODIFYING (0.1347ms)\n✔ L1A-05 READ_ONLY + no enforcement -> MODIFYING (0.1026ms)\n✔ L1A-06 READ_ONLY + unknown evidence -> MODIFYING (0.0896ms)\n✔ L1A-07 READ_ONLY + prompt-only declaration -> MODIFYING (0.1071ms)\n✔ L1A-08 READ_ONLY + provider-native Worktree only -> MODIFYING (0.1744ms)\n✔ L1A-09 READ_ONLY + nativeSandbox label only -> MODIFYING (0.074ms)\n✔ L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY (0.0557ms)\n✔ L1A-11 declared modifying action overrides READ_ONLY request (0.0582ms)\n✔ L1A-12 declared external action overrides READ_ONLY request (0.0516ms)\n✔ L1A evidence unavailable -> MODIFYING (0.0544ms)\n✔ L1A evidence provider-assertion -> MODIFYING (0.0451ms)\n✔ legacy admission observability exception is frozen (0.0375ms)\n✔ L1A-R07 verified evidence with full non-empty proof -> READ_ONLY (0.0639ms)\n✔ L1A-R08 verified with missing source -> MODIFYING (0.0561ms)\n✔ L1A-R09 verified with missing boundaryId -> MODIFYING (0.0397ms)\n✔ L1A-R10 verified with missing qualificationId -> MODIFYING (0.0372ms)\n✔ L1A-R11 verified with empty/whitespace proof field -> MODIFYING (0.069ms)\n✔ L1A-R12 verified evidence type requires all proof fields (0.0418ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 274.7088\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 23,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 23,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ L1A-R09 verified with missing boundaryId -> MODIFYING (0.0397ms)\n✔ L1A-R10 verified with missing qualificationId -> MODIFYING (0.0372ms)\n✔ L1A-R11 verified with empty/whitespace proof field -> MODIFYING (0.069ms)\n✔ L1A-R12 verified evidence type requires all proof fields (0.0418ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 274.7088",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "../../packages/shared/p6-l1a-admission.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ L1A-01 CANONICAL_RUN subject union accepts canonical ID only (0.5807ms)\n✔ L1A-02 LEGACY_AGENT_RUN subject union accepts legacy ID only (0.0713ms)\n✔ L1A-03 illegal dual/empty subject shape rejected (0.0671ms)\n✔ L1A-03b granted subject union enforces exactly one subject ID (0.055ms)\n✔ same-workspace subject validation fails closed on mismatch (0.3581ms)\n✔ L1A-04 requested MODIFYING resolves MODIFYING (0.1347ms)\n✔ L1A-05 READ_ONLY + no enforcement -> MODIFYING (0.1026ms)\n✔ L1A-06 READ_ONLY + unknown evidence -> MODIFYING (0.0896ms)\n✔ L1A-07 READ_ONLY + prompt-only declaration -> MODIFYING (0.1071ms)\n✔ L1A-08 READ_ONLY + provider-native Worktree only -> MODIFYING (0.1744ms)\n✔ L1A-09 READ_ONLY + nativeSandbox label only -> MODIFYING (0.074ms)\n✔ L1A-10 READ_ONLY + verified technical denial + no side effects -> READ_ONLY (0.0557ms)\n✔ L1A-11 declared modifying action overrides READ_ONLY request (0.0582ms)\n✔ L1A-12 declared external action overrides READ_ONLY request (0.0516ms)\n✔ L1A evidence unavailable -> MODIFYING (0.0544ms)\n✔ L1A evidence provider-assertion -> MODIFYING (0.0451ms)\n✔ legacy admission observability exception is frozen (0.0375ms)\n✔ L1A-R07 verified evidence with full non-empty proof -> READ_ONLY (0.0639ms)\n✔ L1A-R08 verified with missing source -> MODIFYING (0.0561ms)\n✔ L1A-R09 verified with missing boundaryId -> MODIFYING (0.0397ms)\n✔ L1A-R10 verified with missing qualificationId -> MODIFYING (0.0372ms)\n✔ L1A-R11 verified with empty/whitespace proof field -> MODIFYING (0.069ms)\n✔ L1A-R12 verified evidence type requires all proof fields (0.0418ms)\nℹ tests 23\nℹ suites 0\nℹ pass 23\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 274.7088\n",
+      "stderr": ""
+    },
+    {
+      "file": "packages/shared/wf-template-instantiation.test.ts",
+      "requirementIds": [
+        "LITE-00-013",
+        "LITE-01-101"
+      ],
+      "status": "passed",
+      "durationMs": 313,
+      "sourceSha256": "1ac563ebddf3355ee21aa9dd4dc914664fb16b6292cb0023a0ce53dd11529eb6",
+      "rawLogSha256": "51c821a7a7b79c5cbf05cd5aa1c5029f01d0bab173c9f14dc9a70837116661ab",
+      "rawOutput": "✔ WFI-01 single agent compiles (1.0828ms)\n✔ WFI-02 plan-implement-review compiles (0.1295ms)\n✔ WFI-03 parallel-analysis compiles (0.0888ms)\n✔ WFI-04 optional security review (0.1462ms)\n✔ WFI-05 unbound role fails closed (0.2979ms)\n✔ WFI-06 invalid role fails closed (0.094ms)\n✔ WFI-07 definition overrides (0.0827ms)\n✔ WFI-08 invalid input fails closed (0.2249ms)\n✔ WFI-09 deterministic and non-mutating (0.1597ms)\n✔ WFI-10 every template compiles (0.1654ms)\nℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 241.9231\n\n",
+      "rawStatus": 0,
+      "error": null,
+      "signal": null,
+      "counts": {
+        "passed": 10,
+        "failed": 0,
+        "skipped": 0
+      },
+      "raw": {
+        "status": 0,
+        "error": null,
+        "signal": null,
+        "counts": {
+          "passed": 10,
+          "failed": 0,
+          "skipped": 0
+        }
+      },
+      "assertionCoverage": [],
+      "outputTail": "✔ WFI-07 definition overrides (0.0827ms)\n✔ WFI-08 invalid input fails closed (0.2249ms)\n✔ WFI-09 deterministic and non-mutating (0.1597ms)\n✔ WFI-10 every template compiles (0.1654ms)\nℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 241.9231",
+      "baseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+      "command": {
+        "executable": "node",
+        "args": [
+          "--import",
+          "tsx",
+          "--test",
+          "--test-concurrency=1",
+          "../../packages/shared/wf-template-instantiation.test.ts"
+        ],
+        "shell": true
+      },
+      "cwd": "apps/server",
+      "stdout": "✔ WFI-01 single agent compiles (1.0828ms)\n✔ WFI-02 plan-implement-review compiles (0.1295ms)\n✔ WFI-03 parallel-analysis compiles (0.0888ms)\n✔ WFI-04 optional security review (0.1462ms)\n✔ WFI-05 unbound role fails closed (0.2979ms)\n✔ WFI-06 invalid role fails closed (0.094ms)\n✔ WFI-07 definition overrides (0.0827ms)\n✔ WFI-08 invalid input fails closed (0.2249ms)\n✔ WFI-09 deterministic and non-mutating (0.1597ms)\n✔ WFI-10 every template compiles (0.1654ms)\nℹ tests 10\nℹ suites 0\nℹ pass 10\nℹ fail 0\nℹ cancelled 0\nℹ skipped 0\nℹ todo 0\nℹ duration_ms 241.9231\n",
+      "stderr": ""
+    }
+  ]
+}

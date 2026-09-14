@@ -1,0 +1,189 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:18:02.644Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 9,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过（主批次或 covering-batches*.json）。",
+    "复合条款缺任一分项的具名断言即记驳回；Inspector 条款以投影端口断言为证据边界，不假装证明浏览器渲染。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-13-002",
+      "clause": "Run, Stage, Provider, Process, and duration are distinct;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-12 Run, Stage, Provider, Process and duration stay distinct",
+      "rationale": "断言名即条款本身，且在批次收据中为 passed（该文件 12 条断言 0 fail）。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（同一投影的 HTTP 面，仅 4 条断言）"
+    },
+    {
+      "id": "LITE-13-003",
+      "clause": "Process ID is never confused with PID;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-04 process PID is evidence-only",
+      "rationale": "断言体：插入的进程行带 native_pid=4242 与独立 processId，投影断言 `processes[0].processId===processId` 且 `nativePidEvidenceOnly===4242` —— 即**进程标识与原生 PID 是两个字段**，PID 只作证据附带。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-13-004",
+      "clause": "strict Event order, gap recovery, and deduplication;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-05 events are ordered and bounded",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-06 afterSequence cursor"
+        },
+        {
+          "file": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+          "name": "no duplicate sequence delivery（重放不重复投递）"
+        }
+      ],
+      "rationale": "严格顺序 —— INSP-05 写入 sequence 1..5 后断言投影 events 的 sequence 恰为 [1,2,3]（升序且取自真实序列）；去重 —— m3-p6 集成验证断言重放观测到的 sequence 集合无重复；缺口恢复 —— INSP-06 断言 afterSequence 游标语义（从给定游标续读）。",
+      "limits": "「缺口恢复」以游标语义断言体现（INSP-06），未构造真实缺帧并断言补齐行为。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "receipt": "covering-batches-9.json（23 passed / exit 0）"
+    },
+    {
+      "id": "LITE-13-014",
+      "clause": "browser disconnect leaves execution active;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/m3-p6-integrated-verification.test.ts",
+      "coveringAssertion": "P6D-A5 browser disconnect is transport-only: execution, Events, Outbox and terminal state continue",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/routes/canonicalRunStream.test.ts",
+          "name": "P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues"
+        }
+      ],
+      "rationale": "P6D-A5 断言体：在 gate 阻塞中取消订阅后，执行、Event、Outbox 与终态**继续推进**（transport-only）；P5C-R06 在真实 HTTP 上断言断线前后 Run 生命周期计数不变且随后仍可进入 starting。二者直接覆盖「断线不影响执行」。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "receipt": "covering-batches-9.json（23 passed）＋ 主批次 canonicalRunStream（16 passed）"
+    },
+    {
+      "id": "LITE-13-015",
+      "clause": "replay has zero external side effects;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "coveringAssertion": "INSP-07 inspect performs no writes",
+      "rationale": "断言体：调用 inspector.inspect 前后 `runtime_events` 行数相等，且 Run 仍为 running —— 即只读投影不产生任何写入；配合 INSP-02/03（未知 Run 与非法输入失败关闭）与 INSP-10（Workspace 隔离），覆盖「重放零副作用」。",
+      "limits": "覆盖的是 Inspector 投影的只读性；条款若指其他重放路径（如 Event 重放），其零副作用由 m3-p6 的 outbox/event 断言覆盖，本包未逐条重放。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-13-005",
+      "clause": "bounded output without unbounded client state;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "INSP-05 events are ordered and bounded",
+      "partialCoverage": [
+        {
+          "item": "服务端输出有界",
+          "file": "apps/server/src/services/RuntimeInspector.test.ts",
+          "name": "INSP-05 events are ordered and bounded（maxEvents=3 → events.length===3 且 truncated===true）",
+          "status": "有具名断言"
+        },
+        {
+          "item": "客户端状态不无界增长",
+          "file": "（未找到 UI 侧断言）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ],
+      "rationale": "「bounded output」由 INSP-05 覆盖（截断并显式置 truncated）；「without unbounded client state」需要 UI 侧断言（组件在超长流下不累积状态），全仓检索未见该断言。按复合条款口径记驳回。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-13-008",
+      "clause": "recovery never guesses success;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+      "coveringAssertion": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+      "rationale": "与 LITE-00-007 同一断言体：进程身份 mismatch 时 disposition='uncertainty-marked'，Run 保持 running（注释明写 'mismatch must not resume or terminal-fail'）且 recoveryRequired=true —— 即不猜测成功。该文件在 covering-batches.json 中以 67 passed / 0 fail / exit 0 执行。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）",
+      "receipt": "covering-batches.json（67 passed）"
+    },
+    {
+      "id": "LITE-13-010",
+      "clause": "Cancel/Retry route through API, Policy, Runtime, and committed Event;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/routes/runLifecycle.test.ts",
+      "candidateAssertion": "P3C1-RY01 canonical Retry route accepts a failed Parent and returns HTTP 201",
+      "partialCoverage": [
+        {
+          "item": "API",
+          "file": "apps/server/src/routes/runLifecycle.test.ts",
+          "name": "P3C1-RY01 … returns HTTP 201",
+          "status": "有具名断言"
+        },
+        {
+          "item": "Runtime",
+          "file": "apps/server/src/routes/runLifecycle.test.ts",
+          "name": "P3C1-RY-C03 … one 201 and one RUN_ACTIVE_EXISTS 409（存活 Run 数为 1）",
+          "status": "有具名断言"
+        },
+        {
+          "item": "Policy",
+          "file": "（未找到）",
+          "name": "—",
+          "status": "缺具名断言"
+        },
+        {
+          "item": "committed Event",
+          "file": "（未找到针对 cancel/retry 的 committed Event 断言）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ],
+      "rationale": "四段中 API 与 Runtime 有具名断言，Policy 段与「committed Event」段没有（未找到断言 cancel/retry 产生并持久化对应规范事件的用例）。按复合条款口径记驳回。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-13-009",
+      "clause": "no reattach/takeover/direct-kill control;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "（未找到候选）",
+      "rationale": "全仓检索 Inspector 断言中无 control/kill/reattach/takeover 相关断言；`process-reattach` 只出现在 m3-runtime 的**恢复模式事件载荷**枚举里，与「Inspector 不提供重连/接管/直接杀进程控件」不是同一命题。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-13-013",
+      "clause": "no secrets in DTOs;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "（无直接断言）",
+      "rationale": "投影测试插入 `args_redacted_json`（结构上使用已脱敏列），但**没有一条断言检查 DTO 内不含秘密值**（例如断言投影字段集合、或断言某秘密串不出现在序列化结果中）。记忆侧的 `MF2R-11 record exposes no secret value field` 覆盖的是记忆记录形状，不是 Inspector/Artifact DTO。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-13-007",
+      "clause": "Git wording never implies ownership;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/RuntimeInspector.test.ts",
+      "candidateAssertion": "（未找到候选）",
+      "rationale": "与 LITE-06-011 同一缺口：全仓未见「Git 观测措辞不得暗示 AgentOS 拥有 Git 工作流」的文案/接口层断言。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/runtimeInspector.test.ts（不覆盖）"
+    }
+  ],
+  "summary": {
+    "judged": 11,
+    "accepted": 6,
+    "rejected": 5,
+    "cumulativeJudged": 77,
+    "cumulativeAccepted": 49,
+    "cumulativeRejected": 28,
+    "remaining": 29
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
+

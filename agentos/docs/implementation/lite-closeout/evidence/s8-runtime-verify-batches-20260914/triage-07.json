@@ -1,0 +1,178 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-09-14T14:14:12.093Z",
+  "evidencePackage": "S8-runtime-verify-triage",
+  "batch": 7,
+  "batchesBaseline": "b32e7c0491c61c348b5127154817e4ef6f837377",
+  "method": [
+    "读出候选断言的源码断言体，判断其实际断言的行为是否覆盖条款语义。",
+    "被引断言必须在该基线的执行收据中明确出现且为通过。",
+    "复合条款缺任一分项的具名断言即记驳回。",
+    "本文件只记录判读结论，不改矩阵 tests 指针，不提升任何行状态。"
+  ],
+  "judgments": [
+    {
+      "id": "LITE-11-010",
+      "clause": "optimistic races have one winner;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/routes/runLifecycle.test.ts",
+      "coveringAssertion": "P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/routes/runLifecycle.test.ts",
+          "name": "P3C1-RY-C03 same Task + two failed Parents has one 201 and one RUN_ACTIVE_EXISTS 409"
+        },
+        {
+          "file": "apps/server/src/store/__tests__/RunRepository.test.ts",
+          "name": "T48 concurrent transitions produce exactly one winner"
+        }
+      ],
+      "rationale": "断言体：两个并发 run.start 请求恰好一个 live 202（或 201）与一个稳定 409，且库中该类型 Operation 行数恰为 1（无键竞争不落幂等记录）；并发 retry 竞争同样断言 one 201 + one 409 且存活 Run 数为 1。另有一条 repository 层断言并发状态迁移恰好一个胜者。三处不同层都直接覆盖「乐观并发只有一个胜者」。",
+      "line": 842,
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（SSE 流契约，不覆盖本条）",
+      "receipt": "covering-batches-7.json（runLifecycle 55 passed / exit 0）"
+    },
+    {
+      "id": "LITE-11-002",
+      "clause": "create-task and start-run are separate and idempotent;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/routes/conversationRuntime.test.ts",
+      "coveringAssertion": "create-task and start-run bridge a Message into durable work",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-02 create-task is idempotent across retries and starts nothing"
+        },
+        {
+          "file": "apps/server/src/routes/runLifecycle.test.ts",
+          "name": "P3C1-R27 no-key race: exactly one live 202, one stable 409 RUN_START_ALREADY_ACTIVE, and no idempotency record"
+        }
+      ],
+      "rationale": "两句各有断言：separate —— create-task 与 start-run 是两条独立路由，且 create-task 之后 runs 行数为 0（CR4B-02）；idempotent —— create-task 三次收敛到同一 Task（CR4B-02），start-run 并发无键竞争只有一个 live 202、一个稳定 409 且不落幂等记录（R27）。",
+      "limits": "start-run 的**单请求重放**幂等（同 key 返回同一 Operation）由 R27 之外的用例覆盖（本轮未逐条核对），此处依据的是并发竞争收敛。",
+      "line": 120,
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖本条）",
+      "receipt": "covering-batches-7.json（9 passed）＋ covering-batches-2.json（14 passed）"
+    },
+    {
+      "id": "LITE-11-011",
+      "clause": "History is Agent-unified and Search is secret-free;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/routes/conversationRuntime.test.ts",
+      "coveringAssertion": "history endpoint returns the agent unified references",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/AgentHistoryService.test.ts",
+          "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)"
+        }
+      ],
+      "rationale": "两句各有断言：Agent-unified —— 对同一 Agent 的会话与 Task 操作后，GET /agents/:id/history 返回跨 kind 的统一引用列表（断言含 kind='conversation' 等）；secret-free —— CR6-A3 断言含 `sk-secret-99` 的消息体永不被搜索命中，而非秘密标签仍可命中。",
+      "line": 148,
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖本条）",
+      "receipt": "covering-batches-7.json（9 passed）＋ covering-batches-6.json（7 passed）"
+    },
+    {
+      "id": "LITE-11-001",
+      "clause": "Message post creates no Task or Run;",
+      "verdict": "rejected",
+      "candidateFile": "apps/web/src/lib/directConversation.test.ts",
+      "candidateAssertion": "DCUX-P01 chat send produces no Task and no Run",
+      "rationale": "与 LITE-02-001 同一情形：候选断言只覆盖 Composer 意图层（actionCreatesWork===false），不覆盖运行时「POST 消息后 Task/Run 行数不变」。全仓检索未见该运行时断言。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-11-012",
+      "clause": "Artifact DTOs leak no storage path;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/routes/artifacts.test.ts",
+      "candidateAssertion": "serves owned artifact content and rejects metadata-only artifacts",
+      "rationale": "该文件唯一的断言覆盖 content 服务（200、nosniff、CSP、metadata-only 409）与跨 Workspace 404，**没有任何断言检查 DTO 字段中不含存储路径**（例如 job 目录、绝对路径或内部文件名）。按缺口记录：需要一条对 Artifact DTO 字段集合/敏感字段的断言。",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-11-013",
+      "clause": "deferred API families are not active requirements.",
+      "verdict": "accepted",
+      "coveringFile": "apps/web/src/liteScopeBoundary.test.ts",
+      "coveringAssertion": "LITE-12-016 no web module implements a deferred product surface",
+      "supportiveAssertions": [
+        {
+          "file": "apps/web/src/liteScopeBoundary.test.ts",
+          "name": "LITE-12-016 the workspace shells expose no deferred product entry point"
+        },
+        {
+          "file": "apps/web/src/liteScopeBoundary.test.ts",
+          "name": "LITE-12-016 the UI ships only the Lite route surface"
+        }
+      ],
+      "rationale": "断言体：以显式 DEFERRED_SURFACES 清单扫描 web 路由与模块名，断言没有任何延迟产品面（工作流编辑器、Provider Comparison 等）被实现或暴露入口。直接覆盖「延迟的 API/产品族不是活跃需求」。",
+      "limits": "扫描对象是 web 侧路由与模块；服务端是否暴露对应路由未在本断言范围内（若要求服务端侧同口径断言，需补一条）。",
+      "line": 1,
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）",
+      "receipt": "covering-batches-7.json（3 passed / exit 0）"
+    },
+    {
+      "id": "LITE-11-005",
+      "clause": "frozen start/retry/cancel semantics and errors remain exact;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/routes/canonicalRuns.test.ts",
+      "candidateAssertion": "P4B-R31 canonical routes do not shadow the frozen Start route",
+      "rationale": "候选断言只覆盖「新路由不遮蔽既有 Start 路由」这一条存在性/路由表性质，**没有断言 start/retry/cancel 的具体语义与错误码保持不变**（例如同一输入仍返回相同 httpStatus + error code 组合、字段形状不变）。虽然 R27/RY-C03 覆盖了 start/retry 的竞争错误码，但缺少一条对三者语义的**冻结基线对照**断言。按缺口记录。",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）"
+    },
+    {
+      "id": "LITE-11-008",
+      "clause": "one Workspace never admits two modifying Runs;",
+      "verdict": "accepted",
+      "coveringFile": "apps/server/src/migrations/__tests__/p6-l1b-migration-016.test.ts",
+      "coveringAssertion": "L1B-13 two MODIFYING + GRANTED rows in one Workspace rejected by DB fence",
+      "supportiveAssertions": [
+        {
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "L1D-I08 QUEUED admission causes zero engine, provider session, process, and spawn side effects"
+        }
+      ],
+      "rationale": "与 LITE-01-008 同一断言：DB fence 拒绝同一 Workspace 的第二条 MODIFYING+GRANTED 行（UNIQUE）。11 文档语境下的准入侧补充证据为 L1D-I08/I17（QUEUED 与陈旧只读授权都零副作用）。",
+      "line": 387,
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）",
+      "receipt": "covering-batches.json（56 passed / exit 0）"
+    },
+    {
+      "id": "LITE-11-009",
+      "clause": "API clients cannot obtain concurrent read-only admission through prompt or unverified claims;",
+      "verdict": "rejected",
+      "candidateFile": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+      "candidateAssertion": "CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class",
+      "partialCoverage": [
+        {
+          "item": "prompt/声明不足以获得只读资格",
+          "file": "apps/server/src/services/GroupSpeakerResolver.test.ts",
+          "name": "CG-S1/CG-S9 ...",
+          "status": "有具名断言（发言者侧）"
+        },
+        {
+          "item": "API 客户端无法通过未验证声明获得并发只读准入",
+          "file": "（未找到 API 侧断言）",
+          "name": "—",
+          "status": "缺具名断言"
+        }
+      ],
+      "rationale": "发言者侧的「声明不等于资格」有断言；但条款主语是 **API 客户端**，需要通过准入接口提交能力声明并被拒的断言（例如 POST admission 携带未验证 enforcedWorkspaceReadOnly 时得到 MODIFYING/拒绝）。全仓检索未见该 API 侧断言。按复合条款口径记驳回。",
+      "currentPointer": "apps/server/src/routes/canonicalRunStream.test.ts（不覆盖）"
+    }
+  ],
+  "summary": {
+    "judged": 9,
+    "accepted": 4,
+    "rejected": 5,
+    "cumulativeJudged": 56,
+    "cumulativeAccepted": 37,
+    "cumulativeRejected": 19,
+    "remaining": 51
+  },
+  "boundary": {
+    "matrixEdited": false,
+    "passPromoted": false
+  }
+}
+
