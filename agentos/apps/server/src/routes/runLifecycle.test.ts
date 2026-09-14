@@ -1515,6 +1515,117 @@ test('P3C1-RY12 genuine SQLite lock timeout maps only to Retry busy', async () =
     await closeRouteFixture(fx);
   }
 });
+test('P3C1-RY12 genuine SQLite lock timeout maps only to Retry busy', async () => {
+  const fx = await createRouteFixture();
+  const locker = new DatabaseSync(join(fx.root, '.agentos', 'agentos.sqlite'));
+  try {
+    const parent = failRouteParent(fx);
+    locker.exec('BEGIN IMMEDIATE');
+    const response = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-busy-key-01' });
+    assert.equal(response.status, 503);
+    assert.ok(response.json !== null);
+    assert.equal(response.json.code, 'RUN_RETRY_BUSY');
+    assert.equal(response.json.detail, 'Run retry is temporarily unavailable');
+    assert.equal(response.json.retryable, true);
+    assert.doesNotMatch(response.text, /SQLITE|SQL|database is locked|BEGIN IMMEDIATE|\.agentos/i);
+    assert.equal(tableRowCount(fx.store, 'idempotency_records'), 0);
+    assert.equal((fx.store.getDatabase().prepare("SELECT COUNT(*) AS count FROM operations WHERE type = 'run.retry'").get() as { count: number }).count, 0);
+  } finally {
+    locker.exec('ROLLBACK');
+    locker.close();
+    await closeRouteFixture(fx);
+  }
+});
+
+/**
+ * LITE-13-010: Cancel/Retry route through API, Policy, Runtime, and committed Event.
+ *
+ * The recorded gap was the Retry half: the route and its Runtime effect were asserted,
+ * but nothing tied the retry to its POLICY decision (the failed-Parent precondition and
+ * the version CAS) and to a COMMITTED canonical Runtime Event. This asserts all four
+ * segments of one real retry in order, so a change to any one of them is visible:
+ *
+ *   API      - the canonical POST /runs/:runId/retry route accepts the request,
+ *   Policy   - a live Parent is refused (409), a failed Parent is accepted, and a stale
+ *              expectedVersion is refused, so the decision is durable state, not a flag,
+ *   Runtime  - the accepted retry creates the Child Run with the frozen identity,
+ *   Event    - the acceptance is committed to the canonical Runtime Event log.
+ */
+test('P3C1-RY13 Retry routes through API, Policy, Runtime, and a committed Event', async () => {
+  const fx = await createRouteFixture();
+  try {
+    // Baseline: creating the Run already committed its own canonical Event, so every
+    // later assertion compares against a measured count rather than an assumed zero.
+    let parent = fx.store.runRepository().findById(fx.workspaceId, fx.runId)!;
+    const parentEventsAtStart = fx.store.runtimeEventRepository().listByRunAfterSequence(fx.runId, 0);
+    assert.deepEqual(parentEventsAtStart.map(record => record.event.type), ['run.created'],
+      'creating a Run commits its run.created Event');
+
+    // Policy, first direction: a live (running) Parent is not retryable, so the retry
+    // decision is made over durable state rather than a caller-supplied flag.
+    fx.store.runRepository().transitionStatus(fx.workspaceId, parent.id, parent.version, 'running');
+    parent = fx.store.runRepository().findById(fx.workspaceId, parent.id)!;
+    const refused = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-api-policy-0001' });
+    assert.equal(refused.status, 409, 'a live Parent must be refused');
+    assert.equal(fx.store.runRepository().listByTask(fx.workspaceId, fx.taskId).length, 1,
+      'a refused retry creates no Run');
+    assert.equal(fx.store.runtimeEventRepository().listByRunAfterSequence(fx.runId, 0).length,
+      parentEventsAtStart.length, 'a refused retry commits no further Event on the Parent');
+
+    // Policy, second direction: the same Parent becomes retryable only by reaching a
+    // terminal failure, which is durable state rather than a request flag.
+    parent = fx.store.runRepository().findById(fx.workspaceId, parent.id)!;
+    parent = fx.store.runRepository().transitionStatus(
+      fx.workspaceId, parent.id, parent.version, 'failed',
+      { failureCode: 'TEST_FAILURE', failureMessage: 'test failure' },
+    );
+    // Policy guard: a stale expectedVersion must not be able to start the retry.
+    const stale = await postRetry(fx, parent.id, {
+      body: { expectedVersion: parent.version + 5 }, key: 'retry-api-policy-0002',
+    });
+    assert.equal(stale.status, 409, 'a version CAS mismatch must be refused');
+    assert.equal(fx.store.runRepository().listByTask(fx.workspaceId, fx.taskId).length, 1,
+      'a version-refused retry creates no Run');
+
+    // Runtime: the canonical route accepts, and the Child Run exists durably with the
+    // identity the accepted request promised.
+    const accepted = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-api-policy-0003' });
+    assert.equal(accepted.status, 201, 'the canonical Retry route accepts a failed Parent');
+    const child = accepted.json?.run as { id: string; parentRunId: string; rootRunId: string; reason: string; status: string };
+    assert.ok(child.id && child.id !== parent.id, 'the retry created a distinct Child Run');
+    assert.equal(child.parentRunId, parent.id);
+    assert.equal(child.rootRunId, parent.rootRunId, 'the Child stays in the same Run tree');
+    assert.equal(child.reason, 'retry');
+    assert.equal(child.status, 'queued');
+    assert.equal(fx.store.runRepository().findById(fx.workspaceId, child.id)?.parentRunId, parent.id,
+      'the Runtime effect is durable, not only a response body');
+
+    // Event: the acceptance is committed as the Child Run's own canonical Event, and
+    // the accepted request is recorded as the Operation the API returned, so the
+    // committed Event and the accepted request describe the same work.
+    const childEvents = fx.store.runtimeEventRepository().listByRunAfterSequence(child.id, 0);
+    assert.deepEqual(childEvents.map(record => record.event.type), ['run.created'],
+      'the accepted retry commits the Child Run canonical Event');
+    const sequences = childEvents.map(record => record.event.sequence);
+    assert.deepEqual(sequences, [...sequences].sort((a, b) => a - b), 'Events stay in strict order');
+    assert.equal(new Set(sequences).size, sequences.length, 'no duplicate sequence is committed');
+    const operations = fx.store.getDatabase().prepare('SELECT type FROM operations').all() as Array<{ type: string }>;
+    assert.deepEqual(operations.map(operation => operation.type), ['run.retry'],
+      'the accepted retry is recorded as exactly one run.retry Operation');
+
+    // The retry is not replayable into a second Child: the same key converges instead.
+    const replay = await postRetry(fx, parent.id, { body: { expectedVersion: parent.version }, key: 'retry-api-policy-0003' });
+    assert.equal(replay.status, 201);
+    assert.equal((replay.json?.run as { id: string }).id, child.id, 'the replay converges on the same Child Run');
+    assert.equal(
+      fx.store.runRepository().listByTask(fx.workspaceId, fx.taskId).filter(run => run.reason === 'retry').length, 1,
+      'a replayed retry must not create a second Child Run',
+    );
+  } finally {
+    await closeRouteFixture(fx);
+  }
+});
+
 
 // ---------------------------------------------------------------------------
 // P6-M1 Production Runtime Dispatch Activation.
