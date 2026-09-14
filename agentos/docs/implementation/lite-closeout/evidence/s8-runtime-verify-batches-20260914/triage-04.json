@@ -85,11 +85,18 @@
     {
       "id": "LITE-06-010",
       "clause": "no automatic or destructive Git command is executed by observation;",
-      "verdict": "rejected",
-      "candidateFile": "apps/server/src/services/GitObservationCollector.integration.test.ts",
-      "candidateAssertion": "gitSnapshot reports stable state/code facts without cwd or raw diagnostics",
-      "rationale": "该文件的 36 条断言覆盖只读命令的结果、边界与清理（含 owned-tree cleanup、取消与超时），但**没有一条断言「观测路径不会执行破坏性 Git 命令」**（例如不存在 reset/checkout/clean/push 之类的白名单断言）。按缺口记录：需要一条对允许命令集合的白名单断言。",
-      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）"
+      "verdict": "accepted",
+      "correctedFrom": "本批初版误判为 rejected（只看了集成测试文件）；复核 p6-l1c 契约套件后改判 accepted，并把过程记录在此。",
+      "coveringFile": "packages/shared/p6-l1c-git-observation-contract.test.ts",
+      "coveringAssertion": "L1C-M1-04 GitCommandPort accepts only structured read families",
+      "supportiveAssertions": [
+        { "file": "packages/shared/p6-l1c-git-observation-contract.test.ts", "name": "L1C-M1-03 command execution contract freezes C locale and side-effect guards" }
+      ],
+      "rationale": "断言体：GitCommandPort 只接受结构化读族（family: repository_root 等）；测试显式构造 family: 'reset' 与携带 raw argv:['push'] 的请求，并标注 @ts-expect-error 「mutation command families are intentionally unrepresentable」「raw argv is intentionally unrepresentable」。配套 L1C-M1-03 冻结副作用守卫：GIT_OPTIONAL_LOCKS:'0'、GIT_TERMINAL_PROMPT:'0'、pagerDisabled:true、externalDiffDisabled:true。即观测路径在类型层就无法表达破坏性命令，且运行时环境禁用了副作用来源。",
+      "limits": "「mutation 族不可表达」是**编译期**保证（@ts-expect-error 由 typecheck 而非本收据的运行时断言验证）；运行时收据证明的是结构化读族请求可被正常执行。两者合起来才覆盖该条款。",
+      "line": 138,
+      "currentPointer": "apps/server/src/services/WorkspaceAdmissionAuthority.test.ts（不覆盖）",
+      "receipt": "covering-batches-3.json（26 passed / 0 fail / exit 0）"
     },
     {
       "id": "LITE-06-011",
@@ -103,11 +110,11 @@
   ],
   "summary": {
     "judged": 7,
-    "accepted": 5,
-    "rejected": 2,
+    "accepted": 6,
+    "rejected": 1,
     "cumulativeJudged": 33,
-    "cumulativeAccepted": 20,
-    "cumulativeRejected": 13,
+    "cumulativeAccepted": 21,
+    "cumulativeRejected": 12,
     "remaining": 73
   },
   "boundary": {
@@ -115,4 +122,3 @@
     "passPromoted": false
   }
 }
-
