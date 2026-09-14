@@ -1,5 +1,6 @@
 import { ConversationAgentRunner } from '@agentos/agent-core';
 import type { ConversationExecutionEvent, ConversationRunResult } from '@agentos/agent-core';
+import { createHash } from 'node:crypto';
 import type { AgentProfile, ConversationMessage } from '@agentos/shared';
 import type { AgentTurnRecord } from '../store/AgentTurnRepository.js';
 import type { ConversationRepository, MessageRecord } from '../store/ConversationRepository.js';
@@ -140,7 +141,17 @@ export interface ConversationTurnContextOptions {
 export interface PublishedCompactionSummary {
   readonly id: string;
   readonly summary: string;
+  readonly sourceStartMessageId: string | null;
   readonly sourceEndMessageId: string | null;
+  /** How many Messages the summary covered when it was published. */
+  readonly sourceMessageCount: number;
+  /**
+   * LITE-09-109: hash of the covered Messages' `[id, content]` pairs at publication
+   * time. This is the revision/visibility evidence the compaction already stores,
+   * reused instead of adding Message versioning; a summary whose source no longer
+   * hashes to this value must not enter a new context.
+   */
+  readonly sourceHash: string;
 }
 
 export interface ConversationCompactionPort {
@@ -171,7 +182,28 @@ export interface CompactionApplicationBudget {
 export type CompactionApplicationResult =
   | { readonly kind: 'uncompacted'; readonly history: readonly ConversationMessage[] }
   | { readonly kind: 'applied'; readonly history: readonly ConversationMessage[]; readonly summaryId: string; readonly summarizedMessages: number }
-  | { readonly kind: 'over-budget'; readonly summaryId: string; readonly estimatedTokens: number; readonly hardBudgetTokens: number };
+  | { readonly kind: 'over-budget'; readonly summaryId: string; readonly estimatedTokens: number; readonly hardBudgetTokens: number }
+  /**
+   * LITE-09-109: the summary's source no longer matches what it covered, so the
+   * summary must not enter a new context. The caller falls back to the uncompressed
+   * window; a historical snapshot that used the summary is untouched, and nothing
+   * about the Messages is rewritten.
+   */
+  | { readonly kind: 'stale-source'; readonly summaryId: string; readonly reason: CompactionSourceStaleReason };
+
+export type CompactionSourceStaleReason =
+  | 'source-start-missing'
+  | 'source-end-missing'
+  | 'source-range-invalid'
+  | 'source-count-changed'
+  | 'source-content-changed';
+
+/** Same canonicalization the compaction used when it published the source hash. */
+function hashCompactionSource(messages: readonly ConversationMessage[]): string {
+  return createHash('sha256')
+    .update(JSON.stringify(messages.map(message => [message.id, message.content])))
+    .digest('hex');
+}
 
 /**
  * Applies a published summary to a new context. Only Messages the summary
@@ -186,7 +218,32 @@ export function applyCompactionSummary(
     return { kind: 'uncompacted', history };
   }
   const endIndex = history.findIndex(message => message.id === summary.sourceEndMessageId);
-  if (endIndex < 0) return { kind: 'uncompacted', history };
+  if (endIndex < 0) {
+    return { kind: 'stale-source', summaryId: summary.id, reason: 'source-end-missing' };
+  }
+  // LITE-09-109: validate the covered range before the summary is allowed to stand in for
+  // it. A Message that was hidden, removed from the visible set, or edited through the
+  // existing edit path changes either the covered count or the covered bytes, and either
+  // way the summary is no longer a truthful replacement - so it is refused rather than
+  // silently applied. No new edit API, UI or Message versioning is introduced: this is the
+  // same [id, content] evidence the compaction already published.
+  let startIndex = 0;
+  if (summary.sourceStartMessageId !== null) {
+    startIndex = history.findIndex(message => message.id === summary.sourceStartMessageId);
+    if (startIndex < 0) {
+      return { kind: 'stale-source', summaryId: summary.id, reason: 'source-start-missing' };
+    }
+    if (startIndex > endIndex) {
+      return { kind: 'stale-source', summaryId: summary.id, reason: 'source-range-invalid' };
+    }
+  }
+  const covered = history.slice(startIndex, endIndex + 1);
+  if (covered.length !== summary.sourceMessageCount) {
+    return { kind: 'stale-source', summaryId: summary.id, reason: 'source-count-changed' };
+  }
+  if (hashCompactionSource(covered) !== summary.sourceHash) {
+    return { kind: 'stale-source', summaryId: summary.id, reason: 'source-content-changed' };
+  }
   const tail = history.slice(endIndex + 1);
   const estimate = budget.estimateTokens ?? ((text: string) => Math.max(1, Math.ceil(text.length / 4)));
   const estimatedTokens = estimate(summary.summary) + tail.reduce((total, message) => total + estimate(message.content), 0);
@@ -282,6 +339,7 @@ export class ConversationTurnDriver {
     let effectiveHistory: readonly ConversationMessage[] = history;
     let appliedSummaryId: string | undefined;
     let summarizedMessages = 0;
+    let staleCompactionSummary: { readonly summaryId: string; readonly reason: CompactionSourceStaleReason } | undefined;
     if (this.context?.compaction !== undefined) {
       const summary = this.context.compaction.latestPublished(input.workspaceId, input.conversationId);
       const applied = applyCompactionSummary(history, summary, this.context.compactionBudget ?? { hardBudgetTokens: Number.POSITIVE_INFINITY });
@@ -294,6 +352,13 @@ export class ConversationTurnDriver {
         effectiveHistory = applied.history;
         appliedSummaryId = applied.summaryId;
         summarizedMessages = applied.summarizedMessages;
+      } else if (applied.kind === 'stale-source') {
+        // LITE-09-109: the summary's source was edited or is no longer visible, so it is
+        // not a truthful replacement for it. The Turn continues on the uncompressed
+        // bounded window, and the reason is recorded in the snapshot budget so the
+        // refusal is visible rather than silent. The historical snapshot that used the
+        // summary is not touched, and the trigger can publish a fresh summary later.
+        staleCompactionSummary = { summaryId: applied.summaryId, reason: applied.reason };
       }
     }
     const frozenHistory = effectiveHistory.slice(-MAX_FROZEN_HISTORY_MESSAGES);
@@ -356,6 +421,12 @@ export class ConversationTurnDriver {
             totalConversationMessages: history.length,
             contextTokenBudget: this.context.contextTokenBudget ?? null,
             ...(appliedSummaryId === undefined ? {} : { compactionSummaryId: appliedSummaryId, summarizedMessages }),
+            ...(staleCompactionSummary === undefined
+              ? {}
+              : {
+                rejectedCompactionSummaryId: staleCompactionSummary.summaryId,
+                rejectedCompactionReason: staleCompactionSummary.reason,
+              }),
           }),
           selectedEntryIdsJson: JSON.stringify([...selection.selectedEntryIds]),
           totalTokens: selection.totalTokens,

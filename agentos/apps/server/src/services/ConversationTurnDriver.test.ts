@@ -17,6 +17,7 @@ import { ConversationRepository } from '../store/ConversationRepository.js';
 import { AgentTurnRepository } from '../store/AgentTurnRepository.js';
 import { ConversationStreamService } from './ConversationStreamService.js';
 import { ConversationTurnDriver, ConversationTurnDriverError } from './ConversationTurnDriver.js';
+import { createHash } from 'node:crypto';
 import {
   MAX_FROZEN_HISTORY_MESSAGES,
   TURN_CONTEXT_STRATEGY_VERSION,
@@ -389,5 +390,85 @@ test('LITE-09-102 a READ_ONLY holder does not block chat and D3 parallel-read-on
     const result = await driver.replyWithTurn(input());
     assert.equal(result.status, 'completed');
     assert.equal(result.checkpointCount, 0);
+  } finally { fx.close(); }
+});
+
+/** LITE-09-109: build the source-hash evidence the compaction publishes. */
+function compactionSourceHash(entries: ReadonlyArray<readonly [string, string]>): string {
+  return createHash('sha256').update(JSON.stringify(entries)).digest('hex');
+}
+
+// LITE-09-109: the driver must not let a summary stand in for source Messages that no
+// longer say what they said. The refusal is recorded in the snapshot so it is visible,
+// the Turn still runs on the uncompressed bounded window, and the historical snapshot
+// that adopted the summary is not rewritten.
+test('LITE-09-109 TD-11 a summary whose covered Message was edited is refused and the reason is recorded', async () => {
+  const request = input();
+  const frozen: Array<readonly [string, string]> = [['msg_c1', 'first covered'], ['msg_c2', 'second covered']];
+  let runnerHistory: readonly ConversationMessage[] = [];
+  const fx = fixture(undefined, {
+    snapshots: createDurableTurnContextSnapshotPort({ getDatabase: () => fx.db as unknown as TransactionDatabase }),
+    compaction: {
+      latestPublished: () => ({
+        id: 'comp_stale', summary: 'OLD SUMMARY',
+        sourceStartMessageId: frozen[0]![0], sourceEndMessageId: frozen[1]![0],
+        sourceMessageCount: frozen.length, sourceHash: compactionSourceHash(frozen),
+      }),
+    },
+    compactionBudget: { hardBudgetTokens: 100_000 },
+  }, history => { runnerHistory = history; });
+  try {
+    // The Messages exist, but one of them was edited after the summary was published.
+    fx.conversations.appendMessage({ id: 'msg_c1', conversationId: CONV, workspaceId: WS, senderType: 'user', kind: 'text', status: 'final', content: 'first covered EDITED', createdAt: NOW });
+    fx.conversations.appendMessage({ id: 'msg_c2', conversationId: CONV, workspaceId: WS, senderType: 'user', kind: 'text', status: 'final', content: 'second covered', createdAt: NOW });
+    fx.conversations.appendMessage({ id: 'msg_new', conversationId: CONV, workspaceId: WS, senderType: 'user', kind: 'text', status: 'final', content: 'newest', createdAt: NOW });
+
+    const result = await fx.driver.replyWithTurn(request);
+    assert.equal(result.status, 'completed');
+    const snapshot = fx.snapshots.findById(WS, result.turn.contextSnapshotId!);
+    assert.ok(snapshot);
+    const budget = JSON.parse(snapshot.budgetJson) as Record<string, unknown>;
+    assert.equal(budget.compactionSummaryId, undefined, 'the stale summary must not be adopted');
+    assert.equal(budget.rejectedCompactionSummaryId, 'comp_stale');
+    assert.equal(budget.rejectedCompactionReason, 'source-content-changed');
+    // The uncompressed window is what the Provider actually received.
+    assert.ok(!runnerHistory.some(message => message.content === 'OLD SUMMARY'));
+    assert.deepEqual(runnerHistory.map(message => message.id), ['msg_c1', 'msg_c2', 'msg_new']);
+    // Nothing was rewritten: the edited Message keeps its edited content.
+    assert.equal(fx.conversations.findMessageById(WS, 'msg_c1')?.content, 'first covered EDITED');
+  } finally { fx.close(); }
+});
+
+// The positive half of the same rule: an unchanged source still adopts, so the check
+// refuses only what it should.
+test('LITE-09-109 TD-12 an unchanged source still adopts the summary and records it', async () => {
+  const request = input();
+  const frozen: Array<readonly [string, string]> = [['msg_k1', 'kept one'], ['msg_k2', 'kept two']];
+  let runnerHistory: readonly ConversationMessage[] = [];
+  const fx = fixture(undefined, {
+    snapshots: createDurableTurnContextSnapshotPort({ getDatabase: () => fx.db as unknown as TransactionDatabase }),
+    compaction: {
+      latestPublished: () => ({
+        id: 'comp_fresh', summary: 'FRESH SUMMARY',
+        sourceStartMessageId: frozen[0]![0], sourceEndMessageId: frozen[1]![0],
+        sourceMessageCount: frozen.length, sourceHash: compactionSourceHash(frozen),
+      }),
+    },
+    compactionBudget: { hardBudgetTokens: 100_000 },
+  }, history => { runnerHistory = history; });
+  try {
+    fx.conversations.appendMessage({ id: 'msg_k1', conversationId: CONV, workspaceId: WS, senderType: 'user', kind: 'text', status: 'final', content: 'kept one', createdAt: NOW });
+    fx.conversations.appendMessage({ id: 'msg_k2', conversationId: CONV, workspaceId: WS, senderType: 'user', kind: 'text', status: 'final', content: 'kept two', createdAt: NOW });
+    fx.conversations.appendMessage({ id: 'msg_k3', conversationId: CONV, workspaceId: WS, senderType: 'user', kind: 'text', status: 'final', content: 'tail', createdAt: NOW });
+
+    const result = await fx.driver.replyWithTurn(request);
+    assert.equal(result.status, 'completed');
+    const snapshot = fx.snapshots.findById(WS, result.turn.contextSnapshotId!);
+    const budget = JSON.parse(snapshot!.budgetJson) as Record<string, unknown>;
+    assert.equal(budget.compactionSummaryId, 'comp_fresh');
+    assert.equal(budget.summarizedMessages, 2);
+    assert.equal(budget.rejectedCompactionSummaryId, undefined);
+    assert.ok(runnerHistory.some(message => message.content === 'FRESH SUMMARY'), 'the Provider receives the summary');
+    assert.ok(!runnerHistory.some(message => message.id === 'msg_k1'), 'covered Messages are not re-sent');
   } finally { fx.close(); }
 });

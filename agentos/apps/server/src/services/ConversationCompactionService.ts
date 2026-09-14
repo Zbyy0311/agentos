@@ -117,7 +117,17 @@ export function createConversationCompactionPort(store: SqliteStore): Conversati
     latestPublished(workspaceId: string, conversationId: string): PublishedCompactionSummary | undefined {
       const row = compactions.findLatestPublished(workspaceId, conversationId);
       if (row === undefined || row.summary === null) return undefined;
-      return { id: row.id, summary: row.summary, sourceEndMessageId: row.sourceEndMessageId };
+      // LITE-09-109: the source range and its hash travel with the summary so the
+      // consumer can refuse a summary whose Messages were edited or are no longer
+      // visible, instead of applying a stale replacement.
+      return {
+        id: row.id,
+        summary: row.summary,
+        sourceStartMessageId: row.sourceStartMessageId,
+        sourceEndMessageId: row.sourceEndMessageId,
+        sourceMessageCount: row.sourceMessageCount,
+        sourceHash: row.sourceHash,
+      };
     },
   };
 }
