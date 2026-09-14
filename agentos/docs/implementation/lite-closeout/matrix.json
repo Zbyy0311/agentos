@@ -658,6 +658,7 @@
         "apps/server/src/services/LifecycleTransactionService.ts"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.test.ts",
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
@@ -2806,6 +2807,7 @@
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.test.ts",
         "apps/server/src/services/ConversationTurnDriver.test.ts"
       ],
       "evidence": [
@@ -3553,6 +3555,7 @@
         "apps/server/src/index.ts"
       ],
       "tests": [
+        "apps/server/src/routes/conversationRuntime.test.ts",
         "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [

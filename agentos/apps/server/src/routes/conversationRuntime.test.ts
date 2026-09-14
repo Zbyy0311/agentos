@@ -208,6 +208,65 @@ test('messages/stream sends, streams durable checkpoints, finalizes a reply, and
   }
 });
 
+/**
+ * LITE-11-001 / LITE-09-001 / LITE-02-001: posting a Message starts a
+ * conversation Turn and nothing else. A Message-only Turn must create no Task
+ * and no Run, and therefore no modifying Run either - durable work only begins
+ * through the explicit create-task / start-run bridge, which the next test in
+ * this file exercises. Without this assertion the "no Task and no Run" half of
+ * those rows was only implied by the bridge test's happy path.
+ */
+test('LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run', async () => {
+  process.env.AGENTOS_FORCE_MOCK = 'true';
+  try {
+    await withServer(async (baseUrl, store) => {
+      const created = await postJson(`${baseUrl}/conversations`, { kind: 'direct', agentId: 'codex' });
+      assert.equal(created.status, 201);
+      const conversationId = created.json.conversation.id as string;
+      const db = store.getDatabase();
+      const countRows = (table: string): number =>
+        Number((db.prepare('SELECT COUNT(*) AS n FROM ' + table).get() as { n: number | bigint }).n);
+
+      // 1. Posting the Message itself is not durable work.
+      const posted = await postJson(`${baseUrl}/conversations/${conversationId}/messages`, { content: '只回答一句话。' });
+      assert.equal(posted.status, 201);
+      assert.equal(countRows('tasks'), 0, 'LITE-11-001: posting a Message creates no Task');
+      assert.equal(countRows('runs'), 0, 'LITE-11-001: posting a Message creates no Run');
+
+      // 2. The reply Turn runs and still creates neither, while the reply does land.
+      const stream = await fetch(`${baseUrl}/conversations/${conversationId}/messages/stream`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: '再回答一句话。' }),
+      });
+      assert.equal(stream.status, 200);
+      const events = await stream.text();
+      assert.ok(events.includes('event: turn.final') || events.includes('event: turn.failed'));
+      assert.equal(countRows('tasks'), 0, 'LITE-09-001: a Message-only Turn creates no Task');
+      assert.equal(countRows('runs'), 0, 'LITE-09-001: a Message-only Turn creates no Run');
+      // LITE-02-001: "no Run" is what makes "no MODIFYING Run" true; the admission
+      // ledger must therefore hold no canonical-Run admission for this conversation's work.
+      const admissions = db
+        .prepare("SELECT COUNT(*) AS n FROM workspace_admissions WHERE subject_kind = 'CANONICAL_RUN'")
+        .get() as { n: number | bigint };
+      assert.equal(Number(admissions.n), 0, 'LITE-02-001: no modifying Run authority is taken by a Message-only Turn');
+
+      // The conversation really did progress: the reply exists as final.
+      const messages = await fetch(`${baseUrl}/conversations/${conversationId}/messages`).then(r => r.json()) as {
+        messages: Array<{ senderType: string; status: string }>;
+      };
+      assert.ok(messages.messages.some(message => message.senderType === 'agent' && message.status === 'final'));
+
+      // 3. Durable work starts only when explicitly requested through the bridge.
+      const bridged = await postJson(`${baseUrl}/messages/${posted.json.message.id}/start-run`, {});
+      assert.equal(bridged.status, 201);
+      assert.equal(countRows('tasks'), 1, 'the explicit start-run entry is what creates the Task');
+      assert.equal(countRows('runs'), 1, 'the explicit start-run entry is what creates the Run');
+    });
+  } finally {
+    delete process.env.AGENTOS_FORCE_MOCK;
+  }
+});
+
 // LITE-09-101: the production wiring must actually SELECT Memory, not just freeze an
 // empty selection. The route now supplies the real chat selector, so a Workspace Entry
 // has to appear in the frozen snapshot with its token cost.
