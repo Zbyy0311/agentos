@@ -1534,5 +1534,27 @@
     "requirementIds": ["LITE-09-006"],
     "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
     "limitation": "The preserved TAP receipt directly maps durable streamed checkpoints, ordered replay and final Message/Turn states. It is candidate evidence captured at c517fbd8; no matrix row is promoted until the authoritative final main SHA is established."
+  },
+  {
+    "id": "S9-FINAL-C517-MEMORY-CONTRACTS",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/memory-contracts-tap/receipt.json",
+    "result": { "passed": 133, "failed": 0, "skipped": 0 },
+    "requirementIds": [
+      "LITE-07-001",
+      "LITE-07-002",
+      "LITE-07-004",
+      "LITE-07-006",
+      "LITE-07-008",
+      "LITE-07-009",
+      "LITE-07-010",
+      "LITE-07-011",
+      "LITE-07-101"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
+    "limitation": "The preserved TAP receipt contains individually mapped direct assertions for the listed Memory rows. It was captured at c517fbd8 and is reused for the controlled promotions only because main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has an empty production-path diff from c517fbd8 under apps/server/src, apps/web/src and packages; the historical receipt baseline remains c517fbd8."
   }
 ]

@@ -84,10 +84,10 @@ test('an amendment cannot be added or edited without moving the outside anchor',
 });
 
 test('a line-less requirement cannot be deferred without its own amendment', () => {
-  // LITE-07-101 is also derived from a user clarification and therefore line-less, but
+  // LITE-09-103 is derived from a user clarification and therefore line-less, but
   // no amendment names it, so it may not become DEFERRED.
   const changed = matrix();
-  const row = changed.requirements.find(item => item.id === 'LITE-07-101');
+  const row = changed.requirements.find(item => item.id === 'LITE-09-103');
   assert.equal(row.line, null, 'the fixture row is line-less');
   assert.equal(row.state, 'RUNTIME-VERIFY');
   row.state = 'DEFERRED';
@@ -124,12 +124,12 @@ function passFixture() {
 
 test('scope accepts the frozen matrix with individually authorized PASS rows', () => {
   const result = validateScope(matrix(), evidence, lock, root);
-  assert.equal(result.PASS, 30);
+  assert.equal(result.PASS, 39);
   assert.equal(result.GAP, 4);
-  // 196 / 165 rather than 205 / 164: the user-authorized LITE-04-101 deferral moves
-  // exactly one row, and the controlled promotions close thirty independently
+  // 187 / 165 rather than 205 / 164: the user-authorized LITE-04-101 deferral moves
+  // exactly one row, and the controlled promotions close thirty-nine independently
   // evidenced rows without changing the permanent scope.
-  assert.equal(result['RUNTIME-VERIFY'], 196);
+  assert.equal(result['RUNTIME-VERIFY'], 187);
   assert.equal(result.DEFERRED, 165);
 });
 
