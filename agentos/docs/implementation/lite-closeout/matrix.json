@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 20,
+  "matrixVersion": 21,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -4970,7 +4970,7 @@
       "section": "user-approved compaction; §10",
       "line": null,
       "requirement": "Inspector解释每次压缩为何触发及被谁采用",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S6",
       "implementation": [
         "apps/server/src/services/ConversationCompactionInspector.ts",
@@ -4980,12 +4980,14 @@
       "tests": [
         "apps/server/src/routes/conversationRuntime.compaction.test.ts",
         "apps/web/src/components/chat/RuntimeInspectorView.test.tsx",
-        "apps/server/src/routes/runtimeInspector.test.ts"
+        "apps/server/src/routes/runtimeInspector.test.ts",
+        "scripts/verify-lite-13-101-browser.test.mjs"
       ],
       "evidence": [
-        "S6-COMPACTION-INSPECTOR-SOURCE"
+        "S9-FINAL-C517-13-101-BROWSER"
       ],
-      "finding": "基线反证：Run级Inspector无任何compaction投影，RuntimeInspector.ts与RuntimeInspectorView.tsx均无compaction字段，会话级compactions路由虽已存在但Run无法解释其Conversation为何压缩。已补：共享只读读模型ConversationCompactionInspector（tasks/不可变policy/adoptions/rejections均读自持久行）、Run→Conversation解析器显式报告连接来源(turn|message|task)、InspectorProjection新增有界compaction投影（含thisTurn，即本Run自身快照的采用或拒绝结论，禁止借用其他Turn）、Web Compaction区块渲染触发值/预算/策略/来源/摘要/尝试与失败/实际Turn与Snapshot。测试：真实HTTP Turn路径产生压缩后经Run Inspector读回同一任务(linkVia=task与message两路)，跨接口任务集合一致性，孤儿Run报告为未落位；Turn级采用与拒绝分支；Web渲染与两种缺失态。仍缺：浏览器内真实页面验收，且PASS提升在冻结期内被禁止，故保持GAP。",
+      "finding": "基线反证：Run级Inspector无任何compaction投影，RuntimeInspector.ts与RuntimeInspectorView.tsx均无compaction字段，会话级compactions路由虽已存在但Run无法解释其Conversation为何压缩。已补：共享只读读模型ConversationCompactionInspector（tasks/不可变policy/adoptions/rejections均读自持久行）、Run→Conversation解析器显式报告连接来源(turn|message|task)、InspectorProjection新增有界compaction投影（含thisTurn，即本Run自身快照的采用或拒绝结论，禁止借用其他Turn）、Web Compaction区块渲染触发值/预算/策略/来源/摘要/尝试与失败/实际Turn与Snapshot。测试：真实HTTP Turn路径产生压缩后经Run Inspector读回同一任务(linkVia=task与message两路)，跨接口任务集合一致性，孤儿Run报告为未落位；Turn级采用与拒绝分支；Web渲染与两种缺失态。最终主线收敛后，在1600x900 forward runtime页面选择实际持久Conversation，浏览器直接读到Run Inspector Compaction区块、policy/budget/source/summary/attempt/adoption字段；5/5通过、0失败、0跳过，原始退出码0。PR #179 合并提交c844633e仅含收尾证据/范围账本变更，相关生产实现自c517fbd8以来未变，因此本条按用户授权由GAP提升为PASS。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "exit": "展示触发值/阈值、预算组成、来源、策略、摘要、失败/重试和实际Turn/Snapshot引用。"
     },
     {
@@ -8554,6 +8556,15 @@
       "reason": "LITE-07-107 moves from GAP to PASS on final-main S7 receipt: repeated source convergence, changed-source version/audit retention and cross-Workspace owner isolation are directly asserted.",
       "requirementIds": [
         "LITE-07-107"
+      ]
+    },
+    {
+      "version": 21,
+      "baseline": "c844633edadb5be50b68f7fbc7bac305aeb5b7ec",
+      "authority": "User-approved controlled per-row PASS promotion on final main after all in-flight Lite PRs were merged",
+      "reason": "LITE-13-101 moves from GAP to PASS on the direct browser receipt at implementation baseline c517fbd8: the forward runtime page selects the persisted Conversation and the rendered Run Inspector directly asserts the Compaction section, trigger/threshold, policy, budget source/estimator, source range, summary, attempts, adopted Snapshot and absence of unexplained application errors. Main c844633e differs from c517fbd8 only by closeout evidence/scope bookkeeping, so the c517fbd8 production receipt remains valid under the unchanged-implementation rule.",
+      "requirementIds": [
+        "LITE-13-101"
       ]
     }
   ],
