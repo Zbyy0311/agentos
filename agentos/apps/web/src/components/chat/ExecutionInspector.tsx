@@ -5,6 +5,7 @@ import type { AgentEvent, AgentExecution, AgentProfile, ExecutionEvent, Executio
 import { getElapsedSeconds, shouldRefreshElapsed } from '@/lib/executionElapsed';
 import { summarizeExecutionInspector } from '@/lib/executionInspector';
 import { RunTaskTree } from '@/components/runs/RunTaskTree';
+import { RuntimeApprovalPanel } from '@/components/chat/RuntimeApprovalPanel';
 
 type VisibleExecutionEvent = ExecutionEvent & { agentId?: string; agentName?: string };
 
@@ -25,11 +26,15 @@ interface ExecutionInspectorProps {
   executions: AgentExecution[];
   activeStatus?: ExecutionStatus;
   activeStartedAt?: string;
+  apiBase?: string;
+  workspaceId?: string;
+  activeRunId?: string;
   onEdit?(): void;
   onOpenRunDetails?(runId: string): void;
+  onRuntimeApprovalResolved?(): void;
 }
 
-export function ExecutionInspector({ agent, groupTitle, events, runtimeEvents = [], steps = [], executions, activeStatus, activeStartedAt, onEdit, onOpenRunDetails }: ExecutionInspectorProps) {
+export function ExecutionInspector({ agent, groupTitle, events, runtimeEvents = [], steps = [], executions, activeStatus, activeStartedAt, apiBase, workspaceId, activeRunId, onEdit, onOpenRunDetails, onRuntimeApprovalResolved }: ExecutionInspectorProps) {
   const latest = executions[0];
   const status = activeStatus ?? latest?.status;
   const [, setClock] = useState(Date.now());
@@ -52,6 +57,7 @@ export function ExecutionInspector({ agent, groupTitle, events, runtimeEvents = 
       <section className="mb-6"><h3 className="signal-section-label mb-3">权限</h3><div className="space-y-2 text-xs ui-text-soft">{(['read', 'write', 'review'] as const).map(permission => <div key={permission} className="flex items-center gap-2"><span className={`grid h-4 w-4 place-items-center rounded-full text-[10px] ${permissions.includes(permission) ? 'bg-[color:var(--app-success)]/20 text-[var(--app-success)]' : 'bg-[var(--app-surface-soft)] ui-dim'}`}>{permissions.includes(permission) ? '✓' : '·'}</span>{permission === 'read' ? '读取项目文件' : permission === 'write' ? '修改项目文件' : '代码审查'}</div>)}</div></section>
     </> : <div className="text-sm leading-6 ui-dim">选择 Agent 或群聊查看执行状态。</div>}
     {(agent || groupTitle) && <>
+      {apiBase && workspaceId && activeRunId ? <RuntimeApprovalPanel apiBase={apiBase} workspaceId={workspaceId} runId={activeRunId} onResolved={onRuntimeApprovalResolved} /> : null}
       <section className="border-t ui-border pt-5"><div className="mb-4 flex items-center justify-between"><h3 className="signal-section-label">当前动作</h3>{status && <span className="rounded-full border ui-border px-2 py-1 text-xs ui-muted">{statusLabel[status]}</span>}</div><div className="rounded-xl border ui-border bg-[var(--app-surface-raised)] p-3" aria-label="当前动作"><div className="flex items-center gap-2 text-xs font-semibold ui-text"><span className="h-2 w-2 rounded-full" style={{ backgroundColor: actionTone(summary.currentAction.state) }} />{summary.currentAction.label}</div><div className="mt-2 text-xs leading-5 ui-text-soft">{summary.currentAction.detail}{summary.currentAction.target ? '：' : ''}</div>{summary.currentAction.target && <code className="mt-1 block break-all rounded-md bg-[var(--app-bg)] px-2 py-1 text-[10px] leading-4 ui-accent">{summary.currentAction.target}</code>}</div></section>
       <RunTaskTree steps={steps} />
       <section className="mt-5 border-t ui-border pt-5" aria-label="工具历史"><div className="mb-3 flex items-center justify-between"><h3 className="signal-section-label">工具历史</h3><span className="text-[11px] ui-dim">{summary.tools.length} 个工具</span></div>{summary.tools.length > 0 ? <div className="space-y-2">{summary.tools.slice(-8).map(tool => <div key={tool.id} className="rounded-xl border ui-border px-2.5 py-2"><div className="flex items-center gap-2"><span aria-hidden="true" className="text-sm">{toolIcon(tool.toolName)}</span><span className="min-w-0 truncate text-xs font-medium ui-text">{tool.toolName}</span><span className={`ml-auto text-[10px] ${tool.status === 'failed' ? 'text-[var(--app-danger)]' : tool.status === 'success' ? 'text-[var(--app-success)]' : 'ui-accent'}`}>{tool.status === 'running' ? '进行中' : tool.status === 'success' ? '成功' : '失败'}</span></div>{tool.target && <code className="mt-1 block truncate text-[10px] ui-muted">{tool.target}</code>}<div className="mt-1 flex items-center justify-between text-[10px] ui-dim"><span>{tool.summary ?? '工具调用'}</span>{tool.durationMs !== undefined && <span className="ml-2 shrink-0">耗时 {formatDuration(tool.durationMs)}</span>}</div></div>)}</div> : <div className="rounded-xl border border-dashed ui-border p-3 text-[11px] leading-5 ui-dim">暂无结构化工具事件</div>}</section>
