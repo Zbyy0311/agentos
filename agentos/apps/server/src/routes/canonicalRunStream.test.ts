@@ -501,7 +501,7 @@ test('P5C unknown persisted runtime events stream losslessly with kind/raw/warni
 
 // --- Disconnect / cleanup --------------------------------------------------
 
-test('P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues', async () => {
+test('LITE-04-005 / P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues', async () => {
   const fx = await createFixture();
   const controller = new AbortController();
   try {

@@ -1150,10 +1150,13 @@ test('validates canonical run.created, run.started, and stage.started payloads',
   assert.ok(Array.isArray(fixtures.validStageStartedEvent.payload.providerSnapshot.argsTemplate));
 });
 
-test('rejects illegal payloads and missing Stage envelope association', () => {
+test('LITE-03-001 rejects illegal payloads and missing Stage envelope association', () => {
   const registry = createM3RuntimeEventRegistry();
   const fixtures = createM3RuntimeEventFixtures(registry);
 
+  const accepted = registry.publish(fixtures.validRunStartedEvent);
+  assert.equal(accepted.id, fixtures.validRunStartedEvent.id);
+  assert.equal(accepted.type, fixtures.validRunStartedEvent.type);
   assert.throws(
     () => registry.publish(fixtures.invalidPayload),
     (error: unknown) => error instanceof RuntimeEventRegistryError
@@ -1173,6 +1176,22 @@ test('rejects illegal payloads and missing Stage envelope association', () => {
     () => registry.publish(fixtures.invalidStageEnvelope),
     (error: unknown) => error instanceof RuntimeEventRegistryError
       && error.code === 'MISSING_STAGE_ID',
+  );
+});
+
+test('LITE-03-001 maps envelope and payload failures to distinct stable errors', () => {
+  const registry = createM3RuntimeEventRegistry();
+  const fixtures = createM3RuntimeEventFixtures(registry);
+
+  assert.throws(
+    () => registry.publish(fixtures.invalidSchemaVersion),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_SCHEMA_VERSION',
+  );
+  assert.throws(
+    () => registry.publish(fixtures.invalidPayload),
+    (error: unknown) => error instanceof RuntimeEventRegistryError
+      && error.code === 'INVALID_EVENT_PAYLOAD',
   );
 });
 

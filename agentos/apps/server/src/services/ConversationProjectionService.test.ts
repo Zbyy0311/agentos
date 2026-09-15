@@ -107,7 +107,7 @@ test('CR4P-01 one Event projects exactly one card with a durable projection row'
   } finally { fx.close(); }
 });
 
-test('CR4P-02 a retried projection converges on the existing card', () => {
+test('LITE-09-008 / CR4P-02 a retried Event projection converges on one existing Conversation card', () => {
   const fx = fixture();
   try {
     const input = eventInput();
@@ -198,7 +198,7 @@ test('CR4P-07 a projected card carries canonical references without inventing th
   } finally { fx.close(); }
 });
 
-test('CR4P-08 a duplicate projection key is detected and then converges', () => {
+test('LITE-09-008 / CR4P-08 a duplicate projection key is detected and then converges', () => {
   const fx = fixture();
   try {
     const input = eventInput();

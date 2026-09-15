@@ -163,6 +163,32 @@ test('L1A evidence provider-assertion -> MODIFYING', () => {
   );
 });
 
+test('LITE-04-009 capability and intent claims fail closed unless technical denial is verified', () => {
+  const nonAuthoritativeEvidence = [
+    'unknown',
+    'prompt-only',
+    'native-worktree',
+    'sandbox-label',
+    'provider-assertion',
+  ] as const;
+  for (const status of nonAuthoritativeEvidence) {
+    assert.equal(
+      classifyMutationClass({ ...baseClassification, evidence: { status } }),
+      'MODIFYING',
+      status,
+    );
+  }
+  assert.equal(
+    classifyMutationClass({ ...baseClassification, declaredModifyingAction: true }),
+    'MODIFYING',
+  );
+  assert.equal(
+    classifyMutationClass({ ...baseClassification, declaredExternalSideEffect: true }),
+    'MODIFYING',
+  );
+  assert.equal(classifyMutationClass(baseClassification), 'READ_ONLY');
+});
+
 // Legacy observability exception frozen contract.
 test('legacy admission observability exception is frozen', () => {
   assert.equal(LEGACY_ADMISSION_OBSERVABILITY_EXCEPTION.canonicalRunMayEmitCanonicalEvents, true);

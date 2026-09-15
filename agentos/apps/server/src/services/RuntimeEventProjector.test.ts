@@ -11,7 +11,7 @@ const context = {
   agentId: 'codex',
 };
 
-test('projects every normalized event with execution context and safe payloads', () => {
+test('LITE-03-012 / LITE-04-012 projects provider events faithfully without invented telemetry', () => {
     const events: NormalizedCliEvent[] = [
       { type: 'status', phase: 'working', label: '正在执行' },
       { type: 'assistant.message', text: '已完成' },
@@ -33,6 +33,8 @@ test('projects every normalized event with execution context and safe payloads',
     assert.equal(projected.every(event => event.workspaceId === context.workspaceId && event.runId === context.runId && event.executionId === context.executionId && event.agentId === context.agentId), true);
     assert.deepEqual(projected[2]!.payload, { callId: 'call-1', toolName: 'read_file', summary: 'token=[REDACTED]' });
     assert.deepEqual(projected[3]!.payload, { callId: 'call-1', toolName: 'read_file', success: true, summary: '完成', outputPreview: 'Bearer [REDACTED]' });
+    assert.equal(projected.length, events.length);
+    assert.equal(projected.some(event => (event.type as string) === 'provider.telemetry'), false);
 });
 
 test('never projects reasoning text as a public event', () => {

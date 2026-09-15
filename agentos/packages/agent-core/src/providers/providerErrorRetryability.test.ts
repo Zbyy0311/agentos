@@ -42,7 +42,7 @@ const CASES = [
 ] as const;
 
 describe('LITE-04-006 provider error retryability contract', () => {
-  it('classifies every production adapter identically for the same failure class', () => {
+  it('LITE-04-002 / LITE-04-006 classifies every production adapter identically for auth, rate-limit, quota, model, and network failures', () => {
     for (const adapter of adapters()) {
       for (const testCase of CASES) {
         const normalized = adapter.normalizeError(new Error(testCase.input));
@@ -73,4 +73,3 @@ describe('LITE-04-006 provider error retryability contract', () => {
     }
   });
 });
-

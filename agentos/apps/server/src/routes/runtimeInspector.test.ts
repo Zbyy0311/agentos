@@ -44,9 +44,9 @@ async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<
 
 /**
  * LITE-08-004 / LITE-13-002: when read-only could not be proven the Run is
- * MODIFYING, and the Inspector has to say so instead of leaving the field
- * unknown. A Run with no admission row stays explicitly `unknown`, which is a
- * different statement from `unavailable`.
+ * MODIFYING, and the Inspector has to say so instead of leaving the effective
+ * class unknown. A Run with no admission row keeps its authority state
+ * explicitly `unknown`, which is distinct from the effective fail-closed class.
  */
 test('GET /runs/:runId/inspector names the effective mutation class and the read-only enforcement state', async () => {
   await withServer(async (baseUrl, store) => {
@@ -55,9 +55,10 @@ test('GET /runs/:runId/inspector names the effective mutation class and the read
 
     // No admission row yet: the classification is genuinely unknown.
     const before = await fetch(`${baseUrl}/runs/${run.id}/inspector`).then(r => r.json()) as {
-      projection: { overview: { mutationClass: string | null; readOnlyEnforcement: string } };
+      projection: { overview: { mutationClass: string; admissionState: string; readOnlyEnforcement: string } };
     };
-    assert.equal(before.projection.overview.mutationClass, null);
+    assert.equal(before.projection.overview.mutationClass, 'MODIFYING');
+    assert.equal(before.projection.overview.admissionState, 'unknown');
     assert.equal(before.projection.overview.readOnlyEnforcement, 'unknown');
 
     // A read-only request whose enforcement could not be proven is persisted as

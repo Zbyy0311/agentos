@@ -11,7 +11,7 @@ const event = (id: string, status: 'queued' | 'streaming_response' | 'completed'
   agentId,
 });
 
-test('collapses repeated streaming chunks for one execution into one timeline step', () => {
+test('LITE-09-008 projects repeated streaming chunks for one execution into one timeline card', () => {
   const visible = collapseStreamingExecutionEvents([
     event('queued', 'queued'),
     event('stream-1', 'streaming_response'),

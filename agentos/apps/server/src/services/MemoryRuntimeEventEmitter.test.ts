@@ -383,6 +383,42 @@ test('MF5E-07 invalid input fails closed', () => {
   } finally { fx.close(); }
 });
 
+// LITE-07-012/LITE-10-016 — Entry and Snapshot rejection rolls back all event sinks.
+test('LITE-07-012/LITE-10-016 secret-like Memory writes emit no Runtime Event or Outbox', () => {
+  const fx = fixture();
+  try {
+    assert.throws(
+      () => fx.emitter.emitEntryCreated(entryInput({ content: 'API_KEY=emitter-entry-secret' })),
+      (error: unknown) => {
+        assert.ok(error instanceof MemoryRuntimeEventEmissionError);
+        assert.equal(error.code, 'EMISSION_FAILED');
+        return true;
+      },
+    );
+    assert.throws(
+      () => fx.emitter.emitContextCreated({
+        id: 'mctx_' + 'g'.repeat(26), workspaceId: WS, taskId: TASK, runId: RUN,
+        queryHash: 'qh-secret', retrievalStrategyVersion: 'mf3-ranking-v1',
+        budget: { maxTokens: 100, maxEntries: 5, perScopeLimits: {}, perCategoryLimits: {}, minConfidence: 0.5, minImportance: 0.3, maxTruncation: 1, requireDiversity: false },
+        totalTokens: 0, truncated: false, contextText: 'Bearer emitter-snapshot-secret',
+        createdAt: NOW, selected: [], exclusions: [], eventContext: EVENT_CONTEXT,
+      }),
+      (error: unknown) => {
+        assert.ok(error instanceof MemoryRuntimeEventEmissionError);
+        assert.equal(error.code, 'EMISSION_FAILED');
+        return true;
+      },
+    );
+    for (const table of [
+      'memory_entries', 'memory_entries_fts', 'memory_context_snapshots',
+      'memory_context_snapshot_entries', 'memory_context_snapshot_payloads',
+      'runtime_events', 'outbox_messages',
+    ]) {
+      assert.equal(count(fx.db, `SELECT COUNT(*) AS c FROM ${table}`), 0, table);
+    }
+  } finally { fx.close(); }
+});
+
 // MF5E-08 — conflict open emits the conflict fact plus only the Entry moves it persisted.
 test('MF5E-08 conflict open emits conflict_opened and one event per moved entry', () => {
   const fx = fixture();

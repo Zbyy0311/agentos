@@ -1,4 +1,9 @@
 import type {
+  EffectiveMutationClass,
+  RequestedMutationClass,
+  WorkspaceWriteDenialStatus,
+} from '@agentos/shared';
+import type {
   MemoryContextSnapshotRecord,
 } from '../store/MemoryContextSnapshotRepository.js';
 import type { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
@@ -6,9 +11,14 @@ import type { RunRepository } from '../store/RunRepository.js';
 import type { RunStageRepository } from '../store/RunStageRepository.js';
 import type { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
 import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
-import type { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
+import type {
+  AdmissionState,
+  WorkspaceAdmissionRepository,
+  WorkspaceAdmissionRow,
+} from '../store/WorkspaceAdmissionRepository.js';
 import { RuntimeEventRepositoryError } from '../store/RuntimeEventRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
+import type { OperationService } from './OperationService.js';
 import {
   projectConversationCompaction,
   resolveRunConversation,
@@ -152,14 +162,16 @@ export interface InspectorRunOverview {
   readonly parentRunId: string | null;
   readonly rootRunId: string;
   readonly attempt: number | null;
-  readonly mutationClass: string | null;
+  readonly mutationClass: EffectiveMutationClass;
   /**
    * LITE-08-004: when the Run is MODIFYING because read-only could not be
-   * proven, the reason has to be visible instead of implied. `null` means the
-   * classification is genuinely unknown (no durable admission row), never a
-   * silent claim that enforcement was available.
+   * proven, the reason has to be visible instead of implied. `mutationClass`
+   * remains fail-closed MODIFYING when no durable admission row exists; the
+   * separate admission/enforcement fields preserve that uncertainty.
    */
-  readonly requestedMutationClass: string | null;
+  readonly requestedMutationClass: RequestedMutationClass | null;
+  /** Admission state is UNKNOWN when no durable admission row exists. */
+  readonly admissionState: AdmissionState | 'unknown';
   readonly readOnlyEnforcement: 'proven' | 'unavailable' | 'not-applicable' | 'unknown';
   readonly workflowDefinitionId: string | null;
   readonly workflowVersion: number | null;
@@ -218,12 +230,21 @@ export interface InspectorProjection {
   /** Provider Sessions for this Run, distinct from Stages and Processes. */
   readonly providerSessions: readonly InspectorProviderSessionSummary[];
   readonly events: readonly InspectorEventSummary[];
+  /** Redacted canonical Operations used by Inspector action controls. */
+  readonly operations: readonly InspectorOperationSummary[];
   /** Event sequence the projection is consistent through; clients resume after it. */
   readonly highWatermark: number;
   readonly memoryContext: InspectorMemoryContextSummary | null;
   /** LITE-13-101: null when this Run cannot be placed in a Conversation. */
   readonly compaction: InspectorCompactionSummary | null;
   readonly truncated: boolean;
+}
+
+export interface InspectorOperationSummary {
+  readonly operationId: string;
+  readonly type: string;
+  readonly status: string;
+  readonly version: number;
 }
 
 export interface RuntimeInspectorQuery {
@@ -275,6 +296,7 @@ export interface RuntimeInspectorDependencies {
   readonly runSnapshotRepository: Pick<RunSnapshotRepository, 'findByRunId'>;
   readonly runtimeEventRepository: Pick<RuntimeEventRepository, 'listByRunAfterSequence'>;
   readonly memoryContextSnapshots?: Pick<MemoryContextSnapshotRepository, 'findLatestForRun'>;
+  readonly operationService?: Pick<OperationService, 'listByRun'>;
   /** Durable admission row, so the projection can name the effective class. */
   readonly workspaceAdmissions?: Pick<WorkspaceAdmissionRepository, 'findBySubject'>;
 }
@@ -286,6 +308,7 @@ export class RuntimeInspector {
   private readonly snapshots: RuntimeInspectorDependencies['runSnapshotRepository'];
   private readonly events: RuntimeInspectorDependencies['runtimeEventRepository'];
   private readonly memoryContexts: RuntimeInspectorDependencies['memoryContextSnapshots'];
+  private readonly operations: RuntimeInspectorDependencies['operationService'];
   private readonly admissions: RuntimeInspectorDependencies['workspaceAdmissions'];
 
   constructor(dependencies: RuntimeInspectorDependencies) {
@@ -295,6 +318,7 @@ export class RuntimeInspector {
     this.snapshots = dependencies.runSnapshotRepository;
     this.events = dependencies.runtimeEventRepository;
     this.memoryContexts = dependencies.memoryContextSnapshots;
+    this.operations = dependencies.operationService;
     this.admissions = dependencies.workspaceAdmissions;
   }
 
@@ -351,21 +375,17 @@ export class RuntimeInspector {
       adapter_version: string; status: string;
     }>;
 
-    // LITE-08-004 / LITE-13-002: the effective mutation class is a durable
-    // admission fact, so the Inspector reports it rather than leaving the field
-    // permanently unknown. A missing row stays explicitly unknown.
+    // LITE-08-004 / LITE-12-010 / LITE-13-002: the effective mutation class is
+    // fail-closed. A missing or malformed enforcement row is still shown as
+    // MODIFYING; the separate admission/enforcement fields retain the fact that
+    // the durable authority was unknown or unavailable.
     const admission = this.admissions?.findBySubject(query.workspaceId, {
       subjectKind: 'CANONICAL_RUN', canonicalRunId: run.id,
     });
-    // READ_ONLY is only ever persisted with verified evidence, so an effective
-    // READ_ONLY proves enforcement; a READ_ONLY request that became MODIFYING is
-    // exactly the unavailable case; a Run that never asked for read-only has
-    // nothing to report.
-    const readOnlyEnforcement: InspectorRunOverview['readOnlyEnforcement'] = admission === undefined
-      ? 'unknown'
-      : admission.effectiveMutationClass === 'READ_ONLY'
-        ? (admission.enforcementEvidenceJson === null ? 'unavailable' : 'proven')
-        : admission.requestedMutationClass === 'READ_ONLY' ? 'unavailable' : 'not-applicable';
+    const admissionProjection = projectAdmission(admission);
+    const operations = this.operations === undefined
+      ? []
+      : this.operations.listByRun(query.workspaceId, query.runId).map(toOperationSummary);
 
     return {
       overview: {
@@ -378,9 +398,10 @@ export class RuntimeInspector {
         parentRunId: run.parentRunId ?? null,
         rootRunId: run.rootRunId,
         attempt: null,
-        mutationClass: admission?.effectiveMutationClass ?? null,
-        requestedMutationClass: admission?.requestedMutationClass ?? null,
-        readOnlyEnforcement,
+        mutationClass: admissionProjection.mutationClass,
+        requestedMutationClass: admissionProjection.requestedMutationClass,
+        admissionState: admissionProjection.admissionState,
+        readOnlyEnforcement: admissionProjection.readOnlyEnforcement,
         workflowDefinitionId: payload?.workflow.definitionId ?? snapshot?.workflowDefinitionId ?? null,
         workflowVersion: payload?.workflow.definitionVersion ?? null,
         createdAt: run.createdAt,
@@ -407,6 +428,7 @@ export class RuntimeInspector {
         status: row.status,
       })),
       events: projected,
+      operations,
       highWatermark,
       memoryContext,
       compaction: toCompactionSummary(this.db, query.workspaceId, query.runId),
@@ -499,6 +521,100 @@ function toProcessSummary(row: ProcessRow): InspectorProcessSummary {
     exitCode: row.exit_code,
     terminationReason: row.termination_reason,
     recoveryClassification: row.recovery_classification,
+  };
+}
+
+const ADMISSION_ENFORCEMENT_STATUSES: readonly WorkspaceWriteDenialStatus[] = [
+  'verified', 'unsupported', 'unknown', 'unavailable', 'prompt-only',
+  'provider-assertion', 'native-worktree', 'sandbox-label',
+];
+
+interface ParsedEnforcementEvidence {
+  readonly status: WorkspaceWriteDenialStatus | 'unknown';
+  readonly source?: unknown;
+  readonly boundaryId?: unknown;
+  readonly qualificationId?: unknown;
+}
+
+interface EnforcementEvidenceShape {
+  readonly status?: unknown;
+  readonly source?: unknown;
+  readonly boundaryId?: unknown;
+  readonly qualificationId?: unknown;
+  readonly evidence?: EnforcementEvidenceShape;
+}
+
+function readEnforcementEvidence(json: string | null): ParsedEnforcementEvidence {
+  // A requested READ_ONLY admission without any persisted evidence is a known
+  // unavailable-enforcement outcome. Missing Admission itself is handled by
+  // projectAdmission as authority `unknown`.
+  if (json === null) return { status: 'unavailable' };
+  try {
+    const value = JSON.parse(json) as EnforcementEvidenceShape;
+    const evidence: EnforcementEvidenceShape = value.evidence ?? value;
+    const status = typeof evidence.status === 'string'
+      && (ADMISSION_ENFORCEMENT_STATUSES as readonly string[]).includes(evidence.status)
+      ? evidence.status as WorkspaceWriteDenialStatus
+      : 'unknown';
+    return {
+      status,
+      ...(evidence.source === undefined ? {} : { source: evidence.source }),
+      ...(evidence.boundaryId === undefined ? {} : { boundaryId: evidence.boundaryId }),
+      ...(evidence.qualificationId === undefined ? {} : { qualificationId: evidence.qualificationId }),
+    };
+  } catch {
+    return { status: 'unknown' };
+  }
+}
+
+function isVerifiedEnforcementEvidence(evidence: ParsedEnforcementEvidence): boolean {
+  return evidence.status === 'verified'
+    && nonBlank(evidence.source)
+    && nonBlank(evidence.boundaryId)
+    && nonBlank(evidence.qualificationId);
+}
+
+function projectAdmission(admission: WorkspaceAdmissionRow | undefined): {
+  readonly mutationClass: EffectiveMutationClass;
+  readonly requestedMutationClass: RequestedMutationClass | null;
+  readonly admissionState: AdmissionState | 'unknown';
+  readonly readOnlyEnforcement: InspectorRunOverview['readOnlyEnforcement'];
+} {
+  if (admission === undefined) {
+    return {
+      mutationClass: 'MODIFYING',
+      requestedMutationClass: null,
+      admissionState: 'unknown',
+      readOnlyEnforcement: 'unknown',
+    };
+  }
+
+  const evidence = readEnforcementEvidence(admission.enforcementEvidenceJson);
+  const readOnlyRequested = admission.requestedMutationClass === 'READ_ONLY';
+  const readOnlyProven = admission.effectiveMutationClass === 'READ_ONLY'
+    && isVerifiedEnforcementEvidence(evidence);
+  const readOnlyEnforcement: InspectorRunOverview['readOnlyEnforcement'] = !readOnlyRequested
+    ? 'not-applicable'
+    : readOnlyProven
+      ? 'proven'
+      : evidence.status === 'unknown' ? 'unknown' : 'unavailable';
+
+  return {
+    // Reapply the shared fail-closed boundary on the read side so an old or
+    // malformed row cannot appear as read-only in the Inspector/UI.
+    mutationClass: readOnlyProven ? 'READ_ONLY' : 'MODIFYING',
+    requestedMutationClass: admission.requestedMutationClass,
+    admissionState: admission.state,
+    readOnlyEnforcement,
+  };
+}
+
+function toOperationSummary(operation: ReturnType<OperationService['listByRun']>[number]): InspectorOperationSummary {
+  return {
+    operationId: operation.id,
+    type: operation.type,
+    status: operation.status,
+    version: operation.version,
   };
 }
 

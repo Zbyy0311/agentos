@@ -96,6 +96,23 @@ test('L1A-24 run.start V1 response shape unchanged with requestedMutationClass',
   }
 });
 
+test('LITE-11-009 a forced READ_ONLY start request creates no admission authority', async () => {
+  const fx = await makeFx(false);
+  try {
+    const res = await postStart(fx, { requestedMutationClass: 'READ_ONLY' });
+    assert.equal(res.status, 202);
+    const admissions = fx.store.getDatabase().prepare(
+      'SELECT COUNT(*) AS count FROM workspace_admissions WHERE canonical_run_id = ?',
+    ).get(fx.runId) as { count: number };
+    assert.equal(admissions.count, 0);
+    // The API field is request intent only; without a verified persisted
+    // admission, it cannot grant concurrent read-only execution.
+    assert.deepEqual(fx.drives, []);
+  } finally {
+    await closeFx(fx);
+  }
+});
+
 // Omitted and explicit MODIFYING are the same request identity: the second
 // call with the same key replays rather than conflicting.
 test('L1A omitted vs explicit MODIFYING replay identically under one key', async () => {

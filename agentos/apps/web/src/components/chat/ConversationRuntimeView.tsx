@@ -1,5 +1,6 @@
 'use client';
 
+import { useRef } from 'react';
 import type { ReactNode } from 'react';
 import { UI_FONT_STACK, UI_SPACING_BASE_PX, UI_RADIUS_TOKENS, uiCssVariables } from '../../lib/uiFoundation';
 import type { UiTheme } from '../../lib/uiFoundation';
@@ -7,6 +8,7 @@ import type { ConversationStreamState } from '../../lib/directConversationStream
 import type { ComposerMode } from '../../lib/directComposer';
 import { COMPOSER_MODES } from '../../lib/directComposer';
 import type { ForwardMessage } from '../../lib/directConversationClient';
+import { handleComposerKeyDown, submitComposer } from '../../lib/composerKeyboard';
 
 /**
  * Direct Conversation UX — the forward Conversation runtime view (Lite 12 §12).
@@ -56,6 +58,12 @@ export function ConversationRuntimeView(props: ConversationRuntimeViewProps) {
 
   const streaming = stream.phase === 'connected' || stream.phase === 'resyncing' || stream.phase === 'reconnecting';
   const canSend = composerContent.trim().length > 0 && !sending;
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const submit = () => submitComposer({
+    canSend,
+    onSend,
+    focus: () => composerRef.current?.focus(),
+  });
 
   return (
     <div
@@ -144,12 +152,22 @@ export function ConversationRuntimeView(props: ConversationRuntimeViewProps) {
             </button>
           ))}
         </div>
-        <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: UI_SPACING_BASE_PX }}>{MODE_HINTS[composerMode]}</div>
+        <div id="message-composer-hint" style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: UI_SPACING_BASE_PX }}>
+          {MODE_HINTS[composerMode]} Enter sends · Shift+Enter adds a line
+        </div>
         <div style={{ display: 'flex', gap: UI_SPACING_BASE_PX, alignItems: 'flex-end' }}>
           <textarea
+            ref={composerRef}
             aria-label="Message"
+            aria-describedby="message-composer-hint"
+            aria-keyshortcuts="Enter"
             value={composerContent}
             onChange={event => onContentChange(event.target.value)}
+            onKeyDown={event => handleComposerKeyDown(event, {
+              canSend,
+              onSend,
+              focus: () => composerRef.current?.focus(),
+            })}
             placeholder={composerMode === 'chat' ? 'Message…' : composerMode === 'task' ? 'Describe the Task…' : 'Describe the Run…'}
             rows={2}
             style={{
@@ -162,7 +180,7 @@ export function ConversationRuntimeView(props: ConversationRuntimeViewProps) {
             type="button"
             data-agentos="composer-send"
             disabled={!canSend}
-            onClick={onSend}
+            onClick={submit}
             style={{
               border: 'none', borderRadius: UI_RADIUS_TOKENS.input,
               backgroundColor: canSend ? 'var(--accent-default)' : 'var(--surface-raised)',

@@ -298,6 +298,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
   readonly runtimeApproval?: boolean;
   readonly deferApprovalContinuation?: boolean;
   readonly approvalNow?: { current: string };
+  readonly noOwnedWorktree?: boolean;
 } = {}) {
   // The fake fixture always means the deterministic fake provider, so it states
   // that identity itself instead of inheriting whatever a real gate left behind.
@@ -393,7 +394,7 @@ function fixture(driver: FakeDriver, authFailure = false, behavior: {
     artifactResults: behavior.artifactResults,
     engine, coordinator, runRepository: runRepo, runStageRepository: runStageRepo, runSnapshotRepository: runSnapshotRepo,
     operationService, lifecycleTransactionService: lifecycle, workspaceRootFor: () => 'C:/ws',
-    worktreePathFor: () => 'C:/ws/.agentos/worktrees/run-1',
+    worktreePathFor: behavior.noOwnedWorktree === true ? () => undefined : () => 'C:/ws/.agentos/worktrees/run-1',
     admissionGate: new WorkspaceAdmissionAuthority({
       store: { getDatabase: () => db },
       evidenceCollector: behavior.admissionEvidenceCollector,
@@ -507,7 +508,7 @@ function realFixture(provider: 'kimi' | 'codex' | 'opencode' = 'kimi') {
 }
 
 describe('RunEngineProviderDispatcher E2E', () => {
-  it('LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once', async () => {
+  it('LITE-04-010 / LITE-08-001 / LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once', async () => {
     const driver = new FakeDriver(new FakeHandle([JSON.stringify({ type: 'assistant', content: 'approved work complete' })]));
     const fx = fixture(driver, false, { runtimeApproval: true });
     try {
@@ -520,6 +521,9 @@ describe('RunEngineProviderDispatcher E2E', () => {
       assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'waiting_approval');
       assert.ok(fx.runStageRepo.listByRun(WS, RUN).some(stage => stage.status === 'waiting_approval'));
       assert.equal(driver.spawnCalls, 0);
+      assert.equal(fx.capturedInputs.length, 1);
+      assert.equal(fx.capturedInputs[0]!.providerSnapshot.capabilities.nativeApprovals, false,
+        'the Provider-native prompt is not an AgentOS authority bridge');
       assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM provider_sessions').get() as { count: number }).count, 0);
       assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM runtime_processes').get() as { count: number }).count, 0);
       assert.match(String(pending.requestSnapshotJson), /launch/);
@@ -926,6 +930,20 @@ describe('RunEngineProviderDispatcher E2E', () => {
       const outboxCount = (fx.db.prepare('SELECT COUNT(*) AS c FROM outbox_messages WHERE aggregate_id = ?').get(RUN) as { c: number }).c;
       assert.equal(outboxCount, eventCount);
       assert.ok(eventCount > 0);
+    } finally { close(fx); }
+  });
+
+  it('LITE-02-016 a modifying Run completes when no AgentOS-owned Worktree is available', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])), false, {
+      noOwnedWorktree: true,
+    });
+    try {
+      const result = await fx.dispatcher.drive(WS, RUN);
+      assert.equal(result.outcome, 'claimed-and-progressed');
+      assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'completed');
+      assert.ok(fx.capturedInputs.length > 0);
+      assert.ok(fx.capturedInputs.every(input => input.worktreePath === undefined));
+      assert.equal(fx.driver.spawnCalls, STAGE_KEYS.length);
     } finally { close(fx); }
   });
 

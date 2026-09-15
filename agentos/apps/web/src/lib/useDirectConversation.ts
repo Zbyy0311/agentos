@@ -32,6 +32,7 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
   );
   const [conversations, setConversations] = useState<ForwardConversation[]>([]);
   const [agents, setAgents] = useState<AgentSummary[]>([]);
+  const [activeAgentId, setActiveAgentId] = useState<string | null>(null);
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ForwardMessage[]>([]);
   const [stream, setStream] = useState<ConversationStreamState>(IDLE_STREAM);
@@ -49,16 +50,30 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
   useEffect(() => {
     let cancelled = false;
     client.listConversations()
-      .then(result => { if (!cancelled) setConversations(result.conversations); })
+      .then(result => {
+        if (cancelled) return;
+        setConversations(result.conversations);
+        setActiveConversationId(current => current !== null && result.conversations.some(item => item.id === current)
+          ? current
+          : result.conversations[0]?.id ?? null);
+      })
       .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
     return () => { cancelled = true; };
   }, [client]);
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/api/workspaces/${encodeURIComponent(workspaceId)}/agents`)
-      .then(response => response.ok ? response.json() as Promise<{ agents: Array<{ id: string; name: string; enabled?: boolean }> }> : Promise.reject(new Error(`HTTP ${response.status}`)))
-      .then(result => { if (!cancelled) setAgents(result.agents.filter(a => a.enabled !== false).map(a => ({ id: a.id, name: a.name }))); })
+    client.listAgents()
+      .then(result => {
+        if (cancelled) return;
+        const nextAgents = result.agents.filter(a => a.enabled !== false).map(a => ({
+          id: a.id, name: a.name, ...(a.status === undefined ? {} : { status: a.status }),
+        }));
+        setAgents(nextAgents);
+        setActiveAgentId(current => current !== null && nextAgents.some(agent => agent.id === current)
+          ? current
+          : nextAgents[0]?.id ?? null);
+      })
       .catch(() => { if (!cancelled) setAgents([]); });
     return () => { cancelled = true; };
   }, [apiBase, workspaceId]);
@@ -77,12 +92,27 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
     setActiveConversationId(id);
   }, []);
 
-  const createConversation = useCallback(async (body: Record<string, unknown>) => {
-    const result = await client.createConversation(body);
-    setConversations(previous => [result.conversation, ...previous]);
-    setActiveConversationId(result.conversation.id);
-    return result.conversation;
-  }, [client]);
+  const selectAgent = useCallback((id: string) => {
+    setActiveAgentId(id);
+  }, []);
+
+  const createConversation = useCallback(async (body: Record<string, unknown> = {}) => {
+    const payload = { kind: 'direct', agentId: activeAgentId, ...body };
+    if (payload.kind === 'direct' && typeof payload.agentId !== 'string') {
+      setError('Select an enabled Agent before creating a Conversation.');
+      return null;
+    }
+    setError(undefined);
+    try {
+      const result = await client.createConversation(payload);
+      setConversations(previous => [result.conversation, ...previous]);
+      setActiveConversationId(result.conversation.id);
+      return result.conversation;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }, [activeAgentId, client]);
 
   const send = useCallback(async () => {
     if (activeConversationId === null || content.trim().length === 0) return;
@@ -100,10 +130,9 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
   }, [controller, activeConversationId, mode, content]);
 
   return {
-    conversations, agents, activeConversationId, messages, stream, mode, content, sending, error,
-    selectConversation, createConversation, setMode, setContent, send,
+    conversations, agents, activeAgentId, activeConversationId, messages, stream, mode, content, sending, error,
+    selectAgent, selectConversation, createConversation, setMode, setContent, send,
   };
 }
 
 export type DirectConversationState = ReturnType<typeof useDirectConversation>;
-

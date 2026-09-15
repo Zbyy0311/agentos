@@ -97,6 +97,36 @@ test('TaskRunService captures unbound Snapshots for all six v2 reasons without s
   }
 });
 
+test('LITE-01-004 a Task supports zero Runs and then multiple independent Runs', () => {
+  const fx = fixture();
+  try {
+    const task = fx.service.createTask(fx.workspace.id, { title: 'zero-or-many runs', createdBy: 'test' });
+    assert.deepEqual(fx.store.runRepository().listByTask(fx.workspace.id, task.id), []);
+
+    const first = fx.service.createRun(fx.workspace.id, {
+      taskId: task.id,
+      reason: 'manual',
+      createdBy: 'test',
+    });
+    fx.service.cancelQueuedRun(fx.workspace.id, first.id);
+    const second = fx.service.createRun(fx.workspace.id, {
+      taskId: task.id,
+      reason: 'manual',
+      createdBy: 'test',
+    });
+
+    assert.deepEqual(
+      fx.store.runRepository().listByTask(fx.workspace.id, task.id).map(run => run.id),
+      [first.id, second.id],
+    );
+    assert.notEqual(first.id, second.id);
+    assert.equal(first.taskId, task.id);
+    assert.equal(second.taskId, task.id);
+  } finally {
+    close(fx);
+  }
+});
+
 test('TaskRunService captures four Legacy stages on initial and retry with latest lineage', () => {
   const fx = fixture();
   try {
@@ -2350,7 +2380,7 @@ test('P3C1-RY-S06 unrelated active Task Run is checked after valid duplicate and
   }
 });
 
-test('P3C1-RY-S07 Retry clones persisted V2 legacy Stage Graph and emits only creation Events', () => {
+test('LITE-10-005 / P3C1-RY-S07 Retry remaps child Snapshot and Stage identities while preserving immutability', () => {
   const fx = fixture();
   try {
     const created = fx.service.createLegacyRunForBridge({
@@ -2378,6 +2408,11 @@ test('P3C1-RY-S07 Retry clones persisted V2 legacy Stage Graph and emits only cr
     assert.equal(childSnapshot.payload.run.reason, child.reason);
     assert.equal(childSnapshot.payload.run.parentRunId, parent.id);
     assert.equal(childSnapshot.payload.run.rootRunId, parent.rootRunId);
+    assert.deepEqual(
+      fx.store.runSnapshotRepository().findByRunId(fx.workspace.id, parent.id),
+      parentSnapshot,
+      'retry must not rewrite the parent Snapshot',
+    );
     assert.equal(childStages.length, parentStages.length);
     assert.deepEqual(childStages.map(stage => [stage.workflowStageKey, stage.sequence]), parentStages.map(stage => [stage.workflowStageKey, stage.sequence]));
     for (const stage of childStages) {
@@ -2389,6 +2424,11 @@ test('P3C1-RY-S07 Retry clones persisted V2 legacy Stage Graph and emits only cr
       assert.equal(stage.createdAt, stage.updatedAt);
       assert.equal(parentStages.some(parentStage => parentStage.id === stage.id), false);
     }
+    assert.deepEqual(
+      fx.store.runStageRepository().listByRun(fx.workspace.id, parent.id),
+      parentStages,
+      'retry must not rewrite the parent Stage rows',
+    );
     const events = fx.store.getDatabase().prepare(
       'SELECT id, type, correlation_id, causation_id, parent_event_id FROM runtime_events WHERE run_id = ? ORDER BY sequence',
     ).all(child.id) as Array<Record<string, unknown>>;

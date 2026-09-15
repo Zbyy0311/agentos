@@ -21,6 +21,7 @@ async function render(overrides: Record<string, unknown> = {}): Promise<string> 
       apiBase="http://127.0.0.1:1"
       workspaceName="ws"
       agents={[{ id: 'agent_a', name: 'Codex', status: 'idle' }]}
+      activeAgentId="agent_a"
       conversations={[
         { id: 'conv_1', kind: 'direct', title: 'Release', status: 'active', version: 1 },
         { id: 'conv_2', kind: 'group', title: 'Team', status: 'active', version: 1 },
@@ -33,6 +34,7 @@ async function render(overrides: Record<string, unknown> = {}): Promise<string> 
       composerMode="chat"
       composerContent=""
       sending={false}
+      onSelectAgent={() => {}}
       onSelectConversation={() => {}}
       onCreateConversation={() => {}}
       onModeChange={() => {}}
@@ -83,4 +85,11 @@ test('WB-05 a group Conversation gets the bounded group canvas, not the direct c
   assert.ok(markup.includes('bounded group'));
   assert.ok(!markup.includes('data-agentos="conversation-runtime-view"'));
   assert.ok(!markup.includes('data-agentos="composer-send"'));
+});
+
+test('LITE-12-101 the workbench exposes Agent selection and Conversation creation controls', async () => {
+  const markup = await render();
+  assert.ok(markup.includes('data-agent="agent_a"'));
+  assert.ok(markup.includes('data-agentos="new-conversation"'));
+  assert.ok(markup.includes('role="list"'));
 });

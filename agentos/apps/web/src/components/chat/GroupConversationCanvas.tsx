@@ -1,10 +1,11 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { directConversationClient, type ForwardMessage } from '../../lib/directConversationClient';
 import { useGroupConversation } from '../../lib/useGroupConversation';
 import type { GroupInteractionBudgetInput } from '../../lib/groupConversationClient';
 import { BoundedGroupView } from './BoundedGroupView';
 import { MentionPicker, type MentionAgent } from './MentionPicker';
+import { handleComposerKeyDown, submitComposer } from '../../lib/composerKeyboard';
 import {
   UI_FONT_STACK,
   UI_SPACING_BASE_PX,
@@ -70,6 +71,7 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
   const [messages, setMessages] = useState<readonly ForwardMessage[]>([]);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [mentionedAgentIds, setMentionedAgentIds] = useState<string[]>([]);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
 
   const refreshMessages = useCallback(async () => {
     if (!props.conversationId) return;
@@ -221,23 +223,37 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
           <BudgetField label="total replies" value={budget.maxTotalReplies} onChange={updateBudget('maxTotalReplies')} />
           <BudgetField label="hops" value={budget.maxAgentHops} onChange={updateBudget('maxAgentHops')} />
         </div>
-        <div style={{ display: 'flex', gap: UI_SPACING_BASE_PX * 2 }}>
-          <input
+        <div style={{ display: 'flex', gap: UI_SPACING_BASE_PX * 2, alignItems: 'flex-end' }}>
+          <textarea
+            ref={composerRef}
+            aria-label="Message the group"
+            aria-describedby="group-composer-hint"
+            aria-keyshortcuts="Enter"
             value={content}
             onChange={event => setContent(event.target.value)}
+            onKeyDown={event => handleComposerKeyDown(event, {
+              canSend,
+              onSend: () => { void send(); },
+              focus: () => composerRef.current?.focus(),
+            })}
             placeholder="Message the group…"
             data-agentos="group-composer"
+            rows={1}
             style={{
               flex: 1, backgroundColor: 'var(--surface-raised)', color: 'var(--text-primary)',
               border: '1px solid var(--border-default)', borderRadius: UI_RADIUS_TOKENS.input,
-              padding: `${UI_SPACING_BASE_PX}px ${UI_SPACING_BASE_PX * 2}px`, fontSize: 13,
+              padding: `${UI_SPACING_BASE_PX}px ${UI_SPACING_BASE_PX * 2}px`, fontSize: 13, resize: 'vertical',
             }}
           />
           <button
             type="button"
             data-agentos="group-send"
             disabled={!canSend}
-            onClick={() => { void send(); }}
+            onClick={() => submitComposer({
+              canSend,
+              onSend: () => { void send(); },
+              focus: () => composerRef.current?.focus(),
+            })}
             style={{
               border: '1px solid var(--border-strong)', borderRadius: UI_RADIUS_TOKENS.input,
               backgroundColor: 'var(--accent-default)', color: 'var(--text-primary)',
@@ -246,6 +262,9 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
           >
             {walking ? 'Running…' : 'Send'}
           </button>
+        </div>
+        <div id="group-composer-hint" style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: UI_SPACING_BASE_PX }}>
+          Enter sends · Shift+Enter adds a line
         </div>
         {(sendError === undefined && group.error === undefined) ? null : (
           <div role="alert" style={{ color: 'var(--status-danger)', fontSize: 12, marginTop: UI_SPACING_BASE_PX }}>

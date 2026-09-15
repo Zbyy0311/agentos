@@ -97,6 +97,58 @@ test('Workspace.agents projected fields match Provider Configuration after updat
   }
 });
 
+test('LITE-04-004 switching a Provider preserves the Agent identity and durable History', () => {
+  const root = createProjectRoot();
+  let store: SqliteStore | undefined;
+  try {
+    store = new SqliteStore(root);
+    const manager = new WorkspaceManager(store);
+    const created = manager.create('Provider switch history', join(root, 'provider-switch-history'), {
+      git: false, memory: false, readme: false, docs: false,
+    });
+    const conversations = store.conversationRepository();
+    const conversationId = createEntityId('conversation');
+    const messageId = createEntityId('message');
+    const turnId = createEntityId('turn');
+    const now = '2026-09-16T00:00:00.000Z';
+    conversations.createConversation({
+      id: conversationId, workspaceId: created.id, kind: 'direct', title: 'Provider switch', createdAt: now,
+    });
+    conversations.addMember({
+      id: createEntityId('conversation'), conversationId, workspaceId: created.id,
+      subjectType: 'agent', subjectId: 'codex', displayNameSnapshot: 'Codex',
+      role: 'participant', replyMode: 'always', joinedAt: now,
+    });
+    conversations.appendMessage({
+      id: messageId, conversationId, workspaceId: created.id, senderType: 'agent', senderAgentId: 'codex',
+      kind: 'text', status: 'final', content: 'history survives provider switch', createdAt: now,
+    });
+    store.agentTurnRepository().createTurn({
+      id: turnId, conversationId, workspaceId: created.id, agentId: 'codex', sourceMessageId: messageId, createdAt: now,
+    });
+
+    const before = store.agentHistoryService().history(created.id, 'codex')
+      .filter(entry => entry.id === conversationId || entry.id === messageId || entry.id === turnId)
+      .map(entry => `${entry.kind}:${entry.id}`);
+    const current = store.listAgentProfiles(created.id).find(agent => agent.id === 'codex');
+    assert.ok(current);
+    store.updateAgentProfile(created.id, 'codex', {
+      name: current.name, provider: 'opencode', model: 'switched-model', thinkingEffort: current.thinkingEffort,
+      roleTitle: current.roleTitle, systemPrompt: current.systemPrompt, permissions: current.permissions, enabled: current.enabled,
+    });
+    const after = store.agentHistoryService().history(created.id, 'codex')
+      .filter(entry => entry.id === conversationId || entry.id === messageId || entry.id === turnId)
+      .map(entry => `${entry.kind}:${entry.id}`);
+
+    assert.deepEqual(after, before, 'Provider selection must not rewrite or hide Agent history');
+    assert.equal(store.listAgentProfiles(created.id).find(agent => agent.id === 'codex')?.id, 'codex');
+    assert.equal(store.listAgentProfiles(created.id).find(agent => agent.id === 'codex')?.provider, 'opencode');
+  } finally {
+    store?.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test('Workspace.agents does not fall back to legacy model when Provider model is cleared', () => {
   const root = createProjectRoot();
   let store: SqliteStore | undefined;
