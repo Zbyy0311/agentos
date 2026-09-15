@@ -80,7 +80,7 @@ test('[M27-P2-T011] Batch Workspace scopes isolate completion, quarantine, and r
   }
 });
 
-test('[M27-P5-T012] Workspace copy-only scope preserves source bytes and writes no Task-domain records', async () => {
+test('LITE-10-015 / M27-P5-T012 compatibility read preserves selected Workspace source bytes without Task-domain loss', async () => {
   const fx = createFixture();
   try {
     const source = [workspace('p5-scope', join(fx.root, 'p5-scope'))];

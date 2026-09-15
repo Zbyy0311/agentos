@@ -52,7 +52,7 @@ function template(key: string) {
   return found;
 }
 
-test('WF-01 a compiled template persists a definition and creates Task/Run/Snapshot/Stages', () => {
+test('LITE-09-017 / LITE-01-101 a template instantiates durable Task/Run/Stage primitives', () => {
   const fx = fixture();
   try {
     const result = fx.service.instantiateTemplateRun({
@@ -74,9 +74,14 @@ test('WF-01 a compiled template persists a definition and creates Task/Run/Snaps
     assert.equal(result.run.status, 'queued');
     assert.equal(result.run.origin, 'v2_api');
     assert.equal(result.run.objective, 'ship it');
+    assert.equal(fx.store.taskRepository().findById(fx.workspace.id, result.task.id)?.id, result.task.id);
+    assert.equal(fx.store.runRepository().findById(fx.workspace.id, result.run.id)?.id, result.run.id);
 
     // stages mirror the template keys and dependencies
     assert.deepEqual(result.stages.map(s => s.workflowStageKey), ['plan', 'implement', 'review']);
+    assert.deepEqual(fx.store.runStageRepository().listByRun(fx.workspace.id, result.run.id).map(stage => stage.workflowStageKey), [
+      'plan', 'implement', 'review',
+    ]);
     assert.equal(result.snapshot.payload.schemaVersion, 2);
     assert.equal(result.snapshot.payload.workflow.definitionKey, 'plan-implement-review');
   } finally { fx.close(); }

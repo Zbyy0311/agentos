@@ -1604,7 +1604,7 @@ describe('StageExecutionCoordinator', () => {
     }
   });
 
-  it('runs a successful Kimi vertical slice: one Session, one Process, completed outcome, durable facts', async () => {
+  it('LITE-04-002 Mock Provider success: one Session, one Process, completed outcome, durable facts', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"ok"}\n'])));
     try {
       const outcome = await fx.coordinator.execute(stageInput());
@@ -1631,7 +1631,7 @@ describe('StageExecutionCoordinator', () => {
     }
   });
 
-  it('fails closed before claim when authentication is required', async () => {
+  it('LITE-04-002 Mock Provider auth failure fails closed before claim', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle([])), true);
     try {
       const outcome = await fx.coordinator.execute(stageInput());
@@ -1646,7 +1646,7 @@ describe('StageExecutionCoordinator', () => {
     }
   });
 
-  it('compensates spawn failure durably and never spawns twice', async () => {
+  it('LITE-04-002 Mock Provider process-start failure compensates durably and never spawns twice', async () => {
     const fx = fixture(new FakeDriver(null, new Error('spawn boom')));
     try {
       const outcome = await fx.coordinator.execute(stageInput());
@@ -1663,7 +1663,7 @@ describe('StageExecutionCoordinator', () => {
     }
   });
 
-  it('maps non-zero exit to a stable Provider failure with exited Process evidence', async () => {
+  it('LITE-04-002 Mock Provider non-zero exit maps to a stable Provider failure with exited Process evidence', async () => {
     const fx = fixture(new FakeDriver(new FakeHandle(['{"type":"assistant","role":"assistant","content":"partial"}\n'], 1)));
     try {
       const outcome = await fx.coordinator.execute(stageInput());
@@ -1685,6 +1685,23 @@ describe('StageExecutionCoordinator', () => {
       assert.equal(outcome.kind, 'failed');
       if (outcome.kind !== 'failed') return;
       assert.equal(outcome.problem.code, 'PROVIDER_OUTPUT_PARSE_FAILED');
+    } finally {
+      close(fx);
+    }
+  });
+
+  it('LITE-04-002 Mock Provider process crash (non-zero termination) maps to failed Session and exited Process evidence', async () => {
+    const fx = fixture(new FakeDriver(new FakeHandle([], 1, 'SIGABRT')));
+    try {
+      const outcome = await fx.coordinator.execute(stageInput());
+      assert.equal(outcome.kind, 'failed');
+      if (outcome.kind !== 'failed') return;
+      assert.equal(outcome.problem.code, 'PROVIDER_SESSION_FAILED');
+      const process = fx.processRepo.findById(WS, (fx.db.prepare('SELECT id FROM runtime_processes').get() as { id: string }).id);
+      assert.equal(process?.status, 'exited');
+      assert.equal(process?.terminationReason, 'non-zero-exit');
+      const session = fx.sessionRepo.findById(WS, (fx.db.prepare('SELECT id FROM provider_sessions').get() as { id: string }).id);
+      assert.equal(session?.status, 'failed');
     } finally {
       close(fx);
     }

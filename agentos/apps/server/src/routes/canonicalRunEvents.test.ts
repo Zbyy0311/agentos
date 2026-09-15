@@ -218,7 +218,7 @@ test('P5A-R17 Replay returns only the safe Shared projection', async () => {
   }
 });
 
-test('P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details', async () => {
+test('LITE-04-011 / P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details', async () => {
   const fx = await createFixture();
   try {
     const db = fx.store.getDatabase();

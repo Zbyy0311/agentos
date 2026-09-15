@@ -82,7 +82,7 @@ db.prepare("INSERT INTO cr_turn_context_snapshots (id, workspace_id, conversatio
   db.prepare("INSERT INTO runtime_artifacts (id, workspace_id, provenance_kind, canonical_run_id, agent_id, artifact_type, title, summary, size_bytes, content_available, created_at) VALUES ('art_1', ?, 'CANONICAL', 'run_1', 'agent_a', 'diff', 'Diff summary', '3 files', 12, 0, ?)").run(WS, T3);
 }
 
-test('CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Tasks, Runs, Memory, Snapshots, and Artifacts', () => {
+test('LITE-09-103 / CR6-A1 History unifies one Agent across canonical entities and exposes only available references', () => {
   const fx = fixture();
   try {
     seedAll(fx.db);
@@ -91,6 +91,11 @@ test('CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Ta
     for (const kind of ['conversation', 'message', 'turn', 'task', 'run', 'memory', 'context-snapshot', 'turn-context', 'artifact']) {
       assert.ok(kinds.has(kind as never), 'missing kind: ' + kind);
     }
+    // Failure/status and Provider-session references are represented by the
+    // existing canonical Run/Turn rows. No separate failure/recovery/usage
+    // record exists in this schema, so History must not invent one.
+    assert.ok(entries.some(entry => entry.kind === 'turn' && entry.status === 'failed'));
+    assert.ok(!entries.some(entry => ['failure', 'recovery', 'usage'].includes(entry.kind)));
     // only agent_a's rows; nothing from agent_b
     assert.ok(!entries.some(e => e.id === 'turn_b1' || e.id === 'msg_b1'));
     // time-ordered, newest first

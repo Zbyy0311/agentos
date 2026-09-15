@@ -119,7 +119,7 @@ test('LITE-13-013 the Inspector projection exposes no secret material and a froz
     const body = JSON.parse(raw) as { projection: Record<string, unknown> };
     assert.deepEqual(Object.keys(body.projection).sort(), [
       'compaction', 'events', 'highWatermark', 'memoryContext', 'overview',
-      'processes', 'providerSessions', 'stages', 'truncated',
+      'operations', 'processes', 'providerSessions', 'stages', 'truncated',
     ].sort(), 'the projection key set changed - review whether the new field can leak');
     const processes = body.projection.processes as Array<Record<string, unknown>>;
     assert.equal(processes.length, 1);

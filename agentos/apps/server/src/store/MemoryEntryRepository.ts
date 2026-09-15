@@ -12,6 +12,7 @@ import {
   type MemorySourceKind,
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
+import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
 
 /**
  * MF-1 Memory Entry persistence primitive.
@@ -215,6 +216,20 @@ function parseTags(value: unknown): string[] | undefined {
   return tags;
 }
 
+function safeStoredTags(value: string): string[] | undefined {
+  try {
+    return parseTags(JSON.parse(value));
+  } catch {
+    return undefined;
+  }
+}
+
+function isSafeEntryRow(row: EntryRow): boolean {
+  const tags = safeStoredTags(row.tags_json);
+  return tags !== undefined
+    && areMemoryTextFieldsSafe([row.title, row.summary, row.content, ...tags]);
+}
+
 function toRecord(row: EntryRow, sources: readonly MemoryEntrySourceInput[]): MemoryEntryRecord {
   const tags = JSON.parse(row.tags_json) as string[];
   return {
@@ -311,7 +326,7 @@ export class MemoryEntryRepository {
     const row = this.db.prepare(
       'SELECT ' + SELECT_COLUMNS + ' FROM memory_entries WHERE workspace_id = ? AND id = ?',
     ).get(workspaceId, entryId) as EntryRow | undefined;
-    if (row === undefined) return undefined;
+    if (row === undefined || !isSafeEntryRow(row)) return undefined;
     return toRecord(row, this.readSources(entryId));
   }
 
@@ -416,7 +431,15 @@ export class MemoryEntryRepository {
     if (!nonBlank(input.title) || !nonBlank(input.createdAt)) {
       throw new MemoryEntryRepositoryError('INPUT_INVALID');
     }
-    if (input.tags !== undefined && parseTags(input.tags) === undefined) {
+    if ((input.summary !== undefined && typeof input.summary !== 'string')
+      || (input.content !== undefined && typeof input.content !== 'string')) {
+      throw new MemoryEntryRepositoryError('INPUT_INVALID');
+    }
+    const tags = input.tags === undefined ? [] : parseTags(input.tags);
+    if (tags === undefined) {
+      throw new MemoryEntryRepositoryError('INPUT_INVALID');
+    }
+    if (!areMemoryTextFieldsSafe([input.title, input.summary ?? '', input.content ?? '', ...tags])) {
       throw new MemoryEntryRepositoryError('INPUT_INVALID');
     }
     if (input.tokenEstimate !== undefined
@@ -477,7 +500,7 @@ export class MemoryEntryRepository {
         + ' AND status IN (' + statusClauses + ')'
         + ' ORDER BY updated_at DESC, id ASC',
     ).all(...params) as EntryRow[];
-    return rows.map(row => toRecord(row, this.readSources(row.id)));
+    return rows.filter(isSafeEntryRow).map(row => toRecord(row, this.readSources(row.id)));
   }
 
   private readSources(entryId: string): MemoryEntrySourceInput[] {    const rows = this.db.prepare(

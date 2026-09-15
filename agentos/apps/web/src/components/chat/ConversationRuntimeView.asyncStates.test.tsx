@@ -89,8 +89,8 @@ test('LITE-12-007 the in-flight state is distinguishable from an idle one', asyn
 test('LITE-12-007 the content state coexists with the other states without losing them', async () => {
   const markup = await renderView({
     messages: [{
-      id: 'message-1', conversationId: 'conversation-1', sequence: 1, senderType: 'user',
-      status: 'final', content: 'plan the release', createdAt: '2026-09-14T00:00:00.000Z',
+    id: 'message-1', conversationId: 'conversation-1', sequence: 1, senderType: 'user',
+      status: 'final', content: 'plan the release', senderAgentId: null, taskId: null, runId: null,
     }] as ConversationRuntimeViewProps['messages'],
   });
   assert.ok(!markup.includes('No messages in Release planning.'),
@@ -106,7 +106,7 @@ test('LITE-12-007 every state renders without throwing, so no state is unreachab
     { messages: [] },
     { error: 'TURN_FAILED' },
     { sending: true },
-    { stream: { ...IDLE_STREAM, phase: 'streaming', text: 'delta', lastCursor: 3 } },
+    { stream: { ...IDLE_STREAM, phase: 'connected', text: 'delta', lastCursor: 3 } },
     { error: 'TURN_FAILED', sending: true, stream: { ...IDLE_STREAM, phase: 'failed', text: 'delta', lastCursor: 3, failureCode: 'TURN_FAILED', terminal: true } },
   ];
   for (const [index, overrides] of combinations.entries()) {

@@ -152,6 +152,25 @@ test('MF5-08 registry accepts representative payloads', () => {
   }
 });
 
+test('LITE-03-016 Memory selection Events expose bounded explanation fields', () => {
+  const retrieval = MF5_MEMORY_EVENT_DEFINITIONS.find(definition => definition.type === 'memory.retrieval_completed');
+  const context = MF5_MEMORY_EVENT_DEFINITIONS.find(definition => definition.type === 'memory.context_created');
+  assert.ok(retrieval);
+  assert.ok(context);
+  assert.deepEqual(retrieval.payloadSchema.required, [
+    'queryHash', 'strategyVersion', 'candidateCount', 'selectedCount', 'totalTokens', 'degraded',
+  ]);
+  assert.deepEqual(context.payloadSchema.required, [
+    'memoryContextId', 'runId', 'selectedCount', 'totalTokens', 'truncated',
+  ]);
+  assert.deepEqual(retrieval.payloadSchema.optional, []);
+  assert.deepEqual(context.payloadSchema.optional, []);
+  assert.ok(retrieval.validatePayload(RETRIEVAL_PAYLOAD));
+  assert.ok(context.validatePayload(CONTEXT_PAYLOAD));
+  assert.equal(retrieval.validatePayload({ ...RETRIEVAL_PAYLOAD, selectedCount: '2' }), false);
+  assert.equal(context.validatePayload({ ...CONTEXT_PAYLOAD, explanation: 'not a canonical field' }), false);
+});
+
 test('candidate review payload distinguishes Candidate and Entry outcomes', () => {
   const rejected = { candidateId: 'candidate', candidateVersion: 2, outcome: 'reject', memoryEntryId: null };
   assert.ok(isMemoryCandidateReviewEventPayload(rejected));

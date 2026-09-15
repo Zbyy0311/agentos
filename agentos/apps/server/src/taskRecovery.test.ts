@@ -16,6 +16,7 @@ import {
 } from './processRecoveryPreflight.js';
 import { spawn } from 'node:child_process';
 import { createPlatformRecoveredProcessVerifier, type RecoveredProcessVerifier } from '@agentos/process-runtime';
+import { isTransactionActive } from './store/Transaction.js';
 
 class MemoryStore implements Store {
   constructor(
@@ -721,7 +722,7 @@ test('P6M2b-composition D: verifier failure is fail-safe and never terminal-fail
 });
 
 /** E. All classifier/verifier calls happen BEFORE the recovery transaction opens. */
-test('P6M2b-composition E: no classifier/verifier call occurs inside the recovery transaction', async () => {
+test('LITE-05-011 / P6M2b-composition E: no OS probe occurs inside the recovery transaction', async () => {
   const env = createRealRecoveryEnv();
   let store2: SqliteStore | undefined;
   try {
@@ -730,8 +731,13 @@ test('P6M2b-composition E: no classifier/verifier call occurs inside the recover
     store2 = new SqliteStore(env.root);
     const service = new TaskRunService(store2);
     let verifyCalls = 0;
+    let insideTransactionCalls = 0;
     const countingVerifier: RecoveredProcessVerifier = {
-      async verify() { verifyCalls += 1; return { kind: 'not-found' }; },
+      async verify() {
+        verifyCalls += 1;
+        if (isTransactionActive(store2!.getDatabase())) insideTransactionCalls += 1;
+        return { kind: 'not-found' };
+      },
     };
     // Phase 1 (async, no transaction): all verification happens here.
     const classifications = await preflightProcessRecoveryClassifications(store2, countingVerifier);
@@ -740,6 +746,7 @@ test('P6M2b-composition E: no classifier/verifier call occurs inside the recover
     // Phase 2 (sync, transactional): the port does NO async/verifier work.
     recoverInterruptedTaskRuntime(store2, service, createPreflightProcessRecoveryPort(classifications));
     assert.equal(verifyCalls, callsAfterPreflight, 'no verifier call may occur inside the recovery transaction');
+    assert.equal(insideTransactionCalls, 0, 'OS probing must stay outside the SQLite write transaction');
   } finally {
     store2?.close();
     await rmRootWithRetry(env.root);
