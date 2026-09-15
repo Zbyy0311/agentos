@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   listRuntimeApprovals,
   resolveRuntimeApproval,
@@ -13,6 +13,12 @@ interface RuntimeApprovalPanelProps {
   readonly workspaceId: string;
   readonly runId: string;
   readonly onResolved?: () => void;
+}
+
+interface RuntimeApprovalCardProps {
+  readonly request: RuntimeApprovalRequest;
+  readonly busy: boolean;
+  readonly onDecision: (decision: RuntimeApprovalDecision) => void;
 }
 
 const POLL_INTERVAL_MS = 5_000;
@@ -80,20 +86,31 @@ export function RuntimeApprovalPanel(props: RuntimeApprovalPanelProps) {
       </div>
       {error ? <div role="alert" className="mb-3 rounded-lg border border-[var(--app-danger)]/30 p-3 text-xs text-[var(--app-danger)]">{error}</div> : null}
       {requests.map(request => (
-        <article key={request.id} className="rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-surface-raised)] p-3">
-          <div className="text-xs font-semibold ui-text">{request.title}</div>
-          <p className="mt-2 text-xs leading-5 ui-text-soft">{request.description}</p>
-          <dl className="mt-3 space-y-1 text-[10px] ui-dim">
-            <div><dt className="inline">动作指纹：</dt><dd className="inline break-all font-mono">{request.actionFingerprint}</dd></div>
-            <div><dt className="inline">策略：</dt><dd className="inline">{request.policyVersion} · 截止 {formatExpiry(request.expiresAt)}</dd></div>
-          </dl>
-          <div className="mt-3 flex justify-end gap-2">
-            <button type="button" disabled={busyId === request.id} onClick={() => { void decide(request, 'reject'); }} className="ui-button-ghost rounded-lg px-3 py-2 text-xs disabled:opacity-50">拒绝执行</button>
-            <button type="button" disabled={busyId === request.id} onClick={() => { void decide(request, 'approve_once'); }} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50">批准本次执行</button>
-          </div>
-        </article>
+        <RuntimeApprovalCard
+          key={request.id}
+          request={request}
+          busy={busyId === request.id}
+          onDecision={decision => { void decide(request, decision); }}
+        />
       ))}
     </section>
+  );
+}
+
+export function RuntimeApprovalCard({ request, busy, onDecision }: RuntimeApprovalCardProps) {
+  return (
+    <article className="rounded-xl border border-[var(--app-warning)]/40 bg-[var(--app-surface-raised)] p-3">
+      <div className="text-xs font-semibold ui-text">{request.title}</div>
+      <p className="mt-2 text-xs leading-5 ui-text-soft">{request.description}</p>
+      <dl className="mt-3 space-y-1 text-[10px] ui-dim">
+        <div><dt className="inline">动作指纹：</dt><dd className="inline break-all font-mono">{request.actionFingerprint}</dd></div>
+        <div><dt className="inline">策略：</dt><dd className="inline">{request.policyVersion} · 截止 {formatExpiry(request.expiresAt)}</dd></div>
+      </dl>
+      <div className="mt-3 flex justify-end gap-2">
+        <button type="button" disabled={busy} onClick={() => onDecision('reject')} className="ui-button-ghost rounded-lg px-3 py-2 text-xs disabled:opacity-50">拒绝执行</button>
+        <button type="button" disabled={busy} onClick={() => onDecision('approve_once')} className="ui-button-primary rounded-lg px-3 py-2 text-xs disabled:opacity-50">批准本次执行</button>
+      </div>
+    </article>
   );
 }
 
