@@ -124,10 +124,10 @@ function passFixture() {
 
 test('scope accepts the frozen matrix with individually authorized PASS rows', () => {
   const result = validateScope(matrix(), evidence, lock, root);
-  assert.equal(result.PASS, 47);
-  assert.equal(result.GAP, 4);
+  assert.equal(result.PASS, 51);
+  assert.equal(result.GAP, 0);
   // 179 / 165 rather than 205 / 164: the user-authorized LITE-04-101 deferral
-  // moves exactly one row, and the controlled promotions close forty-seven
+  // moves exactly one row, and the controlled promotions close fifty-one
   // independently evidenced rows without changing the permanent scope.
   assert.equal(result['RUNTIME-VERIFY'], 179);
   assert.equal(result.DEFERRED, 165);
@@ -139,19 +139,36 @@ test('freeze anchor rejects a rewritten original state', () => {
   assert.throws(() => validatePassFreeze(changed), /pass-freeze identity changed|frozenPassIds mismatch/);
 });
 
-test('freeze rejects old PASS re-upgrade and GAP or DEFERRED closure', () => {
-  for (const before of ['PASS', 'GAP', 'DEFERRED']) {
-    const changed = matrix();
-    const frozen = freeze();
-    const authorizedPromotions = new Set(json('pass-promotions.json').promotions.map(item => item.requirementId));
-    const row = changed.requirements.find(item => frozen.rows.find(original => original.id === item.id)?.state === before
-      && (before !== 'GAP' || !authorizedPromotions.has(item.id)));
-    row.state = before === 'DEFERRED' ? 'GAP' : 'PASS';
-    if (before === 'DEFERRED') row.workPackage = 'S8';
-    assert.throws(() => validateScope(changed, evidence, lock, root, frozen), before === 'PASS'
-      ? /PASS state is frozen|allowed PASS|individually authorized promotion/
-      : new RegExp(`original ${before} state changed|individually authorized promotion`));
-  }
+test('freeze rejects old PASS re-upgrade, unauthorized GAP transition, and DEFERRED closure', () => {
+  const frozen = freeze();
+
+  // Select an originally-PASS row that is currently withdrawn. Re-declaring it
+  // PASS without a row-specific promotion must remain forbidden.
+  const passChanged = matrix();
+  const passRow = passChanged.requirements.find(item => frozen.rows.find(original => original.id === item.id)?.state === 'PASS'
+    && item.state === 'RUNTIME-VERIFY');
+  assert.ok(passRow, 'the fixture retains an originally-PASS row withdrawn to RUNTIME-VERIFY');
+  passRow.state = 'PASS';
+  assert.throws(() => validateScope(passChanged, evidence, lock, root, frozen),
+    /PASS state is frozen|allowed PASS|individually authorized promotion/);
+
+  // All original GAP rows are now deliberately authorized promotions. The
+  // freeze must still reject moving one of those rows to an unrecorded state.
+  const gapChanged = matrix();
+  const gapRow = gapChanged.requirements.find(item => frozen.rows.find(original => original.id === item.id)?.state === 'GAP');
+  assert.ok(gapRow, 'the frozen matrix retains an original GAP row');
+  gapRow.state = 'RUNTIME-VERIFY';
+  const promotionsWithoutGap = new Map(json('pass-promotions.json').promotions
+    .filter(item => item.requirementId !== gapRow.id)
+    .map(item => [item.requirementId, item]));
+  assert.throws(() => validateFrozenScopeStates(gapChanged, frozen, new Map(), promotionsWithoutGap), /original GAP state changed/);
+
+  const deferredChanged = matrix();
+  const deferredRow = deferredChanged.requirements.find(item => frozen.rows.find(original => original.id === item.id)?.state === 'DEFERRED');
+  assert.ok(deferredRow, 'the frozen matrix retains an original DEFERRED row');
+  deferredRow.state = 'GAP';
+  deferredRow.workPackage = 'S8';
+  assert.throws(() => validateScope(deferredChanged, evidence, lock, root, frozen), /original DEFERRED state changed/);
 });
 
 test('old PASS evidence declaration is rejected without a raw receipt', () => {
