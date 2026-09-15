@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "authorityId": "lite-pass-promotion-20260915",
   "authorityHash": "b8a3f061b5d8f1688c57e5abefd6c4f03b800d0ee8d0d9de92329d69b4655714",
-  "matrixVersion": 23,
-  "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+  "matrixVersion": 24,
+  "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
   "promotions": [
     {
       "promotionId": "PROMOTION-LITE-07-003",
       "requirementId": "LITE-07-003",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/MemoryCandidateGenerationService.ts",
         "apps/server/src/routes/memoryRuntime.ts",
@@ -76,7 +76,7 @@
       "requirementId": "LITE-07-007",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
@@ -162,7 +162,7 @@
       "requirementId": "LITE-07-013",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
@@ -208,7 +208,7 @@
       "requirementId": "LITE-07-102",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
         "apps/server/src/services/MemoryCandidateGenerationService.ts"
@@ -273,7 +273,7 @@
       "requirementId": "LITE-07-105",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
@@ -347,7 +347,7 @@
       "requirementId": "LITE-07-106",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/managers/WorkspaceManager.ts"
       ],
@@ -421,7 +421,7 @@
       "requirementId": "LITE-07-109",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
@@ -467,7 +467,7 @@
       "requirementId": "LITE-09-102",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/services/ConversationTurnDriver.ts"
@@ -512,7 +512,7 @@
       "requirementId": "LITE-09-104",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
@@ -566,7 +566,7 @@
       "requirementId": "LITE-09-105",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/store/ConversationRepository.ts"
       ],
@@ -660,7 +660,7 @@
       "requirementId": "LITE-09-106",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "packages/agent-core/src/conversationRunner.ts"
       ],
@@ -734,7 +734,7 @@
       "requirementId": "LITE-09-108",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
@@ -808,7 +808,7 @@
       "requirementId": "LITE-09-109",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/store/ConversationRepository.ts"
       ],
@@ -842,7 +842,7 @@
       "requirementId": "LITE-09-110",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "packages/agent-core/src/conversationRunner.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts"
@@ -877,7 +877,7 @@
       "requirementId": "LITE-13-002",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
@@ -931,7 +931,7 @@
       "requirementId": "LITE-13-003",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
@@ -985,7 +985,7 @@
       "requirementId": "LITE-13-015",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
@@ -1029,7 +1029,7 @@
       "requirementId": "LITE-00-007",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
@@ -1073,7 +1073,7 @@
       "requirementId": "LITE-02-014",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
@@ -1137,7 +1137,7 @@
       "requirementId": "LITE-02-015",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
@@ -1181,7 +1181,7 @@
       "requirementId": "LITE-03-018",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
@@ -1235,7 +1235,7 @@
       "requirementId": "LITE-13-008",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts",
         "apps/server/src/services/RuntimeInspector.ts"
@@ -1280,7 +1280,7 @@
       "requirementId": "LITE-09-107",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
@@ -1529,7 +1529,7 @@
       "requirementId": "LITE-07-104",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/RuntimeArtifactService.ts",
         "apps/server/src/services/RuntimeArtifactCollector.ts",
@@ -1647,7 +1647,7 @@
       "requirementId": "LITE-07-108",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "packages/shared/src/types/mf5-workspace-events.ts",
         "apps/server/src/services/WorkspaceEventContextAuthority.ts",
@@ -1694,7 +1694,7 @@
       "requirementId": "LITE-09-010",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/services/ConversationTurnDriver.ts",
@@ -1790,7 +1790,7 @@
       "requirementId": "LITE-09-013",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/services/ConversationTurnDriver.ts",
@@ -1847,7 +1847,7 @@
       "requirementId": "LITE-09-101",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts",
         "apps/server/src/services/BoundedGroupService.ts",
@@ -1905,7 +1905,7 @@
       "requirementId": "LITE-07-107",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/MemoryImportService.ts",
         "apps/server/src/routes/memoryImport.ts",
@@ -1961,7 +1961,7 @@
       "requirementId": "LITE-13-101",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "implementation": [
         "apps/server/src/services/ConversationCompactionInspector.ts",
         "apps/server/src/services/RuntimeInspector.ts",
@@ -2124,7 +2124,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2170,7 +2170,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2215,7 +2215,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2270,7 +2270,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2325,7 +2325,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2370,7 +2370,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2415,7 +2415,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2470,7 +2470,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2515,7 +2515,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2579,7 +2579,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-CONV-RUNTIME"
       ],
@@ -2623,7 +2623,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-CONV-RUNTIME",
         "S9-FINAL-C517-CONV-ADJACENT"
@@ -2799,7 +2799,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-CONV-RUNTIME"
       ],
@@ -2843,7 +2843,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-TURN-DRIVER"
       ],
@@ -2918,7 +2918,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-CONV-ADJACENT"
       ],
@@ -3073,7 +3073,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-CONV-ADJACENT"
       ],
@@ -3118,7 +3118,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-CONV-RUNTIME"
       ],
@@ -3163,7 +3163,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
       "evidenceIds": [
         "S9-FINAL-C517-CONV-RUNTIME"
       ],
@@ -3195,6 +3195,233 @@
         }
       ],
       "rationale": "The direct production HTTP receipt follows a Message-only Turn with durable task, run and admission-ledger queries and proves no modifying Run authority is created. The c517fbd8 receipt is valid at final main 49787588 because the production-path diff is empty."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-103",
+      "requirementId": "LITE-07-103",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/MemoryRuntimeEventEmitter.ts"
+      ],
+      "evidenceIds": ["S3-FINAL-MAIN-AD113-APPROVAL"],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='LITE-08-005|LITE-08-006|LITE-08-007|LITE-07-103' src/services/run-engine/RunEngineProviderDispatcher.test.ts src/routes/runtimeApprovals.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": { "passed": 14, "failed": 0, "skipped": 0 },
+      "assertions": [
+        {
+          "id": "APPROVAL-CANDIDATE-01",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+          "line": 539,
+          "expression": "assert.equal((fx.db.prepare(\"SELECT COUNT(*) AS count FROM memory_candidate_entries\").get() as { count: number }).count, 1);",
+          "clause": "An accepted runtime approval creates the single source-bound Memory Candidate.",
+          "whyDirect": "The accepted decision is resolved through the canonical gate and the assertion reads the durable candidate table after the original Run continuation.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-CANDIDATE-EVENT-01",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+          "line": 540,
+          "expression": "assert.equal((fx.db.prepare(\"SELECT COUNT(*) AS count FROM runtime_events WHERE type = 'memory.candidate_created'\").get() as { count: number }).count, 1);",
+          "clause": "The accepted decision emits the canonical candidate-created Runtime Event.",
+          "whyDirect": "The assertion queries the durable Runtime Event stream after the accepted decision and requires exactly one candidate-created event.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-DENY-01",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-08-006/007: reject is terminal, replay-safe, and a changed launch plan cannot execute",
+          "line": 580,
+          "expression": "assert.equal((fx.db.prepare(\"SELECT COUNT(*) AS count FROM memory_candidate_entries\").get() as { count: number }).count, 0);",
+          "clause": "A rejected runtime approval does not create an accepted-decision Candidate.",
+          "whyDirect": "The canonical reject path is followed by a direct durable candidate count, which remains zero.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-ROLLBACK-01",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-07-103: Candidate Event failure rolls back decision, lifecycle resume, and request evidence",
+          "line": 678,
+          "expression": "assert.equal((fx.db.prepare('SELECT COUNT(*) AS count FROM memory_candidate_entries').get() as { count: number }).count, 0);",
+          "clause": "Candidate/Event failure rolls back the approval decision and candidate evidence atomically.",
+          "whyDirect": "The test injects a Runtime Event failure into the real approval transaction and reads the durable candidate table after the rollback.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion is based on final-main ad113198. The canonical accepted decision is observed creating exactly one Candidate and candidate-created Runtime Event; the reject path creates none; and an injected event failure leaves the decision, Run resume and candidate evidence rolled back. The direct assertions are mapped to the preserved TAP receipt rather than inferred from a suite result."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-08-005",
+      "requirementId": "LITE-08-005",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "evidenceIds": ["S3-FINAL-MAIN-AD113-APPROVAL"],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='LITE-08-005|LITE-08-006|LITE-08-007|LITE-07-103' src/services/run-engine/RunEngineProviderDispatcher.test.ts src/routes/runtimeApprovals.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": { "passed": 14, "failed": 0, "skipped": 0 },
+      "assertions": [
+        {
+          "id": "APPROVAL-PAUSE-01",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+          "line": 520,
+          "expression": "assert.equal(fx.runRepo.findById(WS, RUN)?.status, 'waiting_approval');",
+          "clause": "ASK_USER persists and pauses the original Run before Provider/Process spawn.",
+          "whyDirect": "The canonical dispatcher drives the real Run path and reads the persisted Run status immediately after the ASK_USER gate.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-PAUSE-02",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+          "line": 522,
+          "expression": "assert.equal(driver.spawnCalls, 0);",
+          "clause": "A paused approval cannot spawn a Provider or Process.",
+          "whyDirect": "The same canonical execution test observes the owned process driver before approval and asserts zero side effects.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-RESUME-01",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-08-005/006/007: ASK_USER pauses before spawn and one approved original Run continues once",
+          "line": 537,
+          "expression": "assert.equal(driver.spawnCalls, 1);",
+          "clause": "Accepting the persisted decision resumes the original Run exactly once.",
+          "whyDirect": "After resolving the pending request, the test awaits the real continuation and checks the owned driver spawn count remains exactly one.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-RESTART-01",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-08-005: approved but unconsumed decisions are redriven after restart without a new start Operation",
+          "line": 657,
+          "expression": "assert.equal(driver.spawnCalls, 1);",
+          "clause": "An approved but unconsumed decision is recovered after restart without creating a replacement Run.",
+          "whyDirect": "The restart-recovery test defers the continuation, invokes resumeApprovedUnconsumed, and observes one owned spawn on the original fixture.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses final-main ad113198 assertions for durable ASK_USER pause, zero pre-approval side effects, one continuation of the original Run, and restart redrive of an unconsumed decision. The route and dispatcher evidence is preserved in one TAP receipt but the assertions are recorded separately for this requirement."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-08-006",
+      "requirementId": "LITE-08-006",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "evidenceIds": ["S3-FINAL-MAIN-AD113-APPROVAL"],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='LITE-08-005|LITE-08-006|LITE-08-007|LITE-07-103' src/services/run-engine/RunEngineProviderDispatcher.test.ts src/routes/runtimeApprovals.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": { "passed": 14, "failed": 0, "skipped": 0 },
+      "assertions": [
+        {
+          "id": "APPROVAL-CAS-01",
+          "file": "apps/server/src/routes/runtimeApprovals.test.ts",
+          "name": "LITE-08-006: concurrent approve/reject has one CAS winner and one conflict",
+          "line": 382,
+          "expression": "assert.deepEqual(",
+          "clause": "Concurrent approve/reject decisions have one CAS winner and one conflict.",
+          "whyDirect": "Two real HTTP resolve requests race with the same expected version, and the assertion requires exactly the 201/409 outcome pair.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-CAS-02",
+          "file": "apps/server/src/routes/runtimeApprovals.test.ts",
+          "name": "LITE-08-006: concurrent approve/reject has one CAS winner and one conflict",
+          "line": 391,
+          "expression": "assert.equal(rowCount(fixture, 'approval_decisions'), 1);",
+          "clause": "The concurrent decision race writes exactly one durable decision.",
+          "whyDirect": "The HTTP race is followed by a direct approval_decisions table count, proving losers do not add a second decision.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-REPLAY-01",
+          "file": "apps/server/src/routes/runtimeApprovals.test.ts",
+          "name": "LITE-08-006: approve succeeds and the same request/version retries as replayed without new decision or Candidate",
+          "line": 364,
+          "expression": "assert.equal(replayBody.replayed, true);",
+          "clause": "Replaying the same accepted decision is idempotent.",
+          "whyDirect": "The production resolve endpoint is called again with the same request/version and explicitly returns replayed=true.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-STALE-01",
+          "file": "apps/server/src/routes/runtimeApprovals.test.ts",
+          "name": "LITE-08-006: a stale request version returns 409 and leaves the request pending",
+          "line": 429,
+          "expression": "assert.equal(response.status, 409);",
+          "clause": "A stale expected version cannot resolve the approval.",
+          "whyDirect": "The production HTTP endpoint receives a stale version and returns the stable conflict status before any decision row is written.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses final-main ad113198 direct assertions for CAS competition, exactly-one decision persistence, same-version replay idempotency and stale-version rejection. The result is tied to the actual HTTP route and canonical gate, not to a filename or keyword match."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-08-007",
+      "requirementId": "LITE-08-007",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "evidenceIds": ["S3-FINAL-MAIN-AD113-APPROVAL"],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='LITE-08-005|LITE-08-006|LITE-08-007|LITE-07-103' src/services/run-engine/RunEngineProviderDispatcher.test.ts src/routes/runtimeApprovals.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": { "passed": 14, "failed": 0, "skipped": 0 },
+      "assertions": [
+        {
+          "id": "APPROVAL-EXPIRED-01",
+          "file": "apps/server/src/routes/runtimeApprovals.test.ts",
+          "name": "LITE-08-007: an expired pending request returns 410 without writing a decision",
+          "line": 447,
+          "expression": "assert.equal(response.status, 410);",
+          "clause": "An expired approval cannot execute and returns the stable expiry error.",
+          "whyDirect": "The fixture advances the persisted approval clock, invokes the real resolve endpoint, and requires HTTP 410 before a decision is recorded.",
+          "outcome": "passed"
+        },
+        {
+          "id": "APPROVAL-EXPIRY-BEFORE-SPAWN-01",
+          "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+          "name": "LITE-08-007: expiry after the first gate but before spawn blocks the Process side effect",
+          "line": 618,
+          "expression": "assert.equal(driver.spawnCalls, 0);",
+          "clause": "Expiry revalidation immediately before spawn blocks the Process side effect.",
+          "whyDirect": "The test approves at the first gate, advances time before continuation, and observes zero process spawns on the canonical dispatcher path.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses final-main ad113198 direct assertions for expired HTTP approval rejection and expiry revalidation immediately before Process spawn. Both assertions observe the actual canonical gate side effects and preserve the original exit condition."
     }
   ]
 }

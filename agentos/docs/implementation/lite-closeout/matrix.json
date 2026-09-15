@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 23,
+  "matrixVersion": 24,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -2574,7 +2574,7 @@
       "section": "15. Acceptance Expectations",
       "line": 326,
       "requirement": "ASK_USER persists and pauses the Run;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S3",
       "implementation": [
         "apps/server/src/routes/runtimeApprovals.ts",
@@ -2590,12 +2590,10 @@
         "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
       "evidence": [
-        "S3-APPROVAL-SOURCE",
-        "S3-LOCAL-39",
-        "S3-REVIEW-FIX",
-        "S3-FULL-FINAL"
+        "S3-FINAL-MAIN-AD113-APPROVAL"
       ],
-      "finding": "S3已在真实协调器pre-spawn边界持久请求并使Run/Stage等待；批准后续跑原Run、重启扫描approved unconsumed、拒绝终止。实际Provider live调用与完整产品UI仍待验，保持GAP。",
+      "evidenceBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "finding": "最终主线 ad113198 的直接 TAP 证据已覆盖 ASK_USER 持久暂停、零 pre-spawn 副作用、原 Run 恢复一次及 approved-but-unconsumed 的重启恢复；该条退出条件满足。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -2604,7 +2602,7 @@
       "section": "15. Acceptance Expectations",
       "line": 327,
       "requirement": "concurrent approve/reject is idempotent;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S3",
       "implementation": [
         "apps/server/src/routes/runtimeApprovals.ts",
@@ -2620,12 +2618,10 @@
         "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
       "evidence": [
-        "S3-APPROVAL-SOURCE",
-        "S3-LOCAL-39",
-        "S3-REVIEW-FIX",
-        "S3-FULL-FINAL"
+        "S3-FINAL-MAIN-AD113-APPROVAL"
       ],
-      "finding": "S3已验证版本CAS重放、路由重试收敛和Event失败整体回滚；真实并发HTTP竞争和live Provider证据仍需补齐，保持GAP。",
+      "evidenceBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "finding": "最终主线 ad113198 的直接 HTTP/Run Engine TAP 证据已覆盖并发 approve/reject 的单一 CAS 胜者、重复决定收敛、stale version 拒绝及唯一持久决定；该条退出条件满足。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -2634,7 +2630,7 @@
       "section": "15. Acceptance Expectations",
       "line": 328,
       "requirement": "stale and expired approvals cannot execute;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S3",
       "implementation": [
         "apps/server/src/routes/runtimeApprovals.ts",
@@ -2650,12 +2646,10 @@
         "apps/server/src/migrations/__tests__/lite-migration-028.test.ts"
       ],
       "evidence": [
-        "S3-APPROVAL-SOURCE",
-        "S3-LOCAL-39",
-        "S3-REVIEW-FIX",
-        "S3-FULL-FINAL"
+        "S3-FINAL-MAIN-AD113-APPROVAL"
       ],
-      "finding": "S3已验证持久过期、Launch Plan/Agent/Provider快照哈希漂移拒绝及一次性消费；跨进程时钟和live Provider验收仍缺，保持GAP。",
+      "evidenceBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "finding": "最终主线 ad113198 的直接 HTTP/Run Engine TAP 证据已覆盖过期审批 410 拒绝、launch plan 变化拒绝以及首次 gate 后到 spawn 前的过期再校验；该条退出条件满足。",
       "exit": "真实ASK_USER到持久决定、原Run恢复/拒绝；重启、决定竞争、过期/指纹变更可验证。"
     },
     {
@@ -4589,7 +4583,7 @@
       "section": "§7",
       "line": null,
       "requirement": "接受的真实审批决定触发",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S3",
       "implementation": [
         "apps/server/src/routes/runtimeApprovals.ts",
@@ -4603,12 +4597,10 @@
         "apps/server/src/store/RuntimeApprovalRepository.test.ts"
       ],
       "evidence": [
-        "S3-APPROVAL-SOURCE",
-        "S3-LOCAL-39",
-        "S3-REVIEW-FIX",
-        "S3-FULL-FINAL"
+        "S3-FINAL-MAIN-AD113-APPROVAL"
       ],
-      "finding": "保留基线反证：旧approval-decisions为独立入口。S3 ead3001b已在pre-spawn gate、028请求/026决定、approval.resolved Candidate Event和重放回滚上取得证据；真实Provider live调用及浏览器审批验收仍缺，保持GAP。",
+      "evidenceBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "finding": "最终主线 ad113198 的直接 Run Engine 证据已覆盖接受决定产生唯一带来源 Candidate 与 memory.candidate_created Event、拒绝不产生 Candidate，以及 Event 失败时决定/生命周期/来源证据原子回滚；该条退出条件满足。",
       "exit": "真实审批→原Run行为→持久决定→唯一带来源候选+事件；deny不生成候选。"
     },
     {
@@ -8777,10 +8769,93 @@
       "requirementIds": [
         "LITE-02-001"
       ]
+    },
+    {
+      "version": 24,
+      "baseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "authority": "User-approved final-main re-anchoring after PR #184 merged",
+      "reason": "The existing 47 individually recorded promotions are re-anchored to final main ad113198 after all current Lite PRs were merged. A direct diff from the prior promotion baseline 49787588 to ad113198 has no intersection with any existing PASS row's production implementation paths; the changed paths are the runtime-approval UI/API and their tests. Existing raw receipts remain preserved at their original evidence baselines, and this bookkeeping entry changes no requirement state.",
+      "requirementIds": [
+        "LITE-00-007",
+        "LITE-02-001",
+        "LITE-02-014",
+        "LITE-02-015",
+        "LITE-03-018",
+        "LITE-07-001",
+        "LITE-07-002",
+        "LITE-07-003",
+        "LITE-07-004",
+        "LITE-07-006",
+        "LITE-07-007",
+        "LITE-07-008",
+        "LITE-07-009",
+        "LITE-07-010",
+        "LITE-07-011",
+        "LITE-07-013",
+        "LITE-07-101",
+        "LITE-07-102",
+        "LITE-07-104",
+        "LITE-07-105",
+        "LITE-07-106",
+        "LITE-07-107",
+        "LITE-07-108",
+        "LITE-07-109",
+        "LITE-09-001",
+        "LITE-09-002",
+        "LITE-09-005",
+        "LITE-09-006",
+        "LITE-09-010",
+        "LITE-09-012",
+        "LITE-09-013",
+        "LITE-09-018",
+        "LITE-09-101",
+        "LITE-09-102",
+        "LITE-09-104",
+        "LITE-09-105",
+        "LITE-09-106",
+        "LITE-09-107",
+        "LITE-09-108",
+        "LITE-09-109",
+        "LITE-09-110",
+        "LITE-11-001",
+        "LITE-13-002",
+        "LITE-13-003",
+        "LITE-13-008",
+        "LITE-13-015",
+        "LITE-13-101"
+      ]
+    },
+    {
+      "version": 24,
+      "baseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "authority": "User-approved controlled per-row PASS promotion on final main ad113198",
+      "reason": "LITE-07-103 moves from GAP to PASS on the individually mapped final-main approval receipt; accepted decisions create one source-bound Candidate and candidate-created Event, reject creates none, and injected Event failure rolls back the decision/evidence transaction.",
+      "requirementIds": ["LITE-07-103"]
+    },
+    {
+      "version": 24,
+      "baseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "authority": "User-approved controlled per-row PASS promotion on final main ad113198",
+      "reason": "LITE-08-005 moves from GAP to PASS on the individually mapped final-main approval receipt; the canonical Run is durably waiting before spawn, resumes once on the original Run, and an approved unconsumed decision is recovered after restart.",
+      "requirementIds": ["LITE-08-005"]
+    },
+    {
+      "version": 24,
+      "baseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "authority": "User-approved controlled per-row PASS promotion on final main ad113198",
+      "reason": "LITE-08-006 moves from GAP to PASS on the individually mapped final-main approval receipt; concurrent HTTP decisions have one CAS winner, replay is idempotent, and stale versions cannot create a decision.",
+      "requirementIds": ["LITE-08-006"]
+    },
+    {
+      "version": 24,
+      "baseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "authority": "User-approved controlled per-row PASS promotion on final main ad113198",
+      "reason": "LITE-08-007 moves from GAP to PASS on the individually mapped final-main approval receipt; expired approvals and pre-spawn expiry revalidation both block execution, while launch-plan drift is rejected.",
+      "requirementIds": ["LITE-08-007"]
     }
   ],
   "passFreeze": "pass-freeze.json",
   "passPromotionAuthority": "pass-promotion-authority.json",
   "passPromotions": "pass-promotions.json",
-  "promotionBaselineSha": "497875881db9ab4a18233d89833e453b81f53e8e"
+  "promotionBaselineSha": "ad11319870c921e77e826c71787bd63f61a830aa"
 }
