@@ -79,10 +79,13 @@ export function groupConversationClient(options: DirectConversationClientOptions
      * `group.plan` / `group.turn.*` / `group.done` events. Not-OK throws before
      * the stream is read.
      */
-    respond: async (interactionId: string, conversationId: string, body: Record<string, unknown>): Promise<Response> => {
+    respond: async (interactionId: string, conversationId: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<Response> => {
       const response = await fetch(
         `${base}/conversations/${encodeURIComponent(conversationId)}/interactions/${encodeURIComponent(interactionId)}/respond`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) },
+        {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+          ...(signal === undefined ? {} : { signal }),
+        },
       );
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({ error: response.statusText })) as { error?: string };

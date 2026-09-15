@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   MAX_RECONNECT_ATTEMPTS,
   UnexpectedStreamEndError,
+  consumeSseResponse,
   getReconnectDelay,
   retryWithExponentialBackoff,
   shouldReconnect,
@@ -50,4 +51,12 @@ test('stops after five reconnect attempts', async () => {
     UnexpectedStreamEndError,
   );
   assert.equal(attempts, MAX_RECONNECT_ATTEMPTS + 1);
+});
+
+test('supports protocol-specific terminal events without changing the default done/error contract', async () => {
+  const seen: string[] = [];
+  const response = new Response('event: group.done\ndata: {"endedBy":"completed","cursor":4}\n\n');
+  const result = await consumeSseResponse(response, event => { seen.push(event.event); }, { terminalEvents: ['group.done'] });
+  assert.deepEqual(seen, ['group.done']);
+  assert.equal(result.lastCursor, 4);
 });

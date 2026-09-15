@@ -13,6 +13,7 @@ async function renderCanvas(): Promise<string> {
       apiBase="http://127.0.0.1:1"
       conversationId="conv_g1"
       conversationTitle="Team"
+      agents={[{ id: 'agent_a', name: 'Codex' }, { id: 'agent_b', name: 'Kimi' }]}
     />,
   );
 }
@@ -25,6 +26,7 @@ test('GRP-canvas: the group canvas mounts with a composer and the budget control
   assert.ok(markup.includes('Set a reply budget'));
   assert.ok(markup.includes('data-agentos="group-composer"'));
   assert.ok(markup.includes('data-agentos="group-send"'));
+  assert.ok(markup.includes('>@all</button>'));
   // All four budget controls are explicit.
   assert.ok(markup.includes('replies/agent'));
   assert.ok(markup.includes('total replies'));

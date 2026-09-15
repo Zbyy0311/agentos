@@ -108,6 +108,7 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
         apiBase={props.apiBase}
         conversationId={props.activeConversationId ?? ''}
         conversationTitle={props.activeConversationTitle}
+        agents={props.agents}
       />
     )
     : (
