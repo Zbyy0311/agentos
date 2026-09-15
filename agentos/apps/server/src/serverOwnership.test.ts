@@ -1,9 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn, type ChildProcess } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, mkdtempSync, realpathSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { inspect } from 'node:util';
 import net, { type AddressInfo } from 'node:net';
@@ -302,6 +303,84 @@ async function makeUnoccupiedR39Root(label: string): Promise<{
   throw new Error(`R39 could not establish an unoccupied candidate-set precondition after ${MAX_ROOT_ATTEMPTS} attempts`);
 }
 
+// --- Diagnostic-only helpers (diag/r38-r39-crash-release-timing) ------------
+// These helpers observe and classify; they never alter control flow, timing,
+// retries, candidate selection, or assertions.
+
+function diagnosticCanonicalRootToken(root: string): string {
+  let canonical = resolve(root);
+  if (existsSync(canonical)) {
+    try {
+      canonical = realpathSync.native(canonical);
+    } catch {
+      canonical = resolve(root);
+    }
+  }
+  if (process.platform === 'win32') {
+    canonical = canonical.toLowerCase();
+  }
+  return createHash('sha256').update(canonical).digest('hex');
+}
+
+type DiagnosticProbeClassification = 'free' | 'same-owner' | 'other-owner' | 'unknown';
+
+interface DiagnosticProbeSummary {
+  port: number;
+  elapsedMs: number;
+  connectSucceeded: boolean;
+  timedOut: boolean;
+  socketErrorCode?: string;
+  probeClassification: DiagnosticProbeClassification;
+}
+
+// Mirrors probeCandidate()'s mapping rules so probe evidence can be labeled
+// exactly the way production classified it, without logging the owner token.
+function classifyDiagnosticProbe(evidence: R39CandidateEvidence, ownerToken: string): DiagnosticProbeSummary {
+  const socketErrorCode = typeof (evidence.rawSocketError as { code?: unknown } | undefined)?.code === 'string'
+    ? (evidence.rawSocketError as { code: string }).code
+    : undefined;
+  let probeClassification: DiagnosticProbeClassification = 'unknown';
+  if (evidence.firstResponseLine !== undefined && evidence.responseLimitExceeded !== true) {
+    if (evidence.firstResponseLine === `AGENTOS_OWNER_V1 ${ownerToken}`) {
+      probeClassification = 'same-owner';
+    } else if (R39_OWNER_RESPONSE_PATTERN.test(evidence.firstResponseLine)) {
+      probeClassification = 'other-owner';
+    }
+  } else if (socketErrorCode === 'ECONNREFUSED') {
+    probeClassification = 'free';
+  }
+  return {
+    port: evidence.port,
+    elapsedMs: evidence.elapsedMs,
+    connectSucceeded: evidence.connectSucceeded,
+    timedOut: evidence.timedOut,
+    socketErrorCode,
+    probeClassification,
+  };
+}
+
+interface CrashReleaseTimeline {
+  acquiredAt?: number;
+  sigkillAt?: number;
+  childExitAt?: number;
+  childCloseAt?: number;
+  reacquireStartAt?: number;
+  reacquireSettledAt?: number;
+}
+
+function relativizeCrashReleaseTimeline(timeline: CrashReleaseTimeline): Record<string, number | undefined> {
+  const t0 = timeline.sigkillAt ?? timeline.acquiredAt ?? 0;
+  const delta = (value: number | undefined): number | undefined => (value === undefined ? undefined : value - t0);
+  return {
+    acquiredMs: delta(timeline.acquiredAt),
+    sigkillMs: delta(timeline.sigkillAt),
+    childExitMs: delta(timeline.childExitAt),
+    childCloseMs: delta(timeline.childCloseAt),
+    reacquireStartMs: delta(timeline.reacquireStartAt),
+    reacquireSettledMs: delta(timeline.reacquireSettledAt),
+  };
+}
+
 function assertAlreadyRunning(error: unknown): boolean {
   assert.ok(error instanceof ServerAlreadyRunningError);
   assert.equal((error as ServerAlreadyRunningError).code, 'SERVER_ALREADY_RUNNING');
@@ -580,16 +659,69 @@ test('R38 loopback ownership is released automatically after a subprocess crash'
   const root = makeRoot('r38');
   const spawned = spawnLoopbackChild(root);
   let ownership: ServerOwnership | undefined;
+  // Diagnostic-only passive observers (diag branch): timestamps and probe
+  // observation. No waits, retries, or assertion changes.
+  const r38Timeline: CrashReleaseTimeline = {};
+  spawned.child.once('exit', () => { r38Timeline.childExitAt = Date.now(); });
+  spawned.child.once('close', () => { r38Timeline.childCloseAt = Date.now(); });
+  const parentProbeAttempts: R39CandidateEvidence[] = [];
+  let phase = 'child-acquire';
   try {
     const outcome = await waitForOutcomeLine(spawned);
+    r38Timeline.acquiredAt = Date.now();
     assert.ok(outcome.startsWith('ACQUIRED tcp://127.0.0.1:'), `child should acquire loopback ownership: ${outcome}`);
 
+    phase = 'post-kill';
+    r38Timeline.sigkillAt = Date.now();
     spawned.child.kill('SIGKILL');
     await waitForChildExit(spawned.child);
 
     // No file deletion and no stale cleanup: the OS released the port.
-    ownership = await acquireLoopbackServerOwnership(root);
+    phase = 'parent-reacquire';
+    r38Timeline.reacquireStartAt = Date.now();
+    const observation = observeR39ParentProbes();
+    try {
+      ownership = await acquireLoopbackServerOwnership(root);
+    } finally {
+      r38Timeline.reacquireSettledAt = Date.now();
+      observation.restore();
+      parentProbeAttempts.push(...observation.attempts);
+    }
+    phase = 'parent-reacquire-assertion';
     assert.match(ownership.endpoint, /^tcp:\/\/127\.0\.0\.1:\d+$/);
+    console.error(JSON.stringify({
+      diagnostic: 'R38_TIMELINE',
+      result: 'pass',
+      timeline: relativizeCrashReleaseTimeline(r38Timeline),
+      reacquireStartedBeforeChildClose: r38Timeline.childCloseAt === undefined
+        || (r38Timeline.reacquireStartAt ?? 0) < r38Timeline.childCloseAt,
+      parentProbeAttempts: parentProbeAttempts.map(evidence => (
+        classifyDiagnosticProbe(evidence, diagnosticCanonicalRootToken(root))
+      )),
+    }));
+  } catch (error) {
+    const candidatePorts = deriveOwnershipCandidatePorts(root);
+    const postFailureCandidateEvidence = phase === 'parent-reacquire'
+      ? await Promise.all(candidatePorts.map(port => collectR39CandidateEvidence(port)))
+      : [];
+    console.error(JSON.stringify({
+      diagnostic: 'R38_DIAGNOSTIC',
+      phase,
+      timeline: relativizeCrashReleaseTimeline(r38Timeline),
+      reacquireStartedBeforeChildClose: r38Timeline.childCloseAt === undefined
+        || (r38Timeline.reacquireStartAt ?? 0) < r38Timeline.childCloseAt,
+      candidatePorts,
+      parentProbeAttempts: parentProbeAttempts.map(evidence => (
+        classifyDiagnosticProbe(evidence, diagnosticCanonicalRootToken(root))
+      )),
+      postFailureCandidateEvidence: postFailureCandidateEvidence.map(evidence => (
+        classifyDiagnosticProbe(evidence, diagnosticCanonicalRootToken(root))
+      )),
+      parentError: snapshotDiagnosticValue(error),
+      childExitCode: spawned.child.exitCode,
+      childSignalCode: spawned.child.signalCode,
+    }));
+    throw error;
   } finally {
     if (spawned.child.exitCode === null && spawned.child.signalCode === null) {
       spawned.child.kill('SIGKILL');
@@ -607,6 +739,15 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
     const spawned = Array.from({ length: CHILDREN }, () => spawnLoopbackChild(root));
     const childOutcomes: Array<string | null> = Array.from({ length: CHILDREN }, () => null);
     const parentProbeAttempts: R39CandidateEvidence[] = [];
+    // Diagnostic-only passive observers (diag branch): per-child lifecycle
+    // timestamps and reacquire start. No waits, retries, or assertion changes.
+    const childTimelines = spawned.map(item => {
+      const timeline: { sigkillAt?: number; exitAt?: number; closeAt?: number } = {};
+      item.child.once('exit', () => { timeline.exitAt = Date.now(); });
+      item.child.once('close', () => { timeline.closeAt = Date.now(); });
+      return timeline;
+    });
+    let reacquireStartAt: number | undefined;
     let phase = 'child-outcomes';
     let reacquired: ServerOwnership | undefined;
     try {
@@ -638,8 +779,9 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
         }
       } finally {
         phase = 'child-cleanup';
-        for (const item of spawned) {
+        for (const [childIndex, item] of spawned.entries()) {
           if (item.child.exitCode === null && item.child.signalCode === null) {
+            childTimelines[childIndex].sigkillAt = Date.now();
             item.child.kill('SIGKILL');
           }
         }
@@ -648,6 +790,7 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
       }
 
       phase = 'parent-reacquire';
+      reacquireStartAt = Date.now();
       const observation = observeR39ParentProbes();
       try {
         reacquired = await acquireLoopbackServerOwnership(root);
@@ -657,6 +800,16 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
       }
       phase = 'parent-reacquire-assertion';
       assert.match(reacquired.endpoint, /^tcp:\/\/127\.0\.0\.1:\d+$/);
+      console.error(JSON.stringify({
+        diagnostic: 'R39_TIMELINE',
+        round,
+        result: 'pass',
+        reacquireStartAt,
+        reacquireStartedBeforeAllChildrenClosed: childTimelines.some(timeline => (
+          timeline.closeAt === undefined || (reacquireStartAt ?? 0) < timeline.closeAt
+        )),
+        childTimelines,
+      }));
     } catch (error) {
       const postFailureCandidateEvidence = phase === 'parent-reacquire'
         ? await Promise.all(candidatePorts.map(port => collectR39CandidateEvidence(port)))
@@ -665,6 +818,11 @@ test('R39 concurrent subprocesses never produce two owners and ownership remains
         diagnostic: 'R39_DIAGNOSTIC',
         round,
         phase,
+        reacquireStartAt,
+        reacquireStartedBeforeAllChildrenClosed: childTimelines.some(timeline => (
+          timeline.closeAt === undefined || (reacquireStartAt ?? 0) < timeline.closeAt
+        )),
+        childTimelines,
         candidatePorts,
         childOutcomes: spawned.map((item, index) => childOutcomes[index]
           ?? item.lines().find(line => line.startsWith('ACQUIRED ') || line.startsWith('FAILED '))
