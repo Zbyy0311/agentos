@@ -1293,5 +1293,191 @@
     ],
     "environment": "Windows; Node v24.18.0; isolated evidence worktree; standard TAP reporter; checkout unchanged during invocation",
     "limitation": "The receipt starts with a real local node:test subprocess and proves the production Collector/HTTP/review chain; it does not claim a live model Provider invocation, which is outside the Artifact lifecycle clause."
+  },
+  {
+    "id": "S9-M0-S7-ORIGIN-CONTROLLED",
+    "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s7\\receipts.json",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-m0-controlled/s7.json",
+    "result": {
+      "passed": 12,
+      "failed": 0,
+      "skipped": 0
+    },
+    "requirementIds": [
+      "LITE-07-108"
+    ],
+    "environment": "Windows; Node v24.18.0; controlled harness executed against final implementation baseline f51a6e1d",
+    "limitation": "The receipt directly proves import-origin Workspace Event causality and refusal of an unproven borrowed origin; it does not claim unrelated Memory trigger or browser acceptance behavior."
+  },
+  {
+    "id": "S9-FINAL-C517-07003",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-07-003-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07003-run\\candidate",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/07003-controlled.json",
+    "result": { "passed": 9, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-07-003"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
+    "limitation": "The final-main controlled receipt directly executes production exact/replay convergence, owner isolation, near-duplicate review and source-authority refusal assertions; it does not claim Provider invocation."
+  },
+  {
+    "id": "S9-FINAL-C517-S1-BUDGET",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s1-budget-run\\candidate",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s1-budget-controlled.json",
+    "result": { "passed": 9, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-07-007", "LITE-07-109"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
+    "limitation": "The final-main controlled receipt directly executes actual injected-text pricing, count/Scope/category/diversity/truncation, fixed-clock eligibility and degraded retrieval assertions."
+  },
+  {
+    "id": "S9-FINAL-C517-0713",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-07-013-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07013-run\\candidate",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/07013-controlled.json",
+    "result": { "passed": 3, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-07-013"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
+    "limitation": "The final-main controlled receipt directly drives ranked and degraded production retrieval and reads the persisted context snapshot flag and event/Outbox result."
+  },
+  {
+    "id": "S9-FINAL-C517-07102",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-07-102-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07102-run\\candidate",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/07102-controlled.json",
+    "result": { "passed": 7, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-07-102"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
+    "limitation": "The final-main controlled receipt directly observes terminal-trigger boundedness, replay idempotency, startup repair and non-terminal refusal; it does not claim raw Provider output."
+  },
+  {
+    "id": "S9-FINAL-C517-S6",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s6-controlled.json",
+    "result": { "passed": 39, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-07-105", "LITE-09-104", "LITE-09-105", "LITE-09-106", "LITE-09-107", "LITE-09-108", "LITE-09-109", "LITE-09-110", "LITE-13-101"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; gpt-5.6-luna summarizer route; isolated capture; tracked checkout unchanged",
+    "limitation": "The final-main controlled receipt directly covers persisted Lite compaction policy, summary/source integrity, retry and stale-source guards, canonical AgentOS summary exclusion of native-provider rows, and the read-model Inspector assertions; browser rendering is recorded separately."
+  },
+  {
+    "id": "S9-FINAL-C517-S5-EXECUTION",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s5-exec-run\\candidate",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s5-execution-controlled.json",
+    "result": { "passed": 6, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-09-101", "LITE-09-013", "LITE-09-102"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
+    "limitation": "The final-main controlled receipt directly observes pre-call snapshot persistence, Provider input binding, Agent isolation and modifying-authority refusal/retry with a recording runner; it does not claim model output quality."
+  },
+  {
+    "id": "S9-FINAL-C517-S5-GROUP",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s5-group-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s5-group-run\\candidate",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s5-group-controlled.json",
+    "result": { "passed": 9, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-09-010", "LITE-09-101", "LITE-09-013"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
+    "limitation": "The final-main controlled receipt directly observes mention/@all selection, serial/D3-off behavior, contention refusal, per-Agent snapshots and frozen Provider context through the production group driver with a recording runner."
+  },
+  {
+    "id": "S9-FINAL-C517-S7",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "controlled-harness",
+    "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s7-run\\candidate",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/s7-controlled.json",
+    "result": { "passed": 12, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-07-106", "LITE-07-107", "LITE-07-108"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated capture; tracked checkout unchanged",
+    "limitation": "The final-main controlled receipt directly follows a selected UTF-8 Markdown file through preview, bounded split, confirmation, idempotent repeat/versioning, owner isolation and canonical source Event checks without mutating the source file."
+  },
+  {
+    "id": "S9-FINAL-C517-RUNTIME-INSPECTOR",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/runtime-inspector-controlled.json",
+    "result": { "passed": 12, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-13-002", "LITE-13-003", "LITE-13-015"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
+    "limitation": "The final-main TAP receipt directly maps the named production Inspector identity, process DTO and read-only assertions; it is not browser acceptance."
+  },
+  {
+    "id": "S9-FINAL-C517-RECOVERY",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/recovery-controlled.json",
+    "result": { "passed": 67, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-00-007", "LITE-02-014", "LITE-02-015", "LITE-03-018", "LITE-13-008"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
+    "limitation": "The final-main TAP receipt directly maps the production MISSING/MISMATCH/SAME/UNKNOWN recovery dispositions and no-reattach boundary; it does not claim live Provider execution."
+  },
+  {
+    "id": "S9-FINAL-C517-ARTIFACT",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ArtifactCompletionService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/artifact-controlled.json",
+    "result": { "passed": 15, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-07-104"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
+    "limitation": "The final-main TAP receipt starts with a real local node:test subprocess and directly maps the production Collector/HTTP/review/Entry source chain; it does not claim a live model Provider invocation."
+  },
+  {
+    "id": "S9-FINAL-C517-COMPACTION-SERVICE",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionService.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/compaction-service-controlled.json",
+    "result": { "passed": 8, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-09-107"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
+    "limitation": "The final-main TAP receipt directly maps bounded automatic retry and explicit-retry service behavior; the companion trigger and repository receipts cover lease recovery and stale publication."
+  },
+  {
+    "id": "S9-FINAL-C517-COMPACTION-TRIGGER",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionTrigger.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/compaction-trigger-controlled.json",
+    "result": { "passed": 10, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-09-107"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
+    "limitation": "The final-main TAP receipt directly maps expired/live/restarted lease behavior and bounded trigger continuation; it does not claim a live Provider invocation."
+  },
+  {
+    "id": "S9-FINAL-C517-COMPACTION-REPOSITORY",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/CompactionRepository.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/compaction-repository-controlled.json",
+    "result": { "passed": 4, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-09-107"],
+    "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
+    "limitation": "The final-main TAP receipt directly maps the persisted Lite v1 policy, one-running-holder fence, lease version transitions and stale publication rejection."
   }
 ]

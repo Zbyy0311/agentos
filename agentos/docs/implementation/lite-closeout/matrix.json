@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 18,
+  "matrixVersion": 20,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -198,11 +198,11 @@
         "apps/server/src/services/TaskRunRecoveryService.test.ts"
       ],
       "evidence": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "finding": "本轮受控提升：TaskRunRecoveryService 的 P6M2b mismatch 用例直接观察 uncertainty-marked、Run 仍为 running 且 recoveryRequired=true，证明恢复不会猜测完成或继续执行；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-00-008",
@@ -941,11 +941,11 @@
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "finding": "本轮受控提升：TaskRunRecoveryService 的 P6M2b 测试分别覆盖 MISSING、MISMATCH、SAME、UNKNOWN，并直接断言各自的终态/不恢复行为；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-02-015",
@@ -962,11 +962,11 @@
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "finding": "本轮受控提升：SAME recovery test 直接断言不恢复、不接管且 runtime_processes 不新增，证明 Lite 明确的 reattach/adoption/respawn 非目标边界；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-02-016",
@@ -1381,11 +1381,11 @@
         "apps/server/src/services/OutboxPublisher.test.ts"
       ],
       "evidence": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "finding": "本轮受控提升：SAME/UNKNOWN recovery 测试直接断言不恢复、不接管、不重生且保留 uncertainty；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-03-019",
@@ -2230,9 +2230,9 @@
         "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S9-M0-07003-CONTROLLED"
+        "S9-FINAL-C517-07003"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "精确/normalized hash查找仅限Workspace，未过滤status或Scope/owner；终态精确命中直接返回并丢弃新来源。见MemoryCandidateRepository.ts:617-637、MemoryCandidateGenerationService.ts:163-170。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
       "exit": "同Scope/owner精确重复原子汇聚来源和规范事件；重放零新增；不同owner不错误汇聚，近似重复保留审核。"
     },
@@ -2318,9 +2318,9 @@
         "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
       "evidence": [
-        "S9-M0-S1-BUDGET-CONTROLLED"
+        "S9-FINAL-C517-S1-BUDGET"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "applyBudget未读取requireDiversity；只累计Entry tokenEstimate而非实际heading+content；scope限制误报category-budget，truncated分支实际是整条排除。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -2449,9 +2449,9 @@
         "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
       "evidence": [
-        "S9-M0-0713-CONTROLLED"
+        "S9-FINAL-C517-0713"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "selector.plan调用retrieve丢弃retrieveWithStatus.degraded；真实Context路径未保留降级说明。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。"
     },
@@ -3018,7 +3018,7 @@
       "section": "18. Acceptance Expectations",
       "line": 441,
       "requirement": "mention, @all, sequential, and parallel-read-only behavior follows admission and Policy;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
@@ -3031,11 +3031,10 @@
         "apps/server/src/routes/conversationRuntime.test.ts"
       ],
       "evidence": [
-        "S5-EXECUTION-SOURCE",
-        "S5-101-LOCAL",
-        "S5-102-LOCAL"
+        "S9-FINAL-C517-S5-GROUP"
       ],
-      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finding": "最终 main c517fbd8 的 S5 group controlled receipt 以生产 GroupTurnDriver/BoundedGroupService 实际走完整 mention、@all、串行与 D3=关闭路径；9/9 断言直接读取 speaker 顺序、持久快照、权限竞争拒绝和完成结果，raw exit 0。该收据使用 recording runner 验证 AgentOS 执行边界，不宣称真实模型输出。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -3086,7 +3085,7 @@
       "section": "18. Acceptance Expectations",
       "line": 444,
       "requirement": "per-Agent contexts remain isolated;",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
@@ -3099,11 +3098,11 @@
         "apps/server/src/routes/conversationRuntime.test.ts"
       ],
       "evidence": [
-        "S5-EXECUTION-SOURCE",
-        "S5-101-LOCAL",
-        "S5-102-LOCAL"
+        "S9-FINAL-C517-S5-EXECUTION",
+        "S9-FINAL-C517-S5-GROUP"
       ],
-      "finding": "Driver把历史交旧Runner；每Agent快照在Provider回复后recordReply才记录，未证明执行前隔离/授权。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finding": "最终 main c517fbd8 的 S5 execution/group controlled receipts 直接证明每个 Agent 仅收到自己的 Scope/owner 可达 Memory、Provider 前冻结独立快照并保持历史不变；6/6 与 9/9 断言均通过，raw exit 0。该收据使用 recording runner，不宣称真实模型输出。",
       "exit": "执行前固定有效权限与有界隔离快照，实际Provider输入引用该快照；跨会话/Run竞争及D3关闭有证据。"
     },
     {
@@ -4216,11 +4215,11 @@
         "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
-        "S9-M0-S8-INSPECTOR-CONTROLLED"
+        "S9-FINAL-C517-RUNTIME-INSPECTOR"
       ],
       "finding": "本轮受控提升：apps/server/src/services/RuntimeInspector.test.ts 的 INSP-12 直接断言 Run、Stage、Provider、Process 的独立标识，以及由 Run 时间戳计算的 duration；标准 TAP 原始收据 12 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-13-003",
@@ -4237,11 +4236,11 @@
         "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
-        "S9-M0-S8-INSPECTOR-CONTROLLED"
+        "S9-FINAL-C517-RUNTIME-INSPECTOR"
       ],
       "finding": "本轮受控提升：apps/server/src/services/RuntimeInspector.test.ts 的 INSP-04 直接断言 durable processId、nativePidEvidenceOnly 与 nativeBirthIdentity 的区别，并断言 DTO 不含 nativePid 身份字段；标准 TAP 原始收据 12 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-13-004",
@@ -4343,11 +4342,11 @@
         "apps/server/src/services/TaskRunRecoveryService.test.ts"
       ],
       "evidence": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "finding": "本轮受控提升：TaskRunRecoveryService 的 P6M2b mismatch 断言 recoveryRequired=true 且 Run 保持 running，直接证明 Inspector 所依赖的恢复事实不会被标成成功；Recovery TAP 原始收据 67 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-13-009",
@@ -4495,11 +4494,11 @@
         "apps/server/src/services/RuntimeInspector.test.ts"
       ],
       "evidence": [
-        "S9-M0-S8-INSPECTOR-CONTROLLED"
+        "S9-FINAL-C517-RUNTIME-INSPECTOR"
       ],
       "finding": "本轮受控提升：apps/server/src/services/RuntimeInspector.test.ts 的 INSP-07 在调用生产 Inspector 前后比较 Runtime Event 计数及 running Run 状态，直接证明 replay 无外部写副作用；标准 TAP 原始收据 12 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-04-101",
@@ -4567,9 +4566,9 @@
         "apps/server/src/services/MemoryCandidateGenerationService.emission.test.ts"
       ],
       "evidence": [
-        "S9-M0-07102-CONTROLLED"
+        "S9-FINAL-C517-07102"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "仅成功最终Run路径触发；非成功终态、独立Stage和终态提交到候选生成之间的崩溃窗口未覆盖。",
       "exit": "有界规范终态按来源幂等生成，重启不遗漏；失败不得修改已终态Run或启动执行；不保存raw输出。"
     },
@@ -4624,9 +4623,9 @@
         "apps/server/src/services/RuntimeArtifactCollector.test.ts"
       ],
       "evidence": [
-        "S9-M0-S2-ARTIFACT-LIFECYCLE-CONTROLLED"
+        "S9-FINAL-C517-ARTIFACT"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "本轮受控提升：ArtifactCompletionService 的生产测试先启动真实 node:test 子进程，再经 Codex parser 与 RuntimeArtifactCollector 产生 ArtifactCompletion；HTTP 查询确认候选进入 review-required 队列，Workspace Event 明确为 memory.candidate_created，接受后 Entry 保留实际 Artifact 来源并可回读内容，同时冲突结论返回409。原始 TAP 收据 15 pass / 0 fail / 0 skip、raw exit 0，基线 f51a6e1d；不将单独 POST 视为闭环起点。",
       "exit": "真实review/test→持久完成→候选+事件→Review Queue→接受→Entry；不以手工POST作为闭环。"
     },
@@ -4645,9 +4644,9 @@
         "apps/server/src/services/ConversationTurnDriver.test.ts"
       ],
       "evidence": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "无canonical compaction任务、摘要、策略或生产调用链。",
       "exit": "来源记录、完成摘要、候选与事件原子提交，review-required；摘要可用性不等于Memory审核。"
     },
@@ -4666,9 +4665,9 @@
         "apps/server/src/services/LegacyTaskItemImportService.test.ts"
       ],
       "evidence": [
-        "S9-M0-S7-IMPORT-CONTROLLED"
+        "S9-FINAL-C517-S7"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "Workspace import强制memory:false；没有forward Memory import入口。",
       "exit": "用户选择UTF-8 Markdown<=1MiB→预览→确认→有界分段候选/来源/事件；幂等、源文件保持。"
     },
@@ -4678,7 +4677,7 @@
       "section": "§8",
       "line": null,
       "requirement": "按Scope/owner及稳定来源去重，保留审计证据",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/store/MemoryCandidateRepository.ts",
@@ -4691,12 +4690,10 @@
         "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S1A-RED",
-        "S1A-GREEN",
-        "S1D-SOURCE",
-        "S1D-GREEN"
+        "S9-FINAL-C517-S7"
       ],
-      "finding": "查重未隔离Scope/owner/category及active状态；终态精确命中缺来源合并与版本/Event/Outbox，显式save在完整校验前返回命中。 S1-A终态与S1-D显式save的精确匹配补缺已有独立提交证据；近似重复审核、review promotion与来源真实性仍待闭合，状态保持GAP。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finding": "最终 main c517fbd8 的 S7 controlled receipt 直接执行同一 Workspace 重复导入收敛、变更源版本化和跨 Workspace 隔离，并验证稳定来源/候选不绕过审核；12/12 断言通过，raw exit 0。证据仍保留原始文件、片段哈希和来源记录。",
       "exit": "补可证实重复分支：同owner来源合并并发收敛；不同owner不串线；近重复审核，来源保留。"
     },
     {
@@ -4705,7 +4702,7 @@
       "section": "§15; §4",
       "line": null,
       "requirement": "无Run触发器也有规范candidate_created与可验证因果",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "packages/shared/src/types/mf5-workspace-events.ts",
@@ -4715,10 +4712,10 @@
         "apps/server/src/store/WorkspaceEventWriter.test.ts"
       ],
       "evidence": [
-        "S2-ARTIFACT-SOURCE",
-        "S2-LOCAL-27"
+        "S9-FINAL-C517-S7"
       ],
-      "finding": "保留基线反证：Workspace allowlist无candidate_created。02a50947已为实际Artifact完成登记来源专属Workspace因果和事务校验，禁止借用其它origin；不伪造Run。审批/压缩/导入仍需各自真实来源登记，保持GAP。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finding": "S7受控收据直接证明导入来源登记其自身candidate_created因果事件、未伪造Run，并拒绝未知或借用来源；12/12断言通过。该证据只覆盖本条的导入来源契约。",
       "exit": "授权最小契约扩展；持久来源因果证明，未知或跨Workspace来源拒绝；回滚和重放验证。"
     },
     {
@@ -4739,9 +4736,9 @@
         "apps/server/src/services/MemoryContextBudgetSelector.test.ts"
       ],
       "evidence": [
-        "S9-M0-S1-BUDGET-CONTROLLED"
+        "S9-FINAL-C517-S1-BUDGET"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "retrieveWithStatus和listRetrievalCandidates无validFrom/validUntil/expiresAt/sensitivity过滤，使用Date.now而非可固定时钟。 S1-C1已过滤有效期/敏感度并取得新快照证据；FTS降级与预算解释尚未闭合，不标PASS。",
       "exit": "固定时钟下验证有效期和敏感度，显式降级与真实快照理由，不重构无关排名。"
     },
@@ -4751,7 +4748,7 @@
       "section": "§4.4; §11.7",
       "line": null,
       "requirement": "Provider调用前持久化并实际注入有界Agent上下文",
-      "state": "GAP",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts",
@@ -4767,10 +4764,11 @@
         "apps/server/src/routes/conversationRuntime.test.ts"
       ],
       "evidence": [
-        "S5-EXECUTION-SOURCE",
-        "S5-101-LOCAL"
+        "S9-FINAL-C517-S5-EXECUTION",
+        "S9-FINAL-C517-S5-GROUP"
       ],
-      "finding": "快照在recordReply创建，driver已先调用Provider；history未使用该快照。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finding": "最终 main c517fbd8 的 S5 execution/group controlled receipts 在 production Provider-call boundary 前持久化并读取冻结选择，direct/group 均将同一 contextText 传入 recording runner，且回复引用原快照；15/15 条直接断言通过，raw exit 0。",
       "exit": "Direct/Group按实际调用前快照预算与Scope，provider收到冻结选中内容，事后记录引用原快照。"
     },
     {
@@ -4791,9 +4789,9 @@
         "apps/server/src/routes/conversationRuntime.test.ts"
       ],
       "evidence": [
-        "S9-M0-S5-AUTHORITY-CONTROLLED"
+        "S9-FINAL-C517-S5-EXECUTION"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "单interaction串行不证明与其他Conversation/Run共享Workspace权限；driver无显式admission。",
       "exit": "无隐式modifying authority，缺可靠只读证据显示不可用/要求显式Run；并发与拒绝路径测试。"
     },
@@ -4831,9 +4829,9 @@
       ],
       "tests": [],
       "evidence": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "无持久策略或预算评估。",
       "exit": "持久policyVersion及70%/50%/8/2048/120000/1；每次保存预算组成、上限来源、估算器版本；未来策略不重写历史。"
     },
@@ -4850,9 +4848,9 @@
       ],
       "tests": [],
       "evidence": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "无canonical summary/source range。",
       "exit": "保留原消息，摘要不可变；前序摘要+有界前缀分批；近期至少8条+当前输入，采用摘要+未压缩尾部。"
     },
@@ -4869,9 +4867,9 @@
       ],
       "tests": [],
       "evidence": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "无tool-free/write-denied摘要执行证据。",
       "exit": "冻结触发轮Provider，禁止静默切换；不可保证禁工具/禁写则不可调用，按预算失败分支处理。"
     },
@@ -4895,11 +4893,11 @@
         "apps/server/src/store/CompactionRepository.test.ts"
       ],
       "evidence": [
-        "S9-M0-S6-RETRY-SERVICE-CONTROLLED",
-        "S9-M0-S6-RETRY-TRIGGER-CONTROLLED",
-        "S9-M0-S6-RETRY-REPOSITORY-CONTROLLED"
+        "S9-FINAL-C517-COMPACTION-SERVICE",
+        "S9-FINAL-C517-COMPACTION-TRIGGER",
+        "S9-FINAL-C517-COMPACTION-REPOSITORY"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "本轮受控提升：CompactionService 直接证明一次自动失败后最多重试一次、耗尽后不再调度；CompactionTrigger 直接证明持久过期租约在 SQLite 关闭/重开后回收、活动租约不被窃取；CompactionRepository 直接证明 Lite v1 的 120000ms/1 次策略、单Conversation运行唯一性、版本化租约及旧租约发布冲突。三份 TAP 原始收据合计 22 pass / 0 fail / 0 skip，raw exit 0，基线 f51a6e1d。",
       "exit": "并发单持有者；重启先判断旧执行，不猜测结束；旧租约不可发布；自动重试最多一次，超时120秒。"
     },
@@ -4916,9 +4914,9 @@
       ],
       "tests": [],
       "evidence": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "无硬预算门禁。",
       "exit": "预算内继续且有界retry pending；超限不发Provider调用，保留当前消息与显式重试；无静默截断。"
     },
@@ -4937,9 +4935,9 @@
         "apps/server/src/store/ConversationRepository.test.ts"
       ],
       "evidence": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "editMessage及cr_message_revisions已有；无压缩source校验。",
       "exit": "不新增编辑API/UI/versioning；实际内容变化或不可见使旧摘要不能进入新context，历史快照不变。"
     },
@@ -4960,9 +4958,9 @@
         "apps/server/src/services/ConversationCompactionService.test.ts"
       ],
       "evidence": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "evidenceBaseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "finding": "基线反证：CLI输出被原文当作canonical摘要（readSummary使用log.stdout||log.stderr），且ConversationRunner在无流式内容时同样回退到原始stdout/stderr，因此Provider自身压缩通知可成为AgentOS摘要并生成候选。已修：stripNativeCompactionNotices在摘要文本层移除native压缩通知行，仅剩通知时按COMPACTION_SUMMARY_INVALID失败关闭（不发布、不建候选、不发事件）；运行时事件层中diagnostic/status一旦报告native压缩即以provider.native_compaction拒绝整次运行，因为被压缩的上下文可能窄于冻结来源范围。测试：ProviderCompactionSummarizer.test.ts 三个文本层用例+一个运行时事件用例；ConversationCompactionService.test.ts 端到端证明native-only输出不产生摘要、候选或Workspace Event。仍缺：三个Provider真实CLI若将来新增native压缩事件类型需按此边界登记；PASS提升在冻结期内禁止，故保持GAP。",
       "exit": "只采用AgentOS持久summary/source/policy/budget/snapshot，native事件不发布canonical摘要或候选。"
     },
@@ -8479,10 +8477,88 @@
       "requirementIds": [
         "LITE-07-104"
       ]
+    },
+    {
+      "version": 19,
+      "baseline": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "authority": "User-approved controlled per-row PASS promotion on the final implementation baseline",
+      "reason": "LITE-07-108 is promoted from GAP to PASS from the dedicated S7 origin receipt: S7E-CONFIRM-02 directly asserts the import's own candidate_created causal Event without inventing a Run, and S7E-CONFIRM-03 directly proves the durable source plus refusal of a borrowed origin.",
+      "requirementIds": [
+        "LITE-07-108"
+      ]
+    },
+    {
+      "version": 20,
+      "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "authority": "User-approved controlled per-row PASS promotion; final main baseline convergence",
+      "reason": "Re-capture and re-point the already promoted rows to final main c517fbd8. Every referenced raw receipt was executed at that SHA with unchanged tracked checkout; previous f51 evidence files remain preserved. This entry changes evidence baseline only and performs no state promotion.",
+      "requirementIds": [
+        "LITE-07-003",
+        "LITE-07-007",
+        "LITE-07-013",
+        "LITE-07-102",
+        "LITE-07-104",
+        "LITE-07-105",
+        "LITE-07-106",
+        "LITE-07-108",
+        "LITE-07-109",
+        "LITE-09-102",
+        "LITE-09-104",
+        "LITE-09-105",
+        "LITE-09-106",
+        "LITE-09-107",
+        "LITE-09-108",
+        "LITE-09-109",
+        "LITE-09-110",
+        "LITE-13-002",
+        "LITE-13-003",
+        "LITE-13-008",
+        "LITE-13-015",
+        "LITE-00-007",
+        "LITE-02-014",
+        "LITE-02-015",
+        "LITE-03-018"
+      ]
+    },
+    {
+      "version": 20,
+      "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "authority": "User-approved controlled per-row PASS promotion on final main c517fbd8",
+      "reason": "LITE-09-010 moves from GAP to PASS on the one final-main S5 group receipt: mention/no-mention/@all admission, serialized D3-off behavior and contention/retry each have direct named assertions.",
+      "requirementIds": [
+        "LITE-09-010"
+      ]
+    },
+    {
+      "version": 20,
+      "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "authority": "User-approved controlled per-row PASS promotion on final main c517fbd8",
+      "reason": "LITE-09-013 moves from GAP to PASS on final-main direct and group receipts: each Agent's reachable context, durable snapshot and isolation from other Agent private entries are directly asserted.",
+      "requirementIds": [
+        "LITE-09-013"
+      ]
+    },
+    {
+      "version": 20,
+      "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "authority": "User-approved controlled per-row PASS promotion on final main c517fbd8",
+      "reason": "LITE-09-101 moves from GAP to PASS on final-main direct and group receipts: both paths persist the bounded selection before invocation, pass the exact frozen context and retain the original snapshot reference.",
+      "requirementIds": [
+        "LITE-09-101"
+      ]
+    },
+    {
+      "version": 20,
+      "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "authority": "User-approved controlled per-row PASS promotion on final main c517fbd8",
+      "reason": "LITE-07-107 moves from GAP to PASS on final-main S7 receipt: repeated source convergence, changed-source version/audit retention and cross-Workspace owner isolation are directly asserted.",
+      "requirementIds": [
+        "LITE-07-107"
+      ]
     }
   ],
   "passFreeze": "pass-freeze.json",
   "passPromotionAuthority": "pass-promotion-authority.json",
   "passPromotions": "pass-promotions.json",
-  "promotionBaselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac"
+  "promotionBaselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
 }

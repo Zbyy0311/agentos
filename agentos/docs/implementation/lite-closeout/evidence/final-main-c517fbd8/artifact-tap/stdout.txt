@@ -1,0 +1,100 @@
+TAP version 13
+# Subtest: LITE-07-104/108: exact concurrent finalization and replay converge, conflicting conclusion rejects
+ok 1 - LITE-07-104/108: exact concurrent finalization and replay converge, conflicting conclusion rejects
+  ---
+  duration_ms: 277.983
+  type: 'test'
+  ...
+# Subtest: LITE-07-104/108: memory_candidate_entries failure rolls back Artifact, completion, Candidate, Event and files
+ok 2 - LITE-07-104/108: memory_candidate_entries failure rolls back Artifact, completion, Candidate, Event and files
+  ---
+  duration_ms: 246.2335
+  type: 'test'
+  ...
+# Subtest: LITE-07-104/108: memory_candidate_sources failure rolls back Artifact, completion, Candidate, Event and files
+ok 3 - LITE-07-104/108: memory_candidate_sources failure rolls back Artifact, completion, Candidate, Event and files
+  ---
+  duration_ms: 388.1006
+  type: 'test'
+  ...
+# Subtest: LITE-07-104/108: artifact_completions failure rolls back Artifact, completion, Candidate, Event and files
+ok 4 - LITE-07-104/108: artifact_completions failure rolls back Artifact, completion, Candidate, Event and files
+  ---
+  duration_ms: 240.1016
+  type: 'test'
+  ...
+# Subtest: LITE-07-104/108: workspace_events failure rolls back Artifact, completion, Candidate, Event and files
+ok 5 - LITE-07-104/108: workspace_events failure rolls back Artifact, completion, Candidate, Event and files
+  ---
+  duration_ms: 227.9634
+  type: 'test'
+  ...
+# Subtest: LITE-07-108: source-specific Workspace creation cannot be redirected to a different Candidate or Event
+ok 6 - LITE-07-108: source-specific Workspace creation cannot be redirected to a different Candidate or Event
+  ---
+  duration_ms: 212.2257
+  type: 'test'
+  ...
+# Subtest: LITE-07-104: database refuses substituted Artifact/type/Workspace/Run source even outside the service
+ok 7 - LITE-07-104: database refuses substituted Artifact/type/Workspace/Run source even outside the service
+  ---
+  duration_ms: 210.9883
+  type: 'test'
+  ...
+# Subtest: LITE-07-104: explicit canonical review result creates real-source Event/Outbox then reviews to Entry
+ok 8 - LITE-07-104: explicit canonical review result creates real-source Event/Outbox then reviews to Entry
+  ---
+  duration_ms: 233.1231
+  type: 'test'
+  ...
+# Subtest: LITE-07-104: concurrent conflicting producer result has stable conflict and one committed Artifact
+ok 9 - LITE-07-104: concurrent conflicting producer result has stable conflict and one committed Artifact
+  ---
+  duration_ms: 200.0081
+  type: 'test'
+  ...
+# Subtest: LITE-07-104: stale canonical attempt or cancelled Run cannot publish a new result
+ok 10 - LITE-07-104: stale canonical attempt or cancelled Run cannot publish a new result
+  ---
+  duration_ms: 191.3023
+  type: 'test'
+  ...
+# Subtest: LITE-07-108: canonical completion emitter rejects unrelated Candidate and completion identity
+ok 11 - LITE-07-108: canonical completion emitter rejects unrelated Candidate and completion identity
+  ---
+  duration_ms: 185.9759
+  type: 'test'
+  ...
+# Subtest: LITE-07-104: canonical runtime_events failure rolls back the whole finalization
+ok 12 - LITE-07-104: canonical runtime_events failure rolls back the whole finalization
+  ---
+  duration_ms: 182.107
+  type: 'test'
+  ...
+# Subtest: LITE-07-104: canonical outbox_messages failure rolls back the whole finalization
+ok 13 - LITE-07-104: canonical outbox_messages failure rolls back the whole finalization
+  ---
+  duration_ms: 173.3694
+  type: 'test'
+  ...
+# Subtest: LITE-07-104: only explicit typed results and direct test invocations are eligible
+ok 14 - LITE-07-104: only explicit typed results and direct test invocations are eligible
+  ---
+  duration_ms: 0.3941
+  type: 'test'
+  ...
+# Subtest: LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content
+ok 15 - LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content
+  ---
+  duration_ms: 424.9847
+  type: 'test'
+  ...
+1..15
+# tests 15
+# suites 0
+# pass 15
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 4020.4488

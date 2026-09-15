@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/services/ArtifactCompletionService.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/artifact-tap/execution.json",
+      "sha256": "0fffd35c7c18767f35b10ed3c6c296cca7875810fcb3dacdad0918a9deee98de"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/artifact-tap/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/artifact-tap/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/artifact-tap/stdout.txt",
+      "sha256": "e54a8ae4bb35037ec1829a67919e3b768812044684cd36c71f17aec82fad3606"
+    }
+  ],
+  "counts": {
+    "passed": 15,
+    "failed": 0,
+    "skipped": 0,
+    "total": 15
+  },
+  "assertionCoverage": [
+    {
+      "id": "ARTIFACT-REAL-TEST-PASS",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 262,
+      "expression": "assert.match(stdout, /ok 1 - real artifact evidence/);",
+      "clause": "The lifecycle starts with a real review/test subprocess whose passing result is captured.",
+      "whyDirect": "The named production test launches a real node:test child process and directly asserts its TAP output before passing the observation into the Artifact Collector.",
+      "outcome": "passed"
+    },
+    {
+      "id": "ARTIFACT-COMPLETION-LISTED",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 274,
+      "expression": "assert.equal(listed.completions.length, 1);",
+      "clause": "The Collector's real test observation creates one durable ArtifactCompletion record.",
+      "whyDirect": "After recording the child process observations through the production Collector, the test queries the mounted HTTP completion route and directly asserts the durable completion exists.",
+      "outcome": "passed"
+    },
+    {
+      "id": "ARTIFACT-REVIEW-QUEUE",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 277,
+      "expression": "assert.ok(queue.candidates.some(candidate => candidate.id === completion.candidateId));",
+      "clause": "The completed Artifact's Candidate appears in the review-required queue.",
+      "whyDirect": "The test reads the production memory candidate HTTP route and matches the candidate ID returned by the durable ArtifactCompletion produced by the Collector.",
+      "outcome": "passed"
+    },
+    {
+      "id": "ARTIFACT-EVENT",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 278,
+      "expression": "assert.equal((fx.store.getDatabase().prepare(\"SELECT COUNT(*) AS n FROM workspace_events WHERE type = 'memory.candidate_created'\").get() as { n: number }).n, 1);",
+      "clause": "The real Artifact completion emits the canonical candidate_created Workspace Event.",
+      "whyDirect": "After the Collector processes the real test observation, the test reads the production Workspace Event table and directly asserts one candidate_created event exists.",
+      "outcome": "passed"
+    },
+    {
+      "id": "ARTIFACT-CONFIRMATION",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 279,
+      "expression": "assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, conclusion: 'pass' })).status, 200);",
+      "clause": "The completion API accepts the matching final conclusion after the real Artifact exists.",
+      "whyDirect": "The test calls the production completion route with the actual Artifact ID returned by the Collector path and asserts the successful HTTP result.",
+      "outcome": "passed"
+    },
+    {
+      "id": "ARTIFACT-CONFLICT-REJECTED",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 280,
+      "expression": "assert.equal((await post('/artifact-completions', { artifactId: completion.artifactId, conclusion: 'fail' })).status, 409);",
+      "clause": "A conflicting conclusion for the same completed Artifact is rejected.",
+      "whyDirect": "The route is called with the same real Artifact ID and an opposing conclusion, and the test directly observes the stable conflict response.",
+      "outcome": "passed"
+    },
+    {
+      "id": "ARTIFACT-REVIEW-ACCEPTED",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 283,
+      "expression": "assert.equal(response.status, 200);",
+      "clause": "The review queue Candidate can be accepted through the production review route.",
+      "whyDirect": "The test posts acceptance for the exact Candidate linked by the real completion and directly asserts the successful review response.",
+      "outcome": "passed"
+    },
+    {
+      "id": "ARTIFACT-ENTRY-SOURCE",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 286,
+      "expression": "assert.deepEqual(entry.sources, [{ kind: 'artifact', id: completion.artifactId }]);",
+      "clause": "Acceptance creates a Memory Entry that preserves the actual Artifact source.",
+      "whyDirect": "The test reads the production Memory Entry after review acceptance and directly compares its source to the Artifact ID produced by the Collector path.",
+      "outcome": "passed"
+    },
+    {
+      "id": "ARTIFACT-CONTENT-READBACK",
+      "requirementId": "LITE-07-104",
+      "file": "apps/server/src/services/ArtifactCompletionService.test.ts",
+      "name": "LITE-07-104: real test subprocess -> collector -> HTTP queue/review -> Entry/source content",
+      "line": 289,
+      "expression": "assert.match(await content.text(), /real artifact evidence/);",
+      "clause": "The final Artifact content remains readable through the production route after review.",
+      "whyDirect": "The test reads the actual Artifact content endpoint after the full completion and review chain and matches the child test's evidence marker.",
+      "outcome": "passed"
+    }
+  ]
+}
