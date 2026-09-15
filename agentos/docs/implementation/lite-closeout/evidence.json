@@ -1479,5 +1479,17 @@
     "requirementIds": ["LITE-09-107"],
     "environment": "Windows; Node v24.18.0; final main c517fbd8; isolated TAP capture; tracked checkout unchanged",
     "limitation": "The final-main TAP receipt directly maps the persisted Lite v1 policy, one-running-holder fence, lease version transitions and stale publication rejection."
+  },
+  {
+    "id": "S9-FINAL-C517-13-101-BROWSER",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --test --test-concurrency=1 --test-reporter=tap scripts/verify-lite-13-101-browser.test.mjs",
+    "cwd": ".",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/browser-13-101/browser-13-101.json",
+    "result": { "passed": 5, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-13-101"],
+    "environment": "Windows; Node v24.18.0; Chrome; 1600x900 wide runtime workbench; browser plugin unavailable so Playwright/Chrome fallback was used; production implementation baseline c517fbd8; final main c844633e contains only closeout changes after c517; tracked checkout unchanged during capture",
+    "limitation": "The durable browser TAP receipt directly checks the forward runtime page, selected persisted Conversation, rendered Run Inspector Compaction explanation, policy/budget/source/summary/attempt/adoption fields and unexplained-error absence. One net::ERR_ABORTED from a superseded Conversation-selection request is recorded as expected; no screenshot is required for the assertion evidence."
   }
 ]
