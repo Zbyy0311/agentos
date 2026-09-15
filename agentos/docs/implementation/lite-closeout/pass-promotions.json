@@ -2,15 +2,15 @@
   "schemaVersion": 1,
   "authorityId": "lite-pass-promotion-20260915",
   "authorityHash": "b8a3f061b5d8f1688c57e5abefd6c4f03b800d0ee8d0d9de92329d69b4655714",
-  "matrixVersion": 22,
-  "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+  "matrixVersion": 23,
+  "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
   "promotions": [
     {
       "promotionId": "PROMOTION-LITE-07-003",
       "requirementId": "LITE-07-003",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/MemoryCandidateGenerationService.ts",
         "apps/server/src/routes/memoryRuntime.ts",
@@ -76,7 +76,7 @@
       "requirementId": "LITE-07-007",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
@@ -162,7 +162,7 @@
       "requirementId": "LITE-07-013",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
@@ -208,7 +208,7 @@
       "requirementId": "LITE-07-102",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
         "apps/server/src/services/MemoryCandidateGenerationService.ts"
@@ -273,7 +273,7 @@
       "requirementId": "LITE-07-105",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
@@ -347,7 +347,7 @@
       "requirementId": "LITE-07-106",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/managers/WorkspaceManager.ts"
       ],
@@ -421,7 +421,7 @@
       "requirementId": "LITE-07-109",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
@@ -467,7 +467,7 @@
       "requirementId": "LITE-09-102",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/services/ConversationTurnDriver.ts"
@@ -512,7 +512,7 @@
       "requirementId": "LITE-09-104",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
@@ -566,7 +566,7 @@
       "requirementId": "LITE-09-105",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/store/ConversationRepository.ts"
       ],
@@ -660,7 +660,7 @@
       "requirementId": "LITE-09-106",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "packages/agent-core/src/conversationRunner.ts"
       ],
@@ -734,7 +734,7 @@
       "requirementId": "LITE-09-108",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
@@ -808,7 +808,7 @@
       "requirementId": "LITE-09-109",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/store/ConversationRepository.ts"
       ],
@@ -842,7 +842,7 @@
       "requirementId": "LITE-09-110",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "packages/agent-core/src/conversationRunner.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts"
@@ -877,7 +877,7 @@
       "requirementId": "LITE-13-002",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
@@ -931,7 +931,7 @@
       "requirementId": "LITE-13-003",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
@@ -985,7 +985,7 @@
       "requirementId": "LITE-13-015",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
@@ -1029,7 +1029,7 @@
       "requirementId": "LITE-00-007",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
@@ -1073,7 +1073,7 @@
       "requirementId": "LITE-02-014",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
@@ -1137,7 +1137,7 @@
       "requirementId": "LITE-02-015",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
@@ -1181,7 +1181,7 @@
       "requirementId": "LITE-03-018",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
@@ -1235,7 +1235,7 @@
       "requirementId": "LITE-13-008",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts",
         "apps/server/src/services/RuntimeInspector.ts"
@@ -1280,7 +1280,7 @@
       "requirementId": "LITE-09-107",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
@@ -1529,7 +1529,7 @@
       "requirementId": "LITE-07-104",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/RuntimeArtifactService.ts",
         "apps/server/src/services/RuntimeArtifactCollector.ts",
@@ -1647,7 +1647,7 @@
       "requirementId": "LITE-07-108",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "packages/shared/src/types/mf5-workspace-events.ts",
         "apps/server/src/services/WorkspaceEventContextAuthority.ts",
@@ -1694,7 +1694,7 @@
       "requirementId": "LITE-09-010",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/services/ConversationTurnDriver.ts",
@@ -1790,7 +1790,7 @@
       "requirementId": "LITE-09-013",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/services/ConversationTurnDriver.ts",
@@ -1847,7 +1847,7 @@
       "requirementId": "LITE-09-101",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts",
         "apps/server/src/services/BoundedGroupService.ts",
@@ -1905,7 +1905,7 @@
       "requirementId": "LITE-07-107",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/MemoryImportService.ts",
         "apps/server/src/routes/memoryImport.ts",
@@ -1961,7 +1961,7 @@
       "requirementId": "LITE-13-101",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "implementation": [
         "apps/server/src/services/ConversationCompactionInspector.ts",
         "apps/server/src/services/RuntimeInspector.ts",
@@ -2124,7 +2124,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2170,7 +2170,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2215,7 +2215,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2270,7 +2270,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2325,7 +2325,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2370,7 +2370,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2415,7 +2415,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2470,7 +2470,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2515,7 +2515,7 @@
     },
     {
       "to": "PASS",
-      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
       "evidenceIds": [
         "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
@@ -2576,6 +2576,625 @@
         }
       ],
       "rationale": "This individual promotion uses the c517fbd8 real HTTP save receipt. It directly proves user-explicit Entry creation, canonical Workspace Event emission, retrieval, and duplicate convergence. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "evidenceIds": [
+        "S9-FINAL-C517-CONV-RUNTIME"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/routes/conversationRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-09-001",
+      "requirementId": "LITE-09-001",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "assertions": [
+        {
+          "id": "CONV-MESSAGE-ONLY-01",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+          "line": 334,
+          "expression": "assert.equal(countRows('tasks'), 0, 'LITE-09-001: a Message-only Turn creates no Task');",
+          "clause": "A Message-only Turn creates no Task.",
+          "whyDirect": "The production conversation route streams a Message-only Turn and then reads the durable tasks table, which remains empty.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CONV-MESSAGE-ONLY-02",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+          "line": 335,
+          "expression": "assert.equal(countRows('runs'), 0, 'LITE-09-001: a Message-only Turn creates no Run');",
+          "clause": "A Message-only Turn creates no Run.",
+          "whyDirect": "The same real HTTP Turn is followed by a direct durable runs-table count, proving no Run was created by the message-only path.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The direct production HTTP receipt proves a Message-only Turn leaves both durable Task and Run tables empty. It was captured at c517fbd8 and is valid at final main 49787588 because the production-path diff from c517fbd8 to the final main SHA is empty."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "evidenceIds": [
+        "S9-FINAL-C517-CONV-RUNTIME",
+        "S9-FINAL-C517-CONV-ADJACENT"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/routes/conversationRuntime.test.ts; node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationBridgeService.test.ts src/routes/canonicalRunStream.test.ts src/services/GroupSpeakerResolver.test.ts src/services/BoundedGroupService.test.ts src/services/AgentHistoryService.test.ts src/store/SqliteStore.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 108,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-09-002",
+      "requirementId": "LITE-09-002",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts",
+        "apps/server/src/services/ConversationBridgeService.ts"
+      ],
+      "assertions": [
+        {
+          "id": "CONV-TASK-RUN-01",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "create-task and start-run bridge a Message into durable work",
+          "line": 133,
+          "expression": "assert.equal(taskResult.task.sourceMessageId, message.id);",
+          "clause": "The Task is a distinct durable object linked to the source Message.",
+          "whyDirect": "The production create-task endpoint returns a persisted Task whose source identity is checked against the created Message.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CONV-TASK-RUN-02",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "create-task and start-run bridge a Message into durable work",
+          "line": 140,
+          "expression": "assert.equal(startResult.run.taskId, taskResult.task.id);",
+          "clause": "Run creation is distinct and linked to the existing Task.",
+          "whyDirect": "The production start-run endpoint returns a Run whose taskId is compared with the previously persisted Task id.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CONV-TASK-RUN-03",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "create-task and start-run bridge a Message into durable work",
+          "line": 146,
+          "expression": "assert.equal((retry.json as { runCreated: boolean }).runCreated, false);",
+          "clause": "A retried start-run request does not create another Run.",
+          "whyDirect": "The production bridge is invoked a second time and its response explicitly reports that no new Run was created.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-IDEMPOTENT-01",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+          "line": 117,
+          "expression": "assert.equal(first.created, true);",
+          "clause": "The first create-task request creates the Task.",
+          "whyDirect": "The production ConversationBridgeService creates the durable Task on the first request before the retry assertions.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-IDEMPOTENT-02",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+          "line": 118,
+          "expression": "assert.equal(second.created, false);",
+          "clause": "A retried create-task request does not create another Task.",
+          "whyDirect": "The second production create-task call is the same client operation and explicitly reports created=false.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-IDEMPOTENT-03",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+          "line": 119,
+          "expression": "assert.equal(third.created, false);",
+          "clause": "A retry with changed presentation data still does not create another Task.",
+          "whyDirect": "The third production call changes the title but keeps the same idempotency identity and explicitly reports created=false.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-IDEMPOTENT-04",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+          "line": 120,
+          "expression": "assert.equal(second.task.id, first.task.id);",
+          "clause": "A retried create-task request returns the original Task identity.",
+          "whyDirect": "The production retry response is compared with the first durable Task id rather than merely checking a boolean.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-IDEMPOTENT-05",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+          "line": 122,
+          "expression": "assert.equal(countRows(fx.db, 'tasks'), 1);",
+          "clause": "Repeated create-task requests leave exactly one durable Task.",
+          "whyDirect": "The production database is queried after all three calls and contains one Task row.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-IDEMPOTENT-06",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+          "line": 123,
+          "expression": "assert.equal(countRows(fx.db, 'runs'), 0);",
+          "clause": "Create-task remains distinct from Run creation.",
+          "whyDirect": "The same production path is verified not to create a Run as a side effect of Task retries.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-START-RUN-01",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-07 start-run reuses a Task created by create-task",
+          "line": 195,
+          "expression": "assert.equal(run.taskCreated, false);",
+          "clause": "Starting a Run reuses an existing Task instead of creating a second Task.",
+          "whyDirect": "The production start-run bridge is invoked after create-task and explicitly reports taskCreated=false.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-START-RUN-02",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-07 start-run reuses a Task created by create-task",
+          "line": 196,
+          "expression": "assert.equal(run.task.id, task.task.id);",
+          "clause": "The Run bridge returns the same Task identity created by the prior operation.",
+          "whyDirect": "The production response is compared with the previously persisted Task id.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-START-RUN-03",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-07 start-run reuses a Task created by create-task",
+          "line": 197,
+          "expression": "assert.equal(run.run.taskId, task.task.id);",
+          "clause": "The newly created Run is linked to the existing Task.",
+          "whyDirect": "The production Run row returned by start-run is checked for the exact prior Task foreign key.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-START-RUN-04",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-07 start-run reuses a Task created by create-task",
+          "line": 198,
+          "expression": "assert.equal(countRows(fx.db, 'tasks'), 1);",
+          "clause": "The combined create-task/start-run path leaves one Task.",
+          "whyDirect": "The production database is queried after both operations and confirms Task creation remains distinct from Run creation.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-START-RUN-05",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-07 start-run reuses a Task created by create-task",
+          "line": 199,
+          "expression": "assert.equal(countRows(fx.db, 'runs'), 1);",
+          "clause": "The combined path creates one distinct Run.",
+          "whyDirect": "The production database contains exactly one Run after start-run, paired with the one existing Task.",
+          "outcome": "passed"
+        },
+        {
+          "id": "BRIDGE-START-RUN-06",
+          "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+          "name": "CR4B-07 start-run reuses a Task created by create-task",
+          "line": 200,
+          "expression": "assert.equal(fx.conversations.findMessageById(WS, USER_MSG)?.version, 3);",
+          "clause": "The bridge advances the canonical Message version once per distinct operation.",
+          "whyDirect": "The production Conversation record is read back after create-task and start-run and its version is asserted.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The two preserved production receipts together prove HTTP Task/Run bridging and service-level idempotency: CR4B-02 converges repeated create-task calls to one Task without a Run, while CR4B-07 reuses that Task and creates one linked Run. The receipts were captured at c517fbd8; final main 49787588 has no production-path diff from that baseline."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "evidenceIds": [
+        "S9-FINAL-C517-CONV-RUNTIME"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/routes/conversationRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-09-005",
+      "requirementId": "LITE-09-005",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "assertions": [
+        {
+          "id": "CONV-MESSAGE-RETRY-01",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "direct Conversation lifecycle: create, send, list, archive, restore",
+          "line": 76,
+          "expression": "assert.equal(listed.messages.length, 1);",
+          "clause": "Retrying a client send with the same clientMessageId leaves exactly one Message.",
+          "whyDirect": "The production Message route is called twice with the same client id and the subsequent list reads exactly one durable Message.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CONV-MESSAGE-RETRY-02",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "direct Conversation lifecycle: create, send, list, archive, restore",
+          "line": 74,
+          "expression": "assert.equal(again.status, 201);",
+          "clause": "The idempotent retry remains a successful accepted Message request.",
+          "whyDirect": "The second production HTTP request is observed as the same successful API operation before the exact-one list assertion.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The direct production HTTP receipt submits the same clientMessageId twice, observes both accepted responses, and reads exactly one durable Message. The test pointer is corrected to conversationRuntime.test.ts; c517fbd8 remains valid at final main 49787588 because production paths are unchanged."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "evidenceIds": [
+        "S9-FINAL-C517-TURN-DRIVER"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationTurnDriver.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 14,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-09-006",
+      "requirementId": "LITE-09-006",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "assertions": [
+        {
+          "id": "TURN-STREAM-01",
+          "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+          "line": 187,
+          "expression": "assert.equal(result.checkpointCount, 3);",
+          "clause": "Every streamed delta is durably checkpointed.",
+          "whyDirect": "The production ConversationTurnDriver completes a three-delta Provider stream and reports the exact persisted checkpoint count.",
+          "outcome": "passed"
+        },
+        {
+          "id": "TURN-STREAM-02",
+          "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+          "line": 190,
+          "expression": "assert.deepEqual(replay.checkpoints.map(c => c.delta), ['Hel', 'lo ', 'world']);",
+          "clause": "Durable stream checkpoints replay in order.",
+          "whyDirect": "The production checkpoint stream is replayed from the durable store and the exact Provider delta sequence is asserted.",
+          "outcome": "passed"
+        },
+        {
+          "id": "TURN-STREAM-03",
+          "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+          "line": 185,
+          "expression": "assert.equal(result.message.status, 'final');",
+          "clause": "The streamed Message finalizes durably.",
+          "whyDirect": "After the production driver consumes the completed stream, the durable Message status is read back as final.",
+          "outcome": "passed"
+        },
+        {
+          "id": "TURN-STREAM-04",
+          "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+          "line": 186,
+          "expression": "assert.equal(result.turn.status, 'final');",
+          "clause": "The corresponding Turn finalizes durably.",
+          "whyDirect": "The production Turn record returned after stream completion is explicitly checked for final status.",
+          "outcome": "passed"
+        },
+        {
+          "id": "TURN-STREAM-05",
+          "file": "apps/server/src/services/ConversationTurnDriver.test.ts",
+          "name": "TD-01 a completed reply streams every delta as a durable checkpoint and finalizes",
+          "line": 191,
+          "expression": "assert.equal(replay.nextCursor, 3);",
+          "clause": "The durable stream cursor advances across all finalized deltas.",
+          "whyDirect": "The production replay response reports the cursor immediately after the three persisted checkpoints.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The direct ConversationTurnDriver receipt proves every delta is durably checkpointed and replayed in order, and that the Message, Turn and cursor finalize. The c517fbd8 receipt is valid at final main 49787588 because production paths are unchanged."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "evidenceIds": [
+        "S9-FINAL-C517-CONV-ADJACENT"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationBridgeService.test.ts src/routes/canonicalRunStream.test.ts src/services/GroupSpeakerResolver.test.ts src/services/BoundedGroupService.test.ts src/services/AgentHistoryService.test.ts src/store/SqliteStore.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 97,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-09-012",
+      "requirementId": "LITE-09-012",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts",
+        "apps/server/src/services/BoundedGroupService.ts"
+      ],
+      "assertions": [
+        {
+          "id": "GROUP-TOTAL-01",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+          "line": 150,
+          "expression": "assert.equal(last.interaction.status, 'exhausted');",
+          "clause": "The total reply budget exhausts the interaction.",
+          "whyDirect": "The production BoundedGroupService is driven to its configured total cap and the persisted interaction status is asserted as exhausted.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-TOTAL-02",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+          "line": 151,
+          "expression": "assert.equal(last.interaction.stopReason, 'budget-total-replies');",
+          "clause": "The total-cap termination reason is stable and explicit.",
+          "whyDirect": "The production interaction record exposes the exact durable stop reason produced at the total budget boundary.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-TOTAL-03",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-04 a reply beyond the total cap is blocked and not recorded",
+          "line": 170,
+          "expression": "assert.equal(err.stopReason, 'budget-total-replies');",
+          "clause": "A reply after the total cap is refused with the same termination reason.",
+          "whyDirect": "The production service rejects the post-cap reply and the test reads the returned production error stop reason.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-TOTAL-04",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-04 a reply beyond the total cap is blocked and not recorded",
+          "line": 171,
+          "expression": "assert.equal(fx.interactions.listReplies(interaction.id).length, 2);",
+          "clause": "A blocked post-cap reply is not persisted.",
+          "whyDirect": "The production repository is queried after the rejected call and still contains only the two replies at the configured cap.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-AGENT-01",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-05 a per-Agent budget breach ends the interaction",
+          "line": 186,
+          "expression": "assert.equal(err.stopReason, 'budget-replies-per-agent');",
+          "clause": "Per-Agent budget exhaustion terminates the interaction.",
+          "whyDirect": "The production service is called past a per-Agent limit and returns the exact persisted termination reason.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-DISTINCT-01",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-06 a distinct-Agent budget breach ends the interaction",
+          "line": 203,
+          "expression": "assert.equal(err.stopReason, 'budget-agents');",
+          "clause": "The distinct-Agent budget terminates further interaction.",
+          "whyDirect": "The production service is called with a third distinct Agent beyond the configured cap and returns the durable budget reason.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-STOP-01",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-07 Stop blocks new replies and never cancels a Run",
+          "line": 217,
+          "expression": "assert.equal(stopped.status, 'stopped');",
+          "clause": "An explicit stop terminates the group interaction.",
+          "whyDirect": "The production stopInteraction path returns the persisted stopped status before the test exercises a subsequent reply.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-STOP-02",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-07 Stop blocks new replies and never cancels a Run",
+          "line": 218,
+          "expression": "assert.equal(stopped.stopReason, 'user-stop');",
+          "clause": "An explicit stop records a stable user-stop reason.",
+          "whyDirect": "The production interaction record returned by stopInteraction carries the exact user-stop reason while the same test verifies the following reply is rejected.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-LOOP-01",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-08 a same-Agent cycle terminates the interaction with loop-guard",
+          "line": 235,
+          "expression": "assert.equal(err.loopGuardSignal, 'same-agent-cycle');",
+          "clause": "A same-Agent cycle is terminated by the loop guard.",
+          "whyDirect": "The production reply path detects the cycle and exposes the exact loop-guard signal.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-LOOP-02",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-09 repeated content terminates the interaction with loop-guard",
+          "line": 250,
+          "expression": "assert.equal(err.loopGuardSignal, 'repeated-content');",
+          "clause": "Repeated content is terminated by the loop guard.",
+          "whyDirect": "The production reply path receives repeated content from another Agent and returns the corresponding loop-guard signal.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-LOOP-03",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-10 hops beyond the configured limit terminate the interaction",
+          "line": 267,
+          "expression": "assert.equal(err.stopReason, 'budget-hops');",
+          "clause": "The configured hop budget terminates the interaction.",
+          "whyDirect": "The production service is driven beyond its configured hop limit and returns the hop-budget stop reason.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-LOOP-04",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-10 hops beyond the configured limit terminate the interaction",
+          "line": 268,
+          "expression": "assert.equal(err.loopGuardSignal, 'hops-exceeded');",
+          "clause": "Hop overflow is classified as a loop-guard boundary.",
+          "whyDirect": "The same production error records the exact hops-exceeded loop signal rather than allowing an unbounded walk.",
+          "outcome": "passed"
+        },
+        {
+          "id": "GROUP-LOOP-05",
+          "file": "apps/server/src/services/BoundedGroupService.test.ts",
+          "name": "CR5S-11 a repeated mention with no new information terminates the interaction",
+          "line": 284,
+          "expression": "assert.equal(err.loopGuardSignal, 'repeated-mention-no-new-information');",
+          "clause": "A repeated mention with no new information is terminated.",
+          "whyDirect": "The production group reply path classifies the repeated mention as a loop-guard condition.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The direct BoundedGroupService receipt covers total, per-Agent and distinct-Agent budgets, explicit stop and loop-guard branches, including stable reasons and refusal of further replies. The c517fbd8 receipt is valid at final main 49787588 with no production-path diff."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "evidenceIds": [
+        "S9-FINAL-C517-CONV-ADJACENT"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationBridgeService.test.ts src/routes/canonicalRunStream.test.ts src/services/GroupSpeakerResolver.test.ts src/services/BoundedGroupService.test.ts src/services/AgentHistoryService.test.ts src/store/SqliteStore.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 97,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-09-018",
+      "requirementId": "LITE-09-018",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts",
+        "apps/server/src/services/AgentHistoryService.ts"
+      ],
+      "assertions": [
+        {
+          "id": "HISTORY-SECRET-01",
+          "file": "apps/server/src/services/AgentHistoryService.test.ts",
+          "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+          "line": 122,
+          "expression": "assert.equal(hits.length, 0);",
+          "clause": "History search excludes secret content stored in Message bodies.",
+          "whyDirect": "The production history query is executed with a secret that exists only in a Message body and returns no hit.",
+          "outcome": "passed"
+        },
+        {
+          "id": "HISTORY-SECRET-02",
+          "file": "apps/server/src/services/AgentHistoryService.test.ts",
+          "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+          "line": 125,
+          "expression": "assert.ok(taskHits.some(e => e.kind === 'task' && e.label === 'Ship release'));",
+          "clause": "Non-secret searchable labels remain available.",
+          "whyDirect": "The same production query path still returns an ordinary task label, showing that secret exclusion is field-scoped rather than a blanket search failure.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The direct AgentHistoryService receipt proves that a secret present only in Message content is excluded while an ordinary task label remains searchable. The c517fbd8 receipt is valid at final main 49787588 with no production-path diff."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "evidenceIds": [
+        "S9-FINAL-C517-CONV-RUNTIME"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/routes/conversationRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-11-001",
+      "requirementId": "LITE-11-001",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/index.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "assertions": [
+        {
+          "id": "CONV-MESSAGE-ONLY-04",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+          "line": 323,
+          "expression": "assert.equal(countRows('tasks'), 0, 'LITE-11-001: posting a Message creates no Task');",
+          "clause": "Posting a Message creates no Task.",
+          "whyDirect": "The production Message POST is followed immediately by a durable tasks-table count before any explicit bridge action.",
+          "outcome": "passed"
+        },
+        {
+          "id": "CONV-MESSAGE-ONLY-05",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+          "line": 324,
+          "expression": "assert.equal(countRows('runs'), 0, 'LITE-11-001: posting a Message creates no Run');",
+          "clause": "Posting a Message creates no Run.",
+          "whyDirect": "The production Message POST is followed immediately by a durable runs-table count before any explicit bridge action.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The direct production Message POST receipt reads the durable Task and Run tables after posting and proves both remain empty. The c517fbd8 receipt is valid at final main 49787588 because the production-path diff is empty."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "evidenceIds": [
+        "S9-FINAL-C517-CONV-RUNTIME"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/routes/conversationRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 11,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-02-001",
+      "requirementId": "LITE-02-001",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts",
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "assertions": [
+        {
+          "id": "CONV-MESSAGE-ONLY-03",
+          "file": "apps/server/src/routes/conversationRuntime.test.ts",
+          "name": "LITE-11-001 / LITE-09-001 / LITE-02-001 a Message-only Turn creates no Task and no Run",
+          "line": 341,
+          "expression": "assert.equal(Number(admissions.n), 0, 'LITE-02-001: no modifying Run authority is taken by a Message-only Turn');",
+          "clause": "A Message-only Turn takes no modifying Run authority.",
+          "whyDirect": "The production route is followed by a direct admission-ledger query that asserts no canonical Run authority was acquired.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The direct production HTTP receipt follows a Message-only Turn with durable task, run and admission-ledger queries and proves no modifying Run authority is created. The c517fbd8 receipt is valid at final main 49787588 because the production-path diff is empty."
     }
   ]
 }
