@@ -191,6 +191,54 @@ test('MF2R-02 secret content rejects', () => {
   } finally { fx.close(); }
 });
 
+// LITE-07-012/LITE-10-016 — unflagged secret-like candidates cannot reach any Memory sink.
+test('LITE-07-012/LITE-10-016 secret-like Candidate leaves no Candidate, Entry, or FTS row', () => {
+  const fx = fixture();
+  try {
+    assert.throws(
+      () => fx.repo.createCandidate(candidateInput({ content: 'API_KEY=candidate-secret-literal' })),
+      (error: unknown) => expectCode(error, 'INPUT_INVALID'),
+    );
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_candidate_entries WHERE id = ?').get(CAND) as { c: number }).c, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_entries WHERE id = ?').get(CAND) as { c: number }).c, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_entries_fts WHERE memory_entry_id = ?').get(CAND) as { c: number }).c, 0);
+  } finally { fx.close(); }
+});
+
+// LITE-07-012/LITE-10-016 — unsafe review edits are rejected before Candidate promotion.
+test('LITE-07-012/LITE-10-016 unsafe Candidate edit leaves promotion unchanged', () => {
+  const fx = fixture();
+  try {
+    fx.repo.createCandidate(candidateInput({ inferredPreference: true }));
+    assert.throws(
+      () => fx.repo.reviewCandidate({
+        workspaceId: WS,
+        candidateId: CAND,
+        expectedVersion: 1,
+        outcome: 'edit-and-accept',
+        edits: { content: 'password=candidate-edit-secret' },
+        reviewedAt: NOW2,
+      }),
+      (error: unknown) => expectCode(error, 'INPUT_INVALID'),
+    );
+    assert.equal(fx.repo.findCandidateById(WS, CAND)?.version, 1);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_entries WHERE id = ?').get(CAND) as { c: number }).c, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_entries_fts WHERE memory_entry_id = ?').get(CAND) as { c: number }).c, 0);
+  } finally { fx.close(); }
+});
+
+// LITE-07-012/LITE-10-016 — historical unsafe Candidates are not exportable or reviewable.
+test('LITE-07-012/LITE-10-016 excludes unsafe historical Candidate from export', () => {
+  const fx = fixture();
+  try {
+    fx.repo.createCandidate(candidateInput({ inferredPreference: true }));
+    fx.db.prepare('UPDATE memory_candidate_entries SET content = ? WHERE workspace_id = ? AND id = ?')
+      .run('Bearer historical-candidate-secret', WS, CAND);
+    assert.equal(fx.repo.findCandidateById(WS, CAND), undefined);
+    assert.deepEqual(fx.repo.listCandidates(WS), []);
+  } finally { fx.close(); }
+});
+
 // MF2R-03 — automatic candidate without source rejects.
 test('MF2R-03 automatic candidate without source rejects', () => {
   const fx = fixture();

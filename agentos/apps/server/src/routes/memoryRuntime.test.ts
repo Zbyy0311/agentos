@@ -574,3 +574,34 @@ test('MF-2 explicit user save: creates the Entry and one Workspace Event in one 
     assert.equal(Number((db.prepare('SELECT COUNT(*) AS n FROM workspace_events').get() as { n: number | bigint }).n), 1);
   });
 });
+
+test('LITE-07-012/LITE-10-016 explicit secret-like save leaves no Entry, FTS, Snapshot, or Event sink', async () => {
+  await withServer(async (baseUrl, store) => {
+    seedDurableRows(store);
+    const rejected = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'Runtime reference', content: 'Authorization: Bearer route-secret-literal',
+      scope: 'workspace', category: 'reference',
+    });
+    assert.equal(rejected.status, 400);
+    assert.deepEqual(rejected.json, { error: 'MEMORY_ENTRY_INPUT_INVALID' });
+
+    const db = store.getDatabase();
+    for (const table of ['memory_entries', 'memory_entries_fts', 'memory_context_snapshots', 'workspace_events', 'runtime_events', 'outbox_messages']) {
+      assert.equal(scalar(store, `SELECT COUNT(*) AS n FROM ${table}`), 0, table);
+    }
+
+    // A reference is legal Memory text and remains user-explicit; no authority
+    // is fabricated on behalf of a generated or reviewed Memory path.
+    const reference = await postJson(`${baseUrl}/memory/entries`, {
+      title: 'Provider reference', content: 'Use API_KEY=${OPENAI_API_KEY}.',
+      scope: 'workspace', category: 'reference',
+    });
+    assert.equal(reference.status, 201);
+    const body = reference.json as { entry: { authority: string; content: string } };
+    assert.equal(body.entry.authority, 'user-explicit');
+    assert.equal(body.entry.content, 'Use API_KEY=${OPENAI_API_KEY}.');
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM workspace_events WHERE workspace_id = ?', WS), 1);
+    assert.equal(scalar(store, 'SELECT COUNT(*) AS n FROM memory_entries WHERE workspace_id = ?', WS), 1);
+    assert.equal(db.prepare('SELECT payload_json FROM workspace_events WHERE workspace_id = ?').get(WS) !== undefined, true);
+  });
+});

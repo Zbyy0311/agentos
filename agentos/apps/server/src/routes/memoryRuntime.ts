@@ -6,6 +6,7 @@ import type { WorkspaceManager } from '../managers/WorkspaceManager.js';
 import { MemoryEntryRepository } from '../store/MemoryEntryRepository.js';
 import { MemoryCandidateRepository, type MemoryCandidateEdits } from '../store/MemoryCandidateRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
+import { areMemoryTextFieldsSafe } from '../store/MemoryContentSafety.js';
 import { MemoryRetrievalService } from '../services/MemoryRetrievalService.js';
 import { createEntityId } from '../store/Identity.js';
 import { inTransaction } from '../store/Transaction.js';
@@ -241,6 +242,14 @@ export function createMemoryRuntimeRoutes(store: SqliteStore, workspaceManager: 
     const title = typeof body.title === 'string' ? body.title.trim() : '';
     const content = typeof body.content === 'string' ? body.content : '';
     if (title.length === 0 || content.length === 0) {
+      res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
+      return;
+    }
+    const summary = typeof body.summary === 'string' ? body.summary : '';
+    const tags = Array.isArray(body.tags)
+      ? body.tags.filter((tag): tag is string => typeof tag === 'string')
+      : [];
+    if (!areMemoryTextFieldsSafe([title, summary, content, ...tags])) {
       res.status(400).json({ error: 'MEMORY_ENTRY_INPUT_INVALID' });
       return;
     }

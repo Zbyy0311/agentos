@@ -298,6 +298,56 @@ test('MF1R-14 create is atomic across entry, sources, and FTS', () => {
   } finally { fx.close(); }
 });
 
+// LITE-07-012/LITE-10-016 — secret-like Entry text is rejected before any sink write.
+test('LITE-07-012/LITE-10-016 secret-like Entry text leaves no Entry or FTS row', () => {
+  const fx = fixture();
+  try {
+    assert.throws(
+      () => fx.repo.createEntry(baseInput({ content: 'API_KEY=entry-secret-literal' })),
+      (error: unknown) => expectCode(error, 'INPUT_INVALID'),
+    );
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_entries').get() as { c: number }).c, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_entries_fts').get() as { c: number }).c, 0);
+  } finally { fx.close(); }
+});
+
+// LITE-07-012/LITE-10-016 — approved references remain ordinary Memory text.
+test('LITE-07-012/LITE-10-016 preserves approved secret references and authority', () => {
+  const fx = fixture();
+  try {
+    const entry = fx.repo.createEntry(baseInput({
+      content: 'Use API_KEY=${OPENAI_API_KEY}; keep only the reference.',
+      authority: 'user-explicit',
+      sources: [],
+    }));
+    assert.equal(entry.content, 'Use API_KEY=${OPENAI_API_KEY}; keep only the reference.');
+    assert.equal(entry.authority, 'user-explicit');
+    assert.deepEqual(entry.sources, []);
+  } finally { fx.close(); }
+});
+
+// LITE-07-012/LITE-10-016 — read/export and retrieval do not expose an unsafe historical row.
+test('LITE-07-012/LITE-10-016 excludes unsafe historical Entry from export and search', () => {
+  const fx = fixture();
+  try {
+    fx.repo.createEntry(baseInput());
+    fx.db.prepare(
+      'UPDATE memory_entries SET content = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ?',
+    ).run('API_KEY=historical-secret-literal', NOW2, WS, MEM);
+    fx.db.prepare('DELETE FROM memory_entries_fts WHERE memory_entry_id = ?').run(MEM);
+    fx.db.prepare(
+      'INSERT INTO memory_entries_fts (memory_entry_id, title, content, summary, tags) VALUES (?, ?, ?, ?, ?)',
+    ).run(MEM, 'Choose SQLite FTS5', 'API_KEY=historical-secret-literal', 'retrieval baseline', 'memory fts');
+
+    assert.equal(fx.repo.findById(WS, MEM), undefined);
+    assert.deepEqual(fx.repo.listRetrievalCandidates({
+      workspaceId: WS,
+      reach: [{ scope: 'task', ownerId: 'task_1' }],
+      statuses: ['active'],
+    }), []);
+  } finally { fx.close(); }
+});
+
 // MF1R-15 — no secret column is exposed by the repository record shape.
 test('MF1R-15 record exposes no secret value field', () => {
   const fx = fixture();

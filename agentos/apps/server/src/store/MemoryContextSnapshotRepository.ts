@@ -5,6 +5,7 @@ import type {
   MemoryExclusionExplanationV1,
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
+import { isMemoryTextSafe } from './MemoryContentSafety.js';
 
 /**
  * MF-4 Memory Context Snapshot persistence primitive.
@@ -180,7 +181,9 @@ export class MemoryContextSnapshotRepository {
       'SELECT p.context_text, p.content_sha256 FROM memory_context_snapshot_payloads p JOIN memory_context_snapshots s ON s.id = p.snapshot_id WHERE s.workspace_id = ? AND s.id = ?',
     ).get(workspaceId, snapshotId) as { context_text: string; content_sha256: string } | undefined;
     if (row === undefined) return undefined;
-    if (createHash('sha256').update(row.context_text).digest('hex') !== row.content_sha256) {
+    if (typeof row.context_text !== 'string' || typeof row.content_sha256 !== 'string'
+      || createHash('sha256').update(row.context_text).digest('hex') !== row.content_sha256
+      || !isMemoryTextSafe(row.context_text)) {
       throw new MemoryContextSnapshotError('PERSISTENCE_FAILED');
     }
     return row.context_text;
@@ -233,6 +236,9 @@ export class MemoryContextSnapshotRepository {
   private validateInput(input: CreateMemoryContextSnapshotInput): void {
     if (typeof input !== 'object' || input === null) throw new MemoryContextSnapshotError('INPUT_INVALID');
     if (input.contextText !== undefined && typeof input.contextText !== 'string') {
+      throw new MemoryContextSnapshotError('INPUT_INVALID');
+    }
+    if (input.contextText !== undefined && !isMemoryTextSafe(input.contextText)) {
       throw new MemoryContextSnapshotError('INPUT_INVALID');
     }
     if (!nonBlank(input.id) || !nonBlank(input.workspaceId) || !nonBlank(input.runId)

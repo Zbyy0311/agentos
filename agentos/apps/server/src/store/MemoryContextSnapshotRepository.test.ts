@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -218,6 +219,46 @@ test('MF4R-06 snapshot creation is atomic', () => {
     );
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshots').get() as { c: number }).c, 0);
     assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshot_entries').get() as { c: number }).c, 0);
+  } finally { fx.close(); }
+});
+
+// LITE-07-012/LITE-10-016 — secret-like Snapshot payload is rejected before all rows.
+test('LITE-07-012/LITE-10-016 secret-like Snapshot payload leaves no Snapshot sink rows', () => {
+  const fx = fixture();
+  try {
+    assert.throws(
+      () => fx.repo.createSnapshot(snapshotInput({ contextText: 'Bearer snapshot-secret-literal' })),
+      (error: unknown) => expectCode(error, 'INPUT_INVALID'),
+    );
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshots').get() as { c: number }).c, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshot_entries').get() as { c: number }).c, 0);
+    assert.equal((fx.db.prepare('SELECT COUNT(*) AS c FROM memory_context_snapshot_payloads').get() as { c: number }).c, 0);
+  } finally { fx.close(); }
+});
+
+// LITE-07-012/LITE-10-016 — references survive Snapshot freeze and readback.
+test('LITE-07-012/LITE-10-016 preserves approved Snapshot secret references', () => {
+  const fx = fixture();
+  try {
+    const contextText = 'Use API_KEY=${OPENAI_API_KEY}; resolve the reference at runtime.';
+    const snapshot = fx.repo.createSnapshot(snapshotInput({ contextText }));
+    assert.equal(fx.repo.readContextText(WS, snapshot.id), contextText);
+  } finally { fx.close(); }
+});
+
+// LITE-07-012/LITE-10-016 — an unsafe historical payload cannot be read for injection/export.
+test('LITE-07-012/LITE-10-016 fails closed on an unsafe historical Snapshot payload', () => {
+  const fx = fixture();
+  try {
+    const snapshot = fx.repo.createSnapshot(snapshotInput({ selected: [] }));
+    const contextText = 'password=snapshot-historical-secret';
+    fx.db.prepare(
+      'INSERT INTO memory_context_snapshot_payloads (snapshot_id, context_text, content_sha256) VALUES (?, ?, ?)',
+    ).run(snapshot.id, contextText, createHash('sha256').update(contextText).digest('hex'));
+    assert.throws(
+      () => fx.repo.readContextText(WS, snapshot.id),
+      (error: unknown) => expectCode(error, 'PERSISTENCE_FAILED'),
+    );
   } finally { fx.close(); }
 });
 

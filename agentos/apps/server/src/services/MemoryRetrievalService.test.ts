@@ -231,6 +231,25 @@ test('MF3-10 FTS relevance affects ranking, structured filters remain authoritat
   } finally { fx.close(); }
 });
 
+// LITE-07-012/LITE-10-016 — an unsafe historical FTS row is not a search result.
+test('LITE-07-012/LITE-10-016 search excludes an unsafe historical Entry and FTS row', () => {
+  const fx = fixture();
+  try {
+    const persisted = fx.repo.createEntry(entry({ title: 'historical', content: 'safe content' }));
+    fx.db.prepare(
+      'UPDATE memory_entries SET content = ?, version = version + 1, updated_at = ? WHERE workspace_id = ? AND id = ?',
+    ).run('API_KEY=historical-search-secret', NOW, WS, persisted.id);
+    fx.db.prepare('DELETE FROM memory_entries_fts WHERE memory_entry_id = ?').run(persisted.id);
+    fx.db.prepare(
+      'INSERT INTO memory_entries_fts (memory_entry_id, title, content, summary, tags) VALUES (?, ?, ?, ?, ?)',
+    ).run(persisted.id, 'historical', 'API_KEY=historical-search-secret', 'summary', 'a');
+
+    const result = fx.service.retrieveWithStatus({ context: CONTEXT, query: 'historical-search-secret' });
+    assert.equal(result.degraded, false);
+    assert.deepEqual(result.results, []);
+  } finally { fx.close(); }
+});
+
 // MF3-11 — a hostile FTS query is neutralized, not executed as syntax.
 test('MF3-11 hostile FTS query is neutralized', () => {
   assert.equal(toSafeFtsQuery('   '), null);

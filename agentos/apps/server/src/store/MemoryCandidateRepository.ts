@@ -21,6 +21,7 @@ import {
 } from '@agentos/shared';
 import { inTransaction, type TransactionDatabase } from './Transaction.js';
 import { MemoryEntryRepository, MemoryEntryRepositoryError, type MemoryEntryRecord } from './MemoryEntryRepository.js';
+import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
 import type {
   WorkspaceEventContextV1,
   WorkspaceEventOriginV1,
@@ -231,6 +232,22 @@ function isDisposition(value: unknown): value is MemoryConflictDisposition {
   return (MEMORY_CONFLICT_DISPOSITIONS as readonly unknown[]).includes(value);
 }
 
+function safeCandidateTags(value: string): string[] | undefined {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (!Array.isArray(parsed) || parsed.some(tag => typeof tag !== 'string')) return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
+function isSafeCandidateRow(row: CandidateRow): boolean {
+  const tags = safeCandidateTags(row.tags_json);
+  return tags !== undefined
+    && areMemoryTextFieldsSafe([row.title, row.summary, row.content, ...tags]);
+}
+
 export interface ReviewMemoryCandidateInput {
   readonly workspaceId: string;
   readonly candidateId: string;
@@ -361,7 +378,7 @@ export class MemoryCandidateRepository {
     const row = this.db.prepare(
       'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
     ).get(workspaceId, candidateId) as CandidateRow | undefined;
-    if (row === undefined) return undefined;
+    if (row === undefined || !isSafeCandidateRow(row)) return undefined;
     return this.toCandidateRecord(row);
   }
 
@@ -379,7 +396,7 @@ export class MemoryCandidateRepository {
       : this.db.prepare(
           'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND outcome = ? ORDER BY created_at ASC, id ASC',
         ).all(workspaceId, outcome) as CandidateRow[];
-    return rows.map(row => this.toCandidateRecord(row));
+    return rows.filter(isSafeCandidateRow).map(row => this.toCandidateRecord(row));
   }
 
   /**
@@ -421,6 +438,7 @@ export class MemoryCandidateRepository {
       'SELECT * FROM memory_candidate_entries WHERE workspace_id = ? AND id = ?',
     ).get(input.workspaceId, input.candidateId) as CandidateRow | undefined;
     if (current === undefined) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_FOUND');
+    if (!isSafeCandidateRow(current)) throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
     if (isTerminalCandidate(current)) {
       throw new MemoryCandidateRepositoryError('CANDIDATE_NOT_REVIEWABLE');
     }
@@ -660,6 +678,20 @@ export class MemoryCandidateRepository {
       && (!Number.isSafeInteger(input.tokenEstimate) || input.tokenEstimate < 0)) {
       throw new MemoryCandidateRepositoryError('INPUT_INVALID');
     }
+    if ((input.summary !== undefined && typeof input.summary !== 'string')
+      || (input.content !== undefined && typeof input.content !== 'string')) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    if (input.tags !== undefined
+      && (!Array.isArray(input.tags) || input.tags.some(tag => typeof tag !== 'string'))) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    // Preserve the existing explicit containsSecret gate and its stable
+    // SOURCE_REQUIRED result; heuristic text detection covers unflagged input.
+    if (input.containsSecret !== true
+      && !areMemoryTextFieldsSafe([input.title, input.summary ?? '', input.content ?? '', ...(input.tags ?? [])])) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
     if (!Array.isArray(input.sources)) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
     const seen = new Set<string>();
     for (const source of input.sources) {
@@ -765,6 +797,14 @@ export class MemoryCandidateRepository {
       }
       const tags = edits.tags as readonly string[];
       if (new Set(tags).size !== tags.length) throw new MemoryCandidateRepositoryError('INPUT_INVALID');
+    }
+    const textValues: string[] = [];
+    if (typeof edits.title === 'string') textValues.push(edits.title);
+    if (typeof edits.summary === 'string') textValues.push(edits.summary);
+    if (typeof edits.content === 'string') textValues.push(edits.content);
+    if (Array.isArray(edits.tags)) textValues.push(...(edits.tags as readonly string[]));
+    if (!areMemoryTextFieldsSafe(textValues)) {
+      throw new MemoryCandidateRepositoryError('INPUT_INVALID');
     }
   }
 
