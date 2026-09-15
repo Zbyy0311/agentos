@@ -1491,5 +1491,24 @@
     "requirementIds": ["LITE-13-101"],
     "environment": "Windows; Node v24.18.0; Chrome; 1600x900 wide runtime workbench; browser plugin unavailable so Playwright/Chrome fallback was used; production implementation baseline c517fbd8; final main c844633e contains only closeout changes after c517; tracked checkout unchanged during capture",
     "limitation": "The durable browser TAP receipt directly checks the forward runtime page, selected persisted Conversation, rendered Run Inspector Compaction explanation, policy/budget/source/summary/attempt/adoption fields and unexplained-error absence. One net::ERR_ABORTED from a superseded Conversation-selection request is recorded as expected; no screenshot is required for the assertion evidence."
+  },
+  {
+    "id": "S9-FINAL-C517-CONV-RUNTIME",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/routes/conversationRuntime.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-runtime-tap/receipt.json",
+    "result": { "passed": 11, "failed": 0, "skipped": 0 },
+    "requirementIds": [
+      "LITE-00-002",
+      "LITE-02-001",
+      "LITE-09-001",
+      "LITE-09-002",
+      "LITE-09-005",
+      "LITE-11-001"
+    ],
+    "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
+    "limitation": "The preserved TAP receipt directly maps restart/reconnect persistence, Message-only Task/Run absence, explicit Task-to-Run bridging, and client retry behavior through production HTTP routes. It is candidate evidence captured at c517fbd8; no matrix row is promoted until the authoritative final main SHA is established."
   }
 ]
