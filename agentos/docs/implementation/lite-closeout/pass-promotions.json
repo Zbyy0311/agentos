@@ -2,24 +2,24 @@
   "schemaVersion": 1,
   "authorityId": "lite-pass-promotion-20260915",
   "authorityHash": "b8a3f061b5d8f1688c57e5abefd6c4f03b800d0ee8d0d9de92329d69b4655714",
-  "matrixVersion": 19,
-  "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+  "matrixVersion": 20,
+  "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
   "promotions": [
     {
       "promotionId": "PROMOTION-LITE-07-003",
       "requirementId": "LITE-07-003",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/MemoryCandidateGenerationService.ts",
         "apps/server/src/routes/memoryRuntime.ts",
         "apps/server/src/store/MemoryEntryRepository.ts"
       ],
       "evidenceIds": [
-        "S9-M0-07003-CONTROLLED"
+        "S9-FINAL-C517-07003"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-07-003-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-003\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-07-003-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07003-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -76,16 +76,16 @@
       "requirementId": "LITE-07-007",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
         "apps/server/src/services/MemoryContextBudgetSelector.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S1-BUDGET-CONTROLLED"
+        "S9-FINAL-C517-S1-BUDGET"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s1-budget\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s1-budget-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -162,16 +162,16 @@
       "requirementId": "LITE-07-013",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
         "apps/server/src/services/MemoryContextBudgetSelector.ts"
       ],
       "evidenceIds": [
-        "S9-M0-0713-CONTROLLED"
+        "S9-FINAL-C517-0713"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-07-013-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-013\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-07-013-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07013-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -208,15 +208,15 @@
       "requirementId": "LITE-07-102",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
         "apps/server/src/services/MemoryCandidateGenerationService.ts"
       ],
       "evidenceIds": [
-        "S9-M0-07102-CONTROLLED"
+        "S9-FINAL-C517-07102"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-07-102-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\07-102\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-07-102-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-07102-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -273,14 +273,14 @@
       "requirementId": "LITE-07-105",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -347,14 +347,14 @@
       "requirementId": "LITE-07-106",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/managers/WorkspaceManager.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S7-IMPORT-CONTROLLED"
+        "S9-FINAL-C517-S7"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s7\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s7-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -421,16 +421,16 @@
       "requirementId": "LITE-07-109",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/MemoryRetrievalService.ts",
         "apps/server/src/store/MemoryEntryRepository.ts",
         "apps/server/src/services/MemoryContextBudgetSelector.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S1-BUDGET-CONTROLLED"
+        "S9-FINAL-C517-S1-BUDGET"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s1-budget\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s1-budget-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s1-budget-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -467,15 +467,15 @@
       "requirementId": "LITE-09-102",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/GroupTurnDriver.ts",
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S5-AUTHORITY-CONTROLLED"
+        "S9-FINAL-C517-S5-EXECUTION"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s5-execution\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s5-exec-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -512,14 +512,14 @@
       "requirementId": "LITE-09-104",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -566,14 +566,14 @@
       "requirementId": "LITE-09-105",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/store/ConversationRepository.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -660,14 +660,14 @@
       "requirementId": "LITE-09-106",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "packages/agent-core/src/conversationRunner.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -734,14 +734,14 @@
       "requirementId": "LITE-09-108",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/ConversationTurnDriver.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -808,14 +808,14 @@
       "requirementId": "LITE-09-109",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/store/ConversationRepository.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -842,15 +842,15 @@
       "requirementId": "LITE-09-110",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "packages/agent-core/src/conversationRunner.ts",
         "apps/server/src/services/ProviderCompactionSummarizer.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S6-COMPACTION-CONTROLLED"
+        "S9-FINAL-C517-S6"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s6\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s6-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s6-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -877,12 +877,12 @@
       "requirementId": "LITE-13-002",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S8-INSPECTOR-CONTROLLED"
+        "S9-FINAL-C517-RUNTIME-INSPECTOR"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
       "cwd": "apps/server",
@@ -931,12 +931,12 @@
       "requirementId": "LITE-13-003",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S8-INSPECTOR-CONTROLLED"
+        "S9-FINAL-C517-RUNTIME-INSPECTOR"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
       "cwd": "apps/server",
@@ -985,12 +985,12 @@
       "requirementId": "LITE-13-015",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S8-INSPECTOR-CONTROLLED"
+        "S9-FINAL-C517-RUNTIME-INSPECTOR"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/RuntimeInspector.test.ts",
       "cwd": "apps/server",
@@ -1029,12 +1029,12 @@
       "requirementId": "LITE-00-007",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
       "cwd": "apps/server",
@@ -1073,12 +1073,12 @@
       "requirementId": "LITE-02-014",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
       "cwd": "apps/server",
@@ -1137,12 +1137,12 @@
       "requirementId": "LITE-02-015",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
       "cwd": "apps/server",
@@ -1181,12 +1181,12 @@
       "requirementId": "LITE-03-018",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
       "cwd": "apps/server",
@@ -1235,13 +1235,13 @@
       "requirementId": "LITE-13-008",
       "from": "RUNTIME-VERIFY",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/TaskRunRecoveryService.ts",
         "apps/server/src/services/RuntimeInspector.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S8-RECOVERY-CONTROLLED"
+        "S9-FINAL-C517-RECOVERY"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/TaskRunRecoveryService.test.ts",
       "cwd": "apps/server",
@@ -1280,7 +1280,7 @@
       "requirementId": "LITE-09-107",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/ConversationCompactionService.ts",
         "apps/server/src/services/ConversationCompactionTrigger.ts",
@@ -1288,9 +1288,9 @@
         "apps/server/src/store/SqliteStore.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S6-RETRY-SERVICE-CONTROLLED",
-        "S9-M0-S6-RETRY-TRIGGER-CONTROLLED",
-        "S9-M0-S6-RETRY-REPOSITORY-CONTROLLED"
+        "S9-FINAL-C517-COMPACTION-SERVICE",
+        "S9-FINAL-C517-COMPACTION-TRIGGER",
+        "S9-FINAL-C517-COMPACTION-REPOSITORY"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationCompactionService.test.ts",
       "cwd": "apps/server",
@@ -1529,7 +1529,7 @@
       "requirementId": "LITE-07-104",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "apps/server/src/services/RuntimeArtifactService.ts",
         "apps/server/src/services/RuntimeArtifactCollector.ts",
@@ -1538,7 +1538,7 @@
         "apps/server/src/store/ArtifactCompletionRepository.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S2-ARTIFACT-LIFECYCLE-CONTROLLED"
+        "S9-FINAL-C517-ARTIFACT"
       ],
       "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ArtifactCompletionService.test.ts",
       "cwd": "apps/server",
@@ -1647,7 +1647,7 @@
       "requirementId": "LITE-07-108",
       "from": "GAP",
       "to": "PASS",
-      "baselineSha": "f51a6e1d8c00b910697f4754379b876b902279ac",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
       "implementation": [
         "packages/shared/src/types/mf5-workspace-events.ts",
         "apps/server/src/services/WorkspaceEventContextAuthority.ts",
@@ -1655,9 +1655,9 @@
         "apps/server/src/routes/memoryRuntime.ts"
       ],
       "evidenceIds": [
-        "S9-M0-S7-ORIGIN-CONTROLLED"
+        "S9-FINAL-C517-S7"
       ],
-      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out E:\\workspace\\Multi-Agent-worktrees\\agentos-evidence-final-m0-captured\\s7\\receipts.json",
+      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s7-run\\candidate",
       "cwd": "apps/server",
       "rawExitCode": 0,
       "counts": {
@@ -1688,6 +1688,273 @@
         }
       ],
       "rationale": "This is one controlled, individually authorized promotion. Its 12 pass / 0 fail / 0 skip receipt contains exact assertions for the import-origin candidate_created Event, no fabricated Run, durable source causality, and refusal of a borrowed origin; it does not infer this result from the broader S7 suite."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-010",
+      "requirementId": "LITE-09-010",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts"
+      ],
+      "evidenceIds": [
+        "S9-FINAL-C517-S5-GROUP"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s5-group-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s5-group-run\\candidate",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 9,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S5G-MENTION-01",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "a mention selects exactly the mentioned Agents, in mention order, and reports the rest as skipped",
+          "line": 162,
+          "expression": "expect('LITE-09-010', 'S5G-MENTION-01', 'a mention selects exactly the mentioned Agents, in mention order, and reports the rest as skipped',",
+          "clause": "Mention precedence selects exactly the addressed Agents and records skipped members.",
+          "whyDirect": "The production GroupTurnDriver plan and durable reply result are read after a real mention interaction, so the assertion observes selection order and skipped-member reasons rather than inferring them from source text.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-MENTION-02",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "the durable replies carry the serialized speaker order and the hop chain",
+          "line": 171,
+          "expression": "expect('LITE-09-010', 'S5G-MENTION-02', 'the durable replies carry the serialized speaker order and the hop chain',",
+          "clause": "Durable group replies preserve serialized speaker order and hop causality.",
+          "whyDirect": "The assertion reads persisted replies and the exact context snapshots used by each reply, directly checking order, hop chain and serialized execution.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-MENTION-03",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "without a mention only the always-mode member speaks and the mention-only members are reported as not-mentioned",
+          "line": 231,
+          "expression": "expect('LITE-09-010', 'S5G-MENTION-03', 'without a mention only the always-mode member speaks and the mention-only members are reported as not-mentioned',",
+          "clause": "Without a mention, reply-mode admission selects only the always member and records non-mentioned skips.",
+          "whyDirect": "The production group walk is executed without mentionedAgentIds and its actual plan/reply rows are compared to the expected admission outcome.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-ALL-01",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "the full member set speaks in the delivered order and the walk is serialized end to end",
+          "line": 265,
+          "expression": "expect('LITE-09-010', 'S5G-ALL-01', 'the full member set speaks in the delivered order and the walk is serialized end to end',",
+          "clause": "@all expands to the full active member set in delivered order and remains serialized.",
+          "whyDirect": "The executed production walk records all three actual speakers, durable replies, budget accounting and max concurrency of one.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-D3OFF-01",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "a parallel-read-only request is recorded as declared but still classified modifying and stays serialized (D3 off)",
+          "line": 299,
+          "expression": "expect('LITE-09-010', 'S5G-D3OFF-01', 'a parallel-read-only request is recorded as declared but still classified modifying and stays serialized (D3 off)',",
+          "clause": "D3=关闭 keeps a declared parallel-read-only request in the modifying serialized path.",
+          "whyDirect": "The production interaction records both declared and effective mutation classes and the runner observations directly show two turns with max concurrency one.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-CONTENTION-01",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "a foreign modifying holder stops the walk before any reply is recorded, with the refusal named on the Turn",
+          "line": 332,
+          "expression": "expect('LITE-09-010', 'S5G-CONTENTION-01', 'a foreign modifying holder stops the walk before any reply is recorded, with the refusal named on the Turn',",
+          "clause": "A competing Workspace modifying holder blocks group execution before any Provider call or reply.",
+          "whyDirect": "The production walk is run with a foreign holder and the receipt reads zero Provider calls/replies, unchanged budget and the exact stable refusal code on the failed Turn.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-CONTENTION-02",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "once the holder is released the same interaction completes, so the stop was about authority only",
+          "line": 348,
+          "expression": "expect('LITE-09-010', 'S5G-CONTENTION-02', 'once the holder is released the same interaction completes, so the stop was about authority only',",
+          "clause": "After authority release, the same interaction completes without creating a replacement interaction.",
+          "whyDirect": "The exact interaction is retried after releasing the holder and its actual durable replies and terminal budget outcome are asserted.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main group receipt directly exercises mention, no-mention, @all, D3-off serialization and cross-Run Workspace contention through production planning and execution. Each relevant behavior has a named persisted assertion; the recording runner is limited to AgentOS boundary evidence."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-013",
+      "requirementId": "LITE-09-013",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts"
+      ],
+      "evidenceIds": [
+        "S9-FINAL-C517-S5-EXECUTION",
+        "S9-FINAL-C517-S5-GROUP"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s5-exec-run\\candidate",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S5E-ISOLATION-01",
+          "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+          "name": "each Agent receives only its own reachable Memory and its own frozen snapshot",
+          "line": 196,
+          "expression": "expect('LITE-09-013', 'S5E-ISOLATION-01', 'each Agent receives only its own reachable Memory and its own frozen snapshot',",
+          "clause": "A direct Agent receives only its own reachable Memory and its own frozen snapshot.",
+          "whyDirect": "The production direct turn is executed with workspace, Agent-A, Agent-B and task-scoped entries; the receipt reads the actual selected IDs, injected text and durable snapshot.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5E-ISOLATION-02",
+          "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+          "name": "the earlier Agent keeps its own snapshot and history unchanged",
+          "line": 210,
+          "expression": "expect('LITE-09-013', 'S5E-ISOLATION-02', 'the earlier Agent keeps its own snapshot and history unchanged',",
+          "clause": "A later Agent turn cannot overwrite the earlier Agent's context snapshot or history.",
+          "whyDirect": "The assertion reads both durable snapshot rows and the earlier Turn reference after the second production turn completes.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-CONTEXT-ISOLATION-01",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "group speakers receive their own Agent-scoped context without seeing another Agent private rule",
+          "line": 209,
+          "expression": "expect('LITE-09-013', 'S5G-CONTEXT-ISOLATION-01', 'group speakers receive their own Agent-scoped context without seeing another Agent private rule',",
+          "clause": "Group speakers receive their own Agent-scoped context and not another Agent's private context.",
+          "whyDirect": "The production group runner records each speaker's selected IDs and injected context, and the assertion compares own/other Agent entries for every observed speaker.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main direct and group receipts independently observe durable pre-call snapshots and the exact injected selection for each Agent, including the group private-context boundary. No isolation result is inferred from test-file success."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-09-101",
+      "requirementId": "LITE-09-101",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts",
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/store/TurnContextSnapshotRepository.ts"
+      ],
+      "evidenceIds": [
+        "S9-FINAL-C517-S5-EXECUTION",
+        "S9-FINAL-C517-S5-GROUP"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s5-execution-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s5-exec-run\\candidate",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 6,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S5E-DIRECT-01",
+          "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+          "name": "the frozen selection is persisted before the Provider call and names the real Memory entries",
+          "line": 158,
+          "expression": "expect('LITE-09-101', 'S5E-DIRECT-01', 'the frozen selection is persisted before the Provider call and names the real Memory entries',",
+          "clause": "Direct execution persists the bounded selection before the Provider call and names actual Memory entries.",
+          "whyDirect": "The production turn driver executes against a recording runner that reads the durable snapshot at call time; the assertion compares that snapshot with the actual Turn and selected entries.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5E-DIRECT-02",
+          "file": "scripts/verify-lite-s5-execution-candidate-evidence.mjs",
+          "name": "the Provider receives exactly the frozen selection text and the out-of-scope entry never enters it",
+          "line": 169,
+          "expression": "expect('LITE-09-101', 'S5E-DIRECT-02', 'the Provider receives exactly the frozen selection text and the out-of-scope entry never enters it',",
+          "clause": "The Provider input is exactly the frozen bounded selection and excludes out-of-scope entries.",
+          "whyDirect": "The recording runner receives the actual memoryContext passed by the production driver and the assertion compares it with durable selected entries and forbidden task/other-Agent entries.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S5G-CONTEXT-01",
+          "file": "scripts/verify-lite-s5-group-candidate-evidence.mjs",
+          "name": "every group speaker sees a durable context snapshot before its Provider call and receives the frozen shared context",
+          "line": 201,
+          "expression": "expect('LITE-09-101', 'S5G-CONTEXT-01', 'every group speaker sees a durable context snapshot before its Provider call and receives the frozen shared context',",
+          "clause": "Each group Provider call receives the durable pre-call snapshot and frozen shared context.",
+          "whyDirect": "The production group driver is executed with a recording runner that reads the snapshot before recording the Provider observation; the assertion compares persisted interaction IDs, selected entries and injected context.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main direct and group receipts prove the same canonical boundary for both paths: select and persist before invocation, pass the exact frozen context, and retain the source snapshot on the resulting Turn/reply."
+    },
+    {
+      "promotionId": "PROMOTION-LITE-07-107",
+      "requirementId": "LITE-07-107",
+      "from": "GAP",
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "implementation": [
+        "apps/server/src/services/MemoryImportService.ts",
+        "apps/server/src/routes/memoryImport.ts",
+        "apps/server/src/store/MemoryCandidateRepository.ts"
+      ],
+      "evidenceIds": [
+        "S9-FINAL-C517-S7"
+      ],
+      "command": "node --import tsx ../../scripts/verify-lite-s7-candidate-evidence.mjs --out C:\\Users\\Administrator\\AppData\\Local\\Temp\\agentos-lite-final-c517-s7-run\\candidate",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 12,
+        "failed": 0,
+        "skipped": 0
+      },
+      "assertions": [
+        {
+          "id": "S7E-IDEMPOTENT-01",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "a repeated import of the same bytes converges and writes nothing new",
+          "line": 243,
+          "expression": "expect('LITE-07-107', 'S7E-IDEMPOTENT-01', 'a repeated import of the same bytes converges and writes nothing new',",
+          "clause": "A repeated import of the same source bytes converges without new Candidate, record or Event rows.",
+          "whyDirect": "The production import service is called twice with the same selected file bytes and the assertion reads the actual imported/converged result and row deltas.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-IDEMPOTENT-02",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "a changed source becomes a traceable new version instead of overwriting the audit trail",
+          "line": 261,
+          "expression": "expect('LITE-07-107', 'S7E-IDEMPOTENT-02', 'a changed source becomes a traceable new version instead of overwriting the audit trail',",
+          "clause": "Changed source bytes create a traceable new version and retain the prior audit trail.",
+          "whyDirect": "The production import service processes changed bytes and the assertion reads both source hashes, record versions, Candidates, scopes and retained old fragments.",
+          "outcome": "passed"
+        },
+        {
+          "id": "S7E-OWNER-01",
+          "file": "scripts/verify-lite-s7-candidate-evidence.mjs",
+          "name": "the same bytes in another Workspace are a new import, not a cross-owner convergence",
+          "line": 288,
+          "expression": "expect('LITE-07-107', 'S7E-OWNER-01', 'the same bytes in another Workspace are a new import, not a cross-owner convergence',",
+          "clause": "The same source bytes in another Workspace do not converge across owner scope.",
+          "whyDirect": "The production import path is executed for a second Workspace and the assertion compares its actual records/Candidates/Events with the first Workspace's unchanged rows.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "The final-main S7 receipt directly demonstrates same-source idempotency, changed-source versioning and owner isolation through the production preview/confirm/import records, not through a file or keyword check."
     }
   ]
 }
