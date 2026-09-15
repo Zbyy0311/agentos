@@ -1519,7 +1519,7 @@
     "cwd": "apps/server",
     "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-adjacent-tap/receipt.json",
     "result": { "passed": 97, "failed": 0, "skipped": 0 },
-    "requirementIds": ["LITE-09-012", "LITE-09-018"],
+    "requirementIds": ["LITE-09-002", "LITE-09-012", "LITE-09-018"],
     "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
     "limitation": "The preserved TAP receipt directly maps production group budget/stop/loop-guard termination and secret-excluding history search. It is candidate evidence captured at c517fbd8; no matrix row is promoted until the authoritative final main SHA is established."
   },

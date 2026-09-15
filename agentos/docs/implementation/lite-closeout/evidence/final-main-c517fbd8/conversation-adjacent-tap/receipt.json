@@ -180,6 +180,138 @@
       "outcome": "passed"
     },
     {
+      "id": "BRIDGE-IDEMPOTENT-01",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "line": 117,
+      "expression": "assert.equal(first.created, true);",
+      "clause": "The first create-task request creates the Task.",
+      "whyDirect": "The production ConversationBridgeService creates the durable Task on the first request before the retry assertions.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-IDEMPOTENT-02",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "line": 118,
+      "expression": "assert.equal(second.created, false);",
+      "clause": "A retried create-task request does not create another Task.",
+      "whyDirect": "The second production create-task call is the same client operation and explicitly reports created=false.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-IDEMPOTENT-03",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "line": 119,
+      "expression": "assert.equal(third.created, false);",
+      "clause": "A retry with changed presentation data still does not create another Task.",
+      "whyDirect": "The third production call changes the title but keeps the same idempotency identity and explicitly reports created=false.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-IDEMPOTENT-04",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "line": 120,
+      "expression": "assert.equal(second.task.id, first.task.id);",
+      "clause": "A retried create-task request returns the original Task identity.",
+      "whyDirect": "The production retry response is compared with the first durable Task id rather than merely checking a boolean.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-IDEMPOTENT-05",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "line": 122,
+      "expression": "assert.equal(countRows(fx.db, 'tasks'), 1);",
+      "clause": "Repeated create-task requests leave exactly one durable Task.",
+      "whyDirect": "The production database is queried after all three calls and contains one Task row.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-IDEMPOTENT-06",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-02 create-task is idempotent across retries and starts nothing",
+      "line": 123,
+      "expression": "assert.equal(countRows(fx.db, 'runs'), 0);",
+      "clause": "Create-task remains distinct from Run creation.",
+      "whyDirect": "The same production path is verified not to create a Run as a side effect of Task retries.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-START-RUN-01",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-07 start-run reuses a Task created by create-task",
+      "line": 195,
+      "expression": "assert.equal(run.taskCreated, false);",
+      "clause": "Starting a Run reuses an existing Task instead of creating a second Task.",
+      "whyDirect": "The production start-run bridge is invoked after create-task and explicitly reports taskCreated=false.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-START-RUN-02",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-07 start-run reuses a Task created by create-task",
+      "line": 196,
+      "expression": "assert.equal(run.task.id, task.task.id);",
+      "clause": "The Run bridge returns the same Task identity created by the prior operation.",
+      "whyDirect": "The production response is compared with the previously persisted Task id.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-START-RUN-03",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-07 start-run reuses a Task created by create-task",
+      "line": 197,
+      "expression": "assert.equal(run.run.taskId, task.task.id);",
+      "clause": "The newly created Run is linked to the existing Task.",
+      "whyDirect": "The production Run row returned by start-run is checked for the exact prior Task foreign key.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-START-RUN-04",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-07 start-run reuses a Task created by create-task",
+      "line": 198,
+      "expression": "assert.equal(countRows(fx.db, 'tasks'), 1);",
+      "clause": "The combined create-task/start-run path leaves one Task.",
+      "whyDirect": "The production database is queried after both operations and confirms Task creation remains distinct from Run creation.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-START-RUN-05",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-07 start-run reuses a Task created by create-task",
+      "line": 199,
+      "expression": "assert.equal(countRows(fx.db, 'runs'), 1);",
+      "clause": "The combined path creates one distinct Run.",
+      "whyDirect": "The production database contains exactly one Run after start-run, paired with the one existing Task.",
+      "outcome": "passed"
+    },
+    {
+      "id": "BRIDGE-START-RUN-06",
+      "requirementId": "LITE-09-002",
+      "file": "apps/server/src/services/ConversationBridgeService.test.ts",
+      "name": "CR4B-07 start-run reuses a Task created by create-task",
+      "line": 200,
+      "expression": "assert.equal(fx.conversations.findMessageById(WS, USER_MSG)?.version, 3);",
+      "clause": "The bridge advances the canonical Message version once per distinct operation.",
+      "whyDirect": "The production Conversation record is read back after create-task and start-run and its version is asserted.",
+      "outcome": "passed"
+    },
+    {
       "id": "HISTORY-SECRET-01",
       "requirementId": "LITE-09-018",
       "file": "apps/server/src/services/AgentHistoryService.test.ts",

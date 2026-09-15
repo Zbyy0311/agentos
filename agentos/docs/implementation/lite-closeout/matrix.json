@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 22,
+  "matrixVersion": 23,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -655,7 +655,7 @@
       "section": "21. Acceptance Expectations",
       "line": 522,
       "requirement": "Message-only turns do not create modifying Runs;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/services/LifecycleTransactionService.ts"
@@ -665,11 +665,11 @@
         "apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-CONV-RUNTIME"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 仅有 UI 意图层断言（resolveComposerAction 的 actionCreatesWork===false），它证明的是 Composer 不会把 chat 模式映射成建 Task/Run 的动作，**不证明运行时**在 message-only turn 后不产生 Task/Run 行。全仓检索未找到运行时段言该行为的断言（ConversationTurnDriver.test.ts 的 TD-01..06 也不含此类断言）。按缺口记录：需要一条「chat turn 后 cr_agent_turns 之外的 Task/Run 行数不变」的断言。 (triage triage-02.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-02-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/m3-p2c2b-composite-lifecycle.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Direct runtime evidence now closes this row: the production Conversation HTTP Message-only Turn is followed by durable tasks/runs/admission counts showing zero Task, zero Run and zero modifying authority. Receipt S9-FINAL-C517-CONV-RUNTIME has the mapped assertions; captured at c517fbd8 and reused at final main 49787588 because no production-path diff exists from c517 to final main.",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-02-002",
@@ -2836,7 +2836,7 @@
       "section": "18. Acceptance Expectations",
       "line": 432,
       "requirement": "Message-only Turns create no Task and no Run;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/routes/conversationRuntime.ts"
@@ -2846,11 +2846,11 @@
         "apps/server/src/services/ConversationTurnDriver.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-CONV-RUNTIME"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 与 LITE-02-001/11-001 同一缺口：ConversationTurnDriver 的 14 条断言覆盖流式、失败、取消、快照与冻结选择，**没有**「message-only Turn 之后 Task/Run 行数不变」的运行时断言；唯一相关候选是 Composer 意图层断言（DCUX-P01），不在运行时。按缺口记录。 (triage triage-11.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Direct production HTTP evidence now closes this row: a Message-only Turn is followed by durable zero Task and zero Run counts. The c517fbd8 receipt is reused at final main 49787588 because no production-path diff exists from c517 to final main.",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-09-002",
@@ -2858,7 +2858,7 @@
       "section": "18. Acceptance Expectations",
       "line": 433,
       "requirement": "Task creation and Run creation are distinct and idempotent;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/routes/conversationRuntime.ts"
@@ -2867,11 +2867,12 @@
         "apps/server/src/services/ConversationBridgeService.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-CONV-RUNTIME",
+        "S9-FINAL-C517-CONV-ADJACENT"
       ],
-      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/ConversationTurnDriver.test.ts; verified covering assertion: CR4B-02 create-task is idempotent across retries and starts nothing (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Direct route and service evidence now closes this row: production HTTP Task/Run bridging plus CR4B-02 retry convergence and CR4B-07 distinct Run linkage are mapped to source assertions. The preserved receipts were captured at c517fbd8; final main 49787588 has no production-path diff from that baseline.",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-09-003",
@@ -2921,20 +2922,20 @@
       "section": "18. Acceptance Expectations",
       "line": 436,
       "requirement": "client retry creates exactly one Message;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/routes/conversationRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/ConversationTurnDriver.test.ts"
+        "apps/server/src/routes/conversationRuntime.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-CONV-RUNTIME"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-005. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Direct production HTTP retry evidence now closes this row: the same clientMessageId is submitted twice, both requests are accepted, and the durable list contains exactly one Message. The test pointer is corrected to conversationRuntime.test.ts; final main 49787588 has no production-path diff from c517fbd8.",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-09-006",
@@ -2942,7 +2943,7 @@
       "section": "18. Acceptance Expectations",
       "line": 437,
       "requirement": "streams finalize durably;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/routes/conversationRuntime.ts"
@@ -2951,11 +2952,11 @@
         "apps/server/src/services/ConversationTurnDriver.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-TURN-DRIVER"
       ],
-      "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Direct ConversationTurnDriver evidence now closes this row: every delta is durably checkpointed and replayed in order, and the Message, Turn and cursor finalize. The preserved c517fbd8 receipt remains valid at final main 49787588 because production paths are unchanged.",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-09-007",
@@ -3074,7 +3075,7 @@
       "section": "18. Acceptance Expectations",
       "line": 443,
       "requirement": "budgets, stop, and loop guard terminate every group interaction;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/routes/conversationRuntime.ts"
@@ -3083,11 +3084,11 @@
         "apps/server/src/services/BoundedGroupService.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-CONV-ADJACENT"
       ],
-      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/ConversationTurnDriver.test.ts; verified covering assertion: CR5S-03 reaching the total cap exhausts the interaction with a stable reason (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-012. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Direct BoundedGroupService evidence now closes this row: total, per-Agent and distinct-Agent budgets, explicit stop and loop-guard branches return stable termination reasons and reject further replies. The c517fbd8 receipt is reused at final main 49787588 with no production-path diff.",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-09-013",
@@ -3205,7 +3206,7 @@
       "section": "18. Acceptance Expectations",
       "line": 449,
       "requirement": "search excludes secrets.",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S5",
       "implementation": [
         "apps/server/src/routes/conversationRuntime.ts"
@@ -3214,11 +3215,11 @@
         "apps/server/src/services/AgentHistoryService.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-CONV-ADJACENT"
       ],
-      "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/ConversationTurnDriver.test.ts; verified covering assertion: CR6-A3 the q filter never searches message bodies (secrets excluded from search) (triage triage-06.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-09-018. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/ConversationTurnDriver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Direct AgentHistoryService evidence now closes this row: a secret present only in Message content produces no search hit while an ordinary task label remains searchable. The c517fbd8 receipt is reused at final main 49787588 with no production-path diff.",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-10-001",
@@ -3583,7 +3584,7 @@
       "section": "20. Acceptance Expectations",
       "line": 351,
       "requirement": "Message post creates no Task or Run;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S8",
       "implementation": [
         "apps/server/src/index.ts"
@@ -3593,11 +3594,11 @@
         "apps/server/src/routes/canonicalRunStream.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-CONV-RUNTIME"
       ],
-      "finding": "[matrix v16 triage] no executed assertion covers this clause yet: 与 LITE-02-001 同一情形：候选断言只覆盖 Composer 意图层（actionCreatesWork===false），不覆盖运行时「POST 消息后 Task/Run 行数不变」。全仓检索未见该运行时断言。按缺口记录。 (triage triage-07.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-11-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/routes/canonicalRunStream.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
+      "finding": "Direct production Message POST evidence now closes this row: after posting a Message, durable Task and Run counts remain zero. The c517fbd8 receipt is reused at final main 49787588 with no production-path diff.",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-11-002",
@@ -8657,10 +8658,129 @@
       "requirementIds": [
         "LITE-07-101"
       ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved final-main re-anchoring after PR #181 merged",
+      "reason": "The 39 existing individual PASS promotion records are re-anchored to final main 49787588 after all current Lite PRs were merged. The production-path diff from c517fbd8 to 49787588 is empty under apps/server/src, apps/web/src and packages; original raw receipts remain at c517fbd8. This is ledger bookkeeping only and changes no requirement state.",
+      "requirementIds": [
+        "LITE-00-007",
+        "LITE-02-014",
+        "LITE-02-015",
+        "LITE-03-018",
+        "LITE-07-001",
+        "LITE-07-002",
+        "LITE-07-003",
+        "LITE-07-004",
+        "LITE-07-006",
+        "LITE-07-007",
+        "LITE-07-008",
+        "LITE-07-009",
+        "LITE-07-010",
+        "LITE-07-011",
+        "LITE-07-013",
+        "LITE-09-010",
+        "LITE-09-013",
+        "LITE-09-101",
+        "LITE-07-101",
+        "LITE-07-102",
+        "LITE-07-104",
+        "LITE-07-105",
+        "LITE-07-106",
+        "LITE-07-107",
+        "LITE-07-108",
+        "LITE-07-109",
+        "LITE-09-102",
+        "LITE-09-104",
+        "LITE-09-105",
+        "LITE-09-106",
+        "LITE-09-107",
+        "LITE-09-108",
+        "LITE-09-109",
+        "LITE-09-110",
+        "LITE-13-002",
+        "LITE-13-003",
+        "LITE-13-008",
+        "LITE-13-015",
+        "LITE-13-101"
+      ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved controlled per-row PASS promotion on final main 49787588",
+      "reason": "LITE-09-001 moves from RUNTIME-VERIFY to PASS. The production HTTP conversation receipt directly asserts that a Message-only Turn creates neither a durable Task nor a durable Run; the c517fbd8 receipt is reused because the production path is unchanged through final main 49787588.",
+      "requirementIds": [
+        "LITE-09-001"
+      ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved controlled per-row PASS promotion on final main 49787588",
+      "reason": "LITE-09-002 moves from RUNTIME-VERIFY to PASS. The route and ConversationBridgeService receipts directly assert Task/Run separation, retry convergence, exact durable row counts and reuse of the original Task; c517fbd8 to final main 49787588 has no production-path diff.",
+      "requirementIds": [
+        "LITE-09-002"
+      ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved controlled per-row PASS promotion on final main 49787588",
+      "reason": "LITE-09-005 moves from RUNTIME-VERIFY to PASS. The production HTTP receipt directly asserts accepted duplicate send and exactly one persisted Message, with the corrected conversationRuntime.test.ts pointer; final main 49787588 has no production-path diff from c517fbd8.",
+      "requirementIds": [
+        "LITE-09-005"
+      ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved controlled per-row PASS promotion on final main 49787588",
+      "reason": "LITE-09-006 moves from RUNTIME-VERIFY to PASS. The ConversationTurnDriver receipt directly asserts durable checkpoint count, ordered replay, final Message/Turn status and cursor advancement; final main 49787588 has unchanged production paths from c517fbd8.",
+      "requirementIds": [
+        "LITE-09-006"
+      ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved controlled per-row PASS promotion on final main 49787588",
+      "reason": "LITE-09-012 moves from RUNTIME-VERIFY to PASS. The BoundedGroupService receipt directly asserts total/per-Agent/distinct-Agent budget termination, explicit stop and loop guards with stable reasons; final main 49787588 has no production-path diff from c517fbd8.",
+      "requirementIds": [
+        "LITE-09-012"
+      ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved controlled per-row PASS promotion on final main 49787588",
+      "reason": "LITE-09-018 moves from RUNTIME-VERIFY to PASS. The AgentHistoryService receipt directly asserts secret exclusion from Message-body search while preserving ordinary task-label search; final main 49787588 has no production-path diff from c517fbd8.",
+      "requirementIds": [
+        "LITE-09-018"
+      ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved controlled per-row PASS promotion on final main 49787588",
+      "reason": "LITE-11-001 moves from RUNTIME-VERIFY to PASS. The production Message POST receipt directly asserts zero durable Task and Run rows after posting; final main 49787588 has no production-path diff from c517fbd8.",
+      "requirementIds": [
+        "LITE-11-001"
+      ]
+    },
+    {
+      "version": 23,
+      "baseline": "497875881db9ab4a18233d89833e453b81f53e8e",
+      "authority": "User-approved controlled per-row PASS promotion on final main 49787588",
+      "reason": "LITE-02-001 moves from RUNTIME-VERIFY to PASS. The production conversation receipt directly asserts that the HTTP lifecycle creates, sends, lists, archives and restores a Conversation, while the Message-only Turn creates no durable Task or Run; final main 49787588 has no production-path diff from c517fbd8.",
+      "requirementIds": [
+        "LITE-02-001"
+      ]
     }
   ],
   "passFreeze": "pass-freeze.json",
   "passPromotionAuthority": "pass-promotion-authority.json",
   "passPromotions": "pass-promotions.json",
-  "promotionBaselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
+  "promotionBaselineSha": "497875881db9ab4a18233d89833e453b81f53e8e"
 }
