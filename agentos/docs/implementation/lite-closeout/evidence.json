@@ -1510,5 +1510,29 @@
     ],
     "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
     "limitation": "The preserved TAP receipt directly maps restart/reconnect persistence, Message-only Task/Run absence, explicit Task-to-Run bridging, and client retry behavior through production HTTP routes. It is candidate evidence captured at c517fbd8; no matrix row is promoted until the authoritative final main SHA is established."
+  },
+  {
+    "id": "S9-FINAL-C517-CONV-ADJACENT",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationBridgeService.test.ts src/routes/canonicalRunStream.test.ts src/services/GroupSpeakerResolver.test.ts src/services/BoundedGroupService.test.ts src/services/AgentHistoryService.test.ts src/store/SqliteStore.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-adjacent-tap/receipt.json",
+    "result": { "passed": 97, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-09-012", "LITE-09-018"],
+    "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
+    "limitation": "The preserved TAP receipt directly maps production group budget/stop/loop-guard termination and secret-excluding history search. It is candidate evidence captured at c517fbd8; no matrix row is promoted until the authoritative final main SHA is established."
+  },
+  {
+    "id": "S9-FINAL-C517-TURN-DRIVER",
+    "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+    "kind": "local-tests",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/services/ConversationTurnDriver.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/turn-driver-tap/receipt.json",
+    "result": { "passed": 14, "failed": 0, "skipped": 0 },
+    "requirementIds": ["LITE-09-006"],
+    "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
+    "limitation": "The preserved TAP receipt directly maps durable streamed checkpoints, ordered replay and final Message/Turn states. It is candidate evidence captured at c517fbd8; no matrix row is promoted until the authoritative final main SHA is established."
   }
 ]

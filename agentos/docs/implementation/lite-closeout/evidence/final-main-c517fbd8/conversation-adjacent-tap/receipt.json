@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "baseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+  "label": "s9-c517-conversation-adjacent",
+  "startedAt": "2026-09-15T04:05:29.051Z",
+  "finishedAt": "2026-09-15T04:05:53.922Z",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/services/ConversationBridgeService.test.ts",
+      "src/routes/canonicalRunStream.test.ts",
+      "src/services/GroupSpeakerResolver.test.ts",
+      "src/services/BoundedGroupService.test.ts",
+      "src/services/AgentHistoryService.test.ts",
+      "src/store/SqliteStore.test.ts"
+    ]
+  },
+  "cwd": "apps\\server",
+  "environment": {},
+  "nodeVersion": "v24.18.0",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true,
+  "counts": {
+    "passed": 97,
+    "failed": 0,
+    "skipped": 0,
+    "cancelled": 0,
+    "todo": 0,
+    "tests": 97
+  },
+  "assertionCoverage": [
+    {
+      "id": "GROUP-TOTAL-01",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "line": 150,
+      "expression": "assert.equal(last.interaction.status, 'exhausted');",
+      "clause": "The total reply budget exhausts the interaction.",
+      "whyDirect": "The production BoundedGroupService is driven to its configured total cap and the persisted interaction status is asserted as exhausted.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-TOTAL-02",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "line": 151,
+      "expression": "assert.equal(last.interaction.stopReason, 'budget-total-replies');",
+      "clause": "The total-cap termination reason is stable and explicit.",
+      "whyDirect": "The production interaction record exposes the exact durable stop reason produced at the total budget boundary.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-TOTAL-03",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-04 a reply beyond the total cap is blocked and not recorded",
+      "line": 170,
+      "expression": "assert.equal(err.stopReason, 'budget-total-replies');",
+      "clause": "A reply after the total cap is refused with the same termination reason.",
+      "whyDirect": "The production service rejects the post-cap reply and the test reads the returned production error stop reason.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-TOTAL-04",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-04 a reply beyond the total cap is blocked and not recorded",
+      "line": 171,
+      "expression": "assert.equal(fx.interactions.listReplies(interaction.id).length, 2);",
+      "clause": "A blocked post-cap reply is not persisted.",
+      "whyDirect": "The production repository is queried after the rejected call and still contains only the two replies at the configured cap.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-AGENT-01",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-05 a per-Agent budget breach ends the interaction",
+      "line": 186,
+      "expression": "assert.equal(err.stopReason, 'budget-replies-per-agent');",
+      "clause": "Per-Agent budget exhaustion terminates the interaction.",
+      "whyDirect": "The production service is called past a per-Agent limit and returns the exact persisted termination reason.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-DISTINCT-01",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-06 a distinct-Agent budget breach ends the interaction",
+      "line": 203,
+      "expression": "assert.equal(err.stopReason, 'budget-agents');",
+      "clause": "The distinct-Agent budget terminates further interaction.",
+      "whyDirect": "The production service is called with a third distinct Agent beyond the configured cap and returns the durable budget reason.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-STOP-01",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-07 Stop blocks new replies and never cancels a Run",
+      "line": 217,
+      "expression": "assert.equal(stopped.status, 'stopped');",
+      "clause": "An explicit stop terminates the group interaction.",
+      "whyDirect": "The production stopInteraction path returns the persisted stopped status before the test exercises a subsequent reply.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-STOP-02",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-07 Stop blocks new replies and never cancels a Run",
+      "line": 218,
+      "expression": "assert.equal(stopped.stopReason, 'user-stop');",
+      "clause": "An explicit stop records a stable user-stop reason.",
+      "whyDirect": "The production interaction record returned by stopInteraction carries the exact user-stop reason while the same test verifies the following reply is rejected.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-LOOP-01",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-08 a same-Agent cycle terminates the interaction with loop-guard",
+      "line": 235,
+      "expression": "assert.equal(err.loopGuardSignal, 'same-agent-cycle');",
+      "clause": "A same-Agent cycle is terminated by the loop guard.",
+      "whyDirect": "The production reply path detects the cycle and exposes the exact loop-guard signal.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-LOOP-02",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-09 repeated content terminates the interaction with loop-guard",
+      "line": 250,
+      "expression": "assert.equal(err.loopGuardSignal, 'repeated-content');",
+      "clause": "Repeated content is terminated by the loop guard.",
+      "whyDirect": "The production reply path receives repeated content from another Agent and returns the corresponding loop-guard signal.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-LOOP-03",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-10 hops beyond the configured limit terminate the interaction",
+      "line": 267,
+      "expression": "assert.equal(err.stopReason, 'budget-hops');",
+      "clause": "The configured hop budget terminates the interaction.",
+      "whyDirect": "The production service is driven beyond its configured hop limit and returns the hop-budget stop reason.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-LOOP-04",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-10 hops beyond the configured limit terminate the interaction",
+      "line": 268,
+      "expression": "assert.equal(err.loopGuardSignal, 'hops-exceeded');",
+      "clause": "Hop overflow is classified as a loop-guard boundary.",
+      "whyDirect": "The same production error records the exact hops-exceeded loop signal rather than allowing an unbounded walk.",
+      "outcome": "passed"
+    },
+    {
+      "id": "GROUP-LOOP-05",
+      "requirementId": "LITE-09-012",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-11 a repeated mention with no new information terminates the interaction",
+      "line": 284,
+      "expression": "assert.equal(err.loopGuardSignal, 'repeated-mention-no-new-information');",
+      "clause": "A repeated mention with no new information is terminated.",
+      "whyDirect": "The production group reply path classifies the repeated mention as a loop-guard condition.",
+      "outcome": "passed"
+    },
+    {
+      "id": "HISTORY-SECRET-01",
+      "requirementId": "LITE-09-018",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "line": 122,
+      "expression": "assert.equal(hits.length, 0);",
+      "clause": "History search excludes secret content stored in Message bodies.",
+      "whyDirect": "The production history query is executed with a secret that exists only in a Message body and returns no hit.",
+      "outcome": "passed"
+    },
+    {
+      "id": "HISTORY-SECRET-02",
+      "requirementId": "LITE-09-018",
+      "file": "apps/server/src/services/AgentHistoryService.test.ts",
+      "name": "CR6-A3 the q filter never searches message bodies (secrets excluded from search)",
+      "line": 125,
+      "expression": "assert.ok(taskHits.some(e => e.kind === 'task' && e.label === 'Ship release'));",
+      "clause": "Non-secret searchable labels remain available.",
+      "whyDirect": "The same production query path still returns an ordinary task label, showing that secret exclusion is field-scoped rather than a blanket search failure.",
+      "outcome": "passed"
+    }
+  ],
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-adjacent-tap/stdout.txt",
+      "sha256": "00121b0ad63a69b27f9e9f0a67578b1ba86a21aa3d41efa22c7dbcafa48fac50"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-c517fbd8/conversation-adjacent-tap/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "limitation": "Counts are parsed only from a unique TAP summary; null means unparsed, never zero. Named test results remain in raw output. No acceptance promotion."
+}
