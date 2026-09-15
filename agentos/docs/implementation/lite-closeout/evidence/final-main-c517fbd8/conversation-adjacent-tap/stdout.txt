@@ -1,0 +1,592 @@
+TAP version 13
+# Subtest: P5C-R01 GET run stream is implemented as SSE with inherited request id (default cursor 0)
+ok 1 - P5C-R01 GET run stream is implemented as SSE with inherited request id (default cursor 0)
+  ---
+  duration_ms: 252.4468
+  type: 'test'
+  ...
+# Subtest: P5C afterSequence-only cursor replays strictly greater durable sequences
+ok 2 - P5C afterSequence-only cursor replays strictly greater durable sequences
+  ---
+  duration_ms: 204.1697
+  type: 'test'
+  ...
+# Subtest: P5C Last-Event-ID-only cursor resolves the persisted Event sequence
+ok 3 - P5C Last-Event-ID-only cursor resolves the persisted Event sequence
+  ---
+  duration_ms: 193.5755
+  type: 'test'
+  ...
+# Subtest: P5C-R05 monotonic cursor: query lower than Last-Event-ID lets the header win (native reconnect)
+ok 4 - P5C-R05 monotonic cursor: query lower than Last-Event-ID lets the header win (native reconnect)
+  ---
+  duration_ms: 198.6687
+  type: 'test'
+  ...
+# Subtest: P5C-R05 monotonic cursor: query higher than Last-Event-ID lets the query win
+ok 5 - P5C-R05 monotonic cursor: query higher than Last-Event-ID lets the query win
+  ---
+  duration_ms: 197.33
+  type: 'test'
+  ...
+# Subtest: P5C malformed afterSequence variants fail with 400 VALIDATION_FAILED before any SSE header
+ok 6 - P5C malformed afterSequence variants fail with 400 VALIDATION_FAILED before any SSE header
+  ---
+  duration_ms: 205.0671
+  type: 'test'
+  ...
+# Subtest: P5C unknown, foreign-Run and foreign-Workspace Last-Event-ID share one 400 representation
+ok 7 - P5C unknown, foreign-Run and foreign-Workspace Last-Event-ID share one 400 representation
+  ---
+  duration_ms: 212.7455
+  type: 'test'
+  ...
+# Subtest: P5C unknown Run takes precedence over a malformed cursor with 404 RUN_NOT_FOUND
+ok 8 - P5C unknown Run takes precedence over a malformed cursor with 404 RUN_NOT_FOUND
+  ---
+  duration_ms: 192.0504
+  type: 'test'
+  ...
+# Subtest: P5C live durable commits after subscribe are delivered exactly once with the persisted id
+ok 9 - P5C live durable commits after subscribe are delivered exactly once with the persisted id
+  ---
+  duration_ms: 175.9223
+  type: 'test'
+  ...
+# Subtest: P5C unknown persisted runtime events stream losslessly with kind/raw/warning
+ok 10 - P5C unknown persisted runtime events stream losslessly with kind/raw/warning
+  ---
+  duration_ms: 179.6608
+  type: 'test'
+  ...
+# Subtest: P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues
+ok 11 - P5C-R06 browser disconnect is subscription-only: Run state untouched and lifecycle continues
+  ---
+  duration_ms: 174.4517
+  type: 'test'
+  ...
+# Subtest: P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once
+ok 12 - P5C-R06 client disconnect unsubscribes the RunStreamService subscription exactly once
+  ---
+  duration_ms: 6.2502
+  type: 'test'
+  ...
+# Subtest: P5C overflow closes the SSE transport without synthetic frames or durable writes
+ok 13 - P5C overflow closes the SSE transport without synthetic frames or durable writes
+  ---
+  duration_ms: 3.305
+  type: 'test'
+  ...
+# Subtest: P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed
+ok 14 - P5C-R07 transport backpressure during initial replay closes transport and subscription fail-closed
+  ---
+  duration_ms: 224.7163
+  type: 'test'
+  ...
+# Subtest: P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable)
+ok 15 - P5C stream lifecycle writes zero runtime Event / Outbox rows (keepalive is non-durable)
+  ---
+  duration_ms: 170.0273
+  type: 'test'
+  ...
+# Subtest: P5C stream route does not shadow canonical Run, Events or Replay routes
+ok 16 - P5C stream route does not shadow canonical Run, Events or Replay routes
+  ---
+  duration_ms: 184.6143
+  type: 'test'
+  ...
+# Subtest: CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Tasks, Runs, Memory, Snapshots, and Artifacts
+ok 17 - CR6-A1 History unifies one Agent across Conversations, Messages, Turns, Tasks, Runs, Memory, Snapshots, and Artifacts
+  ---
+  duration_ms: 1290.4596
+  type: 'test'
+  ...
+# Subtest: CR6-A2 History entries are durable references, never content-bearing
+ok 18 - CR6-A2 History entries are durable references, never content-bearing
+  ---
+  duration_ms: 546.2021
+  type: 'test'
+  ...
+# Subtest: CR6-A3 the q filter never searches message bodies (secrets excluded from search)
+ok 19 - CR6-A3 the q filter never searches message bodies (secrets excluded from search)
+  ---
+  duration_ms: 224.6409
+  type: 'test'
+  ...
+# Subtest: CR6-A4 filters by kind, status, conversation, task, run, and time compose
+ok 20 - CR6-A4 filters by kind, status, conversation, task, run, and time compose
+  ---
+  duration_ms: 235.7291
+  type: 'test'
+  ...
+# Subtest: CR6-A5 provider filter scopes Turns to their Provider configuration
+ok 21 - CR6-A5 provider filter scopes Turns to their Provider configuration
+  ---
+  duration_ms: 217.1237
+  type: 'test'
+  ...
+# Subtest: CR6-A6 the limit is bounded and deterministic
+ok 22 - CR6-A6 the limit is bounded and deterministic
+  ---
+  duration_ms: 219.3987
+  type: 'test'
+  ...
+# Subtest: CR6-A7 archive/restore is a read-only History concern and stays with CR-1
+ok 23 - CR6-A7 archive/restore is a read-only History concern and stays with CR-1
+  ---
+  duration_ms: 226.8712
+  type: 'test'
+  ...
+# Subtest: CR5S-01 a valid budget creates an active interaction; an invalid budget fails closed
+ok 24 - CR5S-01 a valid budget creates an active interaction; an invalid budget fails closed
+  ---
+  duration_ms: 182.8339
+  type: 'test'
+  ...
+# Subtest: CR5S-02 recording replies increments counters transactionally
+ok 25 - CR5S-02 recording replies increments counters transactionally
+  ---
+  duration_ms: 182.4031
+  type: 'test'
+  ...
+# Subtest: CR5S-03 reaching the total cap exhausts the interaction with a stable reason
+ok 26 - CR5S-03 reaching the total cap exhausts the interaction with a stable reason
+  ---
+  duration_ms: 193.2623
+  type: 'test'
+  ...
+# Subtest: CR5S-04 a reply beyond the total cap is blocked and not recorded
+ok 27 - CR5S-04 a reply beyond the total cap is blocked and not recorded
+  ---
+  duration_ms: 188.4968
+  type: 'test'
+  ...
+# Subtest: CR5S-05 a per-Agent budget breach ends the interaction
+ok 28 - CR5S-05 a per-Agent budget breach ends the interaction
+  ---
+  duration_ms: 181.2833
+  type: 'test'
+  ...
+# Subtest: CR5S-06 a distinct-Agent budget breach ends the interaction
+ok 29 - CR5S-06 a distinct-Agent budget breach ends the interaction
+  ---
+  duration_ms: 195.4154
+  type: 'test'
+  ...
+# Subtest: CR5S-07 Stop blocks new replies and never cancels a Run
+ok 30 - CR5S-07 Stop blocks new replies and never cancels a Run
+  ---
+  duration_ms: 188.2542
+  type: 'test'
+  ...
+# Subtest: CR5S-08 a same-Agent cycle terminates the interaction with loop-guard
+ok 31 - CR5S-08 a same-Agent cycle terminates the interaction with loop-guard
+  ---
+  duration_ms: 189.8048
+  type: 'test'
+  ...
+# Subtest: CR5S-09 repeated content terminates the interaction with loop-guard
+ok 32 - CR5S-09 repeated content terminates the interaction with loop-guard
+  ---
+  duration_ms: 223.8236
+  type: 'test'
+  ...
+# Subtest: CR5S-10 hops beyond the configured limit terminate the interaction
+ok 33 - CR5S-10 hops beyond the configured limit terminate the interaction
+  ---
+  duration_ms: 188.8442
+  type: 'test'
+  ...
+# Subtest: CR5S-11 a repeated mention with no new information terminates the interaction
+ok 34 - CR5S-11 a repeated mention with no new information terminates the interaction
+  ---
+  duration_ms: 191.9658
+  type: 'test'
+  ...
+# Subtest: CR5S-12 every recorded reply stores a distinct Turn-scoped per-Agent context snapshot
+ok 35 - CR5S-12 every recorded reply stores a distinct Turn-scoped per-Agent context snapshot
+  ---
+  duration_ms: 194.7859
+  type: 'test'
+  ...
+# Subtest: CR5S-13 per-Agent snapshots are isolated for the same interaction
+ok 36 - CR5S-13 per-Agent snapshots are isolated for the same interaction
+  ---
+  duration_ms: 211.5255
+  type: 'test'
+  ...
+# Subtest: CR5S-14 reply content is stored as a hash only, never as text
+ok 37 - CR5S-14 reply content is stored as a hash only, never as text
+  ---
+  duration_ms: 194.1834
+  type: 'test'
+  ...
+# Subtest: CR5S-15 the timeout budget ends the interaction
+ok 38 - CR5S-15 the timeout budget ends the interaction
+  ---
+  duration_ms: 202.4756
+  type: 'test'
+  ...
+# Subtest: CR5S-16 unknown interaction and invalid input fail closed
+ok 39 - CR5S-16 unknown interaction and invalid input fail closed
+  ---
+  duration_ms: 191.0655
+  type: 'test'
+  ...
+# Subtest: CR5S-17 within-transaction composition rolls back atomically
+ok 40 - CR5S-17 within-transaction composition rolls back atomically
+  ---
+  duration_ms: 184.2291
+  type: 'test'
+  ...
+# Subtest: CR4B-01 create-task creates exactly one Task and binds it to the Message
+ok 41 - CR4B-01 create-task creates exactly one Task and binds it to the Message
+  ---
+  duration_ms: 192.6755
+  type: 'test'
+  ...
+# Subtest: CR4B-02 create-task is idempotent across retries and starts nothing
+ok 42 - CR4B-02 create-task is idempotent across retries and starts nothing
+  ---
+  duration_ms: 177.2291
+  type: 'test'
+  ...
+# Subtest: CR4B-03 create-task fails closed for unknown ids and invalid input
+ok 43 - CR4B-03 create-task fails closed for unknown ids and invalid input
+  ---
+  duration_ms: 181.5998
+  type: 'test'
+  ...
+# Subtest: CR4B-04 derived titles are deterministic and bounded
+ok 44 - CR4B-04 derived titles are deterministic and bounded
+  ---
+  duration_ms: 370.1233
+  type: 'test'
+  ...
+# Subtest: CR4B-05 start-run resolves the Task, creates one queued canonical Run, and binds both references
+ok 45 - CR4B-05 start-run resolves the Task, creates one queued canonical Run, and binds both references
+  ---
+  duration_ms: 185.637
+  type: 'test'
+  ...
+# Subtest: CR4B-06 start-run converges on the same Run for a retried call
+ok 46 - CR4B-06 start-run converges on the same Run for a retried call
+  ---
+  duration_ms: 184.7173
+  type: 'test'
+  ...
+# Subtest: CR4B-07 start-run reuses a Task created by create-task
+ok 47 - CR4B-07 start-run reuses a Task created by create-task
+  ---
+  duration_ms: 191.1788
+  type: 'test'
+  ...
+# Subtest: CR4B-08 start-run reports the observed admission state, never a granted one
+ok 48 - CR4B-08 start-run reports the observed admission state, never a granted one
+  ---
+  duration_ms: 172.1144
+  type: 'test'
+  ...
+# Subtest: CR4B-09 a durable GRANTED admission is reported as effective class and evidence
+ok 49 - CR4B-09 a durable GRANTED admission is reported as effective class and evidence
+  ---
+  duration_ms: 184.013
+  type: 'test'
+  ...
+# Subtest: CR4B-10 one active Run per Task is enforced by durable state
+ok 50 - CR4B-10 one active Run per Task is enforced by durable state
+  ---
+  duration_ms: 226.679
+  type: 'test'
+  ...
+# Subtest: CR4B-11 an archived Conversation still accepts explicit Task and Run actions
+ok 51 - CR4B-11 an archived Conversation still accepts explicit Task and Run actions
+  ---
+  duration_ms: 188.3025
+  type: 'test'
+  ...
+# Subtest: CR4B-12 within-transaction variants compose and roll back atomically
+ok 52 - CR4B-12 within-transaction variants compose and roll back atomically
+  ---
+  duration_ms: 183.7161
+  type: 'test'
+  ...
+# Subtest: CR4B-13 reason values that need a parent run are rejected as caller errors
+ok 53 - CR4B-13 reason values that need a parent run are rejected as caller errors
+  ---
+  duration_ms: 179.5312
+  type: 'test'
+  ...
+# Subtest: CR4B-14 a second start-run for the same Task reports a durable conflict
+ok 54 - CR4B-14 a second start-run for the same Task reports a durable conflict
+  ---
+  duration_ms: 185.4768
+  type: 'test'
+  ...
+# Subtest: CG-S1: eligibility excludes muted, removed, never, and human members with stable reasons
+ok 55 - CG-S1: eligibility excludes muted, removed, never, and human members with stable reasons
+  ---
+  duration_ms: 1.6931
+  type: 'test'
+  ...
+# Subtest: CG-S1: a non-group or archived Conversation never yields speakers
+ok 56 - CG-S1: a non-group or archived Conversation never yields speakers
+  ---
+  duration_ms: 0.2677
+  type: 'test'
+  ...
+# Subtest: CG-S2: sequential order is membership order; mentions always win and are reported
+ok 57 - CG-S2: sequential order is membership order; mentions always win and are reported
+  ---
+  duration_ms: 0.3666
+  type: 'test'
+  ...
+# Subtest: CG-S2: manual mode follows the caller order and reports the rest
+ok 58 - CG-S2: manual mode follows the caller order and reports the rest
+  ---
+  duration_ms: 0.2173
+  type: 'test'
+  ...
+# Subtest: CG-S3: orchestrated mode resolves the template order deterministically
+ok 59 - CG-S3: orchestrated mode resolves the template order deterministically
+  ---
+  duration_ms: 0.2747
+  type: 'test'
+  ...
+# Subtest: CG-S4: the plan ends with the same stable budget reason recordReply would return
+ok 60 - CG-S4: the plan ends with the same stable budget reason recordReply would return
+  ---
+  duration_ms: 0.2523
+  type: 'test'
+  ...
+# Subtest: CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class
+ok 61 - CG-S1/CG-S9: parallel-read-only declares intent but never claims an unproven read-only class
+  ---
+  duration_ms: 0.1554
+  type: 'test'
+  ...
+# Subtest: tombstoned workspace rejected by assertWorkspaceExists for new Conversation
+ok 62 - tombstoned workspace rejected by assertWorkspaceExists for new Conversation
+  ---
+  duration_ms: 222.291
+  type: 'test'
+  ...
+# Subtest: new Workspace assigns kimicode provider type to Kimi agent
+ok 63 - new Workspace assigns kimicode provider type to Kimi agent
+  ---
+  duration_ms: 184.8165
+  type: 'test'
+  ...
+# Subtest: Workspace.agents projected fields match Provider Configuration after update
+ok 64 - Workspace.agents projected fields match Provider Configuration after update
+  ---
+  duration_ms: 195.2163
+  type: 'test'
+  ...
+# Subtest: Workspace.agents does not fall back to legacy model when Provider model is cleared
+ok 65 - Workspace.agents does not fall back to legacy model when Provider model is cleared
+  ---
+  duration_ms: 190.848
+  type: 'test'
+  ...
+# Subtest: saveTask preserves peer tasks through the default SQLite store path
+ok 66 - saveTask preserves peer tasks through the default SQLite store path
+  ---
+  duration_ms: 184.4717
+  type: 'test'
+  ...
+# Subtest: migrates legacy workspace agents into SQLite exactly once
+ok 67 - migrates legacy workspace agents into SQLite exactly once
+  ---
+  duration_ms: 190.7224
+  type: 'test'
+  ...
+# Subtest: legacy Agent migration creates and binds a Provider Configuration
+ok 68 - legacy Agent migration creates and binds a Provider Configuration
+  ---
+  duration_ms: 170.2872
+  type: 'test'
+  ...
+# Subtest: migrates a legacy role into provider without rewriting a custom command
+ok 69 - migrates a legacy role into provider without rewriting a custom command
+  ---
+  duration_ms: 175.09
+  type: 'test'
+  ...
+# Subtest: migrates legacy Kimi CLI configuration without rewriting JSON
+ok 70 - migrates legacy Kimi CLI configuration without rewriting JSON
+  ---
+  duration_ms: 168.4213
+  type: 'test'
+  ...
+# Subtest: new SQLite-only Workspace can create a Conversation and reload default Agents
+ok 71 - new SQLite-only Workspace can create a Conversation and reload default Agents
+  ---
+  duration_ms: 193.8081
+  type: 'test'
+  ...
+# Subtest: rolls back the whole Workspace aggregate when a Provider insert fails
+ok 72 - rolls back the whole Workspace aggregate when a Provider insert fails
+  ---
+  duration_ms: 181.4342
+  type: 'test'
+  ...
+# Subtest: rolls back one legacy Workspace aggregate when its Provider import fails
+ok 73 - rolls back one legacy Workspace aggregate when its Provider import fails
+  ---
+  duration_ms: 203.352
+  type: 'test'
+  ...
+# Subtest: Agent compatibility fields follow its Provider Configuration
+ok 74 - Agent compatibility fields follow its Provider Configuration
+  ---
+  duration_ms: 178.0064
+  type: 'test'
+  ...
+# Subtest: records the tombstone schema through MigrationRunner and keeps it after restart
+ok 75 - records the tombstone schema through MigrationRunner and keeps it after restart
+  ---
+  duration_ms: 187.5059
+  type: 'test'
+  ...
+# Subtest: legacy workspace migration rethrows unknown database errors
+ok 76 - legacy workspace migration rethrows unknown database errors
+  ---
+  duration_ms: 190.3971
+  type: 'test'
+  ...
+# Subtest: keeps existing SQLite CLI configuration authoritative over later JSON edits
+ok 77 - keeps existing SQLite CLI configuration authoritative over later JSON edits
+  ---
+  duration_ms: 267.4828
+  type: 'test'
+  ...
+# Subtest: updates editable agent identity fields without changing CLI configuration
+ok 78 - updates editable agent identity fields without changing CLI configuration
+  ---
+  duration_ms: 213.356
+  type: 'test'
+  ...
+# Subtest: persists model and thinking effort while defaulting legacy values to auto
+ok 79 - persists model and thinking effort while defaulting legacy values to auto
+  ---
+  duration_ms: 213.8924
+  type: 'test'
+  ...
+# Subtest: adds the thinking effort column when opening a legacy SQLite database
+ok 80 - adds the thinking effort column when opening a legacy SQLite database
+  ---
+  duration_ms: 349.8667
+  type: 'test'
+  ...
+# Subtest: keeps conversations isolated by workspace
+ok 81 - keeps conversations isolated by workspace
+  ---
+  duration_ms: 176.624
+  type: 'test'
+  ...
+# Subtest: persists model and thinking effort independently for each conversation
+ok 82 - persists model and thinking effort independently for each conversation
+  ---
+  duration_ms: 217.9397
+  type: 'test'
+  ...
+# Subtest: persists explicit group roles, sequence, and dispatch mode
+ok 83 - persists explicit group roles, sequence, and dispatch mode
+  ---
+  duration_ms: 188.7547
+  type: 'test'
+  ...
+# Subtest: adds conversation settings columns to a legacy SQLite database
+ok 84 - adds conversation settings columns to a legacy SQLite database
+  ---
+  duration_ms: 364.2946
+  type: 'test'
+  ...
+# Subtest: persists execution activity with the conversation it belongs to
+ok 85 - persists execution activity with the conversation it belongs to
+  ---
+  duration_ms: 210.0799
+  type: 'test'
+  ...
+# Subtest: persists request-level runs, keeps workspace isolation, and cascades with conversations
+ok 86 - persists request-level runs, keeps workspace isolation, and cascades with conversations
+  ---
+  duration_ms: 209.2826
+  type: 'test'
+  ...
+# Subtest: persists waiting-user fields across restart and allows a resumed execution source message
+ok 87 - persists waiting-user fields across restart and allows a resumed execution source message
+  ---
+  duration_ms: 202.2627
+  type: 'test'
+  ...
+# Subtest: migrates legacy executions without reducing historical row counts
+ok 88 - migrates legacy executions without reducing historical row counts
+  ---
+  duration_ms: 231.6681
+  type: 'test'
+  ...
+# Subtest: persists unified agent events and isolates them by workspace and run
+ok 89 - persists unified agent events and isolates them by workspace and run
+  ---
+  duration_ms: 289.4609
+  type: 'test'
+  ...
+# Subtest: assigns monotonic sequences per run and keeps duplicate event ids idempotent
+ok 90 - assigns monotonic sequences per run and keeps duplicate event ids idempotent
+  ---
+  duration_ms: 3406.0899
+  type: 'test'
+  ...
+# Subtest: backfills legacy event order once without changing timestamp ordering rules for new events
+ok 91 - backfills legacy event order once without changing timestamp ordering rules for new events
+  ---
+  duration_ms: 212.9303
+  type: 'test'
+  ...
+# Subtest: persists sanitized CLI invocation and deduplicated file evidence
+ok 92 - persists sanitized CLI invocation and deduplicated file evidence
+  ---
+  duration_ms: 193.1463
+  type: 'test'
+  ...
+# Subtest: creates a group conversation with exactly one leader
+ok 93 - creates a group conversation with exactly one leader
+  ---
+  duration_ms: 170.2187
+  type: 'test'
+  ...
+# Subtest: deletes one conversation and all dependent records without affecting another conversation
+ok 94 - deletes one conversation and all dependent records without affecting another conversation
+  ---
+  duration_ms: 203.1435
+  type: 'test'
+  ...
+# Subtest: removes all SQLite workspace data when the workspace is removed
+ok 95 - removes all SQLite workspace data when the workspace is removed
+  ---
+  duration_ms: 201.2375
+  type: 'test'
+  ...
+# Subtest: persists and hydrates message attachments across store reopen
+ok 96 - persists and hydrates message attachments across store reopen
+  ---
+  duration_ms: 198.8668
+  type: 'test'
+  ...
+# Subtest: persists preference evidence, projections, applications, and scoped controls across reopen
+ok 97 - persists preference evidence, projections, applications, and scoped controls across reopen
+  ---
+  duration_ms: 289.7422
+  type: 'test'
+  ...
+1..97
+# tests 97
+# suites 0
+# pass 97
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 24784.995

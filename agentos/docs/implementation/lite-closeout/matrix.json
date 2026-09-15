@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "matrixVersion": 21,
+  "matrixVersion": 22,
   "status": "frozen",
   "baseline": "b3c3a982d71f28ce236a9222b1a1041feeb36bf9",
   "scopeAuthority": "User-approved tightened Lite closeout plan; only GAP/RUNTIME-VERIFY authorize follow-up after S0 freeze",
@@ -2176,20 +2176,24 @@
       "section": "18. Acceptance Expectations",
       "line": 368,
       "requirement": "valid and invalid Scope/owner combinations;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
-        "apps/server/src/services/MemoryContextResolver.ts"
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/routes/memoryRuntime.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/services/MemoryContextResolver.test.ts",
+        "apps/server/src/services/MemoryRetrievalService.test.ts",
+        "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-001. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/MemoryContextResolver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-002",
@@ -2197,7 +2201,7 @@
       "section": "18. Acceptance Expectations",
       "line": 369,
       "requirement": "source requirement for automatic Entries;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryContextResolver.ts"
@@ -2206,11 +2210,11 @@
         "apps/server/src/store/MemoryCandidateRepository.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/MemoryContextResolver.test.ts; verified covering assertion: MF2R-03 automatic candidate without source rejects (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-002. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/MemoryContextResolver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-003",
@@ -2242,7 +2246,7 @@
       "section": "18. Acceptance Expectations",
       "line": 371,
       "requirement": "conflict preservation and explicit resolution;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/store/MemoryCandidateRepository.ts",
@@ -2253,10 +2257,11 @@
         "apps/server/src/services/MemoryContextResolver.test.ts"
       ],
       "evidence": [
-        "S0-V03"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-004. Historical finding (not current acceptance): 对应行为在本次冻结基线测试通过；不扩展为其他调用链的完成证据。",
-      "exit": "后续受影响修改需回归；新反证按变更日志重开。"
+      "exit": "后续受影响修改需回归；新反证按变更日志重开。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-005",
@@ -2285,20 +2290,22 @@
       "section": "18. Acceptance Expectations",
       "line": 373,
       "requirement": "deterministic ranking with reasons;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
-        "apps/server/src/services/MemoryContextResolver.ts"
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryRetrievalService.ts"
       ],
       "tests": [
-        "apps/server/src/routes/memoryRuntime.test.ts"
+        "apps/server/src/routes/memoryRuntime.test.ts",
+        "apps/server/src/services/MemoryRetrievalService.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/MemoryContextResolver.test.ts; verified covering assertion: MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-006. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/MemoryContextResolver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-007",
@@ -2330,7 +2337,7 @@
       "section": "18. Acceptance Expectations",
       "line": 375,
       "requirement": "immutable Context Snapshot after later Entry edits;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/store/MemoryCandidateRepository.ts",
@@ -2341,10 +2348,11 @@
         "apps/server/src/services/MemoryContextResolver.test.ts"
       ],
       "evidence": [
-        "S0-V03"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-008. Historical finding (not current acceptance): 对应行为在本次冻结基线测试通过；不扩展为其他调用链的完成证据。",
-      "exit": "后续受影响修改需回归；新反证按变更日志重开。"
+      "exit": "后续受影响修改需回归；新反证按变更日志重开。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-009",
@@ -2352,20 +2360,21 @@
       "section": "18. Acceptance Expectations",
       "line": 376,
       "requirement": "explanation for selections and exclusions;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryContextResolver.ts"
       ],
       "tests": [
-        "apps/server/src/services/MemoryContextResolver.test.ts"
+        "apps/server/src/services/MemoryContextResolver.test.ts",
+        "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-009. Historical finding (not current acceptance): 已有相关实现入口；条款级行为与适用运行证据需核对，模块存在不等于通过。 S8验收：本条点名的测试文件 apps/server/src/services/MemoryContextResolver.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-010",
@@ -2373,7 +2382,7 @@
       "section": "18. Acceptance Expectations",
       "line": 377,
       "requirement": "no bulk transcript or Provider-history promotion;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/services/MemoryContextResolver.ts"
@@ -2382,11 +2391,11 @@
         "apps/server/src/services/MemoryCandidateGenerationService.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-11"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "[matrix v16 re-point] previous tests: apps/server/src/services/MemoryCandidateGenerationService.test.ts, apps/server/src/services/MemoryContextResolver.test.ts; verified covering assertion: MF2R-G1 completed Run generates a review-required Candidate with bounded evidence (triage triage-05.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-010. Historical finding (not current acceptance): S8验收：改指真正断言本条的文件（原矩阵点名文件未覆盖该条款）。候选只由完成的Run生成且有界证据（MF2R-G1），非完成或未知Run不生成任何内容（MF2R-G5）：不存在整段转录或Provider历史批量提升。",
       "exit": "验证本条完整行为，记录可复现命令、结果及适用的实际调用证据。",
-      "evidenceBaseline": "7de73abec2bb4e60a85e2de718d931f24cf62937"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-011",
@@ -2394,7 +2403,7 @@
       "section": "18. Acceptance Expectations",
       "line": 378,
       "requirement": "no automatic wider-Scope promotion;",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/store/MemoryCandidateRepository.ts",
@@ -2405,10 +2414,11 @@
         "apps/server/src/services/MemoryContextResolver.test.ts"
       ],
       "evidence": [
-        "S0-V03"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-011. Historical finding (not current acceptance): 对应行为在本次冻结基线测试通过；不扩展为其他调用链的完成证据。",
-      "exit": "后续受影响修改需回归；新反证按变更日志重开。"
+      "exit": "后续受影响修改需回归；新反证按变更日志重开。",
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-012",
@@ -4535,7 +4545,7 @@
       "section": "§7",
       "line": null,
       "requirement": "显式用户保存触发",
-      "state": "RUNTIME-VERIFY",
+      "state": "PASS",
       "workPackage": "S1",
       "implementation": [
         "apps/server/src/routes/memoryRuntime.ts"
@@ -4544,11 +4554,11 @@
         "apps/server/src/routes/memoryRuntime.test.ts"
       ],
       "evidence": [
-        "S8-VERIFY-BATCH-10"
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
       ],
       "finding": "[matrix v16 re-point] previous tests: apps/server/src/routes/memoryRuntime.test.ts; verified covering assertion: MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction (triage triage-01.json). Historical finding: Evidence integrity audit: previous PASS withdrawn; see pass-evidence-audit.json row LITE-07-101. Historical finding (not current acceptance): 已有POST /memory/entries；验证实际UI入口、Scope、来源、重复行为。 S8验收：本条点名的测试文件 apps/server/src/routes/memoryRuntime.test.ts 在本修订实际执行并通过（该批次 0 fail / 0 skip），且文件内容覆盖本条主题。",
       "exit": "真实保存→Entry+Event→可检索；无重复、越权或秘密泄漏。",
-      "evidenceBaseline": "ad9a409d24125e5a6fee202468e728886bfe1f52"
+      "evidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b"
     },
     {
       "id": "LITE-07-102",
@@ -8565,6 +8575,87 @@
       "reason": "LITE-13-101 moves from GAP to PASS on the direct browser receipt at implementation baseline c517fbd8: the forward runtime page selects the persisted Conversation and the rendered Run Inspector directly asserts the Compaction section, trigger/threshold, policy, budget source/estimator, source range, summary, attempts, adopted Snapshot and absence of unexplained application errors. Main c844633e differs from c517fbd8 only by closeout evidence/scope bookkeeping, so the c517fbd8 production receipt remains valid under the unchanged-implementation rule.",
       "requirementIds": [
         "LITE-13-101"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-001 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly asserts valid owner-bounded reachability and real-route rejection of invalid Scope/owner envelopes; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-001"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-002 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly asserts SOURCE_REQUIRED for automatic candidates without sources and preserves the user-explicit exception; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-002"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-004 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly asserts persisted conflict resolution, keep-both preservation and reject-both effects; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-004"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-006 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly asserts deterministic order-independent ranking and concrete pin/FTS reasons; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-006"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-008 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly compares frozen context after Entry mutation and observes the immutable snapshot payload guard; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-008"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-009 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly reads persisted selected and excluded explanation fields from the production endpoint; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-009"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-010 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly proves bounded terminal candidates, no non-terminal bulk promotion and no raw Provider history; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-010"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-011 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly proves Scope-promotion review gating and fail-closed cross-Scope merge rejection; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-011"
+      ]
+    },
+    {
+      "version": 22,
+      "baseline": "8201c23535180fd67e66f50792ee6c86ef7bc8e1",
+      "authority": "User-approved controlled per-row PASS promotion after PR #180 merged",
+      "reason": "LITE-07-101 moves from RUNTIME-VERIFY to PASS. The c517fbd8 receipt directly proves real user save to Entry, canonical Workspace Event, retrieval and duplicate convergence; main 8201c235 has no production-path changes from c517fbd8.",
+      "requirementIds": [
+        "LITE-07-101"
       ]
     }
   ],

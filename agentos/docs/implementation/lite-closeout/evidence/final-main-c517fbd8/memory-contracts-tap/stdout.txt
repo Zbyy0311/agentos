@@ -1,0 +1,808 @@
+TAP version 13
+# Subtest: MF5W-A10/A14: the review and resolve routes append Workspace Events, not Run-scoped rows
+ok 1 - MF5W-A10/A14: the review and resolve routes append Workspace Events, not Run-scoped rows
+  ---
+  duration_ms: 272.0566
+  type: 'test'
+  ...
+# Subtest: MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag
+ok 2 - MF-5 retrieve: ranked results with reasons, filters, limit, and degraded flag
+  ---
+  duration_ms: 269.9803
+  type: 'test'
+  ...
+# Subtest: MF-5 retrieve: unknown Workspace is 404
+ok 3 - MF-5 retrieve: unknown Workspace is 404
+  ---
+  duration_ms: 186.1223
+  type: 'test'
+  ...
+# Subtest: MF-5 Run memory-context: 404 for unknown Run, ordered snapshots otherwise
+ok 4 - MF-5 Run memory-context: 404 for unknown Run, ordered snapshots otherwise
+  ---
+  duration_ms: 215.6578
+  type: 'test'
+  ...
+# Subtest: MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons
+ok 5 - MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons
+  ---
+  duration_ms: 200.483
+  type: 'test'
+  ...
+# Subtest: MF-5 conflict resolve: 200 once, 409 on replay or version skew, 404 unknown
+ok 6 - MF-5 conflict resolve: 200 once, 409 on replay or version skew, 404 unknown
+  ---
+  duration_ms: 219.6029
+  type: 'test'
+  ...
+# Subtest: MF-5 candidate queue: list, outcome filter, and version-guarded review
+ok 7 - MF-5 candidate queue: list, outcome filter, and version-guarded review
+  ---
+  duration_ms: 276.9533
+  type: 'test'
+  ...
+# Subtest: MF-5 candidate review: strict edits promote an Entry and retrieval sees only the active Entry
+ok 8 - MF-5 candidate review: strict edits promote an Entry and retrieval sees only the active Entry
+  ---
+  duration_ms: 259.7487
+  type: 'test'
+  ...
+# Subtest: MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction
+ok 9 - MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction
+  ---
+  duration_ms: 229.6804
+  type: 'test'
+  ...
+# Subtest: LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup
+ok 10 - LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup
+  ---
+  duration_ms: 347.6389
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: explicit save does not converge across category or global/workspace scope
+ok 11 - LITE-07-003: explicit save does not converge across category or global/workspace scope
+  ---
+  duration_ms: 190.6356
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: an archived hash match does not swallow a legal explicit save
+ok 12 - LITE-07-003: an archived hash match does not swallow a legal explicit save
+  ---
+  duration_ms: 219.6701
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event
+ok 13 - LITE-07-003: exact duplicate merges a new source once and emits one Workspace dedup event
+  ---
+  duration_ms: 228.8412
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence
+ok 14 - LITE-07-003: Workspace Event failure rolls back exact-source merge, version, and sequence
+  ---
+  duration_ms: 225.0672
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: source write failure rolls back dedup before any Event is published
+ok 15 - LITE-07-003: source write failure rolls back dedup before any Event is published
+  ---
+  duration_ms: 205.4745
+  type: 'test'
+  ...
+# Subtest: LITE-07-003: simultaneous exact saves converge to one source mutation and one Event
+ok 16 - LITE-07-003: simultaneous exact saves converge to one source mutation and one Event
+  ---
+  duration_ms: 221.8389
+  type: 'test'
+  ...
+# Subtest: LITE-07-107 terminal source merge emits one dedup fact and Outbox, replay is a no-op
+ok 17 - LITE-07-107 terminal source merge emits one dedup fact and Outbox, replay is a no-op
+  ---
+  duration_ms: 244.6352
+  type: 'test'
+  ...
+# Subtest: LITE-07-107 memory_entry_sources failure rolls back terminal sources, version and event sequence
+ok 18 - LITE-07-107 memory_entry_sources failure rolls back terminal sources, version and event sequence
+  ---
+  duration_ms: 287.055
+  type: 'test'
+  ...
+# Subtest: LITE-07-107 runtime_events failure rolls back terminal sources, version and event sequence
+ok 19 - LITE-07-107 runtime_events failure rolls back terminal sources, version and event sequence
+  ---
+  duration_ms: 245.1725
+  type: 'test'
+  ...
+# Subtest: LITE-07-107 outbox_messages failure rolls back terminal sources, version and event sequence
+ok 20 - LITE-07-107 outbox_messages failure rolls back terminal sources, version and event sequence
+  ---
+  duration_ms: 237.0559
+  type: 'test'
+  ...
+# Subtest: LITE-07-107 archived exact match between lookup and transaction falls through to Candidate
+ok 21 - LITE-07-107 archived exact match between lookup and transaction falls through to Candidate
+  ---
+  duration_ms: 235.9253
+  type: 'test'
+  ...
+# Subtest: LITE-07-107 exact dedup rejects cross-Run authority without merging sources
+ok 22 - LITE-07-107 exact dedup rejects cross-Run authority without merging sources
+  ---
+  duration_ms: 222.4531
+  type: 'test'
+  ...
+# Subtest: MF5C-1 completed run persists the candidate with exactly one event and Outbox row bound to the operation
+ok 23 - MF5C-1 completed run persists the candidate with exactly one event and Outbox row bound to the operation
+  ---
+  duration_ms: 219.4188
+  type: 'test'
+  ...
+# Subtest: MF5C-2 replaying the terminal trigger converges without appending a second event or Outbox row
+ok 24 - MF5C-2 replaying the terminal trigger converges without appending a second event or Outbox row
+  ---
+  duration_ms: 225.8696
+  type: 'test'
+  ...
+# Subtest: MF5C-3 a failing Outbox write rolls the candidate and the event back together
+ok 25 - MF5C-3 a failing Outbox write rolls the candidate and the event back together
+  ---
+  duration_ms: 231.9376
+  type: 'test'
+  ...
+# Subtest: MF5C-4 a wired generator without an eventContext fails closed before any write
+ok 26 - MF5C-4 a wired generator without an eventContext fails closed before any write
+  ---
+  duration_ms: 224.8316
+  type: 'test'
+  ...
+# Subtest: MF5C-5 an eventContext naming an unknown operation fails closed with no writes
+ok 27 - MF5C-5 an eventContext naming an unknown operation fails closed with no writes
+  ---
+  duration_ms: 218.6419
+  type: 'test'
+  ...
+# Subtest: MF5C-6 an eventContext naming another run's operation fails the in-transaction binding
+ok 28 - MF5C-6 an eventContext naming another run's operation fails the in-transaction binding
+  ---
+  duration_ms: 214.8589
+  type: 'test'
+  ...
+# Subtest: MF2R-G1 completed Run generates a review-required Candidate with bounded evidence
+ok 29 - MF2R-G1 completed Run generates a review-required Candidate with bounded evidence
+  ---
+  duration_ms: 214.463
+  type: 'test'
+  ...
+# Subtest: MF2R-G2 replay converges on the existing Candidate
+ok 30 - MF2R-G2 replay converges on the existing Candidate
+  ---
+  duration_ms: 222.2499
+  type: 'test'
+  ...
+# Subtest: MF2R-G3 exact duplicate content converges with no new Candidate
+ok 31 - MF2R-G3 exact duplicate content converges with no new Candidate
+  ---
+  duration_ms: 209.9655
+  type: 'test'
+  ...
+# Subtest: MF2R-G4 normalized-hash near-duplicate forces review-required
+ok 32 - MF2R-G4 normalized-hash near-duplicate forces review-required
+  ---
+  duration_ms: 214.1597
+  type: 'test'
+  ...
+# Subtest: MF2R-G4b FTS-similar near-duplicate forces review-required
+ok 33 - MF2R-G4b FTS-similar near-duplicate forces review-required
+  ---
+  duration_ms: 193.225
+  type: 'test'
+  ...
+# Subtest: LITE-07-003 LITE-07-107 terminal dedup ignores another task
+ok 34 - LITE-07-003 LITE-07-107 terminal dedup ignores another task
+  ---
+  duration_ms: 194.2549
+  type: 'test'
+  ...
+# Subtest: LITE-07-003 LITE-07-107 terminal dedup ignores workspace scope
+ok 35 - LITE-07-003 LITE-07-107 terminal dedup ignores workspace scope
+  ---
+  duration_ms: 184.3873
+  type: 'test'
+  ...
+# Subtest: LITE-07-003 LITE-07-107 terminal dedup ignores another category
+ok 36 - LITE-07-003 LITE-07-107 terminal dedup ignores another category
+  ---
+  duration_ms: 279.5755
+  type: 'test'
+  ...
+# Subtest: LITE-07-003 LITE-07-107 terminal dedup ignores archived
+ok 37 - LITE-07-003 LITE-07-107 terminal dedup ignores archived
+  ---
+  duration_ms: 193.594
+  type: 'test'
+  ...
+# Subtest: LITE-07-003 LITE-07-107 terminal dedup ignores deleted
+ok 38 - LITE-07-003 LITE-07-107 terminal dedup ignores deleted
+  ---
+  duration_ms: 189.962
+  type: 'test'
+  ...
+# Subtest: LITE-07-107 exact terminal dedup adds source once without changing accepted content
+ok 39 - LITE-07-107 exact terminal dedup adds source once without changing accepted content
+  ---
+  duration_ms: 190.5322
+  type: 'test'
+  ...
+# Subtest: MF2R-G5 non-terminal or unknown Run generates nothing
+ok 40 - MF2R-G5 non-terminal or unknown Run generates nothing
+  ---
+  duration_ms: 182.0618
+  type: 'test'
+  ...
+# Subtest: MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run
+ok 41 - MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run
+  ---
+  duration_ms: 180.926
+  type: 'test'
+  ...
+# Subtest: MF2R-G7 cancelled Run generates one bounded failure Candidate without a failure code
+ok 42 - MF2R-G7 cancelled Run generates one bounded failure Candidate without a failure code
+  ---
+  duration_ms: 282.161
+  type: 'test'
+  ...
+# Subtest: MF2R input validation fails closed
+ok 43 - MF2R input validation fails closed
+  ---
+  duration_ms: 180.5856
+  type: 'test'
+  ...
+# Subtest: MF4B-01 selection persists snapshot and assembles context
+ok 44 - MF4B-01 selection persists snapshot and assembles context
+  ---
+  duration_ms: 205.9447
+  type: 'test'
+  ...
+# Subtest: MF4B-02 token budget truncates explicitly
+ok 45 - MF4B-02 token budget truncates explicitly
+  ---
+  duration_ms: 196.0299
+  type: 'test'
+  ...
+# Subtest: MF4B-03 entry budget excludes beyond cap
+ok 46 - MF4B-03 entry budget excludes beyond cap
+  ---
+  duration_ms: 197.208
+  type: 'test'
+  ...
+# Subtest: MF4B-04 confidence and importance thresholds exclude
+ok 47 - MF4B-04 confidence and importance thresholds exclude
+  ---
+  duration_ms: 187.0375
+  type: 'test'
+  ...
+# Subtest: MF4B-05 per-category limit excludes
+ok 48 - MF4B-05 per-category limit excludes
+  ---
+  duration_ms: 192.5042
+  type: 'test'
+  ...
+# Subtest: MF4B-06 selection is reproducible
+ok 49 - MF4B-06 selection is reproducible
+  ---
+  duration_ms: 255.2412
+  type: 'test'
+  ...
+# Subtest: MF4B-07 later entry edits do not change a snapshot
+ok 50 - MF4B-07 later entry edits do not change a snapshot
+  ---
+  duration_ms: 208.3103
+  type: 'test'
+  ...
+# Subtest: MF4B-08 invalid input fails closed
+ok 51 - MF4B-08 invalid input fails closed
+  ---
+  duration_ms: 188.9409
+  type: 'test'
+  ...
+# Subtest: MF4B-09 query hash is stable and opaque
+ok 52 - MF4B-09 query hash is stable and opaque
+  ---
+  duration_ms: 0.3388
+  type: 'test'
+  ...
+# Subtest: MF4B-11 per-scope limit reports scope-excluded
+ok 53 - MF4B-11 per-scope limit reports scope-excluded
+  ---
+  duration_ms: 220.2925
+  type: 'test'
+  ...
+# Subtest: MF4B-12 diversity prefers an unrepresented category and explains the exclusion
+ok 54 - MF4B-12 diversity prefers an unrepresented category and explains the exclusion
+  ---
+  duration_ms: 210.4164
+  type: 'test'
+  ...
+# Subtest: MF4B-13 diversity keeps capacity usable for deferred entries
+ok 55 - MF4B-13 diversity keeps capacity usable for deferred entries
+  ---
+  duration_ms: 195.6152
+  type: 'test'
+  ...
+# Subtest: MF4B-10 applyBudget records every considered entry
+ok 56 - MF4B-10 applyBudget records every considered entry
+  ---
+  duration_ms: 0.2156
+  type: 'test'
+  ...
+# Subtest: LITE-07-013 MF4B-14 the snapshot records whether FTS ranking was degraded
+ok 57 - LITE-07-013 MF4B-14 the snapshot records whether FTS ranking was degraded
+  ---
+  duration_ms: 189.7239
+  type: 'test'
+  ...
+# Subtest: LITE-07-013 MF4B-15 a healthy FTS query is not reported as degraded
+ok 58 - LITE-07-013 MF4B-15 a healthy FTS query is not reported as degraded
+  ---
+  duration_ms: 177.0037
+  type: 'test'
+  ...
+# Subtest: MF4I-01 resolve persists a snapshot and returns bounded context
+ok 59 - MF4I-01 resolve persists a snapshot and returns bounded context
+  ---
+  duration_ms: 190.1066
+  type: 'test'
+  ...
+# Subtest: MF4I-02 resolve is idempotent per run scope
+ok 60 - MF4I-02 resolve is idempotent per run scope
+  ---
+  duration_ms: 189.4289
+  type: 'test'
+  ...
+# Subtest: MF4I-03 stage scope is distinct from run scope
+ok 61 - MF4I-03 stage scope is distinct from run scope
+  ---
+  duration_ms: 187.8756
+  type: 'test'
+  ...
+# Subtest: replaying an earlier scope after a later Stage does not recreate its snapshot
+ok 62 - replaying an earlier scope after a later Stage does not recreate its snapshot
+  ---
+  duration_ms: 187.6608
+  type: 'test'
+  ...
+# Subtest: MF4I-04 snapshot failure blocks injection
+ok 63 - MF4I-04 snapshot failure blocks injection
+  ---
+  duration_ms: 175.2467
+  type: 'test'
+  ...
+# Subtest: MF4I-05 invalid input fails closed
+ok 64 - MF4I-05 invalid input fails closed
+  ---
+  duration_ms: 173.8174
+  type: 'test'
+  ...
+# Subtest: MF4I-06 injection gate rejects absent snapshot
+ok 65 - MF4I-06 injection gate rejects absent snapshot
+  ---
+  duration_ms: 194.2636
+  type: 'test'
+  ...
+# Subtest: MF4I-07 later entry edits do not rewrite the snapshot
+ok 66 - MF4I-07 later entry edits do not rewrite the snapshot
+  ---
+  duration_ms: 206.0882
+  type: 'test'
+  ...
+# Subtest: frozen injection survives content edits and logical deletion of its Entry
+ok 67 - frozen injection survives content edits and logical deletion of its Entry
+  ---
+  duration_ms: 210.2536
+  type: 'test'
+  ...
+# Subtest: historical metadata-only snapshot is inspectable but blocks injection
+ok 68 - historical metadata-only snapshot is inspectable but blocks injection
+  ---
+  duration_ms: 263.684
+  type: 'test'
+  ...
+# Subtest: payload failure rolls back the snapshot and its selections
+ok 69 - payload failure rolls back the snapshot and its selections
+  ---
+  duration_ms: 210.2404
+  type: 'test'
+  ...
+# Subtest: corrupt frozen payload blocks replay
+ok 70 - corrupt frozen payload blocks replay
+  ---
+  duration_ms: 178.3233
+  type: 'test'
+  ...
+# Subtest: MF4I-08 empty store still persists a snapshot
+ok 71 - MF4I-08 empty store still persists a snapshot
+  ---
+  duration_ms: 175.1759
+  type: 'test'
+  ...
+# Subtest: MF4I-09 default budget is frozen and valid
+ok 72 - MF4I-09 default budget is frozen and valid
+  ---
+  duration_ms: 191.6486
+  type: 'test'
+  ...
+# Subtest: MF4I-10 workspace isolation
+ok 73 - MF4I-10 workspace isolation
+  ---
+  duration_ms: 203.4529
+  type: 'test'
+  ...
+# Subtest: LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen
+ok 74 - LITE-07-109: new snapshots exclude ineligible content while historical snapshots stay frozen
+  ---
+  duration_ms: 217.8109
+  type: 'test'
+  ...
+# Subtest: LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation
+ok 75 - LITE-07-013 MF4I-DEGRADED the persisted snapshot records the retrieval degradation
+  ---
+  duration_ms: 200.6011
+  type: 'test'
+  ...
+# Subtest: MF3-01 reach resolution is owner-bounded
+ok 76 - MF3-01 reach resolution is owner-bounded
+  ---
+  duration_ms: 0.9899
+  type: 'test'
+  ...
+# Subtest: MF3-02 retrieval is scope-bounded
+ok 77 - MF3-02 retrieval is scope-bounded
+  ---
+  duration_ms: 612.1313
+  type: 'test'
+  ...
+# Subtest: MF3-03 non-retrievable statuses excluded
+ok 78 - MF3-03 non-retrievable statuses excluded
+  ---
+  duration_ms: 972.8629
+  type: 'test'
+  ...
+# Subtest: MF3-04 ranking is deterministic and order-independent
+ok 79 - MF3-04 ranking is deterministic and order-independent
+  ---
+  duration_ms: 0.2897
+  type: 'test'
+  ...
+# Subtest: MF3-05 pin dominates and is explained
+ok 80 - MF3-05 pin dominates and is explained
+  ---
+  duration_ms: 0.1641
+  type: 'test'
+  ...
+# Subtest: MF3-06 conflict penalty and FTS reason
+ok 81 - MF3-06 conflict penalty and FTS reason
+  ---
+  duration_ms: 0.1195
+  type: 'test'
+  ...
+# Subtest: MF3-07 equal scores break by id ascending
+ok 82 - MF3-07 equal scores break by id ascending
+  ---
+  duration_ms: 0.1099
+  type: 'test'
+  ...
+# Subtest: MF3-08 recency is driven by the supplied clock
+ok 83 - MF3-08 recency is driven by the supplied clock
+  ---
+  duration_ms: 0.0872
+  type: 'test'
+  ...
+# Subtest: MF3-09 category and tag filters
+ok 84 - MF3-09 category and tag filters
+  ---
+  duration_ms: 215.7353
+  type: 'test'
+  ...
+# Subtest: MF3-10 FTS relevance affects ranking, structured filters remain authoritative
+ok 85 - MF3-10 FTS relevance affects ranking, structured filters remain authoritative
+  ---
+  duration_ms: 194.4626
+  type: 'test'
+  ...
+# Subtest: MF3-11 hostile FTS query is neutralized
+ok 86 - MF3-11 hostile FTS query is neutralized
+  ---
+  duration_ms: 163.3733
+  type: 'test'
+  ...
+# Subtest: MF3-12 limit caps results
+ok 87 - MF3-12 limit caps results
+  ---
+  duration_ms: 174.6872
+  type: 'test'
+  ...
+# Subtest: MF3-13 invalid input fails closed
+ok 88 - MF3-13 invalid input fails closed
+  ---
+  duration_ms: 172.0271
+  type: 'test'
+  ...
+# Subtest: MF3-14 ranking weights are frozen
+ok 89 - MF3-14 ranking weights are frozen
+  ---
+  duration_ms: 0.1006
+  type: 'test'
+  ...
+# Subtest: MF3-15 no cross-workspace leakage
+ok 90 - MF3-15 no cross-workspace leakage
+  ---
+  duration_ms: 177.4718
+  type: 'test'
+  ...
+# Subtest: LITE-07-109: validity is inclusive at start and exclusive at end or expiry
+ok 91 - LITE-07-109: validity is inclusive at start and exclusive at end or expiry
+  ---
+  duration_ms: 232.8358
+  type: 'test'
+  ...
+# Subtest: LITE-07-109: malformed persisted dates fail closed and the clock is captured once
+ok 92 - LITE-07-109: malformed persisted dates fail closed and the clock is captured once
+  ---
+  duration_ms: 206.143
+  type: 'test'
+  ...
+# Subtest: LITE-07-109: restricted pinned matches cannot consume a limit or leak through retrieval
+ok 93 - LITE-07-109: restricted pinned matches cannot consume a limit or leak through retrieval
+  ---
+  duration_ms: 193.6794
+  type: 'test'
+  ...
+# Subtest: MF2R-01 create persists candidate and decision
+ok 94 - MF2R-01 create persists candidate and decision
+  ---
+  duration_ms: 209.8027
+  type: 'test'
+  ...
+# Subtest: MF2R-02 secret content rejects
+ok 95 - MF2R-02 secret content rejects
+  ---
+  duration_ms: 201.9078
+  type: 'test'
+  ...
+# Subtest: MF2R-03 automatic candidate without source rejects
+ok 96 - MF2R-03 automatic candidate without source rejects
+  ---
+  duration_ms: 196.7786
+  type: 'test'
+  ...
+# Subtest: MF2R-04 review-required triggers
+ok 97 - MF2R-04 review-required triggers
+  ---
+  duration_ms: 204.0565
+  type: 'test'
+  ...
+# Subtest: MF2R-05 invalid input fails closed
+ok 98 - MF2R-05 invalid input fails closed
+  ---
+  duration_ms: 187.1635
+  type: 'test'
+  ...
+# Subtest: MF2R-06 review is versioned
+ok 99 - MF2R-06 review is versioned
+  ---
+  duration_ms: 187.0337
+  type: 'test'
+  ...
+# Subtest: MF2R-07 merge-with-existing requires a real entry
+ok 100 - MF2R-07 merge-with-existing requires a real entry
+  ---
+  duration_ms: 191.6645
+  type: 'test'
+  ...
+# Subtest: MF2R-14 accept promotes an active retrieval Entry and preserves provenance
+ok 101 - MF2R-14 accept promotes an active retrieval Entry and preserves provenance
+  ---
+  duration_ms: 190.4583
+  type: 'test'
+  ...
+# Subtest: MF2R-15 edit-and-accept updates fields and recomputes derived values
+ok 102 - MF2R-15 edit-and-accept updates fields and recomputes derived values
+  ---
+  duration_ms: 198.6542
+  type: 'test'
+  ...
+# Subtest: MF2R-16 merge rejects scope or owner leakage
+ok 103 - MF2R-16 merge rejects scope or owner leakage
+  ---
+  duration_ms: 206.7993
+  type: 'test'
+  ...
+# Subtest: MF2R-17 review promotion rolls back the Entry and candidate on persistence failure
+ok 104 - MF2R-17 review promotion rolls back the Entry and candidate on persistence failure
+  ---
+  duration_ms: 200.4177
+  type: 'test'
+  ...
+# Subtest: MF2R-18 historical auto-accepted rows without review metadata remain reviewable
+ok 105 - MF2R-18 historical auto-accepted rows without review metadata remain reviewable
+  ---
+  duration_ms: 207.4114
+  type: 'test'
+  ...
+# Subtest: MF2R-19 malformed edits fail closed without changing the reviewable candidate
+ok 106 - MF2R-19 malformed edits fail closed without changing the reviewable candidate
+  ---
+  duration_ms: 197.5418
+  type: 'test'
+  ...
+# Subtest: MF2R-08 exact duplicate lookup
+ok 107 - MF2R-08 exact duplicate lookup
+  ---
+  duration_ms: 198.7857
+  type: 'test'
+  ...
+# Subtest: MF2R-09 conflict open and resolve
+ok 108 - MF2R-09 conflict open and resolve
+  ---
+  duration_ms: 202.7039
+  type: 'test'
+  ...
+# Subtest: MF2R-10 conflict input validation
+ok 109 - MF2R-10 conflict input validation
+  ---
+  duration_ms: 203.3361
+  type: 'test'
+  ...
+# Subtest: MF2R-20 conflict open reports the entry effects it persisted
+ok 110 - MF2R-20 conflict open reports the entry effects it persisted
+  ---
+  duration_ms: 202.6812
+  type: 'test'
+  ...
+# Subtest: MF2R-21 keep-both releases both conflicted entries
+ok 111 - MF2R-21 keep-both releases both conflicted entries
+  ---
+  duration_ms: 202.0474
+  type: 'test'
+  ...
+# Subtest: MF2R-22 supersede dispositions target the addressed side
+ok 112 - MF2R-22 supersede dispositions target the addressed side
+  ---
+  duration_ms: 412.0576
+  type: 'test'
+  ...
+# Subtest: MF2R-23 reject-both rejects both sides
+ok 113 - MF2R-23 reject-both rejects both sides
+  ---
+  duration_ms: 213.5562
+  type: 'test'
+  ...
+# Subtest: MF2R-24 conflict mutations respect other open conflicts and deleted entries
+ok 114 - MF2R-24 conflict mutations respect other open conflicts and deleted entries
+  ---
+  duration_ms: 219.1465
+  type: 'test'
+  ...
+# Subtest: MF2R-11 record exposes no secret value field
+ok 115 - MF2R-11 record exposes no secret value field
+  ---
+  duration_ms: 190.1397
+  type: 'test'
+  ...
+# Subtest: MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2)
+ok 116 - MF2R-13 normalized hash lookup detects near-duplicates (dedup step 2)
+  ---
+  duration_ms: 185.7577
+  type: 'test'
+  ...
+# Subtest: MF2R-12 listCandidates orders, filters, and guards
+ok 117 - MF2R-12 listCandidates orders, filters, and guards
+  ---
+  duration_ms: 182.3068
+  type: 'test'
+  ...
+# Subtest: MF1R-01 create persists entry, sources, and FTS row
+ok 118 - MF1R-01 create persists entry, sources, and FTS row
+  ---
+  duration_ms: 190.5974
+  type: 'test'
+  ...
+# Subtest: MF1R-02 reads are workspace-scoped
+ok 119 - MF1R-02 reads are workspace-scoped
+  ---
+  duration_ms: 176.2509
+  type: 'test'
+  ...
+# Subtest: MF1R-03 missing workspace fails closed
+ok 120 - MF1R-03 missing workspace fails closed
+  ---
+  duration_ms: 174.0792
+  type: 'test'
+  ...
+# Subtest: MF1R-04 automatic entry without source fails closed
+ok 121 - MF1R-04 automatic entry without source fails closed
+  ---
+  duration_ms: 243.8349
+  type: 'test'
+  ...
+# Subtest: MF1R-05 invalid scope/owner fails closed
+ok 122 - MF1R-05 invalid scope/owner fails closed
+  ---
+  duration_ms: 169.1953
+  type: 'test'
+  ...
+# Subtest: MF1R-06 invalid vocabulary and bounds fail closed
+ok 123 - MF1R-06 invalid vocabulary and bounds fail closed
+  ---
+  duration_ms: 168.0573
+  type: 'test'
+  ...
+# Subtest: MF1R-07 duplicate sources fail closed
+ok 124 - MF1R-07 duplicate sources fail closed
+  ---
+  duration_ms: 172.3055
+  type: 'test'
+  ...
+# Subtest: MF1R-08 status update increments version
+ok 125 - MF1R-08 status update increments version
+  ---
+  duration_ms: 178.6074
+  type: 'test'
+  ...
+# Subtest: MF1R-09 stale version and deleted entry fail closed
+ok 126 - MF1R-09 stale version and deleted entry fail closed
+  ---
+  duration_ms: 187.1507
+  type: 'test'
+  ...
+# Subtest: MF1R-10 soft delete preserves the row
+ok 127 - MF1R-10 soft delete preserves the row
+  ---
+  duration_ms: 203.6998
+  type: 'test'
+  ...
+# Subtest: MF1R-11 unknown entry fails closed
+ok 128 - MF1R-11 unknown entry fails closed
+  ---
+  duration_ms: 168.5853
+  type: 'test'
+  ...
+# Subtest: MF1R-12 invalid update input fails closed
+ok 129 - MF1R-12 invalid update input fails closed
+  ---
+  duration_ms: 183.2227
+  type: 'test'
+  ...
+# Subtest: MF1R-13 duplicate entry id fails closed
+ok 130 - MF1R-13 duplicate entry id fails closed
+  ---
+  duration_ms: 174.1205
+  type: 'test'
+  ...
+# Subtest: MF1R-14 create is atomic across entry, sources, and FTS
+ok 131 - MF1R-14 create is atomic across entry, sources, and FTS
+  ---
+  duration_ms: 183.15
+  type: 'test'
+  ...
+# Subtest: MF1R-15 record exposes no secret value field
+ok 132 - MF1R-15 record exposes no secret value field
+  ---
+  duration_ms: 166.3916
+  type: 'test'
+  ...
+# Subtest: MF1R-16 pinned flag round-trips
+ok 133 - MF1R-16 pinned flag round-trips
+  ---
+  duration_ms: 174.8686
+  type: 'test'
+  ...
+1..133
+# tests 133
+# suites 0
+# pass 133
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 29606.7598

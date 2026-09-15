@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "authorityId": "lite-pass-promotion-20260915",
   "authorityHash": "b8a3f061b5d8f1688c57e5abefd6c4f03b800d0ee8d0d9de92329d69b4655714",
-  "matrixVersion": 21,
+  "matrixVersion": 22,
   "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
   "promotions": [
     {
@@ -2121,6 +2121,461 @@
         }
       ],
       "rationale": "This individual promotion is based on the direct browser receipt at implementation baseline c517fbd8: a real 1600x900 forward runtime workbench selects the persisted Conversation and renders the actual Run Inspector Compaction projection. The 5 pass / 0 fail / 0 skip raw TAP receipt contains 14 named direct assertions for page/context identity, trigger explanation, policy/budget/source/summary/attempt/adoption fields and unexplained-error absence. Main c844633e contains only the merged closeout evidence/scope bookkeeping after c517fbd8, so the production implementation receipt remains valid under the unchanged-implementation rule."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-001",
+      "requirementId": "LITE-07-001",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-SCOPE-01",
+          "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+          "name": "MF3-01 reach resolution is owner-bounded",
+          "line": 94,
+          "expression": "assert.deepEqual(reach, [{ scope: 'global', ownerId: null }, { scope: 'workspace', ownerId: null }]);",
+          "clause": "Valid reachability uses the permitted Scope/owner pairs.",
+          "whyDirect": "The production reach resolver is called with a Workspace-only context and its exact valid global/workspace pairs are asserted.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-SCOPE-02",
+          "file": "apps/server/src/routes/memoryRuntime.test.ts",
+          "name": "LITE-07-003/107: explicit save validates invalid scope, category, sources, and owners before duplicate lookup",
+          "line": 607,
+          "expression": "assert.equal(response.status, 400);",
+          "clause": "Invalid Scope/owner combinations are rejected by the production boundary.",
+          "whyDirect": "The route submits invalid Scope and owner envelopes through the real HTTP endpoint and asserts the production 400 response for every case.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the preserved c517fbd8 Memory receipt: the reach resolver asserts valid owner-bounded pairs and the real save route rejects invalid Scope/owner envelopes. The authoritative main SHA before this closeout-only promotion is 8201c23535180fd67e66f50792ee6c86ef7bc8e1; the production-path diff from c517fbd8 to that main SHA is empty under apps/server/src, apps/web/src and packages."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-002",
+      "requirementId": "LITE-07-002",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/store/MemoryCandidateRepository.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-SOURCE-01",
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-03 automatic candidate without source rejects",
+          "line": 198,
+          "expression": "assert.throws(",
+          "clause": "An automatic candidate without a source is refused.",
+          "whyDirect": "The production candidate repository receives agent-derived content with an empty source list and the test asserts SOURCE_REQUIRED; the same test separately permits user-explicit content.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-SOURCE-02",
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-03 automatic candidate without source rejects",
+          "line": 203,
+          "expression": "assert.equal(ok.authority, 'user-explicit');",
+          "clause": "The source gate does not misclassify an explicitly user-authored save.",
+          "whyDirect": "The production repository result is read back after the explicit-user exception, proving the automatic-source rule is scoped to automatic content.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the direct MF2R-03 assertions in the c517fbd8 receipt. They exercise the production candidate repository's automatic-source refusal and the explicit-user exception. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-004",
+      "requirementId": "LITE-07-004",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-CONFLICT-01",
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-09 conflict open and resolve",
+          "line": 498,
+          "expression": "assert.equal(resolved.status, 'resolved');",
+          "clause": "An opened conflict can be explicitly resolved.",
+          "whyDirect": "The repository opens a persisted conflict and the production resolution path returns its resolved status.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-CONFLICT-02",
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-21 keep-both releases both conflicted entries",
+          "line": 548,
+          "expression": "assert.equal(resolved.conflict.disposition, 'keep-both');",
+          "clause": "Explicit keep-both resolution preserves both sides.",
+          "whyDirect": "The production conflict resolver records the selected disposition and the test reads that durable decision.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-CONFLICT-03",
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-23 reject-both rejects both sides",
+          "line": 590,
+          "expression": "assert.deepEqual(resolved.effects, [",
+          "clause": "Explicit reject-both resolution applies the recorded effects to both entries.",
+          "whyDirect": "The production resolver returns both persisted status transitions and the assertion checks the complete effect list.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the c517fbd8 conflict receipt. It directly observes persisted conflict resolution, keep-both preservation and reject-both effects; it does not infer behavior from the repository symbol or suite result. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-006",
+      "requirementId": "LITE-07-006",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryRetrievalService.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-RANK-01",
+          "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+          "name": "MF3-04 ranking is deterministic and order-independent",
+          "line": 145,
+          "expression": "assert.deepEqual(forward.map(r => r.memoryId), reverse.map(r => r.memoryId));",
+          "clause": "Ranking is deterministic regardless of input order.",
+          "whyDirect": "The production ranking function receives the same candidates in both orders and the exact ordered IDs are compared.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-RANK-02",
+          "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+          "name": "MF3-05 pin dominates and is explained",
+          "line": 164,
+          "expression": "assert.ok(ranked[0].reasons.includes('pin'));",
+          "clause": "A ranking decision carries a direct explanation.",
+          "whyDirect": "The production ranking result is inspected for the concrete pin reason rather than inferred from a source symbol.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-RANK-03",
+          "file": "apps/server/src/services/MemoryRetrievalService.test.ts",
+          "name": "MF3-06 conflict penalty and FTS reason",
+          "line": 178,
+          "expression": "assert.ok(withFts.reasons.includes('fts-relevance'));",
+          "clause": "FTS contribution is explained in the ranking result.",
+          "whyDirect": "The production ranker is exercised with an FTS score and the returned reason list is asserted.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the c517fbd8 ranking receipt. The named assertions separately prove order-independent ranking and concrete pin/FTS reasons. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-008",
+      "requirementId": "LITE-07-008",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-SNAPSHOT-01",
+          "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+          "name": "frozen injection survives content edits and logical deletion of its Entry",
+          "line": 217,
+          "expression": "assert.equal(fx.resolver.resolve(resolveInput()).contextText, first.contextText);",
+          "clause": "Later Entry content edits do not rewrite an existing Context Snapshot.",
+          "whyDirect": "The production resolver is replayed after a persisted Entry content/version change and its returned context is compared with the frozen context.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-SNAPSHOT-02",
+          "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+          "name": "frozen injection survives content edits and logical deletion of its Entry",
+          "line": 221,
+          "expression": "assert.throws(",
+          "clause": "The persisted snapshot payload cannot be overwritten through the database mutation guard.",
+          "whyDirect": "The test attempts the prohibited production payload mutation and observes the durable IMMUTABLE rejection.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the c517fbd8 snapshot receipt. It directly compares replayed context after Entry mutation and observes the immutable payload guard. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-009",
+      "requirementId": "LITE-07-009",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-EXPLAIN-01",
+          "file": "apps/server/src/routes/memoryRuntime.test.ts",
+          "name": "MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons",
+          "line": 377,
+          "expression": "assert.deepEqual(snapshot.selected[0]!.reasons, ['scope-match', 'importance']);",
+          "clause": "Selected Entries expose their selection reasons.",
+          "whyDirect": "The production memory-context endpoint is queried and the returned persisted snapshot reason list is compared exactly.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-EXPLAIN-02",
+          "file": "apps/server/src/routes/memoryRuntime.test.ts",
+          "name": "MF-5 memory-context by id: frozen snapshot with selection and exclusion reasons",
+          "line": 379,
+          "expression": "assert.equal(snapshot.exclusions[0]!.reason, 'below-confidence');",
+          "clause": "Excluded Entries expose their exclusion reasons.",
+          "whyDirect": "The same production endpoint returns an exclusion and the exact persisted exclusion reason is asserted.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the c517fbd8 memory-context receipt. The real endpoint returns both selected and excluded records, and the assertions compare their persisted explanation fields. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-010",
+      "requirementId": "LITE-07-010",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryCandidateGenerationService.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-BOUND-01",
+          "file": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+          "name": "MF2R-G1 completed Run generates a review-required Candidate with bounded evidence",
+          "line": 121,
+          "expression": "assert.ok(!candidate.content.includes('raw-provider'));",
+          "clause": "Terminal-run promotion does not include raw Provider history.",
+          "whyDirect": "The production terminal generator creates the Candidate and the persisted content is directly checked for absence of the raw-provider payload.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-BOUND-02",
+          "file": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+          "name": "MF2R-G5 non-terminal or unknown Run generates nothing",
+          "line": 271,
+          "expression": "assert.equal(running.candidates.listCandidates(WS).length, 0);",
+          "clause": "Non-terminal execution does not bulk-promote transcript content.",
+          "whyDirect": "The production generator is called for a running Run and the repository is queried to verify that no Candidate was created.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-BOUND-03",
+          "file": "apps/server/src/services/MemoryCandidateGenerationService.test.ts",
+          "name": "MF2R-G6 failed Run generates one bounded failure Candidate, idempotent per Run",
+          "line": 295,
+          "expression": "assert.ok(!candidate.content.includes('raw-provider'));",
+          "clause": "Failure candidates also exclude raw Provider history.",
+          "whyDirect": "The production failure generator is exercised and its actual Candidate content is checked for the same boundary.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the c517fbd8 terminal-generation receipt. It directly checks bounded persisted content, no generation for a non-terminal Run, and the same boundary on failure candidates. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-011",
+      "requirementId": "LITE-07-011",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-SCOPE-PROMOTION-01",
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-04 review-required triggers",
+          "line": 220,
+          "expression": "assert.equal(candidate.decision, 'review-required', name);",
+          "clause": "A candidate marked for Scope promotion enters review-required rather than automatic acceptance.",
+          "whyDirect": "The production promotion gate is exercised with its explicit scopePromotion flag and the returned decision is asserted for the named promotion case.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-SCOPE-PROMOTION-02",
+          "file": "apps/server/src/store/MemoryCandidateRepository.test.ts",
+          "name": "MF2R-16 merge rejects scope or owner leakage",
+          "line": 387,
+          "expression": "assert.throws(",
+          "clause": "A cross-Scope merge is rejected without mutating the target Entry.",
+          "whyDirect": "The production review/merge path receives a workspace-scoped candidate for a task-scoped Entry and the test asserts the fail-closed rejection.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the c517fbd8 scope-promotion receipt. It directly observes the review-required gate and fail-closed cross-Scope merge rejection. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
+    },
+    {
+      "to": "PASS",
+      "baselineSha": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "evidenceIds": [
+        "S9-FINAL-C517-MEMORY-CONTRACTS"
+      ],
+      "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap src/store/MemoryEntryRepository.test.ts src/store/MemoryCandidateRepository.test.ts src/services/MemoryRetrievalService.test.ts src/services/MemoryContextResolver.test.ts src/services/MemoryContextBudgetSelector.test.ts src/services/MemoryCandidateGenerationService.test.ts src/services/MemoryCandidateGenerationService.emission.test.ts src/routes/memoryRuntime.test.ts",
+      "cwd": "apps/server",
+      "rawExitCode": 0,
+      "counts": {
+        "passed": 133,
+        "failed": 0,
+        "skipped": 0
+      },
+      "promotionId": "PROMOTION-LITE-07-101",
+      "requirementId": "LITE-07-101",
+      "from": "RUNTIME-VERIFY",
+      "implementation": [
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "assertions": [
+        {
+          "id": "MEM-USER-SAVE-01",
+          "file": "apps/server/src/routes/memoryRuntime.test.ts",
+          "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+          "line": 540,
+          "expression": "assert.equal(savedBody.entry.authority, 'user-explicit');",
+          "clause": "The real save route creates a user-explicit Entry.",
+          "whyDirect": "The production HTTP save route is called and the returned durable Entry authority is asserted.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-USER-SAVE-02",
+          "file": "apps/server/src/routes/memoryRuntime.test.ts",
+          "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+          "line": 547,
+          "expression": "assert.equal(wsEvents[0]!.type, 'memory.entry_created');",
+          "clause": "The save emits the canonical Workspace Event.",
+          "whyDirect": "The production database is queried after the route call and the exact persisted event type is asserted.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-USER-SAVE-03",
+          "file": "apps/server/src/routes/memoryRuntime.test.ts",
+          "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+          "line": 563,
+          "expression": "assert.ok(retrievedBody.results.some(r => r.entry.id === savedBody.entry.id && r.entry.authority === 'user-explicit'));",
+          "clause": "The saved Entry is retrievable through the production retrieval path.",
+          "whyDirect": "The test calls the real retrieval endpoint and matches the actual saved Entry by ID and authority.",
+          "outcome": "passed"
+        },
+        {
+          "id": "MEM-USER-SAVE-04",
+          "file": "apps/server/src/routes/memoryRuntime.test.ts",
+          "name": "MF-2 explicit user save: creates the Entry and one Workspace Event in one transaction",
+          "line": 570,
+          "expression": "assert.equal((dup.json as { converged: boolean }).converged, true);",
+          "clause": "A duplicate save converges rather than creating a second Entry.",
+          "whyDirect": "The same production route is called again with the same content and the response explicitly reports convergence.",
+          "outcome": "passed"
+        }
+      ],
+      "rationale": "This individual promotion uses the c517fbd8 real HTTP save receipt. It directly proves user-explicit Entry creation, canonical Workspace Event emission, retrieval, and duplicate convergence. Main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has no production-path changes relative to c517fbd8."
     }
   ]
 }
