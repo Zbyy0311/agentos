@@ -1556,5 +1556,22 @@
     ],
     "environment": "Windows; Node v24.18.0; isolated TAP capture at c517fbd8; tracked checkout unchanged",
     "limitation": "The preserved TAP receipt contains individually mapped direct assertions for the listed Memory rows. It was captured at c517fbd8 and is reused for the controlled promotions only because main 8201c23535180fd67e66f50792ee6c86ef7bc8e1 has an empty production-path diff from c517fbd8 under apps/server/src, apps/web/src and packages; the historical receipt baseline remains c517fbd8."
+  },
+  {
+    "id": "S3-FINAL-MAIN-AD113-APPROVAL",
+    "baseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+    "kind": "local-tests",
+    "cwd": "apps/server",
+    "command": "node --import tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern='LITE-08-005|LITE-08-006|LITE-08-007|LITE-07-103' src/services/run-engine/RunEngineProviderDispatcher.test.ts src/routes/runtimeApprovals.test.ts",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-ad113198/approval-tap/receipt.json",
+    "result": { "passed": 14, "failed": 0, "skipped": 0 },
+    "requirementIds": [
+      "LITE-07-103",
+      "LITE-08-005",
+      "LITE-08-006",
+      "LITE-08-007"
+    ],
+    "environment": "Windows; Node v24.18.0; final main ad113198; tracked checkout unchanged",
+    "limitation": "The preserved TAP receipt directly maps accepted/denied approval effects, original-Run pause/resume and restart recovery, CAS competition/replay, stale/expired rejection, pre-spawn expiry revalidation, candidate creation/event emission, and rollback. It is final-main evidence for these four rows; real Provider CLI execution remains separately governed by LITE-04-101."
   }
 ]
