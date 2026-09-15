@@ -29,7 +29,7 @@ export interface GroupCanvasState {
 
 export interface GroupCanvasActions {
   readonly start: (budget: GroupInteractionBudgetInput) => Promise<GroupInteraction | null>;
-  readonly run: (interactionId: string, sourceMessageId: string) => Promise<void>;
+  readonly run: (interactionId: string, sourceMessageId: string, mentionedAgentIds?: readonly string[]) => Promise<void>;
   readonly stop: () => Promise<void>;
   readonly refresh: () => Promise<void>;
 }
@@ -100,7 +100,7 @@ export function useGroupConversation(
     }
   }, [conversationId, applyDetail]);
 
-  const run = useCallback(async (interactionId: string, sourceMessageId: string) => {
+  const run = useCallback(async (interactionId: string, sourceMessageId: string, mentionedAgentIds?: readonly string[]) => {
     if (!conversationId) return;
     setBusy(true);
     setError(undefined);
@@ -110,10 +110,11 @@ export function useGroupConversation(
     try {
       const response = await clientRef.current.respond(interactionId, conversationId, {
         sourceMessageId,
-      });
+        ...(mentionedAgentIds === undefined || mentionedAgentIds.length === 0 ? {} : { mentionedAgentIds: [...mentionedAgentIds] }),
+      }, abort.signal);
       await consumeSseResponse(response, (event, data) => {
         setWalk(current => applyGroupWalkEvent(current, event.event, data));
-      });
+      }, { terminalEvents: ['group.done'] });
       // Re-read the interaction so the budget, hop chain, and terminal state the
       // view shows are the committed ones, not the stream's view.
       applyDetail(await clientRef.current.getInteraction(interactionId));

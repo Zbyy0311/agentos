@@ -1,9 +1,10 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 
-import { directConversationClient } from '../../lib/directConversationClient';
+import { directConversationClient, type ForwardMessage } from '../../lib/directConversationClient';
 import { useGroupConversation } from '../../lib/useGroupConversation';
 import type { GroupInteractionBudgetInput } from '../../lib/groupConversationClient';
 import { BoundedGroupView } from './BoundedGroupView';
+import { MentionPicker, type MentionAgent } from './MentionPicker';
 import {
   UI_FONT_STACK,
   UI_SPACING_BASE_PX,
@@ -25,6 +26,7 @@ export interface GroupConversationCanvasProps {
   readonly apiBase: string;
   readonly conversationId: string;
   readonly conversationTitle: string;
+  readonly agents?: readonly MentionAgent[];
 }
 
 const DEFAULT_BUDGET: GroupInteractionBudgetInput = {
@@ -65,6 +67,30 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
   const [content, setContent] = useState('');
   const [budget, setBudget] = useState<GroupInteractionBudgetInput>(DEFAULT_BUDGET);
   const [sendError, setSendError] = useState<string | undefined>(undefined);
+  const [messages, setMessages] = useState<readonly ForwardMessage[]>([]);
+  const [loadingMessages, setLoadingMessages] = useState(false);
+  const [mentionedAgentIds, setMentionedAgentIds] = useState<string[]>([]);
+
+  const refreshMessages = useCallback(async () => {
+    if (!props.conversationId) return;
+    setLoadingMessages(true);
+    try {
+      const result = await direct.listMessages(props.conversationId);
+      setMessages(result.messages);
+    } catch (error) {
+      setSendError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setLoadingMessages(false);
+    }
+  }, [direct, props.conversationId]);
+
+  useEffect(() => {
+    setContent('');
+    setMessages([]);
+    setMentionedAgentIds([]);
+    setSendError(undefined);
+    void refreshMessages();
+  }, [props.conversationId, refreshMessages]);
 
   const updateBudget = (key: keyof GroupInteractionBudgetInput) => (value: number) =>
     setBudget(current => ({ ...current, [key]: value }));
@@ -74,14 +100,18 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
   const send = async () => {
     if (!canSend) return;
     setSendError(undefined);
+    const selectedMentions = [...mentionedAgentIds];
     try {
       // Persist the user Message first, then open the bounded interaction and run
       // the walk against exactly that Message.
       const { message } = await direct.sendMessage(props.conversationId, content.trim());
+      setMessages(current => [...current, message]);
       setContent('');
+      setMentionedAgentIds([]);
       const created = await group.start(budget);
       if (created === null) return;
-      await group.run(created.id, message.id);
+      await group.run(created.id, message.id, selectedMentions);
+      await refreshMessages();
     } catch (sendErr) {
       setSendError(sendErr instanceof Error ? sendErr.message : String(sendErr));
     }
@@ -89,7 +119,6 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
 
   const interaction = group.interaction;
   const walking = group.walk.phase === 'walking';
-  const terminal = interaction === null || interaction.status !== 'active';
 
   return (
     <div
@@ -109,6 +138,20 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
         </span>
       </header>
       <div style={{ flex: 1, overflow: 'auto', padding: UI_SPACING_BASE_PX * 2 }}>
+        <section data-agentos="group-message-history" aria-label="群聊消息" style={{ marginBottom: UI_SPACING_BASE_PX * 2 }}>
+          {loadingMessages ? <div style={{ fontSize: 12, color: 'var(--text-tertiary)' }}>Loading messages…</div> : null}
+          {messages.map(message => {
+            const sender = message.senderAgentId === null
+              ? 'You'
+              : props.agents?.find(agent => agent.id === message.senderAgentId)?.name ?? message.senderAgentId;
+            return (
+              <article key={message.id} data-message-id={message.id} style={{ marginBottom: UI_SPACING_BASE_PX * 2 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 2 }}>{sender}</div>
+                <div style={{ fontSize: 13, lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>{message.content}</div>
+              </article>
+            );
+          })}
+        </section>
         {interaction === null ? (
           <div style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
             Set a reply budget, then send a Message to open a bounded group interaction.
@@ -169,6 +212,9 @@ export function GroupConversationCanvas(props: GroupConversationCanvasProps) {
       </div>
 
       <footer style={{ borderTop: '1px solid var(--border-subtle)', padding: UI_SPACING_BASE_PX * 2 }}>
+        {props.agents && props.agents.length > 0 ? (
+          <MentionPicker agents={props.agents} selectedAgentIds={mentionedAgentIds} disabled={group.busy} onChange={setMentionedAgentIds} />
+        ) : null}
         <div style={{ display: 'flex', gap: UI_SPACING_BASE_PX * 2, marginBottom: UI_SPACING_BASE_PX * 2, flexWrap: 'wrap' }}>
           <BudgetField label="agents" value={budget.maxAgentsPerTurn} onChange={updateBudget('maxAgentsPerTurn')} />
           <BudgetField label="replies/agent" value={budget.maxRepliesPerAgent} onChange={updateBudget('maxRepliesPerAgent')} />
