@@ -26,6 +26,11 @@ export interface InspectorRunOverviewDto {
   readonly completedAt: string | null;
   readonly durationMs: number | null;
   readonly lastEventSequence: number;
+  readonly version?: number;
+  readonly mutationClass?: 'READ_ONLY' | 'MODIFYING' | null;
+  readonly requestedMutationClass?: 'READ_ONLY' | 'MODIFYING' | null;
+  readonly admissionState?: string;
+  readonly readOnlyEnforcement?: 'proven' | 'unavailable' | 'not-applicable' | 'unknown';
 }
 
 export interface InspectorStageDto {
@@ -54,6 +59,13 @@ export interface InspectorEventDto {
   readonly severity: string;
 }
 
+export interface InspectorOperationDto {
+  readonly operationId: string;
+  readonly type: string;
+  readonly status: string;
+  readonly version: number;
+}
+
 /**
  * MF-5: the Inspector Memory section renders the full frozen Context Snapshot
  * summary (13-Runtime-Inspector section 10 + 12-UI-Architecture section 14),
@@ -66,6 +78,7 @@ export interface InspectorProjectionDto {
   readonly stages: readonly InspectorStageDto[];
   readonly processes: readonly InspectorProcessDto[];
   readonly events: readonly InspectorEventDto[];
+  readonly operations?: readonly InspectorOperationDto[];
   readonly highWatermark: number;
   readonly memoryContext: InspectorMemoryDto | null;
   readonly truncated: boolean;
@@ -75,6 +88,10 @@ export interface RuntimeInspectorViewProps {
   readonly theme: UiTheme;
   readonly projection: InspectorProjectionDto;
   readonly error?: string;
+  readonly onCancel?: () => void;
+  readonly onRetry?: () => void;
+  readonly actionPending?: boolean;
+  readonly actionError?: string;
 }
 
 function Section(props: { readonly title: string; readonly children: ReactNode }) {
@@ -107,8 +124,14 @@ function formatDuration(ms: number | null): string {
 }
 
 export function RuntimeInspectorView(props: RuntimeInspectorViewProps) {
-  const { theme, projection, error } = props;
+  const { theme, projection, error, onCancel, onRetry, actionPending = false, actionError } = props;
   const { overview, stages, processes, events, memoryContext } = projection;
+  const readOnlyIsProven = overview.mutationClass === 'READ_ONLY'
+    && overview.readOnlyEnforcement === 'proven';
+  const effectiveMutationClass = readOnlyIsProven ? 'READ_ONLY' : 'MODIFYING';
+  const admissionState = overview.admissionState ?? 'unknown';
+  const readOnlyEnforcement = overview.readOnlyEnforcement ?? 'unknown';
+  const hasActions = onCancel !== undefined || onRetry !== undefined;
   return (
     <div
       data-agentos="runtime-inspector"
@@ -130,6 +153,9 @@ export function RuntimeInspectorView(props: RuntimeInspectorViewProps) {
           <Field label="Run" value={overview.runId} />
           <Field label="Task" value={overview.taskId} />
           <Field label="status" value={<span data-status={overview.status}>{overview.status}</span>} />
+          <Field label="admission" value={<span data-admission-state={admissionState}>{admissionState}</span>} />
+          <Field label="mutation" value={<span data-admission-mutation={effectiveMutationClass}>{effectiveMutationClass.toLowerCase()}</span>} />
+          <Field label="read-only enforcement" value={<span data-read-only-enforcement={readOnlyEnforcement}>{readOnlyEnforcement}</span>} />
           <Field label="reason" value={overview.reason} />
           <Field label="origin" value={overview.origin} />
           <Field label="attempt" value={overview.attempt ?? '—'} />
@@ -137,6 +163,44 @@ export function RuntimeInspectorView(props: RuntimeInspectorViewProps) {
           <Field label="last event seq" value={overview.lastEventSequence} />
         </dl>
       </Section>
+
+      {hasActions ? (
+        <Section title="Actions">
+          <div role="group" aria-label="Run actions" style={{ display: 'flex', gap: UI_SPACING_BASE_PX * 2 }}>
+            {onCancel === undefined ? null : (
+              <button
+                type="button"
+                data-inspector-action="cancel"
+                disabled={actionPending}
+                aria-busy={actionPending}
+                onClick={onCancel}
+                style={{
+                  border: '1px solid var(--status-danger)', borderRadius: UI_RADIUS_TOKENS.input,
+                  backgroundColor: 'transparent', color: 'var(--status-danger)', padding: `${UI_SPACING_BASE_PX}px ${UI_SPACING_BASE_PX * 2}px`,
+                }}
+              >
+                Cancel
+              </button>
+            )}
+            {onRetry === undefined ? null : (
+              <button
+                type="button"
+                data-inspector-action="retry"
+                disabled={actionPending}
+                aria-busy={actionPending}
+                onClick={onRetry}
+                style={{
+                  border: '1px solid var(--accent-default)', borderRadius: UI_RADIUS_TOKENS.input,
+                  backgroundColor: 'transparent', color: 'var(--accent-default)', padding: `${UI_SPACING_BASE_PX}px ${UI_SPACING_BASE_PX * 2}px`,
+                }}
+              >
+                Retry
+              </button>
+            )}
+          </div>
+          {actionError === undefined ? null : <div role="alert" style={{ color: 'var(--status-danger)', marginTop: UI_SPACING_BASE_PX * 2 }}>{actionError}</div>}
+        </Section>
+      ) : null}
 
       <Section title={`Stages (${stages.length})`}>
         {stages.length === 0 ? (

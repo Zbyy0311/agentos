@@ -42,17 +42,26 @@ async function withServer(run: (baseUrl: string, store: SqliteStore) => Promise<
   }
 }
 
-test('GET /runs/:runId/inspector returns the redacted projection for a canonical Run', async () => {
+test('LITE-13-102 Inspector route returns the redacted projection and action metadata', async () => {
   await withServer(async (baseUrl, store) => {
     const task = store.taskRepository().insert({ workspaceId: 'workspace-a', title: 'T', createdBy: 'user' });
     const run = store.runRepository().insert({ workspaceId: 'workspace-a', taskId: task.id, origin: 'v2_api', createdBy: 'user' });
     const response = await fetch(`${baseUrl}/runs/${run.id}/inspector`);
     assert.equal(response.status, 200);
-    const body = await response.json() as { projection: { overview: { runId: string; status: string }; stages: unknown[]; events: unknown[]; highWatermark: number } };
+    const body = await response.json() as {
+      projection: {
+        overview: { runId: string; status: string; mutationClass: string; admissionState: string; readOnlyEnforcement: string };
+        stages: unknown[]; events: unknown[]; highWatermark: number; operations: unknown[];
+      }
+    };
     assert.equal(body.projection.overview.runId, run.id);
     assert.equal(body.projection.overview.status, 'queued');
     assert.ok(Array.isArray(body.projection.stages));
     assert.ok(Array.isArray(body.projection.events));
+    assert.equal(body.projection.overview.mutationClass, 'MODIFYING');
+    assert.equal(body.projection.overview.admissionState, 'unknown');
+    assert.equal(body.projection.overview.readOnlyEnforcement, 'unknown');
+    assert.deepEqual(body.projection.operations, []);
   });
 });
 

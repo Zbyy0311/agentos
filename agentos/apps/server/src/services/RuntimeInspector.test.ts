@@ -23,6 +23,8 @@ import { RunStageRepository } from '../store/RunStageRepository.js';
 import { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
 import { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
+import { WorkspaceAdmissionRepository } from '../store/WorkspaceAdmissionRepository.js';
+import { OperationService } from './OperationService.js';
 import { RuntimeInspector, RuntimeInspectorError } from './RuntimeInspector.js';
 
 interface SqliteStatement {
@@ -63,6 +65,8 @@ function fixture() {
 
   const tx = db as unknown as TransactionDatabase;
   const events = new RuntimeEventRepository(tx, createM3RuntimeEventRegistry());
+  const admissions = new WorkspaceAdmissionRepository(tx);
+  const operations = new OperationService(tx);
   const inspector = new RuntimeInspector({
     store: { getDatabase: () => tx },
     runRepository: new RunRepository(tx),
@@ -70,8 +74,10 @@ function fixture() {
     runSnapshotRepository: new RunSnapshotRepository(tx),
     runtimeEventRepository: events,
     memoryContextSnapshots: new MemoryContextSnapshotRepository(tx),
+    operationService: operations,
+    workspaceAdmissions: admissions,
   });
-  return { db, tx, events, inspector, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
+  return { db, tx, events, admissions, operations, inspector, close: () => { try { db.close(); } finally { rmSync(root, { recursive: true, force: true }); } } };
 }
 
 function count(db: SqliteDb, sql: string, ...params: unknown[]): number {
@@ -272,5 +278,62 @@ test('INSP-11 stages are ordered', () => {
     const projection = fx.inspector.inspect({ workspaceId: WS, runId: RUN });
     assert.deepEqual(projection.stages.map(s => s.workflowStageKey), ['b', 'a']);
     assert.deepEqual(projection.stages.map(s => s.sequence), [1, 2]);
+  } finally { fx.close(); }
+});
+
+test('LITE-12-010 unknown or unavailable admission is projected as modifying', () => {
+  const fx = fixture();
+  try {
+    const unknown = fx.inspector.inspect({ workspaceId: WS, runId: RUN });
+    assert.equal(unknown.overview.admissionState, 'unknown');
+    assert.equal(unknown.overview.readOnlyEnforcement, 'unknown');
+    assert.equal(unknown.overview.mutationClass, 'MODIFYING');
+
+    fx.admissions.insertAdmission({
+      id: 'adm_insp_unavailable', workspaceId: WS, subjectKind: 'CANONICAL_RUN',
+      canonicalRunId: RUN, legacyRunId: null, requestedMutationClass: 'READ_ONLY',
+      effectiveMutationClass: 'READ_ONLY', enforcementEvidenceJson: JSON.stringify({ evidence: { status: 'unavailable' } }),
+      requestOrder: 1, state: 'QUEUED', queueReason: 'workspace writer is active', releaseReason: null,
+      requestedAt: NOW, grantedAt: null, releasedAt: null, createdAt: NOW, updatedAt: NOW, version: 1,
+    });
+    const unavailable = fx.inspector.inspect({ workspaceId: WS, runId: RUN });
+    assert.equal(unavailable.overview.admissionState, 'QUEUED');
+    assert.equal(unavailable.overview.readOnlyEnforcement, 'unavailable');
+    assert.equal(unavailable.overview.mutationClass, 'MODIFYING');
+  } finally { fx.close(); }
+});
+
+test('LITE-12-010 only complete verified enforcement is presented as read-only', () => {
+  const fx = fixture();
+  try {
+    fx.admissions.insertAdmission({
+      id: 'adm_insp_verified', workspaceId: WS, subjectKind: 'CANONICAL_RUN',
+      canonicalRunId: RUN, legacyRunId: null, requestedMutationClass: 'READ_ONLY',
+      effectiveMutationClass: 'READ_ONLY', enforcementEvidenceJson: JSON.stringify({
+        schemaVersion: 1, workspaceId: WS, admissionId: 'adm_insp_verified',
+        subject: { subjectKind: 'CANONICAL_RUN', canonicalRunId: RUN },
+        evidence: {
+          status: 'verified', source: 'qualified-denial', boundaryId: 'boundary-1',
+          qualificationId: 'qualification-1',
+        },
+      }),
+      requestOrder: 1, state: 'GRANTED', queueReason: null, releaseReason: null,
+      requestedAt: NOW, grantedAt: NOW, releasedAt: null, createdAt: NOW, updatedAt: NOW, version: 1,
+    });
+    const projection = fx.inspector.inspect({ workspaceId: WS, runId: RUN });
+    assert.equal(projection.overview.admissionState, 'GRANTED');
+    assert.equal(projection.overview.readOnlyEnforcement, 'proven');
+    assert.equal(projection.overview.mutationClass, 'READ_ONLY');
+  } finally { fx.close(); }
+});
+
+test('LITE-13-102 Inspector projects canonical operation identity and version for actions', () => {
+  const fx = fixture();
+  try {
+    const operation = fx.operations.create({ workspaceId: WS, runId: RUN, type: 'run.start' });
+    const projection = fx.inspector.inspect({ workspaceId: WS, runId: RUN });
+    assert.deepEqual(projection.operations, [{
+      operationId: operation.id, type: 'run.start', status: 'queued', version: 1,
+    }]);
   } finally { fx.close(); }
 });

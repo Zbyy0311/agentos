@@ -6,7 +6,6 @@ import { DirectConversationWorkbench } from '@/components/chat/DirectConversatio
 import { RunInspectorPanel } from '@/components/chat/RunInspectorPanel';
 import { useDirectConversation } from '@/lib/useDirectConversation';
 import { useApi } from '@/lib/useApi';
-import { resolveLayoutMode } from '@/lib/uiFoundation';
 import type { UiTheme } from '@/lib/uiFoundation';
 
 /**
@@ -34,6 +33,7 @@ export default function DirectConversationPage() {
   const theme: UiTheme = 'dark';
   const runIds = [...new Set(state.messages.flatMap(message =>
     message.conversationId === state.activeConversationId && message.runId ? [message.runId] : []))].reverse();
+  const createConversation = () => { void state.createConversation(); };
 
   return (
     <DirectConversationWorkbench
@@ -42,9 +42,28 @@ export default function DirectConversationPage() {
       apiBase={API_BASE}
       inspector={<RunInspectorPanel key={state.activeConversationId ?? workspaceId} workspaceId={workspaceId}
         apiBase={API_BASE} runIds={runIds} theme={theme} />}
+      toolbar={(
+        <>
+          <span data-agentos="workspace-breadcrumb" aria-label="Workspace breadcrumb">
+            Workspace / {state.activeConversationId ?? workspaceId}
+          </span>
+          <span role="status" data-agentos="runtime-status">
+            Runtime · {state.stream.phase}
+          </span>
+          <button
+            type="button"
+            data-agentos="toolbar-new-conversation"
+            onClick={createConversation}
+            disabled={state.agents.length === 0}
+          >
+            New Conversation
+          </button>
+        </>
+      )}
       viewportWidth={viewportWidth}
       workspaceName={workspaceId}
       agents={state.agents}
+      activeAgentId={state.activeAgentId}
       conversations={state.conversations}
       activeConversationId={state.activeConversationId}
       activeConversationTitle={active?.title ?? 'Conversation'}
@@ -55,8 +74,9 @@ export default function DirectConversationPage() {
       composerContent={state.content}
       sending={state.sending}
       {...(state.error === undefined ? {} : { error: state.error })}
+      onSelectAgent={state.selectAgent}
       onSelectConversation={state.selectConversation}
-      onCreateConversation={() => {}}
+      onCreateConversation={createConversation}
       onModeChange={state.setMode}
       onContentChange={state.setContent}
       onSend={() => { void state.send(); }}

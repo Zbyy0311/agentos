@@ -9,6 +9,7 @@ import { UI_SPACING_BASE_PX, UI_RADIUS_TOKENS } from '../../lib/uiFoundation';
 import type { ConversationStreamState } from '../../lib/directConversationStream';
 import type { ComposerMode } from '../../lib/directComposer';
 import type { ForwardConversation, ForwardMessage } from '../../lib/directConversationClient';
+import { dispatchWorkbenchAction } from '../../lib/workbenchInteractions';
 
 /**
  * Direct Conversation UX — the composed four-column workbench (Lite 12 §5).
@@ -26,6 +27,7 @@ export interface AgentSummary {
 
 export interface DirectConversationWorkbenchProps {
   readonly inspector?: ReactNode;
+  readonly toolbar?: ReactNode;
   readonly theme: UiTheme;
   readonly viewportWidth: number;
   readonly workspaceId: string;
@@ -33,6 +35,7 @@ export interface DirectConversationWorkbenchProps {
   readonly reducedMotion?: boolean;
   readonly workspaceName: string;
   readonly agents: readonly AgentSummary[];
+  readonly activeAgentId: string | null;
   readonly conversations: readonly ForwardConversation[];
   readonly activeConversationId: string | null;
   readonly activeConversationTitle: string;
@@ -43,6 +46,7 @@ export interface DirectConversationWorkbenchProps {
   readonly composerContent: string;
   readonly sending: boolean;
   readonly error?: string;
+  readonly onSelectAgent: (id: string) => void;
   readonly onSelectConversation: (id: string) => void;
   readonly onCreateConversation: () => void;
   readonly onModeChange: (mode: ComposerMode) => void;
@@ -69,32 +73,85 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
 
   const agentsColumn = (
     <div style={{ padding: UI_SPACING_BASE_PX }}>
-      {props.agents.map(agent => (
-        <div key={agent.id} style={{ ...listItemStyle(false), cursor: 'default' }}>
-          <span>{agent.name}</span>
-          {agent.status === undefined ? null : (
-            <span style={{ float: 'right', fontSize: 10, color: 'var(--text-tertiary)' }}>{agent.status}</span>
-          )}
-        </div>
-      ))}
+      <div role="list" aria-label="Agents">
+        {props.agents.map(agent => (
+          <div key={agent.id} role="listitem">
+            <button
+              type="button"
+              data-agent={agent.id}
+              aria-current={agent.id === props.activeAgentId}
+              onClick={() => dispatchWorkbenchAction(
+                { kind: 'select-agent', id: agent.id },
+                {
+                  onSelectAgent: props.onSelectAgent,
+                  onSelectConversation: props.onSelectConversation,
+                  onCreateConversation: props.onCreateConversation,
+                },
+              )}
+              style={listItemStyle(agent.id === props.activeAgentId)}
+            >
+              <span>{agent.name}</span>
+              {agent.status === undefined ? null : (
+                <span style={{ float: 'right', fontSize: 10, color: 'var(--text-tertiary)' }}>{agent.status}</span>
+              )}
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
   const conversationsColumn = (
     <div style={{ padding: UI_SPACING_BASE_PX }}>
-      {props.conversations.map(conversation => (
-        <button
-          key={conversation.id}
-          type="button"
-          data-conversation={conversation.id}
-          aria-current={conversation.id === props.activeConversationId}
-          onClick={() => props.onSelectConversation(conversation.id)}
-          style={listItemStyle(conversation.id === props.activeConversationId)}
-        >
-          <span>{conversation.title}</span>
-          <span style={{ float: 'right', fontSize: 10, color: 'var(--text-tertiary)' }}>{conversation.kind}</span>
-        </button>
-      ))}
+      <ColumnHeader
+        title="Conversations"
+        action={(
+          <button
+            type="button"
+            data-agentos="new-conversation"
+            aria-label="New Conversation"
+            disabled={props.agents.length === 0}
+            onClick={() => dispatchWorkbenchAction(
+              { kind: 'create-conversation' },
+              {
+                onSelectAgent: props.onSelectAgent,
+                onSelectConversation: props.onSelectConversation,
+                onCreateConversation: props.onCreateConversation,
+              },
+            )}
+            style={{
+              border: '1px solid var(--border-default)', borderRadius: UI_RADIUS_TOKENS.input,
+              backgroundColor: 'var(--surface-raised)', color: 'var(--text-primary)', cursor: 'pointer',
+              padding: `${UI_SPACING_BASE_PX}px ${UI_SPACING_BASE_PX * 2}px`, fontSize: 12,
+            }}
+          >
+            +
+          </button>
+        )}
+      />
+      <div role="list" aria-label="Conversations">
+        {props.conversations.map(conversation => (
+          <div key={conversation.id} role="listitem">
+            <button
+              type="button"
+              data-conversation={conversation.id}
+              aria-current={conversation.id === props.activeConversationId}
+              onClick={() => dispatchWorkbenchAction(
+                { kind: 'select-conversation', id: conversation.id },
+                {
+                  onSelectAgent: props.onSelectAgent,
+                  onSelectConversation: props.onSelectConversation,
+                  onCreateConversation: props.onCreateConversation,
+                },
+              )}
+              style={listItemStyle(conversation.id === props.activeConversationId)}
+            >
+              <span>{conversation.title}</span>
+              <span style={{ float: 'right', fontSize: 10, color: 'var(--text-tertiary)' }}>{conversation.kind}</span>
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 
@@ -142,6 +199,7 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
     <WorkbenchShell
       theme={props.theme}
       viewportWidth={props.viewportWidth}
+      {...(props.toolbar === undefined ? {} : { toolbar: props.toolbar })}
       {...(props.reducedMotion === undefined ? {} : { reducedMotion: props.reducedMotion })}
       agents={agentsColumn}
       conversations={conversationsColumn}

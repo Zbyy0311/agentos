@@ -1,4 +1,9 @@
 import type {
+  EffectiveMutationClass,
+  RequestedMutationClass,
+  WorkspaceWriteDenialStatus,
+} from '@agentos/shared';
+import type {
   MemoryContextSnapshotRecord,
 } from '../store/MemoryContextSnapshotRepository.js';
 import type { MemoryContextSnapshotRepository } from '../store/MemoryContextSnapshotRepository.js';
@@ -8,6 +13,12 @@ import type { RunSnapshotRepository } from '../store/RunSnapshotRepository.js';
 import type { RuntimeEventRepository } from '../store/RuntimeEventRepository.js';
 import { RuntimeEventRepositoryError } from '../store/RuntimeEventRepository.js';
 import type { TransactionDatabase } from '../store/Transaction.js';
+import type {
+  AdmissionState,
+  WorkspaceAdmissionRepository,
+  WorkspaceAdmissionRow,
+} from '../store/WorkspaceAdmissionRepository.js';
+import type { OperationService } from './OperationService.js';
 
 /**
  * Lite Runtime Inspector — read-only query projection.
@@ -124,7 +135,12 @@ export interface InspectorRunOverview {
   readonly parentRunId: string | null;
   readonly rootRunId: string;
   readonly attempt: number | null;
-  readonly mutationClass: string | null;
+  readonly mutationClass: EffectiveMutationClass;
+  readonly requestedMutationClass: RequestedMutationClass | null;
+  /** Admission state is UNKNOWN when no durable admission row exists. */
+  readonly admissionState: AdmissionState | 'unknown';
+  /** Only `proven` permits the UI to present a read-only Run. */
+  readonly readOnlyEnforcement: 'proven' | 'unavailable' | 'not-applicable' | 'unknown';
   readonly workflowDefinitionId: string | null;
   readonly workflowVersion: number | null;
   readonly createdAt: string;
@@ -140,10 +156,19 @@ export interface InspectorProjection {
   readonly stages: readonly InspectorStageSummary[];
   readonly processes: readonly InspectorProcessSummary[];
   readonly events: readonly InspectorEventSummary[];
+  /** Redacted canonical Operations used by Inspector action controls. */
+  readonly operations: readonly InspectorOperationSummary[];
   /** Event sequence the projection is consistent through; clients resume after it. */
   readonly highWatermark: number;
   readonly memoryContext: InspectorMemoryContextSummary | null;
   readonly truncated: boolean;
+}
+
+export interface InspectorOperationSummary {
+  readonly operationId: string;
+  readonly type: string;
+  readonly status: string;
+  readonly version: number;
 }
 
 export interface RuntimeInspectorQuery {
@@ -194,6 +219,8 @@ export interface RuntimeInspectorDependencies {
   readonly runSnapshotRepository: Pick<RunSnapshotRepository, 'findByRunId'>;
   readonly runtimeEventRepository: Pick<RuntimeEventRepository, 'listByRunAfterSequence'>;
   readonly memoryContextSnapshots?: Pick<MemoryContextSnapshotRepository, 'findLatestForRun'>;
+  readonly operationService?: Pick<OperationService, 'listByRun'>;
+  readonly workspaceAdmissions?: Pick<WorkspaceAdmissionRepository, 'findBySubject'>;
 }
 
 export class RuntimeInspector {
@@ -203,6 +230,8 @@ export class RuntimeInspector {
   private readonly snapshots: RuntimeInspectorDependencies['runSnapshotRepository'];
   private readonly events: RuntimeInspectorDependencies['runtimeEventRepository'];
   private readonly memoryContexts: RuntimeInspectorDependencies['memoryContextSnapshots'];
+  private readonly operations: RuntimeInspectorDependencies['operationService'];
+  private readonly admissions: RuntimeInspectorDependencies['workspaceAdmissions'];
 
   constructor(dependencies: RuntimeInspectorDependencies) {
     this.db = dependencies.store.getDatabase();
@@ -211,6 +240,8 @@ export class RuntimeInspector {
     this.snapshots = dependencies.runSnapshotRepository;
     this.events = dependencies.runtimeEventRepository;
     this.memoryContexts = dependencies.memoryContextSnapshots;
+    this.operations = dependencies.operationService;
+    this.admissions = dependencies.workspaceAdmissions;
   }
 
   /** Read-only projection for one Run. Never mutates or executes anything. */
@@ -255,6 +286,14 @@ export class RuntimeInspector {
 
     const payload = snapshot?.payload.schemaVersion === 2 ? snapshot.payload : null;
 
+    const admission = this.admissions?.findBySubject(query.workspaceId, {
+      subjectKind: 'CANONICAL_RUN', canonicalRunId: run.id,
+    });
+    const admissionProjection = projectAdmission(admission);
+    const operations = this.operations === undefined
+      ? []
+      : this.operations.listByRun(query.workspaceId, query.runId).map(toOperationSummary);
+
     return {
       overview: {
         runId: run.id,
@@ -266,7 +305,10 @@ export class RuntimeInspector {
         parentRunId: run.parentRunId ?? null,
         rootRunId: run.rootRunId,
         attempt: null,
-        mutationClass: null,
+        mutationClass: admissionProjection.mutationClass,
+        requestedMutationClass: admissionProjection.requestedMutationClass,
+        admissionState: admissionProjection.admissionState,
+        readOnlyEnforcement: admissionProjection.readOnlyEnforcement,
         workflowDefinitionId: payload?.workflow.definitionId ?? snapshot?.workflowDefinitionId ?? null,
         workflowVersion: payload?.workflow.definitionVersion ?? null,
         createdAt: run.createdAt,
@@ -282,6 +324,7 @@ export class RuntimeInspector {
         .map(toStageSummary),
       processes: processRows.map(toProcessSummary),
       events: projected,
+      operations,
       highWatermark,
       memoryContext,
       truncated,
@@ -320,6 +363,95 @@ function toProcessSummary(row: ProcessRow): InspectorProcessSummary {
     exitCode: row.exit_code,
     terminationReason: row.termination_reason,
     recoveryClassification: row.recovery_classification,
+  };
+}
+
+const ADMISSION_ENFORCEMENT_STATUSES: readonly WorkspaceWriteDenialStatus[] = [
+  'verified', 'unsupported', 'unknown', 'unavailable', 'prompt-only',
+  'provider-assertion', 'native-worktree', 'sandbox-label',
+];
+
+interface ParsedEnforcementEvidence {
+  readonly status: WorkspaceWriteDenialStatus | 'unknown';
+  readonly source?: unknown;
+  readonly boundaryId?: unknown;
+  readonly qualificationId?: unknown;
+}
+
+function readEnforcementEvidence(json: string | null): ParsedEnforcementEvidence {
+  if (json === null) return { status: 'unknown' };
+  try {
+    const value = JSON.parse(json) as {
+      readonly status?: unknown;
+      readonly evidence?: { readonly status?: unknown; readonly source?: unknown; readonly boundaryId?: unknown; readonly qualificationId?: unknown };
+    };
+    const evidence = value.evidence ?? value;
+    const status = typeof evidence.status === 'string'
+      && (ADMISSION_ENFORCEMENT_STATUSES as readonly string[]).includes(evidence.status)
+      ? evidence.status as WorkspaceWriteDenialStatus
+      : 'unknown';
+    return {
+      status,
+      ...(evidence.source === undefined ? {} : { source: evidence.source }),
+      ...(evidence.boundaryId === undefined ? {} : { boundaryId: evidence.boundaryId }),
+      ...(evidence.qualificationId === undefined ? {} : { qualificationId: evidence.qualificationId }),
+    };
+  } catch {
+    return { status: 'unknown' };
+  }
+}
+
+function isVerifiedEnforcementEvidence(evidence: ParsedEnforcementEvidence): boolean {
+  return evidence.status === 'verified'
+    && nonBlank(evidence.source)
+    && nonBlank(evidence.boundaryId)
+    && nonBlank(evidence.qualificationId);
+}
+
+function projectAdmission(admission: WorkspaceAdmissionRow | undefined): {
+  readonly mutationClass: EffectiveMutationClass;
+  readonly requestedMutationClass: RequestedMutationClass | null;
+  readonly admissionState: AdmissionState | 'unknown';
+  readonly readOnlyEnforcement: InspectorRunOverview['readOnlyEnforcement'];
+} {
+  if (admission === undefined) {
+    return {
+      mutationClass: 'MODIFYING',
+      requestedMutationClass: null,
+      admissionState: 'unknown',
+      readOnlyEnforcement: 'unknown',
+    };
+  }
+
+  const enforcementEvidence = readEnforcementEvidence(admission.enforcementEvidenceJson);
+  const enforcementStatus = enforcementEvidence.status;
+  const readOnlyProven = admission.effectiveMutationClass === 'READ_ONLY'
+    && isVerifiedEnforcementEvidence(enforcementEvidence);
+  const readOnlyRequested = admission.requestedMutationClass === 'READ_ONLY';
+  const readOnlyEnforcement: InspectorRunOverview['readOnlyEnforcement'] = !readOnlyRequested
+    ? 'not-applicable'
+    : readOnlyProven
+      ? 'proven'
+      : enforcementStatus === 'unknown'
+        ? 'unknown'
+        : 'unavailable';
+
+  return {
+    // The shared classifier is fail-closed. Reapply the same boundary at the
+    // read side so an old/malformed row can never appear read-only in UI.
+    mutationClass: readOnlyProven ? 'READ_ONLY' : 'MODIFYING',
+    requestedMutationClass: admission.requestedMutationClass,
+    admissionState: admission.state,
+    readOnlyEnforcement,
+  };
+}
+
+function toOperationSummary(operation: ReturnType<OperationService['listByRun']>[number]): InspectorOperationSummary {
+  return {
+    operationId: operation.id,
+    type: operation.type,
+    status: operation.status,
+    version: operation.version,
   };
 }
 

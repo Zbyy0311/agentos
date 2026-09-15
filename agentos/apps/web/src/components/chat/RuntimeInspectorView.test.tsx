@@ -100,3 +100,39 @@ test('INS-06 a section error is an alert, never a page failure', async () => {
   // the rest of the page still renders
   assert.ok(markup.includes('run_1'));
 });
+
+test('LITE-12-010 unknown or unavailable read-only enforcement renders modifying', async () => {
+  const unknown = await render({ projection: {
+    ...PROJECTION,
+    overview: {
+      ...PROJECTION.overview,
+      mutationClass: 'MODIFYING',
+      requestedMutationClass: 'READ_ONLY',
+      admissionState: 'unknown',
+      readOnlyEnforcement: 'unknown',
+    },
+  } });
+  assert.ok(unknown.includes('data-admission-state="unknown"'));
+  assert.ok(unknown.includes('data-admission-mutation="MODIFYING">modifying</span>'));
+  assert.ok(unknown.includes('data-read-only-enforcement="unknown"'));
+
+  const unavailable = await render({ projection: {
+    ...PROJECTION,
+    overview: {
+      ...PROJECTION.overview,
+      mutationClass: 'MODIFYING',
+      requestedMutationClass: 'READ_ONLY',
+      admissionState: 'QUEUED',
+      readOnlyEnforcement: 'unavailable',
+    },
+  } });
+  assert.ok(unavailable.includes('data-admission-mutation="MODIFYING">modifying</span>'));
+  assert.ok(unavailable.includes('data-read-only-enforcement="unavailable"'));
+});
+
+test('LITE-13-102 Inspector action controls are exposed only through callbacks', async () => {
+  const markup = await render({ onCancel: () => {}, onRetry: () => {} });
+  assert.ok(markup.includes('data-inspector-action="cancel"'));
+  assert.ok(markup.includes('data-inspector-action="retry"'));
+  assert.ok(markup.includes('aria-label="Run actions"'));
+});
