@@ -63,8 +63,7 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
 
   useEffect(() => {
     let cancelled = false;
-    fetch(`${apiBase}/api/workspaces/${encodeURIComponent(workspaceId)}/agents`)
-      .then(response => response.ok ? response.json() as Promise<{ agents: Array<{ id: string; name: string; enabled?: boolean; status?: string }> }> : Promise.reject(new Error(`HTTP ${response.status}`)))
+    client.listAgents()
       .then(result => {
         if (cancelled) return;
         const nextAgents = result.agents.filter(a => a.enabled !== false).map(a => ({

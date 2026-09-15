@@ -20,6 +20,13 @@ export interface ForwardConversation {
   readonly version: number;
 }
 
+export interface ForwardAgent {
+  readonly id: string;
+  readonly name: string;
+  readonly enabled?: boolean;
+  readonly status?: string;
+}
+
 export interface ForwardMessage {
   readonly id: string;
   /** Present on the canonical API response; older client fixtures may omit it. */
@@ -67,6 +74,10 @@ export function directConversationClient(options: DirectConversationClientOption
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   });
   return {
+    listAgents: () => apiFetch<{ agents: ForwardAgent[] }>(
+      options.apiBase,
+      `/api/workspaces/${encodeURIComponent(options.workspaceId)}/agents`,
+    ),
     listConversations: () => apiFetch<{ conversations: ForwardConversation[] }>(base, '/conversations'),
     createConversation: (body: Record<string, unknown>) =>
       jsonPost('/conversations', body) as Promise<{ conversation: ForwardConversation }>,

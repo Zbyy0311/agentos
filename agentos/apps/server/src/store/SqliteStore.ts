@@ -74,6 +74,7 @@ import { MAX_SUCCESS_EVIDENCE_PER_KEY } from '../services/PreferenceRules.js';
 import { createM3RuntimeEventRegistry } from '@agentos/shared';
 import { RuntimeEventOutboxWriter, RuntimeEventRepository } from './RuntimeEventRepository.js';
 import { MemoryContextSnapshotRepository } from './MemoryContextSnapshotRepository.js';
+import { areMemoryTextFieldsSafe } from './MemoryContentSafety.js';
 import { RunSequenceAllocator } from './RunSequenceAllocator.js';
 import { OutboxRepository } from './OutboxRepository.js';
 import { DeadLetterRepository } from './DeadLetterRepository.js';
@@ -2051,6 +2052,7 @@ export class SqliteStore implements Store {
 
   createMemory(memory: MemoryRecord, content: string): MemoryRecord {
     this.assertWorkspaceExists(memory.workspaceId);
+    assertLegacyMemoryTextSafety(memory, content);
     this.database.prepare(`
       INSERT INTO memories (
         id, workspace_id, memory_type, status, title, summary, content_path, tags_json,
@@ -2075,6 +2077,8 @@ export class SqliteStore implements Store {
     const current = this.getMemory(workspaceId, memoryId);
     if (!current) throw new Error('Memory not found');
     const next = { ...current, ...update, updatedAt: new Date().toISOString() };
+    const currentFts = this.database.prepare('SELECT content FROM memory_fts WHERE memory_id = ?').get(memoryId) as { content?: string } | undefined;
+    assertLegacyMemoryTextSafety(next, content ?? currentFts?.content ?? '');
     this.database.prepare(`
       UPDATE memories
       SET memory_type = ?, status = ?, title = ?, summary = ?, content_path = ?, tags_json = ?,
@@ -2097,7 +2101,9 @@ export class SqliteStore implements Store {
     `).get(workspaceId, memoryId) as MemoryRow | undefined;
     if (!row) return undefined;
     const sourceRows = this.database.prepare('SELECT run_id FROM memory_sources WHERE memory_id = ? ORDER BY run_id').all(memoryId) as Array<{ run_id: string }>;
-    return this.toMemory(row, sourceRows.map(source => source.run_id));
+    const memory = this.toMemory(row, sourceRows.map(source => source.run_id));
+    if (!this.isLegacyMemorySafe(memory)) return undefined;
+    return memory;
   }
 
   listMemories(workspaceId: string, filter: { query?: string; type?: MemoryType; status?: MemoryStatus | 'all'; limit?: number } = {}): MemoryRecord[] {
@@ -2126,7 +2132,7 @@ export class SqliteStore implements Store {
     return rows.map(row => {
       const sourceRows = this.database.prepare('SELECT run_id FROM memory_sources WHERE memory_id = ? ORDER BY run_id').all(row.id) as Array<{ run_id: string }>;
       return this.toMemory(row, sourceRows.map(source => source.run_id));
-    });
+    }).filter(memory => this.isLegacyMemorySafe(memory));
   }
 
   searchMemories(workspaceId: string, filter: { query?: string; type?: MemoryType; status?: MemoryStatus | 'all'; limit?: number } = {}): MemorySearchResult[] {
@@ -2168,6 +2174,17 @@ export class SqliteStore implements Store {
     this.database.prepare('DELETE FROM memory_fts WHERE memory_id = ?').run(memory.id);
     this.database.prepare('INSERT INTO memory_fts (memory_id, title, summary, content, tags) VALUES (?, ?, ?, ?, ?)')
       .run(memory.id, memory.title, memory.summary, content, memory.tags.join(' '));
+  }
+
+  private isLegacyMemorySafe(memory: MemoryRecord): boolean {
+    const fts = this.database.prepare(
+      'SELECT title, summary, content, tags FROM memory_fts WHERE memory_id = ?',
+    ).get(memory.id) as { title?: string; summary?: string; content?: string; tags?: string } | undefined;
+    if (!fts) return areMemoryTextFieldsSafe([memory.title, memory.summary, ...memory.tags]);
+    return areMemoryTextFieldsSafe([
+      memory.title, memory.summary, ...memory.tags,
+      fts.title ?? '', fts.summary ?? '', fts.content ?? '', fts.tags ?? '',
+    ]);
   }
 
   createMemoryUsage(usage: MemoryUsage): void {
@@ -3417,6 +3434,15 @@ function isTerminalRunStepStatus(status: RunStepStatus): boolean {
 
 function normalizeThinkingEffort(value: string | null | undefined): ThinkingEffort {
   return value === 'low' || value === 'medium' || value === 'high' ? value : 'auto';
+}
+
+function assertLegacyMemoryTextSafety(
+  memory: Pick<MemoryRecord, 'title' | 'summary' | 'tags'>,
+  content: string,
+): void {
+  if (!areMemoryTextFieldsSafe([memory.title, memory.summary, content, ...memory.tags])) {
+    throw new Error('Memory content is unsafe to persist');
+  }
 }
 
 function normalizeDispatchMode(value: string | null | undefined): GroupDispatchMode {

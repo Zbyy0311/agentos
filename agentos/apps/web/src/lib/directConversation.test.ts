@@ -91,6 +91,7 @@ test('DCUX-C01 the client targets the forward runtime surface with correct paths
   globalThis.fetch = fakeFetch as never;
   try {
     const client = directConversationClient({ workspaceId: 'workspace-a', apiBase: 'http://127.0.0.1:3000' });
+    await client.listAgents();
     await client.listConversations();
     await client.sendMessage('conv_1', 'hello', 'cm-1');
     await client.listMessages('conv_1', 4);
@@ -102,7 +103,8 @@ test('DCUX-C01 the client targets the forward runtime surface with correct paths
     globalThis.fetch = original;
   }
   const urls = calls.map(c => c.url);
-  assert.ok(urls.every(u => u.includes('/api/workspaces/workspace-a/runtime')));
+  assert.ok(urls.some(u => u.includes('/api/workspaces/workspace-a/runtime')));
+  assert.ok(calls.some(c => c.url === 'http://127.0.0.1:3000/api/workspaces/workspace-a/agents'));
   assert.ok(calls.some(c => c.method === 'POST' && c.url.endsWith('/conversations/conv_1/messages')));
   assert.ok(calls.some(c => c.url.includes('/messages/msg_1/checkpoints?afterCursor=2')));
   assert.ok(calls.some(c => c.method === 'POST' && c.url.endsWith('/messages/msg_1/create-task')));
@@ -151,4 +153,3 @@ test('DCUX-P03 empty content and unknown modes fail closed', () => {
   assert.deepEqual(resolveComposerAction({ mode: 'chat', content: '   ' }), { valid: false, reason: 'empty-content' });
   assert.deepEqual(resolveComposerAction({ mode: 'bogus' as never, content: 'x' }), { valid: false, reason: 'invalid-mode' });
 });
-
