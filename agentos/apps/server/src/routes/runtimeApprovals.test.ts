@@ -370,6 +370,33 @@ test('LITE-08-006: approve succeeds and the same request/version retries as repl
   });
 });
 
+test('LITE-08-006: concurrent approve/reject has one CAS winner and one conflict', async () => {
+  await withServer(async fixture => {
+    const request = createPending(fixture);
+    const resolveUrl = `${fixture.baseUrl()}/runtime-approvals/${request.id}/resolve`;
+    const [approve, reject] = await Promise.all([
+      resolveJson(resolveUrl, { expectedVersion: request.version, decision: 'approve_once', decidedBy: 'approve-worker' }),
+      resolveJson(resolveUrl, { expectedVersion: request.version, decision: 'reject', decidedBy: 'reject-worker' }),
+    ]);
+
+    assert.deepEqual(
+      [approve.status, reject.status].sort((left, right) => left - right),
+      [201, 409],
+      'exactly one concurrent decision may commit the pending version',
+    );
+    const winner = approve.status === 201 ? approve : reject;
+    const loser = approve.status === 409 ? approve : reject;
+    assert.equal(winner.body.replayed, false);
+    assert.equal(loser.body.error, 'RUNTIME_APPROVAL_CONFLICT');
+    assert.equal(rowCount(fixture, 'approval_decisions'), 1);
+    const current = fixture.gate.list(fixture.workspaceId)[0];
+    assert.ok(current);
+    assert.notEqual(current.status, 'pending');
+    assert.equal(current.version, request.version + 2,
+      'the decision and its resolution evidence are committed as one logical winner');
+  });
+});
+
 test('LITE-08-006: reject succeeds and does not create an accepted-decision Candidate', async () => {
   await withServer(async fixture => {
     const request = createPending(fixture);
