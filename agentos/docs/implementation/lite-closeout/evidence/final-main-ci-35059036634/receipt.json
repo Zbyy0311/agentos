@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "baseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+  "label": "lite-regressions",
+  "startedAt": "2026-09-16T06:04:54.199Z",
+  "finishedAt": "2026-09-16T06:05:20.183Z",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--test",
+      "--test-reporter=tap",
+      "scripts/verify-lite-scope.test.mjs",
+      "scripts/verify-lite-acceptance.test.mjs",
+      "scripts/run-lite-verification-batches.test.mjs",
+      "scripts/capture-lite-verification.test.mjs"
+    ]
+  },
+  "cwd": ".",
+  "environment": {},
+  "nodeVersion": "v22.23.2",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true,
+  "counts": {
+    "passed": 38,
+    "failed": 0,
+    "skipped": 0,
+    "total": 38
+  },
+  "assertionCoverage": [
+    {
+      "id": "S9-FINAL-MAIN-CI-35059036634-A1",
+      "requirementId": "LITE-FINAL-CLOSEOUT",
+      "file": "scripts/verify-lite-scope.test.mjs",
+      "name": "scope accepts the frozen matrix with individually authorized PASS rows",
+      "line": 127,
+      "expression": "assert.equal(result.PASS, 230);",
+      "clause": "The final main Lite scope contains the individually authorized PASS rows and no open GAP/RUNTIME-VERIFY rows.",
+      "outcome": "passed"
+    }
+  ],
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-ci-35059036634/stdout.txt",
+      "sha256": "a1aa57d9ae29fe73947e610150275c14504dba166309a90e5bbd404f77aa4e80"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-main-ci-35059036634/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "limitation": "GitHub Actions run 35059036634 at exact final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da; the preserved lite-regressions raw receipt directly proves the named scope assertion and 38/0/0 regression-gate execution. The complete workflow conclusion also covers Server tests, shared harnesses, Workspace build, and raw-receipt preservation; this receipt does not mechanically prove every PASS row."
+}

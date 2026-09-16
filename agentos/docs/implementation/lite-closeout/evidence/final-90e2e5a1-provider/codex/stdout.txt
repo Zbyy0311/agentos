@@ -1,0 +1,23 @@
+TAP version 13
+# Subtest: RunEngineProviderDispatcher E2E
+    # Subtest: LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)
+    ok 1 - LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)
+      ---
+      duration_ms: 220506.246
+      type: 'test'
+      ...
+    1..1
+ok 1 - RunEngineProviderDispatcher E2E
+  ---
+  duration_ms: 220507.6788
+  type: 'suite'
+  ...
+1..1
+# tests 1
+# suites 1
+# pass 1
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 221869.9095

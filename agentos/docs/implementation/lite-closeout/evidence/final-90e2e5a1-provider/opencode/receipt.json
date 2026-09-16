@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "baseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+  "provider": "opencode",
+  "model": "opencode/big-pickle",
+  "command": {
+    "executable": "C:\\nvm4w\\nodejs\\node.exe",
+    "args": [
+      "C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs",
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "LITE-04-101: real OpenCode completes",
+      "src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "environment": {
+    "AGENTOS_OPENCODE_CLI": "E:\\software\\opencode\\node_modules\\opencode-ai\\bin\\opencode.exe",
+    "AGENTOS_OPENCODE_MODEL": "opencode/big-pickle",
+    "M4_P4_REAL_OPENCODE_GATE": "1"
+  },
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-90e2e5a1-provider/opencode/stdout.txt",
+      "sha256": "a90f8282bb44c929cb944aa5f35ec4cdf9474eedab387ac49b420342ac84c4d4"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-90e2e5a1-provider/opencode/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-OPENCODE-A1",
+      "requirementId": "LITE-04-101",
+      "provider": "opencode",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: real OpenCode completes the canonical production chain (env-gated)",
+      "line": 1121,
+      "expression": "assert.equal(result.outcome, 'claimed-and-progressed');",
+      "clause": "the canonical dispatcher claims and progresses the real OpenCode Run",
+      "whyDirect": "The named real opencode gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-OPENCODE-A2",
+      "requirementId": "LITE-04-101",
+      "provider": "opencode",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: real OpenCode completes the canonical production chain (env-gated)",
+      "line": 1123,
+      "expression": "assert.equal(run.status, 'completed', `OpenCode failed: ${run.failureCode}`);",
+      "clause": "the real OpenCode Run reaches the completed terminal state",
+      "whyDirect": "The named real opencode gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-OPENCODE-A3",
+      "requirementId": "LITE-04-101",
+      "provider": "opencode",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: real OpenCode completes the canonical production chain (env-gated)",
+      "line": 1124,
+      "expression": "assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));",
+      "clause": "every canonical stage completes",
+      "whyDirect": "The named real opencode gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-OPENCODE-A4",
+      "requirementId": "LITE-04-101",
+      "provider": "opencode",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: real OpenCode completes the canonical production chain (env-gated)",
+      "line": 1126,
+      "expression": "assert.equal(processes.length, STAGE_KEYS.length);",
+      "clause": "the canonical process records cover every stage",
+      "whyDirect": "The named real opencode gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-OPENCODE-A5",
+      "requirementId": "LITE-04-101",
+      "provider": "opencode",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: real OpenCode completes the canonical production chain (env-gated)",
+      "line": 1130,
+      "expression": "assert.equal(outboxCount, eventCount);",
+      "clause": "durable Outbox count equals the Runtime Event count",
+      "whyDirect": "The named real opencode gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-OPENCODE-A6",
+      "requirementId": "LITE-04-101",
+      "provider": "opencode",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: real OpenCode completes the canonical production chain (env-gated)",
+      "line": 1134,
+      "expression": "assert.ok(",
+      "clause": "the real OpenCode assistant text reaches the durable output sink",
+      "whyDirect": "The named real opencode gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    }
+  ],
+  "limitation": "Local real-opencode completion at final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da using explicit model opencode/big-pickle; supplemental only, does not prove hosted-CI reproducibility, and does not change the separately authorized LITE-04-101 DEFERRED state."
+}
