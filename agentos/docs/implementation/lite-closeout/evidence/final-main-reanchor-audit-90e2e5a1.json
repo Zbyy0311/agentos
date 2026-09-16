@@ -1,0 +1,2978 @@
+{
+  "schemaVersion": 1,
+  "id": "S9-FINAL-MAIN-REANCHOR-90E2E5A1",
+  "fromBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "toBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+  "command": "git diff --name-only 33d12571b4a19fbbb17060a7d1a60f6fea756f09..90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+  "cwd": ".",
+  "rawExitCode": 0,
+  "changedPathCount": 578,
+  "changedPaths": [
+    "docs/implementation/lite-closeout/ACCELERATION-RESULT-33D.md",
+    "docs/implementation/lite-closeout/evidence.json",
+    "docs/implementation/lite-closeout/evidence/controlled-promotion-review-33d12571b4a19fbbb17060a7d1a60f6fea756f09.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-promotion-capture-summary.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/codex/receipt.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/codex/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/codex/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/kimi/receipt.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/kimi/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/kimi/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/opencode/receipt.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/opencode/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-provider/opencode/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/05-apps-server-src-routes-canonicalrunevents-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/06-apps-server-src-routes-canonicalrunstream-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/07-apps-server-src-routes-conversationruntime-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/08-apps-server-src-routes-git-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/09-apps-server-src-routes-memories-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/10-apps-server-src-routes-memoryruntime-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/11-apps-server-src-routes-operations-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/12-apps-server-src-routes-p6-l1a-start-route-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/13-apps-server-src-routes-runlifecycle-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/14-apps-server-src-routes-runs-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/15-apps-server-src-routes-runtimeapprovals-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/16-apps-server-src-routes-runtimeinspector-redaction-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/17-apps-server-src-routes-runtimeinspector-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/18-apps-server-src-services-agenthistoryservice-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/19-apps-server-src-services-approvalregistry-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/20-apps-server-src-services-boundedgroupservice-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/21-apps-server-src-services-conversationprojectionservice-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/22-apps-server-src-services-gitobservationcollector-integration-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/23-apps-server-src-services-groupspeakerresolver-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/27-apps-server-src-services-m3-p6-integrated-verification-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/28-apps-server-src-services-memorycontextresolver-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/29-apps-server-src-services-memoryretrievalservice-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/30-apps-server-src-services-memoryruntimeeventemitter-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/31-apps-server-src-services-outboxpublisher-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/34-apps-server-src-services-runreplayservice-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/35-apps-server-src-services-runtimeartifactcollector-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/36-apps-server-src-services-runtimeeventprojector-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/37-apps-server-src-services-runtimeinspector-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/38-apps-server-src-services-taskrunservice-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/39-apps-server-src-services-workflowtemplateservice-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/40-apps-server-src-services-workspaceadmissionauthority-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/41-apps-server-src-store-tests-runrepository-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/42-apps-server-src-store-identity-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/43-apps-server-src-store-memorycandidaterepository-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/45-apps-server-src-store-memoryentryrepository-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/46-apps-server-src-store-sqlitestore-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/47-apps-server-src-taskrecovery-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/48-apps-web-src-components-chat-boundedgroupview-test-tsx.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/50-apps-web-src-components-chat-directconversationworkbench-test-tsx.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/52-apps-web-src-components-chat-runinspectorpanel-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/54-apps-web-src-components-layout-workbenchshell-test-tsx.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/55-apps-web-src-lib-chatscroll-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/56-apps-web-src-lib-composerkeyboard-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/57-apps-web-src-lib-directconversation-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/58-apps-web-src-lib-executiontimeline-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/59-apps-web-src-lib-historysearch-test-tsx.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/60-apps-web-src-lib-runtimeinspectorclient-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/61-apps-web-src-lib-workbenchinteractions-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/62-apps-web-src-litescopeboundary-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/64-packages-agent-core-src-providers-codexprovideradapter-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/65-packages-agent-core-src-providers-kimicodeadapter-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/67-packages-agent-core-src-providers-providererrorretryability-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/68-packages-agent-core-src-providers-validation-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/69-packages-process-runtime-src-durable-coordinator-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/70-packages-process-runtime-src-node-driver-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/72-packages-shared-m3-runtime-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/73-packages-shared-mf5-memory-events-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/74-packages-shared-p6-l1a-admission-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/75-packages-shared-p6-l1c-git-observation-contract-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-receipts/76-packages-shared-wf-template-instantiation-test-ts.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/01-apps-server-src-migrations-tests-m2-7-workspace-compatibility-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/02-apps-server-src-migrations-tests-m3-p2a-migration-012-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/03-apps-server-src-migrations-tests-p6-l1b-migration-016-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/05-apps-server-src-routes-canonicalrunevents-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/05-apps-server-src-routes-canonicalrunevents-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/05-apps-server-src-routes-canonicalrunevents-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/05-apps-server-src-routes-canonicalrunevents-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/05-apps-server-src-routes-canonicalrunevents-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/06-apps-server-src-routes-canonicalrunstream-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/07-apps-server-src-routes-conversationruntime-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/07-apps-server-src-routes-conversationruntime-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/07-apps-server-src-routes-conversationruntime-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/07-apps-server-src-routes-conversationruntime-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/07-apps-server-src-routes-conversationruntime-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/08-apps-server-src-routes-git-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/08-apps-server-src-routes-git-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/08-apps-server-src-routes-git-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/08-apps-server-src-routes-git-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/08-apps-server-src-routes-git-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/09-apps-server-src-routes-memories-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/09-apps-server-src-routes-memories-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/09-apps-server-src-routes-memories-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/09-apps-server-src-routes-memories-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/09-apps-server-src-routes-memories-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/10-apps-server-src-routes-memoryruntime-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/10-apps-server-src-routes-memoryruntime-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/10-apps-server-src-routes-memoryruntime-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/10-apps-server-src-routes-memoryruntime-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/10-apps-server-src-routes-memoryruntime-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/11-apps-server-src-routes-operations-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/11-apps-server-src-routes-operations-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/11-apps-server-src-routes-operations-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/11-apps-server-src-routes-operations-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/11-apps-server-src-routes-operations-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/12-apps-server-src-routes-p6-l1a-start-route-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/13-apps-server-src-routes-runlifecycle-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/13-apps-server-src-routes-runlifecycle-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/13-apps-server-src-routes-runlifecycle-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/13-apps-server-src-routes-runlifecycle-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/13-apps-server-src-routes-runlifecycle-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/14-apps-server-src-routes-runs-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/15-apps-server-src-routes-runtimeapprovals-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/15-apps-server-src-routes-runtimeapprovals-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/15-apps-server-src-routes-runtimeapprovals-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/15-apps-server-src-routes-runtimeapprovals-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/15-apps-server-src-routes-runtimeapprovals-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/16-apps-server-src-routes-runtimeinspector-redaction-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/17-apps-server-src-routes-runtimeinspector-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/17-apps-server-src-routes-runtimeinspector-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/17-apps-server-src-routes-runtimeinspector-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/17-apps-server-src-routes-runtimeinspector-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/17-apps-server-src-routes-runtimeinspector-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/18-apps-server-src-services-agenthistoryservice-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/18-apps-server-src-services-agenthistoryservice-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/18-apps-server-src-services-agenthistoryservice-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/18-apps-server-src-services-agenthistoryservice-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/18-apps-server-src-services-agenthistoryservice-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/19-apps-server-src-services-approvalregistry-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/19-apps-server-src-services-approvalregistry-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/19-apps-server-src-services-approvalregistry-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/19-apps-server-src-services-approvalregistry-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/19-apps-server-src-services-approvalregistry-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/21-apps-server-src-services-conversationprojectionservice-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/21-apps-server-src-services-conversationprojectionservice-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/21-apps-server-src-services-conversationprojectionservice-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/21-apps-server-src-services-conversationprojectionservice-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/21-apps-server-src-services-conversationprojectionservice-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/22-apps-server-src-services-gitobservationcollector-integration-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/22-apps-server-src-services-gitobservationcollector-integration-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/22-apps-server-src-services-gitobservationcollector-integration-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/22-apps-server-src-services-gitobservationcollector-integration-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/22-apps-server-src-services-gitobservationcollector-integration-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/23-apps-server-src-services-groupspeakerresolver-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/24-apps-server-src-services-m3-p2c2a-lifecycle-transaction-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/25-apps-server-src-services-m3-p2c2b-composite-lifecycle-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/26-apps-server-src-services-m3-p2c2c-run-graph-creation-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/27-apps-server-src-services-m3-p6-integrated-verification-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/27-apps-server-src-services-m3-p6-integrated-verification-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/27-apps-server-src-services-m3-p6-integrated-verification-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/27-apps-server-src-services-m3-p6-integrated-verification-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/27-apps-server-src-services-m3-p6-integrated-verification-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/28-apps-server-src-services-memorycontextresolver-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/29-apps-server-src-services-memoryretrievalservice-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/29-apps-server-src-services-memoryretrievalservice-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/29-apps-server-src-services-memoryretrievalservice-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/29-apps-server-src-services-memoryretrievalservice-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/29-apps-server-src-services-memoryretrievalservice-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/30-apps-server-src-services-memoryruntimeeventemitter-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/31-apps-server-src-services-outboxpublisher-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/31-apps-server-src-services-outboxpublisher-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/31-apps-server-src-services-outboxpublisher-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/31-apps-server-src-services-outboxpublisher-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/31-apps-server-src-services-outboxpublisher-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/32-apps-server-src-services-run-engine-runengineproviderdispatcher-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/33-apps-server-src-services-run-engine-stageexecutioncoordinator-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/34-apps-server-src-services-runreplayservice-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/34-apps-server-src-services-runreplayservice-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/34-apps-server-src-services-runreplayservice-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/34-apps-server-src-services-runreplayservice-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/34-apps-server-src-services-runreplayservice-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/35-apps-server-src-services-runtimeartifactcollector-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/35-apps-server-src-services-runtimeartifactcollector-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/35-apps-server-src-services-runtimeartifactcollector-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/35-apps-server-src-services-runtimeartifactcollector-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/35-apps-server-src-services-runtimeartifactcollector-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/36-apps-server-src-services-runtimeeventprojector-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/37-apps-server-src-services-runtimeinspector-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/37-apps-server-src-services-runtimeinspector-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/37-apps-server-src-services-runtimeinspector-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/37-apps-server-src-services-runtimeinspector-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/37-apps-server-src-services-runtimeinspector-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/38-apps-server-src-services-taskrunservice-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/38-apps-server-src-services-taskrunservice-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/38-apps-server-src-services-taskrunservice-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/38-apps-server-src-services-taskrunservice-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/38-apps-server-src-services-taskrunservice-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/39-apps-server-src-services-workflowtemplateservice-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/40-apps-server-src-services-workspaceadmissionauthority-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/41-apps-server-src-store-tests-runrepository-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/41-apps-server-src-store-tests-runrepository-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/41-apps-server-src-store-tests-runrepository-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/41-apps-server-src-store-tests-runrepository-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/41-apps-server-src-store-tests-runrepository-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/42-apps-server-src-store-identity-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/42-apps-server-src-store-identity-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/42-apps-server-src-store-identity-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/42-apps-server-src-store-identity-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/42-apps-server-src-store-identity-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/43-apps-server-src-store-memorycandidaterepository-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/44-apps-server-src-store-memorycontextsnapshotrepository-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/45-apps-server-src-store-memoryentryrepository-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/45-apps-server-src-store-memoryentryrepository-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/45-apps-server-src-store-memoryentryrepository-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/45-apps-server-src-store-memoryentryrepository-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/45-apps-server-src-store-memoryentryrepository-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/46-apps-server-src-store-sqlitestore-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/46-apps-server-src-store-sqlitestore-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/46-apps-server-src-store-sqlitestore-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/46-apps-server-src-store-sqlitestore-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/46-apps-server-src-store-sqlitestore-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/47-apps-server-src-taskrecovery-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/48-apps-web-src-components-chat-boundedgroupview-test-tsx/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/48-apps-web-src-components-chat-boundedgroupview-test-tsx/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/48-apps-web-src-components-chat-boundedgroupview-test-tsx/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/48-apps-web-src-components-chat-boundedgroupview-test-tsx/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/48-apps-web-src-components-chat-boundedgroupview-test-tsx/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/50-apps-web-src-components-chat-directconversationworkbench-test-tsx/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/50-apps-web-src-components-chat-directconversationworkbench-test-tsx/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/50-apps-web-src-components-chat-directconversationworkbench-test-tsx/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/50-apps-web-src-components-chat-directconversationworkbench-test-tsx/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/50-apps-web-src-components-chat-directconversationworkbench-test-tsx/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/51-apps-web-src-components-chat-groupconversationcanvas-test-tsx/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/52-apps-web-src-components-chat-runinspectorpanel-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/52-apps-web-src-components-chat-runinspectorpanel-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/52-apps-web-src-components-chat-runinspectorpanel-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/52-apps-web-src-components-chat-runinspectorpanel-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/52-apps-web-src-components-chat-runinspectorpanel-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/53-apps-web-src-components-chat-runtimeinspectorview-test-tsx/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/54-apps-web-src-components-layout-workbenchshell-test-tsx/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/54-apps-web-src-components-layout-workbenchshell-test-tsx/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/54-apps-web-src-components-layout-workbenchshell-test-tsx/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/54-apps-web-src-components-layout-workbenchshell-test-tsx/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/54-apps-web-src-components-layout-workbenchshell-test-tsx/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/55-apps-web-src-lib-chatscroll-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/55-apps-web-src-lib-chatscroll-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/55-apps-web-src-lib-chatscroll-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/55-apps-web-src-lib-chatscroll-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/55-apps-web-src-lib-chatscroll-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/56-apps-web-src-lib-composerkeyboard-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/56-apps-web-src-lib-composerkeyboard-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/56-apps-web-src-lib-composerkeyboard-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/56-apps-web-src-lib-composerkeyboard-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/56-apps-web-src-lib-composerkeyboard-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/57-apps-web-src-lib-directconversation-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/58-apps-web-src-lib-executiontimeline-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/58-apps-web-src-lib-executiontimeline-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/58-apps-web-src-lib-executiontimeline-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/58-apps-web-src-lib-executiontimeline-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/58-apps-web-src-lib-executiontimeline-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/59-apps-web-src-lib-historysearch-test-tsx/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/59-apps-web-src-lib-historysearch-test-tsx/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/59-apps-web-src-lib-historysearch-test-tsx/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/59-apps-web-src-lib-historysearch-test-tsx/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/59-apps-web-src-lib-historysearch-test-tsx/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/61-apps-web-src-lib-workbenchinteractions-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/62-apps-web-src-litescopeboundary-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/62-apps-web-src-litescopeboundary-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/62-apps-web-src-litescopeboundary-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/62-apps-web-src-litescopeboundary-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/62-apps-web-src-litescopeboundary-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/63-packages-agent-core-src-providers-capabilitydeclaration-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/64-packages-agent-core-src-providers-codexprovideradapter-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/64-packages-agent-core-src-providers-codexprovideradapter-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/64-packages-agent-core-src-providers-codexprovideradapter-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/64-packages-agent-core-src-providers-codexprovideradapter-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/64-packages-agent-core-src-providers-codexprovideradapter-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/65-packages-agent-core-src-providers-kimicodeadapter-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/66-packages-agent-core-src-providers-opencodeprovideradapter-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/67-packages-agent-core-src-providers-providererrorretryability-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/68-packages-agent-core-src-providers-validation-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/68-packages-agent-core-src-providers-validation-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/68-packages-agent-core-src-providers-validation-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/68-packages-agent-core-src-providers-validation-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/68-packages-agent-core-src-providers-validation-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/69-packages-process-runtime-src-durable-coordinator-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/69-packages-process-runtime-src-durable-coordinator-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/69-packages-process-runtime-src-durable-coordinator-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/69-packages-process-runtime-src-durable-coordinator-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/69-packages-process-runtime-src-durable-coordinator-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/70-packages-process-runtime-src-node-driver-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/70-packages-process-runtime-src-node-driver-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/70-packages-process-runtime-src-node-driver-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/70-packages-process-runtime-src-node-driver-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/70-packages-process-runtime-src-node-driver-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/71-packages-process-runtime-src-p6-m3b-windows-birth-identity-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/72-packages-shared-m3-runtime-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/72-packages-shared-m3-runtime-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/72-packages-shared-m3-runtime-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/72-packages-shared-m3-runtime-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/72-packages-shared-m3-runtime-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/73-packages-shared-mf5-memory-events-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/73-packages-shared-mf5-memory-events-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/73-packages-shared-mf5-memory-events-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/73-packages-shared-mf5-memory-events-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/73-packages-shared-mf5-memory-events-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/74-packages-shared-p6-l1a-admission-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/74-packages-shared-p6-l1a-admission-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/74-packages-shared-p6-l1a-admission-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/74-packages-shared-p6-l1a-admission-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/74-packages-shared-p6-l1a-admission-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/75-packages-shared-p6-l1c-git-observation-contract-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/75-packages-shared-p6-l1c-git-observation-contract-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/75-packages-shared-p6-l1c-git-observation-contract-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/75-packages-shared-p6-l1c-git-observation-contract-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/75-packages-shared-p6-l1c-git-observation-contract-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/76-packages-shared-wf-template-instantiation-test-ts/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/76-packages-shared-wf-template-instantiation-test-ts/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/76-packages-shared-wf-template-instantiation-test-ts/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/76-packages-shared-wf-template-instantiation-test-ts/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-33d12571-runs/76-packages-shared-wf-template-instantiation-test-ts/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass-capture-summary.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/artifact/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-current/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-current/browser-13-101.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-current/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-current/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-current/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-current/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-rerun/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-rerun/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-rerun/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-rerun/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101-rerun/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/browser-13-101/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-repository.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-repository/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-repository/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-repository/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-repository/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-repository/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-service.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-service/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-service/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-service/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-service/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-service/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/compaction-trigger/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07003.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07003/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07003/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07003/source/receipts.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07003/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07003/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/source/receipts.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-07013/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s1-budget.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s1-budget/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s1-budget/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s1-budget/source/receipts.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s1-budget/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s1-budget/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s7.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s7/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s7/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s7/source/receipts.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s7/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/controlled-s7/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-candidate.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-candidate/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-candidate/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-candidate/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-candidate/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-candidate/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-retrieval/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-runtime/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/assertions.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/execution.json",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/exit.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/stderr.txt",
+    "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/runtime-inspector/stdout.txt",
+    "docs/implementation/lite-closeout/evidence/runtime-verify-classification-33d12571.json",
+    "docs/implementation/lite-closeout/evidence/unchanged-path-audit-33d.json",
+    "docs/implementation/lite-closeout/evidence/verification-batches-33d12571.json",
+    "docs/implementation/lite-closeout/matrix.json",
+    "docs/implementation/lite-closeout/pass-promotions.json",
+    "scripts/verify-lite-scope.mjs",
+    "scripts/verify-lite-scope.test.mjs"
+  ],
+  "productionRoots": [
+    "apps/server/src",
+    "apps/web/src",
+    "packages"
+  ],
+  "productionChangedPaths": [],
+  "checkedPassRows": [
+    {
+      "requirementId": "LITE-00-001",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-002",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-003",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-004",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-005",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-006",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-007",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-008",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-009",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-010",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-011",
+      "implementation": [
+        "apps/server/src/index.ts",
+        "apps/server/src/routes/git.ts",
+        "apps/server/src/services/GitObservationCollector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-012",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-00-013",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-001",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-002",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-003",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-004",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-005",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-006",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-007",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-008",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-009",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-010",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-011",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-012",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-013",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-014",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-015",
+      "implementation": [
+        "apps/server/src/store/Identity.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-001",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-002",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-003",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-004",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-005",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-006",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-007",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-008",
+      "implementation": [
+        "apps/server/src/services/OutboxPublisher.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-009",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-010",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-011",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-012",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-013",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-014",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-015",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-016",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-02-017",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-001",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-002",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-003",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-004",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-005",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-006",
+      "implementation": [
+        "apps/server/src/services/LifecycleTransactionService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-007",
+      "implementation": [
+        "apps/server/src/services/OutboxPublisher.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-008",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-009",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-010",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-011",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-012",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-013",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-014",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-015",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-016",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-017",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-018",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-03-019",
+      "implementation": [
+        "apps/server/src/store/RuntimeEventRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-001",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-002",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-003",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-004",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-005",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-006",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-007",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "packages/agent-core/src/providers/codexProviderAdapter.ts",
+        "packages/agent-core/src/providers/kimiCodeAdapter.ts",
+        "packages/agent-core/src/providers/opencodeProviderAdapter.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-008",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-009",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-010",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-011",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-04-012",
+      "implementation": [
+        "apps/server/src/services/run-engine/providerExecutionChain.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-001",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-002",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-003",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-004",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-005",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-006",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-007",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-008",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-009",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts",
+        "packages/process-runtime/src/timeouts.ts",
+        "packages/process-runtime/src/manager.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-010",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-011",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-05-012",
+      "implementation": [
+        "packages/process-runtime/src/platform-recovery-verifier.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-001",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-002",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-003",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-004",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-005",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-006",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-007",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-008",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-009",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-010",
+      "implementation": [
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-06-011",
+      "implementation": [
+        "apps/server/src/routes/git.ts",
+        "apps/server/src/services/WorkspaceAdmissionAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-001",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-002",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-003",
+      "implementation": [
+        "apps/server/src/services/MemoryCandidateGenerationService.ts",
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-004",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-005",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-006",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts",
+        "apps/server/src/services/MemoryRetrievalService.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-007",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-008",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-009",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-010",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-011",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-012",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-013",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-014",
+      "implementation": [
+        "apps/server/src/services/MemoryContextResolver.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-001",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-002",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-003",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-004",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-005",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "priorEvidenceBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-006",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "priorEvidenceBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-007",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/run-engine/StageExecutionCoordinator.ts",
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts"
+      ],
+      "priorEvidenceBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-008",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-009",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-010",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-011",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-012",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/routes/runtimeApprovals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-013",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-014",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-08-015",
+      "implementation": [
+        "apps/server/src/routes/approvals.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-001",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-002",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-003",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-004",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-005",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-006",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-007",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-008",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-009",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-010",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-011",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-012",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-013",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-014",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-015",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-016",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-017",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-018",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-001",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-002",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-003",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-004",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-005",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-006",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-007",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-008",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-009",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-010",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-011",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-012",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-013",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-014",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-015",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-016",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-10-017",
+      "implementation": [
+        "apps/server/src/migrations/default-registry.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-001",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-002",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-003",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-004",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-005",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-006",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-007",
+      "implementation": [
+        "apps/server/src/routes/canonicalRunEvents.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-008",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-009",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-010",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-011",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-012",
+      "implementation": [
+        "apps/server/src/index.ts",
+        "apps/server/src/routes/artifacts.ts",
+        "apps/server/src/store/SqliteStore.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-11-013",
+      "implementation": [
+        "apps/server/src/index.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-001",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-002",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-003",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-004",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-005",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-006",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-007",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-008",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-009",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-010",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-011",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-012",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-013",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-014",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-015",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-016",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-001",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-002",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-003",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-004",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-005",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-006",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-007",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-008",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-009",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-010",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-011",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-012",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-013",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-014",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-015",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-101",
+      "implementation": [
+        "apps/server/src/routes/memoryRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-102",
+      "implementation": [
+        "apps/server/src/services/run-engine/RunEngineProviderDispatcher.ts",
+        "apps/server/src/services/MemoryCandidateGenerationService.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-103",
+      "implementation": [
+        "apps/server/src/routes/runtimeApprovals.ts",
+        "apps/server/src/services/RuntimeApprovalGate.ts",
+        "apps/server/src/store/RuntimeApprovalRepository.ts",
+        "apps/server/src/services/MemoryRuntimeEventEmitter.ts"
+      ],
+      "priorEvidenceBaseline": "ad11319870c921e77e826c71787bd63f61a830aa",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-104",
+      "implementation": [
+        "apps/server/src/services/RuntimeArtifactService.ts",
+        "apps/server/src/services/RuntimeArtifactCollector.ts",
+        "apps/server/src/services/ConversationService.ts",
+        "apps/server/src/store/SqliteStore.ts",
+        "apps/server/src/services/ArtifactCompletionService.ts",
+        "apps/server/src/services/CanonicalArtifactResultService.ts",
+        "apps/web/src/components/memory/MemoryReviewQueue.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-105",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-106",
+      "implementation": [
+        "apps/server/src/managers/WorkspaceManager.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-107",
+      "implementation": [
+        "apps/server/src/store/MemoryCandidateRepository.ts",
+        "apps/server/src/services/MemoryCandidateGenerationService.ts",
+        "apps/server/src/routes/memoryRuntime.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-108",
+      "implementation": [
+        "packages/shared/src/types/mf5-workspace-events.ts",
+        "apps/server/src/services/WorkspaceEventContextAuthority.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-07-109",
+      "implementation": [
+        "apps/server/src/services/MemoryRetrievalService.ts",
+        "apps/server/src/store/MemoryEntryRepository.ts",
+        "apps/server/src/services/MemoryContextBudgetSelector.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-101",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts",
+        "apps/server/src/services/BoundedGroupService.ts",
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/routes/conversationRuntime.ts",
+        "apps/server/src/store/TurnContextSnapshotRepository.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-102",
+      "implementation": [
+        "apps/server/src/services/GroupTurnDriver.ts",
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-103",
+      "implementation": [
+        "apps/server/src/services/AgentHistoryService.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-104",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-105",
+      "implementation": [
+        "apps/server/src/store/ConversationRepository.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-106",
+      "implementation": [
+        "packages/agent-core/src/conversationRunner.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-107",
+      "implementation": [
+        "apps/server/src/services/ConversationCompactionService.ts",
+        "apps/server/src/services/ConversationCompactionTrigger.ts",
+        "apps/server/src/store/CompactionRepository.ts",
+        "apps/server/src/store/SqliteStore.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-108",
+      "implementation": [
+        "apps/server/src/services/ConversationTurnDriver.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-109",
+      "implementation": [
+        "apps/server/src/store/ConversationRepository.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-09-110",
+      "implementation": [
+        "packages/agent-core/src/conversationRunner.ts",
+        "apps/server/src/services/ProviderCompactionSummarizer.ts"
+      ],
+      "priorEvidenceBaseline": "c517fbd8c49e1479f22c8fac9f9d47fab568969b",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-101",
+      "implementation": [
+        "apps/server/src/services/ConversationCompactionInspector.ts",
+        "apps/server/src/services/RuntimeInspector.ts",
+        "apps/web/src/components/chat/RuntimeInspectorView.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-12-101",
+      "implementation": [
+        "apps/web/src/components/layout/WorkbenchShell.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-13-102",
+      "implementation": [
+        "apps/server/src/services/RuntimeInspector.ts",
+        "apps/web/src/components/chat/RuntimeInspectorView.tsx"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    },
+    {
+      "requirementId": "LITE-01-101",
+      "implementation": [
+        "apps/server/src/routes/conversationRuntime.ts"
+      ],
+      "priorEvidenceBaseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+      "finalBaseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+      "changedImplementationPaths": [],
+      "decision": "reuse-authorized"
+    }
+  ],
+  "counts": {
+    "passed": 230,
+    "failed": 0,
+    "skipped": 0
+  },
+  "rationale": "Every PASS row is checked individually against its listed implementation path. From 33d12571b4a19fbbb17060a7d1a60f6fea756f09 to final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da, no listed production implementation path changed; only closeout evidence, matrix, and verifier files changed. Existing raw receipts may therefore be reused with explicit historical-reuse rationale, without a mechanical state promotion or changed acceptance criterion."
+}

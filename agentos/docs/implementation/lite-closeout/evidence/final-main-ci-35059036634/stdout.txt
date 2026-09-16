@@ -1,0 +1,238 @@
+TAP version 13
+# Subtest: capture preserves nonzero exit despite a passing-looking summary, logs, and missing counts
+ok 1 - capture preserves nonzero exit despite a passing-looking summary, logs, and missing counts
+  ---
+  duration_ms: 1783.7036
+  type: 'test'
+  ...
+# Subtest: missing summary counts remain null and cannot produce a clean batch
+ok 2 - missing summary counts remain null and cannot produce a clean batch
+  ---
+  duration_ms: 3.6637
+  type: 'test'
+  ...
+# Subtest: raw nonzero exit defeats a clean-looking parsed summary
+ok 3 - raw nonzero exit defeats a clean-looking parsed summary
+  ---
+  duration_ms: 0.2621
+  type: 'test'
+  ...
+# Subtest: timeout and spawn error stay non-passing even with output counts
+ok 4 - timeout and spawn error stay non-passing even with output counts
+  ---
+  duration_ms: 0.2986
+  type: 'test'
+  ...
+# Subtest: process receipt retains source SHA, full log SHA, raw fields, and counts
+ok 5 - process receipt retains source SHA, full log SHA, raw fields, and counts
+  ---
+  duration_ms: 2.0504
+  type: 'test'
+  ...
+# Subtest: a passing source file does not become assertion coverage
+ok 6 - a passing source file does not become assertion coverage
+  ---
+  duration_ms: 0.3671
+  type: 'test'
+  ...
+# Subtest: missing and unsupported batches make the runner return failure
+ok 7 - missing and unsupported batches make the runner return failure
+  ---
+  duration_ms: 198.8894
+  type: 'test'
+  ...
+# Subtest: freeze guards reject all historical S8 writers before any write
+ok 8 - freeze guards reject all historical S8 writers before any write
+  ---
+  duration_ms: 304.4297
+  type: 'test'
+  ...
+# Subtest: acceptance preserves raw nonzero exit, receipt logs, and SHA instead of normalizing to pass
+ok 9 - acceptance preserves raw nonzero exit, receipt logs, and SHA instead of normalizing to pass
+  ---
+  duration_ms: 752.9688
+  type: 'test'
+  ...
+# Subtest: manual and skipped scenarios cannot produce a passing acceptance verdict
+ok 10 - manual and skipped scenarios cannot produce a passing acceptance verdict
+  ---
+  duration_ms: 343.6104
+  type: 'test'
+  ...
+# Subtest: a clean raw zero execution is the only acceptance control that passes
+ok 11 - a clean raw zero execution is the only acceptance control that passes
+  ---
+  duration_ms: 727.6317
+  type: 'test'
+  ...
+# Subtest: strict S8 wrapper rejects external failure and reports raw log SHA
+ok 12 - strict S8 wrapper rejects external failure and reports raw log SHA
+  ---
+  duration_ms: 1073.8365
+  type: 'test'
+  ...
+# Subtest: strict S8 wrapper preserves an earlier failure and never uses a later pass to normalize it
+ok 13 - strict S8 wrapper preserves an earlier failure and never uses a later pass to normalize it
+  ---
+  duration_ms: 578.7528
+  type: 'test'
+  ...
+# Subtest: strict S8 wrapper rejects a green-looking log when raw exit is missing or nonzero
+ok 14 - strict S8 wrapper rejects a green-looking log when raw exit is missing or nonzero
+  ---
+  duration_ms: 1184.3861
+  type: 'test'
+  ...
+# Subtest: strict S8 wrapper accepts only a complete raw zero gate log
+ok 15 - strict S8 wrapper accepts only a complete raw zero gate log
+  ---
+  duration_ms: 612.2864
+  type: 'test'
+  ...
+# Subtest: strict S8 wrapper tolerates not_run only for gates that passed in their owning phase
+ok 16 - strict S8 wrapper tolerates not_run only for gates that passed in their owning phase
+  ---
+  duration_ms: 599.5484
+  type: 'test'
+  ...
+# Subtest: strict S8 wrapper still rejects a gate that only ever reports not_run
+ok 17 - strict S8 wrapper still rejects a gate that only ever reports not_run
+  ---
+  duration_ms: 625.1109
+  type: 'test'
+  ...
+# Subtest: zero exit with skipped or unparsed tests never proves acceptance
+ok 18 - zero exit with skipped or unparsed tests never proves acceptance
+  ---
+  duration_ms: 1208.6859
+  type: 'test'
+  ...
+# Subtest: the recorded deferral amendment authorizes exactly the LITE-04-101 change
+ok 19 - the recorded deferral amendment authorizes exactly the LITE-04-101 change
+  ---
+  duration_ms: 9.9353
+  type: 'test'
+  ...
+# Subtest: an amendment may never promote a row or leave DEFERRED
+ok 20 - an amendment may never promote a row or leave DEFERRED
+  ---
+  duration_ms: 2.9929
+  type: 'test'
+  ...
+# Subtest: an amendment requires its authority, a reopen condition and a boundary
+ok 21 - an amendment requires its authority, a reopen condition and a boundary
+  ---
+  duration_ms: 1.7795
+  type: 'test'
+  ...
+# Subtest: an amendment cannot be added or edited without moving the outside anchor
+ok 22 - an amendment cannot be added or edited without moving the outside anchor
+  ---
+  duration_ms: 2.2421
+  type: 'test'
+  ...
+# Subtest: a line-less requirement cannot be deferred without its own amendment
+ok 23 - a line-less requirement cannot be deferred without its own amendment
+  ---
+  duration_ms: 38.9521
+  type: 'test'
+  ...
+# Subtest: scope accepts the frozen matrix with individually authorized PASS rows
+ok 24 - scope accepts the frozen matrix with individually authorized PASS rows
+  ---
+  duration_ms: 23829.6378
+  type: 'test'
+  ...
+# Subtest: freeze anchor rejects a rewritten original state
+ok 25 - freeze anchor rejects a rewritten original state
+  ---
+  duration_ms: 2.9202
+  type: 'test'
+  ...
+# Subtest: freeze rejects old PASS re-upgrade, unauthorized GAP transition, and DEFERRED closure
+ok 26 - freeze rejects old PASS re-upgrade, unauthorized GAP transition, and DEFERRED closure
+  ---
+  duration_ms: 942.4782
+  type: 'test'
+  ...
+# Subtest: old PASS evidence declaration is rejected without a raw receipt
+ok 27 - old PASS evidence declaration is rejected without a raw receipt
+  ---
+  duration_ms: 6.2706
+  type: 'test'
+  ...
+# Subtest: PASS evidence requires baseline, literal command, raw exit, counts and assertion mapping
+ok 28 - PASS evidence requires baseline, literal command, raw exit, counts and assertion mapping
+  ---
+  duration_ms: 20.3905
+  type: 'test'
+  ...
+# Subtest: declared five fields cannot turn a source file into a raw execution log
+ok 29 - declared five fields cannot turn a source file into a raw execution log
+  ---
+  duration_ms: 3.8021
+  type: 'test'
+  ...
+# Subtest: final closure checks the real HEAD before CI or Provider evidence
+ok 30 - final closure checks the real HEAD before CI or Provider evidence
+  ---
+  duration_ms: 131.6243
+  type: 'test'
+  ...
+# Subtest: permanent scope still rejects removed, recycled, and additional requirement IDs
+ok 31 - permanent scope still rejects removed, recycled, and additional requirement IDs
+  ---
+  duration_ms: 43.8342
+  type: 'test'
+  ...
+# Subtest: specification, deferral, and permanent scope-lock drift remain rejected
+ok 32 - specification, deferral, and permanent scope-lock drift remain rejected
+  ---
+  duration_ms: 14.9597
+  type: 'test'
+  ...
+# Subtest: controlled promotion authorizes one directly evidenced row and no other row
+ok 33 - controlled promotion authorizes one directly evidenced row and no other row
+  ---
+  duration_ms: 8.4148
+  type: 'test'
+  ...
+# Subtest: controlled promotion requires direct assertion fields, not a file-level claim
+ok 34 - controlled promotion requires direct assertion fields, not a file-level claim
+  ---
+  duration_ms: 5.1862
+  type: 'test'
+  ...
+# Subtest: controlled promotion requires the one final implementation baseline
+ok 35 - controlled promotion requires the one final implementation baseline
+  ---
+  duration_ms: 3.4726
+  type: 'test'
+  ...
+# Subtest: controlled promotion cannot bulk-close a row without its own record
+ok 36 - controlled promotion cannot bulk-close a row without its own record
+  ---
+  duration_ms: 5.2107
+  type: 'test'
+  ...
+# Subtest: controlled promotion never changes an explicitly deferred row
+ok 37 - controlled promotion never changes an explicitly deferred row
+  ---
+  duration_ms: 5.8512
+  type: 'test'
+  ...
+# Subtest: promotion authority remains hash-anchored outside the mutable ledger
+ok 38 - promotion authority remains hash-anchored outside the mutable ledger
+  ---
+  duration_ms: 0.4187
+  type: 'test'
+  ...
+1..38
+# tests 38
+# suites 0
+# pass 38
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 25908.5958

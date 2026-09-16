@@ -3794,5 +3794,87 @@
     ],
     "environment": "Windows; real opencode CLI; explicit model opencode/big-pickle; final implementation baseline 33d12571b4a19fbbb17060a7d1a60f6fea756f09",
     "limitation": "This is a local real-completion receipt using opencode/big-pickle because deepseek/deepseek-v4-flash returned 402 Insufficient Balance. It does not prove hosted-CI reproducibility, OpenCode cancellation, or change the separately authorized LITE-04-101 DEFERRED state."
+  },
+  {
+    "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-CODEX",
+    "baseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+    "kind": "runtime-verification",
+    "provider": "codex",
+    "model": "gpt-5.6-luna",
+    "command": "C:\\nvm4w\\nodejs\\node.exe C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern LITE-04-101: current-machine Codex gate src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-90e2e5a1-provider/codex/receipt.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "environment": "Windows; real codex CLI; explicit model gpt-5.6-luna; exact final main baseline 90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+    "limitation": "Local real-codex completion at final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da using explicit model gpt-5.6-luna; supplemental only, does not prove hosted-CI reproducibility, and does not change the separately authorized LITE-04-101 DEFERRED state."
+  },
+  {
+    "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-KIMI",
+    "baseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+    "kind": "runtime-verification",
+    "provider": "kimi",
+    "model": "opencodex/gpt-5.6-luna",
+    "command": "C:\\nvm4w\\nodejs\\node.exe C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern LITE-04-101: current-machine Kimi gate src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-90e2e5a1-provider/kimi/receipt.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "environment": "Windows; real kimi CLI; explicit model opencodex/gpt-5.6-luna; exact final main baseline 90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+    "limitation": "Local real-kimi completion at final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da using explicit model opencodex/gpt-5.6-luna; supplemental only, does not prove hosted-CI reproducibility, and does not change the separately authorized LITE-04-101 DEFERRED state."
+  },
+  {
+    "id": "S9-FINAL-MAIN-90E2E5A1-PROVIDER-OPENCODE",
+    "baseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+    "kind": "runtime-verification",
+    "provider": "opencode",
+    "model": "opencode/big-pickle",
+    "command": "C:\\nvm4w\\nodejs\\node.exe C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs exec tsx --test --test-concurrency=1 --test-reporter=tap --test-name-pattern LITE-04-101: real OpenCode completes src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+    "cwd": "apps/server",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-90e2e5a1-provider/opencode/receipt.json",
+    "result": {
+      "passed": 1,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0
+    },
+    "requirementIds": [
+      "LITE-04-101"
+    ],
+    "environment": "Windows; real opencode CLI; explicit model opencode/big-pickle; exact final main baseline 90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+    "limitation": "Local real-opencode completion at final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da using explicit model opencode/big-pickle; supplemental only, does not prove hosted-CI reproducibility, and does not change the separately authorized LITE-04-101 DEFERRED state."
+  },
+  {
+    "id": "S9-FINAL-MAIN-CI-35059036634",
+    "baseline": "90e2e5a13c23e541f25a75f3ffdeeb19353c35da",
+    "kind": "github-actions",
+    "command": "node --test --test-reporter=tap scripts/verify-lite-scope.test.mjs scripts/verify-lite-acceptance.test.mjs scripts/run-lite-verification-batches.test.mjs scripts/capture-lite-verification.test.mjs",
+    "cwd": ".",
+    "rawReceipt": "docs/implementation/lite-closeout/evidence/final-main-ci-35059036634/receipt.json",
+    "result": {
+      "passed": 38,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "conclusion": "success"
+    },
+    "url": "https://github.com/Zbyy0311/agentos/actions/runs/35059036634",
+    "environment": "GitHub Actions; exact final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da; workflow run 35059036634",
+    "requirementIds": [],
+    "limitation": "GitHub Actions run 35059036634 at exact final main 90e2e5a13c23e541f25a75f3ffdeeb19353c35da; the preserved lite-regressions raw receipt directly proves the named scope assertion and 38/0/0 regression-gate execution. The complete workflow conclusion also covers Server tests, shared harnesses, Workspace build, and raw-receipt preservation; this receipt does not mechanically prove every PASS row."
   }
 ]
