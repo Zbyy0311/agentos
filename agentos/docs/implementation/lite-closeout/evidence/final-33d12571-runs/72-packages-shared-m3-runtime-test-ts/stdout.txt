@@ -1,0 +1,22 @@
+TAP version 13
+# Subtest: LITE-03-001 rejects illegal payloads and missing Stage envelope association
+ok 1 - LITE-03-001 rejects illegal payloads and missing Stage envelope association
+  ---
+  duration_ms: 3.1372
+  type: 'test'
+  ...
+# Subtest: LITE-03-001 maps envelope and payload failures to distinct stable errors
+ok 2 - LITE-03-001 maps envelope and payload failures to distinct stable errors
+  ---
+  duration_ms: 0.537
+  type: 'test'
+  ...
+1..2
+# tests 2
+# suites 0
+# pass 2
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 158.2204

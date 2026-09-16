@@ -1,0 +1,47 @@
+TAP version 13
+# Subtest: StageExecutionCoordinator
+    # Subtest: LITE-04-002 Mock Provider success: one Session, one Process, completed outcome, durable facts
+    ok 1 - LITE-04-002 Mock Provider success: one Session, one Process, completed outcome, durable facts
+      ---
+      duration_ms: 83.7223
+      type: 'test'
+      ...
+    # Subtest: LITE-04-002 Mock Provider auth failure fails closed before claim
+    ok 2 - LITE-04-002 Mock Provider auth failure fails closed before claim
+      ---
+      duration_ms: 47.2487
+      type: 'test'
+      ...
+    # Subtest: LITE-04-002 Mock Provider process-start failure compensates durably and never spawns twice
+    ok 3 - LITE-04-002 Mock Provider process-start failure compensates durably and never spawns twice
+      ---
+      duration_ms: 58.2012
+      type: 'test'
+      ...
+    # Subtest: LITE-04-002 Mock Provider non-zero exit maps to a stable Provider failure with exited Process evidence
+    ok 4 - LITE-04-002 Mock Provider non-zero exit maps to a stable Provider failure with exited Process evidence
+      ---
+      duration_ms: 61.3775
+      type: 'test'
+      ...
+    # Subtest: LITE-04-002 Mock Provider process crash (non-zero termination) maps to failed Session and exited Process evidence
+    ok 5 - LITE-04-002 Mock Provider process crash (non-zero termination) maps to failed Session and exited Process evidence
+      ---
+      duration_ms: 60.2788
+      type: 'test'
+      ...
+    1..5
+ok 1 - StageExecutionCoordinator
+  ---
+  duration_ms: 312.1502
+  type: 'suite'
+  ...
+1..1
+# tests 5
+# suites 1
+# pass 5
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 533.2258

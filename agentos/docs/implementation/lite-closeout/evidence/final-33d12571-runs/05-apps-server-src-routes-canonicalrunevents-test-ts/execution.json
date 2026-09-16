@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P5A-R06/R09/R12 Events returns the raw bounded page in strict sequence order|P5A-R13 Events preserves unknown wire records without Registry consumption wrappers|P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details|LITE-04-011 / P5A-R22 unsafe persisted Snapshot fails closed without leaking secret/path/SQLite details)",
+      "src/routes/canonicalRunEvents.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

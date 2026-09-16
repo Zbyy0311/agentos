@@ -1,0 +1,90 @@
+[
+  {
+    "id": "LITE-03-001-lite-03-001-rejects-illegal-payloads-and-missing-stage-envelope-association-462-A1",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 rejects illegal payloads and missing Stage envelope association",
+    "line": 1158,
+    "expression": "assert.equal(accepted.id, fixtures.validRunStartedEvent.id);",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-001-lite-03-001-rejects-illegal-payloads-and-missing-stage-envelope-association-462-A2",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 rejects illegal payloads and missing Stage envelope association",
+    "line": 1159,
+    "expression": "assert.equal(accepted.type, fixtures.validRunStartedEvent.type);",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-001-lite-03-001-rejects-illegal-payloads-and-missing-stage-envelope-association-462-A3",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 rejects illegal payloads and missing Stage envelope association",
+    "line": 1160,
+    "expression": "assert.throws(",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-001-lite-03-001-rejects-illegal-payloads-and-missing-stage-envelope-association-462-A4",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 rejects illegal payloads and missing Stage envelope association",
+    "line": 1165,
+    "expression": "assert.throws(",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-001-lite-03-001-rejects-illegal-payloads-and-missing-stage-envelope-association-462-A5",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 rejects illegal payloads and missing Stage envelope association",
+    "line": 1170,
+    "expression": "assert.throws(",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-001-lite-03-001-rejects-illegal-payloads-and-missing-stage-envelope-association-462-A6",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 rejects illegal payloads and missing Stage envelope association",
+    "line": 1175,
+    "expression": "assert.throws(",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-001-lite-03-001-maps-envelope-and-payload-failures-to-distinct-stable-errors-463-A1",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 maps envelope and payload failures to distinct stable errors",
+    "line": 1186,
+    "expression": "assert.throws(",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-03-001-lite-03-001-maps-envelope-and-payload-failures-to-distinct-stable-errors-463-A2",
+    "requirementId": "LITE-03-001",
+    "file": "packages/shared/m3-runtime.test.ts",
+    "name": "LITE-03-001 maps envelope and payload failures to distinct stable errors",
+    "line": 1191,
+    "expression": "assert.throws(",
+    "clause": "envelope and payload schema validation;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

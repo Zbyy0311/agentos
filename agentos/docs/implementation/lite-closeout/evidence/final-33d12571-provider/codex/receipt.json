@@ -1,0 +1,108 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "provider": "codex",
+  "model": "gpt-5.6-luna",
+  "command": {
+    "executable": "C:\\nvm4w\\nodejs\\node.exe",
+    "args": [
+      "C:\\Users\\Administrator\\AppData\\Roaming\\npm\\node_modules\\pnpm\\bin\\pnpm.mjs",
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "LITE-04-101: current-machine Codex gate",
+      "src/services/run-engine/RunEngineProviderDispatcher.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "environment": {
+    "AGENTOS_CODEX_CLI": "C:\\Users\\Administrator\\.codex\\.sandbox-bin\\codex.exe",
+    "AGENTOS_CODEX_MODEL": "gpt-5.6-luna",
+    "M4_P4_REAL_CODEX_GATE": "1"
+  },
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-provider/codex/stdout.txt",
+      "sha256": "cbcb5a7ee8db7dc2c2b753297fed03f34529c8200acbb5b959b1383e848a47f7"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-provider/codex/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "S9-ACCEL-33D-PROVIDER-CODEX-A1",
+      "requirementId": "LITE-04-101",
+      "provider": "codex",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)",
+      "line": 1073,
+      "expression": "assert.equal(result.outcome, 'claimed-and-progressed');",
+      "clause": "the canonical dispatcher claims and progresses the real Codex Run",
+      "whyDirect": "The named real codex gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-ACCEL-33D-PROVIDER-CODEX-A2",
+      "requirementId": "LITE-04-101",
+      "provider": "codex",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)",
+      "line": 1079,
+      "expression": "assert.equal(run.status, 'completed');",
+      "clause": "the real Codex Run reaches the completed terminal state",
+      "whyDirect": "The named real codex gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-ACCEL-33D-PROVIDER-CODEX-A3",
+      "requirementId": "LITE-04-101",
+      "provider": "codex",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)",
+      "line": 1080,
+      "expression": "assert.ok(fx.runStageRepo.listByRun(WS, RUN).every(stage => stage.status === 'completed'));",
+      "clause": "every canonical stage completes",
+      "whyDirect": "The named real codex gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-ACCEL-33D-PROVIDER-CODEX-A4",
+      "requirementId": "LITE-04-101",
+      "provider": "codex",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)",
+      "line": 1083,
+      "expression": "assert.equal(outboxCount, eventCount);",
+      "clause": "durable Outbox count equals the Runtime Event count",
+      "whyDirect": "The named real codex gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    },
+    {
+      "id": "S9-ACCEL-33D-PROVIDER-CODEX-A5",
+      "requirementId": "LITE-04-101",
+      "provider": "codex",
+      "file": "apps/server/src/services/run-engine/RunEngineProviderDispatcher.test.ts",
+      "name": "LITE-04-101: current-machine Codex gate drives the canonical chain to completion (env-gated)",
+      "line": 1084,
+      "expression": "assert.ok(eventCount > 0);",
+      "clause": "the completed real Run produced canonical Runtime Events",
+      "whyDirect": "The named real codex gate executes the canonical AgentOS Adapter/Registry/Process Runtime/Run Engine path and observes this concrete terminal or durability assertion; it is not a file-level or keyword-level claim.",
+      "outcome": "passed"
+    }
+  ]
+}

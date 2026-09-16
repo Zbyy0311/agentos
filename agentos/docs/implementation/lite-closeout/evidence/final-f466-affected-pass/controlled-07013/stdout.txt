@@ -1,0 +1,2 @@
+S0713_CANDIDATE_EVIDENCE: passed
+  receipts=3 passed=3 failed=0

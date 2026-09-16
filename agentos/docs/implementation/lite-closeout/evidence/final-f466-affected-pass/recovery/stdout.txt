@@ -1,0 +1,412 @@
+TAP version 13
+# Subtest: P6B recovery fixture uses the production repository seams
+ok 1 - P6B recovery fixture uses the production repository seams
+  ---
+  duration_ms: 0.798
+  type: 'test'
+  ...
+# Subtest: H01 queued+queued Start+Stage starting -> stable integrity failure with zero mutation
+ok 2 - H01 queued+queued Start+Stage starting -> stable integrity failure with zero mutation
+  ---
+  duration_ms: 57.4521
+  type: 'test'
+  ...
+# Subtest: H02 queued+queued Start+Stage running -> stable integrity failure with zero mutation
+ok 3 - H02 queued+queued Start+Stage running -> stable integrity failure with zero mutation
+  ---
+  duration_ms: 48.0154
+  type: 'test'
+  ...
+# Subtest: H03 queued+queued Start+run.dequeued -> stable integrity failure with zero mutation
+ok 4 - H03 queued+queued Start+run.dequeued -> stable integrity failure with zero mutation
+  ---
+  duration_ms: 48.3424
+  type: 'test'
+  ...
+# Subtest: H04 queued+queued Start+stage.starting -> stable integrity failure with zero mutation
+ok 5 - H04 queued+queued Start+stage.starting -> stable integrity failure with zero mutation
+  ---
+  duration_ms: 48.0186
+  type: 'test'
+  ...
+# Subtest: H05 queued+queued Start+unknown future Event -> stable integrity failure and raw row unchanged
+ok 6 - H05 queued+queued Start+unknown future Event -> stable integrity failure and raw row unchanged
+  ---
+  duration_ms: 47.3136
+  type: 'test'
+  ...
+# Subtest: H06 queued+queued Start+sequence gap -> stable integrity failure with zero mutation
+ok 7 - H06 queued+queued Start+sequence gap -> stable integrity failure with zero mutation
+  ---
+  duration_ms: 47.2757
+  type: 'test'
+  ...
+# Subtest: H07 waiting known unresolved approval+unknown -> existing uncertainty and raw row unchanged
+ok 8 - H07 waiting known unresolved approval+unknown -> existing uncertainty and raw row unchanged
+  ---
+  duration_ms: 45.9562
+  type: 'test'
+  ...
+# Subtest: H08 waiting known unresolved approval+sequence gap -> existing uncertainty
+ok 9 - H08 waiting known unresolved approval+sequence gap -> existing uncertainty
+  ---
+  duration_ms: 45.2074
+  type: 'test'
+  ...
+# Subtest: H09 paused+unknown -> existing uncertainty and raw row unchanged
+ok 10 - H09 paused+unknown -> existing uncertainty and raw row unchanged
+  ---
+  duration_ms: 46.2922
+  type: 'test'
+  ...
+# Subtest: H10 paused+sequence gap -> existing uncertainty
+ok 11 - H10 paused+sequence gap -> existing uncertainty
+  ---
+  duration_ms: 43.8323
+  type: 'test'
+  ...
+# Subtest: S01 existing empty lower-level evidence remains a positive queue recovery
+ok 12 - S01 existing empty lower-level evidence remains a positive queue recovery
+  ---
+  duration_ms: 50.0325
+  type: 'test'
+  ...
+# Subtest: S02 safe run.created/stage.created history remains a positive queue recovery
+ok 13 - S02 safe run.created/stage.created history remains a positive queue recovery
+  ---
+  duration_ms: 46.9113
+  type: 'test'
+  ...
+# Subtest: S03 prior complete queue recovery pair remains safe
+ok 14 - S03 prior complete queue recovery pair remains safe
+  ---
+  duration_ms: 44.9049
+  type: 'test'
+  ...
+# Subtest: S04 coherent known unresolved approval remains a positive approval recovery
+ok 15 - S04 coherent known unresolved approval remains a positive approval recovery
+  ---
+  duration_ms: 46.4533
+  type: 'test'
+  ...
+# Subtest: queue restore rejects every entered/terminal Stage status and persisted lifecycle evidence
+ok 16 - queue restore rejects every entered/terminal Stage status and persisted lifecycle evidence
+  ---
+  duration_ms: 585.2465
+  type: 'test'
+  ...
+# Subtest: safe queued/ready scheduling history remains eligible for queue restore
+ok 17 - safe queued/ready scheduling history remains eligible for queue restore
+  ---
+  duration_ms: 44.4736
+  type: 'test'
+  ...
+# Subtest: malformed prior queue recovery telemetry fails closed with zero mutation
+ok 18 - malformed prior queue recovery telemetry fails closed with zero mutation
+  ---
+  duration_ms: 199.4806
+  type: 'test'
+  ...
+# Subtest: sequence gap crossing the 200-record page boundary fails closed
+ok 19 - sequence gap crossing the 200-record page boundary fails closed
+  ---
+  duration_ms: 72.4974
+  type: 'test'
+  ...
+# Subtest: B01 terminal completed untouched
+ok 20 - B01 terminal completed untouched
+  ---
+  duration_ms: 47.2488
+  type: 'test'
+  ...
+# Subtest: B02 terminal failed untouched
+ok 21 - B02 terminal failed untouched
+  ---
+  duration_ms: 47.0721
+  type: 'test'
+  ...
+# Subtest: B03 terminal cancelled untouched
+ok 22 - B03 terminal cancelled untouched
+  ---
+  duration_ms: 59.8582
+  type: 'test'
+  ...
+# Subtest: B04 queued no Start unchanged
+ok 23 - B04 queued no Start unchanged
+  ---
+  duration_ms: 50.4742
+  type: 'test'
+  ...
+# Subtest: B05 queued+queued Start queue-restore; B06 Operation remains queued
+ok 24 - B05 queued+queued Start queue-restore; B06 Operation remains queued
+  ---
+  duration_ms: 46.2937
+  type: 'test'
+  ...
+# Subtest: B07 queued+completed Start structural fail/zero mutation
+ok 25 - B07 queued+completed Start structural fail/zero mutation
+  ---
+  duration_ms: 53.5731
+  type: 'test'
+  ...
+# Subtest: B08 multiple Start structural fail/zero mutation
+ok 26 - B08 multiple Start structural fail/zero mutation
+  ---
+  duration_ms: 51.4559
+  type: 'test'
+  ...
+# Subtest: B09 starting+running Start+starting Stage -> Operation/Stage/Run atomically failed
+ok 27 - B09 starting+running Start+starting Stage -> Operation/Stage/Run atomically failed
+  ---
+  duration_ms: 45.7855
+  type: 'test'
+  ...
+# Subtest: B10 starting+running Start+no entered Stage -> Operation/Run failed
+ok 28 - B10 starting+running Start+no entered Stage -> Operation/Run failed
+  ---
+  duration_ms: 38.6796
+  type: 'test'
+  ...
+# Subtest: B11 starting incompatible Start structural/zero mutation
+ok 29 - B11 starting incompatible Start structural/zero mutation
+  ---
+  duration_ms: 42.7478
+  type: 'test'
+  ...
+# Subtest: B12 running+completed Start -> recovery_required=1 + recovery_failed
+ok 30 - B12 running+completed Start -> recovery_required=1 + recovery_failed
+  ---
+  duration_ms: 41.031
+  type: 'test'
+  ...
+# Subtest: B13 running status/stage/Operation unchanged
+ok 31 - B13 running status/stage/Operation unchanged
+  ---
+  duration_ms: 40.4138
+  type: 'test'
+  ...
+# Subtest: B14 already flagged running zero mutation/no duplicate
+ok 32 - B14 already flagged running zero mutation/no duplicate
+  ---
+  duration_ms: 42.4706
+  type: 'test'
+  ...
+# Subtest: P6M2b running + missing process -> canonical terminal failure
+ok 33 - P6M2b running + missing process -> canonical terminal failure
+  ---
+  duration_ms: 39.9879
+  type: 'test'
+  ...
+# Subtest: P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded
+ok 34 - P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded
+  ---
+  duration_ms: 40.4674
+  type: 'test'
+  ...
+# Subtest: P6M2b running + same process -> no resume, no ownership takeover, stays uncertain
+ok 35 - P6M2b running + same process -> no resume, no ownership takeover, stays uncertain
+  ---
+  duration_ms: 41.6247
+  type: 'test'
+  ...
+# Subtest: P6M2b running + unknown -> fail-safe, no resume
+ok 36 - P6M2b running + unknown -> fail-safe, no resume
+  ---
+  duration_ms: 41.8861
+  type: 'test'
+  ...
+# Subtest: P6M2b classifier error -> treated as unknown, no erroneous recovery
+ok 37 - P6M2b classifier error -> treated as unknown, no erroneous recovery
+  ---
+  duration_ms: 41.0586
+  type: 'test'
+  ...
+# Subtest: B15 coherent waiting approval -> approval-restore; B16 does not resolve Approval
+ok 38 - B15 coherent waiting approval -> approval-restore; B16 does not resolve Approval
+  ---
+  duration_ms: 44.0734
+  type: 'test'
+  ...
+# Subtest: B17 missing unresolved Approval -> flag
+ok 39 - B17 missing unresolved Approval -> flag
+  ---
+  duration_ms: 41.0345
+  type: 'test'
+  ...
+# Subtest: approval fold required->resolved leaves zero unresolved -> flag
+ok 40 - approval fold required->resolved leaves zero unresolved -> flag
+  ---
+  duration_ms: 40.0238
+  type: 'test'
+  ...
+# Subtest: B18 multiple unresolved -> flag; approval fold has two unresolved
+ok 41 - B18 multiple unresolved -> flag; approval fold has two unresolved
+  ---
+  duration_ms: 39.7179
+  type: 'test'
+  ...
+# Subtest: B19 stage/approval mismatch -> flag
+ok 42 - B19 stage/approval mismatch -> flag
+  ---
+  duration_ms: 39.8496
+  type: 'test'
+  ...
+# Subtest: approval fold resolved-without-required -> flag
+ok 43 - approval fold resolved-without-required -> flag
+  ---
+  duration_ms: 38.3383
+  type: 'test'
+  ...
+# Subtest: approval fold foreign event never used
+ok 44 - approval fold foreign event never used
+  ---
+  duration_ms: 39.4067
+  type: 'test'
+  ...
+# Subtest: approval fold unknown future event not proof
+ok 45 - approval fold unknown future event not proof
+  ---
+  duration_ms: 40.8113
+  type: 'test'
+  ...
+# Subtest: B20 coherent paused unchanged
+ok 46 - B20 coherent paused unchanged
+  ---
+  duration_ms: 42.8524
+  type: 'test'
+  ...
+# Subtest: B21 inconsistent paused -> flag
+ok 47 - B21 inconsistent paused -> flag
+  ---
+  duration_ms: 44.9481
+  type: 'test'
+  ...
+# Subtest: B22 legacy_pipeline ignored no canonical event/flag
+ok 48 - B22 legacy_pipeline ignored no canonical event/flag
+  ---
+  duration_ms: 43.4228
+  type: 'test'
+  ...
+# Subtest: B23 no Provider/AgentRunner/Process dependency invocation via source boundary
+ok 49 - B23 no Provider/AgentRunner/Process dependency invocation via source boundary
+  ---
+  duration_ms: 0.4471
+  type: 'test'
+  ...
+# Subtest: B24 no second Start
+ok 50 - B24 no second Start
+  ---
+  duration_ms: 38.872
+  type: 'test'
+  ...
+# Subtest: E01 attempted then recovered order
+ok 51 - E01 attempted then recovered order
+  ---
+  duration_ms: 40.1196
+  type: 'test'
+  ...
+# Subtest: E02 attempted then failed
+ok 52 - E02 attempted then failed
+  ---
+  duration_ms: 42.8294
+  type: 'test'
+  ...
+# Subtest: E03 contiguous sequences
+ok 53 - E03 contiguous sequences
+  ---
+  duration_ms: 39.2485
+  type: 'test'
+  ...
+# Subtest: E04 one outbox/event
+ok 54 - E04 one outbox/event
+  ---
+  duration_ms: 39.0645
+  type: 'test'
+  ...
+# Subtest: E05 source recovery-manager
+ok 55 - E05 source recovery-manager
+  ---
+  duration_ms: 39.7731
+  type: 'test'
+  ...
+# Subtest: E06 internal+durable
+ok 56 - E06 internal+durable
+  ---
+  duration_ms: 43.5726
+  type: 'test'
+  ...
+# Subtest: E07 no stageId
+ok 57 - E07 no stageId
+  ---
+  duration_ms: 41.2671
+  type: 'test'
+  ...
+# Subtest: E08 injected second event/outbox failure rolls back first event/flag/outbox
+ok 58 - E08 injected second event/outbox failure rolls back first event/flag/outbox
+  ---
+  duration_ms: 93.3593
+  type: 'test'
+  ...
+# Subtest: E09 processFound true only known persisted evidence
+ok 59 - E09 processFound true only known persisted evidence
+  ---
+  duration_ms: 40.063
+  type: 'test'
+  ...
+# Subtest: E10 providerSessionFound
+ok 60 - E10 providerSessionFound
+  ---
+  duration_ms: 38.9865
+  type: 'test'
+  ...
+# Subtest: E11 worktreeFound
+ok 61 - E11 worktreeFound
+  ---
+  duration_ms: 39.2769
+  type: 'test'
+  ...
+# Subtest: E12 no evidence all false
+ok 62 - E12 no evidence all false
+  ---
+  duration_ms: 38.8232
+  type: 'test'
+  ...
+# Subtest: starting final-step failure rollback Operation/Stage/Run/events/outboxes
+ok 63 - starting final-step failure rollback Operation/Stage/Run/events/outboxes
+  ---
+  duration_ms: 42.8637
+  type: 'test'
+  ...
+# Subtest: recovery_required final failure rollback version/flag/events/outboxes
+ok 64 - recovery_required final failure rollback version/flag/events/outboxes
+  ---
+  duration_ms: 42.6042
+  type: 'test'
+  ...
+# Subtest: unknown origin fail closed
+ok 65 - unknown origin fail closed
+  ---
+  duration_ms: 42.5745
+  type: 'test'
+  ...
+# Subtest: workspace scan deterministic/active only
+ok 66 - workspace scan deterministic/active only
+  ---
+  duration_ms: 41.7679
+  type: 'test'
+  ...
+# Subtest: RunRepository terminal mutation forbidden/idempotent when already 1
+ok 67 - RunRepository terminal mutation forbidden/idempotent when already 1
+  ---
+  duration_ms: 83.5959
+  type: 'test'
+  ...
+1..67
+# tests 67
+# suites 0
+# pass 67
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 3861.1018

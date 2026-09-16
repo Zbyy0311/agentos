@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "../../scripts/verify-lite-07-003-candidate-evidence.mjs",
+      "--out",
+      "E:\\workspace\\Multi-Agent-worktrees\\agentos-lite-next-main-promotions\\agentos\\agentos\\docs\\implementation\\lite-closeout\\evidence\\final-f466-affected-pass\\controlled-07003\\source"
+    ]
+  },
+  "cwd": "apps/server",
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "trackedCheckoutUnchanged": true
+}

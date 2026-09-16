@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-13-102 Inspector client encodes the workspace and Run route|LITE-13-102 Inspector client uses versioned action APIs and idempotency keys)",
+      "src/lib/runtimeInspectorClient.test.ts"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/assertions.json",
+      "sha256": "3d23e4815dcf454a68fbcc019a71d7c62fc738ceafdd92f8be4ebd9372079ef7"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/execution.json",
+      "sha256": "a61373fd2c863b6f368e6f3eea1088983376895c67a69211e684a704a26b160e"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/60-apps-web-src-lib-runtimeinspectorclient-test-ts/stdout.txt",
+      "sha256": "9514bb37c07583151056a7cbc0b113bca8663b3a7d44827e15594f5955e74826"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-client-encodes-the-workspace-and-run-route-383-A1",
+      "requirementId": "LITE-13-102",
+      "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+      "name": "LITE-13-102 Inspector client encodes the workspace and Run route",
+      "line": 6,
+      "expression": "assert.equal(",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-client-encodes-the-workspace-and-run-route-383-A2",
+      "requirementId": "LITE-13-102",
+      "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+      "name": "LITE-13-102 Inspector client encodes the workspace and Run route",
+      "line": 10,
+      "expression": "assert.match(createInspectorIdempotencyKey('retry'), /^retry-/);",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-client-uses-versioned-action-apis-and-idempotency-keys-384-A1",
+      "requirementId": "LITE-13-102",
+      "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+      "name": "LITE-13-102 Inspector client uses versioned action APIs and idempotency keys",
+      "line": 27,
+      "expression": "assert.equal(requests.length, 3);",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-client-uses-versioned-action-apis-and-idempotency-keys-384-A2",
+      "requirementId": "LITE-13-102",
+      "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+      "name": "LITE-13-102 Inspector client uses versioned action APIs and idempotency keys",
+      "line": 28,
+      "expression": "assert.match(requests[0]!.url, /\\/api\\/operations\\/operation%2F1\\/cancel$/);",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-client-uses-versioned-action-apis-and-idempotency-keys-384-A3",
+      "requirementId": "LITE-13-102",
+      "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+      "name": "LITE-13-102 Inspector client uses versioned action APIs and idempotency keys",
+      "line": 29,
+      "expression": "assert.equal(JSON.parse(String(requests[0]!.init?.body)).expectedVersion, 3);",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-client-uses-versioned-action-apis-and-idempotency-keys-384-A4",
+      "requirementId": "LITE-13-102",
+      "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+      "name": "LITE-13-102 Inspector client uses versioned action APIs and idempotency keys",
+      "line": 30,
+      "expression": "assert.equal(requests[1]!.init?.headers && (requests[1]!.init?.headers as Record<string, string>)['Idempotency-Key'], 'cancel-key');",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-13-102-lite-13-102-inspector-client-uses-versioned-action-apis-and-idempotency-keys-384-A5",
+      "requirementId": "LITE-13-102",
+      "file": "apps/web/src/lib/runtimeInspectorClient.test.ts",
+      "name": "LITE-13-102 Inspector client uses versioned action APIs and idempotency keys",
+      "line": 31,
+      "expression": "assert.equal(requests[2]!.init?.headers && (requests[2]!.init?.headers as Record<string, string>)['Idempotency-Key'], 'retry-key');",
+      "clause": "Inspector各section规范字段及Cancel/Retry源链",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

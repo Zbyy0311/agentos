@@ -1,0 +1,514 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:P2 Migration Registry contains exactly the registered migrations in contract order|LITE-10-001 fresh install and supported upgrade both apply the complete registry)",
+      "src/migrations/M2MigrationRegistryAcceptance.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/assertions.json",
+      "sha256": "9edbb0b7ca69bc43505c50de198bf424bfcb0663bebd3bab82501e854855a79a"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/execution.json",
+      "sha256": "0467b118974dc64af0bc77fc9ece206aad8ff680d587ea95b1cdee9c3ca63bcf"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/04-apps-server-src-migrations-m2migrationregistryacceptance-test-ts/stdout.txt",
+      "sha256": "31460641d437bf81d0de433d041fdcdece3ced07e5dca179ca83d7588a18d2e9"
+    }
+  ],
+  "counts": {
+    "passed": 2,
+    "failed": 0,
+    "skipped": 0,
+    "total": 2
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22-A1",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22-A2",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 25,
+      "expression": "assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22-A3",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 26,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22-A4",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 27,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22-A5",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 29,
+      "expression": "assert.match(migration.id, /^\\d{3}$/);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22-A6",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 30,
+      "expression": "assert.match(migration.checksum, /^[0-9a-f]{16}$/);",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-01-015-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-22-A7",
+      "requirementId": "LITE-01-015",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 31,
+      "expression": "assert.equal(typeof migration.apply, 'function');",
+      "clause": "archived or compatibility records do not disappear destructively.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23-A1",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23-A2",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 25,
+      "expression": "assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23-A3",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 26,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23-A4",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 27,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23-A5",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 29,
+      "expression": "assert.match(migration.id, /^\\d{3}$/);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23-A6",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 30,
+      "expression": "assert.match(migration.checksum, /^[0-9a-f]{16}$/);",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-06-008-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-23-A7",
+      "requirementId": "LITE-06-008",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 31,
+      "expression": "assert.equal(typeof migration.apply, 'function');",
+      "clause": "historical Worktree fields and Events remain readable;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24-A1",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24-A2",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 25,
+      "expression": "assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24-A3",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 26,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24-A4",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 27,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24-A5",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 29,
+      "expression": "assert.match(migration.id, /^\\d{3}$/);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24-A6",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 30,
+      "expression": "assert.match(migration.checksum, /^[0-9a-f]{16}$/);",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-002-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-24-A7",
+      "requirementId": "LITE-10-002",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 31,
+      "expression": "assert.equal(typeof migration.apply, 'function');",
+      "clause": "checksum, backup, integrity, and foreign-key gates;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25-A1",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25-A2",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 25,
+      "expression": "assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25-A3",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 26,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25-A4",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 27,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25-A5",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 29,
+      "expression": "assert.match(migration.id, /^\\d{3}$/);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25-A6",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 30,
+      "expression": "assert.match(migration.checksum, /^[0-9a-f]{16}$/);",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-014-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-25-A7",
+      "requirementId": "LITE-10-014",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 31,
+      "expression": "assert.equal(typeof migration.apply, 'function');",
+      "clause": "Workspace tombstones and non-cascading history;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-26-A1",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 24,
+      "expression": "assert.deepEqual(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id), EXPECTED_MIGRATION_IDS);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-26-A2",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 25,
+      "expression": "assert.equal(DEFAULT_REGISTRY_MIGRATIONS.some(migration => migration.id === '012'), true);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-26-A3",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 26,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.id)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-26-A4",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 27,
+      "expression": "assert.equal(new Set(DEFAULT_REGISTRY_MIGRATIONS.map(migration => migration.name)).size, EXPECTED_MIGRATION_IDS.length);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-26-A5",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 29,
+      "expression": "assert.match(migration.id, /^\\d{3}$/);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-26-A6",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 30,
+      "expression": "assert.match(migration.checksum, /^[0-9a-f]{16}$/);",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-017-p2-migration-registry-contains-exactly-the-registered-migrations-in-contract-ord-26-A7",
+      "requirementId": "LITE-10-017",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "P2 Migration Registry contains exactly the registered migrations in contract order",
+      "line": 31,
+      "expression": "assert.equal(typeof migration.apply, 'function');",
+      "clause": "no clean-sheet schema replacement.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-001-lite-10-001-fresh-install-and-supported-upgrade-both-apply-the-complete-registry-27-A1",
+      "requirementId": "LITE-10-001",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+      "line": 62,
+      "expression": "assert.deepEqual(beforeUpgrade, expectedIds.filter(id => id <= '030'));",
+      "clause": "fresh and supported upgrade migrations;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-001-lite-10-001-fresh-install-and-supported-upgrade-both-apply-the-complete-registry-27-A2",
+      "requirementId": "LITE-10-001",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+      "line": 69,
+      "expression": "assert.deepEqual(freshIds, expectedIds);",
+      "clause": "fresh and supported upgrade migrations;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-001-lite-10-001-fresh-install-and-supported-upgrade-both-apply-the-complete-registry-27-A3",
+      "requirementId": "LITE-10-001",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+      "line": 70,
+      "expression": "assert.deepEqual(upgradedIds, expectedIds);",
+      "clause": "fresh and supported upgrade migrations;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-001-lite-10-001-fresh-install-and-supported-upgrade-both-apply-the-complete-registry-27-A4",
+      "requirementId": "LITE-10-001",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+      "line": 71,
+      "expression": "assert.equal((fresh.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');",
+      "clause": "fresh and supported upgrade migrations;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-001-lite-10-001-fresh-install-and-supported-upgrade-both-apply-the-complete-registry-27-A5",
+      "requirementId": "LITE-10-001",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+      "line": 72,
+      "expression": "assert.equal((upgrade.prepare('PRAGMA integrity_check').get() as { integrity_check: string }).integrity_check, 'ok');",
+      "clause": "fresh and supported upgrade migrations;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-001-lite-10-001-fresh-install-and-supported-upgrade-both-apply-the-complete-registry-27-A6",
+      "requirementId": "LITE-10-001",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+      "line": 73,
+      "expression": "assert.deepEqual(fresh.prepare('PRAGMA foreign_key_check').all(), []);",
+      "clause": "fresh and supported upgrade migrations;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-10-001-lite-10-001-fresh-install-and-supported-upgrade-both-apply-the-complete-registry-27-A7",
+      "requirementId": "LITE-10-001",
+      "file": "apps/server/src/migrations/M2MigrationRegistryAcceptance.test.ts",
+      "name": "LITE-10-001 fresh install and supported upgrade both apply the complete registry",
+      "line": 74,
+      "expression": "assert.deepEqual(upgrade.prepare('PRAGMA foreign_key_check').all(), []);",
+      "clause": "fresh and supported upgrade migrations;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

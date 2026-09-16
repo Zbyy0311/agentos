@@ -1,0 +1,79 @@
+[
+  {
+    "id": "LITE-04-006-lite-04-002-lite-04-006-classifies-every-production-adapter-identically-for-auth-406-A1",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "LITE-04-002 / LITE-04-006 classifies every production adapter identically for auth, rate-limit, quota, model, and network failures",
+    "line": 49,
+    "expression": "expect({ adapter: adapter.name, input: testCase.input, code: normalized.code })",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-lite-04-002-lite-04-006-classifies-every-production-adapter-identically-for-auth-406-A2",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "LITE-04-002 / LITE-04-006 classifies every production adapter identically for auth, rate-limit, quota, model, and network failures",
+    "line": 51,
+    "expression": "expect({ adapter: adapter.name, input: testCase.input, retryable: normalized.retryable })",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-always-reports-retryability-as-an-explicit-boolean-never-as-an-absence-407-A1",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "always reports retryability as an explicit boolean, never as an absence",
+    "line": 60,
+    "expression": "expect(typeof normalized.retryable).toBe('boolean');",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-always-reports-retryability-as-an-explicit-boolean-never-as-an-absence-407-A2",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "always reports retryability as an explicit boolean, never as an absence",
+    "line": 61,
+    "expression": "expect(normalized.retryable).toBe(false);",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-always-reports-retryability-as-an-explicit-boolean-never-as-an-absence-407-A3",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "always reports retryability as an explicit boolean, never as an absence",
+    "line": 62,
+    "expression": "expect(typeof normalized.code).toBe('string');",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-keeps-a-normalized-error-idempotent-through-re-normalization-408-A1",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "keeps a normalized error idempotent through re-normalization",
+    "line": 71,
+    "expression": "expect(twice.code).toBe(once.code);",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-006-keeps-a-normalized-error-idempotent-through-re-normalization-408-A2",
+    "requirementId": "LITE-04-006",
+    "file": "packages/agent-core/src/providers/providerErrorRetryability.test.ts",
+    "name": "keeps a normalized error idempotent through re-normalization",
+    "line": 72,
+    "expression": "expect(twice.retryable).toBe(once.retryable);",
+    "clause": "errors normalize to stable codes with retryability;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

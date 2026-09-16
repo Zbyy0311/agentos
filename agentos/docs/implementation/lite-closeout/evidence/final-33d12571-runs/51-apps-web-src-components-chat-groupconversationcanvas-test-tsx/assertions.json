@@ -1,0 +1,101 @@
+[
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A1",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 23,
+    "expression": "assert.ok(markup.includes('data-agentos=\"group-conversation-canvas\"'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A2",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 24,
+    "expression": "assert.ok(markup.includes('bounded group'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A3",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 26,
+    "expression": "assert.ok(markup.includes('Set a reply budget'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A4",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 27,
+    "expression": "assert.ok(markup.includes('data-agentos=\"group-composer\"'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A5",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 28,
+    "expression": "assert.ok(markup.includes('data-agentos=\"group-send\"'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A6",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 29,
+    "expression": "assert.ok(markup.includes('>@all</button>'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A7",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 31,
+    "expression": "assert.ok(markup.includes('replies/agent'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A8",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 32,
+    "expression": "assert.ok(markup.includes('total replies'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-12-009-grp-canvas-the-group-canvas-mounts-with-a-composer-and-the-budget-controls-335-A9",
+    "requirementId": "LITE-12-009",
+    "file": "apps/web/src/components/chat/GroupConversationCanvas.test.tsx",
+    "name": "GRP-canvas: the group canvas mounts with a composer and the budget controls",
+    "line": 33,
+    "expression": "assert.ok(markup.includes('hops'));",
+    "clause": "bounded Group controls;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

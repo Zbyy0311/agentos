@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/services/MemoryContextResolver.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/assertions.json",
+      "sha256": "4123f0bec615c7baa5fedbe137a5688378151ede4012110bfd2facc8ca2005ee"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/execution.json",
+      "sha256": "7ea35273344a0df781fa43ec28db6bcfc478900dd9c9dae17ad1cb09817b60cf"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/memory-context/stdout.txt",
+      "sha256": "bb64334540a4885e872f7cea470ceb9108b1ca5683e5df22622b969776f66016"
+    }
+  ],
+  "counts": {
+    "passed": 17,
+    "failed": 0,
+    "skipped": 0,
+    "total": 17
+  },
+  "assertionCoverage": [
+    {
+      "id": "MEM-SNAPSHOT-01",
+      "requirementId": "LITE-07-008",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "frozen injection survives content edits and logical deletion of its Entry",
+      "line": 217,
+      "expression": "assert.equal(fx.resolver.resolve(resolveInput()).contextText, first.contextText);",
+      "clause": "Later Entry content edits do not rewrite an existing Context Snapshot.",
+      "whyDirect": "The production resolver is replayed after a persisted Entry content/version change and its returned context is compared with the frozen context.",
+      "outcome": "passed"
+    },
+    {
+      "id": "MEM-SNAPSHOT-02",
+      "requirementId": "LITE-07-008",
+      "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+      "name": "frozen injection survives content edits and logical deletion of its Entry",
+      "line": 164,
+      "expression": "assert.throws(",
+      "clause": "The persisted snapshot payload cannot be overwritten through the database mutation guard.",
+      "whyDirect": "The test attempts the prohibited production payload mutation and observes the durable IMMUTABLE rejection.",
+      "outcome": "passed"
+    }
+  ]
+}

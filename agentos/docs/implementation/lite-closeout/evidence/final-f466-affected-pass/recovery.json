@@ -1,0 +1,72 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "src/services/TaskRunRecoveryService.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/assertions.json",
+      "sha256": "210a756f66550d33cdd6148f872cc8f36f4c4e69b469bd6651f97cd8e902a48e"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/execution.json",
+      "sha256": "30b7dbf5edb1162e996efbdc1a5e95ebb7ad8e76323b3f707b5b4ddf858112d8"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-f466-affected-pass/recovery/stdout.txt",
+      "sha256": "32a1b4c8a78eeeac4332b168009c10df9618dcb4fd10a94dd41a3f7f6d32c6d9"
+    }
+  ],
+  "counts": {
+    "passed": 67,
+    "failed": 0,
+    "skipped": 0,
+    "total": 67
+  },
+  "assertionCoverage": [
+    {
+      "id": "REC-MISMATCH-FLAG",
+      "requirementId": "LITE-13-008",
+      "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+      "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+      "line": 1189,
+      "expression": "assert.equal(run.recoveryRequired, true);",
+      "clause": "An uncertain recovery is durably flagged for operator handling.",
+      "whyDirect": "The production recovery test reads the persisted Run record and checks the explicit recoveryRequired flag after the mismatch path.",
+      "outcome": "passed"
+    },
+    {
+      "id": "REC-MISMATCH-NO-TERMINAL",
+      "requirementId": "LITE-13-008",
+      "file": "apps/server/src/services/TaskRunRecoveryService.test.ts",
+      "name": "P6M2b running + mismatch -> no recovery, recovery failure (uncertainty) recorded",
+      "line": 1188,
+      "expression": "assert.equal(run.status, 'running', 'mismatch must not resume or terminal-fail');",
+      "clause": "An uncertain recovery is not presented as successful completion or resumed execution.",
+      "whyDirect": "The production recovery test reads the canonical Run after mismatch handling and directly verifies that its status remains running and uncertain.",
+      "outcome": "passed"
+    }
+  ]
+}

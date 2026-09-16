@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "pnpm",
+    "args": [
+      "exec",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:CR5S-03 reaching the total cap exhausts the interaction with a stable reason)",
+      "src/services/BoundedGroupService.test.ts"
+    ]
+  },
+  "cwd": "apps/server",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/assertions.json",
+      "sha256": "2e1fdf5a21d04f90031cd3276918695a8237aa271ad4a6b8bb99314164cb374a"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/execution.json",
+      "sha256": "ebb24aaaba7f8be20f86c8aad54d6a1e977254a75561509ba42318da0dccb03d"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/20-apps-server-src-services-boundedgroupservice-test-ts/stdout.txt",
+      "sha256": "19f4e5478a719f701aa2ea6aede582288573ca458b3e4c054a1cf522aae3817d"
+    }
+  ],
+  "counts": {
+    "passed": 1,
+    "failed": 0,
+    "skipped": 0,
+    "total": 1
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-00-013-cr5s-03-reaching-the-total-cap-exhausts-the-interaction-with-a-stable-reason-123-A1",
+      "requirementId": "LITE-00-013",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "line": 150,
+      "expression": "assert.equal(last.interaction.status, 'exhausted');",
+      "clause": "Group Conversation and workflow templates remain bounded.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-013-cr5s-03-reaching-the-total-cap-exhausts-the-interaction-with-a-stable-reason-123-A2",
+      "requirementId": "LITE-00-013",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "line": 151,
+      "expression": "assert.equal(last.interaction.stopReason, 'budget-total-replies');",
+      "clause": "Group Conversation and workflow templates remain bounded.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-00-013-cr5s-03-reaching-the-total-cap-exhausts-the-interaction-with-a-stable-reason-123-A3",
+      "requirementId": "LITE-00-013",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "line": 152,
+      "expression": "assert.equal(last.interaction.endedAt, NOW3);",
+      "clause": "Group Conversation and workflow templates remain bounded.",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-015-cr5s-03-reaching-the-total-cap-exhausts-the-interaction-with-a-stable-reason-124-A1",
+      "requirementId": "LITE-09-015",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "line": 150,
+      "expression": "assert.equal(last.interaction.status, 'exhausted');",
+      "clause": "@all never launches parallel modification;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-015-cr5s-03-reaching-the-total-cap-exhausts-the-interaction-with-a-stable-reason-124-A2",
+      "requirementId": "LITE-09-015",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "line": 151,
+      "expression": "assert.equal(last.interaction.stopReason, 'budget-total-replies');",
+      "clause": "@all never launches parallel modification;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-09-015-cr5s-03-reaching-the-total-cap-exhausts-the-interaction-with-a-stable-reason-124-A3",
+      "requirementId": "LITE-09-015",
+      "file": "apps/server/src/services/BoundedGroupService.test.ts",
+      "name": "CR5S-03 reaching the total cap exhausts the interaction with a stable reason",
+      "line": 152,
+      "expression": "assert.equal(last.interaction.endedAt, NOW3);",
+      "clause": "@all never launches parallel modification;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}

@@ -1,0 +1,58 @@
+TAP version 13
+# Subtest: S6: below the trigger ratio the engine is a noop
+ok 1 - S6: below the trigger ratio the engine is a noop
+  ---
+  duration_ms: 151.4459
+  type: 'test'
+  ...
+# Subtest: S6: above the trigger the plan compresses a bounded prefix and keeps the recent window
+ok 2 - S6: above the trigger the plan compresses a bounded prefix and keeps the recent window
+  ---
+  duration_ms: 140.451
+  type: 'test'
+  ...
+# Subtest: S6: the fallback application budget is labeled when no provider bound exists
+ok 3 - S6: the fallback application budget is labeled when no provider bound exists
+  ---
+  duration_ms: 141.0391
+  type: 'test'
+  ...
+# Subtest: S6: publish writes summary, review-required candidate and workspace event atomically
+ok 4 - S6: publish writes summary, review-required candidate and workspace event atomically
+  ---
+  duration_ms: 153.1061
+  type: 'test'
+  ...
+# Subtest: S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt
+ok 5 - S6: the automatic retry chain is bounded, and only an explicit retry spends a new attempt
+  ---
+  duration_ms: 163.9916
+  type: 'test'
+  ...
+# Subtest: S6: an oversized or empty summary is refused instead of published
+ok 6 - S6: an oversized or empty summary is refused instead of published
+  ---
+  duration_ms: 142.0404
+  type: 'test'
+  ...
+# Subtest: S6: without a summary execution channel the task fails closed
+ok 7 - S6: without a summary execution channel the task fails closed
+  ---
+  duration_ms: 143.5605
+  type: 'test'
+  ...
+# Subtest: LITE-09-110 a native-only CLI compaction notice publishes no summary, candidate or event
+ok 8 - LITE-09-110 a native-only CLI compaction notice publishes no summary, candidate or event
+  ---
+  duration_ms: 152.2011
+  type: 'test'
+  ...
+1..8
+# tests 8
+# suites 0
+# pass 8
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 1482.774

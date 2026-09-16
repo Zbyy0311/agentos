@@ -1,0 +1,24 @@
+[
+  {
+    "id": "MEM-SNAPSHOT-01",
+    "requirementId": "LITE-07-008",
+    "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+    "name": "frozen injection survives content edits and logical deletion of its Entry",
+    "line": 217,
+    "expression": "assert.equal(fx.resolver.resolve(resolveInput()).contextText, first.contextText);",
+    "clause": "Later Entry content edits do not rewrite an existing Context Snapshot.",
+    "whyDirect": "The production resolver is replayed after a persisted Entry content/version change and its returned context is compared with the frozen context.",
+    "outcome": "passed"
+  },
+  {
+    "id": "MEM-SNAPSHOT-02",
+    "requirementId": "LITE-07-008",
+    "file": "apps/server/src/services/MemoryContextResolver.test.ts",
+    "name": "frozen injection survives content edits and logical deletion of its Entry",
+    "line": 164,
+    "expression": "assert.throws(",
+    "clause": "The persisted snapshot payload cannot be overwritten through the database mutation guard.",
+    "whyDirect": "The test attempts the prohibited production payload mutation and observes the durable IMMUTABLE rejection.",
+    "outcome": "passed"
+  }
+]

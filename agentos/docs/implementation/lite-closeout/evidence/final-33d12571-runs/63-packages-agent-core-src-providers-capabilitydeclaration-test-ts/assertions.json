@@ -1,0 +1,200 @@
+[
+  {
+    "id": "LITE-04-007-declares-every-canonical-capability-as-an-explicit-boolean-390-A1",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "declares every canonical capability as an explicit boolean",
+    "line": 120,
+    "expression": "expect({ adapter: adapter.name, keys: Object.keys(declared).sort() })",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-declares-every-canonical-capability-as-an-explicit-boolean-390-A2",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "declares every canonical capability as an explicit boolean",
+    "line": 123,
+    "expression": "expect({ adapter: adapter.name, key, type: typeof declared[key] })",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-every-capability-declared-true-in-the-adapter-real-output-391-A1",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 137,
+    "expression": "expect({ ...label, structured: types.length > 0 }).toEqual({ ...label, structured: true });",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-every-capability-declared-true-in-the-adapter-real-output-391-A2",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 138,
+    "expression": "expect({ ...label, typed: types.every(type => typeof type === 'string' && type.length > 0) })",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-every-capability-declared-true-in-the-adapter-real-output-391-A3",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 142,
+    "expression": "expect({ ...label, toolEvents: types.some(type => type.startsWith('tool.')) })",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-every-capability-declared-true-in-the-adapter-real-output-391-A4",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 146,
+    "expression": "expect({ ...label, usageEvents: types.includes('usage') })",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-no-capability-declared-false-in-the-adapter-real-output-392-A1",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes no capability declared false in the adapter real output",
+    "line": 160,
+    "expression": "expect({ ...label, toolEvents: types.some(type => type.startsWith('tool.')) })",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-no-capability-declared-false-in-the-adapter-real-output-392-A2",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes no capability declared false in the adapter real output",
+    "line": 164,
+    "expression": "expect({ ...label, usageEvents: types.includes('usage') })",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-04-007-observes-no-capability-declared-false-in-the-adapter-real-output-392-A3",
+    "requirementId": "LITE-04-007",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes no capability declared false in the adapter real output",
+    "line": 168,
+    "expression": "expect({ ...label, structured: types.every(type => type === 'assistant.message') })",
+    "clause": "capability declarations match tested behavior;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-declares-every-canonical-capability-as-an-explicit-boolean-393-A1",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "declares every canonical capability as an explicit boolean",
+    "line": 120,
+    "expression": "expect({ adapter: adapter.name, keys: Object.keys(declared).sort() })",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-declares-every-canonical-capability-as-an-explicit-boolean-393-A2",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "declares every canonical capability as an explicit boolean",
+    "line": 123,
+    "expression": "expect({ adapter: adapter.name, key, type: typeof declared[key] })",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-every-capability-declared-true-in-the-adapter-real-output-394-A1",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 137,
+    "expression": "expect({ ...label, structured: types.length > 0 }).toEqual({ ...label, structured: true });",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-every-capability-declared-true-in-the-adapter-real-output-394-A2",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 138,
+    "expression": "expect({ ...label, typed: types.every(type => typeof type === 'string' && type.length > 0) })",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-every-capability-declared-true-in-the-adapter-real-output-394-A3",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 142,
+    "expression": "expect({ ...label, toolEvents: types.some(type => type.startsWith('tool.')) })",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-every-capability-declared-true-in-the-adapter-real-output-394-A4",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes every capability declared true in the adapter real output",
+    "line": 146,
+    "expression": "expect({ ...label, usageEvents: types.includes('usage') })",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-no-capability-declared-false-in-the-adapter-real-output-395-A1",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes no capability declared false in the adapter real output",
+    "line": 160,
+    "expression": "expect({ ...label, toolEvents: types.some(type => type.startsWith('tool.')) })",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-no-capability-declared-false-in-the-adapter-real-output-395-A2",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes no capability declared false in the adapter real output",
+    "line": 164,
+    "expression": "expect({ ...label, usageEvents: types.includes('usage') })",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  },
+  {
+    "id": "LITE-06-004-observes-no-capability-declared-false-in-the-adapter-real-output-395-A3",
+    "requirementId": "LITE-06-004",
+    "file": "packages/agent-core/src/providers/capabilityDeclaration.test.ts",
+    "name": "observes no capability declared false in the adapter real output",
+    "line": 168,
+    "expression": "expect({ ...label, structured: types.every(type => type === 'assistant.message') })",
+    "clause": "unavailable enforcement, prompt-only intent, and Provider-native worktrees are admitted as modifying rather than read-only;",
+    "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+    "outcome": "passed"
+  }
+]

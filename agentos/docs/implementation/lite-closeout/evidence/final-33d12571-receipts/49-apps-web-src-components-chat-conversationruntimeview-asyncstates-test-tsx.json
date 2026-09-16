@@ -1,0 +1,129 @@
+{
+  "schemaVersion": 1,
+  "baseline": "33d12571b4a19fbbb17060a7d1a60f6fea756f09",
+  "command": {
+    "executable": "node",
+    "args": [
+      "--import",
+      "tsx",
+      "--test",
+      "--test-concurrency=1",
+      "--test-reporter=tap",
+      "--test-name-pattern",
+      "(?:LITE-12-007 the empty state is named, never rendered as a blank surface|LITE-12-007 the error state is an announced alert, not silence|LITE-12-007 every state renders without throwing, so no state is unreachable)",
+      "src/components/chat/ConversationRuntimeView.asyncStates.test.tsx"
+    ]
+  },
+  "cwd": "apps/web",
+  "trackedCheckoutUnchanged": true,
+  "rawExitCode": 0,
+  "signal": null,
+  "error": null,
+  "logs": [
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/assertions.json",
+      "sha256": "399421a9d66b720ab56fa6e44824a96a8a5fbc9d00b17134a1884618b9380c14"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/execution.json",
+      "sha256": "61eac23a65a5890442ef1d02e71b0c7d0ee0f7772f2f96bec878a47a7fdfc341"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/exit.txt",
+      "sha256": "9a271f2a916b0b6ee6cecb2426f0b3206ef074578be55d9bc94f6f3fe3ab86aa"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/stderr.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "docs/implementation/lite-closeout/evidence/final-33d12571-runs/49-apps-web-src-components-chat-conversationruntimeview-asyncstates-test-tsx/stdout.txt",
+      "sha256": "dd99ddf3923bdff4d781748dcb20c43de539d109226fbe08ace1c91b6b059f5c"
+    }
+  ],
+  "counts": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "total": 3
+  },
+  "assertionCoverage": [
+    {
+      "id": "LITE-12-007-lite-12-007-the-empty-state-is-named-never-rendered-as-a-blank-surface-330-A1",
+      "requirementId": "LITE-12-007",
+      "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+      "name": "LITE-12-007 the empty state is named, never rendered as a blank surface",
+      "line": 48,
+      "expression": "assert.ok(markup.includes('No messages in Release planning.'),",
+      "clause": "complete async states;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-007-lite-12-007-the-empty-state-is-named-never-rendered-as-a-blank-surface-330-A2",
+      "requirementId": "LITE-12-007",
+      "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+      "name": "LITE-12-007 the empty state is named, never rendered as a blank surface",
+      "line": 50,
+      "expression": "assert.ok(markup.includes('aria-label=\"Composer mode\"'),",
+      "clause": "complete async states;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-007-lite-12-007-the-error-state-is-an-announced-alert-not-silence-331-A1",
+      "requirementId": "LITE-12-007",
+      "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+      "name": "LITE-12-007 the error state is an announced alert, not silence",
+      "line": 56,
+      "expression": "assert.ok(markup.includes('role=\"alert\"'), 'an error is exposed as an alert role');",
+      "clause": "complete async states;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-007-lite-12-007-the-error-state-is-an-announced-alert-not-silence-331-A2",
+      "requirementId": "LITE-12-007",
+      "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+      "name": "LITE-12-007 the error state is an announced alert, not silence",
+      "line": 57,
+      "expression": "assert.ok(markup.includes('CONTEXT_SNAPSHOT_FAILED'), 'the error text is shown verbatim');",
+      "clause": "complete async states;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-007-lite-12-007-the-error-state-is-an-announced-alert-not-silence-331-A3",
+      "requirementId": "LITE-12-007",
+      "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+      "name": "LITE-12-007 the error state is an announced alert, not silence",
+      "line": 58,
+      "expression": "assert.ok(markup.includes('Release planning'),",
+      "clause": "complete async states;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-007-lite-12-007-every-state-renders-without-throwing-so-no-state-is-unreachable-332-A1",
+      "requirementId": "LITE-12-007",
+      "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+      "name": "LITE-12-007 every state renders without throwing, so no state is unreachable",
+      "line": 114,
+      "expression": "assert.ok(markup.length > 0, `state ${index} renders a surface`);",
+      "clause": "complete async states;",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    },
+    {
+      "id": "LITE-12-101-lite-12-007-every-state-renders-without-throwing-so-no-state-is-unreachable-333-A1",
+      "requirementId": "LITE-12-101",
+      "file": "apps/web/src/components/chat/ConversationRuntimeView.asyncStates.test.tsx",
+      "name": "LITE-12-007 every state renders without throwing, so no state is unreachable",
+      "line": 114,
+      "expression": "assert.ok(markup.length > 0, `state ${index} renders a surface`);",
+      "clause": "四栏正文要求的导航、通知状态及键盘流覆盖",
+      "whyDirect": "该映射逐条指向命名测试体内实际执行的具体 assert/expect 调用；同一原始 TAP 收据证明该命名测试通过，不使用文件、关键词或测试套件级命中。",
+      "outcome": "passed"
+    }
+  ]
+}
