@@ -651,29 +651,51 @@ function evidenceById(evidence) {
   return byId;
 }
 
+function assertAncestor(baseSha, tipSha, repositoryRoot, label) {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', baseSha, tipSha], {
+      cwd: repositoryRoot, stdio: 'ignore',
+    });
+  } catch {
+    assert.fail(`${label} is not an ancestor of the real current HEAD`);
+  }
+}
+
+function closeoutRelativePath(repositoryRoot, gitRoot, file) {
+  const repositoryPrefix = relative(gitRoot, resolve(repositoryRoot)).replaceAll('\\', '/');
+  if (!repositoryPrefix) return file;
+  if (file === repositoryPrefix) return '';
+  return file.startsWith(`${repositoryPrefix}/`) ? file.slice(repositoryPrefix.length + 1) : file;
+}
+
+function assertCloseoutOnlyDescendant(baseSha, tipSha, repositoryRoot, label) {
+  if (baseSha === tipSha) return;
+  assertAncestor(baseSha, tipSha, repositoryRoot, label);
+  const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+    cwd: repositoryRoot, encoding: 'utf8',
+  }).trim();
+  const changedFiles = execFileSync('git', ['diff', '--name-only', `${baseSha}..${tipSha}`], {
+    cwd: repositoryRoot, encoding: 'utf8',
+  }).split(/\r?\n/).map(file => file.trim()).filter(Boolean)
+    .map(file => closeoutRelativePath(repositoryRoot, gitRoot, file));
+  for (const file of changedFiles) {
+    assert.match(file, /^docs\/implementation\/lite-closeout\//,
+      `${label} contains a non-closeout change: ${file}`);
+  }
+}
+
 export function validateFinalClosure(matrix, evidence, repositoryRoot = root) {
   assert.equal(matrix.requirements.filter(row => row.state === 'GAP' || row.state === 'RUNTIME-VERIFY').length, 0,
     'required Lite acceptance remains open');
   assertSha(matrix.finalImplementationSha, sha40, 'finalImplementationSha');
   assertSha(matrix.finalMainSha, sha40, 'finalMainSha');
   const actualHead = execFileSync('git', ['rev-parse', 'HEAD'], { cwd: repositoryRoot, encoding: 'utf8' }).trim();
-  assert.equal(matrix.finalMainSha, actualHead, 'finalMainSha is not the real current HEAD');
-  if (matrix.finalImplementationSha !== matrix.finalMainSha) {
-    try {
-      execFileSync('git', ['merge-base', '--is-ancestor', matrix.finalImplementationSha, matrix.finalMainSha], {
-        cwd: repositoryRoot, stdio: 'ignore',
-      });
-    } catch {
-      assert.fail('finalImplementationSha is not an ancestor of finalMainSha');
-    }
-    const changedFiles = execFileSync('git', ['diff', '--name-only', `${matrix.finalImplementationSha}..${matrix.finalMainSha}`], {
-      cwd: repositoryRoot, encoding: 'utf8',
-    }).split(/\r?\n/).map(file => file.trim()).filter(Boolean);
-    for (const file of changedFiles) {
-      assert.match(file, /^docs\/implementation\/lite-closeout\//,
-        `non-closeout production change after finalImplementationSha: ${file}`);
-    }
-  }
+  // The final main SHA is the authoritative merged implementation/evidence
+  // point. A subsequent closeout commit may only add the closeout documents;
+  // this avoids a self-referential SHA inside matrix.json without allowing any
+  // production or verifier change after the final main point.
+  assertCloseoutOnlyDescendant(matrix.finalMainSha, actualHead, repositoryRoot, 'finalMainSha');
+  assertCloseoutOnlyDescendant(matrix.finalImplementationSha, matrix.finalMainSha, repositoryRoot, 'finalImplementationSha');
   const byId = evidenceById(evidence);
   const ci = byId.get(matrix.finalCiEvidence);
   assert.ok(ci?.kind === 'github-actions' && ci.baseline === matrix.finalMainSha && ci.url, 'final main CI evidence is not verified');
@@ -685,9 +707,10 @@ export function validateFinalClosure(matrix, evidence, repositoryRoot = root) {
   const providers = new Set();
   for (const id of matrix.finalProviderEvidence) {
     const proof = byId.get(id);
-    assert.ok(proof?.kind === 'runtime-verification' && proof.baseline === matrix.finalMainSha,
-      `Provider gate is not on finalMainSha: ${id}`);
-    const raw = validateRaw(proof, matrix.finalMainSha, repositoryRoot, `Provider gate ${id}`);
+    assert.ok(proof?.kind === 'runtime-verification'
+      && (proof.baseline === matrix.finalMainSha || proof.baseline === matrix.finalImplementationSha),
+    `Provider gate is not on finalMainSha or finalImplementationSha: ${id}`);
+    const raw = validateRaw(proof, proof.baseline, repositoryRoot, `Provider gate ${id}`);
     validateResult(proof, raw, `Provider gate ${id}`);
     const provider = proof.provider?.toLowerCase();
     assert.ok(provider, `Provider gate ${id} has no provider identity`);
