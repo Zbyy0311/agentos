@@ -126,6 +126,33 @@ test('DCUX-C02 a non-OK response throws with the status', async () => {
   }
 });
 
+test('DCUX-C03 canonical runtime group creation keeps the group contract explicit', async () => {
+  const original = globalThis.fetch;
+  let requestUrl = '';
+  let requestBody: unknown;
+  globalThis.fetch = async (input, init) => {
+    requestUrl = String(input);
+    requestBody = JSON.parse(String(init?.body));
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({ conversation: { id: 'group_1', kind: 'group', title: 'Team', status: 'active', version: 1 } }),
+    } as unknown as Response;
+  };
+  try {
+    const client = directConversationClient({ workspaceId: 'workspace-a', apiBase: 'http://127.0.0.1:3000' });
+    await client.createConversation({
+      kind: 'group', replyMode: 'sequential', title: 'Team', memberAgentIds: ['agent_a', 'agent_b'],
+    });
+  } finally {
+    globalThis.fetch = original;
+  }
+  assert.equal(requestUrl, 'http://127.0.0.1:3000/api/workspaces/workspace-a/runtime/conversations');
+  assert.deepEqual(requestBody, {
+    kind: 'group', replyMode: 'sequential', title: 'Team', memberAgentIds: ['agent_a', 'agent_b'],
+  });
+});
+
 // ---- composer -----------------------------------------------------------------
 
 test('DCUX-P01 chat send produces no Task and no Run', () => {

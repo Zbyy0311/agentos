@@ -12,6 +12,11 @@ import type { ConversationStreamState } from './directConversationStream';
 import type { ComposerMode } from './directComposer';
 import type { AgentSummary } from '../components/chat/DirectConversationWorkbench';
 
+export interface RuntimeGroupCreateInput {
+  readonly title: string;
+  readonly memberAgentIds: readonly string[];
+}
+
 /**
  * Direct Conversation UX — the React binding for the forward runtime.
  *
@@ -74,7 +79,12 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
           ? current
           : nextAgents[0]?.id ?? null);
       })
-      .catch(() => { if (!cancelled) setAgents([]); });
+      .catch(e => {
+        if (!cancelled) {
+          setAgents([]);
+          setError(e instanceof Error ? e.message : String(e));
+        }
+      });
     return () => { cancelled = true; };
   }, [apiBase, workspaceId]);
 
@@ -114,6 +124,38 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
     }
   }, [activeAgentId, client]);
 
+  const createGroupConversation = useCallback(async (input: RuntimeGroupCreateInput) => {
+    const title = input.title.trim();
+    const memberAgentIds = [...new Set(input.memberAgentIds)];
+    const enabledAgentIds = new Set(agents.map(agent => agent.id));
+    if (title.length === 0) {
+      setError('Enter a title before creating a group Conversation.');
+      return null;
+    }
+    if (memberAgentIds.length < 2 || memberAgentIds.some(id => !enabledAgentIds.has(id))) {
+      setError('Select at least two enabled Agents before creating a group Conversation.');
+      return null;
+    }
+    setError(undefined);
+    try {
+      const result = await client.createConversation({
+        kind: 'group',
+        replyMode: 'sequential',
+        title,
+        memberAgentIds,
+      });
+      setConversations(previous => [
+        result.conversation,
+        ...previous.filter(item => item.id !== result.conversation.id),
+      ]);
+      setActiveConversationId(result.conversation.id);
+      return result.conversation;
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+      return null;
+    }
+  }, [agents, client]);
+
   const send = useCallback(async () => {
     if (activeConversationId === null || content.trim().length === 0) return;
     setSending(true);
@@ -131,7 +173,7 @@ export function useDirectConversation(workspaceId: string, apiBase: string) {
 
   return {
     conversations, agents, activeAgentId, activeConversationId, messages, stream, mode, content, sending, error,
-    selectAgent, selectConversation, createConversation, setMode, setContent, send,
+    selectAgent, selectConversation, createConversation, createGroupConversation, setMode, setContent, send,
   };
 }
 

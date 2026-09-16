@@ -93,3 +93,15 @@ test('LITE-12-101 the workbench exposes Agent selection and Conversation creatio
   assert.ok(markup.includes('data-agentos="new-conversation"'));
   assert.ok(markup.includes('role="list"'));
 });
+
+test('LITE-12-102 runtime groups have a separate creation control', async () => {
+  const markup = await render({
+    agents: [
+      { id: 'agent_a', name: 'Codex', status: 'idle' },
+      { id: 'agent_b', name: 'Kimi', status: 'idle' },
+    ],
+    onCreateGroupConversation: () => {},
+  });
+  assert.ok(markup.includes('data-agentos="new-group-conversation"'));
+  assert.ok(markup.includes('aria-label="New Group Conversation"'));
+});

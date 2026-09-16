@@ -18,13 +18,14 @@ interface AgentListProps {
   onCreateGroup(): void;
   onContextMenu(conversationId: string, event: MouseEvent<HTMLButtonElement>): void;
   onBackToWorkspace(): void;
+  onOpenRuntime?(): void;
   onOpenMemories(): void;
   onOpenPreferences(): void;
   /** MF-5 forward Memory Candidate review queue (optional: absent on surfaces without Memory). */
   onOpenMemoryReview?(): void;
 }
 
-export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, presence = {}, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenMemories, onOpenPreferences, onOpenMemoryReview }: AgentListProps) {
+export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, presence = {}, groups, selectedGroupId, onSelect, onSelectGroup, onCreateGroup, onContextMenu, onBackToWorkspace, onOpenRuntime, onOpenMemories, onOpenPreferences, onOpenMemoryReview }: AgentListProps) {
   return <aside data-signal-agent-rail className="workspace-sidebar signal-rail ui-panel flex w-60 shrink-0 flex-col overflow-y-auto border-r px-3 py-4" style={panelWidth === undefined ? undefined : { width: `${panelWidth}px` }}>
     <div className="mb-6 px-2">
       <div className="flex items-center justify-between gap-2">
@@ -34,6 +35,7 @@ export function AgentList({ agents, panelWidth, selectedAgentId, activeStatus, p
       <div className="workspace-copy mt-4 text-base font-semibold tracking-tight ui-text">AgentOS</div>
       <div className="workspace-copy mt-1 text-xs leading-5 ui-muted">当前工作区的协作成员</div>
       <button type="button" onClick={onBackToWorkspace} className="workspace-return-label ui-button-ghost mt-4 rounded-lg border ui-border px-2.5 py-1.5 text-xs hover:border-[var(--app-accent)]">← 返回工作区</button>
+      {onOpenRuntime === undefined ? null : <button type="button" data-agentos="open-runtime-workbench" onClick={onOpenRuntime} className="mt-2 w-full rounded-lg border ui-border px-2.5 py-1.5 text-left text-xs ui-button-ghost hover:border-[var(--app-accent)]">⚡ 运行时工作台</button>}
     </div>
 
     <div className="workspace-nav-label signal-section-label mb-2 px-2">AGENTS</div>

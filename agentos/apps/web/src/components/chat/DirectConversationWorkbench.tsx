@@ -49,6 +49,7 @@ export interface DirectConversationWorkbenchProps {
   readonly onSelectAgent: (id: string) => void;
   readonly onSelectConversation: (id: string) => void;
   readonly onCreateConversation: () => void;
+  readonly onCreateGroupConversation?: () => void;
   readonly onModeChange: (mode: ComposerMode) => void;
   readonly onContentChange: (content: string) => void;
   readonly onSend: () => void;
@@ -106,27 +107,45 @@ export function DirectConversationWorkbench(props: DirectConversationWorkbenchPr
       <ColumnHeader
         title="Conversations"
         action={(
-          <button
-            type="button"
-            data-agentos="new-conversation"
-            aria-label="New Conversation"
-            disabled={props.agents.length === 0}
-            onClick={() => dispatchWorkbenchAction(
-              { kind: 'create-conversation' },
-              {
-                onSelectAgent: props.onSelectAgent,
-                onSelectConversation: props.onSelectConversation,
-                onCreateConversation: props.onCreateConversation,
-              },
+          <span style={{ display: 'inline-flex', gap: UI_SPACING_BASE_PX }}>
+            <button
+              type="button"
+              data-agentos="new-conversation"
+              aria-label="New Conversation"
+              disabled={props.agents.length === 0}
+              onClick={() => dispatchWorkbenchAction(
+                { kind: 'create-conversation' },
+                {
+                  onSelectAgent: props.onSelectAgent,
+                  onSelectConversation: props.onSelectConversation,
+                  onCreateConversation: props.onCreateConversation,
+                },
+              )}
+              style={{
+                border: '1px solid var(--border-default)', borderRadius: UI_RADIUS_TOKENS.input,
+                backgroundColor: 'var(--surface-raised)', color: 'var(--text-primary)', cursor: 'pointer',
+                padding: `${UI_SPACING_BASE_PX}px ${UI_SPACING_BASE_PX * 2}px`, fontSize: 12,
+              }}
+            >
+              +
+            </button>
+            {props.onCreateGroupConversation === undefined ? null : (
+              <button
+                type="button"
+                data-agentos="new-group-conversation"
+                aria-label="New Group Conversation"
+                disabled={props.agents.length < 2}
+                onClick={props.onCreateGroupConversation}
+                style={{
+                  border: '1px solid var(--border-default)', borderRadius: UI_RADIUS_TOKENS.input,
+                  backgroundColor: 'var(--surface-raised)', color: 'var(--text-primary)', cursor: 'pointer',
+                  padding: `${UI_SPACING_BASE_PX}px ${UI_SPACING_BASE_PX * 2}px`, fontSize: 12,
+                }}
+              >
+                Group
+              </button>
             )}
-            style={{
-              border: '1px solid var(--border-default)', borderRadius: UI_RADIUS_TOKENS.input,
-              backgroundColor: 'var(--surface-raised)', color: 'var(--text-primary)', cursor: 'pointer',
-              padding: `${UI_SPACING_BASE_PX}px ${UI_SPACING_BASE_PX * 2}px`, fontSize: 12,
-            }}
-          >
-            +
-          </button>
+          </span>
         )}
       />
       <div role="list" aria-label="Conversations">
